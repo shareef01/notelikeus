@@ -23,4 +23,13 @@ class TextFormattingTest {
 
         assertEquals("• line one\n• line two", result.text)
     }
+
+    @Test
+    fun wrapAsLink_wrapsSelectionWithMarkdownLink() {
+        val input = TextFieldValue("tap here", TextRange(4, 8))
+        val result = TextFormatting.wrapAsLink(input, "example.com")
+
+        assertEquals("tap [here](https://example.com)", result.text)
+        assertEquals(TextRange(31, 31), result.selection)
+    }
 }

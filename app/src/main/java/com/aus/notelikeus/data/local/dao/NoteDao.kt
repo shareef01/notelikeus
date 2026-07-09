@@ -27,11 +27,32 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE id = :id")
     suspend fun getNoteById(id: Long): NoteWithLabelsAndAttachments?
 
+    @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM notes WHERE isTrashed = 0 AND isArchived = 0")
+    suspend fun getNextNotePosition(): Int
+
+    @Query("SELECT COUNT(*) FROM notes WHERE isTrashed = 0 AND isArchived = 0")
+    fun getActiveNoteCount(): Flow<Int>
+
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM notes
+        WHERE reminderTimestamp IS NOT NULL
+        AND reminderTimestamp > :now
+        AND isTrashed = 0
+        AND isArchived = 0
+        """
+    )
+    suspend fun getNotesWithActiveReminders(now: Long): List<NoteWithLabelsAndAttachments>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNote(note: NoteEntity): Long
 
     @Update
     suspend fun updateNote(note: NoteEntity)
+
+    @Query("UPDATE notes SET position = :position WHERE id = :id")
+    suspend fun updateNotePosition(id: Long, position: Int)
 
     @Delete
     suspend fun deleteNote(note: NoteEntity)
@@ -54,7 +75,14 @@ interface NoteDao {
     @Query("DELETE FROM attachments WHERE noteId = :noteId")
     suspend fun deleteAttachments(noteId: Long)
 
+    @Query("DELETE FROM attachments")
+    suspend fun deleteAllAttachments()
+
     @Transaction
-    @Query("SELECT * FROM notes WHERE isTrashed = 0 AND isArchived = 0 ORDER BY isPinned DESC, timestamp DESC LIMIT 5")
+    @Query("SELECT * FROM notes WHERE isTrashed = 0 AND isArchived = 0 ORDER BY isPinned DESC, position ASC, timestamp DESC LIMIT 5")
     suspend fun getWidgetNotes(): List<NoteWithLabelsAndAttachments>
+
+    @Transaction
+    @Query("SELECT * FROM notes ORDER BY timestamp DESC")
+    suspend fun getAllNotesForBackup(): List<NoteWithLabelsAndAttachments>
 }

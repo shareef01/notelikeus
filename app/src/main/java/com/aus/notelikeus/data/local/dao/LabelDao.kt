@@ -10,6 +10,9 @@ interface LabelDao {
     @Query("SELECT * FROM labels ORDER BY name ASC")
     fun getAllLabels(): Flow<List<LabelEntity>>
 
+    @Query("SELECT * FROM labels ORDER BY name ASC")
+    suspend fun getAllLabelsOnce(): List<LabelEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLabel(label: LabelEntity): Long
 
