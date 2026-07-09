@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "notelikeus"
+  },
+  "targets": {
+    "notelikeus": {
+      "hosting": {
+        "notelike": [
+          "notelike"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

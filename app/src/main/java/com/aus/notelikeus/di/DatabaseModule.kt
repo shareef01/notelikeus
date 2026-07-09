@@ -12,7 +12,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import net.zetetic.database.sqlcipher.SupportFactory
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
@@ -24,6 +24,7 @@ object DatabaseModule {
         @ApplicationContext context: Context,
         keyManager: DatabaseKeyManager
     ): NotelikeusDatabase {
+        System.loadLibrary("sqlcipher")
         val passphrase = keyManager.getPassphrase()
         PlaintextDatabaseMigrator.migrateToEncryptedIfNeeded(
             context,
@@ -36,7 +37,7 @@ object DatabaseModule {
             NotelikeusDatabase::class.java,
             NotelikeusDatabase.DATABASE_NAME
         )
-        .openHelperFactory(SupportFactory(passphrase))
+        .openHelperFactory(SupportOpenHelperFactory(passphrase))
         .addMigrations(*DatabaseMigrations.ALL)
         .build()
     }
