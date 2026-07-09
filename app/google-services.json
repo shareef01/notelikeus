@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "404285880902",
+    "project_id": "notelikeus",
+    "storage_bucket": "notelikeus.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:404285880902:android:22326adaf6fca4e1996847",
+        "android_client_info": {
+          "package_name": "com.aus.notelikeus"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "404285880902-hgpicaqcmsqqlujjo8sbutpg0km7gvdu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aus.notelikeus",
+            "certificate_hash": "a2146d57a55b067d3f56e8cf34a43c1a16096b06"
+          }
+        },
+        {
+          "client_id": "404285880902-cpiu3nj2itndnh0kkouvn374ec5ecl9v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBDF6ff82bZ-nSI5sW4MhtGiHomifciAQo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "404285880902-cpiu3nj2itndnh0kkouvn374ec5ecl9v.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

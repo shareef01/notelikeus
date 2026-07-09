@@ -46,4 +46,24 @@ object TextFormatting {
             selection = TextRange(lineStart, lineStart + prefixed.length)
         )
     }
+
+    fun wrapAsLink(value: TextFieldValue, url: String): TextFieldValue {
+        val selection = value.selection
+        if (selection.collapsed || url.isBlank()) return value
+
+        val start = minOf(selection.start, selection.end)
+        val end = maxOf(selection.start, selection.end)
+        val selected = value.text.substring(start, end)
+        val normalizedUrl = when {
+            url.startsWith("http://") || url.startsWith("https://") -> url
+            else -> "https://$url"
+        }
+        val link = "[$selected]($normalizedUrl)"
+        val newText = value.text.replaceRange(start, end, link)
+
+        return TextFieldValue(
+            text = newText,
+            selection = TextRange(start + link.length)
+        )
+    }
 }
