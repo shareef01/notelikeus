@@ -1,12 +1,17 @@
 import { useAuthSync } from '@/hooks/useAuth';
 import { useNotesSync } from '@/hooks/useNotesSync';
 import { isFirebaseConfigured } from '@/lib/config';
-import { AuthScreen } from '@/screens/AuthScreen';
-import { EditorScreen } from '@/screens/EditorScreen';
 import { MainScreen } from '@/screens/MainScreen';
 import { ThemeApplier } from '@/components/theme/ThemeApplier';
 import { useUiStore } from '@/store/uiStore';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
+
+const EditorScreen = lazy(() =>
+  import('@/screens/EditorScreen').then((module) => ({ default: module.EditorScreen })),
+);
+const AuthScreen = lazy(() =>
+  import('@/screens/AuthScreen').then((module) => ({ default: module.AuthScreen })),
+);
 
 const firebaseReady = isFirebaseConfigured();
 
@@ -44,11 +49,19 @@ export default function App() {
       <ThemeApplier />
       <MainScreen />
       {editorMode === 'new' ? (
-        <EditorScreen route={{ mode: 'new' }} />
+        <Suspense fallback={null}>
+          <EditorScreen route={{ mode: 'new' }} />
+        </Suspense>
       ) : editorMode === 'edit' && editorNoteId ? (
-        <EditorScreen route={{ mode: 'edit', noteId: editorNoteId }} />
+        <Suspense fallback={null}>
+          <EditorScreen route={{ mode: 'edit', noteId: editorNoteId }} />
+        </Suspense>
       ) : null}
-      {authScreen ? <AuthScreen mode={authScreen} /> : null}
+      {authScreen ? (
+        <Suspense fallback={null}>
+          <AuthScreen mode={authScreen} />
+        </Suspense>
+      ) : null}
     </>
   );
 }
