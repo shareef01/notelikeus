@@ -16,6 +16,7 @@ interface UiState {
   listScrolled: boolean;
   editorRoute: EditorRoute;
   authScreen: AuthMode | null;
+  selectedNoteIds: string[];
   setDrawerOpen: (open: boolean) => void;
   toggleDrawer: () => void;
   setViewColumns: (columns: ViewColumns) => void;
@@ -26,6 +27,9 @@ interface UiState {
   closeEditor: () => void;
   openAuthScreen: (mode: AuthMode) => void;
   closeAuthScreen: () => void;
+  toggleNoteSelection: (noteId: string) => void;
+  clearSelection: () => void;
+  toggleSelectAll: (noteIds: string[]) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -36,6 +40,7 @@ export const useUiStore = create<UiState>()(
       listScrolled: false,
       editorRoute: { mode: 'closed' },
       authScreen: null,
+      selectedNoteIds: [],
       setDrawerOpen: (drawerOpen) =>
         set((state) => (state.drawerOpen === drawerOpen ? state : { drawerOpen })),
       toggleDrawer: () => set({ drawerOpen: !get().drawerOpen }),
@@ -53,6 +58,26 @@ export const useUiStore = create<UiState>()(
       openAuthScreen: (authScreen) => set({ authScreen, drawerOpen: false }),
       closeAuthScreen: () =>
         set((state) => (state.authScreen === null ? state : { authScreen: null })),
+      toggleNoteSelection: (noteId) =>
+        set((state) => {
+          const selected = state.selectedNoteIds.includes(noteId)
+            ? state.selectedNoteIds.filter((id) => id !== noteId)
+            : [...state.selectedNoteIds, noteId];
+          return { selectedNoteIds: selected };
+        }),
+      clearSelection: () =>
+        set((state) => (state.selectedNoteIds.length === 0 ? state : { selectedNoteIds: [] })),
+      toggleSelectAll: (noteIds) =>
+        set((state) => {
+          if (noteIds.length === 0) return state;
+          const allSelected = noteIds.every((id) => state.selectedNoteIds.includes(id));
+          if (allSelected) {
+            const remaining = state.selectedNoteIds.filter((id) => !noteIds.includes(id));
+            return { selectedNoteIds: remaining };
+          }
+          const merged = new Set([...state.selectedNoteIds, ...noteIds]);
+          return { selectedNoteIds: Array.from(merged) };
+        }),
     }),
     {
       name: 'notelikeus-ui',
