@@ -5,6 +5,7 @@ import com.aus.notelikeus.data.local.dao.LabelDao
 import com.aus.notelikeus.data.local.dao.NoteDao
 import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
 import com.aus.notelikeus.data.mapper.*
+import com.aus.notelikeus.data.remote.ReminderScheduler
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
@@ -21,6 +22,7 @@ import javax.inject.Inject
 class NoteRepositoryImpl @Inject constructor(
     private val noteDao: NoteDao,
     private val labelDao: LabelDao,
+    private val reminderScheduler: ReminderScheduler,
     @ApplicationContext private val context: Context
 ) : NoteRepository {
 
@@ -74,18 +76,17 @@ class NoteRepositoryImpl @Inject constructor(
             noteDao.insertChecklistItem(item.toChecklistItemEntity(noteId))
         }
 
-        // Handle attachments
+        // Drop legacy attachment rows; feature archived.
         noteDao.deleteAttachments(noteId)
-        note.attachments.forEach { attachment ->
-            noteDao.insertAttachment(attachment.toAttachmentEntity(noteId))
-        }
+        syncReminderForNote(note.copy(id = noteId))
         refreshWidget()
         return noteId
     }
 
     override suspend fun updateNote(note: Note) {
+        val noteId = note.id
         noteDao.updateNote(note.toNoteEntity())
-        val noteId = note.id ?: return
+        if (noteId == null) return
         
         // Handle labels
         noteDao.deleteNoteLabelCrossRefs(noteId)
@@ -101,17 +102,42 @@ class NoteRepositoryImpl @Inject constructor(
             noteDao.insertChecklistItem(item.toChecklistItemEntity(noteId))
         }
 
-        // Handle attachments
         noteDao.deleteAttachments(noteId)
-        note.attachments.forEach { attachment ->
-            noteDao.insertAttachment(attachment.toAttachmentEntity(noteId))
+        syncReminderForNote(note)
+        refreshWidget()
+    }
+
+    override suspend fun updateNotePositions(notes: List<Note>) {
+        notes.forEachIndexed { index, note ->
+            val noteId = note.id ?: return@forEachIndexed
+            if (note.position != index) {
+                noteDao.updateNotePosition(noteId, index)
+            }
         }
         refreshWidget()
     }
 
     override suspend fun deleteNote(note: Note) {
+        note.id?.let { reminderScheduler.cancelReminder(it) }
+        note.id?.let { noteDao.deleteAttachments(it) }
         noteDao.deleteNote(note.toNoteEntity())
         refreshWidget()
+    }
+
+    override suspend fun getNextNotePosition(): Int = noteDao.getNextNotePosition()
+
+    override fun getActiveNoteCount(): Flow<Int> = noteDao.getActiveNoteCount()
+
+    override suspend fun getNotesWithActiveReminders(now: Long): List<Note> {
+        return noteDao.getNotesWithActiveReminders(now).map { it.toNote() }
+    }
+
+    override suspend fun getAllNotesForBackup(): List<Note> {
+        return noteDao.getAllNotesForBackup().map { it.toNote() }
+    }
+
+    override suspend fun getAllLabelsSnapshot(): List<Label> {
+        return labelDao.getAllLabelsOnce().map { it.toLabel() }
     }
 
     override fun getLabels(): Flow<List<Label>> {
@@ -129,5 +155,20 @@ class NoteRepositoryImpl @Inject constructor(
     override suspend fun deleteLabel(label: Label) {
         labelDao.deleteLabel(label.toLabelEntity())
         refreshWidget()
+    }
+
+    private fun syncReminderForNote(note: Note) {
+        val noteId = note.id ?: return
+        val shouldCancel = note.isTrashed || note.isArchived || note.reminderTimestamp == null
+        if (shouldCancel) {
+            reminderScheduler.cancelReminder(noteId)
+        } else {
+            reminderScheduler.scheduleReminder(
+                noteId = noteId,
+                title = note.title,
+                content = note.content,
+                timestamp = note.reminderTimestamp
+            )
+        }
     }
 }

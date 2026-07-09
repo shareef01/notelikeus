@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply h-full;
+  }
+
+  body,
+  #root {
+    @apply min-h-full;
+  }
+
+  body {
+    @apply bg-true-black font-sans text-brand-primary;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  html.soft-dark body {
+    @apply bg-true-surface text-brand-primary;
+  }
+
+  html:not(.monochrome) .filter-chip-active {
+    @apply border-note-teal-dark/60 bg-note-teal-dark/25;
+  }
+
+  html:not(.monochrome) .bg-brand-primary {
+    background-color: #a8e8dc;
+    color: #000000;
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .pl-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+
+  .pr-safe {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+}
+
+@layer components {
+  .filter-chip {
+    @apply inline-flex h-8 max-h-8 items-center rounded-lg border border-brand-outline/50 px-3 text-xs font-medium transition-colors sm:h-9 sm:px-3.5 sm:text-sm;
+  }
+
+  .filter-chip-active {
+    @apply border-brand-outline/50 bg-true-surface-variant/55 text-brand-primary;
+  }
+
+  .filter-chip-inactive {
+    @apply border-brand-outline/50 bg-transparent text-brand-muted;
+  }
+}

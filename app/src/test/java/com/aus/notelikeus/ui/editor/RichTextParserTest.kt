@@ -1,6 +1,7 @@
 package com.aus.notelikeus.ui.editor
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import org.junit.Assert.assertEquals
@@ -43,5 +44,29 @@ class RichTextParserTest {
         )
 
         assertTrue(result.text.startsWith("• "))
+    }
+
+    @Test
+    fun parse_rendersMarkdownLinkLabel() {
+        val result = RichTextParser.parse(
+            text = "Visit [docs](https://example.com) now",
+            contentColor = Color.Black,
+            linkColor = Color.Blue
+        )
+
+        assertEquals("Visit docs now", result.text)
+        assertTrue(result.linkAnnotations.any { it.item is LinkAnnotation.Url })
+    }
+
+    @Test
+    fun parse_autoLinksBareUrls() {
+        val result = RichTextParser.parse(
+            text = "See https://example.com today",
+            contentColor = Color.Black,
+            linkColor = Color.Blue
+        )
+
+        assertEquals("See https://example.com today", result.text)
+        assertEquals(1, result.linkAnnotations.size)
     }
 }

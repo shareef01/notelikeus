@@ -3,10 +3,20 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.google.services)
 }
+
+import java.util.Properties
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+val releaseSigningProperties = Properties().apply {
+    val signingFile = rootProject.file("signing.properties")
+    if (signingFile.exists()) {
+        signingFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -23,6 +33,18 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val storeFilePath = releaseSigningProperties.getProperty("storeFile")
+            if (storeFilePath != null) {
+                storeFile = rootProject.file(storeFilePath)
+                storePassword = releaseSigningProperties.getProperty("storePassword")
+                keyAlias = releaseSigningProperties.getProperty("keyAlias")
+                keyPassword = releaseSigningProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -31,14 +53,25 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (releaseSigningProperties.containsKey("storeFile")) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
     }
 }
 
@@ -58,7 +91,6 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.compose.ui.text.google.fonts)
-    implementation(libs.coil.compose)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 
@@ -74,6 +106,13 @@ dependencies {
     implementation(libs.sqlcipher.android)
     implementation(libs.androidx.sqlite)
     implementation(libs.androidx.security.crypto)
+
+    // Firebase
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
+    implementation(libs.play.services.auth)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
 
     testImplementation(libs.junit)
     testImplementation(libs.turbine)
