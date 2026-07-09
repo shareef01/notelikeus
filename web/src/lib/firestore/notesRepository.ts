@@ -164,7 +164,7 @@ export async function fetchRemoteNotes(userId: string): Promise<Note[]> {
 export async function syncNotesWithCloud(
   userId: string,
   localNotes: Note[],
-): Promise<{ changes: number; merged: Note[] }> {
+): Promise<{ changes: number; merged: Note[]; remoteIds: string[] }> {
   const remoteNotes = await fetchRemoteNotes(userId);
   const cloudIds = new Set(remoteNotes.map((note) => note.id));
   let changes = 0;
@@ -193,7 +193,7 @@ export async function syncNotesWithCloud(
   }
 
   await touchSyncMeta(userId, merged.filter(isCloudSyncEligible).length);
-  return { changes, merged };
+  return { changes, merged, remoteIds: remoteNotes.map((note) => note.id) };
 }
 
 export async function touchSyncMeta(userId: string, noteCount: number): Promise<void> {
