@@ -1,5 +1,6 @@
 import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
 import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
+import { useToastStore } from '@/store/toastStore';
 import { LockIcon, LockOpenIcon, TrashIcon, AddIcon } from '@/components/icons/Icons';
 import type { Label } from '@/types/label';
 import { useState } from 'react';
@@ -67,8 +68,15 @@ export function EditorOptionsSheet({
     }
     const nextTimestamp = new Date(value).getTime();
     if (Number.isNaN(nextTimestamp)) return;
+    if (nextTimestamp <= Date.now()) {
+      useToastStore.getState().show('Choose a future date and time', 'error');
+      return;
+    }
     const granted = await requestNotificationPermission();
-    if (!granted) return;
+    if (!granted) {
+      useToastStore.getState().show('Enable notifications to use reminders', 'error');
+      return;
+    }
     onReminderChange(nextTimestamp);
   };
 
