@@ -233,11 +233,11 @@ function ReorderRow({
   render: () => ReactNode;
 }) {
   return (
-    <div className={`flex items-center gap-0 ${isDragging ? 'opacity-90' : ''}`}>
+    <div className={`flex items-stretch gap-1 ${isDragging ? 'opacity-90' : ''}`}>
       <button
         type="button"
         aria-label="Reorder note"
-        className="flex w-8 shrink-0 cursor-grab touch-none justify-center pl-2 active:cursor-grabbing lg:w-10 lg:pl-4"
+        className="flex min-h-[44px] w-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-note text-brand-muted/50 active:cursor-grabbing active:bg-white/5 sm:w-12"
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
           onDragStart(index);
@@ -249,7 +249,7 @@ function ReorderRow({
         onPointerUp={onDragEnd}
         onPointerCancel={onDragEnd}
       >
-        <DragHandleIcon size={24} className="text-brand-muted/40" />
+        <DragHandleIcon size={22} />
       </button>
       <div className="min-w-0 flex-1">{render()}</div>
     </div>
