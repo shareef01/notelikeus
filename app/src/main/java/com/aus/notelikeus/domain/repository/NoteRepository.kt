@@ -12,7 +12,13 @@ interface NoteRepository {
     suspend fun insertNote(note: Note)
     suspend fun insertNoteWithResult(note: Note): Long
     suspend fun updateNote(note: Note)
+    suspend fun updateNotePositions(notes: List<Note>)
     suspend fun deleteNote(note: Note)
+    suspend fun getNextNotePosition(): Int
+    suspend fun getAllNotesForBackup(): List<Note>
+    suspend fun getAllLabelsSnapshot(): List<Label>
+    suspend fun getNotesWithActiveReminders(now: Long): List<Note>
+    fun getActiveNoteCount(): Flow<Int>
 
     fun getLabels(): Flow<List<Label>>
     suspend fun insertLabel(label: Label): Long

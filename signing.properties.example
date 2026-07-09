@@ -1,0 +1,5 @@
+# Copy to signing.properties (gitignored) for signed release builds.
+# storeFile=release.keystore
+# storePassword=your-store-password
+# keyAlias=your-key-alias
+# keyPassword=your-key-password

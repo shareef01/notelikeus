@@ -1,0 +1,87 @@
+import { PinIcon } from '@/components/icons/Icons';
+import { stripMarkdownForPreview } from '@/lib/text/markdown';
+import type { Note } from '@/types/note';
+import { noteSurfaceStyle } from '@/theme/contrast';
+
+interface NoteCardProps {
+  note: Note;
+  onClick: () => void;
+  compact?: boolean;
+}
+
+/**
+ * Note Card Overhaul (Web)
+ * Premium Typography: Inter 18px SemiBold Titles, -0.5px tracking.
+ * Geometric Discipline: 16px radius, 16px inner padding.
+ */
+export function NoteCard({ note, onClick, compact = false }: NoteCardProps) {
+  const surface = noteSurfaceStyle(note.color);
+  const title = note.isLocked ? 'Locked note' : note.title || 'Untitled';
+  const showBody = !note.isLocked && note.content.length > 0;
+  const previewBody = stripMarkdownForPreview(note.content);
+  const hasReminder =
+    note.reminderTimestamp != null && note.reminderTimestamp > Date.now() && !note.isTrashed;
+
+  return (
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      className="relative w-full cursor-pointer rounded-note p-layout-gap text-left shadow-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md active:scale-[0.98]"
+      style={surface}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <h2
+          className={`font-bold tracking-[-0.5px] ${
+            compact ? 'line-clamp-1 text-base' : 'text-[18px] leading-[25px] line-clamp-2'
+          }`}
+        >
+          {title}
+        </h2>
+        {note.isPinned ? (
+          <PinIcon className="mt-1 shrink-0 opacity-60" size={16} />
+        ) : hasReminder ? (
+          <span className="mt-1 shrink-0 text-sm opacity-70" aria-label="Reminder set">
+            🔔
+          </span>
+        ) : null}
+      </div>
+
+      {showBody ? (
+        <p
+          className={`mt-2.5 text-[14px] leading-[1.4em] opacity-85 ${
+            compact ? 'line-clamp-2' : 'line-clamp-6'
+          }`}
+        >
+          {previewBody}
+        </p>
+      ) : null}
+
+      {!note.isLocked && note.checklist.length > 0 ? (
+        <p className="mt-3 text-[12px] font-bold opacity-65">
+          {note.checklist.filter((item) => item.isChecked).length}/{note.checklist.length} CHECKED
+        </p>
+      ) : null}
+
+      {!compact && note.labels.length > 0 ? (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {note.labels.slice(0, 2).map((label) => (
+            <span
+              key={label.id}
+              className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+              style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}
+            >
+              {label.name}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}

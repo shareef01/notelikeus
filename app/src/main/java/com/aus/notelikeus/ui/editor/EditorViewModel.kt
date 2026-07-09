@@ -5,8 +5,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
 import com.aus.notelikeus.data.remote.ReminderScheduler
-import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
@@ -33,16 +33,18 @@ data class EditorState(
     val labels: List<Label> = emptyList(),
     val allLabels: List<Label> = emptyList(),
     val checklist: List<ChecklistItem> = emptyList(),
-    val attachments: List<Attachment> = emptyList(),
     val timestamp: Long = System.currentTimeMillis(),
+    val position: Int = 0,
     val isNoteLoaded: Boolean = false,
-    val isAccessGranted: Boolean = true
+    val isAccessGranted: Boolean = true,
+    val noteNotFound: Boolean = false
 )
 
 @HiltViewModel
 class EditorViewModel @Inject constructor(
     private val repository: NoteRepository,
     private val reminderScheduler: ReminderScheduler,
+    private val cloudNoteSyncCoordinator: CloudNoteSyncCoordinator,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -51,7 +53,7 @@ class EditorViewModel @Inject constructor(
 
     private var autosaveJob: Job? = null
     private val noteId: Long? = savedStateHandle.get<Long>("noteId")?.takeIf { it != -1L }
-    private val skipLockCheck: Boolean = savedStateHandle.get<Boolean>("skipLockCheck") ?: false
+    private var hasAppliedInitialColor = false
 
     init {
         _state.update { it.copy(color = BackgroundLight.toArgb()) }
@@ -80,14 +82,14 @@ class EditorViewModel @Inject constructor(
                         reminderTimestamp = note.reminderTimestamp,
                         labels = note.labels,
                         checklist = note.checklist.sortedWith(compareBy({ it.isChecked }, { it.position })),
-                        attachments = note.attachments,
                         timestamp = note.timestamp,
+                        position = note.position,
                         isNoteLoaded = true,
-                        isAccessGranted = !note.isLocked || skipLockCheck
+                        isAccessGranted = !note.isLocked
                     )
                 }
             } ?: run {
-                _state.update { it.copy(isNoteLoaded = true) }
+                _state.update { it.copy(isNoteLoaded = true, noteNotFound = true) }
             }
         }
     }
@@ -98,6 +100,12 @@ class EditorViewModel @Inject constructor(
                 _state.update { it.copy(allLabels = labels) }
             }
             .launchIn(viewModelScope)
+    }
+
+    fun setInitialNoteColor(color: Int) {
+        if (hasAppliedInitialColor || _state.value.id != null || !_state.value.isNoteLoaded) return
+        hasAppliedInitialColor = true
+        _state.update { it.copy(color = color) }
     }
 
     fun onTitleChange(title: String) {
@@ -120,14 +128,90 @@ class EditorViewModel @Inject constructor(
         triggerAutosave()
     }
 
-    fun toggleArchive() {
+    fun toggleArchive(onArchived: ((Note) -> Unit)? = null) {
+        val wasArchived = _state.value.isArchived
         _state.update { it.copy(isArchived = !it.isArchived) }
-        saveNote()
+        viewModelScope.launch {
+            autosaveJob?.cancel()
+            if (!wasArchived) {
+                val snapshot = buildNoteFromState(_state.value).copy(isArchived = false)
+                persistNote()
+                onArchived?.invoke(snapshot)
+            } else {
+                persistNote()
+            }
+        }
     }
 
     fun toggleTrash() {
         _state.update { it.copy(isTrashed = !it.isTrashed) }
         saveNote()
+    }
+
+    suspend fun trashNoteForDelete(): Note? {
+        autosaveJob?.cancel()
+        val state = _state.value
+        val snapshot = buildNoteFromState(state).copy(isTrashed = false)
+        if (snapshot.title.isEmpty() && snapshot.content.isEmpty() && snapshot.checklist.isEmpty()) {
+            return null
+        }
+        _state.update { it.copy(isTrashed = true) }
+        persistNote()
+        return snapshot
+    }
+
+    private fun buildNoteFromState(state: EditorState): Note {
+        return Note(
+            id = state.id,
+            title = state.title,
+            content = state.content,
+            timestamp = state.timestamp,
+            color = state.color,
+            isPinned = state.isPinned,
+            isArchived = state.isArchived,
+            isTrashed = state.isTrashed,
+            position = state.position,
+            isLocked = state.isLocked,
+            reminderTimestamp = state.reminderTimestamp,
+            labels = state.labels,
+            attachments = emptyList(),
+            checklist = state.checklist
+        )
+    }
+
+    private suspend fun persistNote(): Long? {
+        val currentState = _state.value
+        if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) {
+            return null
+        }
+
+        val position = if (currentState.id == null) {
+            repository.getNextNotePosition()
+        } else {
+            currentState.position
+        }
+        val updatedTimestamp = System.currentTimeMillis()
+        val note = buildNoteFromState(currentState).copy(
+            position = position,
+            timestamp = updatedTimestamp
+        )
+        val savedId = if (note.id == null) {
+            val newId = repository.insertNoteWithResult(note)
+            _state.update { it.copy(id = newId, position = position, timestamp = updatedTimestamp) }
+            newId
+        } else {
+            repository.updateNote(note)
+            _state.update { it.copy(timestamp = updatedTimestamp) }
+            note.id
+        }
+        syncReminder(savedId, _state.value)
+        savedId?.let { cloudNoteSyncCoordinator.scheduleUpload(it) }
+        return savedId
+    }
+
+    suspend fun undoArchive(snapshot: Note) {
+        _state.update { it.copy(isArchived = false) }
+        repository.updateNote(snapshot)
     }
 
     fun toggleLock() {
@@ -137,6 +221,11 @@ class EditorViewModel @Inject constructor(
 
     fun setReminder(timestamp: Long?) {
         _state.update { it.copy(reminderTimestamp = timestamp) }
+        saveNote()
+    }
+
+    fun clearReminder() {
+        _state.update { it.copy(reminderTimestamp = null) }
         saveNote()
     }
 
@@ -155,10 +244,22 @@ class EditorViewModel @Inject constructor(
     fun createLabel(name: String) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
-        if (_state.value.allLabels.any { it.name.equals(trimmed, ignoreCase = true) }) return
+        val existing = _state.value.allLabels.find { it.name.equals(trimmed, ignoreCase = true) }
+        if (existing != null) {
+            if (_state.value.labels.none { it.id == existing.id }) {
+                toggleLabel(existing)
+            }
+            return
+        }
 
         viewModelScope.launch {
-            repository.insertLabel(Label(name = trimmed))
+            val id = repository.insertLabel(Label(name = trimmed))
+            val newLabel = Label(id = id, name = trimmed)
+            _state.update { currentState ->
+                if (currentState.labels.any { it.id == id }) currentState
+                else currentState.copy(labels = currentState.labels + newLabel)
+            }
+            triggerAutosave()
         }
     }
 
@@ -178,6 +279,10 @@ class EditorViewModel @Inject constructor(
         applyFormatting { TextFormatting.prefixLinesWithBullet(it) }
     }
 
+    fun applyLinkToSelection(url: String) {
+        applyFormatting { TextFormatting.wrapAsLink(it, url) }
+    }
+
     private fun applyFormatting(transform: (TextFieldValue) -> TextFieldValue) {
         _state.update { currentState ->
             val updated = transform(currentState.contentValue)
@@ -186,13 +291,15 @@ class EditorViewModel @Inject constructor(
         triggerAutosave()
     }
 
-    fun updateChecklistItem(index: Int, text: String, isChecked: Boolean) {
+    private var nextTempChecklistId = -1L
+
+    fun updateChecklistItem(itemId: Long, text: String, isChecked: Boolean) {
         _state.update { currentState ->
             val newList = currentState.checklist.toMutableList()
+            val index = newList.indexOfFirst { it.id == itemId }
             if (index in newList.indices) {
                 newList[index] = newList[index].copy(text = text, isChecked = isChecked)
             }
-            // Smart reordering: Checked items to bottom
             val sortedList = newList.sortedWith(compareBy({ it.isChecked }, { it.position }))
             currentState.copy(checklist = sortedList)
         }
@@ -202,32 +309,69 @@ class EditorViewModel @Inject constructor(
     fun addChecklistItem() {
         _state.update { currentState ->
             val newList = currentState.checklist.toMutableList()
-            newList.add(ChecklistItem(text = "", isChecked = false, position = newList.size))
-            currentState.copy(checklist = newList)
-        }
-        triggerAutosave()
-    }
-
-    fun removeChecklistItem(index: Int) {
-        _state.update { currentState ->
-            val newList = currentState.checklist.toMutableList()
-            if (index in newList.indices) {
-                newList.removeAt(index)
-            }
-            currentState.copy(checklist = newList)
-        }
-        triggerAutosave()
-    }
-
-    fun addAttachment(uri: String) {
-        _state.update { currentState ->
-            val currentId = currentState.id ?: -1L
-            val newAttachment = Attachment(
-                noteId = currentId,
-                uri = uri,
-                type = "image"
+            val tempId = nextTempChecklistId--
+            newList.add(
+                ChecklistItem(
+                    id = tempId,
+                    text = "",
+                    isChecked = false,
+                    position = newList.size
+                )
             )
-            currentState.copy(attachments = currentState.attachments + newAttachment)
+            currentState.copy(checklist = newList)
+        }
+        triggerAutosave()
+    }
+
+    fun convertContentToChecklist() {
+        _state.update { currentState ->
+            if (currentState.checklist.isNotEmpty()) return@update currentState
+            val lines = currentState.content.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            val items = if (lines.isEmpty()) {
+                listOf(
+                    ChecklistItem(
+                        id = nextTempChecklistId--,
+                        text = "",
+                        isChecked = false,
+                        position = 0
+                    )
+                )
+            } else {
+                lines.mapIndexed { index, line ->
+                    ChecklistItem(
+                        id = nextTempChecklistId--,
+                        text = line,
+                        isChecked = false,
+                        position = index
+                    )
+                }
+            }
+            currentState.copy(
+                content = "",
+                contentValue = TextFieldValue(""),
+                checklist = items
+            )
+        }
+        triggerAutosave()
+    }
+
+    fun convertChecklistToContent() {
+        _state.update { currentState ->
+            if (currentState.checklist.isEmpty()) return@update currentState
+            val body = currentState.checklist.joinToString("\n") { it.text.trim() }
+            currentState.copy(
+                content = body,
+                contentValue = TextFieldValue(body),
+                checklist = emptyList()
+            )
+        }
+        triggerAutosave()
+    }
+
+    fun removeChecklistItem(itemId: Long) {
+        _state.update { currentState ->
+            val newList = currentState.checklist.filterNot { it.id == itemId }
+            currentState.copy(checklist = newList)
         }
         triggerAutosave()
     }
@@ -245,36 +389,12 @@ class EditorViewModel @Inject constructor(
         if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) return
 
         viewModelScope.launch {
-            val note = Note(
-                id = currentState.id,
-                title = currentState.title,
-                content = currentState.content,
-                timestamp = currentState.timestamp,
-                color = currentState.color,
-                isPinned = currentState.isPinned,
-                isArchived = currentState.isArchived,
-                isTrashed = currentState.isTrashed,
-                position = 0, // Fallback position
-                isLocked = currentState.isLocked,
-                reminderTimestamp = currentState.reminderTimestamp,
-                labels = currentState.labels,
-                attachments = currentState.attachments,
-                checklist = currentState.checklist
-            )
-            val savedId = if (note.id == null) {
-                val newId = repository.insertNoteWithResult(note)
-                _state.update { it.copy(id = newId) }
-                newId
-            } else {
-                repository.updateNote(note)
-                note.id
-            }
-            syncReminder(savedId, currentState)
+            persistNote()
         }
     }
 
     private fun syncReminder(noteId: Long, state: EditorState) {
-        if (state.isTrashed || state.reminderTimestamp == null) {
+        if (state.isTrashed || state.isArchived || state.reminderTimestamp == null) {
             reminderScheduler.cancelReminder(noteId)
         } else {
             reminderScheduler.scheduleReminder(
