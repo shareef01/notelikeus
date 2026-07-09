@@ -9,6 +9,10 @@ import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.R
 
+/**
+ * Premium Typography System
+ * Font: Inter (Geometric/Highly Readable)
+ */
 val provider = GoogleFont.Provider(
     providerAuthority = "com.google.android.gms.fonts",
     providerPackage = "com.google.android.gms",
@@ -19,47 +23,43 @@ val InterFontFamily = FontFamily(
     Font(googleFont = GoogleFont("Inter"), fontProvider = provider)
 )
 
-val Typography = Typography(
-    displayLarge = TextStyle(
-        fontFamily = InterFontFamily,
-        fontWeight = FontWeight.Black,
-        fontSize = 32.sp,
-        lineHeight = 40.sp,
-        letterSpacing = (-1).sp
-    ),
-    headlineMedium = TextStyle(
-        fontFamily = InterFontFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = 24.sp,
-        lineHeight = 32.sp,
-        letterSpacing = (-0.5).sp
-    ),
-    titleLarge = TextStyle(
-        fontFamily = InterFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 20.sp,
-        lineHeight = 28.sp,
-        letterSpacing = (-0.5).sp
-    ),
-    bodyLarge = TextStyle(
-        fontFamily = InterFontFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp
-    ),
-    bodyMedium = TextStyle(
-        fontFamily = InterFontFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 14.sp,
-        lineHeight = 20.sp, // ~1.4em
-        letterSpacing = 0.25.sp
-    ),
-    labelMedium = TextStyle(
-        fontFamily = InterFontFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
-    )
+private fun inter(
+    weight: FontWeight,
+    size: Float,
+    lineHeight: Float,
+    letterSpacing: Float = 0f
+) = TextStyle(
+    fontFamily = InterFontFamily,
+    fontWeight = weight,
+    fontSize = size.sp,
+    lineHeight = lineHeight.sp,
+    letterSpacing = letterSpacing.sp
 )
+
+val Typography = Typography(
+    displayLarge = inter(FontWeight.Black, 32f, 40f, -1f),
+    displaySmall = inter(FontWeight.Black, 28f, 36f, -0.75f),
+    headlineMedium = inter(FontWeight.Bold, 24f, 32f, -0.5f),
+    headlineSmall = inter(FontWeight.SemiBold, 20f, 28f, -0.25f),
+    titleLarge = inter(FontWeight.SemiBold, 20f, 28f, -0.5f),
+    titleMedium = inter(FontWeight.SemiBold, 16f, 24f, -0.25f),
+    titleSmall = inter(FontWeight.Medium, 14f, 20f, 0f),
+    bodyLarge = inter(FontWeight.Normal, 16f, 24f, 0.25f),
+    bodyMedium = inter(FontWeight.Normal, 14f, 20f, 0.15f),
+    bodySmall = inter(FontWeight.Normal, 12f, 16f, 0.1f),
+    labelLarge = inter(FontWeight.SemiBold, 14f, 20f, 0.5f),
+    labelMedium = inter(FontWeight.Medium, 12f, 16f, 0.5f),
+    labelSmall = inter(FontWeight.Medium, 11f, 16f, 0.5f)
+)
+
+/**
+ * Constraint: Premium Typography
+ * Note Titles: SemiBold, 18.sp, -0.5.sp kerning.
+ */
+val NoteCardTitleStyle = inter(FontWeight.SemiBold, 18f, 25f, -0.5f)
+
+/**
+ * Constraint: Body Text
+ * Body: Regular, 14.sp, 1.4em line height (19.6sp).
+ */
+val NoteCardBodyStyle = inter(FontWeight.Normal, 14f, 19.6f, 0f)

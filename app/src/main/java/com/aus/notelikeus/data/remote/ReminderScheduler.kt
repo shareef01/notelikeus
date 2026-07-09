@@ -15,12 +15,12 @@ class ReminderScheduler @Inject constructor(
 ) {
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-    fun scheduleReminder(noteId: Long, title: String, content: String, timestamp: Long) {
-        if (timestamp <= System.currentTimeMillis()) return
+    fun scheduleReminder(noteId: Long, title: String, content: String, timestamp: Long): ReminderScheduleResult {
+        if (timestamp <= System.currentTimeMillis()) return ReminderScheduleResult.PAST_TIME
 
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             putExtra("noteId", noteId)
-            putExtra("title", title.ifBlank { "Reminder" })
+            putExtra("title", title.ifBlank { context.getString(com.aus.notelikeus.R.string.reminder_default_title) })
             putExtra("content", content)
         }
         val pendingIntent = PendingIntent.getBroadcast(
@@ -32,9 +32,15 @@ class ReminderScheduler @Inject constructor(
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timestamp, pendingIntent)
+            return ReminderScheduleResult.SCHEDULED_INEXACT
         } else {
             alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, timestamp, pendingIntent)
         }
+        return ReminderScheduleResult.SCHEDULED_EXACT
+    }
+
+    fun canScheduleExactAlarms(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
     }
 
     fun cancelReminder(noteId: Long) {

@@ -1,0 +1,8 @@
+Initial release of Notelikeus.
+
+• Offline notes with labels, colors, checklists, and images
+• Encrypted local storage (SQLCipher)
+• Reminders with notifications
+• JSON backup with embedded images (portable across devices)
+• Biometric app lock and per-note lock
+• Home screen widget, archive/trash, search, and drag-to-reorder

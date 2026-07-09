@@ -2,6 +2,7 @@ package com.aus.notelikeus.ui.editor
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
+import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
 import com.aus.notelikeus.data.remote.ReminderScheduler
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
@@ -16,6 +17,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import androidx.compose.ui.text.input.TextFieldValue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EditorViewModelTest {
@@ -23,6 +25,7 @@ class EditorViewModelTest {
     private lateinit var viewModel: EditorViewModel
     private lateinit var repository: NoteRepository
     private lateinit var reminderScheduler: ReminderScheduler
+    private lateinit var cloudNoteSyncCoordinator: CloudNoteSyncCoordinator
     private val testDispatcher = UnconfinedTestDispatcher()
 
     @Before
@@ -30,7 +33,17 @@ class EditorViewModelTest {
         Dispatchers.setMain(testDispatcher)
         repository = mockk(relaxed = true)
         reminderScheduler = mockk(relaxed = true)
+        cloudNoteSyncCoordinator = mockk(relaxed = true)
         every { repository.getLabels() } returns flowOf(emptyList())
+    }
+
+    private fun createViewModel(savedStateHandle: SavedStateHandle): EditorViewModel {
+        return EditorViewModel(
+            repository,
+            reminderScheduler,
+            cloudNoteSyncCoordinator,
+            savedStateHandle
+        )
     }
 
     @After
@@ -50,7 +63,7 @@ class EditorViewModelTest {
         coEvery { repository.getNoteById(1L) } returns note
         
         val savedStateHandle = SavedStateHandle(mapOf("noteId" to 1L))
-        viewModel = EditorViewModel(repository, reminderScheduler, savedStateHandle)
+        viewModel = createViewModel(savedStateHandle)
 
         viewModel.state.test {
             val state = awaitItem()
@@ -63,7 +76,7 @@ class EditorViewModelTest {
     @Test
     fun `onTitleChange updates state`() = runTest {
         val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
-        viewModel = EditorViewModel(repository, reminderScheduler, savedStateHandle)
+        viewModel = createViewModel(savedStateHandle)
 
         viewModel.state.test {
             awaitItem() // initial
@@ -75,7 +88,7 @@ class EditorViewModelTest {
     @Test
     fun `togglePin updates state`() = runTest {
         val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
-        viewModel = EditorViewModel(repository, reminderScheduler, savedStateHandle)
+        viewModel = createViewModel(savedStateHandle)
 
         viewModel.state.test {
             val initialState = awaitItem()
@@ -84,5 +97,92 @@ class EditorViewModelTest {
             viewModel.togglePin()
             assertEquals(true, awaitItem().isPinned)
         }
+    }
+
+    @Test
+    fun `trashNoteForDelete returns snapshot for saved note`() = runTest {
+        val note = Note(
+            id = 1L,
+            title = "Title",
+            content = "Body",
+            timestamp = 0L,
+            color = 0
+        )
+        coEvery { repository.getNoteById(1L) } returns note
+        coEvery { repository.updateNote(any()) } returns Unit
+
+        val savedStateHandle = SavedStateHandle(mapOf("noteId" to 1L))
+        viewModel = createViewModel(savedStateHandle)
+
+        viewModel.state.test {
+            awaitItem()
+            val snapshot = viewModel.trashNoteForDelete()
+            assertEquals("Title", snapshot?.title)
+            assertEquals(true, awaitItem().isTrashed)
+        }
+    }
+
+    @Test
+    fun `missing note sets noteNotFound`() = runTest {
+        coEvery { repository.getNoteById(99L) } returns null
+
+        val savedStateHandle = SavedStateHandle(mapOf("noteId" to 99L))
+        viewModel = createViewModel(savedStateHandle)
+
+        viewModel.state.test {
+            val state = awaitItem()
+            while (!state.isNoteLoaded) {
+                awaitItem()
+            }
+            assertEquals(true, state.noteNotFound)
+        }
+    }
+
+    @Test
+    fun `checklist updates target item after reorder`() = runTest {
+        val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
+        viewModel = createViewModel(savedStateHandle)
+
+        viewModel.addChecklistItem()
+        viewModel.addChecklistItem()
+        val firstId = viewModel.state.value.checklist.first().id!!
+
+        viewModel.updateChecklistItem(firstId, "Buy milk", false)
+        viewModel.updateChecklistItem(firstId, text = "Buy milk", isChecked = true)
+
+        val updated = viewModel.state.value.checklist.first { it.id == firstId }
+        assertEquals("Buy milk", updated.text)
+        assertEquals(true, updated.isChecked)
+    }
+
+    @Test
+    fun `convertContentToChecklist splits lines into items`() = runTest {
+        val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
+        viewModel = createViewModel(savedStateHandle)
+
+        viewModel.onContentValueChange(TextFieldValue("Buy milk\nBuy eggs"))
+        viewModel.convertContentToChecklist()
+
+        val checklist = viewModel.state.value.checklist
+        assertEquals(2, checklist.size)
+        assertEquals("Buy milk", checklist[0].text)
+        assertEquals("Buy eggs", checklist[1].text)
+        assertEquals("", viewModel.state.value.content)
+    }
+
+    @Test
+    fun `convertChecklistToContent joins items into body`() = runTest {
+        val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
+        viewModel = createViewModel(savedStateHandle)
+
+        viewModel.addChecklistItem()
+        viewModel.addChecklistItem()
+        val items = viewModel.state.value.checklist
+        viewModel.updateChecklistItem(items[0].id!!, "Line one", false)
+        viewModel.updateChecklistItem(items[1].id!!, "Line two", false)
+        viewModel.convertChecklistToContent()
+
+        assertEquals("Line one\nLine two", viewModel.state.value.content)
+        assertEquals(emptyList<com.aus.notelikeus.domain.model.ChecklistItem>(), viewModel.state.value.checklist)
     }
 }

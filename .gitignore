@@ -19,3 +19,11 @@ local.properties
 *.dex
 *.class
 .kotlin/
+*.jks
+*.keystore
+signing.properties
+.idea/
+.firebase/
+.agents/
+web/node_modules/
+web/dist/

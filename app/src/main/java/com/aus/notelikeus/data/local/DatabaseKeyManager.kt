@@ -2,6 +2,8 @@ package com.aus.notelikeus.data.local
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKeys
 import net.zetetic.database.sqlcipher.SQLiteDatabase
 import java.io.File
 import javax.inject.Inject
@@ -12,16 +14,14 @@ class DatabaseKeyManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
   private val prefs by lazy {
-    val masterKey = androidx.security.crypto.MasterKey.Builder(context)
-        .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM)
-        .build()
+    val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
 
-    androidx.security.crypto.EncryptedSharedPreferences.create(
-        context,
+    EncryptedSharedPreferences.create(
         PREFS_NAME,
-        masterKey,
-        androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        masterKeyAlias,
+        context,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
   }
 
@@ -53,43 +53,69 @@ object PlaintextDatabaseMigrator {
     val databaseFile = context.getDatabasePath(databaseName)
     if (!databaseFile.exists()) return
 
-    SQLiteDatabase.loadLibs(context)
-
-    if (isEncrypted(databaseFile, passphrase)) return
-
     val encryptedTemp = context.getDatabasePath("$databaseName-encrypted-temp")
     if (encryptedTemp.exists()) encryptedTemp.delete()
 
-    val plainDb = SQLiteDatabase.openDatabase(
-        databaseFile.absolutePath,
-        "",
-        null,
-        SQLiteDatabase.OPEN_READWRITE
-    )
-    val escapedPath = encryptedTemp.absolutePath.replace("'", "''")
-    plainDb.execSQL(
-        "ATTACH DATABASE '$escapedPath' AS encrypted KEY \"x'${passphrase.toHex()}'\""
-    )
-    plainDb.rawExecSQL("SELECT sqlcipher_export('encrypted')")
-    plainDb.execSQL("DETACH DATABASE encrypted")
-    plainDb.close()
+    // Room opens the DB with the raw passphrase bytes — not a hex string.
+    if (canOpenEncrypted(databaseFile, passphrase)) return
+
+    val plainDb = try {
+        SQLiteDatabase.openDatabase(
+            databaseFile.absolutePath,
+            "",
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+            null
+        )
+    } catch (_: Exception) {
+        when {
+            canOpenEncrypted(databaseFile, passphrase) -> return
+            else -> {
+                // Corrupt or unknown format — remove so Room can recreate.
+                deleteDatabaseFiles(context, databaseName)
+                return
+            }
+        }
+    }
+
+    try {
+        val escapedPath = encryptedTemp.absolutePath.replace("'", "''")
+        plainDb.execSQL(
+            "ATTACH DATABASE '$escapedPath' AS encrypted KEY \"x'${passphrase.toHex()}'\""
+        )
+        plainDb.rawExecSQL("SELECT sqlcipher_export('encrypted')")
+        plainDb.execSQL("DETACH DATABASE encrypted")
+    } finally {
+        plainDb.close()
+    }
 
     databaseFile.delete()
-    encryptedTemp.renameTo(databaseFile)
+    if (!encryptedTemp.renameTo(databaseFile)) {
+        deleteDatabaseFiles(context, databaseName)
+    }
   }
 
-  private fun isEncrypted(databaseFile: File, passphrase: ByteArray): Boolean {
+  private fun canOpenEncrypted(databaseFile: File, passphrase: ByteArray): Boolean {
     return try {
-      SQLiteDatabase.openDatabase(
-          databaseFile.absolutePath,
-          passphrase,
-          null,
-          SQLiteDatabase.OPEN_READONLY
-      ).close()
-      true
+        SQLiteDatabase.openDatabase(
+            databaseFile.absolutePath,
+            passphrase,
+            null,
+            SQLiteDatabase.OPEN_READONLY,
+            null,
+            null
+        ).close()
+        true
     } catch (_: Exception) {
-      false
+        false
     }
+  }
+
+  private fun deleteDatabaseFiles(context: Context, databaseName: String) {
+    val databaseFile = context.getDatabasePath(databaseName)
+    databaseFile.delete()
+    File(databaseFile.parent, "$databaseName-shm").delete()
+    File(databaseFile.parent, "$databaseName-wal").delete()
   }
 
   private fun ByteArray.toHex(): String = joinToString(separator = "") { byte ->

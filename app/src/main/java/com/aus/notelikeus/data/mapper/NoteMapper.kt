@@ -86,7 +86,7 @@ fun ChecklistItemEntity.toChecklistItem(): ChecklistItem {
 
 fun ChecklistItem.toChecklistItemEntity(noteId: Long): ChecklistItemEntity {
     return ChecklistItemEntity(
-        id = id ?: 0L,
+        id = id?.takeIf { it > 0 } ?: 0L,
         noteId = noteId,
         text = text,
         isChecked = isChecked,
@@ -98,6 +98,6 @@ fun NoteWithLabelsAndAttachments.toNote(): Note {
     return note.toNote(
         labels = labels.map { it.toLabel() },
         attachments = attachments.map { it.toAttachment() },
-        checklist = checklist.map { it.toChecklistItem() }
+        checklist = checklist.sortedBy { it.position }.map { it.toChecklistItem() }
     )
 }
