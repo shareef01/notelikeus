@@ -6,6 +6,7 @@ import { EditorScreen } from '@/screens/EditorScreen';
 import { MainScreen } from '@/screens/MainScreen';
 import { ThemeApplier } from '@/components/theme/ThemeApplier';
 import { useUiStore } from '@/store/uiStore';
+import { useEffect } from 'react';
 
 const firebaseReady = isFirebaseConfigured();
 
@@ -15,9 +16,18 @@ export default function App() {
     s.editorRoute.mode === 'edit' ? s.editorRoute.noteId : null,
   );
   const authScreen = useUiStore((s) => s.authScreen);
+  const openNewNote = useUiStore((s) => s.openNewNote);
 
   useAuthSync();
   useNotesSync(firebaseReady);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('new') === '1') {
+      openNewNote();
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [openNewNote]);
 
   if (!firebaseReady) {
     return (
