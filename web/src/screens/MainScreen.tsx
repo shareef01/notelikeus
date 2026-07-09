@@ -1,14 +1,15 @@
 import { AddIcon } from '@/components/icons/Icons';
 
 import { ToastHost } from '@/components/feedback/ToastHost';
-
+import { InstallPrompt } from '@/components/layout/InstallPrompt';
+import { OfflineBanner } from '@/components/layout/OfflineBanner';
 import { SideDrawer } from '@/components/layout/SideDrawer';
-
 import { TopBar } from '@/components/layout/TopBar';
-
 import { NoteStaggeredGrid } from '@/components/notes/NoteStaggeredGrid';
-
 import { NotesEmptyState } from '@/components/notes/NotesEmptyState';
+import { EmptyTrashDialog } from '@/components/notes/EmptyTrashDialog';
+import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
+import { TrashBanner } from '@/components/notes/TrashBanner';
 
 import { ProfileSheet } from '@/components/settings/ProfileSheet';
 
@@ -29,6 +30,15 @@ import { exportNotesBackup } from '@/lib/backup/exportBackup';
 import { importNotesFromBackup, readBackupFile } from '@/lib/backup/importBackup';
 
 import { signOutGoogle } from '@/lib/auth/googleAuth';
+import {
+  archiveNoteById,
+  emptyTrash,
+  removeNote,
+  restoreNoteById,
+  saveNote,
+  trashNoteById,
+} from '@/lib/notes/noteActions';
+import { showUndoToast } from '@/lib/notes/showUndoToast';
 
 import { uploadAllNotes } from '@/lib/firestore/notesRepository';
 
@@ -40,9 +50,9 @@ import { useToastStore } from '@/store/toastStore';
 
 import { useUiStore } from '@/store/uiStore';
 
-import type { NoteFilter } from '@/types/note';
+import type { Note, NoteFilter } from '@/types/note';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 
 
@@ -63,6 +73,7 @@ export function MainScreen() {
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
 
 
 
@@ -130,7 +141,22 @@ export function MainScreen() {
 
     clearFilters,
 
+    isLoading,
+
+    error,
+
   } = useNotes();
+
+
+
+  const navCounts = useMemo(
+    () => ({
+      active: notes.filter((note) => !note.isArchived && !note.isTrashed).length,
+      archived: notes.filter((note) => note.isArchived && !note.isTrashed).length,
+      trashed: notes.filter((note) => note.isTrashed).length,
+    }),
+    [notes],
+  );
 
 
 
@@ -164,6 +190,52 @@ export function MainScreen() {
 
     setSortOrder(next);
 
+  };
+
+
+
+  const handleArchiveNote = async (note: Note) => {
+    const previous = { ...note };
+    await archiveNoteById(note.id);
+    showUndoToast({
+      message: 'Note archived',
+      revert: () => saveNote(previous),
+    });
+  };
+
+
+
+  const handleTrashNote = async (note: Note) => {
+    const previous = { ...note };
+    await trashNoteById(note.id);
+    showUndoToast({
+      message: 'Note moved to trash',
+      revert: () => saveNote(previous),
+    });
+  };
+
+
+
+  const handleRestoreNote = async (note: Note) => {
+    await restoreNoteById(note.id);
+    useToastStore.getState().show('Note restored');
+  };
+
+
+
+  const handlePermanentDelete = async (note: Note) => {
+    await removeNote(note.id);
+    useToastStore.getState().show('Note deleted permanently');
+  };
+
+
+
+  const handleEmptyTrash = async () => {
+    setShowEmptyTrashConfirm(false);
+    const count = await emptyTrash();
+    useToastStore.getState().show(
+      count > 0 ? `Deleted ${count} note${count === 1 ? '' : 's'} permanently` : 'Trash is already empty',
+    );
   };
 
 
@@ -288,6 +360,10 @@ export function MainScreen() {
 
         onSignOut={() => setShowSignOutConfirm(true)}
 
+        navCounts={navCounts}
+
+        onOpenSettings={() => setShowProfile(true)}
+
       />
 
 
@@ -338,6 +414,16 @@ export function MainScreen() {
 
 
 
+        <OfflineBanner />
+
+        <InstallPrompt />
+
+        {filters.filter === 'trashed' && filteredNotes.length > 0 ? (
+          <TrashBanner onEmptyTrash={() => setShowEmptyTrashConfirm(true)} />
+        ) : null}
+
+
+
         <main
 
           ref={scrollRef}
@@ -350,7 +436,13 @@ export function MainScreen() {
 
           <div className="mx-auto w-full max-w-content">
 
-            {filteredNotes.length === 0 ? (
+            {error ? (
+              <div className="px-4 py-6 text-center text-sm text-red-300">{error}</div>
+            ) : null}
+
+            {isLoading ? (
+              <NotesLoadingGrid columns={effectiveColumns} />
+            ) : filteredNotes.length === 0 ? (
 
               <NotesEmptyState
 
@@ -384,17 +476,23 @@ export function MainScreen() {
               />
 
             ) : (
-
               <NoteStaggeredGrid
-
                 notes={filteredNotes}
-
                 columns={effectiveColumns}
-
+                filter={filters.filter}
                 onNoteClick={(note) => openNote(note.id)}
-
+                onLabelClick={(name) => {
+                  setNoteFilter('active');
+                  setLabelFilter(name);
+                }}
+                listActions={{
+                  onArchive: (note) => void handleArchiveNote(note),
+                  onTrash: (note) => void handleTrashNote(note),
+                  onRestore: (note) => void handleRestoreNote(note),
+                  onPermanentDelete: (note) => void handlePermanentDelete(note),
+                }}
+                searchQuery={filters.searchQuery ?? ''}
               />
-
             )}
 
           </div>
@@ -486,15 +584,19 @@ export function MainScreen() {
 
 
       <SignOutDialog
-
         open={showSignOutConfirm}
-
         onCancel={() => setShowSignOutConfirm(false)}
-
         onSignOut={() => void handleSignOut(false)}
-
         onSignOutAndDelete={() => void handleSignOut(true)}
+      />
 
+
+
+      <EmptyTrashDialog
+        open={showEmptyTrashConfirm}
+        noteCount={navCounts.trashed}
+        onCancel={() => setShowEmptyTrashConfirm(false)}
+        onConfirm={() => void handleEmptyTrash()}
       />
 
 

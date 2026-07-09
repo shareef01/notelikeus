@@ -1,4 +1,5 @@
 import { PinIcon } from '@/components/icons/Icons';
+import { highlightSearchText } from '@/lib/text/highlightSearch';
 import { stripMarkdownForPreview } from '@/lib/text/markdown';
 import type { Note } from '@/types/note';
 import { noteSurfaceStyle } from '@/theme/contrast';
@@ -7,6 +8,8 @@ interface NoteCardProps {
   note: Note;
   onClick: () => void;
   compact?: boolean;
+  onLabelClick?: (labelName: string) => void;
+  searchQuery?: string;
 }
 
 /**
@@ -14,11 +17,18 @@ interface NoteCardProps {
  * Premium Typography: Inter 18px SemiBold Titles, -0.5px tracking.
  * Geometric Discipline: 16px radius, 16px inner padding.
  */
-export function NoteCard({ note, onClick, compact = false }: NoteCardProps) {
+export function NoteCard({
+  note,
+  onClick,
+  compact = false,
+  onLabelClick,
+  searchQuery = '',
+}: NoteCardProps) {
   const surface = noteSurfaceStyle(note.color);
   const title = note.isLocked ? 'Locked note' : note.title || 'Untitled';
   const showBody = !note.isLocked && note.content.length > 0;
   const previewBody = stripMarkdownForPreview(note.content);
+  const highlight = (text: string) => highlightSearchText(text, searchQuery);
   const hasReminder =
     note.reminderTimestamp != null && note.reminderTimestamp > Date.now() && !note.isTrashed;
 
@@ -42,7 +52,7 @@ export function NoteCard({ note, onClick, compact = false }: NoteCardProps) {
             compact ? 'line-clamp-1 text-base' : 'text-[18px] leading-[25px] line-clamp-2'
           }`}
         >
-          {title}
+          {highlight(title)}
         </h2>
         {note.isPinned ? (
           <PinIcon className="mt-1 shrink-0 opacity-60" size={16} />
@@ -59,7 +69,7 @@ export function NoteCard({ note, onClick, compact = false }: NoteCardProps) {
             compact ? 'line-clamp-2' : 'line-clamp-6'
           }`}
         >
-          {previewBody}
+          {highlight(previewBody)}
         </p>
       ) : null}
 
@@ -71,15 +81,30 @@ export function NoteCard({ note, onClick, compact = false }: NoteCardProps) {
 
       {!compact && note.labels.length > 0 ? (
         <div className="mt-4 flex flex-wrap gap-1.5">
-          {note.labels.slice(0, 2).map((label) => (
-            <span
-              key={label.id}
-              className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-              style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}
-            >
-              {label.name}
-            </span>
-          ))}
+          {note.labels.slice(0, 2).map((label) =>
+            onLabelClick ? (
+              <button
+                key={label.id}
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onLabelClick(label.name);
+                }}
+                className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider hover:opacity-80"
+                style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}
+              >
+                {label.name}
+              </button>
+            ) : (
+              <span
+                key={label.id}
+                className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}
+              >
+                {label.name}
+              </span>
+            ),
+          )}
         </div>
       ) : null}
     </article>

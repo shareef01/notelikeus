@@ -2,6 +2,38 @@ import type { Note } from '@/types/note';
 
 const timers = new Map<string, number>();
 
+interface SwReminder {
+  noteId: string;
+  title: string;
+  body: string;
+  fireAt: number;
+}
+
+async function postRemindersToServiceWorker(reminders: SwReminder[]) {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    registration.active?.postMessage({ type: 'SYNC_REMINDERS', reminders });
+  } catch {
+    // Service worker may be unavailable in some contexts.
+  }
+}
+
+function buildSwReminders(notes: Note[]): SwReminder[] {
+  const now = Date.now();
+  return notes
+    .filter(
+      (note) =>
+        note.reminderTimestamp != null && !note.isTrashed && note.reminderTimestamp > now,
+    )
+    .map((note) => ({
+      noteId: note.id,
+      title: note.title.trim() || 'Note reminder',
+      body: note.content.trim() || 'You have a note reminder',
+      fireAt: note.reminderTimestamp!,
+    }));
+}
+
 export async function requestNotificationPermission(): Promise<boolean> {
   if (!('Notification' in window)) return false;
   if (Notification.permission === 'granted') return true;
@@ -58,4 +90,5 @@ export function rescheduleAllReminders(notes: Note[]) {
       scheduleNoteReminder(note);
     }
   }
+  void postRemindersToServiceWorker(buildSwReminders(notes));
 }
