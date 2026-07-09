@@ -7,6 +7,7 @@ import { SideDrawer } from '@/components/layout/SideDrawer';
 import { TopBar } from '@/components/layout/TopBar';
 import { NoteStaggeredGrid } from '@/components/notes/NoteStaggeredGrid';
 import { NotesEmptyState } from '@/components/notes/NotesEmptyState';
+import { BulkDeleteDialog } from '@/components/notes/BulkDeleteDialog';
 import { EmptyTrashDialog } from '@/components/notes/EmptyTrashDialog';
 import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
 import { TrashBanner } from '@/components/notes/TrashBanner';
@@ -74,6 +75,7 @@ export function MainScreen() {
 
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
 
 
@@ -94,6 +96,13 @@ export function MainScreen() {
   const openNote = useUiStore((s) => s.openNote);
 
   const openAuthScreen = useUiStore((s) => s.openAuthScreen);
+
+  const selectedNoteIds = useUiStore((s) => s.selectedNoteIds);
+  const toggleNoteSelection = useUiStore((s) => s.toggleNoteSelection);
+  const clearSelection = useUiStore((s) => s.clearSelection);
+  const toggleSelectAll = useUiStore((s) => s.toggleSelectAll);
+
+  const selectionMode = selectedNoteIds.length > 0;
 
 
 
@@ -168,6 +177,37 @@ export function MainScreen() {
 
     filters.labelName != null;
 
+  const filteredNoteIds = useMemo(() => filteredNotes.map((note) => note.id), [filteredNotes]);
+
+  const allFilteredSelected =
+    filteredNotes.length > 0 &&
+    filteredNotes.every((note) => selectedNoteIds.includes(note.id));
+
+  const handleNavigateFilter = (filter: NoteFilter) => {
+    clearSelection();
+    setNoteFilter(filter);
+  };
+
+  const getSelectedSnapshots = () =>
+    selectedNoteIds
+      .map((id) => notes.find((note) => note.id === id))
+      .filter((note): note is Note => note != null)
+      .map((note) => ({ ...note }));
+
+  const handleNoteClick = (note: Note) => {
+    if (selectionMode) {
+      toggleNoteSelection(note.id);
+      return;
+    }
+    openNote(note.id);
+  };
+
+  const handleNoteLongPress = (note: Note) => {
+    if (!selectedNoteIds.includes(note.id)) {
+      toggleNoteSelection(note.id);
+    }
+  };
+
 
 
   const handleScroll = useCallback(() => {
@@ -235,6 +275,77 @@ export function MainScreen() {
     const count = await emptyTrash();
     useToastStore.getState().show(
       count > 0 ? `Deleted ${count} note${count === 1 ? '' : 's'} permanently` : 'Trash is already empty',
+    );
+  };
+
+  const handleBulkPin = async () => {
+    const snapshots = getSelectedSnapshots();
+    if (snapshots.length === 0) return;
+    for (const note of snapshots) {
+      await saveNote({ ...note, isPinned: true, timestamp: Date.now() });
+    }
+    clearSelection();
+    useToastStore.getState().show(
+      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} pinned`,
+    );
+  };
+
+  const handleBulkArchive = async () => {
+    const snapshots = getSelectedSnapshots();
+    if (snapshots.length === 0) return;
+    for (const note of snapshots) {
+      await archiveNoteById(note.id);
+    }
+    clearSelection();
+    showUndoToast({
+      message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} archived`,
+      revert: async () => {
+        for (const note of snapshots) {
+          await saveNote(note);
+        }
+      },
+    });
+  };
+
+  const handleBulkTrash = async () => {
+    const snapshots = getSelectedSnapshots();
+    if (snapshots.length === 0) return;
+    for (const note of snapshots) {
+      await trashNoteById(note.id);
+    }
+    clearSelection();
+    showUndoToast({
+      message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} moved to trash`,
+      revert: async () => {
+        for (const note of snapshots) {
+          await saveNote(note);
+        }
+      },
+    });
+  };
+
+  const handleBulkRestore = async () => {
+    const snapshots = getSelectedSnapshots();
+    if (snapshots.length === 0) return;
+    for (const note of snapshots) {
+      await restoreNoteById(note.id);
+    }
+    clearSelection();
+    useToastStore.getState().show(
+      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} restored`,
+    );
+  };
+
+  const handleBulkPermanentDelete = async () => {
+    setShowBulkDeleteConfirm(false);
+    const snapshots = getSelectedSnapshots();
+    if (snapshots.length === 0) return;
+    for (const note of snapshots) {
+      await removeNote(note.id);
+    }
+    clearSelection();
+    useToastStore.getState().show(
+      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} deleted permanently`,
     );
   };
 
@@ -352,7 +463,7 @@ export function MainScreen() {
 
         onClose={() => setDrawerOpen(false)}
 
-        onNavigate={(filter: NoteFilter) => setNoteFilter(filter)}
+        onNavigate={handleNavigateFilter}
 
         userEmail={user?.email ?? null}
 
@@ -410,6 +521,16 @@ export function MainScreen() {
 
           viewColumns={effectiveColumns}
 
+          selectionMode={selectionMode}
+          selectedCount={selectedNoteIds.length}
+          allFilteredSelected={allFilteredSelected}
+          onClearSelection={clearSelection}
+          onToggleSelectAll={() => toggleSelectAll(filteredNoteIds)}
+          onBulkPin={() => void handleBulkPin()}
+          onBulkArchive={() => void handleBulkArchive()}
+          onBulkRestore={() => void handleBulkRestore()}
+          onBulkTrash={() => void handleBulkTrash()}
+          onBulkPermanentDelete={() => setShowBulkDeleteConfirm(true)}
         />
 
 
@@ -480,7 +601,10 @@ export function MainScreen() {
                 notes={filteredNotes}
                 columns={effectiveColumns}
                 filter={filters.filter}
-                onNoteClick={(note) => openNote(note.id)}
+                onNoteClick={handleNoteClick}
+                onNoteLongPress={handleNoteLongPress}
+                selectedNoteIds={selectedNoteIds}
+                selectionMode={selectionMode}
                 onLabelClick={(name) => {
                   setNoteFilter('active');
                   setLabelFilter(name);
@@ -501,7 +625,7 @@ export function MainScreen() {
 
 
 
-        {filters.filter === 'active' ? (
+        {filters.filter === 'active' && !selectionMode ? (
 
           <button
 
@@ -591,6 +715,13 @@ export function MainScreen() {
       />
 
 
+
+      <BulkDeleteDialog
+        open={showBulkDeleteConfirm}
+        noteCount={selectedNoteIds.length}
+        onCancel={() => setShowBulkDeleteConfirm(false)}
+        onConfirm={() => void handleBulkPermanentDelete()}
+      />
 
       <EmptyTrashDialog
         open={showEmptyTrashConfirm}

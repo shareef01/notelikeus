@@ -17,6 +17,9 @@ interface NoteStaggeredGridProps {
   columns: 1 | 2 | 3;
   filter: NoteFilter;
   onNoteClick: (note: Note) => void;
+  onNoteLongPress: (note: Note) => void;
+  selectedNoteIds: string[];
+  selectionMode: boolean;
   onLabelClick?: (labelName: string) => void;
   listActions?: NoteListActions;
   searchQuery?: string;
@@ -39,24 +42,30 @@ export function NoteStaggeredGrid({
   columns,
   filter,
   onNoteClick,
+  onNoteLongPress,
+  selectedNoteIds,
+  selectionMode,
   onLabelClick,
   listActions,
   searchQuery = '',
 }: NoteStaggeredGridProps) {
   const { pinned, others, showSections } = useMemo(() => groupNotes(notes), [notes]);
   const compact = columns > 1;
-  const swipeEnabled = columns === 1 && Boolean(listActions);
+  const selectedSet = useMemo(() => new Set(selectedNoteIds), [selectedNoteIds]);
+  const swipeEnabled = columns === 1 && Boolean(listActions) && !selectionMode;
+
+  const cardProps = (note: Note) => ({
+    note,
+    compact,
+    onClick: () => onNoteClick(note),
+    onLongPress: () => onNoteLongPress(note),
+    onLabelClick,
+    searchQuery,
+    isSelected: selectedSet.has(note.id),
+  });
 
   const renderCard = (note: Note) => {
-    const card = (
-      <NoteCard
-        note={note}
-        compact={compact}
-        onClick={() => onNoteClick(note)}
-        onLabelClick={onLabelClick}
-        searchQuery={searchQuery}
-      />
-    );
+    const card = <NoteCard {...cardProps(note)} />;
 
     if (!swipeEnabled || !listActions) {
       return card;
@@ -65,11 +74,7 @@ export function NoteStaggeredGrid({
     if (filter === 'active') {
       return (
         <SwipeableNoteCard
-          note={note}
-          compact={compact}
-          onClick={() => onNoteClick(note)}
-          onLabelClick={onLabelClick}
-          searchQuery={searchQuery}
+          {...cardProps(note)}
           onArchive={() => listActions.onArchive(note)}
           onTrash={() => listActions.onTrash(note)}
         />
@@ -79,11 +84,7 @@ export function NoteStaggeredGrid({
     if (filter === 'archived') {
       return (
         <SwipeableNoteCard
-          note={note}
-          compact={compact}
-          onClick={() => onNoteClick(note)}
-          onLabelClick={onLabelClick}
-          searchQuery={searchQuery}
+          {...cardProps(note)}
           onRestore={() => listActions.onRestore(note)}
           onTrash={() => listActions.onTrash(note)}
         />
@@ -93,11 +94,7 @@ export function NoteStaggeredGrid({
     if (filter === 'trashed') {
       return (
         <SwipeableNoteCard
-          note={note}
-          compact={compact}
-          onClick={() => onNoteClick(note)}
-          onLabelClick={onLabelClick}
-          searchQuery={searchQuery}
+          {...cardProps(note)}
           onRestore={() => listActions.onRestore(note)}
           onTrash={() => listActions.onPermanentDelete(note)}
         />
