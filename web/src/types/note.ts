@@ -84,7 +84,8 @@ export function filterNotes(notes: Note[], filters: NoteQueryFilters): Note[] {
     const inTitle = note.title.toLowerCase().includes(query);
     const inContent = note.content.toLowerCase().includes(query);
     const inChecklist = note.checklist.some((item) => item.text.toLowerCase().includes(query));
-    return inTitle || inContent || inChecklist;
+    const inLabels = note.labels.some((label) => label.name.toLowerCase().includes(query));
+    return inTitle || inContent || inChecklist || inLabels;
   });
 
   const pinned = result.filter((n) => n.isPinned);

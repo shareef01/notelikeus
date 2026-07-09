@@ -1,6 +1,6 @@
 import { BrandMark } from '@/components/brand/BrandMark';
-import { ArchiveIcon, CloseIcon, NotesIcon, TrashIcon } from '@/components/icons/Icons';
-import { useIsDesktop } from '@/hooks/useIsDesktop';
+import { ArchiveIcon, CloseIcon, NotesIcon, SettingsIcon, TrashIcon } from '@/components/icons/Icons';
+import { useIsDesktop } from '@/hooks/useMediaQuery';
 import type { NoteFilter } from '@/types/note';
 
 interface SideDrawerProps {
@@ -11,6 +11,8 @@ interface SideDrawerProps {
   userEmail: string | null;
   onSignIn: () => void;
   onSignOut: () => void;
+  navCounts?: { active: number; archived: number; trashed: number };
+  onOpenSettings?: () => void;
 }
 
 const NAV_ITEMS: Array<{ filter: NoteFilter; label: string; Icon: typeof NotesIcon }> = [
@@ -31,6 +33,8 @@ export function SideDrawer({
   userEmail,
   onSignIn,
   onSignOut,
+  navCounts,
+  onOpenSettings,
 }: SideDrawerProps) {
   const isDesktop = useIsDesktop();
 
@@ -74,6 +78,7 @@ export function SideDrawer({
         <nav className="flex flex-col gap-1.5 px-3">
           {NAV_ITEMS.map(({ filter, label, Icon }) => {
             const active = currentFilter === filter;
+            const count = navCounts?.[filter];
             return (
               <button
                 key={filter}
@@ -82,6 +87,7 @@ export function SideDrawer({
                   onNavigate(filter);
                   onClose();
                 }}
+                aria-current={active ? 'page' : undefined}
                 className={`flex items-center gap-4 rounded-note px-4 py-3 text-left text-base font-bold transition-all active:scale-[0.98] ${
                   active
                     ? 'bg-brand-primary/15 text-brand-primary'
@@ -89,10 +95,26 @@ export function SideDrawer({
                 }`}
               >
                 <Icon size={24} className={active ? 'text-brand-primary' : 'text-brand-muted/60'} />
-                {label}
+                <span className="flex-1">{label}</span>
+                {count != null && count > 0 ? (
+                  <span className="text-xs font-semibold text-brand-muted">{count}</span>
+                ) : null}
               </button>
             );
           })}
+          {onOpenSettings ? (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenSettings();
+                onClose();
+              }}
+              className="flex items-center gap-4 rounded-note px-4 py-3 text-left text-base font-bold text-brand-muted transition-all hover:bg-white/5 hover:text-brand-primary"
+            >
+              <SettingsIcon size={24} className="text-brand-muted/60" />
+              Settings
+            </button>
+          ) : null}
         </nav>
 
         <div className="mt-auto border-t border-brand-outline p-6 pb-safe lg:pb-8">
