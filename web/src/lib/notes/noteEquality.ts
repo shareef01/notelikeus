@@ -13,7 +13,14 @@ export function notesContentEqual(a: Note[], b: Note[]): boolean {
 }
 
 export function noteContentKey(note: Note): string {
-  return `${note.id}:${note.timestamp}`;
+  return [
+    note.id,
+    note.timestamp,
+    note.position,
+    note.isPinned ? 1 : 0,
+    note.isArchived ? 1 : 0,
+    note.isTrashed ? 1 : 0,
+  ].join(':');
 }
 
 export function notesEqual(a: Note, b: Note): boolean {

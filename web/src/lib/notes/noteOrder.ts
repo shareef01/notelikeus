@@ -35,7 +35,9 @@ export function previewMoveNote(
 /** Persist position indices after a manual reorder completes. */
 export async function commitNotePositions(notes: Note[]): Promise<void> {
   const updates = notes
-    .map((note, index) => (note.position === index ? null : { ...note, position: index }))
+    .map((note, index) =>
+      note.position === index ? null : { ...note, position: index, timestamp: Date.now() },
+    )
     .filter((note): note is Note => note != null);
 
   await Promise.all(updates.map((note) => saveNote(note)));
