@@ -7,7 +7,8 @@ export function ToastHost() {
 
   useEffect(() => {
     if (!message) return;
-    const timer = setTimeout(dismiss, 3500);
+    const duration = message.onAction ? 5000 : 3500;
+    const timer = setTimeout(dismiss, duration);
     return () => clearTimeout(timer);
   }, [message, dismiss]);
 
@@ -15,14 +16,27 @@ export function ToastHost() {
 
   return (
     <div
-      className={`fixed bottom-6 left-1/2 z-[70] max-w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 rounded-note px-4 py-3 text-sm font-medium shadow-lg pb-safe lg:bottom-8 ${
+      className={`fixed bottom-6 left-1/2 z-[70] flex max-w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-note px-4 py-3 text-sm font-medium shadow-lg pb-safe lg:bottom-8 ${
         message.tone === 'error'
           ? 'bg-red-950 text-red-100'
           : 'bg-true-surface text-brand-primary border border-brand-outline/40'
       }`}
       role="status"
+      aria-live="polite"
     >
-      {message.text}
+      <span className="min-w-0 flex-1">{message.text}</span>
+      {message.actionLabel && message.onAction ? (
+        <button
+          type="button"
+          onClick={() => {
+            message.onAction?.();
+            dismiss();
+          }}
+          className="shrink-0 rounded-lg px-2 py-1 text-sm font-bold text-brand-primary hover:bg-white/10"
+        >
+          {message.actionLabel}
+        </button>
+      ) : null}
     </div>
   );
 }
