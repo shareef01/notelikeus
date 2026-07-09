@@ -1,4 +1,5 @@
 import { PinIcon } from '@/components/icons/Icons';
+import { useLongPress } from '@/hooks/useLongPress';
 import { highlightSearchText } from '@/lib/text/highlightSearch';
 import { stripMarkdownForPreview } from '@/lib/text/markdown';
 import type { Note } from '@/types/note';
@@ -10,6 +11,8 @@ interface NoteCardProps {
   compact?: boolean;
   onLabelClick?: (labelName: string) => void;
   searchQuery?: string;
+  isSelected?: boolean;
+  onLongPress?: () => void;
 }
 
 /**
@@ -23,6 +26,8 @@ export function NoteCard({
   compact = false,
   onLabelClick,
   searchQuery = '',
+  isSelected = false,
+  onLongPress,
 }: NoteCardProps) {
   const surface = noteSurfaceStyle(note.color);
   const title = note.isLocked ? 'Locked note' : note.title || 'Untitled';
@@ -32,20 +37,44 @@ export function NoteCard({
   const hasReminder =
     note.reminderTimestamp != null && note.reminderTimestamp > Date.now() && !note.isTrashed;
 
+  const { longPressProps, shouldSuppressClick } = useLongPress({
+    onLongPress: () => onLongPress?.(),
+  });
+
+  const handleClick = () => {
+    if (shouldSuppressClick()) return;
+    onClick();
+  };
+
   return (
     <article
       role="button"
       tabIndex={0}
-      onClick={onClick}
+      onClick={handleClick}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          onClick();
+          handleClick();
         }
       }}
-      className="relative w-full cursor-pointer rounded-note p-layout-gap text-left shadow-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md active:scale-[0.98]"
+      {...(onLongPress ? longPressProps : {})}
+      className={`relative w-full cursor-pointer rounded-note p-layout-gap text-left shadow-sm transition-all duration-200 ${
+        isSelected
+          ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-true-black'
+          : 'hover:scale-[1.02] hover:shadow-md active:scale-[0.98]'
+      }`}
       style={surface}
+      aria-pressed={isSelected || undefined}
     >
+      {isSelected ? (
+        <div
+          className="absolute right-3 top-3 flex size-6 items-center justify-center rounded-full bg-brand-primary text-xs font-bold text-true-black"
+          aria-hidden
+        >
+          ✓
+        </div>
+      ) : null}
+
       <div className="flex items-start justify-between gap-3">
         <h2
           className={`font-bold tracking-[-0.5px] ${
