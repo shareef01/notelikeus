@@ -6,11 +6,15 @@ All notable changes to Notelikeus are documented here.
 
 ### Added
 - **Web PWA** — React app at `web/` with offline notes, Google sign-in, Firestore sync, backup import/export, responsive layout (mobile/tablet/desktop), and dedicated sign-in/sign-up screen
+- PWA: swipe actions, undo toasts, trash lifecycle, offline/install banners, search highlights, service-worker reminders
+- PWA: multi-select with bulk pin/unpin, archive, trash, restore, and delete
+- PWA: manual drag reorder (list view), real-time Firestore sync when auto-sync is on
 - Optional Firebase cloud sync (Firestore) with Google Sign-In
 - Auto-sync setting for signed-in users
 - Cross-device restore with timestamp-based merge
 
 ### Changed
+- PWA initial bundle split into lazy-loaded editor/auth screens and separate Firebase/React chunks for faster first load
 - Locked notes are excluded from cloud sync; locking removes a note from the cloud
 - Deep links no longer accept a lock-bypass flag; locked notes require biometric unlock in the editor
 - Manual sync and restore require Google sign-in (no anonymous cloud uploads)
