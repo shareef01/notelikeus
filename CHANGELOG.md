@@ -5,6 +5,7 @@ All notable changes to Notelikeus are documented here.
 ## [Unreleased]
 
 ### Added
+- **Web PWA** — React app at `web/` with offline notes, Google sign-in, Firestore sync, backup import/export, responsive layout (mobile/tablet/desktop), and dedicated sign-in/sign-up screen
 - Optional Firebase cloud sync (Firestore) with Google Sign-In
 - Auto-sync setting for signed-in users
 - Cross-device restore with timestamp-based merge

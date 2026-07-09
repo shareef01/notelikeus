@@ -1,6 +1,36 @@
 # Notelikeus
 
-A Google Keep–style notes app for Android. Notes are stored locally with SQLCipher encryption, with optional cloud sync to your own Firebase account via Google Sign-In.
+A Google Keep–style notes app for **Android** and **web** (PWA). Notes are stored locally with SQLCipher encryption on Android (localStorage on web), with optional cloud sync to your own Firebase account via Google Sign-In.
+
+## Web PWA
+
+The progressive web app lives in [`web/`](web/) and is hosted at **https://notelike.web.app** (Firebase Hosting).
+
+| Feature | Web |
+|---------|-----|
+| Notes, labels, checklists, colors | Yes |
+| Archive, trash, pin, search, filters | Yes |
+| Google Sign-In + Firestore sync | Yes |
+| Guest mode (local only) | Yes |
+| JSON backup import/export | Yes |
+| Reminders | Browser notifications |
+| Per-note lock | Unlock gate (no biometric on web) |
+
+```bash
+cd web
+npm install
+cp .env.example .env   # set VITE_FIREBASE_APP_ID from Firebase Console
+npm run dev            # http://localhost:5173
+npm run build
+```
+
+Deploy from repo root:
+
+```bash
+firebase deploy --only hosting:notelike,firestore:rules
+```
+
+See [`web/README.md`](web/README.md) for full PWA setup and architecture notes.
 
 ## Features
 
@@ -121,6 +151,15 @@ The in-app **Settings → Privacy policy** dialog matches [`PRIVACY_POLICY.md`](
 Image attachments were removed to stay on Firebase Spark (free). Source is preserved in [`archive/attachments-feature/`](archive/attachments-feature/).
 
 ## Project structure
+
+```
+app/src/main/java/com/aus/notelikeus/   # Android app
+web/src/                                # PWA (React + Vite + Firebase)
+store/                                  # Play Store listing drafts
+firebase.json                           # Hosting (web/dist) + Firestore rules
+```
+
+### Android layout
 
 ```
 app/src/main/java/com/aus/notelikeus/
