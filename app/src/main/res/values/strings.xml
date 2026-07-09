@@ -1,3 +1,214 @@
 <resources>
     <string name="app_name">Notelikeus</string>
+    <string name="tagline">Capture everything.</string>
+
+    <!-- Navigation -->
+    <string name="nav_notes">Notes</string>
+    <string name="nav_archive">Archive</string>
+    <string name="nav_trash">Trash</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Search -->
+    <string name="search_notes">Search your notes</string>
+    <string name="search_archive">Search archive</string>
+    <string name="search_trash">Search trash</string>
+    <string name="no_matching_notes">No matching notes</string>
+    <string name="no_archived_notes">No archived notes</string>
+    <string name="no_trashed_notes">No notes in trash</string>
+    <string name="empty_notes_hint">Notes you add appear here</string>
+    <string name="empty_notes_subtitle">Capture ideas, lists, and reminders in one place</string>
+    <string name="empty_search_subtitle">Try a different search term or clear filters</string>
+    <string name="empty_filter_subtitle">No notes match the selected color or label</string>
+    <string name="no_filter_matches">No notes match your filters</string>
+    <string name="clear_filters">Clear filters</string>
+
+    <!-- Actions -->
+    <string name="add_note">Add note</string>
+    <string name="note_archived">Note archived</string>
+    <string name="note_trashed">Note moved to trash</string>
+    <string name="note_deleted">Note deleted</string>
+    <string name="auth_failed">Authentication failed</string>
+
+    <!-- Delete confirmation -->
+    <string name="delete_note_title">Delete note?</string>
+    <string name="delete_notes_title">Delete %1$d notes?</string>
+    <string name="delete_to_trash_message">Selected notes will be moved to trash.</string>
+    <string name="delete_permanent_message">These notes will be permanently deleted.</string>
+    <string name="delete_editor_message">This note will be moved to trash.</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_ok">OK</string>
+    <string name="action_remove">Remove</string>
+    <string name="action_undo">Undo</string>
+
+    <!-- Export / Import -->
+    <string name="export_success">Backup exported</string>
+    <string name="export_failed">Export failed</string>
+    <string name="export_backup_subtitle">Save notes as JSON</string>
+    <string name="import_success">%1$d notes imported</string>
+    <string name="import_failed">Import failed</string>
+    <string name="import_invalid_format">Invalid backup: %1$s</string>
+    <string name="import_backup_subtitle">Restore notes from JSON (adds to existing notes)</string>
+    <string name="backup_import">Import backup</string>
+
+    <!-- Settings sections -->
+    <string name="section_appearance">Appearance</string>
+    <string name="section_layout">Layout</string>
+    <string name="section_insights">Insights</string>
+    <string name="section_account">Account</string>
+    <string name="section_actions">Actions</string>
+    <string name="selected_count">%1$d selected</string>
+    <string name="select_all">Select all</string>
+    <string name="deselect_all">Deselect all</string>
+    <string name="notes_restored">Notes restored</string>
+    <string name="empty_trash">Empty trash</string>
+    <string name="empty_trash_subtitle">Deleted notes are removed permanently</string>
+    <string name="empty_trash_title">Empty trash?</string>
+    <string name="empty_trash_message">All notes in trash will be permanently deleted.</string>
+
+    <!-- Drawer -->
+    <string name="drawer_tagline">Capture everything.</string>
+    <string name="title_hint">Title</string>
+    <string name="note_hint">Note</string>
+    <string name="list_item_hint">List item</string>
+    <string name="locked_note">Locked note</string>
+    <string name="locked_note_message">This note is locked</string>
+    <string name="unlock">Unlock</string>
+    <string name="go_back">Go back</string>
+    <string name="authenticate_subtitle">Authenticate to access this note</string>
+
+    <!-- Reminders -->
+    <string name="reminder_channel_name">Note Reminders</string>
+    <string name="reminder_default_title">Reminder</string>
+    <string name="set_reminder">Set reminder</string>
+    <string name="reminder_must_be_future">Choose a date and time in the future</string>
+    <string name="reminder_permission_denied">Enable notifications to receive reminders</string>
+    <string name="reminder_exact_alarm_hint">Allow alarms for exact reminder timing</string>
+    <string name="notification_permission_title">Notifications</string>
+    <string name="note_not_found">This note no longer exists</string>
+
+    <!-- Settings -->
+    <string name="settings_local_app">Local notes app</string>
+    <string name="profile_avatar_initials">A</string>
+    <string name="true_dark_mode">True Dark Mode</string>
+    <string name="true_dark_mode_subtitle">Optimized for OLED displays</string>
+    <string name="monochrome_theme">Brand theme</string>
+    <string name="monochrome_theme_subtitle">Minimal black &amp; white interface</string>
+    <string name="default_view_mode">Default view</string>
+    <string name="sort_order">Sort order</string>
+    <string name="sort_manual">Manual (drag to reorder)</string>
+    <string name="section_pinned">Pinned</string>
+    <string name="section_other_notes">Others</string>
+    <string name="pinned_short">Pinned</string>
+    <string name="filters_active">Filters on</string>
+    <string name="cd_reminder_set">Reminder set</string>
+    <string name="sort_newest">Newest first</string>
+    <string name="sort_oldest">Oldest first</string>
+    <string name="view_mode_grid_2">2-column grid</string>
+    <string name="view_mode_grid_3">3-column grid</string>
+    <string name="view_mode_list">List</string>
+    <string name="view_mode_compact">Compact list</string>
+    <string name="app_lock_title">App lock</string>
+    <string name="app_lock_subtitle">Require biometrics when opening the app</string>
+    <string name="app_lock_message">Authenticate to access your notes</string>
+    <string name="unlock_app">Unlock app</string>
+    <string name="total_notes">Total Notes</string>
+    <string name="cloud_sync">Cloud Sync</string>
+    <string name="cloud_sync_now">Sync to cloud</string>
+    <string name="cloud_sync_subtitle">Upload notes to your Firebase account</string>
+    <string name="cloud_sync_in_progress">Uploading notes…</string>
+    <string name="cloud_sync_last">Last sync: %1$d notes</string>
+    <string name="cloud_sync_offline">Cloud unavailable — check Firebase setup</string>
+    <string name="cloud_sync_success">%1$d notes synced to cloud</string>
+    <string name="cloud_download_success">%1$d notes restored from cloud</string>
+    <string name="cloud_restore">Restore from cloud</string>
+    <string name="cloud_restore_subtitle">Download notes stored in Firebase</string>
+    <string name="cloud_sync_failed">Cloud sync failed</string>
+    <string name="cloud_status_checking">…</string>
+    <string name="cloud_status_ready">Ready</string>
+    <string name="cloud_status_offline">Offline</string>
+    <string name="cloud_status_syncing">Syncing</string>
+    <string name="cloud_status_error">Error</string>
+    <string name="cloud_sign_in_google">Sign in with Google</string>
+    <string name="cloud_sign_in_subtitle">Use the same account on all devices to sync notes</string>
+    <string name="cloud_sign_in_success">Signed in with Google</string>
+    <string name="cloud_sign_in_failed">Google sign-in failed</string>
+    <string name="cloud_sign_in_required">Sign in with Google to sync</string>
+    <string name="cloud_sign_out">Sign out</string>
+    <string name="cloud_sign_out_subtitle">Stop using this Google account for cloud sync</string>
+    <string name="cloud_sign_out_success">Signed out</string>
+    <string name="cloud_sign_out_deleted_success">Signed out and cloud data deleted</string>
+    <string name="cloud_sign_out_confirm_title">Sign out of Google?</string>
+    <string name="cloud_sign_out_confirm_message">Notes on this device are not affected. Copies stored in the cloud remain unless you delete them.</string>
+    <string name="cloud_sign_out_delete_data">Sign out and delete cloud data</string>
+    <string name="cloud_signed_in_as">Signed in</string>
+    <string name="cloud_auto_sync">Auto-sync</string>
+    <string name="cloud_auto_sync_subtitle">Upload note changes automatically when signed in with Google</string>
+    <string name="default_web_client_id">404285880902-cpiu3nj2itndnh0kkouvn374ec5ecl9v.apps.googleusercontent.com</string>
+    <string name="coming_soon">Soon</string>
+    <string name="coming_soon_detail">Coming soon</string>
+    <string name="backup_export">Backup &amp; Export</string>
+    <string name="premium_subscription">Premium Subscription</string>
+
+    <!-- Filters -->
+    <string name="all_colors">All Colors</string>
+    <string name="all_labels">All Labels</string>
+    <string name="selected_color">Selected color</string>
+    <string name="cd_color_swatch">Note color</string>
+
+    <!-- Widget -->
+    <string name="widget_name">Notelikeus widget</string>
+    <string name="widget_new">+ New</string>
+    <string name="widget_empty">No notes yet</string>
+    <string name="untitled">Untitled</string>
+
+    <!-- Accessibility -->
+    <string name="cd_menu">Menu</string>
+    <string name="cd_clear_search">Clear search</string>
+    <string name="cd_toggle_layout">Toggle layout</string>
+    <string name="cd_view_mode">Change view mode</string>
+    <string name="cd_open_settings">Open settings</string>
+    <string name="cd_clear_selection">Clear selection</string>
+    <string name="cd_select_all">Select all notes</string>
+    <string name="cd_deselect_all">Deselect all notes</string>
+    <string name="cd_restore">Restore</string>
+    <string name="cd_archive">Archive</string>
+    <string name="cd_delete">Delete</string>
+    <string name="cd_reorder">Reorder note</string>
+    <string name="cd_add_list_item">Add list item</string>
+    <string name="cd_remove_item">Remove item</string>
+    <string name="cd_create_label">Create label</string>
+    <string name="cd_pin_note">Pin note</string>
+    <string name="notes_pinned">Notes pinned</string>
+    <string name="notes_unpinned">Notes unpinned</string>
+    <string name="note_pinned">Note pinned</string>
+    <string name="note_unpinned">Note unpinned</string>
+    <string name="checklist_progress">%1$d/%2$d completed</string>
+    <string name="convert_to_text">Convert to text</string>
+    <string name="cd_pin_notes">Pin selected notes</string>
+    <string name="cd_unpin_notes">Unpin selected notes</string>
+    <string name="reminder_in_one_hour">In 1 hour</string>
+    <string name="reminder_tomorrow_morning">Tomorrow 9:00</string>
+    <string name="reminder_next_week">Next week</string>
+    <string name="reminder_at">Reminder %1$s %2$s</string>
+    <string name="cd_selected">Selected</string>
+    <string name="cd_filter_by_label">Filter by %1$s</string>
+    <string name="cd_back">Back</string>
+    <string name="cd_archive_note">Archive note</string>
+    <string name="cd_more_options">More options</string>
+    <string name="edited_at">Edited %1$s</string>
+    <string name="section_color">Color</string>
+    <string name="section_labels">Labels</string>
+    <string name="new_label_hint">New label</string>
+    <string name="lock_note">Lock note</string>
+    <string name="unlock_note">Unlock note</string>
+    <string name="format_bold">Bold</string>
+    <string name="format_italic">Italic</string>
+    <string name="format_list">List</string>
+    <string name="cd_checked">Checked</string>
+    <string name="cd_unchecked">Unchecked</string>
+    <string name="format_checklist">Checklist</string>
+    <string name="format_link">Link</string>
+    <string name="link_dialog_title">Add link</string>
+    <string name="link_url_hint">https://example.com</string>
 </resources>

@@ -1,13 +1,12 @@
 package com.aus.notelikeus.ui.widget
 
 import android.content.Context
-import androidx.compose.ui.graphics.Color
+import android.content.Intent
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
-import androidx.glance.action.ActionParameters
-import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
@@ -15,47 +14,57 @@ import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
-import androidx.glance.layout.Alignment
-import androidx.glance.layout.Column
-import androidx.glance.layout.Row
-import androidx.glance.layout.Spacer
-import androidx.glance.layout.defaultWeight
-import androidx.glance.layout.fillMaxSize
-import androidx.glance.layout.fillMaxWidth
-import androidx.glance.layout.height
-import androidx.glance.layout.padding
+import androidx.glance.layout.*
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
 import com.aus.notelikeus.MainActivity
+import com.aus.notelikeus.R
 
-private val NoteIdKey = ActionParameters.Key<Long>("noteId")
+private data class WidgetStrings(
+    val appName: String,
+    val newNote: String,
+    val empty: String,
+    val lockedNote: String,
+    val untitled: String,
+    val pinned: String
+)
 
+/**
+ * App Widget Overhaul
+ * Geometric Discipline: Strict 16.dp corner radius and 16.dp grid padding.
+ */
 class NoteWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val notes = runCatching { WidgetNoteLoader.loadNotes(context) }.getOrDefault(emptyList())
+        val theme = runCatching { WidgetNoteLoader.loadTheme(context) }.getOrDefault(WidgetThemes.Light)
+        val strings = WidgetStrings(
+            appName = context.getString(R.string.app_name),
+            newNote = context.getString(R.string.widget_new),
+            empty = context.getString(R.string.widget_empty),
+            lockedNote = context.getString(R.string.locked_note),
+            untitled = context.getString(R.string.untitled),
+            pinned = context.getString(R.string.pinned_short)
+        )
 
         provideContent {
-            WidgetContent(notes = notes)
+            WidgetContent(notes = notes, theme = theme, strings = strings, context = context)
         }
     }
 
-    @androidx.compose.runtime.Composable
-    private fun WidgetContent(notes: List<WidgetNote>) {
-        val surface = ColorProvider(Color(0xFFFDF8F2))
-        val onSurface = ColorProvider(Color(0xFF1C1B1F))
-        val onSurfaceVariant = ColorProvider(Color(0xFF49454F))
-        val primary = ColorProvider(Color(0xFF6750A4))
-        val primaryContainer = ColorProvider(Color(0xFFEADDFF))
-        val surfaceVariant = ColorProvider(Color(0xFFE7E0EC))
-
+    @Composable
+    private fun WidgetContent(
+        notes: List<WidgetNote>,
+        theme: WidgetThemeColors,
+        strings: WidgetStrings,
+        context: Context
+    ) {
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .background(surface)
-                .padding(12.dp),
+                .background(theme.surface)
+                .padding(16.dp), // Disciplined 16.dp Grid
             verticalAlignment = Alignment.Top
         ) {
             Row(
@@ -63,92 +72,118 @@ class NoteWidget : GlanceAppWidget() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Notelikeus",
+                    text = strings.appName,
                     style = TextStyle(
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
-                        color = onSurface
+                        color = theme.onSurface
                     ),
-                    modifier = GlanceModifier.defaultWeight()
+                    modifier = GlanceModifier.fillMaxWidth().then(GlanceModifier.defaultWeight())
                 )
                 Text(
-                    text = "+ New",
+                    text = strings.newNote,
                     style = TextStyle(
-                        color = primary,
+                        color = theme.primary,
                         fontWeight = FontWeight.Medium,
                         fontSize = 14.sp
                     ),
                     modifier = GlanceModifier
-                        .cornerRadius(12.dp)
-                        .background(primaryContainer)
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                        .clickable(actionStartActivity<MainActivity>())
+                        .cornerRadius(16.dp) // Strict 16.dp Geometry
+                        .background(theme.primaryContainer)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .clickable(
+                            actionStartActivity(
+                                Intent(context, MainActivity::class.java).apply {
+                                    putExtra("createNote", true)
+                                }
+                            )
+                        )
                 )
             }
 
-            Spacer(modifier = GlanceModifier.height(8.dp))
+            Spacer(modifier = GlanceModifier.height(12.dp))
 
             if (notes.isEmpty()) {
                 Text(
-                    text = "No notes yet",
-                    style = TextStyle(color = onSurfaceVariant)
+                    text = strings.empty,
+                    style = TextStyle(
+                        color = theme.onSurfaceVariant,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    modifier = GlanceModifier.padding(top = 16.dp)
                 )
             } else {
                 notes.forEach { note ->
                     WidgetNoteRow(
+                        context = context,
                         note = note,
-                        onSurface = onSurface,
-                        onSurfaceVariant = onSurfaceVariant,
-                        surfaceVariant = surfaceVariant
+                        theme = theme,
+                        strings = strings
                     )
-                    Spacer(modifier = GlanceModifier.height(6.dp))
+                    Spacer(modifier = GlanceModifier.height(8.dp)) // Disciplined 8.dp Grid
                 }
             }
         }
     }
 
-    @androidx.compose.runtime.Composable
+    @Composable
     private fun WidgetNoteRow(
+        context: Context,
         note: WidgetNote,
-        onSurface: ColorProvider,
-        onSurfaceVariant: ColorProvider,
-        surfaceVariant: ColorProvider
+        theme: WidgetThemeColors,
+        strings: WidgetStrings
     ) {
         Column(
             modifier = GlanceModifier
                 .fillMaxWidth()
-                .cornerRadius(12.dp)
-                .background(surfaceVariant)
-                .padding(10.dp)
+                .cornerRadius(16.dp) // Strict 16.dp Geometry
+                .background(theme.surfaceVariant)
+                .padding(12.dp)
                 .clickable(
-                    if (note.isLocked) {
-                        actionStartActivity<MainActivity>()
-                    } else {
-                        actionStartActivity<MainActivity>(
-                            actionParametersOf(NoteIdKey to note.id)
-                        )
-                    }
+                    actionStartActivity(
+                        Intent(context, MainActivity::class.java).apply {
+                            putExtra("noteId", note.id)
+                        }
+                    )
                 )
         ) {
-            Text(
-                text = when {
-                    note.isLocked -> "Locked note"
-                    note.title.isNotBlank() -> note.title
-                    else -> "Untitled"
-                },
-                style = TextStyle(
-                    fontWeight = FontWeight.Medium,
-                    color = onSurface,
-                    fontSize = 14.sp
-                ),
-                maxLines = 1
-            )
+            Row(
+                modifier = GlanceModifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (note.isPinned) {
+                    Text(
+                        text = strings.pinned.uppercase(),
+                        style = TextStyle(
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = theme.onSurfaceVariant
+                        ),
+                        modifier = GlanceModifier.padding(end = 6.dp)
+                    )
+                }
+                Text(
+                    text = when {
+                        note.isLocked -> strings.lockedNote
+                        note.title.isNotBlank() -> note.title
+                        else -> strings.untitled
+                    },
+                    style = TextStyle(
+                        fontWeight = FontWeight.Medium,
+                        color = theme.onSurface,
+                        fontSize = 14.sp
+                    ),
+                    maxLines = 1,
+                    modifier = GlanceModifier.defaultWeight()
+                )
+            }
             if (!note.isLocked && note.preview.isNotBlank()) {
-                Spacer(modifier = GlanceModifier.height(2.dp))
+                Spacer(modifier = GlanceModifier.height(4.dp))
                 Text(
                     text = note.preview,
                     style = TextStyle(
-                        color = onSurfaceVariant,
+                        color = theme.onSurfaceVariant,
                         fontSize = 12.sp
                     ),
                     maxLines = 1

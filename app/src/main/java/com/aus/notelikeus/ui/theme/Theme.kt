@@ -17,25 +17,29 @@ private val DarkColorScheme = darkColorScheme(
     secondary = SecondaryDark,
     background = BackgroundDark,
     surface = SurfaceDark,
-    surfaceVariant = Color(0xFF444746),
-    onPrimary = Color(0xFF000000),
-    onSecondary = Color(0xFFFFFFFF),
-    onBackground = Color(0xFFE2E2E2),
-    onSurface = Color(0xFFE2E2E2),
-    onSurfaceVariant = Color(0xFFC4C7C5)
+    surfaceVariant = Color(0xFF1E1E1E),
+    onPrimary = Color(0xFF0A0A0A),
+    onSecondary = Color(0xFFE8E8E8),
+    onBackground = Color(0xFFE8E8E8),
+    onSurface = Color(0xFFE8E8E8),
+    onSurfaceVariant = Color(0xFFB0B0B0),
+    outline = Color(0xFF333333),
+    outlineVariant = Color(0xFF2A2A2A)
 )
 
 private val TrueDarkColorScheme = darkColorScheme(
     primary = PrimaryDark,
     secondary = SecondaryDark,
-    background = Color.Black,
-    surface = Color(0xFF121212),
-    surfaceVariant = Color(0xFF1E1E1E),
-    onPrimary = Color(0xFF000000),
-    onSecondary = Color(0xFFFFFFFF),
+    background = Color.Black, // OLED Absolute Black
+    surface = Color(0xFF000000), // Enforcing absolute discipline
+    surfaceVariant = Color(0xFF121212),
+    onPrimary = Color.Black,
+    onSecondary = Color.White,
     onBackground = Color.White,
     onSurface = Color.White,
-    onSurfaceVariant = Color(0xFFC4C7C5)
+    onSurfaceVariant = Color(0xFFAAAAAA),
+    outline = Color(0xFF222222),
+    outlineVariant = Color(0xFF121212)
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -43,23 +47,26 @@ private val LightColorScheme = lightColorScheme(
     secondary = SecondaryLight,
     background = BackgroundLight,
     surface = SurfaceLight,
-    surfaceVariant = Color(0xFFF1F3F4),
-    onPrimary = Color(0xFFFFFFFF),
-    onSecondary = Color(0xFF000000),
-    onBackground = Color(0xFF1F1F1F),
-    onSurface = Color(0xFF1F1F1F),
-    onSurfaceVariant = Color(0xFF444746)
+    surfaceVariant = Color(0xFFEFEFEF),
+    onPrimary = Color.White,
+    onSecondary = Color(0xFF1A1A1A),
+    onBackground = Color(0xFF1A1A1A),
+    onSurface = Color(0xFF1A1A1A),
+    onSurfaceVariant = Color(0xFF5C5C5C),
+    outline = Color(0xFFD8D8D8),
+    outlineVariant = Color(0xFFE8E8E8)
 )
 
 @Composable
 fun NotelikeusTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     isTrueDarkMode: Boolean = false,
-    dynamicColor: Boolean = true,
+    useMonochromeTheme: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !isTrueDarkMode -> {
+        !useMonochromeTheme && dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !isTrueDarkMode -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }

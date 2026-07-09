@@ -2,19 +2,35 @@ package com.aus.notelikeus.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.ui.theme.SwipeArchiveDark
+import com.aus.notelikeus.ui.theme.SwipeArchiveLight
+import com.aus.notelikeus.ui.theme.SwipeDeleteDark
+import com.aus.notelikeus.ui.theme.SwipeDeleteLight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,66 +41,116 @@ fun SwipeableNoteCard(
     onNoteLongClick: () -> Unit,
     onSwipeToArchive: () -> Unit,
     onSwipeToTrash: () -> Unit,
+    onLabelClick: ((Long) -> Unit)? = null,
+    searchQuery: String = "",
+    listRevision: Int = 0,
+    enableArchiveSwipe: Boolean = true,
+    enableSwipe: Boolean = true,
+    compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            when (value) {
-                SwipeToDismissBoxValue.StartToEnd -> {
-                    onSwipeToArchive()
-                    true
-                }
-                SwipeToDismissBoxValue.EndToStart -> {
-                    onSwipeToTrash()
-                    true
-                }
-                else -> false
-            }
-        }
-    )
+    val archiveLabel = stringResource(R.string.cd_archive)
+    val deleteLabel = stringResource(R.string.cd_delete)
+    val haptic = LocalHapticFeedback.current
+    val isDark = isSystemInDarkTheme()
+    val archiveColor = if (isDark) SwipeArchiveDark else SwipeArchiveLight
+    val deleteColor = if (isDark) SwipeDeleteDark else SwipeDeleteLight
+    val archiveIconTint = if (isDark) Color.Black else Color.White
+    val deleteIconTint = Color.White
+    val canArchiveSwipe = enableSwipe && enableArchiveSwipe
+    val canTrashSwipe = enableSwipe
 
-    SwipeToDismissBox(
-        state = dismissState,
-        modifier = modifier.padding(vertical = 4.dp),
-        backgroundContent = {
-            val direction = dismissState.dismissDirection
-            val color by animateColorAsState(
-                when (dismissState.targetValue) {
-                    SwipeToDismissBoxValue.StartToEnd -> Color(0xFF4CAF50) // Green
-                    SwipeToDismissBoxValue.EndToStart -> Color(0xFFF44336) // Red
-                    else -> Color.Transparent
-                }, label = "swipe_color"
-            )
-            
-            val icon = when (dismissState.targetValue) {
-                SwipeToDismissBoxValue.StartToEnd -> Icons.Default.Archive
-                SwipeToDismissBoxValue.EndToStart -> Icons.Default.Delete
-                else -> null
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(color, MaterialTheme.shapes.medium)
-                    .padding(horizontal = 24.dp),
-                contentAlignment = if (direction == SwipeToDismissBoxValue.StartToEnd) 
-                    Alignment.CenterStart else Alignment.CenterEnd
-            ) {
-                icon?.let {
-                    Icon(
-                        it,
-                        contentDescription = null,
-                        tint = Color.White
-                    )
+    key(note.id ?: note.timestamp, listRevision) {
+        val dismissState = rememberSwipeToDismissBoxState(
+            confirmValueChange = { value ->
+                when (value) {
+                    SwipeToDismissBoxValue.StartToEnd -> {
+                        if (canArchiveSwipe) {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onSwipeToArchive()
+                        }
+                        false
+                    }
+                    SwipeToDismissBoxValue.EndToStart -> {
+                        if (canTrashSwipe) {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onSwipeToTrash()
+                        }
+                        false
+                    }
+                    else -> false
                 }
             }
-        }
-    ) {
-        NoteCard(
-            note = note,
-            isSelected = isSelected,
-            onClick = onNoteClick,
-            onLongClick = onNoteLongClick
         )
+
+        SwipeToDismissBox(
+            state = dismissState,
+            modifier = modifier,
+            enableDismissFromStartToEnd = canArchiveSwipe,
+            enableDismissFromEndToStart = canTrashSwipe,
+            backgroundContent = {
+                val direction = dismissState.dismissDirection
+                val isActive = dismissState.targetValue != SwipeToDismissBoxValue.Settled
+                val color by animateColorAsState(
+                    when (dismissState.targetValue) {
+                        SwipeToDismissBoxValue.StartToEnd -> archiveColor
+                        SwipeToDismissBoxValue.EndToStart -> deleteColor
+                        else -> Color.Transparent
+                    },
+                    label = "swipe_color"
+                )
+
+                val icon = when (dismissState.targetValue) {
+                    SwipeToDismissBoxValue.StartToEnd -> Icons.Default.Archive
+                    SwipeToDismissBoxValue.EndToStart -> Icons.Default.Delete
+                    else -> null
+                }
+
+                val iconTint = when (dismissState.targetValue) {
+                    SwipeToDismissBoxValue.StartToEnd -> archiveIconTint
+                    SwipeToDismissBoxValue.EndToStart -> deleteIconTint
+                    else -> Color.White
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            if (isActive) color else Color.Transparent,
+                            MaterialTheme.shapes.medium
+                        )
+                        .padding(horizontal = 24.dp),
+                    contentAlignment = when (direction) {
+                        SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
+                        SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
+                        else -> Alignment.Center
+                    }
+                ) {
+                    if (isActive) {
+                        icon?.let {
+                            Icon(
+                                it,
+                                contentDescription = if (dismissState.targetValue == SwipeToDismissBoxValue.StartToEnd) {
+                                    archiveLabel
+                                } else {
+                                    deleteLabel
+                                },
+                                tint = iconTint
+                            )
+                        }
+                    }
+                }
+            }
+        ) {
+            NoteCard(
+                note = note,
+                isSelected = isSelected,
+                searchQuery = searchQuery,
+                compact = compact,
+                onClick = onNoteClick,
+                onLongClick = onNoteLongClick,
+                onLabelClick = onLabelClick
+            )
+        }
     }
 }

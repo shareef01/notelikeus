@@ -3,21 +3,31 @@ package com.aus.notelikeus.ui.components
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -25,12 +35,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.editor.RichTextParser
 import com.aus.notelikeus.ui.navigation.LocalAnimatedVisibilityScope
 import com.aus.notelikeus.ui.navigation.LocalSharedTransitionScope
+import com.aus.notelikeus.ui.theme.NoteCardBodyStyle
+import com.aus.notelikeus.ui.theme.NoteCardTitleStyle
 import com.aus.notelikeus.ui.theme.getContentColor
+
+private val NoteCardContentPadding = 16.dp
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -38,8 +52,10 @@ fun NoteCard(
     note: Note,
     isSelected: Boolean,
     searchQuery: String = "",
+    compact: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    onLabelClick: ((Long) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val sharedTransitionScope = LocalSharedTransitionScope.current
@@ -49,10 +65,15 @@ fun NoteCard(
         targetValue = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color(note.color),
         label = "color"
     )
-    
+
     val elevation by animateDpAsState(
-        targetValue = if (isSelected) 8.dp else 1.dp,
+        targetValue = if (isSelected) 4.dp else 1.dp,
         label = "elevation"
+    )
+
+    val scale by animateFloatAsState(
+        targetValue = if (isSelected) 0.985f else 1f,
+        label = "selection_scale"
     )
 
     val contentColor = if (isSelected) {
@@ -62,10 +83,24 @@ fun NoteCard(
     }
 
     val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+    val lockedNoteLabel = stringResource(R.string.locked_note)
+    val selectedLabel = stringResource(R.string.cd_selected)
+    val lockedIconLabel = stringResource(R.string.locked_note)
+    val untitledLabel = stringResource(R.string.untitled)
+    val noteDescription = when {
+        note.isLocked -> lockedNoteLabel
+        note.title.isNotBlank() -> note.title
+        note.content.isNotBlank() -> note.content.lineSequence().first()
+        else -> untitledLabel
+    }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .scale(scale)
+            .semantics(mergeDescendants = true) {
+                contentDescription = noteDescription
+            }
             .then(
                 if (sharedTransitionScope != null && animatedVisibilityScope != null) {
                     with(sharedTransitionScope) {
@@ -76,53 +111,44 @@ fun NoteCard(
                     }
                 } else Modifier
             )
-            .padding(4.dp)
-            .clip(MaterialTheme.shapes.medium)
+            .clip(MaterialTheme.shapes.large) // Enforcing 16.dp corner radius
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
             ),
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large, // Enforcing 16.dp corner radius
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
             contentColor = contentColor
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = elevation),
-        border = if (!isSelected && note.color == MaterialTheme.colorScheme.background.toArgb()) {
-            CardDefaults.outlinedCardBorder()
-        } else null
+        border = when {
+            isSelected -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+            note.color == MaterialTheme.colorScheme.background.toArgb() -> CardDefaults.outlinedCardBorder()
+            else -> null
+        }
     ) {
         Box {
             Column(
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.padding(NoteCardContentPadding)
             ) {
                 if (note.isLocked) {
                     Text(
-                        text = "Locked note",
-                        style = MaterialTheme.typography.titleMedium,
+                        text = lockedNoteLabel,
+                        style = NoteCardTitleStyle,
                         color = contentColor.copy(alpha = 0.7f)
                     )
                 } else {
-                    if (note.attachments.isNotEmpty()) {
-                        AsyncImage(
-                            model = note.attachments.first().uri,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 200.dp)
-                                .clip(MaterialTheme.shapes.small)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
-
                     if (note.title.isNotEmpty()) {
                         Text(
                             text = buildHighlightedString(note.title, searchQuery, contentColor, highlightColor),
-                            style = MaterialTheme.typography.titleLarge,
-                            maxLines = 2,
+                            style = NoteCardTitleStyle,
+                            maxLines = if (compact) 1 else 2,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        if (!compact || note.content.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
                     }
                     if (note.content.isNotEmpty()) {
                         Text(
@@ -130,25 +156,39 @@ fun NoteCard(
                                 text = note.content,
                                 contentColor = contentColor.copy(alpha = 0.8f),
                                 highlightColor = highlightColor,
-                                searchQuery = searchQuery
+                                searchQuery = searchQuery,
+                                linkColor = MaterialTheme.colorScheme.primary
                             ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 10,
+                            style = NoteCardBodyStyle,
+                            maxLines = if (compact) 2 else 10,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
 
-                    if (note.checklist.isNotEmpty()) {
+                    if (compact && note.checklist.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.checklist_progress, note.checklist.count { it.isChecked }, note.checklist.size),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (!compact && note.checklist.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         note.checklist.take(3).forEach { item ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
+                                    contentDescription = stringResource(
+                                        if (item.isChecked) R.string.cd_checked else R.string.cd_unchecked
+                                    ),
+                                    modifier = Modifier.size(16.dp),
                                     tint = contentColor.copy(alpha = 0.6f)
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = RichTextParser.parse(
                                         text = item.text,
@@ -156,7 +196,10 @@ fun NoteCard(
                                         highlightColor = highlightColor,
                                         searchQuery = searchQuery
                                     ),
-                                    style = MaterialTheme.typography.labelSmall,
+                                    style = NoteCardBodyStyle.copy(
+                                        fontSize = MaterialTheme.typography.labelSmall.fontSize,
+                                        lineHeight = MaterialTheme.typography.labelSmall.lineHeight
+                                    ),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     color = contentColor.copy(alpha = 0.6f)
@@ -165,15 +208,19 @@ fun NoteCard(
                         }
                     }
 
-                    if (note.labels.isNotEmpty()) {
+                    if (!compact && note.labels.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             note.labels.take(2).forEach { label ->
+                                val labelId = label.id
                                 SuggestionChip(
-                                    onClick = { },
+                                    onClick = {
+                                        labelId?.let { onLabelClick?.invoke(it) }
+                                    },
+                                    enabled = labelId != null && onLabelClick != null,
                                     label = {
                                         Text(
                                             text = label.name,
@@ -192,27 +239,58 @@ fun NoteCard(
                     }
                 }
             }
-            
+
             if (isSelected) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(4.dp)
-                        .size(20.dp)
-                )
-            } else if (note.isLocked) {
-                Icon(
-                    Icons.Default.Lock,
-                    contentDescription = "Locked",
-                    tint = contentColor.copy(alpha = 0.5f),
+                Surface(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(12.dp)
-                        .size(16.dp)
-                )
+                        .padding(NoteCardContentPadding)
+                        .size(24.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    shadowElevation = 2.dp
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = selectedLabel,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(NoteCardContentPadding),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (note.isPinned) {
+                        Icon(
+                            Icons.Default.PushPin,
+                            contentDescription = stringResource(R.string.cd_pin_note),
+                            tint = contentColor.copy(alpha = 0.55f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    if (note.reminderTimestamp != null) {
+                        Icon(
+                            Icons.Default.Notifications,
+                            contentDescription = stringResource(R.string.cd_reminder_set),
+                            tint = contentColor.copy(alpha = 0.55f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    if (note.isLocked) {
+                        Icon(
+                            Icons.Default.Lock,
+                            contentDescription = lockedIconLabel,
+                            tint = contentColor.copy(alpha = 0.5f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
             }
         }
     }

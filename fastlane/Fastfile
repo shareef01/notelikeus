@@ -1,0 +1,29 @@
+# Fastlane automation (optional)
+# Install: gem install fastlane
+# Usage: fastlane android test
+
+default_platform(:android)
+
+platform :android do
+  desc "Run JVM unit tests"
+  lane :test do
+    gradle(task: "testDebugUnitTest")
+  end
+
+  desc "Build signed or unsigned release App Bundle"
+  lane :bundle do
+    gradle(task: "bundleRelease")
+  end
+
+  desc "Build release APK"
+  lane :apk do
+    gradle(task: "assembleRelease")
+  end
+
+  desc "Print paths to Play Store draft files"
+  lane :metadata_info do
+    UI.message("Listing copy: store/listing/en-US/")
+    UI.message("Data safety guide: store/DATA_SAFETY.md")
+    UI.message("Checklist: store/PUBLISHING_CHECKLIST.md")
+  end
+end

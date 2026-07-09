@@ -30,7 +30,7 @@ class MainScreenTest {
             NotelikeusTheme {
                 MainScreen(
                     viewModel = viewModel,
-                    onNoteClick = { _, _ -> }
+                    onNoteClick = { _ -> }
                 )
             }
         }
@@ -42,18 +42,44 @@ class MainScreenTest {
     @Test
     fun mainScreen_showsEmptyState_whenNoNotes() {
         val viewModel: MainViewModel = mockk(relaxed = true)
-        every { viewModel.state } returns MutableStateFlow(MainState(notes = emptyList()))
+        every { viewModel.state } returns MutableStateFlow(MainState(notes = emptyList(), filteredNotes = emptyList()))
 
         composeTestRule.setContent {
             NotelikeusTheme {
                 MainScreen(
                     viewModel = viewModel,
-                    onNoteClick = { _, _ -> }
+                    onNoteClick = { _ -> }
                 )
             }
         }
 
-        // The grid would be empty, we can check for search bar placeholder
-        composeTestRule.onNodeWithText("Search your notes").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Notes you add appear here").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Add note").assertIsDisplayed()
+    }
+
+    @Test
+    fun mainScreen_hidesFilterRowInSelectionMode() {
+        val viewModel: MainViewModel = mockk(relaxed = true)
+        val notes = listOf(
+            Note(id = 1, title = "Note 1", content = "Content 1", timestamp = 0, color = 0)
+        )
+        val state = MainState(
+            notes = notes,
+            filteredNotes = notes,
+            selectedNotes = setOf(1L)
+        )
+        every { viewModel.state } returns MutableStateFlow(state)
+
+        composeTestRule.setContent {
+            NotelikeusTheme {
+                MainScreen(
+                    viewModel = viewModel,
+                    onNoteClick = { _ -> }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithText("1 selected").assertIsDisplayed()
+        composeTestRule.onNodeWithText("All Colors").assertDoesNotExist()
     }
 }
