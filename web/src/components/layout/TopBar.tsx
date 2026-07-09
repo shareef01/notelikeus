@@ -37,6 +37,7 @@ interface TopBarProps {
   onClearSelection?: () => void;
   onToggleSelectAll?: () => void;
   onBulkPin?: () => void;
+  onBulkUnpin?: () => void;
   onBulkArchive?: () => void;
   onBulkRestore?: () => void;
   onBulkTrash?: () => void;
@@ -69,6 +70,7 @@ export function TopBar({
   onClearSelection,
   onToggleSelectAll,
   onBulkPin,
+  onBulkUnpin,
   onBulkArchive,
   onBulkRestore,
   onBulkTrash,
@@ -89,6 +91,7 @@ export function TopBar({
             onClearSelection={onClearSelection}
             onToggleSelectAll={onToggleSelectAll}
             onPin={onBulkPin}
+            onUnpin={onBulkUnpin}
             onArchive={onBulkArchive}
             onRestore={onBulkRestore}
             onTrash={onBulkTrash}
