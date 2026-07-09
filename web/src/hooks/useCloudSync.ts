@@ -1,22 +1,39 @@
 import { useAuthListener } from '@/hooks/useAuth';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { syncNotesWithCloud, uploadAllNotes } from '@/lib/firestore/notesRepository';
 import { useNotesStore } from '@/store/notesStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useToastStore } from '@/store/toastStore';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export type CloudSyncStatus = 'unknown' | 'ready' | 'syncing' | 'synced' | 'offline' | 'error';
 
 export function useCloudSync() {
   const { userId, user } = useAuthListener();
+  const online = useOnlineStatus();
   const notes = useNotesStore((s) => s.notes);
   const cloudAutoSyncEnabled = useSettingsStore((s) => s.cloudAutoSyncEnabled);
   const [status, setStatus] = useState<CloudSyncStatus>(userId ? 'ready' : 'unknown');
   const [syncedCount, setSyncedCount] = useState(0);
 
+  useEffect(() => {
+    if (!online) {
+      setStatus('offline');
+      return;
+    }
+    if (userId && status === 'offline') {
+      setStatus('ready');
+    }
+  }, [online, userId, status]);
+
   const syncNow = useCallback(async () => {
     if (!userId) {
       useToastStore.getState().show('Sign in with Google to sync');
+      return;
+    }
+    if (!online) {
+      setStatus('offline');
+      useToastStore.getState().show('You are offline', 'error');
       return;
     }
     setStatus('syncing');
@@ -32,7 +49,7 @@ export function useCloudSync() {
         'error',
       );
     }
-  }, [userId, notes]);
+  }, [userId, notes, online]);
 
   const restoreFromCloud = useCallback(async () => {
     if (!userId) {
@@ -55,7 +72,7 @@ export function useCloudSync() {
         'error',
       );
     }
-  }, [userId, notes]);
+  }, [userId, notes, online]);
 
   return {
     userId,
