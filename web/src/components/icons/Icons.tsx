@@ -72,6 +72,14 @@ export function PinIcon({ className = '', size = 16 }: IconProps) {
   );
 }
 
+export function PinOffIcon({ className = '', size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <path d="M9.41 7.41 8 6l-1 1 1.41 1.41L9.41 7.41zM3.27 3 2 4.27l4 4V9H7c-1.66 0-3 1.34-3 3v2h2.18l2 2H5v2h5.97l4.73 4.73L21 19.73 3.27 3zM16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1h-2.18l2 2H16zM19 15v-2c0-1.66-1.34-3-3-3h-1.18l2 2H19z" />
+    </svg>
+  );
+}
+
 export function DragHandleIcon({ className = '', size = 24 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>

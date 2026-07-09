@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ArchiveIcon, CloseIcon, NotesIcon, PinIcon, TrashIcon } from '@/components/icons/Icons';
+import { ArchiveIcon, CloseIcon, NotesIcon, PinIcon, PinOffIcon, TrashIcon } from '@/components/icons/Icons';
 import type { NoteFilter } from '@/types/note';
 
 interface SelectionBarProps {
@@ -9,6 +9,7 @@ interface SelectionBarProps {
   onClearSelection: () => void;
   onToggleSelectAll: () => void;
   onPin?: () => void;
+  onUnpin?: () => void;
   onArchive?: () => void;
   onRestore?: () => void;
   onTrash?: () => void;
@@ -22,6 +23,7 @@ export function SelectionBar({
   onClearSelection,
   onToggleSelectAll,
   onPin,
+  onUnpin,
   onArchive,
   onRestore,
   onTrash,
@@ -55,6 +57,12 @@ export function SelectionBar({
         {currentFilter === 'active' && onPin ? (
           <IconAction label="Pin" onClick={onPin}>
             <PinIcon size={20} />
+          </IconAction>
+        ) : null}
+
+        {currentFilter === 'active' && onUnpin ? (
+          <IconAction label="Unpin" onClick={onUnpin}>
+            <PinOffIcon size={20} />
           </IconAction>
         ) : null}
 

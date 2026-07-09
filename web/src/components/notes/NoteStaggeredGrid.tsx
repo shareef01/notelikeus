@@ -3,7 +3,7 @@ import { NoteCard } from '@/components/notes/NoteCard';
 import { NoteSectionHeader } from '@/components/notes/NoteSectionHeader';
 import { SwipeableNoteCard } from '@/components/notes/SwipeableNoteCard';
 import type { Note, NoteFilter } from '@/types/note';
-import { useMemo } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 
 interface NoteListActions {
   onArchive: (note: Note) => void;
@@ -23,12 +23,9 @@ interface NoteStaggeredGridProps {
   onLabelClick?: (labelName: string) => void;
   listActions?: NoteListActions;
   searchQuery?: string;
-}
-
-function groupNotes(notes: Note[]) {
-  const pinned = notes.filter((note) => note.isPinned);
-  const others = notes.filter((note) => !note.isPinned);
-  return { pinned, others, showSections: pinned.length > 0 && others.length > 0 };
+  allowReorder?: boolean;
+  onMoveNote?: (fromIndex: number, toIndex: number) => void;
+  onReorderComplete?: () => void;
 }
 
 const COLUMN_CLASSES: Record<1 | 2 | 3, string> = {
@@ -36,6 +33,8 @@ const COLUMN_CLASSES: Record<1 | 2 | 3, string> = {
   2: 'columns-2',
   3: 'columns-3',
 };
+
+const REORDER_THRESHOLD_PX = 72;
 
 export function NoteStaggeredGrid({
   notes,
@@ -48,11 +47,21 @@ export function NoteStaggeredGrid({
   onLabelClick,
   listActions,
   searchQuery = '',
+  allowReorder = false,
+  onMoveNote,
+  onReorderComplete,
 }: NoteStaggeredGridProps) {
-  const { pinned, others, showSections } = useMemo(() => groupNotes(notes), [notes]);
   const compact = columns > 1;
   const selectedSet = useMemo(() => new Set(selectedNoteIds), [selectedNoteIds]);
   const swipeEnabled = columns === 1 && Boolean(listActions) && !selectionMode;
+  const canReorder = allowReorder && columns === 1 && !selectionMode && Boolean(onMoveNote);
+
+  const hasPinned = notes.some((note) => note.isPinned);
+  const hasUnpinned = notes.some((note) => !note.isPinned);
+  const showSections = hasPinned && hasUnpinned;
+
+  const [draggingIndex, setDraggingIndex] = useState(-1);
+  const dragOffsetRef = useRef(0);
 
   const cardProps = (note: Note) => ({
     note,
@@ -104,21 +113,70 @@ export function NoteStaggeredGrid({
     return card;
   };
 
+  const handleDragStart = (index: number) => {
+    setDraggingIndex(index);
+    dragOffsetRef.current = 0;
+  };
+
+  const handleDragMove = (deltaY: number) => {
+    if (draggingIndex < 0 || !onMoveNote) return;
+    dragOffsetRef.current += deltaY;
+
+    if (dragOffsetRef.current > REORDER_THRESHOLD_PX && draggingIndex < notes.length - 1) {
+      onMoveNote(draggingIndex, draggingIndex + 1);
+      setDraggingIndex((current) => current + 1);
+      dragOffsetRef.current = 0;
+      return;
+    }
+
+    if (dragOffsetRef.current < -REORDER_THRESHOLD_PX && draggingIndex > 0) {
+      onMoveNote(draggingIndex, draggingIndex - 1);
+      setDraggingIndex((current) => current - 1);
+      dragOffsetRef.current = 0;
+    }
+  };
+
+  const handleDragEnd = () => {
+    if (draggingIndex >= 0) {
+      setDraggingIndex(-1);
+      dragOffsetRef.current = 0;
+      onReorderComplete?.();
+    }
+  };
+
   if (columns === 1) {
     return (
       <div className="flex flex-col gap-note-gap px-3 pb-24 pt-2 sm:px-4 lg:px-6">
-        {showSections ? <NoteSectionHeader title="Pinned" /> : null}
-        {pinned.map((note) => (
-          <ListRow key={note.id} note={note} render={() => renderCard(note)} />
-        ))}
-        {showSections ? <NoteSectionHeader title="Others" /> : null}
-        {others.map((note) => (
-          <ListRow key={note.id} note={note} render={() => renderCard(note)} />
-        ))}
+        {notes.map((note, index) => {
+          const showPinnedHeader = showSections && note.isPinned && index === 0;
+          const showOthersHeader =
+            showSections && !note.isPinned && (index === 0 || !notes[index - 1]?.isPinned);
+
+          return (
+            <div key={note.id}>
+              {showPinnedHeader ? <NoteSectionHeader title="Pinned" /> : null}
+              {showOthersHeader ? <NoteSectionHeader title="Others" /> : null}
+              {canReorder ? (
+                <ReorderRow
+                  index={index}
+                  isDragging={draggingIndex === index}
+                  onDragStart={handleDragStart}
+                  onDragMove={handleDragMove}
+                  onDragEnd={handleDragEnd}
+                  render={() => renderCard(note)}
+                />
+              ) : (
+                <StaticListRow render={() => renderCard(note)} />
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   }
 
+  const pinned = notes.filter((note) => note.isPinned);
+  const others = notes.filter((note) => !note.isPinned);
   const columnClass = COLUMN_CLASSES[columns];
   const renderMasonrySection = (sectionNotes: Note[]) =>
     sectionNotes.map((note) => (
@@ -148,12 +206,51 @@ export function NoteStaggeredGrid({
   );
 }
 
-function ListRow({ render }: { note: Note; render: () => React.ReactNode }) {
+function StaticListRow({ render }: { render: () => ReactNode }) {
   return (
     <div className="flex items-center gap-0">
       <div className="hidden w-8 shrink-0 justify-center pl-2 md:flex lg:w-10 lg:pl-4" aria-hidden>
-        <DragHandleIcon size={24} className="text-brand-muted/40" />
+        <DragHandleIcon size={24} className="text-brand-muted/20" />
       </div>
+      <div className="min-w-0 flex-1">{render()}</div>
+    </div>
+  );
+}
+
+function ReorderRow({
+  index,
+  isDragging,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  render,
+}: {
+  index: number;
+  isDragging: boolean;
+  onDragStart: (index: number) => void;
+  onDragMove: (deltaY: number) => void;
+  onDragEnd: () => void;
+  render: () => ReactNode;
+}) {
+  return (
+    <div className={`flex items-center gap-0 ${isDragging ? 'opacity-90' : ''}`}>
+      <button
+        type="button"
+        aria-label="Reorder note"
+        className="flex w-8 shrink-0 cursor-grab touch-none justify-center pl-2 active:cursor-grabbing lg:w-10 lg:pl-4"
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          onDragStart(index);
+        }}
+        onPointerMove={(event) => {
+          if (event.buttons === 0) return;
+          onDragMove(event.movementY);
+        }}
+        onPointerUp={onDragEnd}
+        onPointerCancel={onDragEnd}
+      >
+        <DragHandleIcon size={24} className="text-brand-muted/40" />
+      </button>
       <div className="min-w-0 flex-1">{render()}</div>
     </div>
   );

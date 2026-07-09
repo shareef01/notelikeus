@@ -40,6 +40,7 @@ import {
   trashNoteById,
 } from '@/lib/notes/noteActions';
 import { showUndoToast } from '@/lib/notes/showUndoToast';
+import { commitNotePositions, previewMoveNote } from '@/lib/notes/noteOrder';
 
 import { uploadAllNotes } from '@/lib/firestore/notesRepository';
 
@@ -183,6 +184,13 @@ export function MainScreen() {
     filteredNotes.length > 0 &&
     filteredNotes.every((note) => selectedNoteIds.includes(note.id));
 
+  const allowReorder =
+    filters.filter === 'active' &&
+    (filters.sortOrder ?? 'manual') === 'manual' &&
+    !hasActiveFilters &&
+    !selectionMode &&
+    effectiveColumns === 1;
+
   const handleNavigateFilter = (filter: NoteFilter) => {
     clearSelection();
     setNoteFilter(filter);
@@ -288,6 +296,29 @@ export function MainScreen() {
     useToastStore.getState().show(
       `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} pinned`,
     );
+  };
+
+  const handleBulkUnpin = async () => {
+    const snapshots = getSelectedSnapshots();
+    if (snapshots.length === 0) return;
+    for (const note of snapshots) {
+      await saveNote({ ...note, isPinned: false, timestamp: Date.now() });
+    }
+    clearSelection();
+    useToastStore.getState().show(
+      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} unpinned`,
+    );
+  };
+
+  const handleMoveNote = (fromIndex: number, toIndex: number) => {
+    const reordered = previewMoveNote(notes, filteredNotes, fromIndex, toIndex);
+    if (reordered) {
+      useNotesStore.getState().setNotes(reordered);
+    }
+  };
+
+  const handleReorderComplete = () => {
+    void commitNotePositions(useNotesStore.getState().notes);
   };
 
   const handleBulkArchive = async () => {
@@ -527,6 +558,7 @@ export function MainScreen() {
           onClearSelection={clearSelection}
           onToggleSelectAll={() => toggleSelectAll(filteredNoteIds)}
           onBulkPin={() => void handleBulkPin()}
+          onBulkUnpin={() => void handleBulkUnpin()}
           onBulkArchive={() => void handleBulkArchive()}
           onBulkRestore={() => void handleBulkRestore()}
           onBulkTrash={() => void handleBulkTrash()}
@@ -616,6 +648,9 @@ export function MainScreen() {
                   onPermanentDelete: (note) => void handlePermanentDelete(note),
                 }}
                 searchQuery={filters.searchQuery ?? ''}
+                allowReorder={allowReorder}
+                onMoveNote={handleMoveNote}
+                onReorderComplete={handleReorderComplete}
               />
             )}
 
