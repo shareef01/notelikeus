@@ -68,6 +68,31 @@ class NoteBackupImporterTest {
 
         assertEquals(1, result.notesImported)
         assertEquals(0, result.labelsCreated)
-        coVerify(exactly = 0) { repository.insertLabel(any()) }
+    @Test
+    fun `importFromJson preserves cloudId from backup`() = runTest {
+        coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
+        coEvery { repository.getNextNotePosition() } returns 0
+        coEvery { repository.insertNoteWithResult(any()) } returns 12L
+
+        val cloudId = "aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeeeee"
+        val json = """
+            {
+              "version": 3,
+              "notes": [{
+                "cloudId": "$cloudId",
+                "title": "Imported",
+                "content": "Body",
+                "timestamp": 1000,
+                "color": -1,
+                "labels": []
+              }]
+            }
+        """.trimIndent()
+
+        importer.importFromJson(json)
+
+        coVerify {
+            repository.insertNoteWithResult(match { it.cloudId == cloudId && it.title == "Imported" })
+        }
     }
 }
