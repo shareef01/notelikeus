@@ -37,6 +37,10 @@ class FirestoreNotesRealtimeSync @Inject constructor(
         stop()
         activeUserId = userId
         this.onChanges = onChanges
+        scope.launch {
+            knownCloudIds.clear()
+            knownCloudIds.addAll(settingsRepository.getLastKnownCloudIds(userId))
+        }
 
         registration = firestore.collection("users")
             .document(userId)
@@ -57,6 +61,7 @@ class FirestoreNotesRealtimeSync @Inject constructor(
                         documents = snapshot.documents,
                         knownCloudIds = knownCloudIds
                     )
+                    settingsRepository.setLastKnownCloudIds(userId, knownCloudIds.toSet())
                     if (changes > 0) {
                         onChanges?.invoke()
                     }

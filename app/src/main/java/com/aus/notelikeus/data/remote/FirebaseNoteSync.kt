@@ -2,6 +2,7 @@ package com.aus.notelikeus.data.remote
 
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -15,6 +16,7 @@ import javax.inject.Singleton
 class FirebaseNoteSync @Inject constructor(
     private val noteRepository: NoteRepository,
     private val sessionManager: FirebaseSessionManager,
+    private val settingsRepository: SettingsRepository,
     private val firestore: FirebaseFirestore
 ) {
     suspend fun uploadAllNotes(): Result<Int> {
@@ -91,11 +93,13 @@ class FirebaseNoteSync @Inject constructor(
         return try {
             val uid = sessionManager.ensureGoogleSignedIn().getOrThrow()
             val snapshot = userNotesCollection(uid).get().await()
+            val knownCloudIds = settingsRepository.getLastKnownCloudIds(uid).toMutableSet()
             val changes = mergeRemoteDocuments(
                 documents = snapshot.documents,
-                knownCloudIds = null,
+                knownCloudIds = knownCloudIds,
                 uploadMissingLocals = true
             )
+            settingsRepository.setLastKnownCloudIds(uid, knownCloudIds)
             updateSyncMeta(uid, noteRepository.getAllNotesForBackup().count { it.isCloudSyncEligible() })
             Result.success(changes)
         } catch (error: Throwable) {

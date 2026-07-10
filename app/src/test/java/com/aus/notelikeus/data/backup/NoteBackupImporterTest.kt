@@ -68,6 +68,9 @@ class NoteBackupImporterTest {
 
         assertEquals(1, result.notesImported)
         assertEquals(0, result.labelsCreated)
+        coVerify(exactly = 0) { repository.insertLabel(any()) }
+    }
+
     @Test
     fun `importFromJson preserves cloudId from backup`() = runTest {
         coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
@@ -93,6 +96,43 @@ class NoteBackupImporterTest {
 
         coVerify {
             repository.insertNoteWithResult(match { it.cloudId == cloudId && it.title == "Imported" })
+        }
+    }
+
+    @Test
+    fun `importFromJson sanitizes locked note content`() = runTest {
+        coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
+        coEvery { repository.getNextNotePosition() } returns 0
+        coEvery { repository.insertNoteWithResult(any()) } returns 13L
+
+        val json = """
+            {
+              "version": 3,
+              "notes": [{
+                "cloudId": "bbbbbbbb-bbbb-4ccc-dddd-eeeeeeeeeeee",
+                "isLocked": true,
+                "title": "Leaked",
+                "content": "Secret body",
+                "timestamp": 1000,
+                "color": -1,
+                "labels": ["Private"],
+                "checklist": [{"text": "Task", "isChecked": false, "position": 0}]
+              }]
+            }
+        """.trimIndent()
+
+        importer.importFromJson(json)
+
+        coVerify {
+            repository.insertNoteWithResult(
+                match {
+                    it.isLocked &&
+                        it.title.isEmpty() &&
+                        it.content.isEmpty() &&
+                        it.labels.isEmpty() &&
+                        it.checklist.isEmpty()
+                }
+            )
         }
     }
 }

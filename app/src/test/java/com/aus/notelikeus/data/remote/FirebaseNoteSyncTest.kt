@@ -2,6 +2,7 @@ package com.aus.notelikeus.data.remote
 
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
@@ -22,6 +23,7 @@ class FirebaseNoteSyncTest {
 
     private lateinit var noteRepository: NoteRepository
     private lateinit var sessionManager: FirebaseSessionManager
+    private lateinit var settingsRepository: SettingsRepository
     private lateinit var firestore: FirebaseFirestore
     private lateinit var sync: FirebaseNoteSync
 
@@ -29,8 +31,9 @@ class FirebaseNoteSyncTest {
     fun setup() {
         noteRepository = mockk(relaxed = true)
         sessionManager = mockk()
+        settingsRepository = mockk(relaxed = true)
         firestore = mockk(relaxed = true)
-        sync = FirebaseNoteSync(noteRepository, sessionManager, firestore)
+        sync = FirebaseNoteSync(noteRepository, sessionManager, settingsRepository, firestore)
     }
 
     @Test
