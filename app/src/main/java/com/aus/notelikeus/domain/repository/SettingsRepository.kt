@@ -25,4 +25,8 @@ interface SettingsRepository {
     val recentSearches: Flow<List<String>>
     suspend fun addRecentSearch(query: String)
     suspend fun clearRecentSearches()
+
+    suspend fun getLastKnownCloudIds(userId: String): Set<String>
+    suspend fun setLastKnownCloudIds(userId: String, cloudIds: Set<String>)
+    suspend fun clearLastKnownCloudIds(userId: String)
 }

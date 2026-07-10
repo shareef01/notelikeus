@@ -106,6 +106,16 @@ class MainViewModel @Inject constructor(
         refreshCloudAccount()
         loadRecentSearches()
         observeCloudRealtimeSync()
+        mergeCloudOnColdStartIfNeeded()
+    }
+
+    private fun mergeCloudOnColdStartIfNeeded() {
+        viewModelScope.launch {
+            val account = firebaseSessionManager.getCurrentAccount()
+            if (!account.isGoogleAccount) return@launch
+            if (!settingsRepository.isCloudAutoSyncEnabled.first()) return@launch
+            mergeLocalWithCloudSilently()
+        }
     }
 
     private fun observeCloudRealtimeSync() {
@@ -175,6 +185,11 @@ class MainViewModel @Inject constructor(
             googleSignInHelper.signOutFromGoogle()
             firebaseSessionManager.signOut()
                 .onSuccess {
+                    val userId = _state.value.cloudAccount.userId
+                    firestoreNotesRealtimeSync.stop()
+                    if (userId != null) {
+                        settingsRepository.clearLastKnownCloudIds(userId)
+                    }
                     refreshCloudAccount()
                     _state.update {
                         it.copy(

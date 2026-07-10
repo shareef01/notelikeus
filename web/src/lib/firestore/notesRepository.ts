@@ -25,6 +25,7 @@ import {
   userNotesCollection,
   userSyncMetaDocument,
 } from '@/lib/firestore/paths';
+import { applyRemoteDeletions } from '@/lib/notes/cloudSyncState';
 import type { Label } from '@/types/label';
 import type { Note } from '@/types/note';
 import { isCloudSyncEligible } from '@/types/note';
@@ -175,12 +176,17 @@ export async function fetchRemoteNotes(userId: string): Promise<Note[]> {
 export async function syncNotesWithCloud(
   userId: string,
   localNotes: Note[],
+  previousKnownCloudIds: Set<string> = new Set(),
 ): Promise<{ changes: number; merged: Note[]; remoteCloudIds: string[] }> {
   const remoteNotes = await fetchRemoteNotes(userId);
   const cloudIds = new Set(remoteNotes.map((note) => note.cloudId));
   let changes = 0;
 
   let merged = await mergeRemoteNotes(localNotes, remoteNotes);
+  merged = applyRemoteDeletions(merged, previousKnownCloudIds, cloudIds);
+  if (merged.length !== localNotes.length) {
+    changes++;
+  }
 
   for (const localNote of localNotes.filter(isCloudSyncEligible)) {
     const remote = remoteNotes.find((note) => note.cloudId === localNote.cloudId);

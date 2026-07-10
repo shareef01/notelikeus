@@ -2,6 +2,7 @@ package com.aus.notelikeus.data.remote
 
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.google.firebase.firestore.DocumentSnapshot
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -16,13 +17,15 @@ class FirebaseNoteSyncRealtimeTest {
 
     private lateinit var noteRepository: NoteRepository
     private lateinit var sessionManager: FirebaseSessionManager
+    private lateinit var settingsRepository: SettingsRepository
     private lateinit var sync: FirebaseNoteSync
 
     @Before
     fun setup() {
         noteRepository = mockk(relaxed = true)
         sessionManager = mockk()
-        sync = FirebaseNoteSync(noteRepository, sessionManager, mockk(relaxed = true))
+        settingsRepository = mockk(relaxed = true)
+        sync = FirebaseNoteSync(noteRepository, sessionManager, settingsRepository, mockk(relaxed = true))
     }
 
     @Test

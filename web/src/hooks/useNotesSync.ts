@@ -19,8 +19,8 @@ export function useNotesSync(enabled: boolean) {
     if (!enabled || !isAuthReady) return;
 
     if (!userId) {
+      resetCloudMergeState(lastMergedRef.current ?? undefined);
       lastMergedRef.current = null;
-      resetCloudMergeState();
       return;
     }
 

@@ -1,4 +1,10 @@
 import { subscribeToNotes, syncNotesWithCloud } from '@/lib/firestore/notesRepository';
+import {
+  applyRemoteDeletions,
+  clearKnownCloudIds,
+  loadKnownCloudIds,
+  saveKnownCloudIds,
+} from '@/lib/notes/cloudSyncState';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
 import { useNotesStore } from '@/store/notesStore';
 import type { Note } from '@/types/note';
@@ -22,16 +28,22 @@ function applyNotes(incoming: Note[]) {
   useNotesStore.getState().setNotes(incoming);
 }
 
-function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
+export function applyRemoteSnapshot(
+  localNotes: Note[],
+  remoteNotes: Note[],
+  previousKnownCloudIds: Set<string>,
+): Note[] {
   const remoteCloudIds = new Set(remoteNotes.map((note) => note.cloudId));
-  const isInitial = knownCloudIds.size === 0;
+  const isInitial = previousKnownCloudIds.size === 0;
   const result = new Map<string, Note>();
 
   for (const remote of remoteNotes) {
     const local = localNotes.find(
       (note) => note.cloudId === remote.cloudId || note.id === remote.id,
     );
-    if (!local || local.isLocked) {
+    if (local?.isLocked) {
+      result.set(local.cloudId, local);
+    } else if (!local) {
       result.set(remote.cloudId, remote);
     } else if (local.timestamp > remote.timestamp) {
       result.set(local.cloudId, local);
@@ -46,14 +58,14 @@ function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
       result.set(local.cloudId, local);
       continue;
     }
-    if (!isInitial && knownCloudIds.has(local.cloudId) && !remoteCloudIds.has(local.cloudId)) {
+    if (!isInitial && previousKnownCloudIds.has(local.cloudId) && !remoteCloudIds.has(local.cloudId)) {
       continue;
     }
     result.set(local.cloudId, local);
   }
 
   knownCloudIds = remoteCloudIds;
-  return Array.from(result.values());
+  return applyRemoteDeletions(Array.from(result.values()), previousKnownCloudIds, remoteCloudIds);
 }
 
 function attachVisibilityRefresh(userId: string) {
@@ -88,9 +100,15 @@ export function mergeCloudNotesOnce(userId: string, force = false): Promise<void
 
     try {
       const localNotes = useNotesStore.getState().notes;
-      const { merged, remoteCloudIds } = await syncNotesWithCloud(userId, localNotes);
+      const persistedKnown = loadKnownCloudIds(userId);
+      const { merged, remoteCloudIds } = await syncNotesWithCloud(
+        userId,
+        localNotes,
+        persistedKnown,
+      );
       applyNotes(merged);
       knownCloudIds = new Set(remoteCloudIds);
+      saveKnownCloudIds(userId, knownCloudIds);
       mergedForUserId = userId;
     } catch (error) {
       useNotesStore.getState().setError(
@@ -110,12 +128,16 @@ export function startNotesRealtimeSync(userId: string): void {
 
   stopNotesRealtimeSync();
   realtimeUserId = userId;
+  knownCloudIds = loadKnownCloudIds(userId);
 
   unsubscribeRealtime = subscribeToNotes(
     userId,
     (remoteNotes) => {
       const localNotes = useNotesStore.getState().notes;
-      applyNotes(applyRemoteSnapshot(localNotes, remoteNotes));
+      const merged = applyRemoteSnapshot(localNotes, remoteNotes, knownCloudIds);
+      applyNotes(merged);
+      knownCloudIds = new Set(remoteNotes.map((note) => note.cloudId));
+      saveKnownCloudIds(userId, knownCloudIds);
     },
     (error) => {
       useNotesStore.getState().setError(error.message);
@@ -132,9 +154,12 @@ export function stopNotesRealtimeSync(): void {
   detachVisibilityRefresh();
 }
 
-export function resetCloudMergeState(): void {
+export function resetCloudMergeState(userId?: string): void {
   mergedForUserId = null;
   mergeInFlight = null;
   knownCloudIds = new Set();
+  if (userId) {
+    clearKnownCloudIds(userId);
+  }
   stopNotesRealtimeSync();
 }
