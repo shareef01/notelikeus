@@ -3,6 +3,7 @@ package com.aus.notelikeus.data.repository
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import com.aus.notelikeus.data.local.APP_LOCK_ENABLED_KEY
+import com.aus.notelikeus.data.local.APP_THEME_KEY
 import com.aus.notelikeus.data.local.CLOUD_AUTO_SYNC_ENABLED_KEY
 import com.aus.notelikeus.data.local.NOTE_SORT_ORDER_KEY
 import com.aus.notelikeus.data.local.NOTE_VIEW_MODE_KEY
@@ -10,6 +11,7 @@ import com.aus.notelikeus.data.local.RECENT_SEARCHES_KEY
 import com.aus.notelikeus.data.local.TRUE_DARK_MODE_KEY
 import com.aus.notelikeus.data.local.USE_MONOCHROME_THEME_KEY
 import com.aus.notelikeus.data.local.settingsDataStore
+import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.domain.repository.SettingsRepository
@@ -35,6 +37,18 @@ class SettingsRepositoryImpl @Inject constructor(
         widgetScope.launch {
             WidgetUpdater.refresh(context)
         }
+    }
+
+    override val appTheme: Flow<AppTheme> = context.settingsDataStore.data
+        .map { preferences ->
+            AppTheme.fromName(preferences[APP_THEME_KEY])
+        }
+
+    override suspend fun setAppTheme(theme: AppTheme) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[APP_THEME_KEY] = theme.name
+        }
+        refreshWidget()
     }
 
     override val isTrueDarkMode: Flow<Boolean> = context.settingsDataStore.data

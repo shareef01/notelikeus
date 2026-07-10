@@ -63,3 +63,10 @@ val NoteCardTitleStyle = inter(FontWeight.SemiBold, 18f, 25f, -0.5f)
  * Body: Regular, 14.sp, 1.4em line height (19.6sp).
  */
 val NoteCardBodyStyle = inter(FontWeight.Normal, 14f, 19.6f, 0f)
+
+/**
+ * Editor typography — aligned with card styles for shared-element continuity.
+ */
+val EditorTitleStyle = NoteCardTitleStyle
+
+val EditorBodyStyle = inter(FontWeight.Normal, 16f, 22.4f, 0f)

@@ -62,6 +62,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.BuildConfig
 import com.aus.notelikeus.R
+import com.aus.notelikeus.domain.model.AppTheme
+import com.aus.notelikeus.domain.model.appThemeLabelRes
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.ui.main.CloudAccount
@@ -78,8 +80,7 @@ fun ProfileSheet(
     noteCount: Int,
     viewMode: NoteViewMode,
     sortOrder: NoteSortOrder,
-    useMonochromeTheme: Boolean,
-    isTrueDarkMode: Boolean,
+    appTheme: AppTheme,
     isAppLockEnabled: Boolean,
     cloudSyncStatus: CloudSyncStatus = CloudSyncStatus.Unknown,
     cloudSyncedNoteCount: Int = 0,
@@ -87,8 +88,7 @@ fun ProfileSheet(
     isCloudAutoSyncEnabled: Boolean = true,
     onViewModeChange: (NoteViewMode) -> Unit,
     onSortOrderChange: (NoteSortOrder) -> Unit,
-    onMonochromeThemeChange: (Boolean) -> Unit,
-    onTrueDarkModeChange: (Boolean) -> Unit,
+    onAppThemeChange: (AppTheme) -> Unit,
     onAppLockChange: (Boolean) -> Unit,
     onExportClick: () -> Unit,
     onImportClick: () -> Unit,
@@ -111,6 +111,8 @@ fun ProfileSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        shape = MaterialTheme.shapes.extraLarge,
+        containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
         Column(
@@ -172,24 +174,13 @@ fun ProfileSheet(
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(R.string.section_appearance))
-            SettingsToggleListItem(
+            SettingsCycleListItem(
                 icon = Icons.Default.Palette,
-                title = stringResource(R.string.monochrome_theme),
-                subtitle = stringResource(R.string.monochrome_theme_subtitle),
-                checked = useMonochromeTheme,
-                onCheckedChange = {
+                title = stringResource(R.string.app_theme),
+                subtitle = stringResource(appThemeLabelRes(appTheme)),
+                onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onMonochromeThemeChange(it)
-                }
-            )
-            SettingsToggleListItem(
-                icon = Icons.Default.DarkMode,
-                title = stringResource(R.string.true_dark_mode),
-                subtitle = stringResource(R.string.true_dark_mode_subtitle),
-                checked = isTrueDarkMode,
-                onCheckedChange = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onTrueDarkModeChange(it)
+                    onAppThemeChange(appTheme.next())
                 }
             )
             SettingsToggleListItem(
@@ -435,10 +426,10 @@ fun SettingsSectionHeader(
     Text(
         text = title.uppercase(),
         style = MaterialTheme.typography.labelMedium.copy(
+            fontWeight = FontWeight.Bold,
             fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.8.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+            letterSpacing = 1.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         ),
         modifier = modifier.padding(
             start = 16.dp,

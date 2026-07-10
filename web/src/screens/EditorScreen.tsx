@@ -271,22 +271,14 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
 
 
-      <div className="flex-1 overflow-y-auto px-layout-gap pb-28 pt-2 sm:px-6 lg:px-8">
-
+      <div className="flex-1 overflow-y-auto px-layout-gap pb-28 pt-4">
         <input
-
           type="text"
-
           value={state.title}
-
           onChange={(event) => editor.setTitle(event.target.value)}
-
           placeholder="Title"
-
-          className="w-full bg-transparent text-2xl font-semibold tracking-tight outline-none placeholder:opacity-40 sm:text-3xl"
-
+          className="w-full bg-transparent text-[18px] font-semibold leading-[25px] tracking-[-0.5px] outline-none placeholder:opacity-40"
           style={{ color: contentColor }}
-
         />
 
 
@@ -401,7 +393,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
               rows={12}
 
-              className="mt-2 w-full resize-none bg-transparent text-note-body leading-relaxed outline-none placeholder:opacity-40 sm:text-base"
+              className="mt-2 w-full resize-none bg-transparent text-[16px] leading-[1.4] outline-none placeholder:opacity-40"
 
               style={{ color: contentColor }}
 

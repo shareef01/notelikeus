@@ -13,10 +13,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
@@ -49,6 +53,7 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingNoteId = extractEditorNoteId(intent)
@@ -57,6 +62,7 @@ class MainActivity : FragmentActivity() {
         requestNotificationPermissionIfNeeded()
         enableEdgeToEdge()
         setContent {
+            val windowSizeClass = calculateWindowSizeClass(this)
             val viewModel: MainViewModel = hiltViewModel()
             val state by viewModel.state.collectAsState()
             var isUnlocked by remember { mutableStateOf(true) }
@@ -104,12 +110,14 @@ class MainActivity : FragmentActivity() {
             }
 
             NotelikeusTheme(
-                isTrueDarkMode = state.isTrueDarkMode,
+                appTheme = state.appTheme,
+                isTrueDarkMode = state.isTrueDarkMode, // Fallback/Legacy
                 useMonochromeTheme = state.useMonochromeTheme
             ) {
                 if (showNotificationRationale) {
                     AlertDialog(
                         onDismissRequest = { showNotificationRationale = false },
+                        shape = MaterialTheme.shapes.large,
                         title = { Text(stringResource(R.string.notification_permission_title)) },
                         text = { Text(stringResource(R.string.reminder_permission_denied)) },
                         confirmButton = {
@@ -143,6 +151,7 @@ class MainActivity : FragmentActivity() {
                         NavGraph(
                             navController = navController,
                             mainViewModel = viewModel,
+                            windowSizeClass = windowSizeClass,
                             isAppLockEnabled = state.isAppLockEnabled,
                             onRequestAppUnlock = { onSuccess ->
                                 showBiometricPrompt(
@@ -224,14 +233,14 @@ class MainActivity : FragmentActivity() {
 private fun AppLockOverlay(onUnlock: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
+        color = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(32.dp),
+                .padding(horizontal = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -239,22 +248,27 @@ private fun AppLockOverlay(onUnlock: () -> Unit) {
                 Icons.Default.Lock,
                 contentDescription = stringResource(R.string.app_lock_title),
                 modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.primary
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = stringResource(R.string.app_lock_title),
-                style = MaterialTheme.typography.titleLarge
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = stringResource(R.string.app_lock_message),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(24.dp))
             FilledTonalButton(onClick = onUnlock) {
-                Text(stringResource(R.string.unlock_app))
+                Text(
+                    stringResource(R.string.unlock_app),
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }

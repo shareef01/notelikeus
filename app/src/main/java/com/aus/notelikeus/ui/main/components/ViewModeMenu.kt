@@ -1,6 +1,7 @@
 package com.aus.notelikeus.ui.main.components
 
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.GridView
@@ -19,9 +20,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.NoteSortOrder
@@ -34,9 +38,13 @@ fun ViewModeMenu(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
 
     IconButton(
-        onClick = { expanded = true },
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+            expanded = true
+        },
         modifier = modifier
     ) {
         Icon(
@@ -48,22 +56,43 @@ fun ViewModeMenu(
 
     DropdownMenu(
         expanded = expanded,
-        onDismissRequest = { expanded = false }
+        onDismissRequest = { expanded = false },
+        modifier = Modifier.widthIn(min = 220.dp),
+        shape = MaterialTheme.shapes.large,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 2.dp,
+        shadowElevation = 6.dp
     ) {
         NoteViewMode.entries.forEach { mode ->
+            val isSelected = mode == viewMode
             DropdownMenuItem(
-                text = { Text(stringResource(viewModeLabelRes(mode))) },
+                text = {
+                    Text(
+                        text = stringResource(viewModeLabelRes(mode)),
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
+                    )
+                },
                 leadingIcon = {
                     Icon(
                         imageVector = viewModeIcon(mode),
                         contentDescription = null,
                         modifier = Modifier
                             .size(20.dp)
-                            .semantics { invisibleToUser() }
+                            .semantics { invisibleToUser() },
+                        tint = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     )
                 },
                 trailingIcon = {
-                    if (mode == viewMode) {
+                    if (isSelected) {
                         Icon(
                             Icons.Default.Check,
                             contentDescription = null,
@@ -75,6 +104,7 @@ fun ViewModeMenu(
                     }
                 },
                 onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     onViewModeChange(mode)
                     expanded = false
                 }
