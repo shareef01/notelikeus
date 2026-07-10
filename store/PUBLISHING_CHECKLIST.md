@@ -4,10 +4,11 @@ Use this list before submitting Notelikeus to Google Play.
 
 ## Build
 
-- [ ] Create release keystore and `signing.properties` (see README)
+- [ ] Create release keystore and `signing.properties` (see README and `signing.properties.example`)
 - [ ] Run `./gradlew :app:bundleRelease` and test the AAB on a physical device
-- [ ] Run `./gradlew :app:testDebugUnitTest` and fix any failures
-- [ ] Verify app lock, reminders, backup export/import, and widget on a real device
+- [ ] Run `./gradlew :app:testDebugUnitTest` and `./gradlew :app:lintDebug`
+- [ ] Run `npm run test:rules` before deploying Firestore rules
+- [ ] Verify app lock, reminders, backup export/import, cloud sync, and widget on a real device
 
 ## Store listing (`store/listing/en-US/`)
 
@@ -36,6 +37,6 @@ Use this list before submitting Notelikeus to Google Play.
 
 ## Post-launch
 
-- [ ] Tag release in git: `v1.0`
+- [ ] Tag release in git: `v1.0.0`
 - [ ] Update `CHANGELOG.md` for next version
-- [ ] Increment `versionCode` / `versionName` in `app/build.gradle.kts`
+- [ ] Increment `versionCode` / `versionName` in `app/build.gradle.kts` (currently `2` / `1.0.0`)

@@ -1,5 +1,12 @@
-# Copy to signing.properties (gitignored) for signed release builds.
-# storeFile=release.keystore
-# storePassword=your-store-password
-# keyAlias=your-key-alias
-# keyPassword=your-key-password
+# Copy to signing.properties at the repo root (gitignored) for signed release builds.
+#
+# Generate a keystore (one-time):
+#   keytool -genkey -v -keystore release.keystore -alias notelikeus -keyalg RSA -keysize 2048 -validity 10000
+#
+# GitHub Actions (optional): store base64-encoded keystore + passwords as repo secrets
+# and decode to signing.properties in CI before `./gradlew :app:bundleRelease`.
+#
+storeFile=release.keystore
+storePassword=your-store-password
+keyAlias=notelikeus
+keyPassword=your-key-password
