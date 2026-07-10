@@ -381,7 +381,21 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
               value={state.content}
 
-              onChange={(event) => editor.setContent(event.target.value)}
+              onChange={(event) => {
+                const field = event.target;
+                const result = editor.setContentSmart(
+                  field.value,
+                  field.selectionStart,
+                  field.selectionEnd,
+                );
+                if (result.structureChanged) {
+                  editor.convertContentToChecklist();
+                  return;
+                }
+                requestAnimationFrame(() => {
+                  field.setSelectionRange(result.selectionStart, result.selectionEnd);
+                });
+              }}
 
               placeholder="Note"
 
