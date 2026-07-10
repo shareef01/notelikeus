@@ -22,5 +22,6 @@ interface NoteRepository {
 
     fun getLabels(): Flow<List<Label>>
     suspend fun insertLabel(label: Label): Long
+    suspend fun updateLabel(label: Label)
     suspend fun deleteLabel(label: Label)
 }

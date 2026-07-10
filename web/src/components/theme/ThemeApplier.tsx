@@ -3,15 +3,23 @@ import { useEffect } from 'react';
 
 /** Applies persisted appearance settings to the document root. */
 export function ThemeApplier() {
-  const useMonochromeTheme = useSettingsStore((s) => s.useMonochromeTheme);
-  const trueDarkMode = useSettingsStore((s) => s.trueDarkMode);
+  const appTheme = useSettingsStore((s) => s.appTheme);
 
   useEffect(() => {
     const root = document.documentElement;
-    root.classList.toggle('monochrome', useMonochromeTheme);
-    root.classList.toggle('true-dark', trueDarkMode);
-    root.classList.toggle('soft-dark', !trueDarkMode);
-  }, [useMonochromeTheme, trueDarkMode]);
+
+    // Clear existing theme classes
+    root.classList.remove('theme-light', 'theme-dark', 'theme-true-dark', 'theme-midnight', 'theme-forest');
+
+    if (appTheme === 'auto') {
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        root.classList.add(isDark ? 'theme-true-dark' : 'theme-light');
+        root.classList.toggle('dark', isDark);
+    } else {
+        root.classList.add(`theme-${appTheme.replace('_', '-')}`);
+        root.classList.toggle('dark', appTheme !== 'light');
+    }
+  }, [appTheme]);
 
   return null;
 }

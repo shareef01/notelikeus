@@ -7,25 +7,26 @@ export interface NoteColorOption {
 }
 
 /**
- * Premium Desaturated Dark-Mode Palette
+ * Vibrant Muted Note Palette (Modern & Visible)
  * Synchronized with Android Elite UI/UX Standards
  */
 export const NOTE_COLOR_OPTIONS: NoteColorOption[] = [
-  { light: argb(0xfff7f7f7), dark: argb(0xff121212) },
-  { light: argb(0xffffdada), dark: argb(0xff2d1616) },
-  { light: argb(0xffffe5c0), dark: argb(0xff2d2014) },
-  { light: argb(0xfffff9c0), dark: argb(0xff2d2b14) },
-  { light: argb(0xffd4ffd4), dark: argb(0xff162d16) },
-  { light: argb(0xffd4fff9), dark: argb(0xff142d2b) },
-  { light: argb(0xffd4e8ff), dark: argb(0xff141f2d) },
-  { light: argb(0xffd4dcff), dark: argb(0xff181c2d) },
-  { light: argb(0xffe8d4ff), dark: argb(0xff20162d) },
-  { light: argb(0xffffd4ec), dark: argb(0xff2d1624) },
-  { light: argb(0xffe8dac0), dark: argb(0xff211b14) },
-  { light: argb(0xffeeeeee), dark: argb(0xff1a1a1a) },
+  { light: 0, dark: 0 }, // Use theme default
+  { light: argb(0xffffb2b2), dark: argb(0xff421a1a) },
+  { light: argb(0xffffd580), dark: argb(0xff422b18) },
+  { light: argb(0xfffff780), dark: argb(0xff423c18) },
+  { light: argb(0xffb2ffb2), dark: argb(0xff1a421a) },
+  { light: argb(0xffb2fff0), dark: argb(0xff18423f) },
+  { light: argb(0xffb2d8ff), dark: argb(0xff182b42) },
+  { light: argb(0xffb2beff), dark: argb(0xff1e2242) },
+  { light: argb(0xffd8b2ff), dark: argb(0xff2b1a42) },
+  { light: argb(0xffffb2e0), dark: argb(0xff421a33) },
+  { light: argb(0xffe0c4a8), dark: argb(0xff33261a) },
+  { light: argb(0xffebebeb), dark: argb(0xff262626) },
 ];
 
 export function argbToCss(argb: number): string {
+  if (argb === 0) return 'transparent';
   const unsigned = argb >>> 0;
   const r = (unsigned >> 16) & 0xff;
   const g = (unsigned >> 8) & 0xff;

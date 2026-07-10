@@ -18,10 +18,10 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.ui.components.NoteColorSwatch
+import com.aus.notelikeus.ui.main.components.SettingsSectionHeader
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
 
@@ -48,6 +48,7 @@ fun EditorBottomSheet(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
+            shape = MaterialTheme.shapes.large,
             title = { Text(stringResource(R.string.delete_note_title)) },
             text = { Text(stringResource(R.string.delete_editor_message)) },
             confirmButton = {
@@ -55,7 +56,13 @@ fun EditorBottomSheet(
                     showDeleteConfirm = false
                     onDeleteNote()
                     onDismiss()
-                }) { Text(stringResource(R.string.action_delete)) }
+                }) {
+                    Text(
+                        stringResource(R.string.action_delete),
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
@@ -67,6 +74,8 @@ fun EditorBottomSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        shape = MaterialTheme.shapes.extraLarge,
+        containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
         Column(
@@ -102,21 +111,40 @@ fun EditorBottomSheet(
 
             // Label Selector
             SettingsSectionHeader(title = stringResource(R.string.section_labels))
-            allLabels.forEach { label ->
-                ListItem(
-                    headlineContent = { Text(text = label.name) },
-                    leadingContent = {
-                        Checkbox(
-                            checked = selectedLabels.any { it.id == label.id },
-                            onCheckedChange = null
-                        )
-                    },
-                    modifier = Modifier.clickable {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onLabelToggle(label)
-                    },
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)
+            if (allLabels.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.empty_labels_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+            } else {
+                allLabels.forEachIndexed { index, label ->
+                    val isChecked = selectedLabels.any { it.id == label.id }
+                    ListItem(
+                        headlineContent = { Text(text = label.name) },
+                        leadingContent = {
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                    onLabelToggle(label)
+                                }
+                            )
+                        },
+                        modifier = Modifier.clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onLabelToggle(label)
+                        },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)
+                    )
+                    if (index < allLabels.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 56.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                        )
+                    }
+                }
             }
 
             Row(
@@ -180,11 +208,17 @@ fun EditorBottomSheet(
             )
             
             ListItem(
-                headlineContent = { Text(stringResource(R.string.action_delete)) },
+                headlineContent = {
+                    Text(
+                        stringResource(R.string.action_delete),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                },
                 leadingContent = { 
                     Icon(
                         Icons.Default.Delete, 
                         contentDescription = stringResource(R.string.action_delete),
+                        tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(24.dp)
                     ) 
                 },
@@ -196,27 +230,4 @@ fun EditorBottomSheet(
             )
         }
     }
-}
-
-@Composable
-private fun SettingsSectionHeader(
-    title: String,
-    isFirst: Boolean = false,
-    modifier: Modifier = Modifier
-) {
-    Text(
-        text = title.uppercase(),
-        style = MaterialTheme.typography.labelMedium.copy(
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.8.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
-        ),
-        modifier = modifier.padding(
-            start = 16.dp,
-            end = 16.dp,
-            top = if (isFirst) 16.dp else 24.dp,
-            bottom = 8.dp
-        )
-    )
 }
