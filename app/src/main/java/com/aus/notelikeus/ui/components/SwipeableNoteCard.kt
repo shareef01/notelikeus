@@ -2,7 +2,6 @@ package com.aus.notelikeus.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -31,6 +30,7 @@ import com.aus.notelikeus.ui.theme.SwipeArchiveDark
 import com.aus.notelikeus.ui.theme.SwipeArchiveLight
 import com.aus.notelikeus.ui.theme.SwipeDeleteDark
 import com.aus.notelikeus.ui.theme.SwipeDeleteLight
+import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,12 +47,14 @@ fun SwipeableNoteCard(
     enableArchiveSwipe: Boolean = true,
     enableSwipe: Boolean = true,
     compact: Boolean = false,
+    showReorderHandle: Boolean = false,
+    reorderDragModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
     val archiveLabel = stringResource(R.string.cd_archive)
     val deleteLabel = stringResource(R.string.cd_delete)
     val haptic = LocalHapticFeedback.current
-    val isDark = isSystemInDarkTheme()
+    val isDark = isNoteColorDarkTheme()
     val archiveColor = if (isDark) SwipeArchiveDark else SwipeArchiveLight
     val deleteColor = if (isDark) SwipeDeleteDark else SwipeDeleteLight
     val archiveIconTint = if (isDark) Color.Black else Color.White
@@ -117,7 +119,7 @@ fun SwipeableNoteCard(
                         .fillMaxSize()
                         .background(
                             if (isActive) color else Color.Transparent,
-                            MaterialTheme.shapes.medium
+                            MaterialTheme.shapes.large
                         )
                         .padding(horizontal = 24.dp),
                     contentAlignment = when (direction) {
@@ -149,7 +151,9 @@ fun SwipeableNoteCard(
                 compact = compact,
                 onClick = onNoteClick,
                 onLongClick = onNoteLongClick,
-                onLabelClick = onLabelClick
+                onLabelClick = onLabelClick,
+                showReorderHandle = showReorderHandle,
+                reorderDragModifier = reorderDragModifier
             )
         }
     }

@@ -152,6 +152,11 @@ class NoteRepositoryImpl @Inject constructor(
         return id
     }
 
+    override suspend fun updateLabel(label: Label) {
+        labelDao.updateLabel(label.toLabelEntity())
+        refreshWidget()
+    }
+
     override suspend fun deleteLabel(label: Label) {
         labelDao.deleteLabel(label.toLabelEntity())
         refreshWidget()

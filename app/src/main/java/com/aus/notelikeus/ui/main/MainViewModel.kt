@@ -11,6 +11,7 @@ import com.aus.notelikeus.data.backup.BackupImportResult
 import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
@@ -50,6 +51,7 @@ data class MainState(
     val searchQuery: String = "",
     val selectedColor: Int? = null,
     val selectedLabelId: Long? = null,
+    val appTheme: AppTheme = AppTheme.AUTO,
     val viewMode: NoteViewMode = NoteViewMode.GRID_2,
     val sortOrder: NoteSortOrder = NoteSortOrder.MANUAL,
     val useMonochromeTheme: Boolean = true,
@@ -353,6 +355,12 @@ class MainViewModel @Inject constructor(
     }
 
     private fun loadSettings() {
+        settingsRepository.appTheme
+            .onEach { theme ->
+                _state.update { it.copy(appTheme = theme) }
+            }
+            .launchIn(viewModelScope)
+
         settingsRepository.isTrueDarkMode
             .onEach { enabled ->
                 _state.update { it.copy(isTrueDarkMode = enabled) }
@@ -533,6 +541,12 @@ class MainViewModel @Inject constructor(
             settingsRepository.setNoteSortOrder(order)
         }
         applyFilters()
+    }
+
+    fun setAppTheme(theme: AppTheme) {
+        viewModelScope.launch {
+            settingsRepository.setAppTheme(theme)
+        }
     }
 
     fun setCloudAutoSyncEnabled(enabled: Boolean) {

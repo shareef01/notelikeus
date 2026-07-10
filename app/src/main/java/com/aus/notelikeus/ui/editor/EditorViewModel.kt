@@ -1,5 +1,6 @@
 package com.aus.notelikeus.ui.editor
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.SavedStateHandle
@@ -10,7 +11,9 @@ import com.aus.notelikeus.data.remote.ReminderScheduler
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.ui.theme.BackgroundLight
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -43,6 +46,7 @@ data class EditorState(
 @HiltViewModel
 class EditorViewModel @Inject constructor(
     private val repository: NoteRepository,
+    private val settingsRepository: SettingsRepository,
     private val reminderScheduler: ReminderScheduler,
     private val cloudNoteSyncCoordinator: CloudNoteSyncCoordinator,
     savedStateHandle: SavedStateHandle
@@ -56,40 +60,51 @@ class EditorViewModel @Inject constructor(
     private var hasAppliedInitialColor = false
 
     init {
-        _state.update { it.copy(color = BackgroundLight.toArgb()) }
-        loadNote()
+        loadSettingsAndNote()
         loadLabels()
     }
 
-    private fun loadNote() {
-        if (noteId == null) {
-            _state.update { it.copy(isNoteLoaded = true) }
-            return
-        }
+    private fun loadSettingsAndNote() {
         viewModelScope.launch {
-            repository.getNoteById(noteId)?.let { note ->
-                _state.update {
-                    it.copy(
-                        id = note.id,
-                        title = note.title,
-                        content = note.content,
-                        contentValue = TextFieldValue(note.content),
-                        color = note.color,
-                        isPinned = note.isPinned,
-                        isArchived = note.isArchived,
-                        isTrashed = note.isTrashed,
-                        isLocked = note.isLocked,
-                        reminderTimestamp = note.reminderTimestamp,
-                        labels = note.labels,
-                        checklist = note.checklist.sortedWith(compareBy({ it.isChecked }, { it.position })),
-                        timestamp = note.timestamp,
-                        position = note.position,
-                        isNoteLoaded = true,
-                        isAccessGranted = !note.isLocked
-                    )
+            // First, load the initial color based on theme to prevent blinking
+            val theme = settingsRepository.appTheme.first()
+            val isTrueDark = theme == AppTheme.TRUE_DARK || 
+                (theme == AppTheme.AUTO && settingsRepository.isTrueDarkMode.first())
+
+            val initialColor = if (isTrueDark) {
+                Color.Black.toArgb()
+            } else {
+                BackgroundLight.toArgb()
+            }
+            _state.update { it.copy(color = initialColor) }
+
+            if (noteId == null) {
+                _state.update { it.copy(isNoteLoaded = true) }
+            } else {
+                repository.getNoteById(noteId)?.let { note ->
+                    _state.update {
+                        it.copy(
+                            id = note.id,
+                            title = note.title,
+                            content = note.content,
+                            contentValue = TextFieldValue(note.content),
+                            color = note.color,
+                            isPinned = note.isPinned,
+                            isArchived = note.isArchived,
+                            isTrashed = note.isTrashed,
+                            isLocked = note.isLocked,
+                            reminderTimestamp = note.reminderTimestamp,
+                            labels = note.labels,
+                            checklist = note.checklist.sortedWith(compareBy({ it.isChecked }, { it.position })),
+                            timestamp = note.timestamp,
+                            position = note.position,
+                            isNoteLoaded = true,
+                            isAccessGranted = !note.isLocked
+                        )
+                    }
+                } ?: run {
+                    _state.update { it.copy(isNoteLoaded = true, noteNotFound = true) }
                 }
-            } ?: run {
-                _state.update { it.copy(isNoteLoaded = true, noteNotFound = true) }
             }
         }
     }

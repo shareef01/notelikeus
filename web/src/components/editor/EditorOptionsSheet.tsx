@@ -139,11 +139,41 @@ export function EditorOptionsSheet({
         <section className="mt-4 border-t border-brand-outline/60 px-4 py-4">
           <h3 className="mt-2 text-[12px] font-semibold uppercase tracking-[0.8px] text-brand-muted/65">Reminder</h3>
           <p className="mt-2 text-sm text-brand-muted">{formatReminderLabel(reminderTimestamp)}</p>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onReminderChange(Date.now() + 3600000)}
+              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
+            >
+              In 1 hour
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const date = new Date();
+                date.setDate(date.getDate() + 1);
+                date.setHours(9, 0, 0, 0);
+                onReminderChange(date.getTime());
+              }}
+              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
+            >
+              Tomorrow morning
+            </button>
+            <button
+              type="button"
+              onClick={() => onReminderChange(Date.now() + 7 * 86400000)}
+              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
+            >
+              Next week
+            </button>
+          </div>
+
           <input
             type="datetime-local"
             value={formatReminderInputValue(reminderTimestamp)}
             onChange={(event) => void handleReminderInput(event.target.value)}
-            className="mt-3 w-full rounded-note border border-brand-outline bg-true-black px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
+            className="mt-4 w-full rounded-note border border-brand-outline bg-true-black px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
           />
           {reminderTimestamp != null ? (
             <button

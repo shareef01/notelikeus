@@ -46,7 +46,7 @@ export function NotesEmptyState({
 
       {!action && recentSearches.length > 0 && (
         <div className="mt-12 flex flex-col items-center animate-in fade-in duration-700">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.8px] text-brand-muted/50">
+          <p className="text-[12px] font-bold uppercase tracking-[1px] text-brand-muted/65">
             Recent searches
           </p>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
@@ -55,7 +55,7 @@ export function NotesEmptyState({
                 key={query}
                 type="button"
                 onClick={() => onRecentSearchClick?.(query)}
-                className="rounded-full border border-brand-outline px-4 py-1.5 text-xs font-medium text-brand-secondary transition-all hover:border-brand-primary/30 hover:text-brand-primary active:scale-95"
+                className="filter-chip filter-chip-inactive cursor-pointer"
               >
                 {query}
               </button>

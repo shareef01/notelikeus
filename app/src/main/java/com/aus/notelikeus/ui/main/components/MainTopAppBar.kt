@@ -103,6 +103,7 @@ fun MainTopAppBar(
     selectedLabelId: Long?,
     onLabelSelect: (Long?) -> Unit,
     sortOrder: NoteSortOrder = NoteSortOrder.MANUAL,
+    onSortOrderCycle: () -> Unit = {},
     recentSearches: List<String> = emptyList(),
     onRecentSearchClick: (String) -> Unit = {},
     onClearRecentSearches: () -> Unit = {},
@@ -352,6 +353,10 @@ fun MainTopAppBar(
                         onLabelSelect(it)
                     },
                     sortOrder = sortOrder,
+                    onSortOrderCycle = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onSortOrderCycle()
+                    },
                     hasActiveFilters = hasActiveFilters,
                     onClearFilters = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -406,7 +411,7 @@ private fun RecentSearchRow(
             modifier = Modifier.padding(end = 8.dp)
         ) {
             Text(
-                "Clear",
+                stringResource(R.string.clear_recent_searches),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )

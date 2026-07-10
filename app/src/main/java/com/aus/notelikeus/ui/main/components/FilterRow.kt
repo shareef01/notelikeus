@@ -35,6 +35,7 @@ fun FilterRow(
     selectedLabelId: Long?,
     onLabelSelect: (Long?) -> Unit,
     sortOrder: NoteSortOrder = NoteSortOrder.MANUAL,
+    onSortOrderCycle: () -> Unit = {},
     hasActiveFilters: Boolean = false,
     onClearFilters: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -54,9 +55,8 @@ fun FilterRow(
             item {
                 PrecisionFilterChip(
                     selected = true,
-                    onClick = {},
-                    label = stringResource(sortOrderLabelRes(sortOrder)),
-                    enabled = false
+                    onClick = onSortOrderCycle,
+                    label = stringResource(sortOrderLabelRes(sortOrder))
                 )
             }
             if (hasActiveFilters) {

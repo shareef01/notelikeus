@@ -2,6 +2,7 @@ package com.aus.notelikeus.data.remote
 
 import android.util.Log
 import com.aus.notelikeus.domain.repository.SettingsRepository
+import androidx.work.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -10,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,7 +22,8 @@ private const val DEBOUNCE_MS = 2_000L
 class CloudNoteSyncCoordinator @Inject constructor(
     private val firebaseNoteSync: FirebaseNoteSync,
     private val firebaseSessionManager: FirebaseSessionManager,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val workManager: WorkManager
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingUploads = ConcurrentHashMap.newKeySet<Long>()
@@ -60,22 +63,36 @@ class CloudNoteSyncCoordinator @Inject constructor(
         val deletes = pendingDeletes.toList()
         pendingUploads.clear()
         pendingDeletes.clear()
-        if (uploads.isEmpty() && deletes.isEmpty()) return
-
-        deletes.forEach { noteId ->
-            firebaseNoteSync.deleteNote(noteId)
-                .onFailure { error ->
-                    Log.w(TAG, "Auto-sync delete failed for $noteId", error)
-                    pendingDeletes.add(noteId)
-                }
-        }
-
+        
         uploads.forEach { noteId ->
-            firebaseNoteSync.uploadNote(noteId)
-                .onFailure { error ->
-                    Log.w(TAG, "Auto-sync upload failed for $noteId", error)
-                    pendingUploads.add(noteId)
-                }
+            enqueueSyncWork(noteId, isDelete = false)
         }
+        
+        deletes.forEach { noteId ->
+            enqueueSyncWork(noteId, isDelete = true)
+        }
+    }
+
+    private fun enqueueSyncWork(noteId: Long, isDelete: Boolean) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val data = Data.Builder()
+            .putLong(SyncWorker.KEY_NOTE_ID, noteId)
+            .putBoolean(SyncWorker.KEY_IS_DELETE, isDelete)
+            .build()
+
+        val workRequest = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setConstraints(constraints)
+            .setInputData(data)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .build()
+
+        workManager.enqueueUniqueWork(
+            "sync_$noteId",
+            ExistingWorkPolicy.REPLACE,
+            workRequest
+        )
     }
 }

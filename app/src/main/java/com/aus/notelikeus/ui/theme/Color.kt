@@ -17,35 +17,44 @@ val SurfaceLight = Color(0xFFFFFFFF)
 
 val PrimaryDark = Color(0xFFFFFFFF)
 val SecondaryDark = Color(0xFFA8A8A8)
-val BackgroundDark = Color(0xFF000000) // OLED Absolute Black
-val SurfaceDark = Color(0xFF121212)
+val BackgroundDark = Color(0xFF121212) // Modern Dark (material default)
+val SurfaceDark = Color(0xFF1E1E1E)
 
-// Premium Desaturated Dark-Mode Palette
-// Muted tones designed for dark mode to prevent eye strain
-val NoteRedDark = Color(0xFF2D1616)
-val NoteOrangeDark = Color(0xFF2D2014)
-val NoteYellowDark = Color(0xFF2D2B14)
-val NoteGreenDark = Color(0xFF162D16)
-val NoteTealDark = Color(0xFF142D2B)
-val NoteBlueDark = Color(0xFF141F2D)
-val NoteDarkBlueDark = Color(0xFF181C2D)
-val NotePurpleDark = Color(0xFF20162D)
-val NotePinkDark = Color(0xFF2D1624)
-val NoteBrownDark = Color(0xFF211B14)
-val NoteGrayDark = Color(0xFF1A1A1A)
+// New Theme Bases
+val BackgroundMidnight = Color(0xFF080C14)
+val SurfaceMidnight = Color(0xFF0D121D)
+val PrimaryMidnight = Color(0xFFD4E4FF)
 
-// Muted Light-Mode Palette
-val NoteRedLight = Color(0xFFFFDADA)
-val NoteOrangeLight = Color(0xFFFFE5C0)
-val NoteYellowLight = Color(0xFFFFF9C0)
-val NoteGreenLight = Color(0xFFD4FFD4)
-val NoteTealLight = Color(0xFFD4FFF9)
-val NoteBlueLight = Color(0xFFD4E8FF)
-val NoteDarkBlueLight = Color(0xFFD4DCFF)
-val NotePurpleLight = Color(0xFFE8D4FF)
-val NotePinkLight = Color(0xFFFFD4EC)
-val NoteBrownLight = Color(0xFFE8DAC0)
-val NoteGrayLight = Color(0xFFEEEEEE)
+val BackgroundForest = Color(0xFF0A0F0A)
+val SurfaceForest = Color(0xFF121812)
+val PrimaryForest = Color(0xFFD4FFD4)
+
+// Vibrant Muted Note Palette (Modern & Visible)
+// Refactored to provide better color identification while maintaining dark mode safety
+val NoteRedDark = Color(0xFF421A1A)
+val NoteOrangeDark = Color(0xFF422B18)
+val NoteYellowDark = Color(0xFF423C18)
+val NoteGreenDark = Color(0xFF1A421A)
+val NoteTealDark = Color(0xFF18423F)
+val NoteBlueDark = Color(0xFF182B42)
+val NoteDarkBlueDark = Color(0xFF1E2242)
+val NotePurpleDark = Color(0xFF2B1A42)
+val NotePinkDark = Color(0xFF421A33)
+val NoteBrownDark = Color(0xFF33261A)
+val NoteGrayDark = Color(0xFF262626)
+
+// Modern Light Palette (Clean & Saturated)
+val NoteRedLight = Color(0xFFFFB2B2)
+val NoteOrangeLight = Color(0xFFFFD580)
+val NoteYellowLight = Color(0xFFFFF780)
+val NoteGreenLight = Color(0xFFB2FFB2)
+val NoteTealLight = Color(0xFFB2FFF0)
+val NoteBlueLight = Color(0xFFB2D8FF)
+val NoteDarkBlueLight = Color(0xFFB2BEFF)
+val NotePurpleLight = Color(0xFFD8B2FF)
+val NotePinkLight = Color(0xFFFFB2E0)
+val NoteBrownLight = Color(0xFFE0C4A8)
+val NoteGrayLight = Color(0xFFEBEBEB)
 
 /**
  * Dynamic Text Contrast Utility
@@ -53,14 +62,15 @@ val NoteGrayLight = Color(0xFFEEEEEE)
  * Light backgrounds -> Dark Gray (#121212)
  * Dark backgrounds -> Pure White (#FFFFFF)
  */
-fun Color.getContentColor(): Color {
+fun Color.getContentColor(fallback: Color = Color.White): Color {
+    if (this == Color.Transparent) return fallback
     return if (this.luminance() > 0.45f) Color(0xFF121212) else Color.White
 }
 
 data class NoteColorOption(val light: Color, val dark: Color)
 
 val NOTE_COLOR_OPTIONS: List<NoteColorOption> = listOf(
-    NoteColorOption(BackgroundLight, Color(0xFF121212)),
+    NoteColorOption(Color.Transparent, Color.Transparent), // Use theme default
     NoteColorOption(NoteRedLight, NoteRedDark),
     NoteColorOption(NoteOrangeLight, NoteOrangeDark),
     NoteColorOption(NoteYellowLight, NoteYellowDark),
@@ -78,6 +88,7 @@ fun noteColorsForTheme(isDarkTheme: Boolean): List<Color> =
     NOTE_COLOR_OPTIONS.map { if (isDarkTheme) it.dark else it.light }
 
 fun noteColorCounterpart(argb: Int): Int? {
+    if (argb == 0) return 0
     NOTE_COLOR_OPTIONS.forEach { option ->
         val lightArgb = option.light.toArgb()
         val darkArgb = option.dark.toArgb()

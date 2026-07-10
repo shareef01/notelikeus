@@ -19,10 +19,17 @@ export function relativeLuminance(argb: number): number {
 }
 
 export function contentColorForBackground(argb: number): string {
+  if (argb === 0) return 'inherit';
   return relativeLuminance(argb) > LUMINANCE_THRESHOLD ? LIGHT_TEXT : DARK_TEXT;
 }
 
-export function noteSurfaceStyle(argb: number): { backgroundColor: string; color: string } {
+export function noteSurfaceStyle(argb: number, _isDark = true): { backgroundColor: string; color: string } {
+  if (argb === 0) {
+    return {
+       backgroundColor: 'rgba(255, 255, 255, 0.05)',
+       color: 'var(--brand-primary)'
+    };
+  }
   return {
     backgroundColor: argbToCss(argb),
     color: contentColorForBackground(argb),

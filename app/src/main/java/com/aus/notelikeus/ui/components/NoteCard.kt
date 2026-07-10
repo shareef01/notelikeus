@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PushPin
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -56,13 +58,19 @@ fun NoteCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onLabelClick: ((Long) -> Unit)? = null,
+    showReorderHandle: Boolean = false,
+    reorderDragModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
     val sharedTransitionScope = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
 
     val containerColor by animateColorAsState(
-        targetValue = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color(note.color),
+        targetValue = when {
+            isSelected -> MaterialTheme.colorScheme.secondaryContainer
+            note.color == 0 -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            else -> Color(note.color)
+        },
         label = "color"
     )
 
@@ -76,16 +84,17 @@ fun NoteCard(
         label = "selection_scale"
     )
 
-    val contentColor = if (isSelected) {
-        MaterialTheme.colorScheme.onSecondaryContainer
-    } else {
-        Color(note.color).getContentColor()
+    val contentColor = when {
+        isSelected -> MaterialTheme.colorScheme.onSecondaryContainer
+        note.color == 0 -> MaterialTheme.colorScheme.onSurface
+        else -> Color(note.color).getContentColor(fallback = MaterialTheme.colorScheme.onSurface)
     }
 
     val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
     val lockedNoteLabel = stringResource(R.string.locked_note)
     val selectedLabel = stringResource(R.string.cd_selected)
-    val lockedIconLabel = stringResource(R.string.locked_note)
+    val pinnedLabel = stringResource(R.string.pinned_short)
+    val reminderLabel = stringResource(R.string.cd_reminder_set)
     val untitledLabel = stringResource(R.string.untitled)
     val noteDescription = when {
         note.isLocked -> lockedNoteLabel
@@ -93,14 +102,36 @@ fun NoteCard(
         note.content.isNotBlank() -> note.content.lineSequence().first()
         else -> untitledLabel
     }
+    val accessibilityDescription = buildString {
+        append(noteDescription)
+        if (note.isPinned) {
+            append(", ")
+            append(pinnedLabel)
+        }
+        if (note.reminderTimestamp != null) {
+            append(", ")
+            append(reminderLabel)
+        }
+        if (note.isLocked) {
+            append(", ")
+            append(lockedNoteLabel)
+        }
+        if (isSelected) {
+            append(", ")
+            append(selectedLabel)
+        }
+    }
+    val reorderLabel = stringResource(R.string.cd_reorder)
+    val contentStartPadding = if (showReorderHandle) {
+        48.dp
+    } else {
+        NoteCardContentPadding
+    }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .scale(scale)
-            .semantics(mergeDescendants = true) {
-                contentDescription = noteDescription
-            }
             .then(
                 if (sharedTransitionScope != null && animatedVisibilityScope != null) {
                     with(sharedTransitionScope) {
@@ -129,8 +160,36 @@ fun NoteCard(
         }
     ) {
         Box {
+            if (showReorderHandle) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .size(48.dp)
+                        .semantics { contentDescription = reorderLabel }
+                        .then(reorderDragModifier),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DragIndicator,
+                        contentDescription = null,
+                        tint = contentColor.copy(alpha = 0.38f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
             Column(
-                modifier = Modifier.padding(NoteCardContentPadding)
+                modifier = Modifier
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = accessibilityDescription
+                        selected = isSelected
+                    }
+                    .padding(
+                    start = contentStartPadding,
+                    top = NoteCardContentPadding,
+                    end = NoteCardContentPadding,
+                    bottom = NoteCardContentPadding
+                )
             ) {
                 if (note.isLocked) {
                     Text(
@@ -212,7 +271,8 @@ fun NoteCard(
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             note.labels.take(2).forEach { label ->
                                 val labelId = label.id
@@ -233,6 +293,14 @@ fun NoteCard(
                                         containerColor = contentColor.copy(alpha = 0.1f)
                                     ),
                                     border = null
+                                )
+                            }
+                            val overflowCount = note.labels.size - 2
+                            if (overflowCount > 0) {
+                                Text(
+                                    text = stringResource(R.string.labels_more, overflowCount),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = contentColor.copy(alpha = 0.65f)
                                 )
                             }
                         }
@@ -269,7 +337,7 @@ fun NoteCard(
                     if (note.isPinned) {
                         Icon(
                             Icons.Default.PushPin,
-                            contentDescription = stringResource(R.string.cd_pin_note),
+                            contentDescription = null,
                             tint = contentColor.copy(alpha = 0.55f),
                             modifier = Modifier.size(14.dp)
                         )
@@ -277,7 +345,7 @@ fun NoteCard(
                     if (note.reminderTimestamp != null) {
                         Icon(
                             Icons.Default.Notifications,
-                            contentDescription = stringResource(R.string.cd_reminder_set),
+                            contentDescription = null,
                             tint = contentColor.copy(alpha = 0.55f),
                             modifier = Modifier.size(14.dp)
                         )
@@ -285,7 +353,7 @@ fun NoteCard(
                     if (note.isLocked) {
                         Icon(
                             Icons.Default.Lock,
-                            contentDescription = lockedIconLabel,
+                            contentDescription = null,
                             tint = contentColor.copy(alpha = 0.5f),
                             modifier = Modifier.size(14.dp)
                         )

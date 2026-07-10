@@ -16,6 +16,7 @@ interface UiState {
   listScrolled: boolean;
   editorRoute: EditorRoute;
   authScreen: AuthMode | null;
+  labelsOpen: boolean;
   selectedNoteIds: string[];
   recentSearches: string[];
   setDrawerOpen: (open: boolean) => void;
@@ -28,6 +29,7 @@ interface UiState {
   closeEditor: () => void;
   openAuthScreen: (mode: AuthMode) => void;
   closeAuthScreen: () => void;
+  setLabelsOpen: (open: boolean) => void;
   toggleNoteSelection: (noteId: string) => void;
   clearSelection: () => void;
   toggleSelectAll: (noteIds: string[]) => void;
@@ -43,6 +45,7 @@ export const useUiStore = create<UiState>()(
       listScrolled: false,
       editorRoute: { mode: 'closed' },
       authScreen: null,
+      labelsOpen: false,
       selectedNoteIds: [],
       recentSearches: [],
       setDrawerOpen: (drawerOpen) =>
@@ -62,6 +65,7 @@ export const useUiStore = create<UiState>()(
       openAuthScreen: (authScreen) => set({ authScreen, drawerOpen: false }),
       closeAuthScreen: () =>
         set((state) => (state.authScreen === null ? state : { authScreen: null })),
+      setLabelsOpen: (labelsOpen) => set({ labelsOpen, drawerOpen: false }),
       toggleNoteSelection: (noteId) =>
         set((state) => {
           const selected = state.selectedNoteIds.includes(noteId)
