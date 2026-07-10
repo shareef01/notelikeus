@@ -27,3 +27,4 @@ signing.properties
 .agents/
 web/node_modules/
 web/dist/
+/node_modules/
