@@ -181,6 +181,17 @@ export function MainScreen() {
     filteredNotes.length > 0 &&
     filteredNotes.every((note) => selectedNoteIds.includes(note.id));
 
+  const selectedNoteModels = useMemo(
+    () =>
+      selectedNoteIds
+        .map((id) => notes.find((note) => note.id === id))
+        .filter((note): note is Note => note != null),
+    [notes, selectedNoteIds],
+  );
+
+  const selectionAllPinned =
+    selectedNoteModels.length > 0 && selectedNoteModels.every((note) => note.isPinned);
+
   const allowReorder =
     filters.filter === 'active' &&
     (filters.sortOrder ?? 'manual') === 'manual' &&
@@ -283,27 +294,16 @@ export function MainScreen() {
     );
   };
 
-  const handleBulkPin = async () => {
+  const handleBulkPinToggle = async () => {
     const snapshots = getSelectedSnapshots();
     if (snapshots.length === 0) return;
+    const pin = !selectionAllPinned;
     for (const note of snapshots) {
-      await saveNote({ ...note, isPinned: true, timestamp: Date.now() });
+      await saveNote({ ...note, isPinned: pin, timestamp: Date.now() });
     }
     clearSelection();
     useToastStore.getState().show(
-      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} pinned`,
-    );
-  };
-
-  const handleBulkUnpin = async () => {
-    const snapshots = getSelectedSnapshots();
-    if (snapshots.length === 0) return;
-    for (const note of snapshots) {
-      await saveNote({ ...note, isPinned: false, timestamp: Date.now() });
-    }
-    clearSelection();
-    useToastStore.getState().show(
-      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} unpinned`,
+      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} ${pin ? 'pinned' : 'unpinned'}`,
     );
   };
 
@@ -556,8 +556,8 @@ export function MainScreen() {
           allFilteredSelected={allFilteredSelected}
           onClearSelection={clearSelection}
           onToggleSelectAll={() => toggleSelectAll(filteredNoteIds)}
-          onBulkPin={() => void handleBulkPin()}
-          onBulkUnpin={() => void handleBulkUnpin()}
+          selectionAllPinned={selectionAllPinned}
+          onBulkPinToggle={() => void handleBulkPinToggle()}
           onBulkArchive={() => void handleBulkArchive()}
           onBulkRestore={() => void handleBulkRestore()}
           onBulkTrash={() => void handleBulkTrash()}
@@ -629,6 +629,14 @@ export function MainScreen() {
                         Create account
                       </button>
                     </div>
+                  ) : emptyState.showClearFilters ? (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5"
+                    >
+                      Clear filters
+                    </button>
                   ) : undefined
                 }
 
@@ -834,6 +842,8 @@ function getEmptyState(
 
   showSignIn?: boolean;
 
+  showClearFilters?: boolean;
+
 } {
 
   if (hasSearch) {
@@ -845,6 +855,8 @@ function getEmptyState(
       subtitle: 'Try a different search term or clear filters',
 
       icon: 'brand',
+
+      showClearFilters: true,
 
     };
 
@@ -859,6 +871,8 @@ function getEmptyState(
       subtitle: 'Try another color or label',
 
       icon: 'brand',
+
+      showClearFilters: true,
 
     };
 
