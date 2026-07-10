@@ -2,7 +2,10 @@ package com.aus.notelikeus.data.remote
 
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -35,6 +38,9 @@ class FirebaseNoteSync @Inject constructor(
                     )
                 }
                 batch.commit().await()
+                chunk.forEach { note ->
+                    deleteLegacyDocumentIfNeeded(uid, note)
+                }
             }
 
             updateSyncMeta(uid, notes.size)
@@ -56,6 +62,7 @@ class FirebaseNoteSync @Inject constructor(
                 .document(note.cloudDocumentId())
                 .set(note.toCloudMap(), SetOptions.merge())
                 .await()
+            deleteLegacyDocumentIfNeeded(uid, note)
             Result.success(Unit)
         } catch (error: Throwable) {
             Result.failure(error)
@@ -71,6 +78,9 @@ class FirebaseNoteSync @Inject constructor(
                 .document(documentId)
                 .delete()
                 .await()
+            note?.id?.let { localId ->
+                deleteLegacyDocumentIfNeeded(uid, note.copy(id = localId))
+            }
             Result.success(Unit)
         } catch (error: Throwable) {
             Result.failure(error)
@@ -81,69 +91,27 @@ class FirebaseNoteSync @Inject constructor(
         return try {
             val uid = sessionManager.ensureGoogleSignedIn().getOrThrow()
             val snapshot = userNotesCollection(uid).get().await()
-
-            val labelMap = noteRepository.getAllLabelsSnapshot()
-                .associateBy { it.name.lowercase() }
-                .toMutableMap()
-
-            suspend fun ensureLabel(name: String): Label {
-                val key = name.trim().lowercase()
-                labelMap[key]?.let { return it }
-                val id = noteRepository.insertLabel(Label(name = name.trim()))
-                val label = Label(id = id, name = name.trim())
-                labelMap[key] = label
-                return label
-            }
-
-            val cloudIds = mutableSetOf<String>()
-            var changes = 0
-
-            for (document in snapshot.documents) {
-                val data = document.data ?: continue
-                val cloudId = resolveCloudIdFromDocument(document.id, data)
-                cloudIds.add(cloudId)
-
-                val legacyLocalId = document.id.toLongOrNull()
-                    ?: (data["localId"] as? Number)?.toLong()
-                val localNote = noteRepository.getNoteByCloudId(cloudId)
-                    ?: legacyLocalId?.let { noteRepository.getNoteById(it) }
-
-                val resolvedLocalId = localNote?.id ?: legacyLocalId ?: 0L
-                val cloudNote = data.toCloudNote(resolvedLocalId, cloudId) { name ->
-                    ensureLabel(name)
-                }
-
-                when {
-                    localNote == null -> {
-                        noteRepository.insertNoteWithResult(cloudNote)
-                        changes++
-                    }
-                    localNote.isLocked -> Unit
-                    cloudNote.timestamp >= localNote.timestamp -> {
-                        noteRepository.updateNote(cloudNote)
-                        changes++
-                    }
-                    else -> {
-                        uploadNote(localNote.id!!)
-                        changes++
-                    }
-                }
-            }
-
-            val localNotes = noteRepository.getAllNotesForBackup().filter { it.isCloudSyncEligible() }
-            for (localNote in localNotes) {
-                val noteId = localNote.id ?: continue
-                if (localNote.cloudDocumentId() !in cloudIds) {
-                    uploadNote(noteId)
-                    changes++
-                }
-            }
-
-            updateSyncMeta(uid, localNotes.size)
+            val changes = mergeRemoteDocuments(
+                documents = snapshot.documents,
+                knownCloudIds = null,
+                uploadMissingLocals = true
+            )
+            updateSyncMeta(uid, noteRepository.getAllNotesForBackup().count { it.isCloudSyncEligible() })
             Result.success(changes)
         } catch (error: Throwable) {
             Result.failure(error)
         }
+    }
+
+    suspend fun applyRealtimeSnapshot(
+        documents: List<DocumentSnapshot>,
+        knownCloudIds: MutableSet<String>
+    ): Int {
+        return mergeRemoteDocuments(
+            documents = documents,
+            knownCloudIds = knownCloudIds,
+            uploadMissingLocals = false
+        )
     }
 
     suspend fun deleteAllCloudData(): Result<Int> {
@@ -168,6 +136,99 @@ class FirebaseNoteSync @Inject constructor(
             Result.success(deleted)
         } catch (error: Throwable) {
             Result.failure(error)
+        }
+    }
+
+    private suspend fun mergeRemoteDocuments(
+        documents: List<DocumentSnapshot>,
+        knownCloudIds: MutableSet<String>?,
+        uploadMissingLocals: Boolean
+    ): Int {
+        val labelMap = noteRepository.getAllLabelsSnapshot()
+            .associateBy { it.name.lowercase() }
+            .toMutableMap()
+
+        suspend fun ensureLabel(name: String): Label {
+            val key = name.trim().lowercase()
+            labelMap[key]?.let { return it }
+            val id = noteRepository.insertLabel(Label(name = name.trim()))
+            val label = Label(id = id, name = name.trim())
+            labelMap[key] = label
+            return label
+        }
+
+        val currentCloudIds = mutableSetOf<String>()
+        var changes = 0
+
+        for (document in documents) {
+            val data = document.data ?: continue
+            val cloudId = resolveCloudIdFromDocument(document.id, data)
+            currentCloudIds.add(cloudId)
+
+            val legacyLocalId = document.id.toLongOrNull()
+                ?: (data["localId"] as? Number)?.toLong()
+            val localNote = noteRepository.getNoteByCloudId(cloudId)
+                ?: legacyLocalId?.let { noteRepository.getNoteById(it) }
+
+            val resolvedLocalId = localNote?.id ?: legacyLocalId ?: 0L
+            val cloudNote = data.toCloudNote(resolvedLocalId, cloudId) { name ->
+                ensureLabel(name)
+            }
+
+            when {
+                localNote == null -> {
+                    noteRepository.insertNoteWithResult(cloudNote)
+                    changes++
+                }
+                localNote.isLocked -> Unit
+                cloudNote.timestamp >= localNote.timestamp -> {
+                    noteRepository.updateNote(cloudNote)
+                    changes++
+                }
+                uploadMissingLocals -> {
+                    uploadNote(localNote.id!!)
+                    changes++
+                }
+            }
+        }
+
+        if (knownCloudIds != null) {
+            if (knownCloudIds.isNotEmpty()) {
+                val removedCloudIds = knownCloudIds - currentCloudIds
+                for (cloudId in removedCloudIds) {
+                    val localNote = noteRepository.getNoteByCloudId(cloudId) ?: continue
+                    if (localNote.isLocked) continue
+                    noteRepository.deleteNote(localNote)
+                    changes++
+                }
+            }
+            knownCloudIds.clear()
+            knownCloudIds.addAll(currentCloudIds)
+        }
+
+        if (uploadMissingLocals) {
+            val localNotes = noteRepository.getAllNotesForBackup().filter { it.isCloudSyncEligible() }
+            for (localNote in localNotes) {
+                val noteId = localNote.id ?: continue
+                if (localNote.cloudDocumentId() !in currentCloudIds) {
+                    uploadNote(noteId)
+                    changes++
+                }
+            }
+        }
+
+        return changes
+    }
+
+    private suspend fun deleteLegacyDocumentIfNeeded(uid: String, note: com.aus.notelikeus.domain.model.Note) {
+        val noteId = note.id ?: return
+        val legacyDocId = noteId.toString()
+        val cloudDocId = note.cloudDocumentId()
+        if (legacyDocId == cloudDocId) return
+        try {
+            userNotesCollection(uid).document(legacyDocId).delete().await()
+        } catch (_: Exception) {
+            // Best-effort cleanup of pre-cloudId Firestore documents.
         }
     }
 
