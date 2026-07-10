@@ -11,6 +11,7 @@ import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
 import com.aus.notelikeus.data.remote.FirebaseNoteSync
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
+import com.aus.notelikeus.data.remote.FirestoreNotesRealtimeSync
 import com.aus.notelikeus.data.remote.GoogleSignInHelper
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
@@ -64,7 +65,8 @@ class MainViewModelTest {
             mockk<FirebaseSessionManager>(relaxed = true),
             mockk<FirebaseNoteSync>(relaxed = true),
             mockk<GoogleSignInHelper>(relaxed = true),
-            mockk<CloudNoteSyncCoordinator>(relaxed = true)
+            mockk<CloudNoteSyncCoordinator>(relaxed = true),
+            mockk<FirestoreNotesRealtimeSync>(relaxed = true)
         )
     }
 
