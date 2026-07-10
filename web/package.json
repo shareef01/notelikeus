@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
     "deploy": "npm run build && firebase deploy --only hosting,firestore:rules"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
+    "vitest": "^3.2.4",
     "vite-plugin-pwa": "^0.21.2",
     "workbox-expiration": "^7.4.1",
     "workbox-precaching": "^7.4.1",

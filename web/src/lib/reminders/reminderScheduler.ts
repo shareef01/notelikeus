@@ -19,14 +19,19 @@ async function postRemindersToServiceWorker(reminders: SwReminder[]) {
   }
 }
 
-function buildSwReminders(notes: Note[]): SwReminder[] {
+export function notesEligibleForReminders(notes: Note[]): Note[] {
   const now = Date.now();
-  return notes
-    .filter(
-      (note) =>
-        note.reminderTimestamp != null && !note.isTrashed && note.reminderTimestamp > now,
-    )
-    .map((note) => ({
+  return notes.filter(
+    (note) =>
+      !note.isLocked &&
+      note.reminderTimestamp != null &&
+      !note.isTrashed &&
+      note.reminderTimestamp > now,
+  );
+}
+
+function buildSwReminders(notes: Note[]): SwReminder[] {
+  return notesEligibleForReminders(notes).map((note) => ({
       noteId: note.id,
       title: note.title.trim() || 'Note reminder',
       body: note.content.trim() || 'You have a note reminder',
@@ -64,9 +69,11 @@ export function cancelNoteReminder(noteId: string) {
   }
 }
 
-export function scheduleNoteReminder(note: Pick<Note, 'id' | 'title' | 'content' | 'reminderTimestamp'>) {
+export function scheduleNoteReminder(
+  note: Pick<Note, 'id' | 'title' | 'content' | 'reminderTimestamp' | 'isLocked' | 'isTrashed'>,
+) {
   cancelNoteReminder(note.id);
-  if (note.reminderTimestamp == null) return;
+  if (note.isLocked || note.isTrashed || note.reminderTimestamp == null) return;
 
   const delay = note.reminderTimestamp - Date.now();
   if (delay <= 0) return;
@@ -81,12 +88,12 @@ export function scheduleNoteReminder(note: Pick<Note, 'id' | 'title' | 'content'
 
 export function rescheduleAllReminders(notes: Note[]) {
   for (const noteId of timers.keys()) {
-    if (!notes.some((note) => note.id === noteId && note.reminderTimestamp != null)) {
+    if (!notes.some((note) => note.id === noteId && note.reminderTimestamp != null && !note.isLocked)) {
       cancelNoteReminder(noteId);
     }
   }
   for (const note of notes) {
-    if (note.reminderTimestamp != null && !note.isTrashed) {
+    if (note.reminderTimestamp != null && !note.isTrashed && !note.isLocked) {
       scheduleNoteReminder(note);
     }
   }
