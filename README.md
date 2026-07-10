@@ -112,7 +112,7 @@ The editor hides markers while typing (WYSIWYG). Note cards render formatted tex
 
 ## Backup format
 
-JSON v2 files (`notelikeus_backup_YYYYMMDD.json`) include notes, labels, and checklists. Import is append-only and matches labels by name.
+JSON v3 files (`notelikeus_backup_YYYYMMDD.json`) include notes, labels, and checklists. Locked notes are exported with redacted content. Import is append-only and matches labels by name.
 
 ## Release builds
 
