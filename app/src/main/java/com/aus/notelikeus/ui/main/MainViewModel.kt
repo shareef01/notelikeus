@@ -17,6 +17,7 @@ import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
 import com.aus.notelikeus.data.remote.FirebaseNoteSync
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
+import com.aus.notelikeus.data.remote.FirestoreNotesRealtimeSync
 import com.aus.notelikeus.data.remote.GoogleSignInHelper
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
@@ -84,7 +85,8 @@ class MainViewModel @Inject constructor(
     private val firebaseSessionManager: FirebaseSessionManager,
     private val firebaseNoteSync: FirebaseNoteSync,
     private val googleSignInHelper: GoogleSignInHelper,
-    private val cloudNoteSyncCoordinator: CloudNoteSyncCoordinator
+    private val cloudNoteSyncCoordinator: CloudNoteSyncCoordinator,
+    private val firestoreNotesRealtimeSync: FirestoreNotesRealtimeSync
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(MainState())
@@ -103,6 +105,25 @@ class MainViewModel @Inject constructor(
         setupSearchOptimization()
         refreshCloudAccount()
         loadRecentSearches()
+        observeCloudRealtimeSync()
+    }
+
+    private fun observeCloudRealtimeSync() {
+        combine(
+            _state.map { it.isCloudAutoSyncEnabled }.distinctUntilChanged(),
+            _state.map { it.cloudAccount.isGoogleAccount to it.cloudAccount.userId }.distinctUntilChanged()
+        ) { autoSync, account ->
+            autoSync to account
+        }.onEach { (autoSync, account) ->
+            val (isGoogleAccount, userId) = account
+            if (autoSync && isGoogleAccount && userId != null) {
+                firestoreNotesRealtimeSync.start(userId) {
+                    _state.update { it.copy(listRevision = it.listRevision + 1) }
+                }
+            } else {
+                firestoreNotesRealtimeSync.stop()
+            }
+        }.launchIn(viewModelScope)
     }
 
     private fun refreshCloudAccount() {
@@ -110,6 +131,7 @@ class MainViewModel @Inject constructor(
         _state.update {
             it.copy(
                 cloudAccount = CloudAccount(
+                    userId = account.userId,
                     email = account.email,
                     isGoogleAccount = account.isGoogleAccount,
                     isAnonymous = account.isAnonymous
