@@ -1,6 +1,7 @@
 import type { ChecklistItem } from './checklist';
 import type { Label } from './label';
 import type { Attachment } from './attachment';
+import { ensureCloudId } from '@/lib/cloudIds';
 import { noteColorsMatch } from '@/theme/colors';
 
 /**
@@ -8,10 +9,12 @@ import { noteColorsMatch } from '@/theme/colors';
  * `timestamp` is the conflict-resolution clock (Android uses this, not `updatedAt`).
  */
 export interface Note {
-  /** Firestore document id (string form of Android localId). */
+  /** Local UI key (string form of `localId`). */
   id: string;
   /** Numeric local id shared with Android (`localId` in cloud documents). */
   localId: number;
+  /** Stable Firestore document id for cross-device sync. */
+  cloudId: string;
   title: string;
   content: string;
   timestamp: number;
@@ -44,7 +47,9 @@ export function isCloudSyncEligible(note: Note): boolean {
   return !note.isLocked;
 }
 
-export function createEmptyNote(partial: Partial<Note> & Pick<Note, 'localId' | 'id'>): Note {
+export function createEmptyNote(
+  partial: Partial<Note> & Pick<Note, 'localId' | 'id'>,
+): Note {
   const now = Date.now();
   return {
     title: '',
@@ -63,7 +68,14 @@ export function createEmptyNote(partial: Partial<Note> & Pick<Note, 'localId' | 
     ...partial,
     id: partial.id,
     localId: partial.localId,
+    cloudId: ensureCloudId(partial.cloudId),
   };
+}
+
+export function ensureNoteCloudIds(notes: Note[]): Note[] {
+  return notes.map((note) =>
+    note.cloudId ? note : { ...note, cloudId: ensureCloudId(note.cloudId) },
+  );
 }
 
 export function allocateLocalNoteId(existing: Note[]): number {

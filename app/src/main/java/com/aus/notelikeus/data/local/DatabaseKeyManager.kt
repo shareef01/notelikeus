@@ -71,8 +71,7 @@ object PlaintextDatabaseMigrator {
         when {
             canOpenEncrypted(databaseFile, passphrase) -> return
             else -> {
-                // Corrupt or unknown format — remove so Room can recreate.
-                deleteDatabaseFiles(context, databaseName)
+                quarantineCorruptDatabase(context, databaseName)
                 return
             }
         }
@@ -109,6 +108,18 @@ object PlaintextDatabaseMigrator {
     } catch (_: Exception) {
         false
     }
+  }
+
+  private fun quarantineCorruptDatabase(context: Context, databaseName: String) {
+    val databaseFile = context.getDatabasePath(databaseName)
+    if (!databaseFile.exists()) return
+    val quarantined = File(
+        databaseFile.parent,
+        "$databaseName.corrupt.${System.currentTimeMillis()}"
+    )
+    databaseFile.renameTo(quarantined)
+    File(databaseFile.parent, "$databaseName-shm").delete()
+    File(databaseFile.parent, "$databaseName-wal").delete()
   }
 
   private fun deleteDatabaseFiles(context: Context, databaseName: String) {

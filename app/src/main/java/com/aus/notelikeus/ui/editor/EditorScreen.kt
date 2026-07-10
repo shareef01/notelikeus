@@ -26,6 +26,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.toArgb
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import android.Manifest
 import android.app.AlarmManager
 import android.content.Intent
@@ -165,6 +168,18 @@ fun EditorScreen(
     val showLockOverlay = state.isNoteLoaded && state.isLocked && !state.isAccessGranted
     val imeVisible = WindowInsets.isImeVisible
     var hasPromptedLockAuth by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, state.isLocked) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.revokeAccessIfLocked()
+                hasPromptedLockAuth = false
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(showLockOverlay) {
         if (showLockOverlay && !hasPromptedLockAuth) {

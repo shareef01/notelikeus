@@ -55,9 +55,11 @@ import { useUiStore } from '@/store/uiStore';
 import type { Note, NoteFilter } from '@/types/note';
 
 import { useIsDesktop } from '@/hooks/useMediaQuery';
-import { EditorScreen } from '@/screens/EditorScreen';
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+const LazyEditorScreen = lazy(() =>
+  import('@/screens/EditorScreen').then((module) => ({ default: module.EditorScreen })),
+);
 
 
 
@@ -688,7 +690,9 @@ export function MainScreen() {
 
         {desktopEditor && (
           <div className="relative flex-1 bg-true-surface animate-in slide-in-from-right duration-300">
-             <EditorScreen route={desktopEditor} />
+             <Suspense fallback={null}>
+               <LazyEditorScreen route={desktopEditor} />
+             </Suspense>
           </div>
         )}
       </div>
