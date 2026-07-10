@@ -12,7 +12,6 @@ import { createChecklistItem, sortChecklistItems } from '@/types/checklist';
 import type { Label } from '@/types/label';
 import { allocateLocalNoteId } from '@/types/note';
 import { labelFromName } from '@/types/label';
-import { noteColorsForTheme } from '@/theme/colors';
 import { cancelNoteReminder, scheduleNoteReminder } from '@/lib/reminders/reminderScheduler';
 import { processSmartText, type TextEdit } from '@/lib/text/smartTextProcessor';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -51,8 +50,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     if (loadedRouteRef.current === noteId) return;
 
     if (noteId === 'new') {
-      const defaultColor = noteColorsForTheme(true)[0] ?? DEFAULT_EDITOR_COLOR;
-      const blank = createBlankEditorState(defaultColor, nextNotePosition());
+      const blank = createBlankEditorState(DEFAULT_EDITOR_COLOR, nextNotePosition());
       setState(blank);
       lastContentEditRef.current = { text: '', selectionStart: 0, selectionEnd: 0 };
       loadedRouteRef.current = noteId;

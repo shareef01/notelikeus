@@ -14,18 +14,22 @@ object SmartTextProcessor {
         val structureChanged: Boolean = false
     )
 
+    private val numberedListRegex = Regex("""^(\d+)\.\s""")
+
     fun process(current: TextFieldValue, previous: TextFieldValue): ProcessingResult {
         // Only process if user added a character or pressed enter
         if (current.text.length <= previous.text.length) return ProcessingResult(current)
         
         val addedText = current.text.substring(previous.selection.start, current.selection.start)
         
-        // 1. Auto-List Detection (* or - at start of line)
+        // 1. Auto-List Detection (* or - or 1. at start of line)
         if (addedText == " ") {
             val lineStart = current.text.lastIndexOf('\n', startIndex = current.selection.start - 2).let {
                 if (it == -1) 0 else it + 1
             }
             val linePrefix = current.text.substring(lineStart, current.selection.start)
+            
+            // Bullet conversion
             if (linePrefix == "* " || linePrefix == "- ") {
                 val newText = current.text.replaceRange(lineStart, current.selection.start, "• ")
                 return ProcessingResult(
@@ -36,7 +40,7 @@ object SmartTextProcessor {
                 )
             }
 
-            // 3. Auto-Checklist Detection ([] or [ ] at start of line)
+            // Checklist conversion trigger
             if (linePrefix == "[] " || linePrefix == "[ ] ") {
                 return ProcessingResult(current, structureChanged = true)
             }
@@ -58,6 +62,20 @@ object SmartTextProcessor {
                 }
                 val newText = current.text.replaceRange(current.selection.start, current.selection.start, "• ")
                 return ProcessingResult(current.copy(text = newText, selection = TextRange(current.selection.start + 2)))
+            }
+
+            // Numbered List continuation
+            val numberedMatch = numberedListRegex.find(lastLine)
+            if (numberedMatch != null) {
+                if (lastLine.trim() == "${numberedMatch.groupValues[1]}.") {
+                    // Smart Exit: Empty numbered item, remove prefix
+                    val newText = current.text.replaceRange(lastLineStart, current.selection.start, "\n")
+                    return ProcessingResult(current.copy(text = newText, selection = TextRange(lastLineStart + 1)))
+                }
+                val nextNum = numberedMatch.groupValues[1].toInt() + 1
+                val prefix = "$nextNum. "
+                val newText = current.text.replaceRange(current.selection.start, current.selection.start, prefix)
+                return ProcessingResult(current.copy(text = newText, selection = TextRange(current.selection.start + prefix.length)))
             }
         }
 

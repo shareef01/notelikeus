@@ -1,31 +1,26 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+export type AppTheme = 'auto' | 'light' | 'dark' | 'true_dark' | 'midnight' | 'forest';
+
 interface SettingsState {
   cloudAutoSyncEnabled: boolean;
-  useMonochromeTheme: boolean;
-  trueDarkMode: boolean;
+  appTheme: AppTheme;
   setCloudAutoSyncEnabled: (enabled: boolean) => void;
-  setUseMonochromeTheme: (enabled: boolean) => void;
-  setTrueDarkMode: (enabled: boolean) => void;
+  setAppTheme: (theme: AppTheme) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       cloudAutoSyncEnabled: true,
-      useMonochromeTheme: true,
-      trueDarkMode: true,
+      appTheme: 'true_dark',
       setCloudAutoSyncEnabled: (cloudAutoSyncEnabled) =>
         set((state) =>
           state.cloudAutoSyncEnabled === cloudAutoSyncEnabled ? state : { cloudAutoSyncEnabled },
         ),
-      setUseMonochromeTheme: (useMonochromeTheme) =>
-        set((state) =>
-          state.useMonochromeTheme === useMonochromeTheme ? state : { useMonochromeTheme },
-        ),
-      setTrueDarkMode: (trueDarkMode) =>
-        set((state) => (state.trueDarkMode === trueDarkMode ? state : { trueDarkMode })),
+      setAppTheme: (appTheme) =>
+        set((state) => (state.appTheme === appTheme ? state : { appTheme })),
     }),
     { name: 'notelikeus-settings', skipHydration: true },
   ),

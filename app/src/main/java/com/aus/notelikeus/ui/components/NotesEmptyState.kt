@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FilterAltOff
@@ -20,7 +19,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -34,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.R
+import com.aus.notelikeus.ui.main.components.PrecisionFilterChip
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 
 private val EmptyStateIconSize = 72.dp
@@ -121,7 +120,7 @@ fun NotesEmptyState(
             if (recentSearches.isNotEmpty() && !showCreateButton) {
                 Spacer(modifier = Modifier.height(32.dp))
                 Text(
-                    "Recent searches",
+                    stringResource(R.string.recent_searches),
                     style = MaterialTheme.typography.labelMedium,
                     color = mutedTextColor.copy(alpha = 0.5f)
                 )
@@ -132,10 +131,10 @@ fun NotesEmptyState(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     recentSearches.forEach { query ->
-                        SuggestionChip(
+                        PrecisionFilterChip(
+                            selected = false,
                             onClick = { onRecentSearchClick(query) },
-                            label = { Text(query) },
-                            shape = CircleShape,
+                            label = query,
                             modifier = Modifier.padding(horizontal = 4.dp)
                         )
                     }

@@ -12,7 +12,7 @@ import { EmptyTrashDialog } from '@/components/notes/EmptyTrashDialog';
 import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
 import { TrashBanner } from '@/components/notes/TrashBanner';
 
-import { ProfileSheet } from '@/components/settings/ProfileSheet';
+import { ProfileSheet, THEME_ORDER } from '@/components/settings/ProfileSheet';
 
 import { PrivacyPolicyDialog } from '@/components/settings/PrivacyPolicyDialog';
 
@@ -53,6 +53,9 @@ import { useToastStore } from '@/store/toastStore';
 import { useUiStore } from '@/store/uiStore';
 
 import type { Note, NoteFilter } from '@/types/note';
+
+import { useIsDesktop } from '@/hooks/useMediaQuery';
+import { EditorScreen } from '@/screens/EditorScreen';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 
@@ -96,6 +99,7 @@ export function MainScreen() {
 
   const openNote = useUiStore((s) => s.openNote);
   const openAuthScreen = useUiStore((s) => s.openAuthScreen);
+  const setLabelsOpen = useUiStore((s) => s.setLabelsOpen);
   const recentSearches = useUiStore((s) => s.recentSearches);
   const addRecentSearch = useUiStore((s) => s.addRecentSearch);
   const clearRecentSearches = useUiStore((s) => s.clearRecentSearches);
@@ -114,18 +118,9 @@ export function MainScreen() {
 
 
   const cloudAutoSyncEnabled = useSettingsStore((s) => s.cloudAutoSyncEnabled);
-
   const setCloudAutoSyncEnabled = useSettingsStore((s) => s.setCloudAutoSyncEnabled);
-
-  const useMonochromeTheme = useSettingsStore((s) => s.useMonochromeTheme);
-
-  const setUseMonochromeTheme = useSettingsStore((s) => s.setUseMonochromeTheme);
-
-  const trueDarkMode = useSettingsStore((s) => s.trueDarkMode);
-
-  const setTrueDarkMode = useSettingsStore((s) => s.setTrueDarkMode);
-
-
+  const appTheme = useSettingsStore((s) => s.appTheme);
+  const setAppTheme = useSettingsStore((s) => s.setAppTheme);
 
   const cloud = useCloudSync();
 
@@ -482,10 +477,11 @@ export function MainScreen() {
 
   const emptyState = getEmptyState(filters.filter, hasActiveFilters, Boolean(filters.searchQuery));
 
-
+  const isDesktop = useIsDesktop();
+  const editorRoute = useUiStore((s) => s.editorRoute);
+  const desktopEditor = isDesktop && editorRoute.mode !== 'closed' ? editorRoute : null;
 
   return (
-
     <div className="flex min-h-screen w-full bg-true-black lg:mx-auto lg:max-w-shell">
 
       <SideDrawer
@@ -504,6 +500,8 @@ export function MainScreen() {
 
         onSignOut={() => setShowSignOutConfirm(true)}
 
+        onEditLabels={() => setLabelsOpen(true)}
+
         navCounts={navCounts}
 
         onOpenSettings={() => setShowProfile(true)}
@@ -512,11 +510,10 @@ export function MainScreen() {
 
 
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-
-        <TopBar
-
-          searchQuery={filters.searchQuery ?? ''}
+      <div className="flex min-h-screen min-w-0 flex-1">
+        <div className={`flex flex-col min-w-0 flex-1 transition-all duration-300 ${isDesktop && editorRoute.mode !== 'closed' ? 'max-w-[400px] border-r border-brand-outline' : ''}`}>
+          <TopBar
+            searchQuery={filters.searchQuery ?? ''}
 
           onSearchQueryChange={setSearchQuery}
 
@@ -640,7 +637,7 @@ export function MainScreen() {
             ) : (
               <NoteStaggeredGrid
                 notes={filteredNotes}
-                columns={effectiveColumns}
+                columns={desktopEditor ? 1 : effectiveColumns}
                 filter={filters.filter}
                 onNoteClick={handleNoteClick}
                 onNoteLongPress={handleNoteLongPress}
@@ -686,9 +683,14 @@ export function MainScreen() {
             <AddIcon size={28} />
 
           </button>
-
         ) : null}
+        </div>
 
+        {desktopEditor && (
+          <div className="relative flex-1 bg-true-surface animate-in slide-in-from-right duration-300">
+             <EditorScreen route={desktopEditor} />
+          </div>
+        )}
       </div>
 
 
@@ -702,21 +704,15 @@ export function MainScreen() {
         noteCount={notes.length}
 
         viewColumns={viewColumns}
-
         sortOrder={filters.sortOrder ?? 'manual'}
-
         onViewColumnsCycle={cycleViewColumns}
-
         onSortOrderCycle={cycleSortOrder}
-
-        useMonochromeTheme={useMonochromeTheme}
-
-        onMonochromeThemeChange={setUseMonochromeTheme}
-
-        trueDarkMode={trueDarkMode}
-
-        onTrueDarkModeChange={setTrueDarkMode}
-
+        appTheme={appTheme}
+        onAppThemeCycle={() => {
+            const currentIdx = THEME_ORDER.indexOf(appTheme);
+            const next = THEME_ORDER[(currentIdx + 1) % THEME_ORDER.length];
+            setAppTheme(next);
+        }}
         cloudAutoSyncEnabled={cloudAutoSyncEnabled}
 
         onCloudAutoSyncChange={setCloudAutoSyncEnabled}

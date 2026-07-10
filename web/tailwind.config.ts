@@ -49,7 +49,7 @@ const config: Config = {
       fontSize: {
         'note-title': ['18px', { lineHeight: '25px', letterSpacing: '-0.5px', fontWeight: '600' }],
         'note-body': ['14px', { lineHeight: '19.6px', letterSpacing: '0.15px', fontWeight: '400' }],
-        'section-label': ['12px', { lineHeight: '16px', letterSpacing: '0.8px', fontWeight: '600' }],
+        'section-label': ['12px', { lineHeight: '16px', letterSpacing: '1px', fontWeight: '700' }],
       },
       spacing: {
         'note-gap': '12px',
