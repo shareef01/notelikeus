@@ -67,9 +67,13 @@ class NoteBackupExporter @Inject constructor(
 
 
         root.put("notes", JSONArray().apply {
-
-            notes.forEach { put(it.toJson()) }
-
+            notes.forEach { note ->
+                if (note.isLocked) {
+                    put(note.toLockedBackupJson())
+                } else {
+                    put(note.toJson())
+                }
+            }
         })
 
 
@@ -91,9 +95,8 @@ class NoteBackupExporter @Inject constructor(
 
 
     private fun Note.toJson(): JSONObject = JSONObject().apply {
-
         put("id", id)
-
+        put("cloudId", cloudId)
         put("title", title)
 
         put("content", content)
@@ -117,7 +120,23 @@ class NoteBackupExporter @Inject constructor(
         put("labels", JSONArray().apply { labels.forEach { put(it.name) } })
 
         put("checklist", JSONArray().apply { checklist.forEach { put(it.toJson()) } })
+    }
 
+    private fun Note.toLockedBackupJson(): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("cloudId", cloudId)
+        put("isLocked", true)
+        put("title", "")
+        put("content", "")
+        put("timestamp", timestamp)
+        put("color", color)
+        put("isPinned", isPinned)
+        put("isArchived", isArchived)
+        put("isTrashed", isTrashed)
+        put("position", position)
+        reminderTimestamp?.let { put("reminderTimestamp", it) }
+        put("labels", JSONArray())
+        put("checklist", JSONArray())
     }
 
 

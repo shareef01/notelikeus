@@ -13,8 +13,13 @@ class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val noteId = intent.getLongExtra("noteId", -1L)
-        val title = intent.getStringExtra("title") ?: context.getString(R.string.reminder_default_title)
-        val content = intent.getStringExtra("content") ?: ""
+        val isLocked = intent.getBooleanExtra("isLocked", false)
+        val title = if (isLocked) {
+            context.getString(R.string.locked_note)
+        } else {
+            intent.getStringExtra("title") ?: context.getString(R.string.reminder_default_title)
+        }
+        val content = if (isLocked) "" else intent.getStringExtra("content") ?: ""
 
         NotificationChannels.createReminderChannel(context)
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

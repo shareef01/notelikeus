@@ -23,34 +23,36 @@ function applyNotes(incoming: Note[]) {
 }
 
 function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
-  const remoteIds = new Set(remoteNotes.map((note) => note.id));
+  const remoteCloudIds = new Set(remoteNotes.map((note) => note.cloudId));
   const isInitial = knownCloudIds.size === 0;
   const result = new Map<string, Note>();
 
   for (const remote of remoteNotes) {
-    const local = localNotes.find((note) => note.id === remote.id);
+    const local = localNotes.find(
+      (note) => note.cloudId === remote.cloudId || note.id === remote.id,
+    );
     if (!local || local.isLocked) {
-      result.set(remote.id, remote);
+      result.set(remote.cloudId, remote);
     } else if (local.timestamp > remote.timestamp) {
-      result.set(remote.id, local);
+      result.set(local.cloudId, local);
     } else {
-      result.set(remote.id, remote);
+      result.set(remote.cloudId, { ...remote, id: local.id, localId: local.localId });
     }
   }
 
   for (const local of localNotes) {
-    if (result.has(local.id)) continue;
+    if (result.has(local.cloudId)) continue;
     if (local.isLocked) {
-      result.set(local.id, local);
+      result.set(local.cloudId, local);
       continue;
     }
-    if (!isInitial && knownCloudIds.has(local.id) && !remoteIds.has(local.id)) {
+    if (!isInitial && knownCloudIds.has(local.cloudId) && !remoteCloudIds.has(local.cloudId)) {
       continue;
     }
-    result.set(local.id, local);
+    result.set(local.cloudId, local);
   }
 
-  knownCloudIds = remoteIds;
+  knownCloudIds = remoteCloudIds;
   return Array.from(result.values());
 }
 
@@ -58,7 +60,7 @@ function attachVisibilityRefresh(userId: string) {
   if (visibilityHandler) return;
   visibilityHandler = () => {
     if (document.visibilityState !== 'visible' || realtimeUserId !== userId) return;
-    void mergeCloudNotesOnce(userId);
+    void mergeCloudNotesOnce(userId, true);
   };
   document.addEventListener('visibilitychange', visibilityHandler);
 }
@@ -69,9 +71,9 @@ function detachVisibilityRefresh() {
   visibilityHandler = null;
 }
 
-/** One-time cloud merge when the user signs in. No live listener (avoids render storms). */
-export function mergeCloudNotesOnce(userId: string): Promise<void> {
-  if (mergedForUserId === userId && !mergeInFlight) {
+/** Merge local notes with cloud. When force=true, re-runs even after the first merge this session. */
+export function mergeCloudNotesOnce(userId: string, force = false): Promise<void> {
+  if (!force && mergedForUserId === userId && !mergeInFlight) {
     return Promise.resolve();
   }
 
@@ -86,9 +88,9 @@ export function mergeCloudNotesOnce(userId: string): Promise<void> {
 
     try {
       const localNotes = useNotesStore.getState().notes;
-      const { merged, remoteIds } = await syncNotesWithCloud(userId, localNotes);
+      const { merged, remoteCloudIds } = await syncNotesWithCloud(userId, localNotes);
       applyNotes(merged);
-      knownCloudIds = new Set(remoteIds);
+      knownCloudIds = new Set(remoteCloudIds);
       mergedForUserId = userId;
     } catch (error) {
       useNotesStore.getState().setError(

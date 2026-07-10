@@ -11,6 +11,7 @@ import { useNotesStore } from '@/store/notesStore';
 import { createChecklistItem, sortChecklistItems } from '@/types/checklist';
 import type { Label } from '@/types/label';
 import { allocateLocalNoteId } from '@/types/note';
+import { ensureCloudId } from '@/lib/cloudIds';
 import { labelFromName } from '@/types/label';
 import { cancelNoteReminder, scheduleNoteReminder } from '@/lib/reminders/reminderScheduler';
 import { processSmartText, type TextEdit } from '@/lib/text/smartTextProcessor';
@@ -41,34 +42,6 @@ export function useNoteEditor(noteId: string | 'new' | null) {
   const lastContentEditRef = useRef<TextEdit>({ text: '', selectionStart: 0, selectionEnd: 0 });
   stateRef.current = state;
 
-  useEffect(() => {
-    if (!noteId) {
-      loadedRouteRef.current = null;
-      return;
-    }
-
-    if (loadedRouteRef.current === noteId) return;
-
-    if (noteId === 'new') {
-      const blank = createBlankEditorState(DEFAULT_EDITOR_COLOR, nextNotePosition());
-      setState(blank);
-      lastContentEditRef.current = { text: '', selectionStart: 0, selectionEnd: 0 };
-      loadedRouteRef.current = noteId;
-      return;
-    }
-
-    const existing = useNotesStore.getState().notes.find((note) => note.id === noteId);
-    if (existing) {
-      setState(editorStateFromNote(existing));
-      loadedRouteRef.current = noteId;
-      lastContentEditRef.current = {
-        text: existing.content,
-        selectionStart: existing.content.length,
-        selectionEnd: existing.content.length,
-      };
-    }
-  }, [noteId, sourceTimestamp]);
-
   const persistNow = useCallback(async () => {
     const current = stateRef.current;
     if (isNoteEmpty(current)) return;
@@ -85,6 +58,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         ...working,
         id,
         localId,
+        cloudId: ensureCloudId(working.cloudId),
         position: working.position || nextNotePosition(),
       };
     }
@@ -110,10 +84,53 @@ export function useNoteEditor(noteId: string | 'new' | null) {
   }, [persistNow]);
 
   useEffect(() => {
+    if (autosaveTimer.current) {
+      clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
+    }
+
+    if (!noteId) {
+      loadedRouteRef.current = null;
+      return;
+    }
+
+    if (loadedRouteRef.current === noteId) return;
+
+    if (noteId === 'new') {
+      const blank = createBlankEditorState(DEFAULT_EDITOR_COLOR, nextNotePosition());
+      setState(blank);
+      lastContentEditRef.current = { text: '', selectionStart: 0, selectionEnd: 0 };
+      loadedRouteRef.current = noteId;
+      return;
+    }
+
+    const existing = useNotesStore.getState().notes.find((note) => note.id === noteId);
+    if (existing) {
+      setState(editorStateFromNote(existing));
+      loadedRouteRef.current = noteId;
+      lastContentEditRef.current = {
+        text: existing.content,
+        selectionStart: existing.content.length,
+        selectionEnd: existing.content.length,
+      };
+    }
+
     return () => {
-      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+      if (autosaveTimer.current) {
+        clearTimeout(autosaveTimer.current);
+        autosaveTimer.current = null;
+      }
+      void persistNow();
     };
-  }, []);
+  }, [noteId, sourceTimestamp, persistNow]);
+
+  useEffect(() => {
+    const onPageHide = () => {
+      void persistNow();
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [persistNow]);
 
   const patch = useCallback(
     (updater: (prev: EditorState) => EditorState) => {
@@ -163,12 +180,14 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     setColor: (color: number) => patch((s) => ({ ...s, color })),
     togglePin: () => patch((s) => ({ ...s, isPinned: !s.isPinned })),
     toggleArchive: () => patch((s) => ({ ...s, isArchived: !s.isArchived })),
-    toggleLock: () =>
+    toggleLock: () => {
       patch((s) => ({
         ...s,
         isLocked: !s.isLocked,
         isAccessGranted: s.isLocked ? true : s.isAccessGranted,
-      })),
+      }));
+      void persistNow();
+    },
     grantAccess: () => patch((s) => ({ ...s, isAccessGranted: true })),
     toggleLabel: (label: Label) =>
       patch((s) => {

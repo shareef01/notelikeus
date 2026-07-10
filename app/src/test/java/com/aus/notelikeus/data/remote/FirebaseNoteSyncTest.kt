@@ -79,14 +79,23 @@ class FirebaseNoteSyncTest {
     @Test
     fun `uploadNote on locked note removes it from cloud`() = runTest {
         coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
-        val locked = Note(id = 9L, title = "Secret", content = "", timestamp = 1L, color = 0, isLocked = true)
+        val cloudId = "11111111-1111-4111-8111-111111111111"
+        val locked = Note(
+            id = 9L,
+            cloudId = cloudId,
+            title = "Secret",
+            content = "",
+            timestamp = 1L,
+            color = 0,
+            isLocked = true
+        )
         coEvery { noteRepository.getNoteById(9L) } returns locked
 
         val document = mockk<DocumentReference>(relaxed = true)
         every { firestore.collection("users") } returns mockk(relaxed = true) {
             every { document("uid") } returns mockk(relaxed = true) {
                 every { collection("notes") } returns mockk(relaxed = true) {
-                    every { document("9") } returns document
+                    every { document(cloudId) } returns document
                 }
             }
         }
