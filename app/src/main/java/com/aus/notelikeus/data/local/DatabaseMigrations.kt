@@ -77,5 +77,19 @@ object DatabaseMigrations {
         }
     }
 
-    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE notes ADD COLUMN cloudId TEXT NOT NULL DEFAULT ''")
+            db.query("SELECT id FROM notes WHERE cloudId = ''").use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    val cloudId = java.util.UUID.randomUUID().toString()
+                    db.execSQL("UPDATE notes SET cloudId = '$cloudId' WHERE id = $id")
+                }
+            }
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_notes_cloudId ON notes(cloudId)")
+        }
+    }
+
+    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

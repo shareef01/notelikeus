@@ -55,6 +55,10 @@ class NoteRepositoryImpl @Inject constructor(
         return noteDao.getNoteById(id)?.toNote()
     }
 
+    override suspend fun getNoteByCloudId(cloudId: String): Note? {
+        return noteDao.getNoteByCloudId(cloudId)?.toNote()
+    }
+
     override suspend fun insertNote(note: Note) {
         insertNoteWithResult(note)
     }
@@ -164,7 +168,7 @@ class NoteRepositoryImpl @Inject constructor(
 
     private fun syncReminderForNote(note: Note) {
         val noteId = note.id ?: return
-        val shouldCancel = note.isTrashed || note.isArchived || note.reminderTimestamp == null
+        val shouldCancel = note.isTrashed || note.isArchived || note.isLocked || note.reminderTimestamp == null
         if (shouldCancel) {
             reminderScheduler.cancelReminder(noteId)
         } else {
