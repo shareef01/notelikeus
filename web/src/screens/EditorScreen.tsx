@@ -1,10 +1,16 @@
-import { ArchiveIcon, PinIcon } from '@/components/icons/Icons';
+import { ArchiveIcon, NotificationActiveIcon, NotificationIcon, PinIcon } from '@/components/icons/Icons';
 
 import { ChecklistEditor } from '@/components/editor/ChecklistEditor';
 
 import { EditorBottomBar } from '@/components/editor/EditorBottomBar';
 
 import { EditorOptionsSheet } from '@/components/editor/EditorOptionsSheet';
+
+import { LinkDialog } from '@/components/editor/LinkDialog';
+
+import { MarkdownBody } from '@/components/editor/MarkdownPreview';
+
+import { ReminderPickerDialog } from '@/components/editor/ReminderPickerDialog';
 
 import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
 
@@ -49,6 +55,12 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const { state } = editor;
 
   const [showOptions, setShowOptions] = useState(false);
+
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+
+  const [showReminderPicker, setShowReminderPicker] = useState(false);
+
+  const [contentFocused, setContentFocused] = useState(true);
 
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
@@ -237,6 +249,26 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
             type="button"
 
+            onClick={() => setShowReminderPicker(true)}
+
+            className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
+
+            aria-label="Set reminder"
+
+          >
+
+            {state.reminderTimestamp != null ? (
+              <NotificationActiveIcon size={20} className="opacity-100" />
+            ) : (
+              <NotificationIcon size={20} className="opacity-55" />
+            )}
+
+          </button>
+
+          <button
+
+            type="button"
+
             onClick={editor.togglePin}
 
             className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
@@ -355,23 +387,22 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
               }
 
-              onLink={() => {
+              onChecklist={() => editor.convertContentToChecklist()}
 
-                const url = window.prompt('Link URL');
-
-                if (!url) return;
-
-                applyFormatting((text, start, end) => wrapSelectionAsLink(text, start, end, url));
-
-              }}
+              onLink={() => setShowLinkDialog(true)}
 
             />
 
+            {contentFocused || !state.content.trim() ? (
             <textarea
 
               ref={contentRef}
 
               value={state.content}
+
+              onFocus={() => setContentFocused(true)}
+
+              onBlur={() => setContentFocused(false)}
 
               onChange={(event) => {
                 const field = event.target;
@@ -398,8 +429,20 @@ export function EditorScreen({ route }: EditorScreenProps) {
               style={{ color: contentColor }}
 
             />
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setContentFocused(true);
+                  requestAnimationFrame(() => contentRef.current?.focus());
+                }}
+                className="mt-2 w-full rounded-note text-left"
+              >
+                <MarkdownBody text={state.content} contentColor={contentColor} />
+              </button>
+            )}
 
-            {state.content.trim() ? (
+            {contentFocused && state.content.trim() ? (
 
               <button
 
@@ -417,7 +460,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
               </button>
 
-            ) : (
+            ) : contentFocused ? (
 
               <button
 
@@ -435,7 +478,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
               </button>
 
-            )}
+            ) : null}
 
           </>
 
@@ -454,6 +497,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
           isSaving={state.isSaving}
 
           contentColor={contentColor}
+
+          reminderTimestamp={state.reminderTimestamp}
 
           onMoreClick={() => setShowOptions(true)}
 
@@ -491,6 +536,29 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
         onDeleteNote={() => void handleDelete()}
 
+      />
+
+      <LinkDialog
+        open={showLinkDialog}
+        onCancel={() => setShowLinkDialog(false)}
+        onConfirm={(url) => {
+          applyFormatting((text, start, end) => wrapSelectionAsLink(text, start, end, url));
+          setShowLinkDialog(false);
+        }}
+      />
+
+      <ReminderPickerDialog
+        open={showReminderPicker}
+        initialTimestamp={state.reminderTimestamp}
+        onCancel={() => setShowReminderPicker(false)}
+        onConfirm={(timestamp) => {
+          editor.setReminderTimestamp(timestamp);
+          setShowReminderPicker(false);
+        }}
+        onRemove={() => {
+          editor.clearReminder();
+          setShowReminderPicker(false);
+        }}
       />
 
     </>,

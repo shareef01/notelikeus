@@ -1,4 +1,5 @@
 import { useLabelManagement } from '@/hooks/useLabelManagement';
+import { DeleteLabelDialog } from '@/components/labels/DeleteLabelDialog';
 import { CloseIcon, TrashIcon, AddIcon } from '@/components/icons/Icons';
 import { useState } from 'react';
 import type { Label } from '@/types/label';
@@ -16,6 +17,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
   const [newLabelName, setNewLabelName] = useState('');
   const [labelToEdit, setLabelToEdit] = useState<Label | null>(null);
   const [editName, setEditName] = useState('');
+  const [labelToDelete, setLabelToDelete] = useState<Label | null>(null);
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,7 +110,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
 
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={() => deleteLabel(label.id)}
+                      onClick={() => setLabelToDelete(label)}
                       className="flex size-10 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-red-500/10 hover:text-red-400"
                       aria-label="Delete label"
                     >
@@ -124,6 +126,18 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
           </div>
         )}
       </div>
+
+      <DeleteLabelDialog
+        open={labelToDelete != null}
+        labelName={labelToDelete?.name ?? ''}
+        onCancel={() => setLabelToDelete(null)}
+        onConfirm={() => {
+          if (labelToDelete) {
+            deleteLabel(labelToDelete.id);
+            setLabelToDelete(null);
+          }
+        }}
+      />
     </div>
   );
 }
