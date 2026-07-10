@@ -37,12 +37,12 @@ interface TopBarProps {
   allFilteredSelected?: boolean;
   onClearSelection?: () => void;
   onToggleSelectAll?: () => void;
-  onBulkPin?: () => void;
-  onBulkUnpin?: () => void;
   onBulkArchive?: () => void;
   onBulkRestore?: () => void;
   onBulkTrash?: () => void;
   onBulkPermanentDelete?: () => void;
+  selectionAllPinned?: boolean;
+  onBulkPinToggle?: () => void;
   recentSearches?: string[];
   onRecentSearchClick?: (query: string) => void;
   onClearRecentSearches?: () => void;
@@ -77,12 +77,12 @@ export function TopBar({
   allFilteredSelected = false,
   onClearSelection,
   onToggleSelectAll,
-  onBulkPin,
-  onBulkUnpin,
   onBulkArchive,
   onBulkRestore,
   onBulkTrash,
   onBulkPermanentDelete,
+  selectionAllPinned = false,
+  onBulkPinToggle,
   recentSearches = [],
   onRecentSearchClick,
   onClearRecentSearches,
@@ -118,8 +118,8 @@ export function TopBar({
             currentFilter={currentFilter}
             onClearSelection={onClearSelection}
             onToggleSelectAll={onToggleSelectAll}
-            onPin={onBulkPin}
-            onUnpin={onBulkUnpin}
+            onPinToggle={onBulkPinToggle}
+            selectionAllPinned={selectionAllPinned}
             onArchive={onBulkArchive}
             onRestore={onBulkRestore}
             onTrash={onBulkTrash}

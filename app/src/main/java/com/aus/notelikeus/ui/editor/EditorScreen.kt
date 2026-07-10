@@ -3,6 +3,7 @@ package com.aus.notelikeus.ui.editor
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +35,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import com.aus.notelikeus.domain.model.ChecklistItem
+import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.main.UndoAction
 import kotlinx.coroutines.launch
@@ -420,6 +422,7 @@ fun EditorScreen(
                     contentValue = state.contentValue,
                     content = state.content,
                     checklist = state.checklist,
+                    labels = state.labels,
                     contentColor = contentColor,
                     showFormattingToolbar = showFormattingToolbar,
                     onTitleChange = viewModel::onTitleChange,
@@ -465,6 +468,7 @@ private fun EditorTextContent(
     contentValue: TextFieldValue,
     content: String,
     checklist: List<ChecklistItem>,
+    labels: List<Label>,
     contentColor: Color,
     showFormattingToolbar: Boolean,
     onTitleChange: (String) -> Unit,
@@ -502,6 +506,36 @@ private fun EditorTextContent(
                 innerTextField()
             }
         )
+
+        if (labels.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                labels.forEach { label ->
+                    SuggestionChip(
+                        onClick = {},
+                        enabled = false,
+                        label = {
+                            Text(
+                                text = label.name,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = contentColor
+                            )
+                        },
+                        shape = CircleShape,
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = contentColor.copy(alpha = 0.12f),
+                            labelColor = contentColor,
+                            disabledContainerColor = contentColor.copy(alpha = 0.12f),
+                            disabledLabelColor = contentColor
+                        ),
+                        border = null
+                    )
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
