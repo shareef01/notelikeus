@@ -14,6 +14,7 @@ import { allocateLocalNoteId } from '@/types/note';
 import { labelFromName } from '@/types/label';
 import { noteColorsForTheme } from '@/theme/colors';
 import { cancelNoteReminder, scheduleNoteReminder } from '@/lib/reminders/reminderScheduler';
+import { processSmartText, type TextEdit } from '@/lib/text/smartTextProcessor';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const AUTOSAVE_MS = 1000;
@@ -38,6 +39,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef(state);
   const loadedRouteRef = useRef<string | null>(null);
+  const lastContentEditRef = useRef<TextEdit>({ text: '', selectionStart: 0, selectionEnd: 0 });
   stateRef.current = state;
 
   useEffect(() => {
@@ -50,7 +52,9 @@ export function useNoteEditor(noteId: string | 'new' | null) {
 
     if (noteId === 'new') {
       const defaultColor = noteColorsForTheme(true)[0] ?? DEFAULT_EDITOR_COLOR;
-      setState(createBlankEditorState(defaultColor, nextNotePosition()));
+      const blank = createBlankEditorState(defaultColor, nextNotePosition());
+      setState(blank);
+      lastContentEditRef.current = { text: '', selectionStart: 0, selectionEnd: 0 };
       loadedRouteRef.current = noteId;
       return;
     }
@@ -59,6 +63,11 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     if (existing) {
       setState(editorStateFromNote(existing));
       loadedRouteRef.current = noteId;
+      lastContentEditRef.current = {
+        text: existing.content,
+        selectionStart: existing.content.length,
+        selectionEnd: existing.content.length,
+      };
     }
   }, [noteId, sourceTimestamp]);
 
@@ -124,7 +133,35 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     state,
     allLabels,
     setTitle: (title: string) => patch((s) => ({ ...s, title })),
-    setContent: (content: string) => patch((s) => ({ ...s, content })),
+    setContent: (content: string) => {
+      lastContentEditRef.current = {
+        text: content,
+        selectionStart: content.length,
+        selectionEnd: content.length,
+      };
+      patch((s) => ({ ...s, content }));
+    },
+    setContentSmart: (
+      content: string,
+      selectionStart: number,
+      selectionEnd: number,
+    ): { selectionStart: number; selectionEnd: number; structureChanged?: boolean } => {
+      const previous = lastContentEditRef.current;
+      const current: TextEdit = { text: content, selectionStart, selectionEnd };
+      const result = processSmartText(current, previous);
+
+      if (result.structureChanged) {
+        lastContentEditRef.current = current;
+        return { selectionStart, selectionEnd, structureChanged: true };
+      }
+
+      lastContentEditRef.current = result.edit;
+      patch((s) => ({ ...s, content: result.edit.text }));
+      return {
+        selectionStart: result.edit.selectionStart,
+        selectionEnd: result.edit.selectionEnd,
+      };
+    },
     setColor: (color: number) => patch((s) => ({ ...s, color })),
     togglePin: () => patch((s) => ({ ...s, isPinned: !s.isPinned })),
     toggleArchive: () => patch((s) => ({ ...s, isArchived: !s.isArchived })),
