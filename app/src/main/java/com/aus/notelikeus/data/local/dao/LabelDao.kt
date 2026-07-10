@@ -16,6 +16,9 @@ interface LabelDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLabel(label: LabelEntity): Long
 
+    @Update
+    suspend fun updateLabel(label: LabelEntity)
+
     @Delete
     suspend fun deleteLabel(label: LabelEntity)
 

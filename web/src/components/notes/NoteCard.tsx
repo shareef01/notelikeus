@@ -1,9 +1,17 @@
-import { PinIcon } from '@/components/icons/Icons';
+import { PinIcon, DragHandleIcon } from '@/components/icons/Icons';
 import { useLongPress } from '@/hooks/useLongPress';
 import { highlightSearchText } from '@/lib/text/highlightSearch';
 import { stripMarkdownForPreview } from '@/lib/text/markdown';
 import type { Note } from '@/types/note';
 import { noteSurfaceStyle } from '@/theme/contrast';
+import type { PointerEventHandler } from 'react';
+
+export interface NoteReorderHandleProps {
+  onPointerDown: PointerEventHandler<HTMLButtonElement>;
+  onPointerMove: PointerEventHandler<HTMLButtonElement>;
+  onPointerUp: PointerEventHandler<HTMLButtonElement>;
+  onPointerCancel: PointerEventHandler<HTMLButtonElement>;
+}
 
 interface NoteCardProps {
   note: Note;
@@ -13,6 +21,8 @@ interface NoteCardProps {
   searchQuery?: string;
   isSelected?: boolean;
   onLongPress?: () => void;
+  showReorderHandle?: boolean;
+  reorderHandleProps?: NoteReorderHandleProps;
 }
 
 /**
@@ -28,6 +38,8 @@ export function NoteCard({
   searchQuery = '',
   isSelected = false,
   onLongPress,
+  showReorderHandle = false,
+  reorderHandleProps,
 }: NoteCardProps) {
   const surface = noteSurfaceStyle(note.color);
   const title = note.isLocked ? 'Locked note' : note.title || 'Untitled';
@@ -46,6 +58,13 @@ export function NoteCard({
     onClick();
   };
 
+  const statusParts = [
+    note.isPinned ? 'Pinned' : null,
+    hasReminder ? 'Reminder set' : null,
+    note.isLocked ? 'Locked note' : null,
+    isSelected ? 'Selected' : null,
+  ].filter(Boolean);
+
   return (
     <article
       role="button"
@@ -58,14 +77,27 @@ export function NoteCard({
         }
       }}
       {...(onLongPress ? longPressProps : {})}
-      className={`relative w-full cursor-pointer rounded-note p-layout-gap text-left shadow-sm transition-all duration-200 ${
+      className={`relative w-full cursor-pointer rounded-note text-left shadow-sm transition-all duration-200 ${
+        showReorderHandle ? 'pl-12 pr-layout-gap py-layout-gap' : 'p-layout-gap'
+      } ${
         isSelected
           ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-true-black'
           : 'hover:scale-[1.02] hover:shadow-md active:scale-[0.98]'
       }`}
       style={surface}
       aria-pressed={isSelected || undefined}
+      aria-label={[title, ...statusParts].join(', ')}
     >
+      {showReorderHandle && reorderHandleProps ? (
+        <button
+          type="button"
+          aria-label="Reorder note"
+          className="absolute left-0 top-1/2 flex size-11 -translate-y-1/2 cursor-grab touch-none items-center justify-center text-brand-muted/40 active:cursor-grabbing"
+          {...reorderHandleProps}
+        >
+          <DragHandleIcon size={20} />
+        </button>
+      ) : null}
       {isSelected ? (
         <div
           className="absolute right-3 top-3 flex size-6 items-center justify-center rounded-full bg-brand-primary text-xs font-bold text-true-black"
@@ -134,6 +166,11 @@ export function NoteCard({
               </span>
             ),
           )}
+          {note.labels.length > 2 ? (
+            <span className="text-[10px] font-semibold uppercase tracking-wider opacity-65">
+              +{note.labels.length - 2}
+            </span>
+          ) : null}
         </div>
       ) : null}
     </article>
