@@ -2,8 +2,68 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function optionalString(data, field, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function optionalInt(data, field) {
+      return !(field in data) || data[field] is int;
+    }
+
+    function optionalBool(data, field) {
+      return !(field in data) || data[field] is bool;
+    }
+
+    function optionalNumber(data, field) {
+      return !(field in data) || data[field] is number;
+    }
+
+    function optionalList(data, field) {
+      return !(field in data) || data[field] is list;
+    }
+
+    function lockedNoteHasNoPlaintext(data) {
+      return !('isLocked' in data)
+        || !data.isLocked
+        || (data.title.size() == 0 && data.content.size() == 0);
+    }
+
+    function validNote(data) {
+      return data.keys().hasAll(['title', 'content', 'timestamp'])
+        && data.title is string
+        && data.title.size() <= 10000
+        && data.content is string
+        && data.content.size() <= 500000
+        && data.timestamp is number
+        && data.timestamp > 0
+        && data.timestamp < 4102444800000
+        && optionalString(data, 'cloudId', 64)
+        && optionalInt(data, 'localId')
+        && optionalInt(data, 'color')
+        && optionalInt(data, 'position')
+        && optionalBool(data, 'isPinned')
+        && optionalBool(data, 'isArchived')
+        && optionalBool(data, 'isTrashed')
+        && optionalBool(data, 'isLocked')
+        && optionalNumber(data, 'reminderTimestamp')
+        && optionalList(data, 'labels')
+        && optionalList(data, 'checklist')
+        && optionalList(data, 'attachments')
+        && lockedNoteHasNoPlaintext(data);
+    }
+
+    match /users/{userId}/notes/{noteId} {
+      allow read: if isOwner(userId);
+      allow delete: if isOwner(userId);
+      allow create, update: if isOwner(userId) && validNote(request.resource.data);
+    }
+
+    match /users/{userId}/_meta/sync {
+      allow read, write: if isOwner(userId);
     }
   }
 }
