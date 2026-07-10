@@ -114,8 +114,15 @@ class EditorViewModel @Inject constructor(
     }
 
     fun onContentValueChange(value: TextFieldValue) {
-        _state.update { it.copy(contentValue = value, content = value.text) }
-        triggerAutosave()
+        val oldValue = _state.value.contentValue
+        val result = SmartTextProcessor.process(value, oldValue)
+        
+        if (result.structureChanged) {
+            convertContentToChecklist()
+        } else {
+            _state.update { it.copy(contentValue = result.value, content = result.value.text) }
+            triggerAutosave()
+        }
     }
 
     fun onColorChange(color: Int) {

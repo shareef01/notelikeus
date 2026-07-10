@@ -1,5 +1,6 @@
 package com.aus.notelikeus.ui.components
 
+import android.text.format.DateUtils
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -56,9 +57,9 @@ fun NoteStaggeredGrid(
     contentPadding: PaddingValues = PaddingValues(8.dp)
 ) {
     val haptic = LocalHapticFeedback.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     val reorderLabel = stringResource(R.string.cd_reorder)
     val pinnedSectionLabel = stringResource(R.string.section_pinned)
-    val otherSectionLabel = stringResource(R.string.section_other_notes)
     val reorderThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
     var draggingIndex by remember { mutableIntStateOf(-1) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
@@ -67,8 +68,18 @@ fun NoteStaggeredGrid(
     val dragHandleSize = 24.dp
     val dragHandleLeadingPadding = 16.dp // Disciplined 16.dp Grid
     val itemSpacing = 12.dp // Fixed Arrangement Space
-    val hasPinned = notes.any { it.isPinned }
-    val hasUnpinned = notes.any { !it.isPinned }
+
+    fun getDateHeader(timestamp: Long): String {
+        return when {
+            DateUtils.isToday(timestamp) -> "Today"
+            DateUtils.isToday(timestamp + DateUtils.DAY_IN_MILLIS) -> "Yesterday"
+            else -> DateUtils.formatDateTime(
+                context,
+                timestamp,
+                DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_YEAR or DateUtils.FORMAT_ABBREV_MONTH
+            )
+        }
+    }
 
     LazyVerticalStaggeredGrid(
         state = gridState,
@@ -79,19 +90,24 @@ fun NoteStaggeredGrid(
         verticalItemSpacing = itemSpacing
     ) {
         notes.forEachIndexed { index, note ->
-            val showPinnedHeader = hasPinned && hasUnpinned &&
-                note.isPinned && index == 0
-            val showUnpinnedHeader = hasPinned && hasUnpinned &&
-                !note.isPinned && (index == 0 || notes[index - 1].isPinned)
-
-            if (showPinnedHeader) {
+            val prevNote = if (index > 0) notes[index - 1] else null
+            
+            // 1. Pinned Header
+            if (note.isPinned && index == 0) {
                 item(key = "header-pinned", span = StaggeredGridItemSpan.FullLine) {
                     NoteSectionHeader(title = pinnedSectionLabel)
                 }
             }
-            if (showUnpinnedHeader) {
-                item(key = "header-other-$index", span = StaggeredGridItemSpan.FullLine) {
-                    NoteSectionHeader(title = otherSectionLabel)
+
+            // 2. Date Section Headers (for unpinned notes)
+            if (!note.isPinned) {
+                val currentHeader = getDateHeader(note.timestamp)
+                val prevHeader = prevNote?.let { if (it.isPinned) null else getDateHeader(it.timestamp) }
+
+                if (currentHeader != prevHeader) {
+                    item(key = "header-date-$index", span = StaggeredGridItemSpan.FullLine) {
+                        NoteSectionHeader(title = currentHeader)
+                    }
                 }
             }
 
