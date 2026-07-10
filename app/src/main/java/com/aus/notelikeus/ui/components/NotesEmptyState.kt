@@ -3,13 +3,16 @@ package com.aus.notelikeus.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FilterAltOff
@@ -17,6 +20,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -42,6 +46,8 @@ fun NotesEmptyState(
     icon: ImageVector? = null,
     showCreateButton: Boolean = false,
     showClearFilters: Boolean = false,
+    recentSearches: List<String> = emptyList(),
+    onRecentSearchClick: (String) -> Unit = {},
     onCreateClick: () -> Unit = {},
     onClearFilters: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -108,6 +114,30 @@ fun NotesEmptyState(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(stringResource(R.string.clear_filters))
+                    }
+                }
+            }
+
+            if (recentSearches.isNotEmpty() && !showCreateButton) {
+                Spacer(modifier = Modifier.height(32.dp))
+                Text(
+                    "Recent searches",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = mutedTextColor.copy(alpha = 0.5f)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    recentSearches.forEach { query ->
+                        SuggestionChip(
+                            onClick = { onRecentSearchClick(query) },
+                            label = { Text(query) },
+                            shape = CircleShape,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
                     }
                 }
             }

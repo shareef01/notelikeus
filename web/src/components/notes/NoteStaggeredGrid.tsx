@@ -2,6 +2,7 @@ import { DragHandleIcon } from '@/components/icons/Icons';
 import { NoteCard } from '@/components/notes/NoteCard';
 import { NoteSectionHeader } from '@/components/notes/NoteSectionHeader';
 import { SwipeableNoteCard } from '@/components/notes/SwipeableNoteCard';
+import { getDateHeader } from '@/lib/text/dateTime';
 import type { Note, NoteFilter } from '@/types/note';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 
@@ -55,10 +56,6 @@ export function NoteStaggeredGrid({
   const selectedSet = useMemo(() => new Set(selectedNoteIds), [selectedNoteIds]);
   const swipeEnabled = columns === 1 && Boolean(listActions) && !selectionMode;
   const canReorder = allowReorder && columns === 1 && !selectionMode && Boolean(onMoveNote);
-
-  const hasPinned = notes.some((note) => note.isPinned);
-  const hasUnpinned = notes.some((note) => !note.isPinned);
-  const showSections = hasPinned && hasUnpinned;
 
   const [draggingIndex, setDraggingIndex] = useState(-1);
   const dragOffsetRef = useRef(0);
@@ -146,16 +143,27 @@ export function NoteStaggeredGrid({
 
   if (columns === 1) {
     return (
-      <div className="flex flex-col gap-note-gap px-3 pb-24 pt-2 sm:px-4 lg:px-6">
+      <div className="flex flex-col gap-note-gap px-3 pb-24 pt-3 sm:px-4 lg:px-6">
         {notes.map((note, index) => {
-          const showPinnedHeader = showSections && note.isPinned && index === 0;
-          const showOthersHeader =
-            showSections && !note.isPinned && (index === 0 || !notes[index - 1]?.isPinned);
+          const prevNote = notes[index - 1];
+
+          // 1. Pinned Header
+          const showPinnedHeader = note.isPinned && index === 0;
+
+          // 2. Date Section Headers (for unpinned notes)
+          let dateHeader: string | null = null;
+          if (!note.isPinned) {
+            const currentHeader = getDateHeader(note.timestamp);
+            const prevHeader = prevNote ? (prevNote.isPinned ? null : getDateHeader(prevNote.timestamp)) : null;
+            if (currentHeader !== prevHeader) {
+              dateHeader = currentHeader;
+            }
+          }
 
           return (
             <div key={note.id}>
               {showPinnedHeader ? <NoteSectionHeader title="Pinned" /> : null}
-              {showOthersHeader ? <NoteSectionHeader title="Others" /> : null}
+              {dateHeader ? <NoteSectionHeader title={dateHeader} /> : null}
               {canReorder ? (
                 <ReorderRow
                   index={index}
@@ -178,30 +186,51 @@ export function NoteStaggeredGrid({
   const pinned = notes.filter((note) => note.isPinned);
   const others = notes.filter((note) => !note.isPinned);
   const columnClass = COLUMN_CLASSES[columns];
-  const renderMasonrySection = (sectionNotes: Note[]) =>
-    sectionNotes.map((note) => (
-      <div key={note.id} className="mb-note-gap break-inside-avoid">
-        {renderCard(note)}
+
+  const renderDateSections = (sectionNotes: Note[]) => {
+    const sections: { header: string; notes: Note[] }[] = [];
+    sectionNotes.forEach((note) => {
+      const header = getDateHeader(note.timestamp);
+      const lastSection = sections[sections.length - 1];
+      if (lastSection?.header === header) {
+        lastSection.notes.push(note);
+      } else {
+        sections.push({ header, notes: [note] });
+      }
+    });
+
+    return sections.map((section) => (
+      <div key={section.header} className="mb-note-gap break-inside-avoid">
+        <NoteSectionHeader title={section.header} />
+        <div className="mt-note-gap flex flex-col gap-note-gap">
+          {section.notes.map((note) => (
+            <div key={note.id} className="break-inside-avoid">
+              {renderCard(note)}
+            </div>
+          ))}
+        </div>
       </div>
     ));
+  };
 
   return (
     <div
-      className={`${columnClass} gap-note-gap px-3 pb-24 pt-2 sm:px-4 lg:px-6`}
+      className={`${columnClass} gap-note-gap px-3 pb-24 pt-3 sm:px-4 lg:px-6`}
       style={{ columnGap: '12px' }}
     >
-      {showSections ? (
+      {pinned.length > 0 ? (
         <div className="mb-note-gap break-inside-avoid">
           <NoteSectionHeader title="Pinned" />
+          <div className="mt-note-gap flex flex-col gap-note-gap">
+            {pinned.map((note) => (
+              <div key={note.id} className="break-inside-avoid">
+                {renderCard(note)}
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
-      {renderMasonrySection(pinned)}
-      {showSections ? (
-        <div className="mb-note-gap break-inside-avoid">
-          <NoteSectionHeader title="Others" />
-        </div>
-      ) : null}
-      {renderMasonrySection(others)}
+      {renderDateSections(others)}
     </div>
   );
 }

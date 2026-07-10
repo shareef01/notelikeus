@@ -471,17 +471,19 @@ fun EditorScreen(
                     .navigationBarsPadding()
                     .padding(bottom = 8.dp)
             ) {
-                RichTextToolbar(
-                    onBoldClick = viewModel::applyBoldToSelection,
-                    onItalicClick = viewModel::applyItalicToSelection,
-                    onListClick = viewModel::applyBulletListToSelection,
-                    onChecklistClick = {
-                        if (state.checklist.isEmpty()) viewModel.convertContentToChecklist()
-                    },
-                    onLinkClick = { showLinkDialog = true },
-                    contentColor = contentColor,
-                    surfaceColor = noteColor
-                )
+                        RichTextToolbar(
+                            onBoldClick = viewModel::applyBoldToSelection,
+                            onItalicClick = viewModel::applyItalicToSelection,
+                            onListClick = viewModel::applyBulletListToSelection,
+                            onChecklistClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (state.checklist.isEmpty()) viewModel.convertContentToChecklist()
+                            },
+                            onLinkClick = { showLinkDialog = true },
+                            contentColor = contentColor,
+                            surfaceColor = noteColor,
+                            modifier = Modifier.animateContentSize() // Smooth transition
+                        )
             }
         }
     }

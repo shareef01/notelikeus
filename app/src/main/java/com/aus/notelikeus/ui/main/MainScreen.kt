@@ -351,6 +351,12 @@ fun MainScreen(
                     selectedLabelId = state.selectedLabelId,
                     onLabelSelect = viewModel::selectLabelFilter,
                     sortOrder = state.sortOrder,
+                    recentSearches = state.recentSearches,
+                    onRecentSearchClick = {
+                        viewModel.onSearchQueryChange(it)
+                        viewModel.addRecentSearch(it)
+                    },
+                    onClearRecentSearches = viewModel::clearRecentSearches,
                     hasActiveFilters = state.selectedColor != null || state.selectedLabelId != null,
                     onClearFilters = viewModel::clearFilters,
                     listScrolled = listScrolled
@@ -435,6 +441,11 @@ fun MainScreen(
                     icon = emptyIcon,
                     showCreateButton = showCreate,
                     showClearFilters = showClear,
+                    recentSearches = state.recentSearches,
+                    onRecentSearchClick = {
+                        viewModel.onSearchQueryChange(it)
+                        viewModel.addRecentSearch(it)
+                    },
                     onCreateClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         onNoteClick(null)

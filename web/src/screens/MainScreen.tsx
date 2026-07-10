@@ -95,8 +95,10 @@ export function MainScreen() {
   const openNewNote = useUiStore((s) => s.openNewNote);
 
   const openNote = useUiStore((s) => s.openNote);
-
   const openAuthScreen = useUiStore((s) => s.openAuthScreen);
+  const recentSearches = useUiStore((s) => s.recentSearches);
+  const addRecentSearch = useUiStore((s) => s.addRecentSearch);
+  const clearRecentSearches = useUiStore((s) => s.clearRecentSearches);
 
   const selectedNoteIds = useUiStore((s) => s.selectedNoteIds);
   const toggleNoteSelection = useUiStore((s) => s.toggleNoteSelection);
@@ -563,6 +565,12 @@ export function MainScreen() {
           onBulkRestore={() => void handleBulkRestore()}
           onBulkTrash={() => void handleBulkTrash()}
           onBulkPermanentDelete={() => setShowBulkDeleteConfirm(true)}
+          recentSearches={recentSearches}
+          onRecentSearchClick={(query) => {
+            setSearchQuery(query);
+            addRecentSearch(query);
+          }}
+          onClearRecentSearches={clearRecentSearches}
         />
 
 
@@ -598,13 +606,14 @@ export function MainScreen() {
             ) : filteredNotes.length === 0 ? (
 
               <NotesEmptyState
-
                 message={emptyState.message}
-
                 subtitle={emptyState.subtitle}
-
                 icon={emptyState.icon}
-
+                recentSearches={recentSearches}
+                onRecentSearchClick={(query) => {
+                  setSearchQuery(query);
+                  addRecentSearch(query);
+                }}
                 action={
                   emptyState.showSignIn ? (
                     <div className="flex flex-col items-center gap-3 sm:flex-row">
