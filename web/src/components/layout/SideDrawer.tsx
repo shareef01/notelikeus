@@ -11,6 +11,7 @@ interface SideDrawerProps {
   userEmail: string | null;
   onSignIn: () => void;
   onSignOut: () => void;
+  onEditLabels?: () => void;
   navCounts?: { active: number; archived: number; trashed: number };
   onOpenSettings?: () => void;
 }
@@ -33,6 +34,7 @@ export function SideDrawer({
   userEmail,
   onSignIn,
   onSignOut,
+  onEditLabels,
   navCounts,
   onOpenSettings,
 }: SideDrawerProps) {
@@ -102,6 +104,19 @@ export function SideDrawer({
               </button>
             );
           })}
+          {onEditLabels ? (
+            <button
+              type="button"
+              onClick={() => {
+                onEditLabels();
+                onClose();
+              }}
+              className="flex items-center gap-4 rounded-note px-4 py-3 text-left text-base font-bold text-brand-muted transition-all hover:bg-white/5 hover:text-brand-primary"
+            >
+              <span className="flex size-6 items-center justify-center text-brand-muted/60">🏷️</span>
+              Edit labels
+            </button>
+          ) : null}
           {onOpenSettings ? (
             <button
               type="button"

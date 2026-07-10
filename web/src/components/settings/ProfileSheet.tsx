@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { BrandMark } from '@/components/brand/BrandMark';
 import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';
-import type { ViewColumns } from '@/store/uiStore';import {
+import type { ViewColumns } from '@/store/uiStore';
+import type { AppTheme } from '@/store/settingsStore';
+import {
   GridViewIcon,
   SortIcon,
   PaletteIcon,
-  DarkModeIcon,
   NotesIcon,
   CloudIcon,
   AccountIcon,
@@ -14,7 +15,6 @@ import type { ViewColumns } from '@/store/uiStore';import {
   AddIcon,
   PrivacyIcon,
   InfoIcon,
-  ChevronRightIcon,
 } from '@/components/icons/Icons';
 
 /**
@@ -76,7 +76,9 @@ function SettingsRow({
       </div>
       {trailing ? <div className="shrink-0">{trailing}</div> : null}
       {onClick && !trailing ? (
-        <ChevronRightIcon size={20} className="text-brand-muted/45" />
+        <span className="text-brand-muted/45" aria-hidden>
+          ›
+        </span>
       ) : null}
     </Tag>
   );
@@ -94,6 +96,8 @@ const VIEW_LABELS: Record<ViewColumns, string> = {
   3: 'Grid (3 columns)',
 };
 
+const THEME_ORDER: AppTheme[] = ['auto', 'light', 'dark', 'true_dark', 'midnight', 'forest'];
+
 interface ProfileSheetProps {
   open: boolean;
   onClose: () => void;
@@ -102,10 +106,8 @@ interface ProfileSheetProps {
   sortOrder: 'manual' | 'newest' | 'oldest';
   onViewColumnsCycle: () => void;
   onSortOrderCycle: () => void;
-  useMonochromeTheme: boolean;
-  onMonochromeThemeChange: (enabled: boolean) => void;
-  trueDarkMode: boolean;
-  onTrueDarkModeChange: (enabled: boolean) => void;
+  appTheme: AppTheme;
+  onAppThemeCycle: () => void;
   cloudAutoSyncEnabled: boolean;
   onCloudAutoSyncChange: (enabled: boolean) => void;
   isGoogleAccount: boolean;
@@ -131,10 +133,8 @@ export function ProfileSheet({
   sortOrder,
   onViewColumnsCycle,
   onSortOrderCycle,
-  useMonochromeTheme,
-  onMonochromeThemeChange,
-  trueDarkMode,
-  onTrueDarkModeChange,
+  appTheme,
+  onAppThemeCycle,
   cloudAutoSyncEnabled,
   onCloudAutoSyncChange,
   isGoogleAccount,
@@ -184,32 +184,10 @@ export function ProfileSheet({
         <div className="mx-4 mt-2 border-t border-brand-outline/60" />
         <SettingsSectionHeader title="Appearance" />
         <SettingsRow
-          title="Brand theme"
-          subtitle="Minimal black & white interface"
+          title="App theme"
+          subtitle={appTheme.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+          onClick={onAppThemeCycle}
           icon={<PaletteIcon size={24} />}
-          trailing={
-            <input
-              type="checkbox"
-              checked={useMonochromeTheme}
-              onChange={(event) => onMonochromeThemeChange(event.target.checked)}
-              className="size-5 rounded accent-brand-primary"
-              aria-label="Brand theme"
-            />
-          }
-        />
-        <SettingsRow
-          title="True dark mode"
-          subtitle="Optimized for OLED displays"
-          icon={<DarkModeIcon size={24} />}
-          trailing={
-            <input
-              type="checkbox"
-              checked={trueDarkMode}
-              onChange={(event) => onTrueDarkModeChange(event.target.checked)}
-              className="size-5 rounded accent-brand-primary"
-              aria-label="True dark mode"
-            />
-          }
         />
 
         <div className="mx-4 mt-2 border-t border-brand-outline/60" />
@@ -293,3 +271,5 @@ export function ProfileSheet({
     </ResponsiveSheet>
   );
 }
+
+export { THEME_ORDER };
