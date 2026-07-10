@@ -6,7 +6,7 @@ export function TrashBanner({ onEmptyTrash }: TrashBannerProps) {
   return (
     <div className="border-b border-red-900/30 bg-red-950/25 px-4 py-3 sm:px-6">
       <div className="mx-auto flex max-w-content items-center justify-between gap-4">
-        <p className="text-sm text-brand-muted">
+        <p className="text-sm text-red-100/80">
           Notes in trash are removed permanently when you empty trash.
         </p>
         <button

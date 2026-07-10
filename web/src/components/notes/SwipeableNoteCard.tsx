@@ -1,5 +1,5 @@
 import { ArchiveIcon, TrashIcon } from '@/components/icons/Icons';
-import { NoteCard } from '@/components/notes/NoteCard';
+import { NoteCard, type NoteReorderHandleProps } from '@/components/notes/NoteCard';
 import type { Note } from '@/types/note';
 import { useRef, useState, type ReactNode } from 'react';
 
@@ -19,6 +19,8 @@ interface SwipeableNoteCardProps {
   isSelected?: boolean;
   onLongPress?: () => void;
   children?: ReactNode;
+  showReorderHandle?: boolean;
+  reorderHandleProps?: NoteReorderHandleProps;
 }
 
 export function SwipeableNoteCard({
@@ -33,6 +35,8 @@ export function SwipeableNoteCard({
   isSelected = false,
   onLongPress,
   children,
+  showReorderHandle = false,
+  reorderHandleProps,
 }: SwipeableNoteCardProps) {
   const [offset, setOffset] = useState(0);
   const startX = useRef(0);
@@ -121,6 +125,8 @@ export function SwipeableNoteCard({
         searchQuery={searchQuery}
         isSelected={isSelected}
         onLongPress={onLongPress}
+        showReorderHandle={showReorderHandle}
+        reorderHandleProps={reorderHandleProps}
       />
     );
 

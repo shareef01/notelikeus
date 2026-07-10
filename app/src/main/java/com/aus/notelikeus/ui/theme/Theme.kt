@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.aus.notelikeus.domain.model.AppTheme
 
 private val DarkColorScheme = darkColorScheme(
     primary = PrimaryDark,
@@ -42,6 +43,36 @@ private val TrueDarkColorScheme = darkColorScheme(
     outlineVariant = Color(0xFF121212)
 )
 
+private val MidnightColorScheme = darkColorScheme(
+    primary = PrimaryMidnight,
+    secondary = SecondaryDark,
+    background = BackgroundMidnight,
+    surface = SurfaceMidnight,
+    surfaceVariant = Color(0xFF161C29),
+    onPrimary = Color(0xFF080C14),
+    onSecondary = Color.White,
+    onBackground = Color.White,
+    onSurface = Color.White,
+    onSurfaceVariant = Color(0xFFAAB8C9),
+    outline = Color(0xFF232D3B),
+    outlineVariant = Color(0xFF161C29)
+)
+
+private val ForestColorScheme = darkColorScheme(
+    primary = PrimaryForest,
+    secondary = SecondaryDark,
+    background = BackgroundForest,
+    surface = SurfaceForest,
+    surfaceVariant = Color(0xFF1A211A),
+    onPrimary = Color(0xFF0A0F0A),
+    onSecondary = Color.White,
+    onBackground = Color.White,
+    onSurface = Color.White,
+    onSurfaceVariant = Color(0xFFA9B8A9),
+    outline = Color(0xFF263326),
+    outlineVariant = Color(0xFF1A211A)
+)
+
 private val LightColorScheme = lightColorScheme(
     primary = PrimaryLight,
     secondary = SecondaryLight,
@@ -59,19 +90,32 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun NotelikeusTheme(
+    appTheme: AppTheme = AppTheme.AUTO,
     darkTheme: Boolean = isSystemInDarkTheme(),
     isTrueDarkMode: Boolean = false,
     useMonochromeTheme: Boolean = true,
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        !useMonochromeTheme && dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !isTrueDarkMode -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    val colorScheme = when (appTheme) {
+        AppTheme.LIGHT -> LightColorScheme
+        AppTheme.DARK -> DarkColorScheme
+        AppTheme.TRUE_DARK -> TrueDarkColorScheme
+        AppTheme.MIDNIGHT -> MidnightColorScheme
+        AppTheme.FOREST -> ForestColorScheme
+        AppTheme.AUTO -> {
+            if (darkTheme) {
+                if (isTrueDarkMode) TrueDarkColorScheme else DarkColorScheme
+            } else {
+                LightColorScheme
+            }
         }
-        darkTheme -> if (isTrueDarkMode) TrueDarkColorScheme else DarkColorScheme
-        else -> LightColorScheme
+    }
+
+    val isDark = when (appTheme) {
+        AppTheme.LIGHT -> false
+        AppTheme.DARK, AppTheme.TRUE_DARK, AppTheme.MIDNIGHT, AppTheme.FOREST -> true
+        AppTheme.AUTO -> darkTheme
     }
 
     val view = LocalView.current
@@ -79,7 +123,7 @@ fun NotelikeusTheme(
         SideEffect {
             val window = (view.context as Activity).window
             window.statusBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDark
         }
     }
 

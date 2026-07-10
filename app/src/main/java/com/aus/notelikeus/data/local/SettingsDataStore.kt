@@ -9,6 +9,7 @@ val Context.settingsDataStore by preferencesDataStore(name = "settings")
 
 val TRUE_DARK_MODE_KEY = booleanPreferencesKey("true_dark_mode")
 val APP_LOCK_ENABLED_KEY = booleanPreferencesKey("app_lock_enabled")
+val APP_THEME_KEY = stringPreferencesKey("app_theme")
 val NOTE_VIEW_MODE_KEY = stringPreferencesKey("note_view_mode")
 val NOTE_SORT_ORDER_KEY = stringPreferencesKey("note_sort_order")
 val USE_MONOCHROME_THEME_KEY = booleanPreferencesKey("use_monochrome_theme")

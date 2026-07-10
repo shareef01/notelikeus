@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +40,7 @@ fun NoteColorSwatch(
     } else {
         stringResource(R.string.cd_color_swatch)
     }
+    val isDefault = color == Color.Transparent
 
     Box(
         modifier = modifier
@@ -52,7 +54,7 @@ fun NoteColorSwatch(
             modifier = Modifier
                 .size(swatchSize)
                 .clip(CircleShape)
-                .background(color)
+                .background(if (isDefault) Color.Transparent else color)
                 .border(
                     width = if (isSelected) 2.dp else 1.dp,
                     color = if (isSelected) {
@@ -64,6 +66,14 @@ fun NoteColorSwatch(
                 ),
             contentAlignment = Alignment.Center
         ) {
+            if (isDefault) {
+                Icon(
+                    Icons.Default.Block,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp).semantics { invisibleToUser() },
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+            }
             if (isSelected) {
                 Icon(
                     Icons.Default.Check,
@@ -71,7 +81,7 @@ fun NoteColorSwatch(
                     modifier = Modifier
                         .size(16.dp)
                         .semantics { invisibleToUser() },
-                    tint = color.getContentColor()
+                    tint = if (isDefault) MaterialTheme.colorScheme.primary else color.getContentColor()
                 )
             }
         }

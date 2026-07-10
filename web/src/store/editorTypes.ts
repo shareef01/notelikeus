@@ -23,7 +23,7 @@ export interface EditorState {
   lastSavedAt: number | null;
 }
 
-export const DEFAULT_EDITOR_COLOR = 0xff1a1a1a | 0;
+export const DEFAULT_EDITOR_COLOR = 0; // Use theme background by default to prevent blinking
 
 export function buildNoteFromEditor(state: EditorState): Note | null {
   if (!state.id || state.localId == null) return null;

@@ -21,6 +21,7 @@
     <string name="empty_filter_subtitle">No notes match the selected color or label</string>
     <string name="no_filter_matches">No notes match your filters</string>
     <string name="clear_filters">Clear filters</string>
+    <string name="clear_recent_searches">Clear</string>
 
     <!-- Actions -->
     <string name="add_note">Add note</string>
@@ -92,12 +93,15 @@
     <string name="profile_avatar_initials">A</string>
     <string name="true_dark_mode">True Dark Mode</string>
     <string name="true_dark_mode_subtitle">Optimized for OLED displays</string>
+    <string name="app_theme">App theme</string>
     <string name="monochrome_theme">Brand theme</string>
     <string name="monochrome_theme_subtitle">Minimal black &amp; white interface</string>
     <string name="default_view_mode">Default view</string>
     <string name="sort_order">Sort order</string>
     <string name="sort_manual">Manual (drag to reorder)</string>
     <string name="section_pinned">Pinned</string>
+    <string name="section_today">Today</string>
+    <string name="section_yesterday">Yesterday</string>
     <string name="section_other_notes">Others</string>
     <string name="pinned_short">Pinned</string>
     <string name="filters_active">Filters on</string>
@@ -153,6 +157,7 @@
     <!-- Filters -->
     <string name="all_colors">All Colors</string>
     <string name="all_labels">All Labels</string>
+    <string name="labels_more">+%1$d</string>
     <string name="selected_color">Selected color</string>
     <string name="cd_color_swatch">Note color</string>
 
@@ -199,6 +204,24 @@
     <string name="edited_at">Edited %1$s</string>
     <string name="section_color">Color</string>
     <string name="section_labels">Labels</string>
+    <string name="edit_labels">Edit labels</string>
+    <string name="create_new_label">Create new label</string>
+    <string name="rename_label">Rename label</string>
+    <string name="delete_label_title">Delete label?</string>
+    <string name="delete_label_message">This will remove this label from all your notes. The notes themselves will not be deleted.</string>
+    <string name="label_name_hint">Enter label name</string>
+    <string name="empty_labels_hint">No labels yet</string>
+    <string name="empty_labels_subtitle">Create labels to organize your notes</string>
+    <string name="recent_searches">Recent searches</string>
+    <string name="select_note_to_view">Select a note to view</string>
+    <string name="select_note_to_view_subtitle">Choose a note from the list to edit it here</string>
+    <string name="theme_auto">System default</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_true_dark">True dark</string>
+    <string name="theme_midnight">Midnight</string>
+    <string name="theme_forest">Forest</string>
+    <string name="nav_edit_labels">Edit labels</string>
     <string name="new_label_hint">New label</string>
     <string name="lock_note">Lock note</string>
     <string name="unlock_note">Unlock note</string>

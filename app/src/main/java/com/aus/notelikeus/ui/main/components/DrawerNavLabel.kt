@@ -24,10 +24,10 @@ fun DrawerNavLabel(
     ) {
         Text(text, fontWeight = FontWeight.Medium)
         if (count > 0) {
-            Badge(containerColor = MaterialTheme.colorScheme.primary) {
+            Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
                 Text(
                     text = count.toString(),
-                    color = MaterialTheme.colorScheme.onPrimary,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                     style = MaterialTheme.typography.labelSmall
                 )
             }

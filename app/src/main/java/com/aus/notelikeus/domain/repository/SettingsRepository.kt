@@ -1,10 +1,14 @@
 package com.aus.notelikeus.domain.repository
 
+import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import kotlinx.coroutines.flow.Flow
 
 interface SettingsRepository {
+    val appTheme: Flow<AppTheme>
+    suspend fun setAppTheme(theme: AppTheme)
+
     val isTrueDarkMode: Flow<Boolean>
     suspend fun setTrueDarkMode(enabled: Boolean)
     val isAppLockEnabled: Flow<Boolean>

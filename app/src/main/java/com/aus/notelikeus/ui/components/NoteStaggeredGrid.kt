@@ -4,26 +4,18 @@ import android.text.format.DateUtils
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DragHandle
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -58,21 +50,20 @@ fun NoteStaggeredGrid(
 ) {
     val haptic = LocalHapticFeedback.current
     val context = androidx.compose.ui.platform.LocalContext.current
-    val reorderLabel = stringResource(R.string.cd_reorder)
     val pinnedSectionLabel = stringResource(R.string.section_pinned)
+    val todaySectionLabel = stringResource(R.string.section_today)
+    val yesterdaySectionLabel = stringResource(R.string.section_yesterday)
     val reorderThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
     var draggingIndex by remember { mutableIntStateOf(-1) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val canReorder = columns == 1 && selectedNotes.isEmpty() && !compact && allowReorder
     val swipeEnabled = enableSwipe && selectedNotes.isEmpty()
-    val dragHandleSize = 24.dp
-    val dragHandleLeadingPadding = 16.dp // Disciplined 16.dp Grid
     val itemSpacing = 12.dp // Fixed Arrangement Space
 
     fun getDateHeader(timestamp: Long): String {
         return when {
-            DateUtils.isToday(timestamp) -> "Today"
-            DateUtils.isToday(timestamp + DateUtils.DAY_IN_MILLIS) -> "Yesterday"
+            DateUtils.isToday(timestamp) -> todaySectionLabel
+            DateUtils.isToday(timestamp + DateUtils.DAY_IN_MILLIS) -> yesterdaySectionLabel
             else -> DateUtils.formatDateTime(
                 context,
                 timestamp,
@@ -117,91 +108,66 @@ fun NoteStaggeredGrid(
             ) {
                 val itemModifier = Modifier.animateItem()
                 if (columns == 1) {
-                    if (canReorder) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = itemModifier
-                        ) {
-                            Icon(
-                                Icons.Default.DragHandle,
-                                contentDescription = reorderLabel,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
-                                modifier = Modifier
-                                    .padding(start = dragHandleLeadingPadding)
-                                    .size(dragHandleSize)
-                                    .pointerInput(index, notes.size) {
-                                        detectDragGestures(
-                                            onDragStart = {
-                                                draggingIndex = index
-                                                dragOffset = 0f
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            },
-                                            onDrag = { _, dragAmount ->
-                                                if (draggingIndex != index) return@detectDragGestures
-                                                dragOffset += dragAmount.y
-                                                when {
-                                                    dragOffset > reorderThresholdPx && draggingIndex < notes.lastIndex -> {
-                                                        onMoveNote(draggingIndex, draggingIndex + 1)
-                                                        draggingIndex++
-                                                        dragOffset = 0f
-                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                    }
-                                                    dragOffset < -reorderThresholdPx && draggingIndex > 0 -> {
-                                                        onMoveNote(draggingIndex, draggingIndex - 1)
-                                                        draggingIndex--
-                                                        dragOffset = 0f
-                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                    }
-                                                }
-                                            },
-                                            onDragEnd = {
-                                                draggingIndex = -1
-                                                dragOffset = 0f
-                                                onReorderComplete()
-                                            },
-                                            onDragCancel = {
-                                                draggingIndex = -1
-                                                dragOffset = 0f
-                                                onReorderComplete()
-                                            }
-                                        )
+                    val reorderDragModifier = if (canReorder) {
+                        Modifier.pointerInput(index, notes.size) {
+                            detectDragGestures(
+                                onDragStart = {
+                                    draggingIndex = index
+                                    dragOffset = 0f
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                                onDrag = { _, dragAmount ->
+                                    if (draggingIndex != index) return@detectDragGestures
+                                    dragOffset += dragAmount.y
+                                    when {
+                                        dragOffset > reorderThresholdPx && draggingIndex < notes.lastIndex -> {
+                                            onMoveNote(draggingIndex, draggingIndex + 1)
+                                            draggingIndex++
+                                            dragOffset = 0f
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                        dragOffset < -reorderThresholdPx && draggingIndex > 0 -> {
+                                            onMoveNote(draggingIndex, draggingIndex - 1)
+                                            draggingIndex--
+                                            dragOffset = 0f
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
                                     }
-                            )
-                            noteListCard(
-                                note = note,
-                                selectedNotes = selectedNotes,
-                                searchQuery = searchQuery,
-                                listRevision = listRevision,
-                                enableArchiveSwipe = enableArchiveSwipe,
-                                enableSwipe = swipeEnabled,
-                                compact = compact,
-                                haptic = haptic,
-                                onNoteClick = onNoteClick,
-                                onNoteLongClick = onNoteLongClick,
-                                onSwipeToArchive = onSwipeToArchive,
-                                onSwipeToTrash = onSwipeToTrash,
-                                onLabelClick = onLabelClick,
-                                modifier = Modifier.weight(1f)
+                                },
+                                onDragEnd = {
+                                    draggingIndex = -1
+                                    dragOffset = 0f
+                                    onReorderComplete()
+                                },
+                                onDragCancel = {
+                                    draggingIndex = -1
+                                    dragOffset = 0f
+                                    onReorderComplete()
+                                }
                             )
                         }
                     } else {
-                        noteListCard(
-                            note = note,
-                            selectedNotes = selectedNotes,
-                            searchQuery = searchQuery,
-                            listRevision = listRevision,
-                            enableArchiveSwipe = enableArchiveSwipe,
-                            enableSwipe = swipeEnabled,
-                            compact = compact,
-                            haptic = haptic,
-                            onNoteClick = onNoteClick,
-                            onNoteLongClick = onNoteLongClick,
-                            onSwipeToArchive = onSwipeToArchive,
-                            onSwipeToTrash = onSwipeToTrash,
-                            onLabelClick = onLabelClick,
-                            modifier = itemModifier.fillMaxSize()
-                        )
+                        Modifier
                     }
+
+                    noteListCard(
+                        note = note,
+                        selectedNotes = selectedNotes,
+                        searchQuery = searchQuery,
+                        listRevision = listRevision,
+                        enableArchiveSwipe = enableArchiveSwipe,
+                        enableSwipe = swipeEnabled,
+                        compact = compact,
+                        haptic = haptic,
+                        onNoteClick = onNoteClick,
+                        onNoteLongClick = onNoteLongClick,
+                        onSwipeToArchive = onSwipeToArchive,
+                        onSwipeToTrash = onSwipeToTrash,
+                        onLabelClick = onLabelClick,
+                        showReorderHandle = canReorder,
+                        reorderDragModifier = reorderDragModifier,
+                        modifier = itemModifier.fillMaxSize()
+                    )
                 } else {
                     SwipeableNoteCard(
                         note = note,
@@ -242,6 +208,8 @@ private fun noteListCard(
     onSwipeToArchive: (Note) -> Unit,
     onSwipeToTrash: (Note) -> Unit,
     onLabelClick: ((Long) -> Unit)?,
+    showReorderHandle: Boolean = false,
+    reorderDragModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
     SwipeableNoteCard(
@@ -265,6 +233,8 @@ private fun noteListCard(
         enableArchiveSwipe = enableArchiveSwipe,
         enableSwipe = enableSwipe,
         compact = compact,
+        showReorderHandle = showReorderHandle,
+        reorderDragModifier = reorderDragModifier,
         modifier = modifier
     )
 }
