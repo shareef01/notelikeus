@@ -11,6 +11,7 @@ All notable changes to Notelikeus are documented here.
 - PWA: manual drag reorder (list view), real-time Firestore sync when auto-sync is on
 - PWA & Android: recent search history, date-grouped note sections (Today, Yesterday, etc.)
 - Android: smart editor text processing (auto bullets, list continuation)
+- PWA: smart editor text processing (auto bullets, `[ ]` → checklist)
 - Optional Firebase cloud sync (Firestore) with Google Sign-In
 - Auto-sync setting for signed-in users
 - Cross-device restore with timestamp-based merge
