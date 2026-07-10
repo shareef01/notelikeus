@@ -81,7 +81,7 @@ Install the debug APK from `app/build/outputs/apk/debug/`, or run directly from 
 1. Create a Firebase project and add the Android app (`com.aus.notelikeus`).
 2. Download `google-services.json` into `app/`.
 3. Enable **Google** sign-in under Authentication.
-4. Create a **Firestore** database and publish rules from `firestore.rules`.
+4. Create a **Firestore** database and publish rules from `firestore.rules` (run `npm run test:rules` before deploy).
 5. Add debug and release SHA-1 fingerprints in Firebase project settings.
 
 Cloud sync uses Firestore only (no Storage) so it fits the **Spark (free)** plan.
@@ -136,7 +136,14 @@ keytool -genkey -v -keystore release.keystore -alias notelikeus -keyalg RSA -key
 
 The output APK is at `app/build/outputs/apk/release/`.
 
-CI runs unit tests and builds debug/release on every push to `main`/`master` (unsigned release if no signing file is present).
+CI runs unit tests, Android lint, Web vitest + Playwright, and Firestore rules tests on every push/PR to `main`, `master`, and `weiter` (unsigned release if no signing file is present).
+
+Validate Firestore rules locally:
+
+```bash
+npm ci
+npm run test:rules
+```
 
 ## Play Store listing
 
