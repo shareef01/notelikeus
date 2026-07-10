@@ -9,6 +9,7 @@ interface NoteRepository {
     fun getArchivedNotes(): Flow<List<Note>>
     fun getTrashedNotes(): Flow<List<Note>>
     suspend fun getNoteById(id: Long): Note?
+    suspend fun getNoteByCloudId(cloudId: String): Note?
     suspend fun insertNote(note: Note)
     suspend fun insertNoteWithResult(note: Note): Long
     suspend fun updateNote(note: Note)
