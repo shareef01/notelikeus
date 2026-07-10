@@ -1,4 +1,11 @@
-import { PinIcon, DragHandleIcon } from '@/components/icons/Icons';
+import {
+  CheckCircleIcon,
+  CheckCircleOutlineIcon,
+  DragHandleIcon,
+  LockIcon,
+  NotificationIcon,
+  PinIcon,
+} from '@/components/icons/Icons';
 import { useLongPress } from '@/hooks/useLongPress';
 import { highlightSearchText } from '@/lib/text/highlightSearch';
 import { stripMarkdownForPreview } from '@/lib/text/markdown';
@@ -42,12 +49,18 @@ export function NoteCard({
   reorderHandleProps,
 }: NoteCardProps) {
   const surface = noteSurfaceStyle(note.color);
+  const contentColor = note.color === 0 ? 'var(--brand-primary)' : surface.color;
+  const labelChipStyle =
+    note.color === 0
+      ? { backgroundColor: 'rgba(255,255,255,0.12)', color: contentColor }
+      : { backgroundColor: `${surface.backgroundColor}1a`, color: contentColor };
   const title = note.isLocked ? 'Locked note' : note.title || 'Untitled';
   const showBody = !note.isLocked && note.content.length > 0;
   const previewBody = stripMarkdownForPreview(note.content);
   const highlight = (text: string) => highlightSearchText(text, searchQuery);
   const hasReminder =
     note.reminderTimestamp != null && note.reminderTimestamp > Date.now() && !note.isTrashed;
+  const showStatusCluster = !isSelected && (note.isPinned || hasReminder || note.isLocked);
 
   const { longPressProps, shouldSuppressClick } = useLongPress({
     onLongPress: () => onLongPress?.(),
@@ -82,7 +95,9 @@ export function NoteCard({
       } ${
         isSelected
           ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-true-black'
-          : 'hover:scale-[1.02] hover:shadow-md active:scale-[0.98]'
+          : note.color === 0
+            ? 'border border-brand-outline/45 hover:scale-[1.02] hover:shadow-md active:scale-[0.98]'
+            : 'hover:scale-[1.02] hover:shadow-md active:scale-[0.98]'
       }`}
       style={surface}
       aria-pressed={isSelected || undefined}
@@ -105,23 +120,31 @@ export function NoteCard({
         >
           ✓
         </div>
+      ) : showStatusCluster ? (
+        <div
+          className="absolute right-3 top-3 flex items-center gap-1"
+          aria-hidden
+        >
+          {note.isPinned ? (
+            <PinIcon size={14} className="opacity-55" />
+          ) : null}
+          {hasReminder ? (
+            <NotificationIcon size={14} className="opacity-55" />
+          ) : null}
+          {note.isLocked ? (
+            <LockIcon size={14} className="opacity-50" />
+          ) : null}
+        </div>
       ) : null}
 
       <div className="flex items-start justify-between gap-3">
         <h2
           className={`font-bold tracking-[-0.5px] ${
             compact ? 'line-clamp-1 text-base' : 'text-[18px] leading-[25px] line-clamp-2'
-          }`}
+          } ${showStatusCluster && !compact ? 'pr-10' : ''}`}
         >
           {highlight(title)}
         </h2>
-        {note.isPinned ? (
-          <PinIcon className="mt-1 shrink-0 opacity-60" size={16} />
-        ) : hasReminder ? (
-          <span className="mt-1 shrink-0 text-sm opacity-70" aria-label="Reminder set">
-            🔔
-          </span>
-        ) : null}
       </div>
 
       {showBody ? (
@@ -135,9 +158,26 @@ export function NoteCard({
       ) : null}
 
       {!note.isLocked && note.checklist.length > 0 ? (
-        <p className="mt-3 text-[12px] font-bold opacity-65">
-          {note.checklist.filter((item) => item.isChecked).length}/{note.checklist.length} CHECKED
-        </p>
+        compact ? (
+          <p className="mt-3 text-[12px] font-bold opacity-65">
+            {note.checklist.filter((item) => item.isChecked).length}/{note.checklist.length} CHECKED
+          </p>
+        ) : (
+          <div className="mt-2 space-y-1.5">
+            {note.checklist.slice(0, 3).map((item) => (
+              <div key={item.id} className="flex items-center gap-1.5">
+                {item.isChecked ? (
+                  <CheckCircleIcon size={16} className="shrink-0 opacity-60" />
+                ) : (
+                  <CheckCircleOutlineIcon size={16} className="shrink-0 opacity-60" />
+                )}
+                <span className="line-clamp-1 text-[12px] leading-[1.4em] opacity-60">
+                  {highlight(stripMarkdownForPreview(item.text))}
+                </span>
+              </div>
+            ))}
+          </div>
+        )
       ) : null}
 
       {!compact && note.labels.length > 0 ? (
@@ -152,7 +192,7 @@ export function NoteCard({
                   onLabelClick(label.name);
                 }}
                 className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider hover:opacity-80"
-                style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}
+                style={labelChipStyle}
               >
                 {label.name}
               </button>
@@ -160,7 +200,7 @@ export function NoteCard({
               <span
                 key={label.id}
                 className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-                style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}
+                style={labelChipStyle}
               >
                 {label.name}
               </span>

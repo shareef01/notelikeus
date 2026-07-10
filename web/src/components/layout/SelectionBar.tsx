@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ArchiveIcon, CloseIcon, NotesIcon, PinIcon, PinOffIcon, TrashIcon } from '@/components/icons/Icons';
+import { ArchiveIcon, CloseIcon, NotesIcon, PinIcon, TrashIcon } from '@/components/icons/Icons';
 import type { NoteFilter } from '@/types/note';
 
 interface SelectionBarProps {
@@ -8,8 +8,8 @@ interface SelectionBarProps {
   currentFilter: NoteFilter;
   onClearSelection: () => void;
   onToggleSelectAll: () => void;
-  onPin?: () => void;
-  onUnpin?: () => void;
+  selectionAllPinned?: boolean;
+  onPinToggle?: () => void;
   onArchive?: () => void;
   onRestore?: () => void;
   onTrash?: () => void;
@@ -22,8 +22,8 @@ export function SelectionBar({
   currentFilter,
   onClearSelection,
   onToggleSelectAll,
-  onPin,
-  onUnpin,
+  selectionAllPinned = false,
+  onPinToggle,
   onArchive,
   onRestore,
   onTrash,
@@ -54,15 +54,9 @@ export function SelectionBar({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        {currentFilter === 'active' && onPin ? (
-          <IconAction label="Pin" onClick={onPin}>
-            <PinIcon size={20} />
-          </IconAction>
-        ) : null}
-
-        {currentFilter === 'active' && onUnpin ? (
-          <IconAction label="Unpin" onClick={onUnpin}>
-            <PinOffIcon size={20} />
+        {currentFilter === 'active' && onPinToggle ? (
+          <IconAction label={selectionAllPinned ? 'Unpin' : 'Pin'} onClick={onPinToggle}>
+            <PinIcon size={20} className={selectionAllPinned ? 'opacity-100' : 'opacity-55'} />
           </IconAction>
         ) : null}
 
