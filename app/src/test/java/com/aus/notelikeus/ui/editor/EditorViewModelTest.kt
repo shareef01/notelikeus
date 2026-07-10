@@ -4,9 +4,12 @@ import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
 import com.aus.notelikeus.data.remote.ReminderScheduler
+import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.domain.repository.SettingsRepository
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +27,7 @@ class EditorViewModelTest {
 
     private lateinit var viewModel: EditorViewModel
     private lateinit var repository: NoteRepository
+    private lateinit var settingsRepository: SettingsRepository
     private lateinit var reminderScheduler: ReminderScheduler
     private lateinit var cloudNoteSyncCoordinator: CloudNoteSyncCoordinator
     private val testDispatcher = UnconfinedTestDispatcher()
@@ -32,14 +36,17 @@ class EditorViewModelTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         repository = mockk(relaxed = true)
+        settingsRepository = mockk(relaxed = true)
         reminderScheduler = mockk(relaxed = true)
         cloudNoteSyncCoordinator = mockk(relaxed = true)
         every { repository.getLabels() } returns flowOf(emptyList())
+        every { settingsRepository.appTheme } returns flowOf(AppTheme.AUTO)
     }
 
     private fun createViewModel(savedStateHandle: SavedStateHandle): EditorViewModel {
         return EditorViewModel(
             repository,
+            settingsRepository,
             reminderScheduler,
             cloudNoteSyncCoordinator,
             savedStateHandle
@@ -168,6 +175,33 @@ class EditorViewModelTest {
         assertEquals("Buy milk", checklist[0].text)
         assertEquals("Buy eggs", checklist[1].text)
         assertEquals("", viewModel.state.value.content)
+    }
+
+    @Test
+    fun `locking note cancels reminder`() = runTest {
+        val note = Note(
+            id = 1L,
+            title = "Secret",
+            content = "Body",
+            timestamp = 0L,
+            color = 0,
+            isLocked = false,
+            reminderTimestamp = System.currentTimeMillis() + 60_000
+        )
+        coEvery { repository.getNoteById(1L) } returns note
+        coEvery { repository.updateNote(any()) } returns Unit
+
+        val savedStateHandle = SavedStateHandle(mapOf("noteId" to 1L))
+        viewModel = createViewModel(savedStateHandle)
+
+        viewModel.state.test {
+            awaitItem()
+            viewModel.toggleLock()
+            advanceUntilIdle()
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        coVerify { reminderScheduler.cancelReminder(1L) }
     }
 
     @Test

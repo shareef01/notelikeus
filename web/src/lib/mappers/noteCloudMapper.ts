@@ -3,8 +3,14 @@ import type { Label } from '@/types/label';
 import type { Note } from '@/types/note';
 import { labelFromName } from '@/types/label';
 import { isCloudSyncEligible } from '@/types/note';
+import {
+  ensureCloudId,
+  noteCloudDocumentId,
+  resolveCloudIdFromDocument,
+} from '@/lib/cloudIds';
 
 export interface FirestoreNoteDocument {
+  cloudId?: string;
   localId?: number;
   title?: string;
   content?: string;
@@ -41,6 +47,7 @@ function checklistToCloudMap(item: ChecklistItem): Record<string, unknown> {
 /** Serializes a note to the Android-compatible Firestore map. */
 export function noteToCloudMap(note: Note): FirestoreNoteDocument {
   const payload: FirestoreNoteDocument = {
+    cloudId: noteCloudDocumentId(note),
     localId: note.localId,
     title: note.title,
     content: note.content,
@@ -73,15 +80,15 @@ export function cloudMapToNote(
   data: FirestoreNoteDocument,
   resolveLabel: (name: string) => Label = (name) => labelFromName(name),
 ): Note {
+  const cloudId = resolveCloudIdFromDocument(documentId, data);
   const parsedId = Number(documentId);
   const localId =
-    Number.isFinite(parsedId) && parsedId > 0
-      ? parsedId
-      : typeof data.localId === 'number'
-        ? data.localId
+    typeof data.localId === 'number'
+      ? data.localId
+      : Number.isFinite(parsedId) && parsedId > 0
+        ? parsedId
         : Date.now();
-
-  const id = Number.isFinite(parsedId) && parsedId > 0 ? documentId : String(localId);
+  const id = String(localId);
 
   const labels: Label[] = [];
   for (const entry of data.labels ?? []) {
@@ -108,6 +115,7 @@ export function cloudMapToNote(
   return {
     id,
     localId,
+    cloudId: ensureCloudId(cloudId),
     title: data.title ?? '',
     content: data.content ?? '',
     timestamp: data.timestamp ?? Date.now(),
@@ -136,3 +144,5 @@ export function syncMetaMap(noteCount: number, platform: 'web' | 'android' = 'we
     platform,
   };
 }
+
+export { noteCloudDocumentId };

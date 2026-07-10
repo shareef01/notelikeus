@@ -125,7 +125,7 @@ class MainViewModel @Inject constructor(
                     refreshCloudAccount()
                     verifyFirebaseConnection()
                     if (_state.value.isCloudAutoSyncEnabled) {
-                        uploadAllNotesSilently()
+                        mergeLocalWithCloudSilently()
                     }
                     _state.update { it.copy(pendingCloudSyncEvent = CloudSyncEvent.SignedIn) }
                 }
@@ -312,15 +312,16 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private fun uploadAllNotesSilently() {
+    private fun mergeLocalWithCloudSilently() {
         viewModelScope.launch {
-            firebaseNoteSync.uploadAllNotes()
+            firebaseNoteSync.downloadAllNotes()
                 .onSuccess { count ->
                     _state.update {
                         it.copy(
                             cloudSyncStatus = CloudSyncStatus.Synced,
                             cloudSyncedNoteCount = count,
-                            cloudSyncError = null
+                            cloudSyncError = null,
+                            listRevision = it.listRevision + 1
                         )
                     }
                 }

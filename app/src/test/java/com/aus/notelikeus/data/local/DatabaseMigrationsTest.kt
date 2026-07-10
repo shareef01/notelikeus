@@ -13,6 +13,8 @@ class DatabaseMigrationsTest {
         assertEquals(3, DatabaseMigrations.MIGRATION_2_3.endVersion)
         assertEquals(3, DatabaseMigrations.MIGRATION_3_4.startVersion)
         assertEquals(4, DatabaseMigrations.MIGRATION_3_4.endVersion)
-        assertEquals(3, DatabaseMigrations.ALL.size)
+        assertEquals(4, DatabaseMigrations.MIGRATION_4_5.startVersion)
+        assertEquals(5, DatabaseMigrations.MIGRATION_4_5.endVersion)
+        assertEquals(4, DatabaseMigrations.ALL.size)
     }
 }

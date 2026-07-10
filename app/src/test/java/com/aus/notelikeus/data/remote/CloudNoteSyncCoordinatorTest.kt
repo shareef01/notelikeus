@@ -1,11 +1,17 @@
 package com.aus.notelikeus.data.remote
 
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequest
+import androidx.work.WorkManager
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 
@@ -14,6 +20,7 @@ class CloudNoteSyncCoordinatorTest {
     private lateinit var firebaseNoteSync: FirebaseNoteSync
     private lateinit var firebaseSessionManager: FirebaseSessionManager
     private lateinit var settingsRepository: SettingsRepository
+    private lateinit var workManager: WorkManager
     private lateinit var coordinator: CloudNoteSyncCoordinator
 
     @Before
@@ -21,15 +28,17 @@ class CloudNoteSyncCoordinatorTest {
         firebaseNoteSync = mockk(relaxed = true)
         firebaseSessionManager = mockk()
         settingsRepository = mockk()
+        workManager = mockk(relaxed = true)
         coordinator = CloudNoteSyncCoordinator(
             firebaseNoteSync,
             firebaseSessionManager,
-            settingsRepository
+            settingsRepository,
+            workManager
         )
     }
 
     @Test
-    fun `flush uploads pending note when auto sync and Google account are enabled`() = runTest {
+    fun `flush enqueues upload work when auto sync and Google account are enabled`() = runTest {
         every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(true)
         every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
             userId = "uid",
@@ -37,12 +46,27 @@ class CloudNoteSyncCoordinatorTest {
             isGoogleAccount = true,
             isAnonymous = false
         )
-        coEvery { firebaseNoteSync.uploadNote(42L) } returns Result.success(Unit)
+        val workRequestSlot = slot<OneTimeWorkRequest>()
+        every {
+            workManager.enqueueUniqueWork(
+                any(),
+                ExistingWorkPolicy.REPLACE,
+                capture(workRequestSlot)
+            )
+        } returns mockk(relaxed = true)
 
         coordinator.scheduleUpload(42L)
         coordinator.flushNowForTest()
 
-        coVerify { firebaseNoteSync.uploadNote(42L) }
+        verify {
+            workManager.enqueueUniqueWork(
+                "sync_42",
+                ExistingWorkPolicy.REPLACE,
+                any()
+            )
+        }
+        assertEquals(42L, workRequestSlot.captured.workSpec.input.getLong(SyncWorker.KEY_NOTE_ID, -1L))
+        assertEquals(false, workRequestSlot.captured.workSpec.input.getBoolean(SyncWorker.KEY_IS_DELETE, true))
     }
 
     @Test
@@ -58,7 +82,9 @@ class CloudNoteSyncCoordinatorTest {
         coordinator.scheduleUpload(42L)
         coordinator.flushNowForTest()
 
-        coVerify(exactly = 0) { firebaseNoteSync.uploadNote(any()) }
+        verify(exactly = 0) {
+            workManager.enqueueUniqueWork(any(), any(), any())
+        }
     }
 
     @Test
@@ -74,11 +100,13 @@ class CloudNoteSyncCoordinatorTest {
         coordinator.scheduleUpload(42L)
         coordinator.flushNowForTest()
 
-        coVerify(exactly = 0) { firebaseNoteSync.uploadNote(any()) }
+        verify(exactly = 0) {
+            workManager.enqueueUniqueWork(any(), any(), any())
+        }
     }
 
     @Test
-    fun `flush deletes pending note`() = runTest {
+    fun `flush enqueues delete work`() = runTest {
         every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(true)
         every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
             userId = "uid",
@@ -86,11 +114,26 @@ class CloudNoteSyncCoordinatorTest {
             isGoogleAccount = true,
             isAnonymous = false
         )
-        coEvery { firebaseNoteSync.deleteNote(7L) } returns Result.success(Unit)
+        val workRequestSlot = slot<OneTimeWorkRequest>()
+        every {
+            workManager.enqueueUniqueWork(
+                any(),
+                ExistingWorkPolicy.REPLACE,
+                capture(workRequestSlot)
+            )
+        } returns mockk(relaxed = true)
 
         coordinator.scheduleDelete(7L)
         coordinator.flushNowForTest()
 
-        coVerify { firebaseNoteSync.deleteNote(7L) }
+        verify {
+            workManager.enqueueUniqueWork(
+                "sync_7",
+                ExistingWorkPolicy.REPLACE,
+                any()
+            )
+        }
+        assertEquals(7L, workRequestSlot.captured.workSpec.input.getLong(SyncWorker.KEY_NOTE_ID, -1L))
+        assertEquals(true, workRequestSlot.captured.workSpec.input.getBoolean(SyncWorker.KEY_IS_DELETE, false))
     }
 }

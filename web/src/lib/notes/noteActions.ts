@@ -27,11 +27,12 @@ export async function saveNote(note: Note): Promise<void> {
 
 /** Remove locally and from Firestore when signed in. */
 export async function removeNote(noteId: string): Promise<void> {
+  const note = getNote(noteId);
   cancelNoteReminder(noteId);
   useNotesStore.getState().removeLocalNote(noteId);
   const userId = useAuthStore.getState().user?.uid;
-  if (!userId) return;
-  await deleteNote(userId, noteId);
+  if (!userId || !note) return;
+  await deleteNote(userId, note);
 }
 
 export async function trashNoteById(noteId: string): Promise<Note | null> {

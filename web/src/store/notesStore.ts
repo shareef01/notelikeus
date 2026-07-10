@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Note, NoteQueryFilters } from '@/types/note';
+import { ensureNoteCloudIds } from '@/types/note';
 import { notesContentEqual, notesEqual } from '@/lib/notes/noteEquality';
 
 export type NotesLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -84,6 +85,15 @@ export const useNotesStore = create<NotesState>()(
       name: 'notelikeus-notes',
       partialize: (state) => ({ notes: state.notes, filters: state.filters }),
       skipHydration: true,
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<NotesState> | undefined;
+        const notes = ensureNoteCloudIds(saved?.notes ?? current.notes);
+        return {
+          ...current,
+          ...saved,
+          notes,
+        };
+      },
     },
   ),
 );
