@@ -10,10 +10,17 @@ The progressive web app lives in [`web/`](web/) and is hosted at **https://notel
 |---------|-----|
 | Notes, labels, checklists, colors | Yes |
 | Archive, trash, pin, search, filters | Yes |
-| Google Sign-In + Firestore sync | Yes |
+| Multi-select + bulk actions | Yes |
+| Swipe actions + undo toasts | Yes |
+| Manual reorder (list view) | Yes |
+| Date-grouped sections (Today, Yesterday) | Yes |
+| Recent search history | Yes |
+| Smart editor (auto bullets, list continue) | Yes |
+| Google Sign-In + real-time Firestore sync | Yes |
 | Guest mode (local only) | Yes |
 | JSON backup import/export | Yes |
-| Reminders | Browser notifications |
+| Reminders | Browser + service worker notifications |
+| Offline mode + install prompt | Yes |
 | Per-note lock | Unlock gate (no biometric on web) |
 
 ```bash
