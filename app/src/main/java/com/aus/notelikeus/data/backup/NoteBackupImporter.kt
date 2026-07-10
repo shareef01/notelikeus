@@ -89,8 +89,8 @@ class NoteBackupImporter @Inject constructor(
 
             val note = Note(
                 cloudId = cloudId,
-                title = noteJson.optString("title", ""),
-                content = noteJson.optString("content", ""),
+                title = if (isLocked) "" else noteJson.optString("title", ""),
+                content = if (isLocked) "" else noteJson.optString("content", ""),
                 timestamp = noteJson.optLong("timestamp", System.currentTimeMillis()),
                 color = noteJson.optInt("color", 0xFFFFFFFF.toInt()),
                 isPinned = noteJson.optBoolean("isPinned", false),
@@ -99,9 +99,9 @@ class NoteBackupImporter @Inject constructor(
                 position = basePosition + notesImported,
                 isLocked = isLocked,
                 reminderTimestamp = reminderTimestamp,
-                labels = resolvedLabels,
+                labels = if (isLocked) emptyList() else resolvedLabels,
                 attachments = emptyList(),
-                checklist = checklist
+                checklist = if (isLocked) emptyList() else checklist
             )
 
             repository.insertNoteWithResult(note)
