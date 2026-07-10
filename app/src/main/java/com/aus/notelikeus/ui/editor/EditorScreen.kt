@@ -23,10 +23,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.toArgb
 import android.Manifest
 import android.app.AlarmManager
@@ -35,6 +33,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.main.UndoAction
 import kotlinx.coroutines.launch
@@ -46,13 +45,16 @@ import com.aus.notelikeus.ui.editor.components.EditorBottomSheet
 import com.aus.notelikeus.ui.editor.components.RichTextToolbar
 import com.aus.notelikeus.ui.navigation.LocalAnimatedVisibilityScope
 import com.aus.notelikeus.ui.navigation.LocalSharedTransitionScope
-import com.aus.notelikeus.ui.theme.NoteCardBodyStyle
-import com.aus.notelikeus.ui.theme.NoteCardTitleStyle
+import com.aus.notelikeus.ui.theme.EditorBodyStyle
+import com.aus.notelikeus.ui.theme.EditorTitleStyle
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import android.text.format.DateFormat
 import java.util.Calendar
+
+private val EditorHorizontalPadding = 16.dp
+private val EditorVerticalPadding = 16.dp
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -71,8 +73,16 @@ fun EditorScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val undoLabel = stringResource(R.string.action_undo)
-    val noteColor = Color(state.color)
-    val contentColor = noteColor.getContentColor()
+    val noteColor = if (state.color == 0) {
+        MaterialTheme.colorScheme.background
+    } else {
+        Color(state.color)
+    }
+    val contentColor = if (state.color == 0) {
+        MaterialTheme.colorScheme.onBackground
+    } else {
+        noteColor.getContentColor(fallback = MaterialTheme.colorScheme.onBackground)
+    }
     var showBottomSheet by remember { mutableStateOf(false) }
     var showDateTimePicker by remember { mutableStateOf(false) }
     var showLinkDialog by remember { mutableStateOf(false) }
@@ -191,7 +201,13 @@ fun EditorScreen(
                             )
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        navigationIconContentColor = contentColor,
+                        actionIconContentColor = contentColor,
+                        titleContentColor = contentColor
+                    ),
+                    windowInsets = WindowInsets.statusBars
                 )
                 Column(
                     modifier = Modifier
@@ -221,7 +237,11 @@ fun EditorScreen(
                             onSuccess = { viewModel.grantAccess() },
                             onError = { onBack() }
                         )
-                    }
+                    },
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = contentColor.copy(alpha = 0.16f),
+                        contentColor = contentColor
+                    )
                 ) {
                     Text(stringResource(R.string.unlock))
                 }
@@ -310,7 +330,10 @@ fun EditorScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = noteColor
+                    containerColor = noteColor,
+                    navigationIconContentColor = contentColor,
+                    actionIconContentColor = contentColor,
+                    titleContentColor = contentColor
                 ),
                 windowInsets = WindowInsets.statusBars
             )
@@ -390,75 +413,22 @@ fun EditorScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                BasicTextField(
-                    value = state.title,
-                    onValueChange = viewModel::onTitleChange,
-                    textStyle = NoteCardTitleStyle.copy(
-                        color = contentColor,
-                        fontSize = 24.sp, // Larger for editor, but keeping geometric discipline
-                        fontWeight = FontWeight.Bold
-                    ),
-                    cursorBrush = SolidColor(contentColor),
-                    modifier = Modifier.fillMaxWidth(),
-                    decorationBox = { innerTextField ->
-                        if (state.title.isEmpty()) {
-                            Text(
-                                text = stringResource(R.string.title_hint),
-                                style = NoteCardTitleStyle.copy(
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = contentColor.copy(alpha = 0.5f)
-                            )
-                        }
-                        innerTextField()
-                    }
+                EditorTextContent(
+                    title = state.title,
+                    contentValue = state.contentValue,
+                    content = state.content,
+                    checklist = state.checklist,
+                    contentColor = contentColor,
+                    showFormattingToolbar = showFormattingToolbar,
+                    onTitleChange = viewModel::onTitleChange,
+                    onContentValueChange = viewModel::onContentValueChange,
+                    onUpdateChecklistItem = viewModel::updateChecklistItem,
+                    onAddChecklistItem = viewModel::addChecklistItem,
+                    onRemoveChecklistItem = viewModel::removeChecklistItem,
+                    onConvertChecklistToContent = viewModel::convertChecklistToContent
                 )
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                if (state.checklist.isNotEmpty()) {
-                    ChecklistUI(
-                        items = state.checklist,
-                        onUpdate = viewModel::updateChecklistItem,
-                        onAdd = viewModel::addChecklistItem,
-                        onRemove = viewModel::removeChecklistItem,
-                        onConvertToText = viewModel::convertChecklistToContent,
-                        contentColor = contentColor
-                    )
-                } else {
-                    val markdownTransformation = remember(contentColor) {
-                        MarkdownVisualTransformation(contentColor)
-                    }
-                    BasicTextField(
-                        value = state.contentValue,
-                        onValueChange = viewModel::onContentValueChange,
-                        textStyle = NoteCardBodyStyle.copy(
-                            color = contentColor,
-                            fontSize = 16.sp // Slightly larger for writing
-                        ),
-                        visualTransformation = markdownTransformation,
-                        cursorBrush = SolidColor(contentColor),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
-                        decorationBox = { innerTextField ->
-                            if (state.content.isEmpty()) {
-                                Text(
-                                    text = stringResource(R.string.note_hint),
-                                    style = NoteCardBodyStyle.copy(fontSize = 16.sp),
-                                    color = contentColor.copy(alpha = 0.5f)
-                                )
-                            }
-                            innerTextField()
-                        }
-                    )
-                }
-
-                if (showFormattingToolbar) {
-                    Spacer(modifier = Modifier.height(48.dp))
-                }
             }
 
             AnimatedVisibility(
@@ -469,22 +439,109 @@ fun EditorScreen(
                     .align(Alignment.BottomCenter)
                     .imePadding()
                     .navigationBarsPadding()
-                    .padding(bottom = 8.dp)
+                    .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
             ) {
-                        RichTextToolbar(
-                            onBoldClick = viewModel::applyBoldToSelection,
-                            onItalicClick = viewModel::applyItalicToSelection,
-                            onListClick = viewModel::applyBulletListToSelection,
-                            onChecklistClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                if (state.checklist.isEmpty()) viewModel.convertContentToChecklist()
-                            },
-                            onLinkClick = { showLinkDialog = true },
-                            contentColor = contentColor,
-                            surfaceColor = noteColor,
-                            modifier = Modifier.animateContentSize() // Smooth transition
-                        )
+                RichTextToolbar(
+                    onBoldClick = viewModel::applyBoldToSelection,
+                    onItalicClick = viewModel::applyItalicToSelection,
+                    onListClick = viewModel::applyBulletListToSelection,
+                    onChecklistClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        if (state.checklist.isEmpty()) viewModel.convertContentToChecklist()
+                    },
+                    onLinkClick = { showLinkDialog = true },
+                    contentColor = contentColor,
+                    surfaceColor = noteColor,
+                    modifier = Modifier.animateContentSize()
+                )
             }
+        }
+    }
+}
+
+@Composable
+private fun EditorTextContent(
+    title: String,
+    contentValue: TextFieldValue,
+    content: String,
+    checklist: List<ChecklistItem>,
+    contentColor: Color,
+    showFormattingToolbar: Boolean,
+    onTitleChange: (String) -> Unit,
+    onContentValueChange: (TextFieldValue) -> Unit,
+    onUpdateChecklistItem: (Long, String, Boolean) -> Unit,
+    onAddChecklistItem: () -> Unit,
+    onRemoveChecklistItem: (Long) -> Unit,
+    onConvertChecklistToContent: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                start = EditorHorizontalPadding,
+                end = EditorHorizontalPadding,
+                top = EditorVerticalPadding,
+                bottom = EditorVerticalPadding
+            )
+    ) {
+        BasicTextField(
+            value = title,
+            onValueChange = onTitleChange,
+            textStyle = EditorTitleStyle.copy(color = contentColor),
+            cursorBrush = SolidColor(contentColor),
+            modifier = Modifier.fillMaxWidth(),
+            decorationBox = { innerTextField ->
+                if (title.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.title_hint),
+                        style = EditorTitleStyle,
+                        color = contentColor.copy(alpha = 0.5f)
+                    )
+                }
+                innerTextField()
+            }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (checklist.isNotEmpty()) {
+            ChecklistUI(
+                items = checklist,
+                onUpdate = onUpdateChecklistItem,
+                onAdd = onAddChecklistItem,
+                onRemove = onRemoveChecklistItem,
+                onConvertToText = onConvertChecklistToContent,
+                contentColor = contentColor
+            )
+        } else {
+            val markdownTransformation = remember(contentColor) {
+                MarkdownVisualTransformation(contentColor)
+            }
+            BasicTextField(
+                value = contentValue,
+                onValueChange = onContentValueChange,
+                textStyle = EditorBodyStyle.copy(color = contentColor),
+                visualTransformation = markdownTransformation,
+                cursorBrush = SolidColor(contentColor),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 100.dp),
+                decorationBox = { innerTextField ->
+                    if (content.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.note_hint),
+                            style = EditorBodyStyle,
+                            color = contentColor.copy(alpha = 0.5f)
+                        )
+                    }
+                    innerTextField()
+                }
+            )
+        }
+
+        if (showFormattingToolbar) {
+            Spacer(modifier = Modifier.height(64.dp))
         }
     }
 }
@@ -577,6 +634,7 @@ private fun LinkDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = MaterialTheme.shapes.large,
         title = { Text(stringResource(R.string.link_dialog_title)) },
         text = {
             OutlinedTextField(
@@ -584,7 +642,8 @@ private fun LinkDialog(
                 onValueChange = { url = it },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text(stringResource(R.string.link_url_hint)) },
-                singleLine = true
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium
             )
         },
         confirmButton = {

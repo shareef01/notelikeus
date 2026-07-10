@@ -4,6 +4,7 @@ import { isFirebaseConfigured } from '@/lib/config';
 import { MainScreen } from '@/screens/MainScreen';
 import { ThemeApplier } from '@/components/theme/ThemeApplier';
 import { useUiStore } from '@/store/uiStore';
+import { useIsDesktop } from '@/hooks/useMediaQuery';
 import { lazy, Suspense, useEffect } from 'react';
 
 const EditorScreen = lazy(() =>
@@ -11,6 +12,9 @@ const EditorScreen = lazy(() =>
 );
 const AuthScreen = lazy(() =>
   import('@/screens/AuthScreen').then((module) => ({ default: module.AuthScreen })),
+);
+const LabelsScreen = lazy(() =>
+  import('@/screens/LabelsScreen').then((module) => ({ default: module.LabelsScreen })),
 );
 
 const firebaseReady = isFirebaseConfigured();
@@ -21,6 +25,8 @@ export default function App() {
     s.editorRoute.mode === 'edit' ? s.editorRoute.noteId : null,
   );
   const authScreen = useUiStore((s) => s.authScreen);
+  const labelsOpen = useUiStore((s) => s.labelsOpen);
+  const setLabelsOpen = useUiStore((s) => s.setLabelsOpen);
   const openNewNote = useUiStore((s) => s.openNewNote);
 
   useAuthSync();
@@ -44,22 +50,30 @@ export default function App() {
     );
   }
 
+  const isDesktop = useIsDesktop();
+  const showMobileEditor = !isDesktop && editorMode !== 'closed';
+
   return (
     <>
       <ThemeApplier />
       <MainScreen />
-      {editorMode === 'new' ? (
+      {showMobileEditor ? (
         <Suspense fallback={null}>
-          <EditorScreen route={{ mode: 'new' }} />
-        </Suspense>
-      ) : editorMode === 'edit' && editorNoteId ? (
-        <Suspense fallback={null}>
-          <EditorScreen route={{ mode: 'edit', noteId: editorNoteId }} />
+          {editorMode === 'new' ? (
+            <EditorScreen route={{ mode: 'new' }} />
+          ) : editorNoteId ? (
+            <EditorScreen route={{ mode: 'edit', noteId: editorNoteId }} />
+          ) : null}
         </Suspense>
       ) : null}
       {authScreen ? (
         <Suspense fallback={null}>
           <AuthScreen mode={authScreen} />
+        </Suspense>
+      ) : null}
+      {labelsOpen ? (
+        <Suspense fallback={null}>
+          <LabelsScreen onClose={() => setLabelsOpen(false)} />
         </Suspense>
       ) : null}
     </>

@@ -1,5 +1,4 @@
-import { DragHandleIcon } from '@/components/icons/Icons';
-import { NoteCard } from '@/components/notes/NoteCard';
+import { NoteCard, type NoteReorderHandleProps } from '@/components/notes/NoteCard';
 import { NoteSectionHeader } from '@/components/notes/NoteSectionHeader';
 import { SwipeableNoteCard } from '@/components/notes/SwipeableNoteCard';
 import { getDateHeader } from '@/lib/text/dateTime';
@@ -70,17 +69,21 @@ export function NoteStaggeredGrid({
     isSelected: selectedSet.has(note.id),
   });
 
-  const renderCard = (note: Note) => {
-    const card = <NoteCard {...cardProps(note)} />;
+  const renderCard = (note: Note, reorder?: NoteReorderHandleProps) => {
+    const reorderProps = {
+      showReorderHandle: Boolean(reorder),
+      reorderHandleProps: reorder,
+    };
 
     if (!swipeEnabled || !listActions) {
-      return card;
+      return <NoteCard {...cardProps(note)} {...reorderProps} />;
     }
 
     if (filter === 'active') {
       return (
         <SwipeableNoteCard
           {...cardProps(note)}
+          {...reorderProps}
           onArchive={() => listActions.onArchive(note)}
           onTrash={() => listActions.onTrash(note)}
         />
@@ -91,6 +94,7 @@ export function NoteStaggeredGrid({
       return (
         <SwipeableNoteCard
           {...cardProps(note)}
+          {...reorderProps}
           onRestore={() => listActions.onRestore(note)}
           onTrash={() => listActions.onTrash(note)}
         />
@@ -101,13 +105,14 @@ export function NoteStaggeredGrid({
       return (
         <SwipeableNoteCard
           {...cardProps(note)}
+          {...reorderProps}
           onRestore={() => listActions.onRestore(note)}
           onTrash={() => listActions.onPermanentDelete(note)}
         />
       );
     }
 
-    return card;
+    return <NoteCard {...cardProps(note)} {...reorderProps} />;
   };
 
   const handleDragStart = (index: number) => {
@@ -171,10 +176,10 @@ export function NoteStaggeredGrid({
                   onDragStart={handleDragStart}
                   onDragMove={handleDragMove}
                   onDragEnd={handleDragEnd}
-                  render={() => renderCard(note)}
+                  render={(reorderHandleProps) => renderCard(note, reorderHandleProps)}
                 />
               ) : (
-                <StaticListRow render={() => renderCard(note)} />
+                renderCard(note)
               )}
             </div>
           );
@@ -235,17 +240,6 @@ export function NoteStaggeredGrid({
   );
 }
 
-function StaticListRow({ render }: { render: () => ReactNode }) {
-  return (
-    <div className="flex items-center gap-0">
-      <div className="hidden w-8 shrink-0 justify-center pl-2 md:flex lg:w-10 lg:pl-4" aria-hidden>
-        <DragHandleIcon size={24} className="text-brand-muted/20" />
-      </div>
-      <div className="min-w-0 flex-1">{render()}</div>
-    </div>
-  );
-}
-
 function ReorderRow({
   index,
   isDragging,
@@ -259,28 +253,24 @@ function ReorderRow({
   onDragStart: (index: number) => void;
   onDragMove: (deltaY: number) => void;
   onDragEnd: () => void;
-  render: () => ReactNode;
+  render: (reorderHandleProps: NoteReorderHandleProps) => ReactNode;
 }) {
+  const reorderHandleProps: NoteReorderHandleProps = {
+    onPointerDown: (event) => {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      onDragStart(index);
+    },
+    onPointerMove: (event) => {
+      if (event.buttons === 0) return;
+      onDragMove(event.movementY);
+    },
+    onPointerUp: onDragEnd,
+    onPointerCancel: onDragEnd,
+  };
+
   return (
-    <div className={`flex items-stretch gap-1 ${isDragging ? 'opacity-90' : ''}`}>
-      <button
-        type="button"
-        aria-label="Reorder note"
-        className="flex min-h-[44px] w-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-note text-brand-muted/50 active:cursor-grabbing active:bg-white/5 sm:w-12"
-        onPointerDown={(event) => {
-          event.currentTarget.setPointerCapture(event.pointerId);
-          onDragStart(index);
-        }}
-        onPointerMove={(event) => {
-          if (event.buttons === 0) return;
-          onDragMove(event.movementY);
-        }}
-        onPointerUp={onDragEnd}
-        onPointerCancel={onDragEnd}
-      >
-        <DragHandleIcon size={22} />
-      </button>
-      <div className="min-w-0 flex-1">{render()}</div>
+    <div className={isDragging ? 'opacity-90' : ''}>
+      {render(reorderHandleProps)}
     </div>
   );
 }
