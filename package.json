@@ -1,0 +1,14 @@
+{
+  "name": "notelikeus-firebase",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run tests/firestore.rules.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.10.0",
+    "firebase-tools": "^14.9.0",
+    "vitest": "^3.2.4"
+  }
+}
