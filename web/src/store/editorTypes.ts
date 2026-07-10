@@ -5,6 +5,7 @@ import type { Note } from '@/types/note';
 export interface EditorState {
   id: string | null;
   localId: number | null;
+  cloudId: string | null;
   title: string;
   content: string;
   color: number;
@@ -23,6 +24,8 @@ export interface EditorState {
   lastSavedAt: number | null;
 }
 
+import { ensureCloudId } from '@/lib/cloudIds';
+
 export const DEFAULT_EDITOR_COLOR = 0; // Use theme background by default to prevent blinking
 
 export function buildNoteFromEditor(state: EditorState): Note | null {
@@ -32,6 +35,7 @@ export function buildNoteFromEditor(state: EditorState): Note | null {
   return {
     id: state.id,
     localId: state.localId,
+    cloudId: ensureCloudId(state.cloudId),
     title: state.title,
     content: state.content,
     timestamp: state.timestamp,
@@ -52,6 +56,7 @@ export function editorStateFromNote(note: Note): EditorState {
   return {
     id: note.id,
     localId: note.localId,
+    cloudId: note.cloudId,
     title: note.title,
     content: note.content,
     color: note.color,
@@ -78,6 +83,7 @@ export function createBlankEditorState(color = DEFAULT_EDITOR_COLOR, position = 
   return {
     id: null,
     localId: null,
+    cloudId: null,
     title: '',
     content: '',
     color,

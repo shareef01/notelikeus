@@ -289,6 +289,12 @@ class EditorViewModel @Inject constructor(
         _state.update { it.copy(isAccessGranted = true) }
     }
 
+    fun revokeAccessIfLocked() {
+        if (_state.value.isLocked) {
+            _state.update { it.copy(isAccessGranted = false) }
+        }
+    }
+
     fun applyBoldToSelection() {
         applyFormatting { TextFormatting.wrapSelection(it, "**") }
     }
@@ -416,7 +422,7 @@ class EditorViewModel @Inject constructor(
     }
 
     private fun syncReminder(noteId: Long, state: EditorState) {
-        if (state.isTrashed || state.isArchived || state.reminderTimestamp == null) {
+        if (state.isTrashed || state.isArchived || state.isLocked || state.reminderTimestamp == null) {
             reminderScheduler.cancelReminder(noteId)
         } else {
             reminderScheduler.scheduleReminder(
