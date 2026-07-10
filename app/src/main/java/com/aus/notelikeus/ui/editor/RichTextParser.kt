@@ -56,6 +56,10 @@ object RichTextParser {
   }
 
   fun toTransformedText(text: String, contentColor: Color): TransformedText {
+    if (text.length > 5000) {
+        // Optimization: For very large notes, return plain text to keep typing responsive
+        return TransformedText(AnnotatedString(text), OffsetMapping.Identity)
+    }
     return TransformedText(
         text = parse(text, contentColor),
         offsetMapping = buildOffsetMapping(text)

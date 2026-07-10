@@ -17,6 +17,7 @@ interface UiState {
   editorRoute: EditorRoute;
   authScreen: AuthMode | null;
   selectedNoteIds: string[];
+  recentSearches: string[];
   setDrawerOpen: (open: boolean) => void;
   toggleDrawer: () => void;
   setViewColumns: (columns: ViewColumns) => void;
@@ -30,6 +31,8 @@ interface UiState {
   toggleNoteSelection: (noteId: string) => void;
   clearSelection: () => void;
   toggleSelectAll: (noteIds: string[]) => void;
+  addRecentSearch: (query: string) => void;
+  clearRecentSearches: () => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -41,6 +44,7 @@ export const useUiStore = create<UiState>()(
       editorRoute: { mode: 'closed' },
       authScreen: null,
       selectedNoteIds: [],
+      recentSearches: [],
       setDrawerOpen: (drawerOpen) =>
         set((state) => (state.drawerOpen === drawerOpen ? state : { drawerOpen })),
       toggleDrawer: () => set({ drawerOpen: !get().drawerOpen }),
@@ -78,10 +82,20 @@ export const useUiStore = create<UiState>()(
           const merged = new Set([...state.selectedNoteIds, ...noteIds]);
           return { selectedNoteIds: Array.from(merged) };
         }),
+      addRecentSearch: (query) =>
+        set((state) => {
+          if (!query.trim()) return state;
+          const filtered = state.recentSearches.filter((s) => s !== query.trim());
+          return { recentSearches: [query.trim(), ...filtered].slice(0, 10) };
+        }),
+      clearRecentSearches: () => set({ recentSearches: [] }),
     }),
     {
       name: 'notelikeus-ui',
-      partialize: (state) => ({ viewColumns: state.viewColumns }),
+      partialize: (state) => ({
+        viewColumns: state.viewColumns,
+        recentSearches: state.recentSearches
+      }),
       skipHydration: true,
     },
   ),

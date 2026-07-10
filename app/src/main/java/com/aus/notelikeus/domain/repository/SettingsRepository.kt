@@ -17,4 +17,8 @@ interface SettingsRepository {
     suspend fun setUseMonochromeTheme(enabled: Boolean)
     val isCloudAutoSyncEnabled: Flow<Boolean>
     suspend fun setCloudAutoSyncEnabled(enabled: Boolean)
+
+    val recentSearches: Flow<List<String>>
+    suspend fun addRecentSearch(query: String)
+    suspend fun clearRecentSearches()
 }
