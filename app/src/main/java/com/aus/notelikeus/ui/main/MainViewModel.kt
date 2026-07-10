@@ -46,6 +46,7 @@ private data class PendingUndo(
 data class MainState(
     val notes: List<Note> = emptyList(),
     val filteredNotes: List<Note> = emptyList(),
+    val recentSearches: List<String> = emptyList(),
     val searchQuery: String = "",
     val selectedColor: Int? = null,
     val selectedLabelId: Long? = null,
@@ -99,6 +100,7 @@ class MainViewModel @Inject constructor(
         loadDrawerCounts()
         setupSearchOptimization()
         refreshCloudAccount()
+        loadRecentSearches()
     }
 
     private fun refreshCloudAccount() {
@@ -286,6 +288,26 @@ class MainViewModel @Inject constructor(
 
     fun clearPendingCloudSyncEvent() {
         _state.update { it.copy(pendingCloudSyncEvent = null) }
+    }
+
+    private fun loadRecentSearches() {
+        settingsRepository.recentSearches
+            .onEach { searches ->
+                _state.update { it.copy(recentSearches = searches) }
+            }
+            .launchIn(viewModelScope)
+    }
+
+    fun addRecentSearch(query: String) {
+        viewModelScope.launch {
+            settingsRepository.addRecentSearch(query)
+        }
+    }
+
+    fun clearRecentSearches() {
+        viewModelScope.launch {
+            settingsRepository.clearRecentSearches()
+        }
     }
 
     private fun uploadAllNotesSilently() {
