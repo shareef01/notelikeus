@@ -41,3 +41,11 @@ jobs:
           VITE_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
           VITE_FIREBASE_APP_ID: 1:000000000000:web:placeholder
           VITE_FIREBASE_GOOGLE_CLIENT_ID: placeholder.apps.googleusercontent.com
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright smoke tests
+        run: npm run test:e2e
+        env:
+          CI: true
