@@ -10,23 +10,31 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Deselect
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Restore
@@ -39,18 +47,28 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.NoteSortOrder
@@ -85,12 +103,19 @@ fun MainTopAppBar(
     selectedLabelId: Long?,
     onLabelSelect: (Long?) -> Unit,
     sortOrder: NoteSortOrder = NoteSortOrder.MANUAL,
+    recentSearches: List<String> = emptyList(),
+    onRecentSearchClick: (String) -> Unit = {},
+    onClearRecentSearches: () -> Unit = {},
     hasActiveFilters: Boolean = false,
     onClearFilters: () -> Unit = {},
     listScrolled: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var isSearchFocused by remember { mutableStateOf(false) }
+
     val settingsContentDescription = stringResource(R.string.cd_open_settings)
     val searchPlaceholder = when (currentFilter) {
         NoteFilter.ACTIVE -> stringResource(R.string.search_notes)
@@ -220,8 +245,16 @@ fun MainTopAppBar(
                                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                 modifier = Modifier
                                     .weight(1f)
+                                    .onFocusChanged { isSearchFocused = it.isFocused }
                                     .semantics { contentDescription = searchPlaceholder },
                                 singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = {
+                                    if (searchQuery.isNotBlank()) {
+                                        onRecentSearchClick(searchQuery)
+                                    }
+                                    focusManager.clearFocus()
+                                }),
                                 decorationBox = { innerTextField ->
                                     Box(
                                         modifier = Modifier.fillMaxWidth(),
@@ -283,7 +316,26 @@ fun MainTopAppBar(
             }
 
             AnimatedVisibility(
-                visible = selectedCount == 0,
+                visible = selectedCount == 0 && isSearchFocused && recentSearches.isNotEmpty() && searchQuery.isEmpty(),
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                RecentSearchRow(
+                    searches = recentSearches,
+                    onSearchClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onRecentSearchClick(it)
+                        focusManager.clearFocus()
+                    },
+                    onClearAll = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onClearRecentSearches()
+                    }
+                )
+            }
+
+            AnimatedVisibility(
+                visible = selectedCount == 0 && (!isSearchFocused || searchQuery.isNotEmpty() || recentSearches.isEmpty()),
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
@@ -314,6 +366,50 @@ fun MainTopAppBar(
                     thickness = 1.dp
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun RecentSearchRow(
+    searches: List<String>,
+    onSearchClick: (String) -> Unit,
+    onClearAll: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Default.History,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp).size(18.dp)
+        )
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(end = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(searches) { query ->
+                PrecisionFilterChip(
+                    selected = false,
+                    onClick = { onSearchClick(query) },
+                    label = query
+                )
+            }
+        }
+        TextButton(
+            onClick = onClearAll,
+            modifier = Modifier.padding(end = 8.dp)
+        ) {
+            Text(
+                "Clear",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

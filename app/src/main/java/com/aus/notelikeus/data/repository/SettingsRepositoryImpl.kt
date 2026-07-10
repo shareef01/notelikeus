@@ -6,6 +6,7 @@ import com.aus.notelikeus.data.local.APP_LOCK_ENABLED_KEY
 import com.aus.notelikeus.data.local.CLOUD_AUTO_SYNC_ENABLED_KEY
 import com.aus.notelikeus.data.local.NOTE_SORT_ORDER_KEY
 import com.aus.notelikeus.data.local.NOTE_VIEW_MODE_KEY
+import com.aus.notelikeus.data.local.RECENT_SEARCHES_KEY
 import com.aus.notelikeus.data.local.TRUE_DARK_MODE_KEY
 import com.aus.notelikeus.data.local.USE_MONOCHROME_THEME_KEY
 import com.aus.notelikeus.data.local.settingsDataStore
@@ -102,5 +103,29 @@ class SettingsRepositoryImpl @Inject constructor(
         context.settingsDataStore.edit { preferences ->
             preferences[CLOUD_AUTO_SYNC_ENABLED_KEY] = enabled
         }
+    }
+
+    override val recentSearches: Flow<List<String>> = context.settingsDataStore.data
+        .map { preferences ->
+            preferences[RECENT_SEARCHES_KEY]?.split("|")?.filter { it.isNotBlank() } ?: emptyList()
+        }
+
+    override suspend fun addRecentSearch(query: String) {
+        if (query.isBlank()) return
+        context.settingsDataStore.edit { preferences ->
+            val existing = preferences[RECENT_SEARCHES_KEY]?.split("|")?.filter { it.isNotBlank() } ?: emptyList()
+            val updated = (listOf(query.trim()) + existing.filter { it != query.trim() }).take(MAX_RECENT_SEARCHES)
+            preferences[RECENT_SEARCHES_KEY] = updated.joinToString("|")
+        }
+    }
+
+    override suspend fun clearRecentSearches() {
+        context.settingsDataStore.edit { preferences ->
+            preferences.remove(RECENT_SEARCHES_KEY)
+        }
+    }
+
+    companion object {
+        private const val MAX_RECENT_SEARCHES = 10
     }
 }
