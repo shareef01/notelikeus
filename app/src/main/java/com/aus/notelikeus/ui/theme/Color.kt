@@ -102,6 +102,6 @@ fun noteColorsMatch(noteArgb: Int, filterArgb: Int): Boolean =
     noteArgb == filterArgb || noteColorCounterpart(noteArgb) == filterArgb
 
 val SwipeArchiveLight = Color(0xFF2A2A2A)
-val SwipeArchiveDark = Color(0xFFE8E8E8)
+val SwipeArchiveDark = Color(0xFF2A2A2A)
 val SwipeDeleteLight = Color(0xFF5C2B2B)
 val SwipeDeleteDark = Color(0xFF8B4545)

@@ -108,10 +108,11 @@ class NoteBackupImporter @Inject constructor(
         for (i in 0 until notesArray.length()) {
             val noteJson = notesArray.getJSONObject(i)
             val labelNames = noteJson.optJSONArray("labels") ?: JSONArray()
-            val resolvedLabels = buildList {
-                for (j in 0 until labelNames.length()) {
-                    val name = labelNames.getString(j)
-                    if (name.isNotBlank()) add(ensureLabel(name))
+            val resolvedLabels = mutableListOf<Label>()
+            for (j in 0 until labelNames.length()) {
+                val name = labelNames.getString(j)
+                if (name.isNotBlank()) {
+                    resolvedLabels.add(ensureLabel(name))
                 }
             }
 
@@ -134,7 +135,7 @@ class NoteBackupImporter @Inject constructor(
             val isTrashed = noteJson.optBoolean("isTrashed", false)
 
             val isLocked = noteJson.optBoolean("isLocked", false)
-            val cloudId = CloudIds.ensure(noteJson.optString("cloudId", null))
+            val cloudId = CloudIds.ensure(noteJson.optString("cloudId").takeUnless { it.isBlank() })
 
             val note = Note(
                 cloudId = cloudId,

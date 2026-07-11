@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+:root,
+.theme-light {
   --background: #F7F7F7;
   --surface: #FFFFFF;
   --surface-variant: #EFEFEF;
@@ -10,6 +11,7 @@
   --secondary: #5C5C5C;
   --muted: #5C5C5C;
   --outline: #D8D8D8;
+  --header-divider: color-mix(in srgb, var(--primary) 8%, transparent);
 }
 
 .theme-dark {
@@ -20,16 +22,18 @@
   --secondary: #A8A8A8;
   --muted: #B0B0B0;
   --outline: #333333;
+  --header-divider: color-mix(in srgb, var(--primary) 6%, transparent);
 }
 
 .theme-true-dark {
   --background: #000000;
-  --surface: #000000;
-  --surface-variant: #121212;
+  --surface: #121212;
+  --surface-variant: #1A1A1A;
   --primary: #FFFFFF;
   --secondary: #A8A8A8;
   --muted: #AAAAAA;
   --outline: #222222;
+  --header-divider: color-mix(in srgb, var(--primary) 6%, transparent);
 }
 
 .theme-midnight {
@@ -40,6 +44,7 @@
   --secondary: #A8A8A8;
   --muted: #AAB8C9;
   --outline: #232D3B;
+  --header-divider: color-mix(in srgb, var(--primary) 6%, transparent);
 }
 
 .theme-forest {
@@ -50,6 +55,7 @@
   --secondary: #A8A8A8;
   --muted: #A9B8A9;
   --outline: #263326;
+  --header-divider: color-mix(in srgb, var(--primary) 6%, transparent);
 }
 
 @layer base {
@@ -69,6 +75,15 @@
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     transition: background-color 0.3s ease, color 0.3s ease;
   }
+
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary) 60%, transparent);
+    outline-offset: 2px;
+  }
+
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
 }
 
 @layer utilities {
@@ -78,6 +93,15 @@
   }
 
   .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
 
@@ -116,14 +140,88 @@
   }
 
   .filter-chip {
-    @apply inline-flex h-8 max-h-8 items-center rounded-lg border border-brand-outline/50 px-3 text-xs font-medium transition-colors sm:h-9 sm:px-3.5 sm:text-sm;
+    @apply inline-flex min-h-11 shrink-0 items-center rounded-full border px-3 text-sm font-medium transition-colors;
+  }
+
+  .filter-chip:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary) 50%, transparent);
+    outline-offset: 2px;
   }
 
   .filter-chip-active {
-    @apply border-brand-outline/50 bg-true-surface-variant/55 text-brand-primary;
+    border-color: var(--outline);
+    background-color: color-mix(in srgb, var(--surface-variant) 55%, transparent);
+    color: var(--primary);
   }
 
   .filter-chip-inactive {
-    @apply border-brand-outline/50 bg-transparent text-brand-muted;
+    border-color: color-mix(in srgb, var(--outline) 50%, transparent);
+    background-color: var(--background);
+    color: var(--muted);
+  }
+
+  .filter-chip-inactive:hover {
+    background-color: color-mix(in srgb, var(--surface-variant) 40%, transparent);
+  }
+
+  .filter-chip-compact {
+    min-height: 2rem;
+    padding-inline: 0.625rem;
+    font-size: 0.8125rem;
+  }
+
+  .shadow-header-scroll {
+    box-shadow: 0 1px 0 var(--header-divider);
+  }
+
+  .interactive-hover {
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .interactive-hover:hover {
+    background-color: color-mix(in srgb, var(--primary) 5%, transparent);
+  }
+
+  .interactive-hover:active {
+    background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+  }
+
+  .note-surface-hover {
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+  }
+
+  .note-surface-hover:hover {
+    background-color: color-mix(in srgb, currentColor 10%, transparent);
+  }
+
+  .note-surface-hover:active {
+    background-color: color-mix(in srgb, currentColor 16%, transparent);
+  }
+
+  .note-surface-panel {
+    background-color: color-mix(in srgb, currentColor 8%, transparent);
+  }
+
+  .note-surface-chip {
+    background-color: color-mix(in srgb, currentColor 12%, transparent);
+  }
+
+  .note-surface-cta {
+    background-color: color-mix(in srgb, currentColor 15%, transparent);
+  }
+
+  .overlay-scrim {
+    background-color: color-mix(in srgb, #000 72%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -103,7 +103,7 @@ fun MainTopAppBar(
     selectedLabelId: Long?,
     onLabelSelect: (Long?) -> Unit,
     sortOrder: NoteSortOrder = NoteSortOrder.MANUAL,
-    onSortOrderCycle: () -> Unit = {},
+    onSortOrderChange: (NoteSortOrder) -> Unit = {},
     recentSearches: List<String> = emptyList(),
     onRecentSearchClick: (String) -> Unit = {},
     onClearRecentSearches: () -> Unit = {},
@@ -303,7 +303,7 @@ fun MainTopAppBar(
 
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(48.dp)
                                     .clip(CircleShape)
                                     .semantics { contentDescription = settingsContentDescription }
                                     .clickable {
@@ -343,7 +343,7 @@ fun MainTopAppBar(
             }
 
             AnimatedVisibility(
-                visible = selectedCount == 0 && (!isSearchFocused || searchQuery.isNotEmpty() || recentSearches.isEmpty()),
+                visible = selectedCount == 0,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
@@ -360,10 +360,7 @@ fun MainTopAppBar(
                         onLabelSelect(it)
                     },
                     sortOrder = sortOrder,
-                    onSortOrderCycle = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onSortOrderCycle()
-                    },
+                    onSortOrderChange = onSortOrderChange,
                     hasActiveFilters = hasActiveFilters,
                     onClearFilters = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)

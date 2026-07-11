@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Sync
+import com.aus.notelikeus.ui.components.GoogleSignInButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -48,6 +49,7 @@ fun AuthScreen(
     initialMode: AuthMode = AuthMode.SIGN_IN,
     onDismiss: () -> Unit,
     onGoogleSignIn: () -> Unit,
+    isGoogleSignInPending: Boolean = false,
 ) {
     var mode by rememberSaveable { mutableStateOf(initialMode) }
 
@@ -65,7 +67,7 @@ fun AuthScreen(
                 horizontalArrangement = Arrangement.End,
             ) {
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_cancel))
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_close))
                 }
             }
 
@@ -126,18 +128,14 @@ fun AuthScreen(
                 )
 
                 Spacer(modifier = Modifier.height(28.dp))
-                Button(
+                GoogleSignInButton(
                     onClick = onGoogleSignIn,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Text(
-                        stringResource(
-                            if (mode == AuthMode.SIGN_IN) R.string.cloud_sign_in_google else R.string.auth_sign_up_google
-                        ),
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
+                    label = stringResource(
+                        if (mode == AuthMode.SIGN_IN) R.string.cloud_sign_in_google else R.string.auth_sign_up_google
+                    ),
+                    loading = isGoogleSignInPending,
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(

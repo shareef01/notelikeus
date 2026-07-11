@@ -1,5 +1,7 @@
 import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
-import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
+import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';
+import { ModalScrim, modalPanelProps } from '@/components/layout/ModalScrim';
+import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
 import { useToastStore } from '@/store/toastStore';
 import { LockIcon, LockOpenIcon, TrashIcon, AddIcon } from '@/components/icons/Icons';
 import type { Label } from '@/types/label';
@@ -119,7 +121,7 @@ export function EditorOptionsSheet({
               value={newLabel}
               onChange={(event) => setNewLabel(event.target.value)}
               placeholder="New label"
-              className="min-w-0 flex-1 rounded-note border border-brand-outline bg-true-black px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
+              className="min-w-0 flex-1 rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
             />
             <button
               type="button"
@@ -144,7 +146,7 @@ export function EditorOptionsSheet({
             <button
               type="button"
               onClick={() => onReminderChange(Date.now() + 3600000)}
-              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
+              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary interactive-hover"
             >
               In 1 hour
             </button>
@@ -156,14 +158,14 @@ export function EditorOptionsSheet({
                 date.setHours(9, 0, 0, 0);
                 onReminderChange(date.getTime());
               }}
-              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
+              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary interactive-hover"
             >
               Tomorrow morning
             </button>
             <button
               type="button"
               onClick={() => onReminderChange(Date.now() + 7 * 86400000)}
-              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
+              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary interactive-hover"
             >
               Next week
             </button>
@@ -173,7 +175,7 @@ export function EditorOptionsSheet({
             type="datetime-local"
             value={formatReminderInputValue(reminderTimestamp)}
             onChange={(event) => void handleReminderInput(event.target.value)}
-            className="mt-4 w-full rounded-note border border-brand-outline bg-true-black px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
+            className="mt-4 w-full rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
           />
           {reminderTimestamp != null ? (
             <button
@@ -193,7 +195,7 @@ export function EditorOptionsSheet({
               onLockToggle();
               onClose();
             }}
-            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-brand-primary transition-colors hover:bg-white/5"
+            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-brand-primary transition-colors interactive-hover"
           >
             {isLocked ? <LockOpenIcon size={24} className="text-brand-primary/60" /> : <LockIcon size={24} className="text-brand-primary/60" />}
             {isLocked ? 'Unlock note' : 'Lock note'}
@@ -201,7 +203,7 @@ export function EditorOptionsSheet({
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-red-400 transition-colors hover:bg-white/5"
+            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-red-400 transition-colors interactive-hover"
           >
             <TrashIcon size={24} className="text-red-400/70" />
             Delete note
@@ -212,8 +214,8 @@ export function EditorOptionsSheet({
       </ResponsiveSheet>
 
       {confirmDelete ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-[20px] bg-true-surface p-6 shadow-2xl border border-brand-outline">
+        <ModalScrim align="center" onScrimClick={() => setConfirmDelete(false)}>
+          <div {...modalPanelProps('w-full max-w-sm rounded-[20px] border border-brand-outline bg-true-surface p-6 shadow-2xl')}>
             <h4 className="text-lg font-bold">Delete note?</h4>
             <p className="mt-2 text-sm text-brand-muted">
               This note will be moved to trash on your synced devices.
@@ -239,7 +241,7 @@ export function EditorOptionsSheet({
               </button>
             </div>
           </div>
-        </div>
+        </ModalScrim>
       ) : null}
     </>
   );

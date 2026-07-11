@@ -13,7 +13,7 @@ import { BackupImportDialog } from '@/components/notes/BackupImportDialog';
 import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
 import { TrashBanner } from '@/components/notes/TrashBanner';
 
-import { ProfileSheet, THEME_ORDER } from '@/components/settings/ProfileSheet';
+import { ProfileSheet } from '@/components/settings/ProfileSheet';
 
 import { PrivacyPolicyDialog } from '@/components/settings/PrivacyPolicyDialog';
 
@@ -62,12 +62,6 @@ const LazyEditorScreen = lazy(() =>
   import('@/screens/EditorScreen').then((module) => ({ default: module.EditorScreen })),
 );
 
-
-
-const SORT_ORDERS = ['manual', 'newest', 'oldest'] as const;
-
-
-
 export function MainScreen() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -99,7 +93,7 @@ export function MainScreen() {
 
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
 
-  const cycleViewColumns = useUiStore((s) => s.cycleViewColumns);
+  const setViewColumns = useUiStore((s) => s.setViewColumns);
 
   const setListScrolled = useUiStore((s) => s.setListScrolled);
 
@@ -243,20 +237,6 @@ export function MainScreen() {
     setListScrolled(element.scrollTop > 0);
 
   }, [setListScrolled]);
-
-
-
-  const cycleSortOrder = () => {
-
-    const index = SORT_ORDERS.indexOf(filters.sortOrder ?? 'manual');
-
-    const next = SORT_ORDERS[(index + 1) % SORT_ORDERS.length];
-
-    setSortOrder(next);
-
-  };
-
-
 
   const handleArchiveNote = async (note: Note) => {
     const previous = { ...note };
@@ -560,7 +540,7 @@ export function MainScreen() {
 
 
       <div className="flex min-h-screen min-w-0 flex-1">
-        <div className={`flex flex-col min-w-0 flex-1 transition-all duration-300 ${isDesktop && editorRoute.mode !== 'closed' ? 'max-w-[400px] border-r border-brand-outline' : ''}`}>
+        <div className={`flex flex-col min-w-0 flex-1 transition-all duration-300 ${isDesktop && editorRoute.mode !== 'closed' ? 'w-[min(440px,38vw)] min-w-[300px] max-w-[440px] shrink-0 border-r border-brand-outline' : ''}`}>
           <TopBar
             searchQuery={filters.searchQuery ?? ''}
 
@@ -572,7 +552,7 @@ export function MainScreen() {
 
           sortOrder={filters.sortOrder ?? 'manual'}
 
-          onSortOrderCycle={cycleSortOrder}
+          onSortOrderChange={setSortOrder}
 
           selectedColor={filters.colorArgb ?? null}
 
@@ -592,7 +572,7 @@ export function MainScreen() {
 
           onProfileClick={() => setShowProfile(true)}
 
-          onViewModeCycle={cycleViewColumns}
+          onViewColumnsChange={setViewColumns}
 
           onNewNote={openNewNote}
 
@@ -747,11 +727,11 @@ export function MainScreen() {
         {desktopEditor ? (
           <div className="relative flex-1 bg-true-surface animate-in slide-in-from-right duration-300">
              <Suspense fallback={null}>
-               <LazyEditorScreen route={desktopEditor} />
+               <LazyEditorScreen route={desktopEditor} variant="embedded" />
              </Suspense>
           </div>
         ) : isDesktop ? (
-          <div className="hidden lg:flex flex-1 flex-col items-center justify-center gap-4 bg-true-surface px-8 text-center">
+          <div className="hidden lg:flex min-w-0 flex-1 flex-col items-center justify-center gap-4 border-l border-brand-outline/30 bg-true-surface px-8 text-center">
             <NotesIcon size={64} className="text-brand-muted/25" />
             <p className="text-lg font-semibold text-brand-primary/80">Select a note</p>
             <p className="max-w-xs text-sm text-brand-muted">
@@ -782,14 +762,10 @@ export function MainScreen() {
 
         viewColumns={viewColumns}
         sortOrder={filters.sortOrder ?? 'manual'}
-        onViewColumnsCycle={cycleViewColumns}
-        onSortOrderCycle={cycleSortOrder}
+        onViewColumnsChange={setViewColumns}
+        onSortOrderChange={setSortOrder}
         appTheme={appTheme}
-        onAppThemeCycle={() => {
-            const currentIdx = THEME_ORDER.indexOf(appTheme);
-            const next = THEME_ORDER[(currentIdx + 1) % THEME_ORDER.length];
-            setAppTheme(next);
-        }}
+        onAppThemeChange={setAppTheme}
         cloudAutoSyncEnabled={cloudAutoSyncEnabled}
 
         onCloudAutoSyncChange={setCloudAutoSyncEnabled}
