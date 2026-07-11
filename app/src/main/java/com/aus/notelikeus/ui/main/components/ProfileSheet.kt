@@ -537,17 +537,20 @@ private fun cloudStatusLabel(
     syncedCount: Int,
     account: CloudAccount
 ): String {
-    if (account.isGoogleAccount && !account.email.isNullOrBlank()) {
-        val localPart = account.email.substringBefore('@')
-        if (localPart.length <= 12) return localPart
-        return localPart.take(10) + "…"
+    if (!account.isGoogleAccount) {
+        return stringResource(R.string.cloud_status_not_signed_in)
     }
-    return when (status) {
+    val statusText = when (status) {
         CloudSyncStatus.Unknown -> stringResource(R.string.cloud_status_checking)
         CloudSyncStatus.Connected -> stringResource(R.string.cloud_status_ready)
         CloudSyncStatus.Offline -> stringResource(R.string.cloud_status_offline)
         CloudSyncStatus.Syncing -> stringResource(R.string.cloud_status_syncing)
-        CloudSyncStatus.Synced -> syncedCount.toString()
+        CloudSyncStatus.Synced -> stringResource(R.string.cloud_status_synced)
         CloudSyncStatus.Error -> stringResource(R.string.cloud_status_error)
+    }
+    return if (status == CloudSyncStatus.Syncing || status == CloudSyncStatus.Error) {
+        statusText
+    } else {
+        stringResource(R.string.cloud_status_with_count, statusText, syncedCount)
     }
 }

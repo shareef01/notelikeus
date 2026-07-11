@@ -3,6 +3,8 @@ import { BrandMark } from '@/components/brand/BrandMark';
 import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';
 import type { ViewColumns } from '@/store/uiStore';
 import type { AppTheme } from '@/store/settingsStore';
+import type { CloudSyncStatus } from '@/hooks/useCloudSync';
+import { formatSyncStatus } from '@/lib/cloud/syncStatusLabel';
 import {
   GridViewIcon,
   SortIcon,
@@ -112,7 +114,7 @@ interface ProfileSheetProps {
   onCloudAutoSyncChange: (enabled: boolean) => void;
   isGoogleAccount: boolean;
   userEmail: string | null;
-  syncStatus: string;
+  syncStatus: CloudSyncStatus;
   syncedNoteCount: number;
   onSyncNow: () => void;
   onRestore: () => void;
@@ -195,7 +197,7 @@ export function ProfileSheet({
         <SettingsRow title="Total notes" subtitle={String(noteCount)} icon={<NotesIcon size={24} />} />
         <SettingsRow
           title="Cloud sync"
-          subtitle={isGoogleAccount ? `${syncStatus} · ${syncedNoteCount} notes` : 'Not signed in'}
+          subtitle={isGoogleAccount ? `${formatSyncStatus(syncStatus)} · ${syncedNoteCount} notes` : 'Not signed in'}
           icon={<CloudIcon size={24} />}
         />
 

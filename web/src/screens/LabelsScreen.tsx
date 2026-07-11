@@ -1,5 +1,5 @@
 import { useLabelManagement } from '@/hooks/useLabelManagement';
-import { CloseIcon, TrashIcon, AddIcon } from '@/components/icons/Icons';
+import { CloseIcon, LabelIcon, TrashIcon, AddIcon } from '@/components/icons/Icons';
 import { useState } from 'react';
 import type { Label } from '@/types/label';
 
@@ -15,6 +15,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
   const { labels, createLabel, updateLabel, deleteLabel } = useLabelManagement();
   const [newLabelName, setNewLabelName] = useState('');
   const [labelToEdit, setLabelToEdit] = useState<Label | null>(null);
+  const [labelToDelete, setLabelToDelete] = useState<Label | null>(null);
   const [editName, setEditName] = useState('');
 
   const handleCreate = (e: React.FormEvent) => {
@@ -35,6 +36,13 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
       updateLabel(labelToEdit.id, editName.trim());
     }
     setLabelToEdit(null);
+  };
+
+  const handleConfirmDelete = () => {
+    if (labelToDelete) {
+      deleteLabel(labelToDelete.id);
+      setLabelToDelete(null);
+    }
   };
 
   return (
@@ -85,7 +93,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
             {labels.map((label, index) => (
               <div key={label.id}>
                 <div className="flex min-h-[56px] items-center gap-4 rounded-note px-4 transition-colors hover:bg-white/5">
-                  <span className="text-xl opacity-40">🏷️</span>
+                  <LabelIcon size={22} className="opacity-40" />
 
                   {labelToEdit?.id === label.id ? (
                     <input
@@ -108,7 +116,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
 
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={() => deleteLabel(label.id)}
+                      onClick={() => setLabelToDelete(label)}
                       className="flex size-10 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-red-500/10 hover:text-red-400"
                       aria-label="Delete label"
                     >
@@ -124,6 +132,33 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
           </div>
         )}
       </div>
+
+      {labelToDelete ? (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 sm:items-center sm:p-6">
+          <div className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl">
+            <h4 className="text-lg font-semibold">Delete label?</h4>
+            <p className="mt-2 text-sm text-brand-muted">
+              &ldquo;{labelToDelete.name}&rdquo; will be removed from all notes. This cannot be undone.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setLabelToDelete(null)}
+                className="rounded-note px-4 py-2 text-sm text-brand-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="rounded-note bg-red-600 px-4 py-2 text-sm font-semibold text-white"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

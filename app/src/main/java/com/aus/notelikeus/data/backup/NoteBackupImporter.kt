@@ -22,12 +22,61 @@ class NoteBackupImporter @Inject constructor(
     )
 
     suspend fun importFromJson(json: String): ImportResult {
+        val root = parseRoot(json)
+        return importParsedRoot(root)
+    }
+
+    suspend fun previewFromJson(json: String): ImportResult {
+        val root = parseRoot(json)
+        return previewParsedRoot(root)
+    }
+
+    private fun parseRoot(json: String): JSONObject {
         val root = JSONObject(json)
         val version = root.optInt("version", 0)
         if (version > NoteBackupExporter.BACKUP_VERSION) {
             throw IllegalArgumentException("Unsupported backup version: $version")
         }
+        return root
+    }
 
+    private suspend fun previewParsedRoot(root: JSONObject): ImportResult {
+        val labelMap = repository.getAllLabelsSnapshot()
+            .associateBy { it.name.lowercase() }
+            .toMutableMap()
+        var labelsCreated = 0
+
+        fun trackLabel(name: String) {
+            val key = name.trim().lowercase()
+            if (key.isEmpty() || labelMap.containsKey(key)) return
+            labelMap[key] = Label(name = name.trim())
+            labelsCreated++
+        }
+
+        if (root.has("labels")) {
+            val labelsArray = root.getJSONArray("labels")
+            for (i in 0 until labelsArray.length()) {
+                val labelJson = labelsArray.getJSONObject(i)
+                trackLabel(labelJson.optString("name", ""))
+            }
+        }
+
+        val notesArray = root.optJSONArray("notes") ?: JSONArray()
+        for (i in 0 until notesArray.length()) {
+            val noteJson = notesArray.getJSONObject(i)
+            val labelNames = noteJson.optJSONArray("labels") ?: JSONArray()
+            for (j in 0 until labelNames.length()) {
+                trackLabel(labelNames.getString(j))
+            }
+        }
+
+        return ImportResult(
+            notesImported = notesArray.length(),
+            labelsCreated = labelsCreated
+        )
+    }
+
+    private suspend fun importParsedRoot(root: JSONObject): ImportResult {
         val labelMap = repository.getAllLabelsSnapshot()
             .associateBy { it.name.lowercase() }
             .toMutableMap()
