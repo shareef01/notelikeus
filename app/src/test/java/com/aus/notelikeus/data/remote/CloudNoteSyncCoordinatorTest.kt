@@ -62,7 +62,7 @@ class CloudNoteSyncCoordinatorTest {
             workManager.enqueueUniqueWork(
                 "sync_42",
                 ExistingWorkPolicy.REPLACE,
-                any()
+                any<OneTimeWorkRequest>()
             )
         }
         assertEquals(42L, workRequestSlot.captured.workSpec.input.getLong(SyncWorker.KEY_NOTE_ID, -1L))
@@ -83,7 +83,11 @@ class CloudNoteSyncCoordinatorTest {
         coordinator.flushNowForTest()
 
         verify(exactly = 0) {
-            workManager.enqueueUniqueWork(any(), any(), any())
+            workManager.enqueueUniqueWork(
+                any<String>(),
+                any<ExistingWorkPolicy>(),
+                any<OneTimeWorkRequest>()
+            )
         }
     }
 
@@ -101,7 +105,11 @@ class CloudNoteSyncCoordinatorTest {
         coordinator.flushNowForTest()
 
         verify(exactly = 0) {
-            workManager.enqueueUniqueWork(any(), any(), any())
+            workManager.enqueueUniqueWork(
+                any<String>(),
+                any<ExistingWorkPolicy>(),
+                any<OneTimeWorkRequest>()
+            )
         }
     }
 
@@ -130,7 +138,7 @@ class CloudNoteSyncCoordinatorTest {
             workManager.enqueueUniqueWork(
                 "sync_7",
                 ExistingWorkPolicy.REPLACE,
-                any()
+                any<OneTimeWorkRequest>()
             )
         }
         assertEquals(7L, workRequestSlot.captured.workSpec.input.getLong(SyncWorker.KEY_NOTE_ID, -1L))

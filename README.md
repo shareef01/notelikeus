@@ -134,6 +134,8 @@ keytool -genkey -v -keystore release.keystore -alias notelikeus -keyalg RSA -key
 ./gradlew :app:bundleRelease
 ```
 
+On Windows, `.\scripts\bundle-release.ps1` runs unit tests and builds the AAB (see `app/build/outputs/bundle/release/`).
+
 The output APK is at `app/build/outputs/apk/release/`.
 
 CI runs unit tests, Android lint, Web vitest + Playwright, and Firestore rules tests on every push/PR to `main`, `master`, and `weiter` (unsigned release if no signing file is present).

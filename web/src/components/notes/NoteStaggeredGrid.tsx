@@ -148,7 +148,7 @@ export function NoteStaggeredGrid({
 
   if (columns === 1) {
     return (
-      <div className="flex flex-col gap-note-gap px-3 pb-24 pt-3 sm:px-4 lg:px-6">
+      <div className="flex flex-col gap-note-gap px-3 pb-24 pt-2 sm:px-4 lg:px-5 lg:pt-3">
         {notes.map((note, index) => {
           const prevNote = notes[index - 1];
 
