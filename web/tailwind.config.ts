@@ -7,15 +7,15 @@ const config: Config = {
     extend: {
       colors: {
         true: {
-          black: '#000000', // OLED Absolute Black
-          surface: '#000000', // Enforcing Absolute Discipline
-          'surface-variant': '#121212',
+          black: 'var(--background)',
+          surface: 'var(--surface)',
+          'surface-variant': 'var(--surface-variant)',
         },
         brand: {
-          primary: '#FFFFFF',
-          secondary: '#A8A8A8',
-          muted: '#AAAAAA',
-          outline: '#222222',
+          primary: 'var(--primary)',
+          secondary: 'var(--secondary)',
+          muted: 'var(--muted)',
+          outline: 'var(--outline)',
         },
         note: {
           'red-light': '#FFDADA',
@@ -63,9 +63,6 @@ const config: Config = {
         shell: '90rem',
         content: '72rem',
         editor: '48rem',
-      },
-      boxShadow: {
-        'header-scroll': '0 1px 0 0 rgba(255, 255, 255, 0.06)',
       },
     },
   },
