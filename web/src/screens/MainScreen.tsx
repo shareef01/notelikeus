@@ -1,4 +1,4 @@
-import { AddIcon } from '@/components/icons/Icons';
+import { AddIcon, NotesIcon } from '@/components/icons/Icons';
 
 import { ToastHost } from '@/components/feedback/ToastHost';
 import { InstallPrompt } from '@/components/layout/InstallPrompt';
@@ -9,6 +9,7 @@ import { NoteStaggeredGrid } from '@/components/notes/NoteStaggeredGrid';
 import { NotesEmptyState } from '@/components/notes/NotesEmptyState';
 import { BulkDeleteDialog } from '@/components/notes/BulkDeleteDialog';
 import { EmptyTrashDialog } from '@/components/notes/EmptyTrashDialog';
+import { BackupImportDialog } from '@/components/notes/BackupImportDialog';
 import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
 import { TrashBanner } from '@/components/notes/TrashBanner';
 
@@ -28,7 +29,7 @@ import { useNotes } from '@/hooks/useNotes';
 
 import { exportNotesBackup } from '@/lib/backup/exportBackup';
 
-import { importNotesFromBackup, readBackupFile } from '@/lib/backup/importBackup';
+import { importNotesFromBackup, readBackupFile, type BackupImportResult } from '@/lib/backup/importBackup';
 
 import { signOutGoogle } from '@/lib/auth/googleAuth';
 import {
@@ -82,6 +83,11 @@ export function MainScreen() {
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [backupPreview, setBackupPreview] = useState<{
+    fileName: string;
+    merged: Note[];
+    result: BackupImportResult;
+  } | null>(null);
 
 
 
@@ -155,6 +161,17 @@ export function MainScreen() {
     error,
 
   } = useNotes();
+
+  const selectedNoteModels = useMemo(
+    () =>
+      selectedNoteIds
+        .map((id) => notes.find((note) => note.id === id))
+        .filter((note): note is Note => note != null),
+    [selectedNoteIds, notes],
+  );
+
+  const selectionAllPinned =
+    selectedNoteModels.length > 0 && selectedNoteModels.every((note) => note.isPinned);
 
 
 
@@ -421,17 +438,43 @@ export function MainScreen() {
 
       const { merged, result } = importNotesFromBackup(json, notes);
 
-      useNotesStore.getState().setNotes(merged);
+      setBackupPreview({ fileName: file.name, merged, result });
+
+    } catch (error) {
+
+      useToastStore.getState().show(
+
+        error instanceof Error ? error.message : 'Import failed',
+
+        'error',
+
+      );
+
+    }
+
+  };
+
+
+
+  const handleConfirmBackupImport = async () => {
+
+    if (!backupPreview) return;
+
+    try {
+
+      useNotesStore.getState().setNotes(backupPreview.merged);
 
 
 
       if (user?.uid) {
 
-        await uploadAllNotes(user.uid, merged);
+        await uploadAllNotes(user.uid, backupPreview.merged);
 
       }
 
 
+
+      const { result } = backupPreview;
 
       const parts: string[] = [];
 
@@ -470,6 +513,10 @@ export function MainScreen() {
         'error',
 
       );
+
+    } finally {
+
+      setBackupPreview(null);
 
     }
 
@@ -554,6 +601,7 @@ export function MainScreen() {
           viewColumns={effectiveColumns}
 
           selectionMode={selectionMode}
+          selectionAllPinned={selectionAllPinned}
           selectedCount={selectedNoteIds.length}
           allFilteredSelected={allFilteredSelected}
           onClearSelection={clearSelection}
@@ -614,21 +662,29 @@ export function MainScreen() {
                   addRecentSearch(query);
                 }}
                 action={
-                  emptyState.showSignIn ? (
+                  emptyState.actionType === 'clearFilters' ? (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary"
+                    >
+                      Clear filters
+                    </button>
+                  ) : emptyState.actionType === 'addNote' ? (
                     <div className="flex flex-col items-center gap-3 sm:flex-row">
                       <button
                         type="button"
-                        onClick={() => openAuthScreen('signin')}
+                        onClick={openNewNote}
                         className="rounded-note bg-brand-primary px-5 py-2.5 text-sm font-semibold text-true-black"
                       >
-                        Sign in
+                        Add note
                       </button>
                       <button
                         type="button"
-                        onClick={() => openAuthScreen('signup')}
+                        onClick={() => openAuthScreen('signin')}
                         className="rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary"
                       >
-                        Create account
+                        Sign in
                       </button>
                     </div>
                   ) : undefined
@@ -688,13 +744,30 @@ export function MainScreen() {
         ) : null}
         </div>
 
-        {desktopEditor && (
+        {desktopEditor ? (
           <div className="relative flex-1 bg-true-surface animate-in slide-in-from-right duration-300">
              <Suspense fallback={null}>
                <LazyEditorScreen route={desktopEditor} />
              </Suspense>
           </div>
-        )}
+        ) : isDesktop ? (
+          <div className="hidden lg:flex flex-1 flex-col items-center justify-center gap-4 bg-true-surface px-8 text-center">
+            <NotesIcon size={64} className="text-brand-muted/25" />
+            <p className="text-lg font-semibold text-brand-primary/80">Select a note</p>
+            <p className="max-w-xs text-sm text-brand-muted">
+              Choose a note from the list or create a new one to start editing.
+            </p>
+            {filters.filter === 'active' ? (
+              <button
+                type="button"
+                onClick={openNewNote}
+                className="mt-2 rounded-note bg-brand-primary px-5 py-2.5 text-sm font-semibold text-true-black"
+              >
+                New note
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
 
@@ -774,6 +847,16 @@ export function MainScreen() {
         onConfirm={() => void handleEmptyTrash()}
       />
 
+      {backupPreview ? (
+        <BackupImportDialog
+          open
+          fileName={backupPreview.fileName}
+          result={backupPreview.result}
+          onCancel={() => setBackupPreview(null)}
+          onConfirm={() => void handleConfirmBackupImport()}
+        />
+      ) : null}
+
 
 
       <PrivacyPolicyDialog
@@ -836,7 +919,7 @@ function getEmptyState(
 
   icon: 'brand' | 'archive' | 'trash';
 
-  showSignIn?: boolean;
+  actionType?: 'addNote' | 'clearFilters';
 
 } {
 
@@ -849,6 +932,8 @@ function getEmptyState(
       subtitle: 'Try a different search term or clear filters',
 
       icon: 'brand',
+
+      actionType: 'clearFilters',
 
     };
 
@@ -863,6 +948,8 @@ function getEmptyState(
       subtitle: 'Try another color or label',
 
       icon: 'brand',
+
+      actionType: 'clearFilters',
 
     };
 
@@ -896,7 +983,7 @@ function getEmptyState(
 
     icon: 'brand',
 
-    showSignIn: true,
+    actionType: 'addNote',
 
   };
 
