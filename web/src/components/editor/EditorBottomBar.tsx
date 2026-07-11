@@ -2,13 +2,24 @@ interface EditorBottomBarProps {
   timestamp: number;
   isSaving: boolean;
   contentColor: string;
+  reminderTimestamp?: number | null;
   onMoreClick: () => void;
+}
+
+function formatReminder(timestamp: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(timestamp));
 }
 
 export function EditorBottomBar({
   timestamp,
   isSaving,
   contentColor,
+  reminderTimestamp,
   onMoreClick,
 }: EditorBottomBarProps) {
   const editedLabel = new Intl.DateTimeFormat(undefined, {
@@ -23,7 +34,12 @@ export function EditorBottomBar({
     >
       <div className="flex-1" />
       <div className="text-center text-xs font-medium opacity-70">
-        {isSaving ? 'Saving…' : `Edited ${editedLabel}`}
+        {reminderTimestamp ? (
+          <span className="block">Reminder {formatReminder(reminderTimestamp)}</span>
+        ) : null}
+        <span className={reminderTimestamp ? 'mt-0.5 block opacity-80' : undefined}>
+          {isSaving ? 'Saving…' : `Edited ${editedLabel}`}
+        </span>
       </div>
       <div className="flex flex-1 justify-end">
         <button
