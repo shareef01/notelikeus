@@ -1,3 +1,4 @@
+import { useIsDarkTheme } from '@/hooks/useIsDarkTheme';
 import { argbToCss, noteColorsForTheme } from '@/theme/colors';
 
 interface ColorSwatchProps {
@@ -5,27 +6,29 @@ interface ColorSwatchProps {
   selected: boolean;
   onClick: () => void;
   label?: string;
+  compact?: boolean;
 }
 
-export function ColorSwatch({ argb, selected, onClick, label }: ColorSwatchProps) {
+export function ColorSwatch({ argb, selected, onClick, label, compact = false }: ColorSwatchProps) {
   const isDefault = argb === 0;
+  const sizeClass = compact ? 'size-8' : 'size-11';
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={label ?? 'Note color'}
+      aria-label={label ?? (isDefault ? 'Default note color' : 'Note color')}
       aria-pressed={selected}
-      className={`relative size-7 shrink-0 rounded-full border-2 transition-transform flex items-center justify-center ${
-        selected ? 'scale-110 border-brand-primary' : 'border-transparent hover:scale-105'
+      className={`relative flex ${sizeClass} shrink-0 items-center justify-center rounded-full border-2 transition-transform ${
+        selected ? 'scale-105 border-brand-primary' : 'border-brand-outline/40 hover:scale-105'
       }`}
-      style={{ backgroundColor: isDefault ? 'transparent' : argbToCss(argb) }}
+      style={{ backgroundColor: isDefault ? 'var(--surface-variant)' : argbToCss(argb) }}
     >
-      {isDefault && (
-        <span className="text-[10px] font-bold text-brand-muted/40">🚫</span>
-      )}
-      {selected && (
-         <span className="text-[10px] text-brand-primary">✓</span>
-      )}
+      {isDefault ? (
+        <span className={`font-bold uppercase tracking-wide text-brand-muted/50 ${compact ? 'text-[8px]' : 'text-[10px]'}`}>
+          Def
+        </span>
+      ) : null}
+      {selected && !isDefault ? <span className="text-xs font-bold text-brand-primary">✓</span> : null}
     </button>
   );
 }
@@ -33,16 +36,19 @@ export function ColorSwatch({ argb, selected, onClick, label }: ColorSwatchProps
 interface ColorSwatchRowProps {
   selectedColor: number | null;
   onSelect: (color: number | null) => void;
+  compact?: boolean;
 }
 
-export function ColorSwatchRow({ selectedColor, onSelect }: ColorSwatchRowProps) {
-  const colors = noteColorsForTheme(true);
+export function ColorSwatchRow({ selectedColor, onSelect, compact = false }: ColorSwatchRowProps) {
+  const isDark = useIsDarkTheme();
+  const colors = noteColorsForTheme(isDark);
   return (
     <>
       {colors.map((argb) => (
         <ColorSwatch
           key={argb}
           argb={argb}
+          compact={compact}
           selected={selectedColor === argb}
           onClick={() => onSelect(selectedColor === argb ? null : argb)}
         />

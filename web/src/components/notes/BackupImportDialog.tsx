@@ -1,4 +1,5 @@
 import type { BackupImportResult } from '@/lib/backup/importBackup';
+import { ModalScrim, modalPanelProps } from '@/components/layout/ModalScrim';
 
 interface BackupImportDialogProps {
   open: boolean;
@@ -27,8 +28,8 @@ export function BackupImportDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 sm:items-center sm:p-6">
-      <div className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl">
+    <ModalScrim onScrimClick={onCancel}>
+      <div {...modalPanelProps('w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl')}>
         <h4 className="text-lg font-semibold">Import backup?</h4>
         <p className="mt-2 text-sm text-brand-muted">
           {hasChanges
@@ -53,6 +54,6 @@ export function BackupImportDialog({
           </button>
         </div>
       </div>
-    </div>
+    </ModalScrim>
   );
 }

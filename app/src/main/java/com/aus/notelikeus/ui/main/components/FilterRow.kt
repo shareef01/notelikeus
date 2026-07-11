@@ -1,6 +1,7 @@
 package com.aus.notelikeus.ui.main.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +15,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -35,7 +52,7 @@ fun FilterRow(
     selectedLabelId: Long?,
     onLabelSelect: (Long?) -> Unit,
     sortOrder: NoteSortOrder = NoteSortOrder.MANUAL,
-    onSortOrderCycle: () -> Unit = {},
+    onSortOrderChange: (NoteSortOrder) -> Unit = {},
     hasActiveFilters: Boolean = false,
     onClearFilters: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -49,14 +66,13 @@ fun FilterRow(
     ) {
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             item {
-                PrecisionFilterChip(
-                    selected = true,
-                    onClick = onSortOrderCycle,
-                    label = stringResource(sortOrderLabelRes(sortOrder))
+                SortOrderFilterChip(
+                    sortOrder = sortOrder,
+                    onSortOrderChange = onSortOrderChange,
                 )
             }
             if (hasActiveFilters) {
@@ -88,7 +104,7 @@ fun FilterRow(
         if (allLabels.isNotEmpty()) {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 item {
@@ -105,6 +121,69 @@ fun FilterRow(
                         label = label.name
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SortOrderFilterChip(
+    sortOrder: NoteSortOrder,
+    onSortOrderChange: (NoteSortOrder) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+
+    Box {
+        PrecisionFilterChip(
+            selected = false,
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                expanded = true
+            },
+            label = stringResource(sortOrderLabelRes(sortOrder)),
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.widthIn(min = 220.dp),
+            shape = MaterialTheme.shapes.large,
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            tonalElevation = 2.dp,
+            shadowElevation = 6.dp,
+        ) {
+            NoteSortOrder.entries.forEach { order ->
+                val selected = order == sortOrder
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = stringResource(sortOrderLabelRes(order)),
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
+                    },
+                    trailingIcon = {
+                        if (selected) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .semantics { invisibleToUser() },
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    },
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onSortOrderChange(order)
+                        expanded = false
+                    },
+                )
             }
         }
     }
@@ -132,8 +211,8 @@ internal fun PrecisionFilterChip(
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
             )
         },
-        modifier = modifier.heightIn(max = 32.dp),
-        shape = MaterialTheme.shapes.extraSmall,
+        modifier = modifier.heightIn(min = 48.dp),
+        shape = RoundedCornerShape(16.dp),
         border = FilterChipDefaults.filterChipBorder(
             enabled = enabled,
             selected = selected,

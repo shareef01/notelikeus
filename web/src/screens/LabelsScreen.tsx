@@ -1,6 +1,6 @@
 import { useLabelManagement } from '@/hooks/useLabelManagement';
-import { CloseIcon, LabelIcon, TrashIcon, AddIcon } from '@/components/icons/Icons';
-import { useState } from 'react';
+import { ModalScrim, modalPanelProps } from '@/components/layout/ModalScrim';
+import { CloseIcon, LabelIcon, TrashIcon, AddIcon } from '@/components/icons/Icons';import { useState } from 'react';
 import type { Label } from '@/types/label';
 
 interface LabelsScreenProps {
@@ -50,8 +50,10 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
       <header className="flex items-center justify-between px-4 py-4 lg:px-6">
         <h2 className="text-xl font-bold tracking-tight text-brand-primary">Edit labels</h2>
         <button
+          type="button"
           onClick={onClose}
-          className="flex size-10 items-center justify-center rounded-full hover:bg-white/5 transition-colors"
+          className="flex size-11 items-center justify-center rounded-full interactive-hover transition-colors"
+          aria-label="Close labels"
         >
           <CloseIcon size={24} />
         </button>
@@ -72,7 +74,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
           {newLabelName.trim() ? (
             <button
               type="submit"
-              className="rounded-note px-4 py-2 text-sm font-bold text-brand-primary transition-colors hover:bg-white/5"
+              className="rounded-note px-4 py-2 text-sm font-bold text-brand-primary transition-colors interactive-hover"
             >
               Create
             </button>
@@ -92,7 +94,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
           <div className="space-y-0">
             {labels.map((label, index) => (
               <div key={label.id}>
-                <div className="flex min-h-[56px] items-center gap-4 rounded-note px-4 transition-colors hover:bg-white/5">
+                <div className="flex min-h-[56px] items-center gap-4 rounded-note px-4 transition-colors interactive-hover">
                   <LabelIcon size={22} className="opacity-40" />
 
                   {labelToEdit?.id === label.id ? (
@@ -107,6 +109,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
                     />
                   ) : (
                     <button
+                      type="button"
                       onClick={() => handleStartEdit(label)}
                       className="flex-1 truncate text-left text-base text-brand-primary"
                     >
@@ -116,6 +119,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
 
                   <div className="flex items-center gap-1">
                     <button
+                      type="button"
                       onClick={() => setLabelToDelete(label)}
                       className="flex size-10 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-red-500/10 hover:text-red-400"
                       aria-label="Delete label"
@@ -134,8 +138,8 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
       </div>
 
       {labelToDelete ? (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 sm:items-center sm:p-6">
-          <div className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl">
+        <ModalScrim zIndexClass="z-[60]" onScrimClick={() => setLabelToDelete(null)}>
+          <div {...modalPanelProps('w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl')}>
             <h4 className="text-lg font-semibold">Delete label?</h4>
             <p className="mt-2 text-sm text-brand-muted">
               &ldquo;{labelToDelete.name}&rdquo; will be removed from all notes. This cannot be undone.
@@ -157,7 +161,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
               </button>
             </div>
           </div>
-        </div>
+        </ModalScrim>
       ) : null}
     </div>
   );

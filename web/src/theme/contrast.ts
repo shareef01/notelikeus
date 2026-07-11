@@ -26,8 +26,8 @@ export function contentColorForBackground(argb: number): string {
 export function noteSurfaceStyle(argb: number, _isDark = true): { backgroundColor: string; color: string } {
   if (argb === 0) {
     return {
-       backgroundColor: 'rgba(255, 255, 255, 0.05)',
-       color: 'var(--brand-primary)'
+      backgroundColor: 'var(--surface-variant)',
+      color: 'var(--primary)',
     };
   }
   return {
