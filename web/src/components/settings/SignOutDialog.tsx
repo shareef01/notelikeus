@@ -1,3 +1,5 @@
+import { ModalScrim, modalPanelProps } from '@/components/layout/ModalScrim';
+
 interface SignOutDialogProps {
   open: boolean;
   onCancel: () => void;
@@ -14,8 +16,8 @@ export function SignOutDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 sm:items-center sm:p-6">
-      <div className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl">
+    <ModalScrim onScrimClick={onCancel}>
+      <div {...modalPanelProps('w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl')}>
         <h4 className="text-lg font-semibold">Sign out of Google?</h4>
         <p className="mt-2 text-sm text-brand-muted">
           Notes on this device stay in your browser cache. Copies in the cloud remain unless you
@@ -24,7 +26,7 @@ export function SignOutDialog({
         <button
           type="button"
           onClick={onSignOutAndDelete}
-          className="mt-4 w-full rounded-note py-2.5 text-sm font-semibold text-red-400 hover:bg-red-950/30"
+          className="mt-4 w-full rounded-note py-2.5 text-sm font-semibold text-red-400 interactive-hover"
         >
           Sign out and delete cloud data
         </button>
@@ -45,6 +47,6 @@ export function SignOutDialog({
           </button>
         </div>
       </div>
-    </div>
+    </ModalScrim>
   );
 }

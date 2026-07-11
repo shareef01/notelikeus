@@ -77,7 +77,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
         <button
           type="button"
           onClick={closeAuthScreen}
-          className="flex size-11 items-center justify-center rounded-full text-brand-muted hover:bg-white/5"
+          className="flex size-11 items-center justify-center rounded-full text-brand-muted interactive-hover"
           aria-label="Close"
         >
           <CloseIcon size={22} />
@@ -151,7 +151,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
             <button
               type="button"
               onClick={closeAuthScreen}
-              className="w-full rounded-note border border-brand-outline/50 px-4 py-3 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5"
+              className="w-full rounded-note border border-brand-outline/50 px-4 py-3 text-sm font-semibold text-brand-primary transition-colors interactive-hover"
             >
               Continue without an account
             </button>

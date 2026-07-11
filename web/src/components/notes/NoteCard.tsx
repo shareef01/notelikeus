@@ -1,4 +1,4 @@
-import { PinIcon, DragHandleIcon } from '@/components/icons/Icons';
+import { PinIcon, DragHandleIcon, BellIcon } from '@/components/icons/Icons';
 import { useLongPress } from '@/hooks/useLongPress';
 import { highlightSearchText } from '@/lib/text/highlightSearch';
 import { stripMarkdownForPreview } from '@/lib/text/markdown';
@@ -77,7 +77,7 @@ export function NoteCard({
         }
       }}
       {...(onLongPress ? longPressProps : {})}
-      className={`relative w-full cursor-pointer rounded-note text-left shadow-sm transition-all duration-200 ${
+      className={`relative w-full cursor-pointer rounded-note text-left shadow-sm transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary/60 ${
         showReorderHandle ? 'pl-12 pr-layout-gap py-layout-gap' : 'p-layout-gap'
       } ${
         isSelected
@@ -110,7 +110,7 @@ export function NoteCard({
       <div className="flex items-start justify-between gap-3">
         <h2
           className={`font-bold tracking-[-0.5px] ${
-            compact ? 'line-clamp-1 text-base' : 'text-[18px] leading-[25px] line-clamp-2'
+            compact ? 'line-clamp-1 text-base' : 'text-xl leading-[28px] line-clamp-2'
           }`}
         >
           {highlight(title)}
@@ -118,15 +118,15 @@ export function NoteCard({
         {note.isPinned ? (
           <PinIcon className="mt-1 shrink-0 opacity-60" size={16} />
         ) : hasReminder ? (
-          <span className="mt-1 shrink-0 text-sm opacity-70" aria-label="Reminder set">
-            🔔
+          <span className="mt-1 shrink-0 opacity-70" aria-label="Reminder set">
+            <BellIcon size={16} />
           </span>
         ) : null}
       </div>
 
       {showBody ? (
         <p
-          className={`mt-2.5 text-[14px] leading-[1.4em] opacity-85 ${
+          className={`mt-2.5 text-[15px] leading-[1.45em] opacity-85 ${
             compact ? 'line-clamp-2' : 'line-clamp-6'
           }`}
         >

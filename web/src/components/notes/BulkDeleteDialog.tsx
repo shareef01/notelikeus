@@ -1,3 +1,5 @@
+import { ModalScrim, modalPanelProps } from '@/components/layout/ModalScrim';
+
 interface BulkDeleteDialogProps {
   open: boolean;
   noteCount: number;
@@ -14,8 +16,8 @@ export function BulkDeleteDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 sm:items-center sm:p-6">
-      <div className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl">
+    <ModalScrim onScrimClick={onCancel}>
+      <div {...modalPanelProps('w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl')}>
         <h4 className="text-lg font-semibold">Delete permanently?</h4>
         <p className="mt-2 text-sm text-brand-muted">
           {noteCount > 0
@@ -40,6 +42,6 @@ export function BulkDeleteDialog({
           </button>
         </div>
       </div>
-    </div>
+    </ModalScrim>
   );
 }

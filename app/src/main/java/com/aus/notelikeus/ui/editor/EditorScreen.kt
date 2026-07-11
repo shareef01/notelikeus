@@ -50,9 +50,9 @@ import com.aus.notelikeus.ui.editor.components.EditorBottomSheet
 import com.aus.notelikeus.ui.editor.components.RichTextToolbar
 import com.aus.notelikeus.ui.navigation.LocalAnimatedVisibilityScope
 import com.aus.notelikeus.ui.navigation.LocalSharedTransitionScope
-import com.aus.notelikeus.ui.theme.EditorBodyStyle
-import com.aus.notelikeus.ui.theme.EditorTitleStyle
 import com.aus.notelikeus.ui.theme.getContentColor
+import com.aus.notelikeus.ui.theme.EditorBodyStyle
+import androidx.compose.ui.text.font.FontWeight
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import android.text.format.DateFormat
@@ -78,6 +78,16 @@ fun EditorScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val undoLabel = stringResource(R.string.action_undo)
+    val reminderExactAlarmHint = stringResource(R.string.reminder_exact_alarm_hint)
+    val reminderPermissionDenied = stringResource(R.string.reminder_permission_denied)
+    val reminderMustBeFuture = stringResource(R.string.reminder_must_be_future)
+    val lockedNoteTitle = stringResource(R.string.locked_note)
+    val noteNotFoundMessage = stringResource(R.string.note_not_found)
+    val notePinnedMessage = stringResource(R.string.note_pinned)
+    val noteUnpinnedMessage = stringResource(R.string.note_unpinned)
+    val noteUnarchivedMessage = stringResource(R.string.note_unarchived)
+    val noteArchivedMessage = stringResource(R.string.note_archived)
+    val noteTrashedMessage = stringResource(R.string.note_trashed)
     val noteColor = if (state.color == 0) {
         MaterialTheme.colorScheme.background
     } else {
@@ -98,7 +108,7 @@ fun EditorScreen(
             val alarmManager = context.getSystemService(AlarmManager::class.java)
             if (!alarmManager.canScheduleExactAlarms()) {
                 scope.launch {
-                    snackbarHostState.showSnackbar(context.getString(R.string.reminder_exact_alarm_hint))
+                    snackbarHostState.showSnackbar(reminderExactAlarmHint)
                 }
                 context.startActivity(
                     Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
@@ -120,7 +130,7 @@ fun EditorScreen(
             scheduleReminderIfAllowed(millis)
         } else if (!granted) {
             scope.launch {
-                snackbarHostState.showSnackbar(context.getString(R.string.reminder_permission_denied))
+                snackbarHostState.showSnackbar(reminderPermissionDenied)
             }
         }
     }
@@ -128,7 +138,7 @@ fun EditorScreen(
     fun confirmReminder(millis: Long) {
         if (millis <= System.currentTimeMillis()) {
             scope.launch {
-                snackbarHostState.showSnackbar(context.getString(R.string.reminder_must_be_future))
+                snackbarHostState.showSnackbar(reminderMustBeFuture)
             }
             return
         }
@@ -187,7 +197,7 @@ fun EditorScreen(
         if (showLockOverlay && !hasPromptedLockAuth) {
             hasPromptedLockAuth = true
             (context as MainActivity).showBiometricPrompt(
-                title = context.getString(R.string.locked_note),
+                title = lockedNoteTitle,
                 onSuccess = { viewModel.grantAccess() },
                 onError = { onBack() }
             )
@@ -196,9 +206,24 @@ fun EditorScreen(
 
     LaunchedEffect(state.noteNotFound) {
         if (state.noteNotFound) {
-            snackbarHostState.showSnackbar(context.getString(R.string.note_not_found))
+            snackbarHostState.showSnackbar(noteNotFoundMessage)
             onBack()
         }
+    }
+
+    if (state.id != null && !state.isNoteLoaded && !state.noteNotFound) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        return
     }
 
     if (showLockOverlay) {
@@ -257,7 +282,7 @@ fun EditorScreen(
                 FilledTonalButton(
                     onClick = {
                         (context as MainActivity).showBiometricPrompt(
-                            title = context.getString(R.string.locked_note),
+                            title = lockedNoteTitle,
                             onSuccess = { viewModel.grantAccess() },
                             onError = { onBack() }
                         )
@@ -327,9 +352,7 @@ fun EditorScreen(
                         viewModel.togglePin()
                         scope.launch {
                             snackbarHostState.showSnackbar(
-                                context.getString(
-                                    if (willPin) R.string.note_pinned else R.string.note_unpinned
-                                )
+                                if (willPin) notePinnedMessage else noteUnpinnedMessage
                             )
                         }
                     }) {
@@ -345,13 +368,13 @@ fun EditorScreen(
                         if (wasArchived) {
                             viewModel.toggleArchive()
                             scope.launch {
-                                snackbarHostState.showSnackbar(context.getString(R.string.note_unarchived))
+                                snackbarHostState.showSnackbar(noteUnarchivedMessage)
                             }
                         } else {
                             viewModel.toggleArchive { snapshot ->
                                 scope.launch {
                                     val result = snackbarHostState.showSnackbar(
-                                        message = context.getString(R.string.note_archived),
+                                        message = noteArchivedMessage,
                                         actionLabel = undoLabel,
                                         duration = SnackbarDuration.Short
                                     )
@@ -418,7 +441,7 @@ fun EditorScreen(
                                 onStageUndo(
                                     snapshot,
                                     UndoAction.TRASH,
-                                    context.getString(R.string.note_trashed)
+                                    noteTrashedMessage
                                 )
                             }
                             onBack()
@@ -520,6 +543,13 @@ private fun EditorTextContent(
     onConvertContentToChecklist: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val titleStyle = MaterialTheme.typography.titleLarge.copy(
+        fontWeight = FontWeight.Bold,
+        color = contentColor,
+    )
+    val bodyStyle = EditorBodyStyle.copy(color = contentColor)
+    val placeholderColor = contentColor.copy(alpha = 0.5f)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -533,15 +563,15 @@ private fun EditorTextContent(
         BasicTextField(
             value = title,
             onValueChange = onTitleChange,
-            textStyle = EditorTitleStyle.copy(color = contentColor),
+            textStyle = titleStyle,
             cursorBrush = SolidColor(contentColor),
             modifier = Modifier.fillMaxWidth(),
             decorationBox = { innerTextField ->
                 if (title.isEmpty()) {
                     Text(
                         text = stringResource(R.string.title_hint),
-                        style = EditorTitleStyle,
-                        color = contentColor.copy(alpha = 0.5f)
+                        style = titleStyle,
+                        color = placeholderColor,
                     )
                 }
                 innerTextField()
@@ -593,7 +623,7 @@ private fun EditorTextContent(
             BasicTextField(
                 value = contentValue,
                 onValueChange = onContentValueChange,
-                textStyle = EditorBodyStyle.copy(color = contentColor),
+                textStyle = bodyStyle,
                 visualTransformation = markdownTransformation,
                 cursorBrush = SolidColor(contentColor),
                 modifier = Modifier
@@ -603,8 +633,8 @@ private fun EditorTextContent(
                     if (content.isEmpty()) {
                         Text(
                             text = stringResource(R.string.note_hint),
-                            style = EditorBodyStyle,
-                            color = contentColor.copy(alpha = 0.5f)
+                            style = bodyStyle,
+                            color = placeholderColor,
                         )
                     }
                     innerTextField()

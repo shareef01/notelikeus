@@ -3,12 +3,14 @@ package com.aus.notelikeus.ui.main
 import app.cash.turbine.test
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
+import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
+import com.aus.notelikeus.data.remote.FirebaseAccount
 import com.aus.notelikeus.data.remote.FirebaseNoteSync
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
 import com.aus.notelikeus.data.remote.FirestoreNotesRealtimeSync
@@ -21,6 +23,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.After
@@ -28,13 +31,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class MainViewModelTest {
 
     private lateinit var viewModel: MainViewModel
     private lateinit var repository: NoteRepository
     private lateinit var settingsRepository: SettingsRepository
-    private val testDispatcher = UnconfinedTestDispatcher()
+    private val testDispatcher = StandardTestDispatcher()
 
     @Before
     fun setup() {
@@ -42,13 +45,18 @@ class MainViewModelTest {
         repository = mockk(relaxed = true)
         settingsRepository = mockk(relaxed = true)
         every { repository.getActiveNotes() } returns flowOf(emptyList())
+        every { repository.getArchivedNotes() } returns flowOf(emptyList())
+        every { repository.getTrashedNotes() } returns flowOf(emptyList())
+        every { repository.getActiveNoteCount() } returns flowOf(0)
         every { settingsRepository.isTrueDarkMode } returns flowOf(false)
+        every { settingsRepository.appTheme } returns flowOf(AppTheme.AUTO)
+        every { settingsRepository.recentSearches } returns flowOf(emptyList())
+        every { repository.getLabels() } returns flowOf(emptyList())
         every { settingsRepository.isAppLockEnabled } returns flowOf(false)
         every { settingsRepository.noteViewMode } returns flowOf(NoteViewMode.GRID_2)
         every { settingsRepository.noteSortOrder } returns flowOf(NoteSortOrder.MANUAL)
         every { settingsRepository.useMonochromeTheme } returns flowOf(true)
         every { settingsRepository.isCloudAutoSyncEnabled } returns flowOf(true)
-        viewModel = createViewModel()
     }
 
     @After
@@ -57,12 +65,19 @@ class MainViewModelTest {
     }
 
     private fun createViewModel(): MainViewModel {
+        val sessionManager = mockk<FirebaseSessionManager>(relaxed = true)
+        every { sessionManager.getCurrentAccount() } returns FirebaseAccount(
+            userId = null,
+            email = null,
+            isGoogleAccount = false,
+            isAnonymous = true
+        )
         return MainViewModel(
             repository,
             settingsRepository,
             mockk<NoteBackupExporter>(relaxed = true),
             mockk<NoteBackupImporter>(relaxed = true),
-            mockk<FirebaseSessionManager>(relaxed = true),
+            sessionManager,
             mockk<FirebaseNoteSync>(relaxed = true),
             mockk<GoogleSignInHelper>(relaxed = true),
             mockk<CloudNoteSyncCoordinator>(relaxed = true),
@@ -71,7 +86,10 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `initial state is empty`() = runTest {
+    fun `initial state is empty`() = runTest(testDispatcher) {
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
         viewModel.state.test {
             val state = awaitItem()
             assertEquals(emptyList<Note>(), state.notes)
@@ -80,23 +98,29 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `onSearchQueryChange updates state`() = runTest {
+    fun `onSearchQueryChange updates state`() = runTest(testDispatcher) {
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
         viewModel.state.test {
             awaitItem()
             viewModel.onSearchQueryChange("test")
+            advanceUntilIdle()
             val state = awaitItem()
             assertEquals("test", state.searchQuery)
         }
     }
 
     @Test
-    fun `search filters notes by title after debounce`() = runTest {
+    fun `search filters notes by title after debounce`() = runTest(testDispatcher) {
         val notes = listOf(
             Note(id = 1L, title = "Work plan", content = "", timestamp = 0L, color = 0),
             Note(id = 2L, title = "Home", content = "", timestamp = 0L, color = 0)
         )
         every { repository.getActiveNotes() } returns flowOf(notes)
         viewModel = createViewModel()
+        advanceUntilIdle()
+        assertEquals(2, viewModel.state.value.notes.size)
 
         viewModel.onSearchQueryChange("Work")
         advanceTimeBy(350)
@@ -107,7 +131,7 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `search filters notes by checklist text`() = runTest {
+    fun `search filters notes by checklist text`() = runTest(testDispatcher) {
         val notes = listOf(
             Note(
                 id = 1L,
@@ -121,6 +145,8 @@ class MainViewModelTest {
         )
         every { repository.getActiveNotes() } returns flowOf(notes)
         viewModel = createViewModel()
+        advanceUntilIdle()
+        assertEquals(2, viewModel.state.value.notes.size)
 
         viewModel.onSearchQueryChange("almond")
         advanceTimeBy(350)
@@ -131,7 +157,7 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `label filter limits visible notes`() = runTest {
+    fun `label filter limits visible notes`() = runTest(testDispatcher) {
         val workLabel = Label(id = 10L, name = "Work")
         val notes = listOf(
             Note(id = 1L, title = "A", content = "", timestamp = 0L, color = 0, labels = listOf(workLabel)),
@@ -139,6 +165,7 @@ class MainViewModelTest {
         )
         every { repository.getActiveNotes() } returns flowOf(notes)
         viewModel = createViewModel()
+        advanceUntilIdle()
 
         viewModel.selectLabelFilter(10L)
         advanceUntilIdle()
@@ -148,7 +175,10 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `stageEditorUndo and undoLastAction restores note`() = runTest {
+    fun `stageEditorUndo and undoLastAction restores note`() = runTest(testDispatcher) {
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
         val note = Note(
             id = 1L,
             title = "Title",
@@ -159,12 +189,13 @@ class MainViewModelTest {
         )
         viewModel.stageEditorUndo(note.copy(isTrashed = false), UndoAction.TRASH, "trashed")
         viewModel.undoLastAction()
+        advanceUntilIdle()
 
         coVerify { repository.updateNote(note.copy(isTrashed = false)) }
     }
 
     @Test
-    fun `commitNoteOrder persists only changed positions`() = runTest {
+    fun `commitNoteOrder persists only changed positions`() = runTest(testDispatcher) {
         val notes = listOf(
             Note(id = 1L, title = "A", content = "", timestamp = 0L, color = 0, position = 0),
             Note(id = 2L, title = "B", content = "", timestamp = 0L, color = 0, position = 1)
@@ -172,18 +203,25 @@ class MainViewModelTest {
         every { repository.getActiveNotes() } returns flowOf(notes)
         coEvery { repository.updateNotePositions(any()) } returns Unit
         viewModel = createViewModel()
+        advanceUntilIdle()
 
         viewModel.previewMoveNote(0, 1)
         advanceUntilIdle()
         viewModel.commitNoteOrder()
+        advanceUntilIdle()
 
-        coVerify { repository.updateNotePositions(match { ordered ->
-            ordered.size == 2 && ordered[0].id == 2L && ordered[1].id == 1L
-        }) }
+        coVerify {
+            repository.updateNotePositions(match { ordered ->
+                ordered.size == 2 && ordered[0].id == 2L && ordered[1].id == 1L
+            })
+        }
     }
 
     @Test
-    fun `undoLastAction bumps list revision for restored swipe cards`() = runTest {
+    fun `undoLastAction bumps list revision for restored swipe cards`() = runTest(testDispatcher) {
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
         val note = Note(
             id = 5L,
             title = "Swipe",
@@ -200,7 +238,7 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `newest sort orders pinned first then by timestamp`() = runTest {
+    fun `newest sort orders pinned first then by timestamp`() = runTest(testDispatcher) {
         val notes = listOf(
             Note(id = 1L, title = "Old pinned", content = "", timestamp = 100L, color = 0, isPinned = true),
             Note(id = 2L, title = "New unpinned", content = "", timestamp = 300L, color = 0),
@@ -217,7 +255,7 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `oldest sort orders pinned first then by timestamp`() = runTest {
+    fun `oldest sort orders pinned first then by timestamp`() = runTest(testDispatcher) {
         val notes = listOf(
             Note(id = 1L, title = "New pinned", content = "", timestamp = 300L, color = 0, isPinned = true),
             Note(id = 2L, title = "Old pinned", content = "", timestamp = 100L, color = 0, isPinned = true),
@@ -234,7 +272,10 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `clearFilters resets color label and search`() = runTest {
+    fun `clearFilters resets color label and search`() = runTest(testDispatcher) {
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
         viewModel.onSearchQueryChange("query")
         viewModel.selectColorFilter(1)
         viewModel.selectLabelFilter(2L)
@@ -250,7 +291,7 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `toggleSelectAll selects and clears visible notes`() = runTest {
+    fun `toggleSelectAll selects and clears visible notes`() = runTest(testDispatcher) {
         val notes = listOf(
             Note(id = 1L, title = "A", content = "", timestamp = 0L, color = 0),
             Note(id = 2L, title = "B", content = "", timestamp = 0L, color = 0)
@@ -260,14 +301,16 @@ class MainViewModelTest {
         advanceUntilIdle()
 
         viewModel.toggleSelectAll()
+        advanceUntilIdle()
         assertEquals(setOf(1L, 2L), viewModel.state.value.selectedNotes)
 
         viewModel.toggleSelectAll()
+        advanceUntilIdle()
         assertEquals(emptySet<Long>(), viewModel.state.value.selectedNotes)
     }
 
     @Test
-    fun `setSelectedNotesPinned updates pinned state`() = runTest {
+    fun `setSelectedNotesPinned updates pinned state`() = runTest(testDispatcher) {
         val notes = listOf(
             Note(id = 1L, title = "A", content = "", timestamp = 0L, color = 0, isPinned = false),
             Note(id = 2L, title = "B", content = "", timestamp = 0L, color = 0, isPinned = true)
@@ -275,6 +318,7 @@ class MainViewModelTest {
         every { repository.getActiveNotes() } returns flowOf(notes)
         coEvery { repository.updateNote(any()) } returns Unit
         viewModel = createViewModel()
+        advanceUntilIdle()
 
         viewModel.toggleNoteSelection(1L)
         viewModel.toggleNoteSelection(2L)

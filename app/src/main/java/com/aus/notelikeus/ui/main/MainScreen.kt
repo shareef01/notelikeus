@@ -45,6 +45,7 @@ import com.aus.notelikeus.R
 import com.aus.notelikeus.di.GoogleSignInEntryPoint
 import com.aus.notelikeus.ui.auth.AuthMode
 import com.aus.notelikeus.ui.auth.AuthScreen
+import com.aus.notelikeus.ui.components.GoogleSignInButton
 import com.aus.notelikeus.ui.components.NoteStaggeredGrid
 import com.aus.notelikeus.ui.components.NotesEmptyState
 import com.aus.notelikeus.ui.components.NotesLoadingGrid
@@ -91,6 +92,7 @@ fun MainScreen(
         mutableStateOf<Triple<Uri, String, NoteBackupImporter.ImportResult>?>(null)
     }
     var showAuthScreen by remember { mutableStateOf(false) }
+    var isGoogleSignInPending by remember { mutableStateOf(false) }
     var authMode by remember { mutableStateOf(AuthMode.SIGN_IN) }
 
     fun openAuth(mode: AuthMode = AuthMode.SIGN_IN) {
@@ -101,6 +103,7 @@ fun MainScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
+    val appContext = remember(context) { context.applicationContext }
     val undoLabel = stringResource(R.string.action_undo)
     val googleSignInHelper = remember {
         EntryPointAccessors.fromApplication(
@@ -112,12 +115,13 @@ fun MainScreen(
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        isGoogleSignInPending = false
         googleSignInHelper.parseIdToken(result.data)
             .onSuccess { viewModel.signInWithGoogleIdToken(it) }
             .onFailure {
                 scope.launch {
                     snackbarHostState.showSnackbar(
-                        context.getString(R.string.cloud_sign_in_failed)
+                        appContext.getString(R.string.cloud_sign_in_failed)
                     )
                 }
             }
@@ -130,11 +134,11 @@ fun MainScreen(
             scope.launch {
                 when (val result = viewModel.exportBackup(context.contentResolver, it)) {
                     BackupExportResult.Success -> snackbarHostState.showSnackbar(
-                        context.getString(R.string.export_success)
+                        appContext.getString(R.string.export_success)
                     )
                     BackupExportResult.WriteFailed,
                     is BackupExportResult.Error -> snackbarHostState.showSnackbar(
-                        context.getString(R.string.export_failed)
+                        appContext.getString(R.string.export_failed)
                     )
                 }
             }
@@ -151,7 +155,7 @@ fun MainScreen(
                     val fileName = it.lastPathSegment ?: "backup.json"
                     pendingBackupImport = Triple(it, fileName, preview)
                 } else {
-                    snackbarHostState.showSnackbar(context.getString(R.string.import_failed))
+                    snackbarHostState.showSnackbar(appContext.getString(R.string.import_failed))
                 }
             }
         }
@@ -160,12 +164,12 @@ fun MainScreen(
     fun formatImportSuccessMessage(result: NoteBackupImporter.ImportResult): String {
         return when {
             result.notesImported > 0 && result.labelsCreated > 0 ->
-                context.getString(R.string.import_success_notes_labels, result.notesImported, result.labelsCreated)
+                appContext.getString(R.string.import_success_notes_labels, result.notesImported, result.labelsCreated)
             result.notesImported > 0 ->
-                context.getString(R.string.import_success_notes_only, result.notesImported)
+                appContext.getString(R.string.import_success_notes_only, result.notesImported)
             result.labelsCreated > 0 ->
-                context.getString(R.string.import_success_labels_only, result.labelsCreated)
-            else -> context.getString(R.string.import_success_empty)
+                appContext.getString(R.string.import_success_labels_only, result.labelsCreated)
+            else -> appContext.getString(R.string.import_success_empty)
         }
     }
 
@@ -191,25 +195,25 @@ fun MainScreen(
         when (val event = state.pendingCloudSyncEvent) {
             is CloudSyncEvent.Uploaded -> {
                 snackbarHostState.showSnackbar(
-                    context.getString(R.string.cloud_sync_success, event.noteCount)
+                    appContext.getString(R.string.cloud_sync_success, event.noteCount)
                 )
             }
             is CloudSyncEvent.Downloaded -> {
                 snackbarHostState.showSnackbar(
-                    context.getString(R.string.cloud_download_success, event.noteCount)
+                    appContext.getString(R.string.cloud_download_success, event.noteCount)
                 )
             }
             is CloudSyncEvent.Failure -> {
                 snackbarHostState.showSnackbar(
-                    event.message.ifBlank { context.getString(R.string.cloud_sync_failed) }
+                    event.message.ifBlank { appContext.getString(R.string.cloud_sync_failed) }
                 )
             }
             CloudSyncEvent.SignedIn -> {
-                snackbarHostState.showSnackbar(context.getString(R.string.cloud_sign_in_success))
+                snackbarHostState.showSnackbar(appContext.getString(R.string.cloud_sign_in_success))
             }
             is CloudSyncEvent.SignedOut -> {
                 snackbarHostState.showSnackbar(
-                    context.getString(
+                    appContext.getString(
                         if (event.cloudDataDeleted) {
                             R.string.cloud_sign_out_deleted_success
                         } else {
@@ -219,7 +223,7 @@ fun MainScreen(
                 )
             }
             CloudSyncEvent.SignInRequired -> {
-                snackbarHostState.showSnackbar(context.getString(R.string.cloud_sign_in_required))
+                snackbarHostState.showSnackbar(appContext.getString(R.string.cloud_sign_in_required))
             }
             null -> Unit
         }
@@ -230,8 +234,9 @@ fun MainScreen(
 
     LaunchedEffect(state.cloudAccount.isGoogleAccount, showAuthScreen) {
         if (showAuthScreen && state.cloudAccount.isGoogleAccount) {
+            isGoogleSignInPending = false
             if (authMode == AuthMode.SIGN_UP) {
-                snackbarHostState.showSnackbar(context.getString(R.string.auth_account_created))
+                snackbarHostState.showSnackbar(appContext.getString(R.string.auth_account_created))
             }
             showAuthScreen = false
         }
@@ -373,7 +378,7 @@ fun MainScreen(
                 }
                 }
             } else {
-                Button(
+                GoogleSignInButton(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         openAuth(AuthMode.SIGN_IN)
@@ -382,10 +387,7 @@ fun MainScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 28.dp, vertical = 12.dp),
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Text(stringResource(R.string.cloud_sign_in_google))
-                }
+                )
             }
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 28.dp))
@@ -547,10 +549,15 @@ fun MainScreen(
     if (showAuthScreen) {
         AuthScreen(
             initialMode = authMode,
-            onDismiss = { showAuthScreen = false },
+            onDismiss = {
+                isGoogleSignInPending = false
+                showAuthScreen = false
+            },
             onGoogleSignIn = {
+                isGoogleSignInPending = true
                 googleSignInLauncher.launch(googleSignInHelper.getSignInIntent())
             },
+            isGoogleSignInPending = isGoogleSignInPending,
         )
     }
 
@@ -656,7 +663,7 @@ fun MainScreen(
                     showEmptyTrashConfirm = false
                     viewModel.emptyTrash()
                     scope.launch {
-                        showUndoSnackbar(context.getString(R.string.empty_trash_deleted, trashCount))
+                        showUndoSnackbar(appContext.getString(R.string.empty_trash_deleted, trashCount))
                     }
                 }) {
                     Text(
@@ -691,12 +698,12 @@ fun MainScreen(
                                 labelsCreated = result.labelsCreated,
                             )
                         )
-                        is BackupImportResult.InvalidFormat -> context.getString(
+                        is BackupImportResult.InvalidFormat -> appContext.getString(
                             R.string.import_invalid_format,
                             result.message
                         )
                         BackupImportResult.ReadFailed,
-                        is BackupImportResult.Error -> context.getString(R.string.import_failed)
+                        is BackupImportResult.Error -> appContext.getString(R.string.import_failed)
                     }
                     snackbarHostState.showSnackbar(message)
                 }
@@ -732,9 +739,9 @@ fun MainScreen(
                     showDeleteConfirm = false
                     viewModel.deleteSelectedNotes()
                     val message = if (state.currentFilter == NoteFilter.TRASHED) {
-                        context.getString(R.string.note_deleted)
+                        appContext.getString(R.string.note_deleted)
                     } else {
-                        context.getString(R.string.note_trashed)
+                        appContext.getString(R.string.note_trashed)
                     }
                     scope.launch { showUndoSnackbar(message) }
                 }) {
@@ -773,6 +780,10 @@ private fun MainScaffold(
     onOpenSignIn: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val appContext = remember(context) { context.applicationContext }
+    val noteArchivedMessage = stringResource(R.string.note_archived)
+    val noteDeletedMessage = stringResource(R.string.note_deleted)
+    val noteTrashedMessage = stringResource(R.string.note_trashed)
     val showFab = state.currentFilter == NoteFilter.ACTIVE && state.selectedNotes.isEmpty()
     val selectedNoteModels = state.notes.filter { it.id in state.selectedNotes }
     val selectionAllPinned = selectedNoteModels.isNotEmpty() && selectedNoteModels.all { it.isPinned }
@@ -833,7 +844,7 @@ private fun MainScaffold(
                 onArchiveSelected = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     viewModel.archiveSelectedNotes()
-                    showUndoSnackbar(context.getString(R.string.note_archived))
+                    showUndoSnackbar(noteArchivedMessage)
                 },
                 onRestoreSelected = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -841,7 +852,7 @@ private fun MainScaffold(
                     viewModel.restoreSelectedNotes()
                     scope.launch {
                         snackbarHostState.showSnackbar(
-                            context.getString(R.string.notes_restored_count, count)
+                            appContext.getString(R.string.notes_restored_count, count)
                         )
                     }
                 },
@@ -852,7 +863,7 @@ private fun MainScaffold(
                     viewModel.setSelectedNotesPinned(pin)
                     scope.launch {
                         snackbarHostState.showSnackbar(
-                            context.getString(if (pin) R.string.notes_pinned else R.string.notes_unpinned)
+                            appContext.getString(if (pin) R.string.notes_pinned else R.string.notes_unpinned)
                         )
                     }
                 },
@@ -871,7 +882,7 @@ private fun MainScaffold(
                 selectedLabelId = state.selectedLabelId,
                 onLabelSelect = viewModel::selectLabelFilter,
                 sortOrder = state.sortOrder,
-                onSortOrderCycle = { viewModel.setSortOrder(state.sortOrder.next()) },
+                onSortOrderChange = viewModel::setSortOrder,
                 recentSearches = state.recentSearches,
                 onRecentSearchClick = {
                     viewModel.onSearchQueryChange(it)
@@ -1033,15 +1044,15 @@ private fun MainScaffold(
                     onSwipeToArchive = { note ->
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.archiveNote(note)
-                        showUndoSnackbar(context.getString(R.string.note_archived))
+                        showUndoSnackbar(noteArchivedMessage)
                     },
                     onSwipeToTrash = { note ->
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.trashNote(note)
                         val message = if (state.currentFilter == NoteFilter.TRASHED) {
-                            context.getString(R.string.note_deleted)
+                            noteDeletedMessage
                         } else {
-                            context.getString(R.string.note_trashed)
+                            noteTrashedMessage
                         }
                         showUndoSnackbar(message)
                     },

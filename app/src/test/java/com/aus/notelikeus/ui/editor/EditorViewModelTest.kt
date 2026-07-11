@@ -1,6 +1,7 @@
 package com.aus.notelikeus.ui.editor
 
 import androidx.lifecycle.SavedStateHandle
+import app.cash.turbine.ReceiveTurbine
 import app.cash.turbine.test
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
 import com.aus.notelikeus.data.remote.ReminderScheduler
@@ -41,6 +42,7 @@ class EditorViewModelTest {
         cloudNoteSyncCoordinator = mockk(relaxed = true)
         every { repository.getLabels() } returns flowOf(emptyList())
         every { settingsRepository.appTheme } returns flowOf(AppTheme.AUTO)
+        every { settingsRepository.isTrueDarkMode } returns flowOf(false)
     }
 
     private fun createViewModel(savedStateHandle: SavedStateHandle): EditorViewModel {
@@ -51,6 +53,14 @@ class EditorViewModelTest {
             cloudNoteSyncCoordinator,
             savedStateHandle
         )
+    }
+
+    private suspend fun ReceiveTurbine<EditorState>.awaitUntilLoaded(): EditorState {
+        var state = awaitItem()
+        while (!state.isNoteLoaded) {
+            state = awaitItem()
+        }
+        return state
     }
 
     @After
@@ -73,7 +83,10 @@ class EditorViewModelTest {
         viewModel = createViewModel(savedStateHandle)
 
         viewModel.state.test {
-            val state = awaitItem()
+            var state = awaitItem()
+            while (!state.isNoteLoaded || state.title != "Old Title") {
+                state = awaitItem()
+            }
             assertEquals("Old Title", state.title)
             assertEquals("Old Content", state.content)
             assertEquals(true, state.isNoteLoaded)
@@ -84,26 +97,22 @@ class EditorViewModelTest {
     fun `onTitleChange updates state`() = runTest {
         val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
         viewModel = createViewModel(savedStateHandle)
+        advanceUntilIdle()
+        assertEquals(true, viewModel.state.value.isNoteLoaded)
 
-        viewModel.state.test {
-            awaitItem() // initial
-            viewModel.onTitleChange("New Title")
-            assertEquals("New Title", awaitItem().title)
-        }
+        viewModel.onTitleChange("New Title")
+        assertEquals("New Title", viewModel.state.value.title)
     }
 
     @Test
     fun `togglePin updates state`() = runTest {
         val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
         viewModel = createViewModel(savedStateHandle)
+        advanceUntilIdle()
+        assertEquals(false, viewModel.state.value.isPinned)
 
-        viewModel.state.test {
-            val initialState = awaitItem()
-            assertEquals(false, initialState.isPinned)
-            
-            viewModel.togglePin()
-            assertEquals(true, awaitItem().isPinned)
-        }
+        viewModel.togglePin()
+        assertEquals(true, viewModel.state.value.isPinned)
     }
 
     @Test
@@ -120,13 +129,11 @@ class EditorViewModelTest {
 
         val savedStateHandle = SavedStateHandle(mapOf("noteId" to 1L))
         viewModel = createViewModel(savedStateHandle)
+        advanceUntilIdle()
 
-        viewModel.state.test {
-            awaitItem()
-            val snapshot = viewModel.trashNoteForDelete()
-            assertEquals("Title", snapshot?.title)
-            assertEquals(true, awaitItem().isTrashed)
-        }
+        val snapshot = viewModel.trashNoteForDelete()
+        assertEquals("Title", snapshot?.title)
+        assertEquals(true, viewModel.state.value.isTrashed)
     }
 
     @Test
@@ -137,9 +144,9 @@ class EditorViewModelTest {
         viewModel = createViewModel(savedStateHandle)
 
         viewModel.state.test {
-            val state = awaitItem()
+            var state = awaitItem()
             while (!state.isNoteLoaded) {
-                awaitItem()
+                state = awaitItem()
             }
             assertEquals(true, state.noteNotFound)
         }
@@ -195,7 +202,10 @@ class EditorViewModelTest {
         viewModel = createViewModel(savedStateHandle)
 
         viewModel.state.test {
-            awaitItem()
+            var state = awaitItem()
+            while (!state.isNoteLoaded) {
+                state = awaitItem()
+            }
             viewModel.toggleLock()
             advanceUntilIdle()
             cancelAndIgnoreRemainingEvents()

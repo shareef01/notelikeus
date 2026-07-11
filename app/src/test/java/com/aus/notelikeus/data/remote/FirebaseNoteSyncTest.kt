@@ -13,6 +13,8 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -20,7 +22,6 @@ import org.junit.Before
 import org.junit.Test
 
 class FirebaseNoteSyncTest {
-
     private lateinit var noteRepository: NoteRepository
     private lateinit var sessionManager: FirebaseSessionManager
     private lateinit var settingsRepository: SettingsRepository
@@ -64,7 +65,9 @@ class FirebaseNoteSyncTest {
                 every { collection("_meta") } returns metaCollection
             }
         }
-        every { notesCollection.document(any()) } returns mockk(relaxed = true)
+        every { notesCollection.document(any()) } returns mockk(relaxed = true) {
+            every { delete() } returns Tasks.forResult(null)
+        }
         every { metaCollection.document("sync") } returns mockk(relaxed = true) {
             every { set(any<Map<String, Any>>(), any()) } returns Tasks.forResult(null)
         }
@@ -73,6 +76,7 @@ class FirebaseNoteSyncTest {
         every { batch.commit() } returns Tasks.forResult(null)
 
         val result = sync.uploadAllNotes()
+        advanceUntilIdle()
 
         assertTrue(result.isSuccess)
         assertEquals(1, result.getOrNull())
@@ -94,17 +98,18 @@ class FirebaseNoteSyncTest {
         )
         coEvery { noteRepository.getNoteById(9L) } returns locked
 
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
         val document = mockk<DocumentReference>(relaxed = true)
         every { firestore.collection("users") } returns mockk(relaxed = true) {
             every { document("uid") } returns mockk(relaxed = true) {
-                every { collection("notes") } returns mockk(relaxed = true) {
-                    every { document(cloudId) } returns document
-                }
+                every { collection("notes") } returns notesCollection
             }
         }
+        every { notesCollection.document(any()) } returns document
         every { document.delete() } returns Tasks.forResult(null)
 
         val result = sync.uploadNote(9L)
+        advanceUntilIdle()
 
         assertTrue(result.isSuccess)
         verify { document.delete() }

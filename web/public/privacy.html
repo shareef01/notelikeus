@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Privacy Policy — Notelikeus</title>
+  <meta name="description" content="Privacy policy for Notelikeus, an offline-first notes app with optional cloud sync." />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f7f7;
+      --text: #111;
+      --muted: #5c5c5c;
+      --surface: #fff;
+      --border: #d8d8d8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121212;
+        --text: #f5f5f5;
+        --muted: #b0b0b0;
+        --surface: #1e1e1e;
+        --border: #333;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, sans-serif;
+      line-height: 1.55;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px 16px 48px;
+    }
+    main {
+      max-width: 42rem;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 24px 32px;
+    }
+    h1 { font-size: 1.75rem; margin: 0 0 0.25rem; letter-spacing: -0.02em; }
+    .updated { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+    h2 { font-size: 1.125rem; margin: 1.75rem 0 0.5rem; }
+    p, li { color: var(--muted); }
+    p { margin: 0.5rem 0; }
+    ul { padding-left: 1.25rem; margin: 0.5rem 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; margin: 0.75rem 0; }
+    th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { color: var(--text); background: color-mix(in srgb, var(--border) 35%, transparent); }
+    a { color: inherit; }
+    .app-link { display: inline-block; margin-top: 1.5rem; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Privacy Policy</h1>
+    <p class="updated"><strong>Notelikeus</strong> · Last updated: July 2026</p>
+
+    <p>Notelikeus is an offline-first notes application. This policy describes how the app handles information on your device and when you optionally enable cloud sync.</p>
+
+    <h2>Summary</h2>
+    <ul>
+      <li>Notes are stored <strong>locally on your device</strong> in an encrypted database (Android) or browser storage (web).</li>
+      <li><strong>Optional cloud sync</strong> uploads note text to <strong>your Firebase account</strong> when you sign in with Google and choose to sync.</li>
+      <li>Locked notes are <strong>not</strong> uploaded to the cloud.</li>
+      <li>The app does <strong>not</strong> include analytics or advertising SDKs.</li>
+    </ul>
+
+    <h2>Information stored on your device</h2>
+    <p>The app may store note titles, body text, colors, labels, checklists, reminder times, and settings (theme, app lock, auto-sync preferences).</p>
+
+    <h2>Optional cloud sync</h2>
+    <p>If you sign in with Google and use sync, note content (except locked notes) is stored in Google Firebase Firestore under your Google account. Data is governed by <a href="https://policies.google.com/privacy">Google’s privacy policy</a> and your Firebase project settings.</p>
+
+    <h2>Security</h2>
+    <ul>
+      <li>Android: notes are stored in a SQLCipher-encrypted Room database.</li>
+      <li>Web: notes are stored in local browser storage on your device.</li>
+      <li>Optional biometric lock uses your device’s biometric APIs.</li>
+      <li>Locked notes are not synced to the cloud.</li>
+    </ul>
+
+    <h2>Permissions</h2>
+    <table>
+      <thead><tr><th>Permission</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Internet</td><td>Optional Firebase cloud sync</td></tr>
+        <tr><td>Notifications</td><td>Deliver reminders you schedule</td></tr>
+        <tr><td>Biometric</td><td>Unlock the app or locked notes when enabled</td></tr>
+        <tr><td>Exact alarms</td><td>Fire reminders at the time you choose (Android)</td></tr>
+      </tbody>
+    </table>
+    <p>Backup export/import uses the system file picker; the app only accesses files you select.</p>
+
+    <h2>Backups</h2>
+    <p>JSON backup export/import is manual. You are responsible for securing copied files.</p>
+
+    <h2>Third parties</h2>
+    <p>Google Firebase is used only when you enable cloud sync. We do not sell your personal data or use analytics or advertising SDKs.</p>
+
+    <h2>Children</h2>
+    <p>Notelikeus is not directed at children under 13.</p>
+
+    <h2>Changes</h2>
+    <p>We may update this policy as the app evolves. Material changes will be reflected here and in the in-app privacy text.</p>
+
+    <h2>Contact</h2>
+    <p>For privacy questions, reach out via the app’s store listing or the project repository.</p>
+
+    <a class="app-link" href="/">Open Notelikeus</a>
+  </main>
+</body>
+</html>

@@ -1,3 +1,6 @@
+import { PRIVACY_POLICY_URL } from '@/lib/constants';
+import { ModalScrim, modalPanelProps } from '@/components/layout/ModalScrim';
+
 const PRIVACY_POLICY_BODY = `Notelikeus is an offline-first notes app. Your notes are stored locally in this browser. Optional cloud sync uploads note text to your own Firebase account when you sign in and choose to sync.
 
 Data stored on device
@@ -35,17 +38,15 @@ interface PrivacyPolicyDialogProps {
   onClose: () => void;
 }
 
-/**
- * Privacy Policy Overhaul
- * Geometric Discipline: Absolute 20px radius and backdrop-blur synchronization.
- */
 export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/80 p-4 backdrop-blur-sm sm:items-center">
+    <ModalScrim zIndexClass="z-[70]" align="center" onScrimClick={onClose}>
       <div
-        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-[20px] bg-true-surface p-6 shadow-2xl border border-brand-outline"
+        {...modalPanelProps(
+          'max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-[20px] border border-brand-outline bg-true-surface p-6 shadow-2xl',
+        )}
         role="dialog"
         aria-modal="true"
         aria-label="Privacy policy"
@@ -53,6 +54,16 @@ export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps)
         <h4 className="text-xl font-bold tracking-tight text-brand-primary">Privacy policy</h4>
         <p className="mt-4 whitespace-pre-line text-[14px] leading-[1.4em] text-brand-muted">
           {PRIVACY_POLICY_BODY}
+        </p>
+        <p className="mt-4 text-sm">
+          <a
+            href={PRIVACY_POLICY_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-brand-primary underline underline-offset-2"
+          >
+            View full policy online
+          </a>
         </p>
         <div className="mt-6 flex justify-end">
           <button
@@ -64,6 +75,6 @@ export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps)
           </button>
         </div>
       </div>
-    </div>
+    </ModalScrim>
   );
 }

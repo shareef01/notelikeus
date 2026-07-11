@@ -1,6 +1,9 @@
 package com.aus.notelikeus.ui.navigation
 
 import android.content.Intent
+import android.net.Uri
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -11,26 +14,41 @@ class NavigationIntentsTest {
 
     @Test
     fun `extractEditorNoteId reads noteId extra`() {
-        val intent = Intent().putExtra("noteId", 42L)
+        val intent = mockk<Intent>()
+        every { intent.getLongExtra("noteId", -1L) } returns 42L
+        every { intent.data } returns null
         assertEquals(42L, extractEditorNoteId(intent))
     }
 
     @Test
     fun `extractEditorNoteId reads editor deep link uri`() {
-        val intent = Intent().apply {
-            data = android.net.Uri.parse("notelikeus://editor/99")
-        }
+        val uri = mockk<Uri>()
+        every { uri.scheme } returns "notelikeus"
+        every { uri.host } returns "editor"
+        every { uri.pathSegments } returns listOf("99")
+        every { uri.lastPathSegment } returns "99"
+        val intent = mockk<Intent>()
+        every { intent.getLongExtra("noteId", -1L) } returns -1L
+        every { intent.data } returns uri
         assertEquals(99L, extractEditorNoteId(intent))
     }
 
     @Test
     fun `extractEditorNoteId returns null when missing`() {
-        assertNull(extractEditorNoteId(Intent()))
+        val intent = mockk<Intent>()
+        every { intent.getLongExtra("noteId", -1L) } returns -1L
+        every { intent.data } returns null
+        assertNull(extractEditorNoteId(intent))
     }
 
     @Test
     fun `intentRequestsNewNote detects create flag`() {
-        assertTrue(intentRequestsNewNote(Intent().putExtra("createNote", true)))
-        assertFalse(intentRequestsNewNote(Intent()))
+        val intent = mockk<Intent>()
+        every { intent.getBooleanExtra("createNote", false) } returns true
+        assertTrue(intentRequestsNewNote(intent))
+
+        val emptyIntent = mockk<Intent>()
+        every { emptyIntent.getBooleanExtra("createNote", false) } returns false
+        assertFalse(intentRequestsNewNote(emptyIntent))
     }
 }

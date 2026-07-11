@@ -16,11 +16,11 @@ export function RichTextToolbar({
   onLink,
 }: RichTextToolbarProps) {
   const buttonClass =
-    'flex size-9 items-center justify-center rounded-full text-sm font-semibold hover:bg-black/10';
+    'flex size-9 items-center justify-center rounded-full text-sm font-semibold note-surface-hover';
 
   return (
     <div
-      className="mt-3 flex flex-wrap items-center gap-1 rounded-note bg-black/8 p-1"
+      className="mt-3 flex flex-wrap items-center gap-1 rounded-note note-surface-panel p-1"
       style={{ color: contentColor }}
       role="toolbar"
       aria-label="Text formatting"

@@ -55,7 +55,7 @@ class RichTextParserTest {
         )
 
         assertEquals("Visit docs now", result.text)
-        assertTrue(result.linkAnnotations.any { it.item is LinkAnnotation.Url })
+        assertTrue(result.getLinkAnnotations(0, result.length).any { it.item is LinkAnnotation.Url })
     }
 
     @Test
@@ -67,6 +67,6 @@ class RichTextParserTest {
         )
 
         assertEquals("See https://example.com today", result.text)
-        assertEquals(1, result.linkAnnotations.size)
+        assertEquals(1, result.getLinkAnnotations(0, result.length).size)
     }
 }
