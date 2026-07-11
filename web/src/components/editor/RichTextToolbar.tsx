@@ -1,3 +1,5 @@
+import { LinkIcon } from '@/components/icons/Icons';
+
 interface RichTextToolbarProps {
   contentColor: string;
   onBold: () => void;
@@ -33,7 +35,7 @@ export function RichTextToolbar({
         •
       </button>
       <button type="button" className={buttonClass} onClick={onLink} aria-label="Link">
-        🔗
+        <LinkIcon size={18} />
       </button>
     </div>
   );

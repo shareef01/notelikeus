@@ -1,7 +1,7 @@
 import { BrandMark } from '@/components/brand/BrandMark';
 import { FilterRow } from '@/components/layout/FilterRow';
 import { SelectionBar } from '@/components/layout/SelectionBar';
-import { AddIcon, CloseIcon, GridViewIcon, MenuIcon } from '@/components/icons/Icons';
+import { AddIcon, CloseIcon, GridViewIcon, MenuIcon, ScheduleIcon } from '@/components/icons/Icons';
 import type { Label } from '@/types/label';
 import type { NoteFilter } from '@/types/note';
 import { useState, useRef } from 'react';
@@ -33,6 +33,7 @@ interface TopBarProps {
   viewColumns: number;
   showNewNote?: boolean;
   selectionMode?: boolean;
+  selectionAllPinned?: boolean;
   selectedCount?: number;
   allFilteredSelected?: boolean;
   onClearSelection?: () => void;
@@ -73,6 +74,7 @@ export function TopBar({
   viewColumns,
   showNewNote = false,
   selectionMode = false,
+  selectionAllPinned = false,
   selectedCount = 0,
   allFilteredSelected = false,
   onClearSelection,
@@ -116,6 +118,7 @@ export function TopBar({
             selectedCount={selectedCount}
             allFilteredSelected={allFilteredSelected}
             currentFilter={currentFilter}
+            selectionAllPinned={selectionAllPinned}
             onClearSelection={onClearSelection}
             onToggleSelectAll={onToggleSelectAll}
             onPin={onBulkPin}
@@ -166,7 +169,7 @@ export function TopBar({
             <button
               type="button"
               onClick={onViewModeCycle}
-              className="hidden size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 sm:flex"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5"
               aria-label={`View mode: ${viewColumns} column${viewColumns > 1 ? 's' : ''}`}
             >
               <GridViewIcon size={20} />
@@ -199,7 +202,7 @@ export function TopBar({
       <div className="mx-auto w-full max-w-content overflow-hidden">
         {showRecent ? (
           <div className="flex items-center gap-2 px-4 py-2 animate-in slide-in-from-top-2">
-            <span className="text-brand-muted/50">🕒</span>
+            <ScheduleIcon size={18} className="shrink-0 text-brand-muted/50" />
             <div className="flex flex-1 gap-2 overflow-x-auto scrollbar-none py-1">
               {recentSearches.map((query) => (
                 <button
