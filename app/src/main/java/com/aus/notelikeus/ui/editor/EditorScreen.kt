@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.Lifecycle
@@ -37,6 +38,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import com.aus.notelikeus.domain.model.ChecklistItem
+import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.main.UndoAction
 import kotlinx.coroutines.launch
@@ -244,6 +246,13 @@ fun EditorScreen(
                     style = MaterialTheme.typography.titleLarge,
                     color = contentColor
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.locked_note_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = contentColor.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center
+                )
                 Spacer(modifier = Modifier.height(24.dp))
                 FilledTonalButton(
                     onClick = {
@@ -276,7 +285,15 @@ fun EditorScreen(
                 modifier = Modifier
                     .navigationBarsPadding()
                     .padding(bottom = 56.dp)
-            )
+            ) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    shape = MaterialTheme.shapes.medium,
+                    containerColor = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    actionColor = MaterialTheme.colorScheme.inversePrimary
+                )
+            }
         },
         topBar = {
             TopAppBar(
@@ -323,16 +340,24 @@ fun EditorScreen(
                         )
                     }
                     IconButton(onClick = {
+                        val wasArchived = state.isArchived
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        viewModel.toggleArchive { snapshot ->
+                        if (wasArchived) {
+                            viewModel.toggleArchive()
                             scope.launch {
-                                val result = snackbarHostState.showSnackbar(
-                                    message = context.getString(R.string.note_archived),
-                                    actionLabel = undoLabel,
-                                    duration = SnackbarDuration.Short
-                                )
-                                if (result == SnackbarResult.ActionPerformed) {
-                                    viewModel.undoArchive(snapshot)
+                                snackbarHostState.showSnackbar(context.getString(R.string.note_unarchived))
+                            }
+                        } else {
+                            viewModel.toggleArchive { snapshot ->
+                                scope.launch {
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = context.getString(R.string.note_archived),
+                                        actionLabel = undoLabel,
+                                        duration = SnackbarDuration.Short
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        viewModel.undoArchive(snapshot)
+                                    }
                                 }
                             }
                         }
@@ -358,6 +383,7 @@ fun EditorScreen(
                 EditorBottomBar(
                     timestamp = state.timestamp,
                     reminderTimestamp = state.reminderTimestamp,
+                    isSaving = state.isSaving,
                     onMoreClick = { showBottomSheet = true },
                     contentColor = contentColor,
                     modifier = Modifier.background(noteColor)
@@ -435,6 +461,7 @@ fun EditorScreen(
                     contentValue = state.contentValue,
                     content = state.content,
                     checklist = state.checklist,
+                    labels = state.labels,
                     contentColor = contentColor,
                     showFormattingToolbar = showFormattingToolbar,
                     onTitleChange = viewModel::onTitleChange,
@@ -442,7 +469,8 @@ fun EditorScreen(
                     onUpdateChecklistItem = viewModel::updateChecklistItem,
                     onAddChecklistItem = viewModel::addChecklistItem,
                     onRemoveChecklistItem = viewModel::removeChecklistItem,
-                    onConvertChecklistToContent = viewModel::convertChecklistToContent
+                    onConvertChecklistToContent = viewModel::convertChecklistToContent,
+                    onConvertContentToChecklist = viewModel::convertContentToChecklist
                 )
             }
 
@@ -480,6 +508,7 @@ private fun EditorTextContent(
     contentValue: TextFieldValue,
     content: String,
     checklist: List<ChecklistItem>,
+    labels: List<Label>,
     contentColor: Color,
     showFormattingToolbar: Boolean,
     onTitleChange: (String) -> Unit,
@@ -488,6 +517,7 @@ private fun EditorTextContent(
     onAddChecklistItem: () -> Unit,
     onRemoveChecklistItem: (Long) -> Unit,
     onConvertChecklistToContent: () -> Unit,
+    onConvertContentToChecklist: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -517,6 +547,33 @@ private fun EditorTextContent(
                 innerTextField()
             }
         )
+
+        if (labels.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                labels.forEach { label ->
+                    SuggestionChip(
+                        onClick = {},
+                        enabled = false,
+                        label = {
+                            Text(
+                                label.name,
+                                color = contentColor,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        },
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = contentColor.copy(alpha = 0.12f),
+                            labelColor = contentColor,
+                        ),
+                        border = null,
+                    )
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -553,6 +610,20 @@ private fun EditorTextContent(
                     innerTextField()
                 }
             )
+
+            TextButton(
+                onClick = onConvertContentToChecklist,
+                contentPadding = PaddingValues(top = 12.dp),
+            ) {
+                Text(
+                    text = if (content.isBlank()) {
+                        stringResource(R.string.add_checklist)
+                    } else {
+                        stringResource(R.string.convert_to_checklist)
+                    },
+                    color = contentColor.copy(alpha = 0.75f),
+                )
+            }
         }
 
         if (showFormattingToolbar) {
@@ -652,14 +723,24 @@ private fun LinkDialog(
         shape = MaterialTheme.shapes.large,
         title = { Text(stringResource(R.string.link_dialog_title)) },
         text = {
-            OutlinedTextField(
-                value = url,
-                onValueChange = { url = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text(stringResource(R.string.link_url_hint)) },
-                singleLine = true,
-                shape = MaterialTheme.shapes.medium
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = stringResource(R.string.link_dialog_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(stringResource(R.string.link_url_hint)) },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+                    ),
+                )
+            }
         },
         confirmButton = {
             TextButton(

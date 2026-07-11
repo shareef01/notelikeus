@@ -144,7 +144,7 @@ fun LabelsScreen(
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                 ) 
             },
-            text = { Text(stringResource(R.string.delete_label_message)) },
+            text = { Text(stringResource(R.string.delete_label_message, label.name)) },
             confirmButton = {
                 TextButton(
                     onClick = {

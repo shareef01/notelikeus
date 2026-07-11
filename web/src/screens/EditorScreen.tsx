@@ -1,10 +1,12 @@
-import { ArchiveIcon, PinIcon } from '@/components/icons/Icons';
+import { ArchiveIcon, ArrowBackIcon, LockIcon, PinIcon } from '@/components/icons/Icons';
 
 import { ChecklistEditor } from '@/components/editor/ChecklistEditor';
 
 import { EditorBottomBar } from '@/components/editor/EditorBottomBar';
 
 import { EditorOptionsSheet } from '@/components/editor/EditorOptionsSheet';
+
+import { LinkDialog } from '@/components/editor/LinkDialog';
 
 import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
 
@@ -25,6 +27,8 @@ import { contentColorForBackground, noteSurfaceStyle } from '@/theme/contrast';
 import { useUiStore } from '@/store/uiStore';
 
 import type { EditorRoute } from '@/store/uiStore';
+
+import { useToastStore } from '@/store/toastStore';
 
 import { useRef, useState, type ReactNode } from 'react';
 
@@ -50,6 +54,10 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
   const [showOptions, setShowOptions] = useState(false);
 
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+
+  const [hasTextSelection, setHasTextSelection] = useState(false);
+
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
 
@@ -61,6 +69,18 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const showLockOverlay = state.isLocked && !state.isAccessGranted;
 
   const hasChecklist = state.checklist.length > 0;
+
+
+
+  const updateTextSelection = () => {
+
+    const field = contentRef.current;
+
+    if (!field) return;
+
+    setHasTextSelection(field.selectionStart !== field.selectionEnd);
+
+  };
 
 
 
@@ -100,6 +120,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
       field.setSelectionRange(result.selectionStart, result.selectionEnd);
 
+      updateTextSelection();
+
     });
 
   };
@@ -121,6 +143,40 @@ export function EditorScreen({ route }: EditorScreenProps) {
     await editor.trashNote();
 
     closeEditor();
+
+  };
+
+
+
+  const handleTogglePin = () => {
+
+    const wasPinned = state.isPinned;
+
+    editor.togglePin();
+
+    useToastStore.getState().show(wasPinned ? 'Note unpinned' : 'Note pinned');
+
+  };
+
+
+
+  const handleToggleArchive = () => {
+
+    const wasArchived = state.isArchived;
+
+    editor.toggleArchive();
+
+    useToastStore.getState().show(wasArchived ? 'Note unarchived' : 'Note archived');
+
+  };
+
+
+
+  const handleAddLink = (url: string) => {
+
+    setShowLinkDialog(false);
+
+    applyFormatting((text, start, end) => wrapSelectionAsLink(text, start, end, url));
 
   };
 
@@ -161,7 +217,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
           >
 
-            ←
+            <ArrowBackIcon size={22} />
 
           </button>
 
@@ -169,11 +225,21 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
 
-          <span className="text-5xl opacity-60">🔒</span>
+          <div style={{ color: contentColor }}>
+
+            <LockIcon size={56} className="opacity-60" />
+
+          </div>
 
           <p className="text-xl font-semibold sm:text-2xl" style={{ color: contentColor }}>
 
             This note is locked
+
+          </p>
+
+          <p className="max-w-sm text-sm opacity-70" style={{ color: contentColor }}>
+
+            Unlock to view and edit on this device. Locked notes are kept local and are not synced to the cloud.
 
           </p>
 
@@ -227,7 +293,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
         >
 
-          ←
+          <ArrowBackIcon size={22} />
 
         </button>
 
@@ -237,7 +303,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
             type="button"
 
-            onClick={editor.togglePin}
+            onClick={handleTogglePin}
 
             className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
 
@@ -253,7 +319,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
             type="button"
 
-            onClick={editor.toggleArchive}
+            onClick={handleToggleArchive}
 
             className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
 
@@ -333,39 +399,35 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
           <>
 
-            <RichTextToolbar
+            {hasTextSelection ? (
 
-              contentColor={contentColor}
+              <RichTextToolbar
 
-              onBold={() =>
+                contentColor={contentColor}
 
-                applyFormatting((text, start, end) => wrapSelection(text, start, end, '**'))
+                onBold={() =>
 
-              }
+                  applyFormatting((text, start, end) => wrapSelection(text, start, end, '**'))
 
-              onItalic={() =>
+                }
 
-                applyFormatting((text, start, end) => wrapSelection(text, start, end, '_'))
+                onItalic={() =>
 
-              }
+                  applyFormatting((text, start, end) => wrapSelection(text, start, end, '_'))
 
-              onBullet={() =>
+                }
 
-                applyFormatting((text, start, end) => prefixLinesWithBullet(text, start, end))
+                onBullet={() =>
 
-              }
+                  applyFormatting((text, start, end) => prefixLinesWithBullet(text, start, end))
 
-              onLink={() => {
+                }
 
-                const url = window.prompt('Link URL');
+                onLink={() => setShowLinkDialog(true)}
 
-                if (!url) return;
+              />
 
-                applyFormatting((text, start, end) => wrapSelectionAsLink(text, start, end, url));
-
-              }}
-
-            />
+            ) : null}
 
             <textarea
 
@@ -386,8 +448,15 @@ export function EditorScreen({ route }: EditorScreenProps) {
                 }
                 requestAnimationFrame(() => {
                   field.setSelectionRange(result.selectionStart, result.selectionEnd);
+                  updateTextSelection();
                 });
               }}
+
+              onSelect={updateTextSelection}
+
+              onKeyUp={updateTextSelection}
+
+              onMouseUp={updateTextSelection}
 
               placeholder="Note"
 
@@ -455,6 +524,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
           contentColor={contentColor}
 
+          reminderTimestamp={state.reminderTimestamp}
+
           onMoreClick={() => setShowOptions(true)}
 
         />
@@ -493,10 +564,21 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
       />
 
+
+
+      <LinkDialog
+
+        open={showLinkDialog}
+
+        onCancel={() => setShowLinkDialog(false)}
+
+        onConfirm={handleAddLink}
+
+      />
+
     </>,
 
   );
 
 }
-
 
