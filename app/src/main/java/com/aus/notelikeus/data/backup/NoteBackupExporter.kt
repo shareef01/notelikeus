@@ -52,9 +52,9 @@ class NoteBackupExporter @Inject constructor(
 
         root.put("exportedAt", System.currentTimeMillis())
 
-        root.put("app", context.getString(R.string.app_name))
+        root.put("app", runCatching { context.getString(R.string.app_name) }.getOrDefault(""))
 
-        root.put("appVersion", BuildConfig.VERSION_NAME)
+        root.put("appVersion", BuildConfig.VERSION_NAME.orEmpty())
 
 
 
@@ -85,18 +85,13 @@ class NoteBackupExporter @Inject constructor(
 
 
     private fun Label.toJson(): JSONObject = JSONObject().apply {
-
-        put("id", id)
-
+        id?.let { put("id", it) }
         put("name", name)
-
     }
 
-
-
     private fun Note.toJson(): JSONObject = JSONObject().apply {
-        put("id", id)
-        put("cloudId", cloudId)
+        id?.let { put("id", it) }
+        if (cloudId.isNotBlank()) put("cloudId", cloudId)
         put("title", title)
 
         put("content", content)
@@ -123,8 +118,8 @@ class NoteBackupExporter @Inject constructor(
     }
 
     private fun Note.toLockedBackupJson(): JSONObject = JSONObject().apply {
-        put("id", id)
-        put("cloudId", cloudId)
+        id?.let { put("id", it) }
+        if (cloudId.isNotBlank()) put("cloudId", cloudId)
         put("isLocked", true)
         put("title", "")
         put("content", "")

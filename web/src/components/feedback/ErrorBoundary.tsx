@@ -23,23 +23,10 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div
-          style={{
-            minHeight: '100vh',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            background: '#000',
-            color: '#f2f2f2',
-            fontFamily: 'system-ui, sans-serif',
-          }}
-        >
-          <div style={{ maxWidth: 420, textAlign: 'center' }}>
-            <h1 style={{ fontSize: 20, marginBottom: 12 }}>Something went wrong</h1>
-            <p style={{ color: '#b0b0b0', fontSize: 14, marginBottom: 16 }}>
-              {this.state.error.message}
-            </p>
+        <div className="flex min-h-screen items-center justify-center bg-true-black p-6 text-brand-primary">
+          <div className="max-w-md text-center">
+            <h1 className="text-xl font-semibold">Something went wrong</h1>
+            <p className="mt-3 text-sm text-brand-muted">{this.state.error.message}</p>
             <button
               type="button"
               onClick={() => {
@@ -51,15 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 }
                 window.location.reload();
               }}
-              style={{
-                background: '#f2f2f2',
-                color: '#000',
-                border: 'none',
-                borderRadius: 12,
-                padding: '10px 16px',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
+              className="mt-4 rounded-note bg-brand-primary px-4 py-2.5 text-sm font-semibold text-true-black"
             >
               Clear data & reload
             </button>

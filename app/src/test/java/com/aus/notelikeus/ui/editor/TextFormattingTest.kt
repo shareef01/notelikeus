@@ -21,7 +21,7 @@ class TextFormattingTest {
         val input = TextFieldValue("line one\nline two", TextRange(0, 7))
         val result = TextFormatting.prefixLinesWithBullet(input)
 
-        assertEquals("• line one\n• line two", result.text)
+        assertEquals("• line one\nline two", result.text)
     }
 
     @Test

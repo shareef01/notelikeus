@@ -471,39 +471,40 @@ class MainViewModel @Inject constructor(
     private fun applyFilters() {
         viewModelScope.launch {
             val s = _state.value
-            val sorted = withContext(Dispatchers.Default) {
-                val filtered = s.notes.filter { note ->
-                    val noteId = note.id
-                    if (noteId != null && noteId in pendingHiddenIds) return@filter false
+            _state.update { it.copy(filteredNotes = filterAndSortNotes(s)) }
+        }
+    }
 
-                    val matchesSearch = s.searchQuery.isEmpty() ||
-                        note.title.contains(s.searchQuery, ignoreCase = true) ||
-                        note.content.contains(s.searchQuery, ignoreCase = true) ||
-                        note.checklist.any { it.text.contains(s.searchQuery, ignoreCase = true) } ||
-                        note.labels.any { it.name.contains(s.searchQuery, ignoreCase = true) }
+    private fun filterAndSortNotes(s: MainState): List<Note> {
+        val filtered = s.notes.filter { note ->
+            val noteId = note.id
+            if (noteId != null && noteId in pendingHiddenIds) return@filter false
 
-                    val matchesColor = s.selectedColor == null || noteColorsMatch(note.color, s.selectedColor)
+            val matchesSearch = s.searchQuery.isEmpty() ||
+                note.title.contains(s.searchQuery, ignoreCase = true) ||
+                note.content.contains(s.searchQuery, ignoreCase = true) ||
+                note.checklist.any { it.text.contains(s.searchQuery, ignoreCase = true) } ||
+                note.labels.any { it.name.contains(s.searchQuery, ignoreCase = true) }
 
-                    val matchesLabel = s.selectedLabelId == null ||
-                        note.labels.any { it.id == s.selectedLabelId }
+            val matchesColor = s.selectedColor == null || noteColorsMatch(note.color, s.selectedColor)
 
-                    matchesSearch && matchesColor && matchesLabel
-                }
-                when (s.sortOrder) {
-                    NoteSortOrder.MANUAL -> {
-                        filtered.filter { it.isPinned } + filtered.filter { !it.isPinned }
-                    }
-                    NoteSortOrder.NEWEST -> {
-                        filtered.filter { it.isPinned }.sortedByDescending { it.timestamp } +
-                            filtered.filter { !it.isPinned }.sortedByDescending { it.timestamp }
-                    }
-                    NoteSortOrder.OLDEST -> {
-                        filtered.filter { it.isPinned }.sortedBy { it.timestamp } +
-                            filtered.filter { !it.isPinned }.sortedBy { it.timestamp }
-                    }
-                }
+            val matchesLabel = s.selectedLabelId == null ||
+                note.labels.any { it.id == s.selectedLabelId }
+
+            matchesSearch && matchesColor && matchesLabel
+        }
+        return when (s.sortOrder) {
+            NoteSortOrder.MANUAL -> {
+                filtered.filter { it.isPinned } + filtered.filter { !it.isPinned }
             }
-            _state.update { it.copy(filteredNotes = sorted) }
+            NoteSortOrder.NEWEST -> {
+                filtered.filter { it.isPinned }.sortedByDescending { it.timestamp } +
+                    filtered.filter { !it.isPinned }.sortedByDescending { it.timestamp }
+            }
+            NoteSortOrder.OLDEST -> {
+                filtered.filter { it.isPinned }.sortedBy { it.timestamp } +
+                    filtered.filter { !it.isPinned }.sortedBy { it.timestamp }
+            }
         }
     }
 

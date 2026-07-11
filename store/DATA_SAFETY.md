@@ -43,4 +43,4 @@ Android cloud backup excludes the encrypted database, legacy attachment paths, D
 
 ## Privacy policy URL
 
-Host [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) on GitHub Pages or your website, or paste the same text into Play Console’s privacy policy field.
+Host the policy at **https://notelike.web.app/privacy.html** (also in `web/public/privacy.html`).
