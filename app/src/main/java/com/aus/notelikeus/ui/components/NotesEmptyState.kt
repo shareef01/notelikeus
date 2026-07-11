@@ -32,11 +32,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.R
+import com.aus.notelikeus.ui.components.GoogleSignInButton
 import com.aus.notelikeus.ui.main.components.PrecisionFilterChip
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 
 private val EmptyStateIconSize = 72.dp
-private const val EmptyStateIconAlpha = 0.2f
+private const val EmptyStateIconAlpha = 0.35f
 
 @Composable
 fun NotesEmptyState(
@@ -110,9 +111,10 @@ fun NotesEmptyState(
                 if (showCreateButton) {
                     Spacer(modifier = Modifier.height(12.dp))
                 }
-                OutlinedButton(onClick = onSignInClick) {
-                    Text(stringResource(R.string.cloud_sign_in_google))
-                }
+                GoogleSignInButton(
+                    onClick = onSignInClick,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
             if (showClearFilters) {
                 Spacer(modifier = Modifier.height(12.dp))

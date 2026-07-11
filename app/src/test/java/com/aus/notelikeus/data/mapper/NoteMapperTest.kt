@@ -17,7 +17,10 @@ class NoteMapperTest {
             color = 0xFFFFFFFF.toInt(),
             isPinned = true,
             isArchived = false,
-            isTrashed = false
+            isTrashed = false,
+            position = 0,
+            isLocked = false,
+            reminderTimestamp = null,
         )
 
         val domain = entity.toNote()

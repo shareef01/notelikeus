@@ -32,7 +32,7 @@ export function ToastHost() {
             message.onAction?.();
             dismiss();
           }}
-          className="shrink-0 rounded-lg px-2 py-1 text-sm font-bold text-brand-primary hover:bg-white/10"
+          className="shrink-0 rounded-lg px-2 py-1 text-sm font-bold text-brand-primary interactive-hover"
         >
           {message.actionLabel}
         </button>

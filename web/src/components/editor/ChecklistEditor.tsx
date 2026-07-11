@@ -46,7 +46,7 @@ export function ChecklistEditor({
           <button
             type="button"
             onClick={() => onRemove(item.id)}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full opacity-60 hover:bg-black/10 hover:opacity-100"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full opacity-60 note-surface-hover hover:opacity-100"
             style={{ color: contentColor }}
             aria-label="Remove item"
           >

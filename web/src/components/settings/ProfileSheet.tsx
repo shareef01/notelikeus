@@ -1,10 +1,18 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { BrandMark } from '@/components/brand/BrandMark';
 import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';
 import type { ViewColumns } from '@/store/uiStore';
 import type { AppTheme } from '@/store/settingsStore';
 import type { CloudSyncStatus } from '@/hooks/useCloudSync';
 import { formatSyncStatus } from '@/lib/cloud/syncStatusLabel';
+import { SettingsOptionPicker } from '@/components/settings/SettingsOptionPicker';
+import {
+  ThemeSwatch,
+  ThemePickerGrid,
+  THEME_LABELS,
+} from '@/components/settings/ThemeSwatch';
+import { GoogleIcon } from '@/components/icons/GoogleIcon';
 import {
   GridViewIcon,
   SortIcon,
@@ -55,20 +63,24 @@ function SettingsRow({
   icon,
   onClick,
   trailing,
+  disabled = false,
 }: {
   title: string;
   subtitle?: string;
   icon?: ReactNode;
   onClick?: () => void;
   trailing?: ReactNode;
+  disabled?: boolean;
 }) {
-  const Tag = onClick ? 'button' : 'div';
+  const isInteractive = Boolean(onClick) && !disabled;
+  const Tag = isInteractive ? 'button' : 'div';
   return (
     <Tag
-      type={onClick ? 'button' : undefined}
-      onClick={onClick}
+      type={isInteractive ? 'button' : undefined}
+      onClick={isInteractive ? onClick : undefined}
+      aria-disabled={disabled || !onClick ? true : undefined}
       className={`flex w-full min-h-14 items-center gap-4 px-4 py-3 text-left transition-colors ${
-        onClick ? 'hover:bg-white/5 active:bg-white/10' : ''
+        isInteractive ? 'interactive-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-primary/50' : 'cursor-default opacity-50'
       }`}
     >
       {icon ? <SettingsLeadingIcon>{icon}</SettingsLeadingIcon> : null}
@@ -77,7 +89,7 @@ function SettingsRow({
         {subtitle ? <p className="text-sm text-brand-muted">{subtitle}</p> : null}
       </div>
       {trailing ? <div className="shrink-0">{trailing}</div> : null}
-      {onClick && !trailing ? (
+      {isInteractive && !trailing ? (
         <span className="text-brand-muted/45" aria-hidden>
           ›
         </span>
@@ -87,10 +99,12 @@ function SettingsRow({
 }
 
 const SORT_LABELS = {
-  manual: 'Manual order',
+  manual: 'Manual Sort',
   newest: 'Newest first',
   oldest: 'Oldest first',
 } as const;
+
+const VIEW_ORDER: ViewColumns[] = [1, 2, 3];
 
 const VIEW_LABELS: Record<ViewColumns, string> = {
   1: 'List',
@@ -98,18 +112,19 @@ const VIEW_LABELS: Record<ViewColumns, string> = {
   3: 'Grid (3 columns)',
 };
 
-const THEME_ORDER: AppTheme[] = ['auto', 'light', 'dark', 'true_dark', 'midnight', 'forest'];
+const SORT_ORDER = ['manual', 'newest', 'oldest'] as const;
+type SortOrder = (typeof SORT_ORDER)[number];
 
 interface ProfileSheetProps {
   open: boolean;
   onClose: () => void;
   noteCount: number;
   viewColumns: ViewColumns;
-  sortOrder: 'manual' | 'newest' | 'oldest';
-  onViewColumnsCycle: () => void;
-  onSortOrderCycle: () => void;
+  sortOrder: SortOrder;
+  onViewColumnsChange: (columns: ViewColumns) => void;
+  onSortOrderChange: (order: SortOrder) => void;
   appTheme: AppTheme;
-  onAppThemeCycle: () => void;
+  onAppThemeChange: (theme: AppTheme) => void;
   cloudAutoSyncEnabled: boolean;
   onCloudAutoSyncChange: (enabled: boolean) => void;
   isGoogleAccount: boolean;
@@ -133,10 +148,10 @@ export function ProfileSheet({
   noteCount,
   viewColumns,
   sortOrder,
-  onViewColumnsCycle,
-  onSortOrderCycle,
+  onViewColumnsChange,
+  onSortOrderChange,
   appTheme,
-  onAppThemeCycle,
+  onAppThemeChange,
   cloudAutoSyncEnabled,
   onCloudAutoSyncChange,
   isGoogleAccount,
@@ -153,6 +168,10 @@ export function ProfileSheet({
   onSignOut,
   isSyncing,
 }: ProfileSheetProps) {
+  const [viewPickerOpen, setViewPickerOpen] = useState(false);
+  const [sortPickerOpen, setSortPickerOpen] = useState(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+
   if (!open) return null;
 
   const canSync = isGoogleAccount && !isSyncing;
@@ -173,33 +192,94 @@ export function ProfileSheet({
         <SettingsRow
           title="Default view"
           subtitle={VIEW_LABELS[viewColumns]}
-          onClick={onViewColumnsCycle}
+          onClick={() => {
+            setSortPickerOpen(false);
+            setThemePickerOpen(false);
+            setViewPickerOpen((open) => !open);
+          }}
           icon={<GridViewIcon size={24} />}
         />
+        {viewPickerOpen ? (
+          <SettingsOptionPicker
+            options={VIEW_ORDER}
+            labels={VIEW_LABELS}
+            active={viewColumns}
+            ariaLabel="Choose default view"
+            onSelect={(columns) => {
+              onViewColumnsChange(columns);
+              setViewPickerOpen(false);
+            }}
+          />
+        ) : null}
         <SettingsRow
           title="Sort order"
           subtitle={SORT_LABELS[sortOrder]}
-          onClick={onSortOrderCycle}
+          onClick={() => {
+            setViewPickerOpen(false);
+            setThemePickerOpen(false);
+            setSortPickerOpen((open) => !open);
+          }}
           icon={<SortIcon size={24} />}
         />
+        {sortPickerOpen ? (
+          <SettingsOptionPicker
+            options={SORT_ORDER}
+            labels={SORT_LABELS}
+            active={sortOrder}
+            ariaLabel="Choose sort order"
+            onSelect={(order) => {
+              onSortOrderChange(order);
+              setSortPickerOpen(false);
+            }}
+          />
+        ) : null}
 
         <div className="mx-4 mt-2 border-t border-brand-outline/60" />
         <SettingsSectionHeader title="Appearance" />
         <SettingsRow
           title="App theme"
-          subtitle={appTheme.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-          onClick={onAppThemeCycle}
+          subtitle={THEME_LABELS[appTheme]}
+          onClick={() => {
+            setViewPickerOpen(false);
+            setSortPickerOpen(false);
+            setThemePickerOpen((open) => !open);
+          }}
           icon={<PaletteIcon size={24} />}
+          trailing={<ThemeSwatch theme={appTheme} />}
         />
+        {themePickerOpen ? (
+          <ThemePickerGrid
+            activeTheme={appTheme}
+            onSelect={(theme) => {
+              onAppThemeChange(theme);
+              setThemePickerOpen(false);
+            }}
+          />
+        ) : null}
 
         <div className="mx-4 mt-2 border-t border-brand-outline/60" />
         <SettingsSectionHeader title="Insights" />
-        <SettingsRow title="Total notes" subtitle={String(noteCount)} icon={<NotesIcon size={24} />} />
-        <SettingsRow
-          title="Cloud sync"
-          subtitle={isGoogleAccount ? `${formatSyncStatus(syncStatus)} · ${syncedNoteCount} notes` : 'Not signed in'}
-          icon={<CloudIcon size={24} />}
-        />
+        <div className="grid grid-cols-2 gap-3 px-4">
+          <div className="rounded-note border border-brand-outline/30 bg-true-surface-variant p-4">
+            <div className="mb-2 flex items-center gap-2 text-brand-muted/70">
+              <NotesIcon size={18} />
+              <span className="text-xs font-medium uppercase tracking-wide">Total notes</span>
+            </div>
+            <p className="text-2xl font-bold tracking-tight text-brand-primary">{noteCount}</p>
+          </div>
+          <div className="rounded-note border border-brand-outline/30 bg-true-surface-variant p-4">
+            <div className="mb-2 flex items-center gap-2 text-brand-muted/70">
+              <CloudIcon size={18} />
+              <span className="text-xs font-medium uppercase tracking-wide">Cloud sync</span>
+            </div>
+            <p className="text-sm font-semibold leading-snug text-brand-primary">
+              {isGoogleAccount ? formatSyncStatus(syncStatus) : 'Not signed in'}
+            </p>
+            {isGoogleAccount ? (
+              <p className="mt-1 text-xs text-brand-muted">{syncedNoteCount} notes synced</p>
+            ) : null}
+          </div>
+        </div>
 
         <div className="mx-4 mt-2 border-t border-brand-outline/60" />
         <SettingsSectionHeader title="Account" />
@@ -214,7 +294,7 @@ export function ProfileSheet({
               title="Sign in with Google"
               subtitle="Sync notes across devices"
               onClick={onSignIn}
-              icon={<AccountIcon size={24} />}
+              icon={<GoogleIcon size={22} />}
             />
             <SettingsRow
               title="Create account"
@@ -243,12 +323,14 @@ export function ProfileSheet({
           title="Sync now"
           subtitle={isSyncing ? 'Syncing…' : 'Upload all notes to the cloud'}
           onClick={canSync ? onSyncNow : undefined}
+          disabled={!canSync}
           icon={<SyncIcon size={24} />}
         />
         <SettingsRow
           title="Restore from cloud"
           subtitle="Merge notes from your Google account"
           onClick={canSync ? onRestore : undefined}
+          disabled={!canSync}
           icon={<SyncIcon size={24} />}
         />
         <SettingsRow
@@ -274,4 +356,4 @@ export function ProfileSheet({
   );
 }
 
-export { THEME_ORDER };
+export { THEME_ORDER, THEME_LABELS } from '@/components/settings/ThemeSwatch';

@@ -73,6 +73,14 @@ android {
             useLegacyPackaging = false
         }
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            // Keep false: returnDefaultValues stubs org.json.JSONObject and breaks backup import tests.
+            isReturnDefaultValues = false
+        }
+    }
 }
 
 dependencies {
@@ -124,6 +132,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.turbine)
     testImplementation(libs.mockk)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.json)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     androidTestImplementation(libs.mockk)
     androidTestImplementation(libs.hilt.android.testing)

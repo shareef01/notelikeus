@@ -38,11 +38,14 @@ interface EditorScreenProps {
 
   route: Exclude<EditorRoute, { mode: 'closed' }>;
 
+  /** When embedded in desktop split pane, skip modal overlay chrome. */
+  variant?: 'modal' | 'embedded';
+
 }
 
 
 
-export function EditorScreen({ route }: EditorScreenProps) {
+export function EditorScreen({ route, variant = 'modal' }: EditorScreenProps) {
 
   const noteId = route.mode === 'new' ? 'new' : route.noteId;
 
@@ -182,16 +185,26 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
 
 
-  const editorShell = (children: ReactNode) => (
-    <div className="fixed inset-0 z-40 flex flex-col bg-black/40 lg:items-center lg:justify-center lg:p-6 xl:p-10">
-      <div
-        className="relative flex h-full w-full flex-col lg:max-h-[92vh] lg:max-w-editor lg:rounded-note lg:shadow-2xl lg:ring-1 lg:ring-brand-outline/30"
-        style={surface}
-      >
-        {children}
+  const editorShell = (children: ReactNode) => {
+    if (variant === 'embedded') {
+      return (
+        <div className="relative flex h-full w-full flex-col" style={surface}>
+          {children}
+        </div>
+      );
+    }
+
+    return (
+      <div className="fixed inset-0 z-40 flex flex-col bg-black/40 lg:items-center lg:justify-center lg:p-6 xl:p-10">
+        <div
+          className="relative flex h-full w-full flex-col lg:max-h-[92vh] lg:max-w-editor lg:rounded-note lg:shadow-2xl lg:ring-1 lg:ring-brand-outline/30"
+          style={surface}
+        >
+          {children}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
 
 
@@ -209,7 +222,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
             onClick={closeEditor}
 
-            className="flex size-11 items-center justify-center rounded-full"
+            className="flex size-11 items-center justify-center rounded-full note-surface-hover"
 
             style={{ color: contentColor }}
 
@@ -249,7 +262,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
             onClick={editor.grantAccess}
 
-            className="rounded-note bg-black/15 px-6 py-3 text-sm font-semibold backdrop-blur-sm"
+            className="rounded-note note-surface-cta px-6 py-3 text-sm font-semibold backdrop-blur-sm"
 
             style={{ color: contentColor }}
 
@@ -287,7 +300,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
           onClick={() => void handleBack()}
 
-          className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
+          className="flex size-11 items-center justify-center rounded-full note-surface-hover"
 
           aria-label="Back"
 
@@ -305,7 +318,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
             onClick={handleTogglePin}
 
-            className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
+            className="flex size-11 items-center justify-center rounded-full note-surface-hover"
 
             aria-label={state.isPinned ? 'Unpin' : 'Pin'}
 
@@ -321,7 +334,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
             onClick={handleToggleArchive}
 
-            className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
+            className="flex size-11 items-center justify-center rounded-full note-surface-hover"
 
             aria-label={state.isArchived ? 'Unarchive' : 'Archive'}
 
@@ -343,7 +356,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           value={state.title}
           onChange={(event) => editor.setTitle(event.target.value)}
           placeholder="Title"
-          className="w-full bg-transparent text-[18px] font-semibold leading-[25px] tracking-[-0.5px] outline-none placeholder:opacity-40"
+          className="w-full bg-transparent text-xl font-bold tracking-tight outline-none placeholder:text-current placeholder:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary/50"
           style={{ color: contentColor }}
         />
 
@@ -356,17 +369,11 @@ export function EditorScreen({ route }: EditorScreenProps) {
             {state.labels.map((label) => (
 
               <span
-
                 key={label.id}
-
-                className="rounded-full px-2.5 py-1 text-xs font-medium"
-
-                style={{ backgroundColor: 'rgba(0,0,0,0.12)', color: contentColor }}
-
+                className="rounded-full px-2.5 py-1 text-xs font-medium note-surface-chip"
+                style={{ color: contentColor }}
               >
-
                 {label.name}
-
               </span>
 
             ))}
@@ -462,7 +469,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
               rows={12}
 
-              className="mt-2 w-full resize-none bg-transparent text-[16px] leading-[1.4] outline-none placeholder:opacity-40"
+              className="mt-2 w-full resize-none bg-transparent text-base leading-relaxed outline-none placeholder:text-current placeholder:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary/50"
 
               style={{ color: contentColor }}
 

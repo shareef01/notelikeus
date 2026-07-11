@@ -23,7 +23,7 @@ Use this list before submitting Notelikeus to Google Play.
 
 ## Policy & compliance
 
-- [ ] **Privacy policy URL** — host `PRIVACY_POLICY.md` or link to repository raw file
+- [x] **Privacy policy URL** — https://notelike.web.app/privacy.html (static page in `web/public/privacy.html`)
 - [ ] **Data safety** — complete form using `DATA_SAFETY.md`
 - [ ] **Content rating** — complete IARC questionnaire (notes app, no user-generated public content)
 - [ ] **Target audience** — set age group (likely 13+ or all ages; no child-directed content)
