@@ -45,6 +45,8 @@ fun NotesEmptyState(
     icon: ImageVector? = null,
     showCreateButton: Boolean = false,
     showClearFilters: Boolean = false,
+    showSignInActions: Boolean = false,
+    onSignInClick: () -> Unit = {},
     recentSearches: List<String> = emptyList(),
     onRecentSearchClick: (String) -> Unit = {},
     onCreateClick: () -> Unit = {},
@@ -88,8 +90,10 @@ fun NotesEmptyState(
                     textAlign = TextAlign.Center
                 )
             }
-            if (showCreateButton) {
+            if (showCreateButton || showSignInActions) {
                 Spacer(modifier = Modifier.height(28.dp))
+            }
+            if (showCreateButton) {
                 FilledTonalButton(onClick = onCreateClick) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -100,6 +104,14 @@ fun NotesEmptyState(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(stringResource(R.string.add_note))
                     }
+                }
+            }
+            if (showSignInActions) {
+                if (showCreateButton) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+                OutlinedButton(onClick = onSignInClick) {
+                    Text(stringResource(R.string.cloud_sign_in_google))
                 }
             }
             if (showClearFilters) {

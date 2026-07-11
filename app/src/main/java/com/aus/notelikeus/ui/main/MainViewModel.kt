@@ -66,6 +66,7 @@ data class MainState(
     val archivedNoteCount: Int = 0,
     val trashedNoteCount: Int = 0,
     val listRevision: Int = 0,
+    val isNotesLoading: Boolean = true,
     val cloudSyncStatus: CloudSyncStatus = CloudSyncStatus.Unknown,
     val cloudSyncedNoteCount: Int = 0,
     val cloudSyncError: String? = null,
@@ -508,7 +509,13 @@ class MainViewModel @Inject constructor(
 
     fun setFilter(filter: NoteFilter) {
         currentNotesJob?.cancel()
-        _state.update { it.copy(currentFilter = filter, selectedNotes = emptySet()) }
+        _state.update {
+            it.copy(
+                currentFilter = filter,
+                selectedNotes = emptySet(),
+                isNotesLoading = true,
+            )
+        }
 
         val notesFlow = when (filter) {
             NoteFilter.ACTIVE -> repository.getActiveNotes()
@@ -520,7 +527,7 @@ class MainViewModel @Inject constructor(
             .onEach { notes ->
                 val emittedIds = notes.mapNotNull { it.id }.toSet()
                 pendingHiddenIds.removeIf { it !in emittedIds }
-                _state.update { it.copy(notes = notes) }
+                _state.update { it.copy(notes = notes, isNotesLoading = false) }
                 applyFilters()
             }
             .launchIn(viewModelScope)
@@ -816,6 +823,17 @@ class MainViewModel @Inject constructor(
             if (wrote) BackupExportResult.Success else BackupExportResult.WriteFailed
         } catch (error: Exception) {
             BackupExportResult.Error(error)
+        }
+    }
+
+    suspend fun previewBackupImport(resolver: ContentResolver, uri: Uri): NoteBackupImporter.ImportResult? {
+        return try {
+            val json = resolver.openInputStream(uri)?.use { stream ->
+                stream.readBytes().toString(Charsets.UTF_8)
+            } ?: return null
+            backupImporter.previewFromJson(json)
+        } catch (_: Exception) {
+            null
         }
     }
 
