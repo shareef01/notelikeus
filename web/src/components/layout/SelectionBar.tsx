@@ -6,6 +6,7 @@ interface SelectionBarProps {
   selectedCount: number;
   allFilteredSelected: boolean;
   currentFilter: NoteFilter;
+  selectionAllPinned?: boolean;
   onClearSelection: () => void;
   onToggleSelectAll: () => void;
   onPin?: () => void;
@@ -20,6 +21,7 @@ export function SelectionBar({
   selectedCount,
   allFilteredSelected,
   currentFilter,
+  selectionAllPinned = false,
   onClearSelection,
   onToggleSelectAll,
   onPin,
@@ -54,13 +56,13 @@ export function SelectionBar({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        {currentFilter === 'active' && onPin ? (
+        {currentFilter === 'active' && !selectionAllPinned && onPin ? (
           <IconAction label="Pin" onClick={onPin}>
             <PinIcon size={20} />
           </IconAction>
         ) : null}
 
-        {currentFilter === 'active' && onUnpin ? (
+        {currentFilter === 'active' && selectionAllPinned && onUnpin ? (
           <IconAction label="Unpin" onClick={onUnpin}>
             <PinOffIcon size={20} />
           </IconAction>

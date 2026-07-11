@@ -167,22 +167,29 @@ fun MainTopAppBar(
                             }) {
                                 Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cd_clear_selection))
                             }
-                            IconButton(onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                onToggleSelectAll()
-                            }) {
-                                Icon(
-                                    if (allFilteredSelected) Icons.Default.Deselect else Icons.Default.SelectAll,
-                                    contentDescription = stringResource(
-                                        if (allFilteredSelected) R.string.cd_deselect_all else R.string.cd_select_all
-                                    )
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.selected_count, selectedCount),
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                                 )
+                                TextButton(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                        onToggleSelectAll()
+                                    },
+                                    contentPadding = PaddingValues(0.dp),
+                                ) {
+                                    Text(
+                                        text = stringResource(
+                                            if (allFilteredSelected) R.string.deselect_all else R.string.select_all
+                                        ),
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
                             }
-                            Text(
-                                text = stringResource(R.string.selected_count, selectedCount),
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                modifier = Modifier.weight(1f)
-                            )
                             if (currentFilter == NoteFilter.ACTIVE) {
                                 IconButton(onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)

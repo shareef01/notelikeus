@@ -35,14 +35,22 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.BackupExportResult
 import com.aus.notelikeus.data.backup.BackupImportResult
+import com.aus.notelikeus.data.backup.NoteBackupImporter
+import android.net.Uri
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import com.aus.notelikeus.MainActivity
 import com.aus.notelikeus.R
 import com.aus.notelikeus.di.GoogleSignInEntryPoint
+import com.aus.notelikeus.ui.auth.AuthMode
+import com.aus.notelikeus.ui.auth.AuthScreen
 import com.aus.notelikeus.ui.components.NoteStaggeredGrid
 import com.aus.notelikeus.ui.components.NotesEmptyState
+import com.aus.notelikeus.ui.components.NotesLoadingGrid
+import com.aus.notelikeus.ui.components.OfflineBanner
+import com.aus.notelikeus.domain.model.NoteSortOrder
+import com.aus.notelikeus.ui.main.components.BackupImportDialog
 import com.aus.notelikeus.ui.main.components.DrawerNavLabel
 import com.aus.notelikeus.ui.main.components.MainTopAppBar
 import com.aus.notelikeus.ui.main.components.ProfileSheet
@@ -79,6 +87,17 @@ fun MainScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showEmptyTrashConfirm by remember { mutableStateOf(false) }
     var showCloudSignOutConfirm by remember { mutableStateOf(false) }
+    var pendingBackupImport by remember {
+        mutableStateOf<Triple<Uri, String, NoteBackupImporter.ImportResult>?>(null)
+    }
+    var showAuthScreen by remember { mutableStateOf(false) }
+    var authMode by remember { mutableStateOf(AuthMode.SIGN_IN) }
+
+    fun openAuth(mode: AuthMode = AuthMode.SIGN_IN) {
+        authMode = mode
+        showAuthScreen = true
+        showProfileSheet = false
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
@@ -127,20 +146,26 @@ fun MainScreen(
     ) { uri ->
         uri?.let {
             scope.launch {
-                val message = when (val result = viewModel.importBackup(context.contentResolver, it)) {
-                    is BackupImportResult.Success -> context.getString(
-                        R.string.import_success,
-                        result.notesImported
-                    )
-                    is BackupImportResult.InvalidFormat -> context.getString(
-                        R.string.import_invalid_format,
-                        result.message
-                    )
-                    BackupImportResult.ReadFailed,
-                    is BackupImportResult.Error -> context.getString(R.string.import_failed)
+                val preview = viewModel.previewBackupImport(context.contentResolver, it)
+                if (preview != null) {
+                    val fileName = it.lastPathSegment ?: "backup.json"
+                    pendingBackupImport = Triple(it, fileName, preview)
+                } else {
+                    snackbarHostState.showSnackbar(context.getString(R.string.import_failed))
                 }
-                snackbarHostState.showSnackbar(message)
             }
+        }
+    }
+
+    fun formatImportSuccessMessage(result: NoteBackupImporter.ImportResult): String {
+        return when {
+            result.notesImported > 0 && result.labelsCreated > 0 ->
+                context.getString(R.string.import_success_notes_labels, result.notesImported, result.labelsCreated)
+            result.notesImported > 0 ->
+                context.getString(R.string.import_success_notes_only, result.notesImported)
+            result.labelsCreated > 0 ->
+                context.getString(R.string.import_success_labels_only, result.labelsCreated)
+            else -> context.getString(R.string.import_success_empty)
         }
     }
 
@@ -203,6 +228,15 @@ fun MainScreen(
         }
     }
 
+    LaunchedEffect(state.cloudAccount.isGoogleAccount, showAuthScreen) {
+        if (showAuthScreen && state.cloudAccount.isGoogleAccount) {
+            if (authMode == AuthMode.SIGN_UP) {
+                snackbarHostState.showSnackbar(context.getString(R.string.auth_account_created))
+            }
+            showAuthScreen = false
+        }
+    }
+
     val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
     val showNavRail = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
     val navigator = rememberListDetailPaneScaffoldNavigator<Long?>()
@@ -252,7 +286,7 @@ fun MainScreen(
                     viewModel.setFilter(NoteFilter.ACTIVE)
                     scope.launch { if (!isExpanded) drawerState.close() }
                 },
-                icon = { Icon(Icons.Default.Lightbulb, contentDescription = stringResource(R.string.nav_notes)) },
+                icon = { Icon(Icons.Default.Description, contentDescription = stringResource(R.string.nav_notes)) },
                 modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
                 colors = NavigationDrawerItemDefaults.colors(
                     unselectedContainerColor = Color.Transparent,
@@ -308,12 +342,51 @@ fun MainScreen(
                     onEditLabels()
                     scope.launch { if (!isExpanded) drawerState.close() }
                 },
-                icon = { Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.nav_edit_labels)) },
+                icon = { Icon(Icons.Default.Label, contentDescription = stringResource(R.string.nav_edit_labels)) },
                 modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
                 colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
             )
 
             Spacer(modifier = Modifier.weight(1f))
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 28.dp))
+
+            if (state.cloudAccount.isGoogleAccount) {
+                val accountEmail = state.cloudAccount.email
+                if (!accountEmail.isNullOrBlank()) {
+                Column(modifier = Modifier.padding(horizontal = 28.dp, vertical = 12.dp)) {
+                    Text(
+                        text = accountEmail,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                    TextButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            showCloudSignOutConfirm = true
+                            scope.launch { if (!isExpanded) drawerState.close() }
+                        },
+                    ) {
+                        Text(stringResource(R.string.cloud_sign_out))
+                    }
+                }
+                }
+            } else {
+                Button(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        openAuth(AuthMode.SIGN_IN)
+                        scope.launch { if (!isExpanded) drawerState.close() }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 28.dp, vertical = 12.dp),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Text(stringResource(R.string.cloud_sign_in_google))
+                }
+            }
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 28.dp))
 
@@ -372,7 +445,8 @@ fun MainScreen(
                             listScrolled = listScrolled,
                             haptic = haptic,
                             scope = scope,
-                            showUndoSnackbar = { scope.launch { showUndoSnackbar(it) } }
+                            showUndoSnackbar = { scope.launch { showUndoSnackbar(it) } },
+                            onOpenSignIn = { openAuth(AuthMode.SIGN_IN) },
                         )
                     }
                 },
@@ -463,12 +537,23 @@ fun MainScreen(
                 listScrolled = listScrolled,
                 haptic = haptic,
                 scope = scope,
-                showUndoSnackbar = { scope.launch { showUndoSnackbar(it) } }
+                showUndoSnackbar = { scope.launch { showUndoSnackbar(it) } },
+                onOpenSignIn = { openAuth(AuthMode.SIGN_IN) },
             )
         }
     }
 
     // Dialogs
+    if (showAuthScreen) {
+        AuthScreen(
+            initialMode = authMode,
+            onDismiss = { showAuthScreen = false },
+            onGoogleSignIn = {
+                googleSignInLauncher.launch(googleSignInHelper.getSignInIntent())
+            },
+        )
+    }
+
     if (showProfileSheet) {
         ProfileSheet(
             onDismiss = { showProfileSheet = false },
@@ -511,9 +596,7 @@ fun MainScreen(
             onCloudRestoreClick = {
                 viewModel.downloadNotesFromCloud()
             },
-            onGoogleSignInClick = {
-                googleSignInLauncher.launch(googleSignInHelper.getSignInIntent())
-            },
+            onGoogleSignInClick = { openAuth(AuthMode.SIGN_IN) },
             onGoogleSignOutClick = {
                 showCloudSignOutConfirm = true
             },
@@ -562,17 +645,18 @@ fun MainScreen(
     }
 
     if (showEmptyTrashConfirm) {
+        val trashCount = state.trashedNoteCount
         AlertDialog(
             onDismissRequest = { showEmptyTrashConfirm = false },
             shape = MaterialTheme.shapes.large,
             title = { Text(stringResource(R.string.empty_trash_title)) },
-            text = { Text(stringResource(R.string.empty_trash_message)) },
+            text = { Text(stringResource(R.string.empty_trash_message, trashCount)) },
             confirmButton = {
                 TextButton(onClick = {
                     showEmptyTrashConfirm = false
                     viewModel.emptyTrash()
                     scope.launch {
-                        showUndoSnackbar(context.getString(R.string.note_deleted))
+                        showUndoSnackbar(context.getString(R.string.empty_trash_deleted, trashCount))
                     }
                 }) {
                     Text(
@@ -585,6 +669,36 @@ fun MainScreen(
             dismissButton = {
                 TextButton(onClick = { showEmptyTrashConfirm = false }) {
                     Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+
+    pendingBackupImport?.let { (uri, fileName, preview) ->
+        BackupImportDialog(
+            fileName = fileName,
+            notesImported = preview.notesImported,
+            labelsCreated = preview.labelsCreated,
+            onDismiss = { pendingBackupImport = null },
+            onConfirm = {
+                val importUri = uri
+                pendingBackupImport = null
+                scope.launch {
+                    val message = when (val result = viewModel.importBackup(context.contentResolver, importUri)) {
+                        is BackupImportResult.Success -> formatImportSuccessMessage(
+                            NoteBackupImporter.ImportResult(
+                                notesImported = result.notesImported,
+                                labelsCreated = result.labelsCreated,
+                            )
+                        )
+                        is BackupImportResult.InvalidFormat -> context.getString(
+                            R.string.import_invalid_format,
+                            result.message
+                        )
+                        BackupImportResult.ReadFailed,
+                        is BackupImportResult.Error -> context.getString(R.string.import_failed)
+                    }
+                    snackbarHostState.showSnackbar(message)
                 }
             }
         )
@@ -655,7 +769,8 @@ private fun MainScaffold(
     listScrolled: Boolean,
     haptic: androidx.compose.ui.hapticfeedback.HapticFeedback,
     scope: CoroutineScope,
-    showUndoSnackbar: (String) -> Unit
+    showUndoSnackbar: (String) -> Unit,
+    onOpenSignIn: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val showFab = state.currentFilter == NoteFilter.ACTIVE && state.selectedNotes.isEmpty()
@@ -664,9 +779,16 @@ private fun MainScaffold(
     val visibleNoteIds = state.filteredNotes.mapNotNull { it.id }.toSet()
     val allFilteredSelected = visibleNoteIds.isNotEmpty() &&
         visibleNoteIds.all { it in state.selectedNotes }
-    val allowReorder = state.searchQuery.isEmpty() &&
+    val allowReorder = state.currentFilter == NoteFilter.ACTIVE &&
+        state.sortOrder == NoteSortOrder.MANUAL &&
+        state.searchQuery.isEmpty() &&
         state.selectedColor == null &&
-        state.selectedLabelId == null
+        state.selectedLabelId == null &&
+        state.selectedNotes.isEmpty() &&
+        state.viewMode.columns == 1
+    val hasActiveFilters = state.searchQuery.isNotEmpty() ||
+        state.selectedColor != null ||
+        state.selectedLabelId != null
 
     Scaffold(
         snackbarHost = {
@@ -715,9 +837,12 @@ private fun MainScaffold(
                 },
                 onRestoreSelected = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    val count = state.selectedNotes.size
                     viewModel.restoreSelectedNotes()
                     scope.launch {
-                        snackbarHostState.showSnackbar(context.getString(R.string.notes_restored))
+                        snackbarHostState.showSnackbar(
+                            context.getString(R.string.notes_restored_count, count)
+                        )
                     }
                 },
                 selectionAllPinned = selectionAllPinned,
@@ -753,7 +878,7 @@ private fun MainScaffold(
                     viewModel.addRecentSearch(it)
                 },
                 onClearRecentSearches = viewModel::clearRecentSearches,
-                hasActiveFilters = state.selectedColor != null || state.selectedLabelId != null,
+                hasActiveFilters = hasActiveFilters,
                 onClearFilters = viewModel::clearFilters,
                 listScrolled = listScrolled
             )
@@ -787,8 +912,27 @@ private fun MainScaffold(
         val filteredNotes = state.filteredNotes
         val gridBottomPadding = paddingValues.calculateBottomPadding() + if (showFab) 80.dp else 16.dp
 
-        if (filteredNotes.isEmpty()) {
-            val hasActiveFilters = state.selectedColor != null || state.selectedLabelId != null
+        Column(modifier = Modifier.fillMaxSize()) {
+            OfflineBanner()
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(paddingValues)
+            ) {
+        if (state.isNotesLoading) {
+            NotesLoadingGrid(
+                columns = state.viewMode.columns,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = 12.dp,
+                    start = 16.dp,
+                    end = 16.dp,
+                    bottom = gridBottomPadding
+                )
+            )
+        } else if (filteredNotes.isEmpty()) {
             val message: String
             val subtitle: String?
             val showCreate: Boolean
@@ -837,6 +981,8 @@ private fun MainScaffold(
                 icon = emptyIcon,
                 showCreateButton = showCreate,
                 showClearFilters = showClear,
+                showSignInActions = showCreate && !state.cloudAccount.isGoogleAccount,
+                onSignInClick = onOpenSignIn,
                 recentSearches = state.recentSearches,
                 onRecentSearchClick = {
                     viewModel.onSearchQueryChange(it)
@@ -850,16 +996,10 @@ private fun MainScaffold(
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     viewModel.clearFilters()
                 },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
+                modifier = Modifier.fillMaxSize()
             )
         } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-            ) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 if (state.currentFilter == NoteFilter.TRASHED && state.selectedNotes.isEmpty()) {
                     TrashBanner(
                         onEmptyTrash = {
@@ -922,6 +1062,8 @@ private fun MainScaffold(
                         bottom = gridBottomPadding
                     )
                 )
+            }
+        }
             }
         }
     }

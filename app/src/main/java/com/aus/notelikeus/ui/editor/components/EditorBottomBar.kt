@@ -32,6 +32,7 @@ import java.util.Date
 fun EditorBottomBar(
     timestamp: Long,
     reminderTimestamp: Long? = null,
+    isSaving: Boolean = false,
     onMoreClick: () -> Unit,
     contentColor: Color,
     modifier: Modifier = Modifier
@@ -40,10 +41,11 @@ fun EditorBottomBar(
     val context = LocalContext.current
     val timeFormat = remember { DateFormat.getTimeFormat(context) }
     val dateFormat = remember { DateFormat.getDateFormat(context) }
-    val editedLabel = stringResource(
-        R.string.edited_at,
-        timeFormat.format(Date(timestamp))
-    )
+    val statusLabel = if (isSaving) {
+        stringResource(R.string.saving)
+    } else {
+        stringResource(R.string.edited_at, timeFormat.format(Date(timestamp)))
+    }
     val reminderLabel = reminderTimestamp?.let {
         stringResource(
             R.string.reminder_at,
@@ -64,12 +66,6 @@ fun EditorBottomBar(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(horizontal = 16.dp)
         ) {
-            Text(
-                text = editedLabel,
-                style = MaterialTheme.typography.labelMedium,
-                color = contentColor.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center
-            )
             if (reminderLabel != null) {
                 Text(
                     text = reminderLabel,
@@ -78,6 +74,12 @@ fun EditorBottomBar(
                     textAlign = TextAlign.Center
                 )
             }
+            Text(
+                text = statusLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = contentColor.copy(alpha = 0.7f),
+                textAlign = TextAlign.Center
+            )
         }
 
         Spacer(modifier = Modifier.weight(1f))

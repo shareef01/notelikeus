@@ -40,6 +40,7 @@ data class EditorState(
     val position: Int = 0,
     val isNoteLoaded: Boolean = false,
     val isAccessGranted: Boolean = true,
+    val isSaving: Boolean = false,
     val noteNotFound: Boolean = false
 )
 
@@ -407,8 +408,10 @@ class EditorViewModel @Inject constructor(
     private fun triggerAutosave() {
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
+            _state.update { it.copy(isSaving = true) }
             delay(1000)
-            saveNote()
+            persistNote()
+            _state.update { it.copy(isSaving = false) }
         }
     }
 
@@ -417,7 +420,9 @@ class EditorViewModel @Inject constructor(
         if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) return
 
         viewModelScope.launch {
+            _state.update { it.copy(isSaving = true) }
             persistNote()
+            _state.update { it.copy(isSaving = false) }
         }
     }
 

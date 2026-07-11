@@ -1,5 +1,5 @@
 import { BrandMark } from '@/components/brand/BrandMark';
-import { ArchiveIcon, CloseIcon, NotesIcon, SettingsIcon, TrashIcon } from '@/components/icons/Icons';
+import { ArchiveIcon, CloseIcon, LabelIcon, NotesIcon, SettingsIcon, TrashIcon } from '@/components/icons/Icons';
 import { useIsDesktop } from '@/hooks/useMediaQuery';
 import type { NoteFilter } from '@/types/note';
 
@@ -113,7 +113,7 @@ export function SideDrawer({
               }}
               className="flex items-center gap-4 rounded-note px-4 py-3 text-left text-base font-bold text-brand-muted transition-all hover:bg-white/5 hover:text-brand-primary"
             >
-              <span className="flex size-6 items-center justify-center text-brand-muted/60">🏷️</span>
+              <LabelIcon size={24} className="text-brand-muted/60" />
               Edit labels
             </button>
           ) : null}
