@@ -1,197 +1,109 @@
 # Notelikeus
 
-A Google Keep–style notes app for **Android** and **web** (PWA). Notes are stored locally with SQLCipher encryption on Android (localStorage on web), with optional cloud sync to your own Firebase account via Google Sign-In.
+A sophisticated, cross-platform notes application for **Android** and **Web (PWA)**, inspired by Google Keep but enhanced with advanced privacy and synchronization capabilities. Notelikeus is architected for speed, security, and a seamless multi-device experience.
 
-## Web PWA
+## 🚀 Key Features
 
-The progressive web app lives in [`web/`](web/) and is hosted at **https://notelike.web.app** (Firebase Hosting).
+- **Advanced Note Management**: Support for titles, rich text (Markdown-based), dynamic checklists, and hierarchical labels.
+- **Smart Editor**: WYSIWYG editing with automatic bulleting, list continuation, and real-time formatting.
+- **Privacy First**: 
+    - **Local Encryption**: Android data is secured using a **SQLCipher-encrypted Room database**.
+    - **Biometric Security**: Per-note biometric lock and optional app-wide authentication gate.
+- **Cloud Synchronization**: 
+    - Optional real-time sync with **Firebase Firestore**.
+    - Identity management via **Google Sign-In**.
+    - Offline-first architecture: Changes are queued and synced automatically when a connection is restored.
+- **Native Android Integration**:
+    - **Glance Widgets**: Interactive home screen widgets for pinned and recent notes.
+    - **System Reminders**: Precise date/time notifications integrated with the Android Alarm Manager.
+- **Rich Organization**: 
+    - Pinned notes, archiving, and multi-stage trash recovery.
+    - Advanced search with history and real-time filtering by color and label.
+    - Date-grouped layouts (Today, Yesterday, Last Week).
+- **Interoperability**: Robust JSON-based backup and import/export system.
 
-| Feature | Web |
-|---------|-----|
-| Notes, labels, checklists, colors | Yes |
-| Archive, trash, pin, search, filters | Yes |
-| Multi-select + bulk actions | Yes |
-| Swipe actions + undo toasts | Yes |
-| Manual reorder (list view) | Yes |
-| Date-grouped sections (Today, Yesterday) | Yes |
-| Recent search history | Yes |
-| Smart editor (auto bullets, list continue) | Yes |
-| Google Sign-In + real-time Firestore sync | Yes |
-| Guest mode (local only) | Yes |
-| JSON backup import/export | Yes |
-| Reminders | Browser + service worker notifications |
-| Offline mode + install prompt | Yes |
-| Per-note lock | Unlock gate (no biometric on web) |
+---
 
+## 🛠 Technical Stack
+
+### Android (Native)
+| Component | Technology |
+|-----------|------------|
+| **UI Framework** | Jetpack Compose (Material 3) |
+| **Architecture** | Clean Architecture with MVVM |
+| **Dependency Injection** | Hilt |
+| **Local Persistence** | Room Persistence Library + SQLCipher |
+| **Background Tasks** | WorkManager (Sync) |
+| **Networking/Cloud** | Firebase Auth (Google Sign-In) + Firestore |
+| **App Widgets** | Jetpack Glance |
+| **Preferences** | Jetpack DataStore |
+| **Testing** | JUnit 4, Turbine, MockK, Robolectric, Compose UI Test |
+
+### Web (PWA)
+| Component | Technology |
+|-----------|------------|
+| **Framework** | React + TypeScript |
+| **Build Tool** | Vite |
+| **Styling** | Tailwind CSS |
+| **State Management** | Zustand |
+| **Persistence** | LocalStorage / IndexedDB |
+| **PWA Features** | Service Workers (Offline support, Push Notifications) |
+| **Deployment** | Firebase Hosting |
+
+---
+
+## 🏗 Project Architecture
+
+### Android Module Structure
+The Android application follows a modular approach based on Clean Architecture principles:
+
+- **`data/`**: Implementation of repositories, DAO interfaces, database migrations, and external service adapters (Firebase, Backup, Reminders).
+- **`domain/`**: Pure Kotlin layer containing business logic models and repository interfaces.
+- **`di/`**: Hilt modules for dependency management.
+- **`ui/`**: 
+    - `main/`: Grid/List visualization, filtering logic, and settings.
+    - `editor/`: Advanced rich-text editing engine and reminder scheduling.
+    - `navigation/`: Type-safe navigation graph using Compose Navigation.
+    - `theme/`: Material 3 design system implementation.
+    - `widget/`: Glance-based widget implementation.
+
+### Web Architecture
+The PWA located in [`web/`](web/) is a modern React application optimized for performance and offline reliability:
+
+- **Service Workers**: Handles resource caching and background sync notifications.
+- **Real-time Sync**: Uses Firestore's `onSnapshot` for instantaneous cross-device updates.
+- **Responsive Design**: Mobile-first UI that adapts seamlessly to desktop environments.
+
+---
+
+## 🛠 Development & Build
+
+### Requirements
+- Android Studio Ladybug or newer.
+- JDK 17+.
+- Node.js & npm (for web/scripts).
+
+### Build Commands
 ```bash
-cd web
-npm install
-cp .env.example .env   # set VITE_FIREBASE_APP_ID from Firebase Console
-npm run dev            # http://localhost:5173
-npm run build
-```
-
-Deploy from repo root:
-
-```bash
-firebase deploy --only hosting:notelike,firestore:rules
-```
-
-See [`web/README.md`](web/README.md) for full PWA setup and architecture notes.
-
-## Features
-
-- **Notes** — titles, rich text (bold, italic, links, bullets), checklists, colors, and labels
-- **Organization** — pin, archive, trash, search, color/label filters, list/grid layout, drag-to-reorder (list view)
-- **Security** — SQLCipher-encrypted Room database, per-note biometric lock, optional app-wide lock
-- **Cloud sync** — optional Firestore sync when signed in with Google (Spark/free tier friendly; text only)
-- **Reminders** — date/time notifications that open the note
-- **Backup** — export and import notes as JSON from Settings
-- **Widget** — home screen glance widget with pinned/recent notes
-- **Undo** — archive, trash, and delete actions on the main list and in the editor
-
-## Tech stack
-
-| Layer | Choice |
-|-------|--------|
-| UI | Jetpack Compose, Material 3 |
-| DI | Hilt |
-| Data | Room + SQLCipher |
-| Cloud | Firebase Auth + Firestore |
-| Settings | DataStore Preferences |
-| Widget | Glance |
-| Tests | JUnit, Turbine, MockK, Compose UI Test |
-
-## Requirements
-
-- Android 8.0+ (API 26)
-- Android Studio Ladybug or newer recommended
-- JDK 11+
-
-## Build and run
-
-```bash
+# Build Android Debug APK
 ./gradlew :app:assembleDebug
-```
 
-Install the debug APK from `app/build/outputs/apk/debug/`, or run directly from Android Studio.
-
-## Firebase setup (optional cloud sync)
-
-1. Create a Firebase project and add the Android app (`com.aus.notelikeus`).
-2. Download `google-services.json` into `app/`.
-3. Enable **Google** sign-in under Authentication.
-4. Create a **Firestore** database and publish rules from `firestore.rules` (run `npm run test:rules` before deploy).
-5. Add debug and release SHA-1 fingerprints in Firebase project settings.
-
-Cloud sync uses Firestore only (no Storage) so it fits the **Spark (free)** plan.
-
-## Tests
-
-```bash
-# Unit tests
+# Run Android Unit Tests
 ./gradlew :app:testDebugUnitTest
 
-# Instrumented tests (device/emulator required)
-./gradlew :app:connectedDebugAndroidTest
+# Web Development (PWA)
+cd web
+npm install
+npm run dev
+
+# Deploy Web & Firestore Rules
+firebase deploy --only hosting,firestore:rules
 ```
 
-## Rich text syntax
+---
 
-Stored as lightweight markdown:
+## 🔒 Security & Data
+Notelikeus prioritizes user data sovereignty. In **Guest Mode**, all data remains strictly on-device. When **Cloud Sync** is enabled, data is transmitted over encrypted channels directly to the user's private Firebase instance. No third-party tracking or analytics SDKs are integrated.
 
-| Syntax | Result |
-|--------|--------|
-| `**text**` | Bold |
-| `_text_` | Italic |
-| `[label](https://url)` | Link |
-| `https://...` | Auto-linked URL |
-| `• item` | Bullet list |
-
-The editor hides markers while typing (WYSIWYG). Note cards render formatted text.
-
-## Backup format
-
-JSON v3 files (`notelikeus_backup_YYYYMMDD.json`) include notes, labels, and checklists. Locked notes are exported with redacted content. Import is append-only and matches labels by name.
-
-## Release builds
-
-Debug builds work out of the box. For a signed release APK or App Bundle:
-
-1. Create a keystore (once):
-
-```bash
-keytool -genkey -v -keystore release.keystore -alias notelikeus -keyalg RSA -keysize 2048 -validity 10000
-```
-
-2. Copy `signing.properties.example` to `signing.properties` and fill in paths/passwords (both files are gitignored).
-
-3. Build:
-
-```bash
-./gradlew :app:assembleRelease
-# or
-./gradlew :app:bundleRelease
-```
-
-On Windows, `.\scripts\bundle-release.ps1` runs unit tests and builds the AAB (see `app/build/outputs/bundle/release/`).
-
-The output APK is at `app/build/outputs/apk/release/`.
-
-CI runs unit tests, Android lint, Web vitest + Playwright, and Firestore rules tests on every push/PR to `main`, `master`, and `weiter` (unsigned release if no signing file is present).
-
-Validate Firestore rules locally:
-
-```bash
-npm ci
-npm run test:rules
-```
-
-## Play Store listing
-
-Draft listing copy for Google Play Console lives in [`store/listing/en-US/`](store/listing/en-US/):
-
-- `title.txt` — app name (30 chars max)
-- `short_description.txt` — short promo (80 chars max)
-- `full_description.txt` — full store description
-- `whats_new.txt` — release notes for the first upload
-
-See [`store/PUBLISHING_CHECKLIST.md`](store/PUBLISHING_CHECKLIST.md) and [`store/DATA_SAFETY.md`](store/DATA_SAFETY.md) before submitting.
-
-## Privacy
-
-The in-app **Settings → Privacy policy** dialog matches [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md). Notes are stored locally by default. Optional cloud sync uploads note text to **your** Firebase project when you sign in with Google. No analytics or advertising SDKs.
-
-## Archived features
-
-Image attachments were removed to stay on Firebase Spark (free). Source is preserved in [`archive/attachments-feature/`](archive/attachments-feature/).
-
-## Project structure
-
-```
-app/src/main/java/com/aus/notelikeus/   # Android app
-web/src/                                # PWA (React + Vite + Firebase)
-store/                                  # Play Store listing drafts
-firebase.json                           # Hosting (web/dist) + Firestore rules
-```
-
-### Android layout
-
-```
-app/src/main/java/com/aus/notelikeus/
-├── data/          # Room, SQLCipher, repositories, backup, Firebase, reminders
-├── domain/        # Models and repository interfaces
-├── di/            # Hilt modules
-├── ui/
-│   ├── main/      # Note list, filters, settings sheet
-│   ├── editor/    # Note editor, rich text, reminders
-│   ├── components/# Shared composables (cards, grid)
-│   ├── navigation/
-│   ├── theme/
-│   └── widget/
-└── MainActivity.kt
-```
-
-## License
-
-Private project — all rights reserved unless otherwise noted.
+## 📝 License
+Private project — All rights reserved.
