@@ -90,7 +90,7 @@ class FirebaseSessionManager @Inject constructor(
                     mapOf(
                         "connectedAt" to System.currentTimeMillis(),
                         "platform" to "android",
-                        "email" to auth.currentUser?.email
+                        "email" to (auth.currentUser?.email ?: "")
                     ),
                     SetOptions.merge()
                 )

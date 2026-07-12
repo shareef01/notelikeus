@@ -1,5 +1,6 @@
 package com.aus.notelikeus.ui.editor
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.input.TextFieldValue
@@ -7,7 +8,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
-import com.aus.notelikeus.data.remote.ReminderScheduler
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@Immutable
 data class EditorState(
     val id: Long? = null,
     val title: String = "",
@@ -48,10 +49,13 @@ data class EditorState(
 class EditorViewModel @Inject constructor(
     private val repository: NoteRepository,
     private val settingsRepository: SettingsRepository,
-    private val reminderScheduler: ReminderScheduler,
     private val cloudNoteSyncCoordinator: CloudNoteSyncCoordinator,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    companion object {
+        private const val AUTOSAVE_DEBOUNCE_MS = 400L
+    }
 
     private val _state = MutableStateFlow(EditorState())
     val state: StateFlow<EditorState> = _state.asStateFlow()
@@ -61,51 +65,57 @@ class EditorViewModel @Inject constructor(
     private var hasAppliedInitialColor = false
 
     init {
-        loadSettingsAndNote()
+        if (noteId == null) {
+            _state.update { it.copy(isNoteLoaded = true) }
+        }
+        loadNote()
+        loadDefaultColorForNewNote()
         loadLabels()
     }
 
-    private fun loadSettingsAndNote() {
+    private fun loadNote() {
+        val id = noteId ?: return
         viewModelScope.launch {
-            // First, load the initial color based on theme to prevent blinking
-            val theme = settingsRepository.appTheme.first()
-            val isTrueDark = theme == AppTheme.TRUE_DARK || 
-                (theme == AppTheme.AUTO && settingsRepository.isTrueDarkMode.first())
+            repository.getNoteById(id)?.let { note ->
+                _state.update {
+                    it.copy(
+                        id = note.id,
+                        title = note.title,
+                        content = note.content,
+                        contentValue = TextFieldValue(note.content),
+                        color = note.color,
+                        isPinned = note.isPinned,
+                        isArchived = note.isArchived,
+                        isTrashed = note.isTrashed,
+                        isLocked = note.isLocked,
+                        reminderTimestamp = note.reminderTimestamp,
+                        labels = note.labels,
+                        checklist = sortChecklistItems(note.checklist),
+                        timestamp = note.timestamp,
+                        position = note.position,
+                        isNoteLoaded = true,
+                        isAccessGranted = !note.isLocked
+                    )
+                }
+            } ?: run {
+                _state.update { it.copy(isNoteLoaded = true, noteNotFound = true) }
+            }
+        }
+    }
 
+    private fun loadDefaultColorForNewNote() {
+        if (noteId != null) return
+        viewModelScope.launch {
+            val theme = settingsRepository.appTheme.first()
+            val isTrueDark = theme == AppTheme.TRUE_DARK ||
+                (theme == AppTheme.AUTO && settingsRepository.isTrueDarkMode.first())
             val initialColor = if (isTrueDark) {
                 Color.Black.toArgb()
             } else {
                 BackgroundLight.toArgb()
             }
-            _state.update { it.copy(color = initialColor) }
-
-            if (noteId == null) {
-                _state.update { it.copy(isNoteLoaded = true) }
-            } else {
-                repository.getNoteById(noteId)?.let { note ->
-                    _state.update {
-                        it.copy(
-                            id = note.id,
-                            title = note.title,
-                            content = note.content,
-                            contentValue = TextFieldValue(note.content),
-                            color = note.color,
-                            isPinned = note.isPinned,
-                            isArchived = note.isArchived,
-                            isTrashed = note.isTrashed,
-                            isLocked = note.isLocked,
-                            reminderTimestamp = note.reminderTimestamp,
-                            labels = note.labels,
-                            checklist = note.checklist.sortedWith(compareBy({ it.isChecked }, { it.position })),
-                            timestamp = note.timestamp,
-                            position = note.position,
-                            isNoteLoaded = true,
-                            isAccessGranted = !note.isLocked
-                        )
-                    }
-                } ?: run {
-                    _state.update { it.copy(isNoteLoaded = true, noteNotFound = true) }
-                }
+            if (!hasAppliedInitialColor && _state.value.id == null) {
+                _state.update { it.copy(color = initialColor) }
             }
         }
     }
@@ -227,7 +237,6 @@ class EditorViewModel @Inject constructor(
             _state.update { it.copy(timestamp = updatedTimestamp) }
             note.id
         }
-        syncReminder(savedId, _state.value)
         savedId?.let { cloudNoteSyncCoordinator.scheduleUpload(it) }
         return savedId
     }
@@ -322,6 +331,12 @@ class EditorViewModel @Inject constructor(
 
     private var nextTempChecklistId = -1L
 
+    private fun sortChecklistItems(items: List<ChecklistItem>): List<ChecklistItem> {
+        return items
+            .sortedWith(compareBy({ it.isChecked }, { it.position }))
+            .mapIndexed { index, item -> item.copy(position = index) }
+    }
+
     fun updateChecklistItem(itemId: Long, text: String, isChecked: Boolean) {
         _state.update { currentState ->
             val newList = currentState.checklist.toMutableList()
@@ -329,8 +344,7 @@ class EditorViewModel @Inject constructor(
             if (index in newList.indices) {
                 newList[index] = newList[index].copy(text = text, isChecked = isChecked)
             }
-            val sortedList = newList.sortedWith(compareBy({ it.isChecked }, { it.position }))
-            currentState.copy(checklist = sortedList)
+            currentState.copy(checklist = sortChecklistItems(newList))
         }
         triggerAutosave()
     }
@@ -408,34 +422,39 @@ class EditorViewModel @Inject constructor(
     private fun triggerAutosave() {
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
+            delay(AUTOSAVE_DEBOUNCE_MS)
             _state.update { it.copy(isSaving = true) }
-            delay(1000)
+            try {
+                persistNote()
+            } finally {
+                _state.update { it.copy(isSaving = false) }
+            }
+        }
+    }
+
+    suspend fun flushPendingSave() {
+        autosaveJob?.cancel()
+        autosaveJob = null
+        val currentState = _state.value
+        if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) {
+            return
+        }
+        _state.update { it.copy(isSaving = true) }
+        try {
             persistNote()
+        } finally {
             _state.update { it.copy(isSaving = false) }
         }
     }
 
     fun saveNote() {
-        val currentState = _state.value
-        if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) return
-
         viewModelScope.launch {
-            _state.update { it.copy(isSaving = true) }
-            persistNote()
-            _state.update { it.copy(isSaving = false) }
+            flushPendingSave()
         }
     }
 
-    private fun syncReminder(noteId: Long, state: EditorState) {
-        if (state.isTrashed || state.isArchived || state.isLocked || state.reminderTimestamp == null) {
-            reminderScheduler.cancelReminder(noteId)
-        } else {
-            reminderScheduler.scheduleReminder(
-                noteId = noteId,
-                title = state.title,
-                content = state.content,
-                timestamp = state.reminderTimestamp
-            )
-        }
+    override fun onCleared() {
+        autosaveJob?.cancel()
+        super.onCleared()
     }
 }

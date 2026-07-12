@@ -2,6 +2,10 @@ package com.aus.notelikeus.ui.main.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -9,6 +13,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,9 +28,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,6 +46,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,6 +66,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
@@ -116,6 +126,11 @@ fun MainTopAppBar(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var isSearchFocused by remember { mutableStateOf(false) }
+    val searchBgAlpha by animateFloatAsState(
+        targetValue = if (isSearchFocused) 1f else 0.72f,
+        animationSpec = spring(dampingRatio = 0.7f),
+        label = "search_bg"
+    )
 
     val settingsContentDescription = stringResource(R.string.cd_open_settings)
     val searchPlaceholder = when (currentFilter) {
@@ -144,14 +159,15 @@ fun MainTopAppBar(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(TopBarRowHeight)
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .border(1.dp, Color(0xFF2A2A2A), CircleShape),
                     shape = CircleShape,
                     color = if (isSelectionMode) {
                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
                     } else {
                         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
                     },
-                    tonalElevation = 0.dp,
+                    tonalElevation = 6.dp,
                     shadowElevation = 0.dp
                 ) {
                     if (isSelectionMode) {
@@ -243,6 +259,15 @@ fun MainTopAppBar(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
 
                             BasicTextField(
                                 value = searchQuery,

@@ -19,6 +19,7 @@ import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaf
 import androidx.compose.material3.adaptive.layout.AnimatedPane
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -75,7 +76,7 @@ fun MainScreen(
     onRequestAppUnlock: (onSuccess: () -> Unit) -> Unit = {},
     onAppLockEnabled: () -> Unit = {}
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val gridState = rememberLazyStaggeredGridState()
     val listScrolled by remember {
         derivedStateOf {
@@ -118,11 +119,15 @@ fun MainScreen(
         isGoogleSignInPending = false
         googleSignInHelper.parseIdToken(result.data)
             .onSuccess { viewModel.signInWithGoogleIdToken(it) }
-            .onFailure {
+            .onFailure { error ->
+                val message = googleSignInHelper.diagnose(error)
+                if (error is com.google.android.gms.common.api.ApiException &&
+                    (error.statusCode == com.google.android.gms.common.api.CommonStatusCodes.CANCELED || error.statusCode == 12501)
+                ) {
+                    return@rememberLauncherForActivityResult
+                }
                 scope.launch {
-                    snackbarHostState.showSnackbar(
-                        appContext.getString(R.string.cloud_sign_in_failed)
-                    )
+                    snackbarHostState.showSnackbar(message)
                 }
             }
     }
@@ -256,7 +261,7 @@ fun MainScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 28.dp, vertical = 24.dp)
+                    .padding(horizontal = 16.dp, vertical = 24.dp)
             ) {
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -347,19 +352,19 @@ fun MainScreen(
                     onEditLabels()
                     scope.launch { if (!isExpanded) drawerState.close() }
                 },
-                icon = { Icon(Icons.Default.Label, contentDescription = stringResource(R.string.nav_edit_labels)) },
+                icon = { @Suppress("DEPRECATION") Icon(Icons.Default.Label, contentDescription = stringResource(R.string.nav_edit_labels)) },
                 modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
                 colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
             )
 
             Spacer(modifier = Modifier.weight(1f))
 
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 28.dp))
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
             if (state.cloudAccount.isGoogleAccount) {
                 val accountEmail = state.cloudAccount.email
                 if (!accountEmail.isNullOrBlank()) {
-                Column(modifier = Modifier.padding(horizontal = 28.dp, vertical = 12.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Text(
                         text = accountEmail,
                         style = MaterialTheme.typography.bodyMedium,
@@ -386,11 +391,11 @@ fun MainScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 28.dp, vertical = 12.dp),
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                 )
             }
 
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 28.dp))
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
             NavigationDrawerItem(
                 label = { Text(stringResource(R.string.nav_settings), fontWeight = FontWeight.Medium) },
@@ -481,7 +486,7 @@ fun MainScreen(
                             ) {
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.padding(horizontal = 40.dp)
+                                    modifier = Modifier.padding(horizontal = 16.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Description,
@@ -785,21 +790,38 @@ private fun MainScaffold(
     val noteDeletedMessage = stringResource(R.string.note_deleted)
     val noteTrashedMessage = stringResource(R.string.note_trashed)
     val showFab = state.currentFilter == NoteFilter.ACTIVE && state.selectedNotes.isEmpty()
-    val selectedNoteModels = state.notes.filter { it.id in state.selectedNotes }
-    val selectionAllPinned = selectedNoteModels.isNotEmpty() && selectedNoteModels.all { it.isPinned }
-    val visibleNoteIds = state.filteredNotes.mapNotNull { it.id }.toSet()
-    val allFilteredSelected = visibleNoteIds.isNotEmpty() &&
-        visibleNoteIds.all { it in state.selectedNotes }
-    val allowReorder = state.currentFilter == NoteFilter.ACTIVE &&
-        state.sortOrder == NoteSortOrder.MANUAL &&
-        state.searchQuery.isEmpty() &&
-        state.selectedColor == null &&
-        state.selectedLabelId == null &&
-        state.selectedNotes.isEmpty() &&
-        state.viewMode.columns == 1
-    val hasActiveFilters = state.searchQuery.isNotEmpty() ||
-        state.selectedColor != null ||
-        state.selectedLabelId != null
+    val selectedNoteModels by remember(state.notes, state.selectedNotes) {
+        derivedStateOf { state.notes.filter { it.id in state.selectedNotes } }
+    }
+    val selectionAllPinned by remember(selectedNoteModels) {
+        derivedStateOf { selectedNoteModels.isNotEmpty() && selectedNoteModels.all { it.isPinned } }
+    }
+    val visibleNoteIds by remember(state.filteredNotes) {
+        derivedStateOf { state.filteredNotes.mapNotNull { it.id }.toSet() }
+    }
+    val allFilteredSelected by remember(visibleNoteIds, state.selectedNotes) {
+        derivedStateOf {
+            visibleNoteIds.isNotEmpty() && visibleNoteIds.all { it in state.selectedNotes }
+        }
+    }
+    val allowReorder by remember(state) {
+        derivedStateOf {
+            state.currentFilter == NoteFilter.ACTIVE &&
+                state.sortOrder == NoteSortOrder.MANUAL &&
+                state.searchQuery.isEmpty() &&
+                state.selectedColor == null &&
+                state.selectedLabelId == null &&
+                state.selectedNotes.isEmpty() &&
+                state.viewMode.columns == 1
+        }
+    }
+    val hasActiveFilters by remember(state.searchQuery, state.selectedColor, state.selectedLabelId) {
+        derivedStateOf {
+            state.searchQuery.isNotEmpty() ||
+                state.selectedColor != null ||
+                state.selectedLabelId != null
+        }
+    }
 
     Scaffold(
         snackbarHost = {
@@ -937,7 +959,7 @@ private fun MainScaffold(
                 columns = state.viewMode.columns,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
-                    top = 12.dp,
+                    top = 16.dp,
                     start = 16.dp,
                     end = 16.dp,
                     bottom = gridBottomPadding
@@ -966,7 +988,7 @@ private fun MainScaffold(
                 }
                 state.currentFilter == NoteFilter.ARCHIVED -> {
                     message = stringResource(R.string.no_archived_notes)
-                    subtitle = null
+                    subtitle = stringResource(R.string.empty_archived_subtitle)
                     showCreate = false
                     showClear = false
                     emptyIcon = Icons.Outlined.Archive
@@ -1030,15 +1052,12 @@ private fun MainScaffold(
                     allowReorder = allowReorder,
                     onNoteClick = { note ->
                         if (state.selectedNotes.isNotEmpty()) {
-                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                             viewModel.toggleNoteSelection(note.id!!)
                         } else {
-                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                             onNoteClick(note.id)
                         }
                     },
                     onNoteLongClick = { note ->
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         viewModel.toggleNoteSelection(note.id!!)
                     },
                     onSwipeToArchive = { note ->
@@ -1062,12 +1081,12 @@ private fun MainScaffold(
                     onMoveNote = viewModel::previewMoveNote,
                     onReorderComplete = viewModel::commitNoteOrder,
                     columns = state.viewMode.columns,
-                    compact = state.viewMode.compact,
+                    compact = state.viewMode.compact || state.viewMode.columns > 1,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
                     contentPadding = PaddingValues(
-                        top = 12.dp,
+                        top = 16.dp,
                         start = 16.dp,
                         end = 16.dp,
                         bottom = gridBottomPadding

@@ -30,10 +30,10 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PrivacyTip
-import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Stars
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Upload
@@ -134,7 +134,7 @@ fun ProfileSheet(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
             ) {
                 BrandMarkIcon(
                     size = 56.dp,
@@ -186,7 +186,7 @@ fun ProfileSheet(
                 )
             }
             SettingsPickerListItem(
-                icon = Icons.Default.Sort,
+                icon = Icons.AutoMirrored.Filled.Sort,
                 title = stringResource(R.string.sort_order),
                 subtitle = stringResource(sortOrderLabelRes(sortOrder)),
                 expanded = showSortPicker,
@@ -339,7 +339,7 @@ fun ProfileSheet(
                     supportingContent = { Text(stringResource(R.string.cloud_sign_out_subtitle)) },
                     leadingContent = {
                         SettingsLeadingIcon(
-                            icon = Icons.Default.Logout,
+                            icon = Icons.AutoMirrored.Filled.Logout,
                             contentDescription = stringResource(R.string.cloud_sign_out)
                         )
                     },

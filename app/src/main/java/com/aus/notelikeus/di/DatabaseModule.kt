@@ -12,7 +12,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
+import net.sqlcipher.database.SupportFactory
 import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
@@ -37,8 +37,9 @@ object DatabaseModule {
             NotelikeusDatabase::class.java,
             NotelikeusDatabase.DATABASE_NAME
         )
-        .openHelperFactory(SupportOpenHelperFactory(passphrase))
+        .openHelperFactory(SupportFactory(passphrase))
         .addMigrations(*DatabaseMigrations.ALL)
+        .fallbackToDestructiveMigration(false)
         .build()
     }
     @Provides

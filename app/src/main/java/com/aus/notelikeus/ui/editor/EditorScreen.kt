@@ -1,10 +1,36 @@
 package com.aus.notelikeus.ui.editor
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -15,8 +41,11 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -48,8 +77,6 @@ import com.aus.notelikeus.ui.editor.components.ChecklistUI
 import com.aus.notelikeus.ui.editor.components.EditorBottomBar
 import com.aus.notelikeus.ui.editor.components.EditorBottomSheet
 import com.aus.notelikeus.ui.editor.components.RichTextToolbar
-import com.aus.notelikeus.ui.navigation.LocalAnimatedVisibilityScope
-import com.aus.notelikeus.ui.navigation.LocalSharedTransitionScope
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.EditorBodyStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -63,7 +90,6 @@ private val EditorVerticalPadding = 16.dp
 
 @OptIn(
     ExperimentalMaterial3Api::class,
-    ExperimentalSharedTransitionApi::class,
     ExperimentalLayoutApi::class
 )
 @Composable
@@ -72,7 +98,7 @@ fun EditorScreen(
     onBack: () -> Unit,
     onStageUndo: (Note, UndoAction, String) -> Unit
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -163,20 +189,7 @@ fun EditorScreen(
         }
     }
 
-    val sharedTransitionScope = LocalSharedTransitionScope.current
-    val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
-
-    val sharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
-            Modifier.sharedElement(
-                rememberSharedContentState(key = "note-${state.id}"),
-                animatedVisibilityScope = animatedVisibilityScope
-            )
-        }
-    } else {
-        Modifier
-    }
-
+    val isLoadingExistingNote = state.id != null && !state.isNoteLoaded && !state.noteNotFound
     val showLockOverlay = state.isNoteLoaded && state.isLocked && !state.isAccessGranted
     val imeVisible = WindowInsets.isImeVisible
     var hasPromptedLockAuth by remember { mutableStateOf(false) }
@@ -211,20 +224,14 @@ fun EditorScreen(
         }
     }
 
-    if (state.id != null && !state.isNoteLoaded && !state.noteNotFound) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background,
-        ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-            }
+    val navigateBack: () -> Unit = {
+        scope.launch {
+            viewModel.flushPendingSave()
+            onBack()
         }
-        return
     }
+
+    BackHandler(onBack = navigateBack)
 
     if (showLockOverlay) {
         Surface(
@@ -235,7 +242,7 @@ fun EditorScreen(
                 TopAppBar(
                     title = {},
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
+                        IconButton(onClick = navigateBack) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(R.string.cd_back),
@@ -254,7 +261,7 @@ fun EditorScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 32.dp)
+                        .padding(horizontal = 16.dp)
                         .navigationBarsPadding(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
@@ -294,7 +301,7 @@ fun EditorScreen(
                 ) {
                     Text(stringResource(R.string.unlock))
                 }
-                TextButton(onClick = onBack) {
+                TextButton(onClick = navigateBack) {
                     Text(stringResource(R.string.go_back), color = contentColor)
                 }
                 }
@@ -324,10 +331,7 @@ fun EditorScreen(
             TopAppBar(
                 title = {},
                 navigationIcon = {
-                    IconButton(onClick = { 
-                        viewModel.saveNote()
-                        onBack() 
-                    }) {
+                    IconButton(onClick = navigateBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.cd_back),
@@ -414,7 +418,7 @@ fun EditorScreen(
             }
         },
         containerColor = noteColor,
-        modifier = Modifier.fillMaxSize().then(sharedModifier)
+        modifier = Modifier.fillMaxSize()
     ) { paddingValues ->
         val showFormattingToolbar = state.contentValue.selection.length > 0
 
@@ -424,6 +428,23 @@ fun EditorScreen(
                 .padding(paddingValues)
                 .imePadding()
         ) {
+            if (isLoadingExistingNote) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth(),
+                    color = contentColor,
+                    trackColor = contentColor.copy(alpha = 0.18f),
+                )
+            }
+
+            AnimatedVisibility(
+                visible = !isLoadingExistingNote,
+                enter = fadeIn(animationSpec = tween(120)),
+                exit = fadeOut(animationSpec = tween(80)),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+            Box(modifier = Modifier.fillMaxSize()) {
             if (showBottomSheet) {
                 EditorBottomSheet(
                     selectedColor = state.color,
@@ -475,9 +496,7 @@ fun EditorScreen(
             }
 
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                modifier = Modifier.fillMaxSize()
             ) {
                 EditorTextContent(
                     title = state.title,
@@ -493,7 +512,11 @@ fun EditorScreen(
                     onAddChecklistItem = viewModel::addChecklistItem,
                     onRemoveChecklistItem = viewModel::removeChecklistItem,
                     onConvertChecklistToContent = viewModel::convertChecklistToContent,
-                    onConvertContentToChecklist = viewModel::convertContentToChecklist
+                    onConvertContentToChecklist = viewModel::convertContentToChecklist,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    focusBodyOnOpen = state.id == null && state.isNoteLoaded,
                 )
             }
 
@@ -521,6 +544,8 @@ fun EditorScreen(
                     modifier = Modifier.animateContentSize()
                 )
             }
+            }
+            }
         }
     }
 }
@@ -541,7 +566,8 @@ private fun EditorTextContent(
     onRemoveChecklistItem: (Long) -> Unit,
     onConvertChecklistToContent: () -> Unit,
     onConvertContentToChecklist: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    focusBodyOnOpen: Boolean = false,
 ) {
     val titleStyle = MaterialTheme.typography.titleLarge.copy(
         fontWeight = FontWeight.Bold,
@@ -549,10 +575,17 @@ private fun EditorTextContent(
     )
     val bodyStyle = EditorBodyStyle.copy(color = contentColor)
     val placeholderColor = contentColor.copy(alpha = 0.5f)
+    val bodyFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(focusBodyOnOpen) {
+        if (focusBodyOnOpen && checklist.isEmpty()) {
+            bodyFocusRequester.requestFocus()
+        }
+    }
 
     Column(
         modifier = modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .padding(
                 start = EditorHorizontalPadding,
                 end = EditorHorizontalPadding,
@@ -565,16 +598,19 @@ private fun EditorTextContent(
             onValueChange = onTitleChange,
             textStyle = titleStyle,
             cursorBrush = SolidColor(contentColor),
+            maxLines = 4,
             modifier = Modifier.fillMaxWidth(),
             decorationBox = { innerTextField ->
-                if (title.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.title_hint),
-                        style = titleStyle,
-                        color = placeholderColor,
-                    )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    if (title.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.title_hint),
+                            style = titleStyle,
+                            color = placeholderColor,
+                        )
+                    }
+                    innerTextField()
                 }
-                innerTextField()
             }
         )
 
@@ -614,7 +650,10 @@ private fun EditorTextContent(
                 onAdd = onAddChecklistItem,
                 onRemove = onRemoveChecklistItem,
                 onConvertToText = onConvertChecklistToContent,
-                contentColor = contentColor
+                contentColor = contentColor,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
             )
         } else {
             val markdownTransformation = remember(contentColor) {
@@ -628,16 +667,24 @@ private fun EditorTextContent(
                 cursorBrush = SolidColor(contentColor),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 100.dp),
+                    .weight(1f)
+                    .focusRequester(bodyFocusRequester),
                 decorationBox = { innerTextField ->
-                    if (content.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.note_hint),
-                            style = bodyStyle,
-                            color = placeholderColor,
-                        )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight()
+                    ) {
+                        if (content.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.note_hint),
+                                style = bodyStyle,
+                                color = placeholderColor,
+                                modifier = Modifier.align(Alignment.TopStart),
+                            )
+                        }
+                        innerTextField()
                     }
-                    innerTextField()
                 }
             )
 

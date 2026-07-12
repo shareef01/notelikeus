@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "404285880902-uaos4tojip7cus7skt3tbo0d37e65g0k.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aus.notelikeus",
+            "certificate_hash": "edb569973b1fa5f025a7bccfb7179437c5fbecbd"
+          }
+        },
+        {
           "client_id": "404285880902-cpiu3nj2itndnh0kkouvn374ec5ecl9v.apps.googleusercontent.com",
           "client_type": 3
         }

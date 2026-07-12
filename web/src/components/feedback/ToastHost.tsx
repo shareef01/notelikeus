@@ -16,7 +16,7 @@ export function ToastHost() {
 
   return (
     <div
-      className={`fixed bottom-6 left-1/2 z-[70] flex max-w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-note px-4 py-3 text-sm font-medium shadow-lg pb-safe lg:bottom-8 ${
+      className={`fixed bottom-6 left-1/2 z-[70] flex max-w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-note px-4 py-3 text-sm font-medium shadow-lg pb-safe lg:bottom-8 animate-in slide-in-from-bottom-4 fade-in duration-300 ${
         message.tone === 'error'
           ? 'bg-red-950 text-red-100'
           : 'bg-true-surface text-brand-primary border border-brand-outline/40'

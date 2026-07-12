@@ -3,7 +3,6 @@ import { persist } from 'zustand/middleware';
 import type { Note, NoteQueryFilters } from '@/types/note';
 import { ensureNoteCloudIds } from '@/types/note';
 import { notesContentEqual, notesEqual } from '@/lib/notes/noteEquality';
-
 export type NotesLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 interface NotesState {
@@ -37,17 +36,25 @@ export const useNotesStore = create<NotesState>()(
       filters: defaultFilters,
       setNotes: (incoming) => {
         const current = get().notes;
-        if (notesContentEqual(current, incoming)) {
+        // Deduplicate by cloudId — keep the last occurrence
+        const deduped = Array.from(
+          new Map(incoming.map((note) => [note.cloudId || note.id, note])).values(),
+        );
+        if (notesContentEqual(current, deduped)) {
           if (get().status !== 'ready' || get().error != null) {
             set({ status: 'ready', error: null });
           }
           return;
         }
-        set({ notes: incoming, status: 'ready', error: null });
+        set({ notes: deduped, status: 'ready', error: null });
       },
       upsertLocalNote: (note) => {
         const current = get().notes;
-        const index = current.findIndex((entry) => entry.id === note.id);
+        // Match by id first, then by cloudId for cross-platform dedup
+        let index = current.findIndex((entry) => entry.id === note.id);
+        if (index < 0 && note.cloudId) {
+          index = current.findIndex((entry) => entry.cloudId === note.cloudId);
+        }
         if (index >= 0 && notesEqual(current[index], note)) {
           return;
         }
@@ -57,7 +64,9 @@ export const useNotesStore = create<NotesState>()(
         set({ notes, status: 'ready' });
       },
       removeLocalNote: (noteId) => {
-        const next = get().notes.filter((note) => note.id !== noteId);
+        const next = get().notes.filter(
+          (note) => note.id !== noteId && note.cloudId !== noteId,
+        );
         if (next.length === get().notes.length) return;
         set({ notes: next, status: 'ready' });
       },
