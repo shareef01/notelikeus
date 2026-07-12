@@ -37,16 +37,35 @@ export interface FirestoreNoteDocument {
 }
 
 function checklistToCloudMap(item: ChecklistItem): Record<string, unknown> {
-  return {
+  return stripUndefined({
     text: item.text,
     isChecked: item.isChecked,
     position: item.position,
-  };
+  }) as Record<string, unknown>;
+}
+
+/** Recursively strips `undefined` values that Firestore rejects. */
+function stripUndefined(value: unknown): unknown {
+  if (value === undefined) return null;
+  if (Array.isArray(value)) {
+    return value.map(stripUndefined);
+  }
+  if (value !== null && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>)) {
+      const v = (value as Record<string, unknown>)[key];
+      if (v !== undefined) {
+        result[key] = stripUndefined(v);
+      }
+    }
+    return result;
+  }
+  return value;
 }
 
 /** Serializes a note to the Android-compatible Firestore map. */
 export function noteToCloudMap(note: Note): FirestoreNoteDocument {
-  const payload: FirestoreNoteDocument = {
+  const payload: FirestoreNoteDocument = stripUndefined({
     cloudId: noteCloudDocumentId(note),
     localId: note.localId,
     title: note.title,
@@ -61,7 +80,7 @@ export function noteToCloudMap(note: Note): FirestoreNoteDocument {
     reminderTimestamp: note.reminderTimestamp,
     labels: note.labels.map((label) => ({ name: label.name })),
     checklist: note.checklist.map(checklistToCloudMap),
-  };
+  }) as FirestoreNoteDocument;
 
   if (note.attachments.length > 0) {
     payload.attachments = note.attachments.map((attachment) => ({

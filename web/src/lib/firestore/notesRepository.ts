@@ -191,6 +191,11 @@ export async function syncNotesWithCloud(
   for (const localNote of localNotes.filter(isCloudSyncEligible)) {
     const remote = remoteNotes.find((note) => note.cloudId === localNote.cloudId);
     if (!cloudIds.has(localNote.cloudId)) {
+      // Don't re-upload notes that were previously known and are now absent —
+      // they were remotely deleted (matches Android mergeRemoteDocuments behavior).
+      if (previousKnownCloudIds.has(localNote.cloudId)) {
+        continue;
+      }
       await upsertNote(userId, localNote);
       changes++;
       continue;

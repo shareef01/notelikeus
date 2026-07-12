@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -55,7 +56,7 @@ fun NotesLoadingGrid(
             verticalItemSpacing = 12.dp,
             userScrollEnabled = false,
         ) {
-            items(count) {
+            items(count, key = { "loading-placeholder-$it" }) {
                 LoadingPlaceholder(height = itemHeight)
             }
         }

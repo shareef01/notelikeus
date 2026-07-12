@@ -1,5 +1,5 @@
 interface NotesLoadingGridProps {
-  columns: 1 | 2 | 3;
+  columns: number;
 }
 
 export function NotesLoadingGrid({ columns }: NotesLoadingGridProps) {
@@ -16,11 +16,16 @@ export function NotesLoadingGrid({ columns }: NotesLoadingGridProps) {
       {Array.from({ length: count }, (_, index) => (
         <div
           key={index}
-          className={`animate-pulse rounded-note bg-true-surface-variant/60 ${
-            columns > 1 ? 'mb-note-gap break-inside-avoid' : ''
-          }`}
-          style={{ height: columns === 1 ? 120 : 140 }}
-        />
+          className={`rounded-note ${columns > 1 ? 'mb-note-gap break-inside-avoid' : 'mb-3'}`}
+        >
+          <div className="animate-pulse rounded-note bg-white/[0.04]">
+            <div className="space-y-3 p-5">
+              <div className="h-4 w-3/4 rounded-md bg-white/[0.06]" />
+              <div className="h-3 w-full rounded-md bg-white/[0.04]" />
+              <div className="h-3 w-5/6 rounded-md bg-white/[0.04]" />
+            </div>
+          </div>
+        </div>
       ))}
     </div>
   );
