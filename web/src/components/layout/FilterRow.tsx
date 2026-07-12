@@ -24,9 +24,6 @@ interface FilterRowProps {
   onClearFilters: () => void;
 }
 
-function FilterDivider() {
-  return <div className="mx-0.5 h-6 w-px shrink-0 self-center bg-brand-outline/35" aria-hidden />;
-}
 
 function SortFilterChip({
   sortOrder,
@@ -110,15 +107,15 @@ export function FilterRow({
   const showLabelRow = labels.length > 0;
 
   return (
-    <div className="flex flex-col gap-0.5 pb-1.5">
-      <div className="flex items-center gap-1.5 overflow-x-auto px-3 py-1 scrollbar-hide sm:px-4 lg:px-6">
+    <div className="flex flex-col gap-2 pb-3">
+      <div className="flex items-center gap-2 overflow-x-auto px-3 py-1.5 scrollbar-hide sm:gap-3 sm:px-6">
         <SortFilterChip sortOrder={sortOrder} onSortOrderChange={onSortOrderChange} />
 
         {hasActiveFilters ? (
           <FilterChip label="Clear" compact selected onClick={onClearFilters} />
         ) : null}
 
-        <FilterDivider />
+        <div className="h-4 w-px bg-white/[0.05] mx-1" />
 
         <ColorSwatchRow selectedColor={selectedColor} onSelect={onColorSelect} compact />
 
@@ -128,7 +125,7 @@ export function FilterRow({
       </div>
 
       {showLabelRow ? (
-        <div className="flex gap-1.5 overflow-x-auto px-3 py-0.5 scrollbar-hide sm:px-4 lg:px-6">
+        <div className="flex gap-1.5 overflow-x-auto px-3 py-0.5 scrollbar-hide sm:gap-2 sm:px-6">
           <FilterChip
             label="All labels"
             compact

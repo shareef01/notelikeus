@@ -26,8 +26,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.size
@@ -137,10 +137,7 @@ private fun SortOrderFilterChip(
     Box {
         PrecisionFilterChip(
             selected = false,
-            onClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                expanded = true
-            },
+            onClick = { expanded = true },
             label = stringResource(sortOrderLabelRes(sortOrder)),
         )
         DropdownMenu(
@@ -173,7 +170,7 @@ private fun SortOrderFilterChip(
                                 contentDescription = null,
                                 modifier = Modifier
                                     .size(18.dp)
-                                    .semantics { invisibleToUser() },
+                                    .semantics { @Suppress("DEPRECATION") invisibleToUser() },
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         }
@@ -199,10 +196,14 @@ internal fun PrecisionFilterChip(
 ) {
     val borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
     val selectedContainer = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    val haptic = LocalHapticFeedback.current
 
     FilterChip(
         selected = selected,
-        onClick = onClick,
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+            onClick()
+        },
         enabled = enabled,
         label = {
             Text(
