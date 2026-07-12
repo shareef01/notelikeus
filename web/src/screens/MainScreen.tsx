@@ -1,4 +1,4 @@
-import { AddIcon, NotesIcon } from '@/components/icons/Icons';
+import { AddIcon } from '@/components/icons/Icons';
 
 import { ToastHost } from '@/components/feedback/ToastHost';
 import { InstallPrompt } from '@/components/layout/InstallPrompt';
@@ -52,28 +52,19 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useToastStore } from '@/store/toastStore';
 
 import { useUiStore } from '@/store/uiStore';
-
 import type { Note, NoteFilter } from '@/types/note';
 
-import { useIsDesktop } from '@/hooks/useMediaQuery';
-import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
-
-const LazyEditorScreen = lazy(() =>
-  import('@/screens/EditorScreen').then((module) => ({ default: module.EditorScreen })),
-);
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export function MainScreen() {
-
+  const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
-
   const backupInputRef = useRef<HTMLInputElement>(null);
-
   const { user } = useAuthListener();
 
   const [showProfile, setShowProfile] = useState(false);
-
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
-
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
@@ -83,23 +74,16 @@ export function MainScreen() {
     result: BackupImportResult;
   } | null>(null);
 
-
-
   const drawerOpen = useUiStore((s) => s.drawerOpen);
-
   const viewColumns = useUiStore((s) => s.viewColumns);
-
   const listScrolled = useUiStore((s) => s.listScrolled);
-
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
-
   const setViewColumns = useUiStore((s) => s.setViewColumns);
-
   const setListScrolled = useUiStore((s) => s.setListScrolled);
 
-  const openNewNote = useUiStore((s) => s.openNewNote);
+  const openNewNote = () => navigate('/note/new');
+  const openNote = (noteId: string) => navigate(`/note/${noteId}`);
 
-  const openNote = useUiStore((s) => s.openNote);
   const openAuthScreen = useUiStore((s) => s.openAuthScreen);
   const setLabelsOpen = useUiStore((s) => s.setLabelsOpen);
   const recentSearches = useUiStore((s) => s.recentSearches);
@@ -112,12 +96,7 @@ export function MainScreen() {
   const toggleSelectAll = useUiStore((s) => s.toggleSelectAll);
 
   const selectionMode = selectedNoteIds.length > 0;
-
-
-
   const effectiveColumns = useEffectiveColumns(viewColumns);
-
-
 
   const cloudAutoSyncEnabled = useSettingsStore((s) => s.cloudAutoSyncEnabled);
   const setCloudAutoSyncEnabled = useSettingsStore((s) => s.setCloudAutoSyncEnabled);
@@ -126,34 +105,19 @@ export function MainScreen() {
 
   const cloud = useCloudSync();
 
-
-
   const {
-
     notes,
-
     filteredNotes,
-
     labels,
-
     filters,
-
     setSearchQuery,
-
     setColorFilter,
-
     setLabelFilter,
-
     setNoteFilter,
-
     setSortOrder,
-
     clearFilters,
-
     isLoading,
-
     error,
-
   } = useNotes();
 
   const selectedNoteModels = useMemo(
@@ -506,251 +470,165 @@ export function MainScreen() {
 
   const emptyState = getEmptyState(filters.filter, hasActiveFilters, Boolean(filters.searchQuery));
 
-  const isDesktop = useIsDesktop();
-  const editorRoute = useUiStore((s) => s.editorRoute);
-  const desktopEditor = isDesktop && editorRoute.mode !== 'closed' ? editorRoute : null;
-
   return (
-    <div className="flex min-h-screen w-full bg-true-black lg:mx-auto lg:max-w-shell">
-
+    <div className="flex h-dvh w-full bg-[#09090B] overflow-hidden">
       <SideDrawer
-
         open={drawerOpen}
-
         currentFilter={filters.filter}
-
         onClose={() => setDrawerOpen(false)}
-
         onNavigate={handleNavigateFilter}
-
         userEmail={user?.email ?? null}
-
         onSignIn={() => openAuthScreen('signin')}
-
         onSignOut={() => setShowSignOutConfirm(true)}
-
         onEditLabels={() => setLabelsOpen(true)}
-
         navCounts={navCounts}
-
         onOpenSettings={() => setShowProfile(true)}
-
       />
 
-
-
-      <div className="flex min-h-screen min-w-0 flex-1">
-        <div className={`flex flex-col min-w-0 flex-1 transition-all duration-300 ${isDesktop && editorRoute.mode !== 'closed' ? 'w-[min(440px,38vw)] min-w-[300px] max-w-[440px] shrink-0 border-r border-brand-outline' : ''}`}>
+      <div className="flex flex-1 min-w-0 bg-[#0C0C0E]">
+        <div className="flex flex-col min-w-0 flex-1 transition-all duration-500 ease-in-out">
           <TopBar
             searchQuery={filters.searchQuery ?? ''}
+            onSearchQueryChange={setSearchQuery}
+            currentFilter={filters.filter}
+            listScrolled={listScrolled}
+            sortOrder={filters.sortOrder ?? 'manual'}
+            onSortOrderChange={setSortOrder}
+            selectedColor={filters.colorArgb ?? null}
+            onColorSelect={setColorFilter}
+            labels={labels}
+            selectedLabelName={filters.labelName ?? null}
+            onLabelSelect={setLabelFilter}
+            hasActiveFilters={hasActiveFilters}
+            onClearFilters={clearFilters}
+            onMenuClick={() => setDrawerOpen(true)}
+            onProfileClick={() => setShowProfile(true)}
+            onViewColumnsChange={setViewColumns}
+            onNewNote={openNewNote}
+            showNewNote={filters.filter === 'active'}
+            viewColumns={effectiveColumns}
+            selectionMode={selectionMode}
+            selectionAllPinned={selectionAllPinned}
+            selectedCount={selectedNoteIds.length}
+            allFilteredSelected={allFilteredSelected}
+            onClearSelection={clearSelection}
+            onToggleSelectAll={() => toggleSelectAll(filteredNoteIds)}
+            onBulkPin={() => void handleBulkPin()}
+            onBulkUnpin={() => void handleBulkUnpin()}
+            onBulkArchive={() => void handleBulkArchive()}
+            onBulkRestore={() => void handleBulkRestore()}
+            onBulkTrash={() => void handleBulkTrash()}
+            onBulkPermanentDelete={() => setShowBulkDeleteConfirm(true)}
+            recentSearches={recentSearches}
+            onRecentSearchClick={(query) => {
+              setSearchQuery(query);
+              addRecentSearch(query);
+            }}
+            onClearRecentSearches={clearRecentSearches}
+          />
 
-          onSearchQueryChange={setSearchQuery}
+          <OfflineBanner />
+          <InstallPrompt />
 
-          currentFilter={filters.filter}
+          {filters.filter === 'trashed' && filteredNotes.length > 0 ? (
+            <TrashBanner onEmptyTrash={() => setShowEmptyTrashConfirm(true)} />
+          ) : null}
 
-          listScrolled={listScrolled}
-
-          sortOrder={filters.sortOrder ?? 'manual'}
-
-          onSortOrderChange={setSortOrder}
-
-          selectedColor={filters.colorArgb ?? null}
-
-          onColorSelect={setColorFilter}
-
-          labels={labels}
-
-          selectedLabelName={filters.labelName ?? null}
-
-          onLabelSelect={setLabelFilter}
-
-          hasActiveFilters={hasActiveFilters}
-
-          onClearFilters={clearFilters}
-
-          onMenuClick={() => setDrawerOpen(true)}
-
-          onProfileClick={() => setShowProfile(true)}
-
-          onViewColumnsChange={setViewColumns}
-
-          onNewNote={openNewNote}
-
-          showNewNote={filters.filter === 'active'}
-
-          viewColumns={effectiveColumns}
-
-          selectionMode={selectionMode}
-          selectionAllPinned={selectionAllPinned}
-          selectedCount={selectedNoteIds.length}
-          allFilteredSelected={allFilteredSelected}
-          onClearSelection={clearSelection}
-          onToggleSelectAll={() => toggleSelectAll(filteredNoteIds)}
-          onBulkPin={() => void handleBulkPin()}
-          onBulkUnpin={() => void handleBulkUnpin()}
-          onBulkArchive={() => void handleBulkArchive()}
-          onBulkRestore={() => void handleBulkRestore()}
-          onBulkTrash={() => void handleBulkTrash()}
-          onBulkPermanentDelete={() => setShowBulkDeleteConfirm(true)}
-          recentSearches={recentSearches}
-          onRecentSearchClick={(query) => {
-            setSearchQuery(query);
-            addRecentSearch(query);
-          }}
-          onClearRecentSearches={clearRecentSearches}
-        />
-
-
-
-        <OfflineBanner />
-
-        <InstallPrompt />
-
-        {filters.filter === 'trashed' && filteredNotes.length > 0 ? (
-          <TrashBanner onEmptyTrash={() => setShowEmptyTrashConfirm(true)} />
-        ) : null}
-
-
-
-        <main
-
-          ref={scrollRef}
-
-          onScroll={handleScroll}
-
-          className="flex-1 overflow-y-auto overscroll-contain"
-
-        >
-
-          <div className="mx-auto w-full max-w-content">
-
-            {error ? (
-              <div className="px-4 py-6 text-center text-sm text-red-300">{error}</div>
-            ) : null}
-
-            {isLoading ? (
-              <NotesLoadingGrid columns={effectiveColumns} />
-            ) : filteredNotes.length === 0 ? (
-
-              <NotesEmptyState
-                message={emptyState.message}
-                subtitle={emptyState.subtitle}
-                icon={emptyState.icon}
-                recentSearches={recentSearches}
-                onRecentSearchClick={(query) => {
-                  setSearchQuery(query);
-                  addRecentSearch(query);
-                }}
-                action={
-                  emptyState.actionType === 'clearFilters' ? (
-                    <button
-                      type="button"
-                      onClick={clearFilters}
-                      className="rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary"
-                    >
-                      Clear filters
-                    </button>
-                  ) : emptyState.actionType === 'addNote' ? (
-                    <div className="flex flex-col items-center gap-3 sm:flex-row">
-                      <button
-                        type="button"
-                        onClick={openNewNote}
-                        className="rounded-note bg-brand-primary px-5 py-2.5 text-sm font-semibold text-true-black"
-                      >
-                        Add note
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openAuthScreen('signin')}
-                        className="rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary"
-                      >
-                        Sign in
-                      </button>
-                    </div>
-                  ) : undefined
-                }
-
-              />
-
-            ) : (
-              <NoteStaggeredGrid
-                notes={filteredNotes}
-                columns={desktopEditor ? 1 : effectiveColumns}
-                filter={filters.filter}
-                onNoteClick={handleNoteClick}
-                onNoteLongPress={handleNoteLongPress}
-                selectedNoteIds={selectedNoteIds}
-                selectionMode={selectionMode}
-                onLabelClick={(name) => {
-                  setNoteFilter('active');
-                  setLabelFilter(name);
-                }}
-                listActions={{
-                  onArchive: (note) => void handleArchiveNote(note),
-                  onTrash: (note) => void handleTrashNote(note),
-                  onRestore: (note) => void handleRestoreNote(note),
-                  onPermanentDelete: (note) => void handlePermanentDelete(note),
-                }}
-                searchQuery={filters.searchQuery ?? ''}
-                allowReorder={allowReorder}
-                onMoveNote={handleMoveNote}
-                onReorderComplete={handleReorderComplete}
-              />
-            )}
-
-          </div>
-
-        </main>
-
-
-
-        {filters.filter === 'active' && !selectionMode ? (
-
-          <button
-
-            type="button"
-
-            onClick={openNewNote}
-
-            className="fixed bottom-6 right-6 z-20 flex size-14 items-center justify-center rounded-note bg-brand-primary text-true-black shadow-lg transition-transform hover:scale-105 active:scale-95 pb-safe pr-safe lg:hidden"
-
-            aria-label="Add note"
-
+          <main
+            ref={scrollRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto overscroll-contain px-3 pt-1 sm:px-4 sm:pt-2"
           >
+            <div className="mx-auto w-full max-w-content pb-28">
+              {error ? (
+                <div className="px-4 py-8 text-center text-sm text-red-400 font-medium">{error}</div>
+              ) : null}
 
-            <AddIcon size={28} />
+              {isLoading ? (
+                <NotesLoadingGrid columns={effectiveColumns} />
+              ) : filteredNotes.length === 0 ? (
+                <div className="pt-12 sm:pt-20">
+                  <NotesEmptyState
+                    message={emptyState.message}
+                    subtitle={emptyState.subtitle}
+                    icon={emptyState.icon}
+                    recentSearches={recentSearches}
+                    onRecentSearchClick={(query) => {
+                      setSearchQuery(query);
+                      addRecentSearch(query);
+                    }}
+                    action={
+                      emptyState.actionType === 'clearFilters' ? (
+                        <button
+                          type="button"
+                          onClick={clearFilters}
+                          className="rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary interactive-hover"
+                        >
+                          Clear filters
+                        </button>
+                      ) : emptyState.actionType === 'addNote' ? (
+                        <div className="flex flex-col items-center gap-3 sm:flex-row">
+                          <button
+                            type="button"
+                            onClick={openNewNote}
+                            className="rounded-note bg-brand-primary px-6 py-2.5 text-sm font-bold text-true-black transition-transform active:scale-95"
+                          >
+                            Add note
+                          </button>
+                          {!user ? (
+                            <button
+                              type="button"
+                              onClick={() => openAuthScreen('signin')}
+                              className="rounded-note border border-brand-outline/50 px-6 py-2.5 text-sm font-bold text-brand-primary transition-colors interactive-hover"
+                            >
+                              Sign in
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : undefined
+                    }
+                  />
+                </div>
+              ) : (
+                <NoteStaggeredGrid
+                  notes={filteredNotes}
+                  columns={effectiveColumns}
+                  filter={filters.filter}
+                  onNoteClick={handleNoteClick}
+                  onNoteLongPress={handleNoteLongPress}
+                  selectedNoteIds={selectedNoteIds}
+                  selectionMode={selectionMode}
+                  onLabelClick={(name) => {
+                    setNoteFilter('active');
+                    setLabelFilter(name);
+                  }}
+                  listActions={{
+                    onArchive: (note) => void handleArchiveNote(note),
+                    onTrash: (note) => void handleTrashNote(note),
+                    onRestore: (note) => void handleRestoreNote(note),
+                    onPermanentDelete: (note) => void handlePermanentDelete(note),
+                  }}
+                  searchQuery={filters.searchQuery ?? ''}
+                  allowReorder={allowReorder}
+                  onMoveNote={handleMoveNote}
+                  onReorderComplete={handleReorderComplete}
+                />
+              )}
+            </div>
+          </main>
 
-          </button>
-        ) : null}
+          {filters.filter === 'active' && !selectionMode ? (
+            <button
+              type="button"
+              onClick={openNewNote}
+              className="fixed bottom-6 right-5 z-20 flex size-12 items-center justify-center rounded-full bg-brand-primary text-true-black shadow-xl transition-all hover:scale-105 active:scale-95 pb-safe pr-safe sm:bottom-8 sm:right-8 sm:size-14 sm:rounded-note lg:hidden"
+              aria-label="Add note"
+            >
+              <AddIcon size={24} />
+            </button>
+          ) : null}
         </div>
-
-        {desktopEditor ? (
-          <div className="relative flex-1 bg-true-surface animate-in slide-in-from-right duration-300">
-             <Suspense fallback={null}>
-               <LazyEditorScreen route={desktopEditor} variant="embedded" />
-             </Suspense>
-          </div>
-        ) : isDesktop ? (
-          <div className="hidden lg:flex min-w-0 flex-1 flex-col items-center justify-center gap-4 border-l border-brand-outline/30 bg-true-surface px-8 text-center">
-            <NotesIcon size={64} className="text-brand-muted/25" />
-            <p className="text-lg font-semibold text-brand-primary/80">Select a note</p>
-            <p className="max-w-xs text-sm text-brand-muted">
-              Choose a note from the list or create a new one to start editing.
-            </p>
-            {filters.filter === 'active' ? (
-              <button
-                type="button"
-                onClick={openNewNote}
-                className="mt-2 rounded-note bg-brand-primary px-5 py-2.5 text-sm font-semibold text-true-black"
-              >
-                New note
-              </button>
-            ) : null}
-          </div>
-        ) : null}
       </div>
-
-
 
       <ProfileSheet
 
@@ -954,8 +832,6 @@ function getEmptyState(
   return {
 
     message: 'Notes you add appear here',
-
-    subtitle: 'Sign in to sync with your Android device',
 
     icon: 'brand',
 

@@ -63,7 +63,7 @@ fun NotesEmptyState(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(horizontal = 40.dp)
+            modifier = Modifier.padding(horizontal = 16.dp)
         ) {
             EmptyStateVisual(
                 icon = icon,

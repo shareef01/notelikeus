@@ -4,9 +4,9 @@ import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 
-internal fun Note.toCloudMap(): Map<String, Any?> = buildMap {
+internal fun Note.toCloudMap(): Map<String, Any> = buildMap {
     put("cloudId", CloudIds.ensure(cloudId))
-    put("localId", id)
+    id?.let { put("localId", it) }
     put("title", title)
     put("content", content)
     put("timestamp", timestamp)
@@ -16,7 +16,7 @@ internal fun Note.toCloudMap(): Map<String, Any?> = buildMap {
     put("isTrashed", isTrashed)
     put("position", position)
     put("isLocked", isLocked)
-    put("reminderTimestamp", reminderTimestamp)
+    reminderTimestamp?.let { put("reminderTimestamp", it) }
     put(
         "labels",
         labels.map { label ->

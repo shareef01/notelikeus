@@ -6,10 +6,11 @@ export function OfflineBanner() {
 
   return (
     <div
-      className="border-b border-amber-900/40 bg-amber-950/30 px-4 py-2 text-center text-sm text-amber-200"
+      className="flex items-center justify-center gap-2 border-b border-amber-900/30 bg-amber-950/20 px-4 py-2 text-center text-[12px] font-medium leading-tight text-amber-300/80"
       role="status"
     >
-      You&apos;re offline — notes stay on this device. Cloud sync resumes when you reconnect.
+      <span className="inline-block size-2 rounded-full bg-amber-400/60" />
+      You&apos;re offline — changes sync when you reconnect.
     </div>
   );
 }

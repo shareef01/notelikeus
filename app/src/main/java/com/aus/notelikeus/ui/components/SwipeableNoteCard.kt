@@ -2,9 +2,14 @@ package com.aus.notelikeus.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
@@ -13,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.Note
@@ -108,6 +115,12 @@ fun SwipeableNoteCard(
                     else -> null
                 }
 
+                val label = when (dismissState.targetValue) {
+                    SwipeToDismissBoxValue.StartToEnd -> archiveLabel
+                    SwipeToDismissBoxValue.EndToStart -> deleteLabel
+                    else -> null
+                }
+
                 val iconTint = when (dismissState.targetValue) {
                     SwipeToDismissBoxValue.StartToEnd -> archiveIconTint
                     SwipeToDismissBoxValue.EndToStart -> deleteIconTint
@@ -128,16 +141,28 @@ fun SwipeableNoteCard(
                         else -> Alignment.Center
                     }
                 ) {
-                    if (isActive) {
-                        icon?.let {
+                    if (isActive && icon != null && label != null) {
+                        val labelArrangement = if (direction == SwipeToDismissBoxValue.EndToStart) {
+                            Arrangement.End
+                        } else {
+                            Arrangement.Start
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = labelArrangement
+                        ) {
                             Icon(
-                                it,
-                                contentDescription = if (dismissState.targetValue == SwipeToDismissBoxValue.StartToEnd) {
-                                    archiveLabel
-                                } else {
-                                    deleteLabel
-                                },
-                                tint = iconTint
+                                icon,
+                                contentDescription = label,
+                                tint = iconTint,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = label,
+                                color = iconTint,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }

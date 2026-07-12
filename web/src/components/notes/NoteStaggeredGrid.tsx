@@ -14,7 +14,7 @@ interface NoteListActions {
 
 interface NoteStaggeredGridProps {
   notes: Note[];
-  columns: 1 | 2 | 3;
+  columns: number;
   filter: NoteFilter;
   onNoteClick: (note: Note) => void;
   onNoteLongPress: (note: Note) => void;
@@ -28,10 +28,13 @@ interface NoteStaggeredGridProps {
   onReorderComplete?: () => void;
 }
 
-const COLUMN_CLASSES: Record<1 | 2 | 3, string> = {
+const COLUMN_CLASSES: Record<number, string> = {
   1: '',
   2: 'columns-2',
   3: 'columns-3',
+  4: 'columns-4',
+  5: 'columns-5',
+  6: 'columns-6',
 };
 
 const REORDER_THRESHOLD_PX = 72;

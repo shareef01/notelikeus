@@ -1,32 +1,26 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type ViewColumns = 1 | 2 | 3;
+export type ViewColumns = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type AuthMode = 'signin' | 'signup';
 
-export type EditorRoute =
-  | { mode: 'closed' }
-  | { mode: 'new' }
-  | { mode: 'edit'; noteId: string };
-
 interface UiState {
   drawerOpen: boolean;
+  sidebarCollapsed: boolean;
   viewColumns: ViewColumns;
   listScrolled: boolean;
-  editorRoute: EditorRoute;
   authScreen: AuthMode | null;
   labelsOpen: boolean;
   selectedNoteIds: string[];
   recentSearches: string[];
   setDrawerOpen: (open: boolean) => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebar: () => void;
   toggleDrawer: () => void;
   setViewColumns: (columns: ViewColumns) => void;
   cycleViewColumns: () => void;
   setListScrolled: (scrolled: boolean) => void;
-  openNewNote: () => void;
-  openNote: (noteId: string) => void;
-  closeEditor: () => void;
   openAuthScreen: (mode: AuthMode) => void;
   closeAuthScreen: () => void;
   setLabelsOpen: (open: boolean) => void;
@@ -41,27 +35,26 @@ export const useUiStore = create<UiState>()(
   persist(
     (set, get) => ({
       drawerOpen: false,
+      sidebarCollapsed: false,
       viewColumns: 2,
       listScrolled: false,
-      editorRoute: { mode: 'closed' },
       authScreen: null,
       labelsOpen: false,
       selectedNoteIds: [],
       recentSearches: [],
       setDrawerOpen: (drawerOpen) =>
         set((state) => (state.drawerOpen === drawerOpen ? state : { drawerOpen })),
+      setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+      toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),
       toggleDrawer: () => set({ drawerOpen: !get().drawerOpen }),
       setViewColumns: (viewColumns) =>
         set((state) => (state.viewColumns === viewColumns ? state : { viewColumns })),
       cycleViewColumns: () => {
-        const next: ViewColumns = get().viewColumns === 3 ? 1 : ((get().viewColumns + 1) as ViewColumns);
+        const next: ViewColumns = get().viewColumns >= 4 ? 1 : ((get().viewColumns + 1) as ViewColumns);
         set({ viewColumns: next });
       },
       setListScrolled: (listScrolled) =>
         set((state) => (state.listScrolled === listScrolled ? state : { listScrolled })),
-      openNewNote: () => set({ editorRoute: { mode: 'new' }, drawerOpen: false }),
-      openNote: (noteId) => set({ editorRoute: { mode: 'edit', noteId }, drawerOpen: false }),
-      closeEditor: () => set({ editorRoute: { mode: 'closed' } }),
       openAuthScreen: (authScreen) => set({ authScreen, drawerOpen: false }),
       closeAuthScreen: () =>
         set((state) => (state.authScreen === null ? state : { authScreen: null })),

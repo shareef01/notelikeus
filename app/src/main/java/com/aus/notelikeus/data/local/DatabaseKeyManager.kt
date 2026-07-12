@@ -3,8 +3,8 @@ package com.aus.notelikeus.data.local
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
-import net.zetetic.database.sqlcipher.SQLiteDatabase
+import androidx.security.crypto.MasterKey
+import net.sqlcipher.database.SQLiteDatabase
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -14,12 +14,14 @@ class DatabaseKeyManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
   private val prefs by lazy {
-    val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+    val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
 
     EncryptedSharedPreferences.create(
-        PREFS_NAME,
-        masterKeyAlias,
         context,
+        PREFS_NAME,
+        masterKey,
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
@@ -62,9 +64,10 @@ object PlaintextDatabaseMigrator {
     val plainDb = try {
         SQLiteDatabase.openDatabase(
             databaseFile.absolutePath,
-            "",
+            "".toByteArray(),
             null,
             SQLiteDatabase.OPEN_READWRITE,
+            null,
             null
         )
     } catch (_: Exception) {

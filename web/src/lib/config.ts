@@ -8,6 +8,9 @@ export interface FirebaseEnv {
   googleClientId: string;
 }
 
+/** Bumped on each production build so asset hashes change after config fixes. */
+export const APP_BUILD_ID: string = import.meta.env.VITE_APP_BUILD_ID ?? 'dev';
+
 function requireEnv(key: keyof ImportMetaEnv): string {
   const value = import.meta.env[key];
   if (!value || typeof value !== 'string' || value.trim() === '') {
@@ -28,6 +31,27 @@ export function loadFirebaseEnv(): FirebaseEnv {
   };
 }
 
+const PLACEHOLDER_PATTERN = /placeholder/i;
+
 export function isFirebaseConfigured(): boolean {
-  return Boolean(import.meta.env.VITE_FIREBASE_APP_ID);
+  const appId = import.meta.env.VITE_FIREBASE_APP_ID;
+  if (!appId || typeof appId !== 'string') return false;
+  return !PLACEHOLDER_PATTERN.test(appId) && !appId.includes('your-');
+}
+
+export function isFirebaseEnvValid(): boolean {
+  if (!isFirebaseConfigured()) return false;
+
+  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+  const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+
+  if (!apiKey || !authDomain || typeof apiKey !== 'string' || typeof authDomain !== 'string') {
+    return false;
+  }
+
+  return (
+    !PLACEHOLDER_PATTERN.test(apiKey) &&
+    !PLACEHOLDER_PATTERN.test(authDomain) &&
+    !authDomain.includes('your-project')
+  );
 }

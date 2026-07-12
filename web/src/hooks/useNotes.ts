@@ -48,8 +48,10 @@ export function useNotes() {
         useNotesStore.getState().setFilters({ filter }),
       setSortOrder: (sortOrder: NonNullable<NoteQueryFilters['sortOrder']>) =>
         useNotesStore.getState().setFilters({ sortOrder }),
-      clearFilters: () =>
-        useNotesStore.getState().setFilters({ searchQuery: '', colorArgb: null, labelName: null }),
+      clearFilters: () => {
+        useNotesStore.getState().setFilters({ searchQuery: '', colorArgb: null, labelName: null });
+        useNotesStore.getState().setError(null);
+      },
       saveNote,
       removeNote,
       syncAll: async () => {

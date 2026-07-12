@@ -77,12 +77,12 @@ export function NoteCard({
         }
       }}
       {...(onLongPress ? longPressProps : {})}
-      className={`relative w-full cursor-pointer rounded-note text-left shadow-sm transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary/60 ${
-        showReorderHandle ? 'pl-12 pr-layout-gap py-layout-gap' : 'p-layout-gap'
+      className={`relative w-full cursor-pointer rounded-note text-left shadow-sm transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary/60 border border-white/[0.03] ${
+        showReorderHandle ? 'pl-12 pr-4 py-4 sm:pr-5 sm:py-5' : 'p-4 sm:p-5'
       } ${
         isSelected
-          ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-true-black'
-          : 'hover:scale-[1.02] hover:shadow-md active:scale-[0.98]'
+          ? 'ring-1 ring-brand-primary/50 bg-brand-primary/[0.03] scale-[0.985] shadow-inner'
+          : 'hover:bg-white/[0.02] hover:border-white/[0.08] hover:shadow-lg active:scale-[0.995]'
       }`}
       style={surface}
       aria-pressed={isSelected || undefined}
@@ -98,36 +98,27 @@ export function NoteCard({
           <DragHandleIcon size={20} />
         </button>
       ) : null}
-      {isSelected ? (
-        <div
-          className="absolute right-3 top-3 flex size-6 items-center justify-center rounded-full bg-brand-primary text-xs font-bold text-true-black"
-          aria-hidden
-        >
-          ✓
-        </div>
-      ) : null}
-
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-2">
         <h2
-          className={`font-bold tracking-[-0.5px] ${
-            compact ? 'line-clamp-1 text-base' : 'text-xl leading-[28px] line-clamp-2'
+          className={`font-semibold tracking-[-0.4px] ${
+            compact ? 'line-clamp-1 text-[15px]' : 'text-[16px] leading-[22px] sm:text-[17px] sm:leading-[24px] line-clamp-2'
           }`}
         >
           {highlight(title)}
         </h2>
         {note.isPinned ? (
-          <PinIcon className="mt-1 shrink-0 opacity-60" size={16} />
+          <PinIcon className="mt-1 shrink-0 opacity-50" size={15} />
         ) : hasReminder ? (
-          <span className="mt-1 shrink-0 opacity-70" aria-label="Reminder set">
-            <BellIcon size={16} />
+          <span className="mt-1 shrink-0 opacity-60" aria-label="Reminder set">
+            <BellIcon size={15} />
           </span>
         ) : null}
       </div>
 
       {showBody ? (
         <p
-          className={`mt-2.5 text-[15px] leading-[1.45em] opacity-85 ${
-            compact ? 'line-clamp-2' : 'line-clamp-6'
+          className={`mt-1.5 text-[13px] leading-[1.45em] opacity-70 sm:mt-2 sm:text-[14px] sm:leading-[1.5em] ${
+            compact ? 'line-clamp-2' : 'sm:line-clamp-5 line-clamp-3'
           }`}
         >
           {highlight(previewBody)}
@@ -135,13 +126,13 @@ export function NoteCard({
       ) : null}
 
       {!note.isLocked && note.checklist.length > 0 ? (
-        <p className="mt-3 text-[12px] font-bold opacity-65">
+        <p className="mt-2.5 text-[11px] font-bold tracking-wide opacity-50">
           {note.checklist.filter((item) => item.isChecked).length}/{note.checklist.length} CHECKED
         </p>
       ) : null}
 
       {!compact && note.labels.length > 0 ? (
-        <div className="mt-4 flex flex-wrap gap-1.5">
+        <div className="mt-3 flex flex-wrap gap-1.5 sm:mt-3.5">
           {note.labels.slice(0, 2).map((label) =>
             onLabelClick ? (
               <button
@@ -151,23 +142,23 @@ export function NoteCard({
                   event.stopPropagation();
                   onLabelClick(label.name);
                 }}
-                className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider hover:opacity-80"
-                style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}
+                className="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest opacity-60 hover:opacity-100 transition-opacity"
+                style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
               >
                 {label.name}
               </button>
             ) : (
               <span
                 key={label.id}
-                className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-                style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}
+                className="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest opacity-60"
+                style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
               >
                 {label.name}
               </span>
             ),
           )}
           {note.labels.length > 2 ? (
-            <span className="text-[10px] font-semibold uppercase tracking-wider opacity-65">
+            <span className="text-[9px] font-semibold uppercase tracking-wider opacity-40">
               +{note.labels.length - 2}
             </span>
           ) : null}

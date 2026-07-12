@@ -16,10 +16,7 @@ import {
 
 } from 'firebase/firestore';
 
-import { getStorage, type FirebaseStorage } from 'firebase/storage';
-
 import { loadFirebaseEnv } from './config';
-
 
 
 let app: FirebaseApp | null = null;
@@ -27,8 +24,6 @@ let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 
 let db: Firestore | null = null;
-
-let storage: FirebaseStorage | null = null;
 
 let initError: Error | null = null;
 
@@ -42,7 +37,7 @@ function createFirestore(instance: FirebaseApp): Firestore {
 
   if (!canUseIndexedDb) {
 
-    return initializeFirestore(instance, { localCache: memoryLocalCache() });
+    return initializeFirestore(instance, { localCache: memoryLocalCache(), experimentalForceLongPolling: true });
 
   }
 
@@ -58,13 +53,15 @@ function createFirestore(instance: FirebaseApp): Firestore {
 
       }),
 
+      experimentalForceLongPolling: true,
+
     });
 
   } catch (error) {
 
     console.warn('[Firebase] Persistent cache unavailable, using memory cache.', error);
 
-    return initializeFirestore(instance, { localCache: memoryLocalCache() });
+    return initializeFirestore(instance, { localCache: memoryLocalCache(), experimentalForceLongPolling: true });
 
   }
 
@@ -88,13 +85,11 @@ export function initFirebase(): {
 
   db: Firestore;
 
-  storage: FirebaseStorage;
-
 } {
 
-  if (app && auth && db && storage) {
+  if (app && auth && db) {
 
-    return { app, auth, db, storage };
+    return { app, auth, db };
 
   }
 
@@ -134,11 +129,9 @@ export function initFirebase(): {
 
     db = createFirestore(app);
 
-    storage = getStorage(app);
 
 
-
-    return { app, auth, db, storage };
+    return { app, auth, db };
 
   } catch (error) {
 
@@ -167,11 +160,5 @@ export function getFirestoreDb(): Firestore {
 }
 
 
-
-export function getFirebaseStorage(): FirebaseStorage {
-
-  return initFirebase().storage;
-
-}
 
 

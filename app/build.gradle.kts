@@ -97,6 +97,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.work.runtime.ktx)
@@ -118,7 +119,7 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     add("ksp", libs.room.compiler)
-    implementation(libs.sqlcipher.android)
+    implementation("net.zetetic:android-database-sqlcipher:4.5.4")
     implementation(libs.androidx.sqlite)
     implementation(libs.androidx.security.crypto)
 

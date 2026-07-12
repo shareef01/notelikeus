@@ -26,14 +26,14 @@
 }
 
 .theme-true-dark {
-  --background: #000000;
-  --surface: #121212;
-  --surface-variant: #1A1A1A;
+  --background: #09090B;
+  --surface: #0C0C0E;
+  --surface-variant: #121214;
   --primary: #FFFFFF;
   --secondary: #A8A8A8;
   --muted: #AAAAAA;
-  --outline: #222222;
-  --header-divider: color-mix(in srgb, var(--primary) 6%, transparent);
+  --outline: rgba(255, 255, 255, 0.05);
+  --header-divider: transparent;
 }
 
 .theme-midnight {

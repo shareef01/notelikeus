@@ -1,205 +1,104 @@
 import { ArchiveIcon, ArrowBackIcon, LockIcon, PinIcon } from '@/components/icons/Icons';
-
 import { ChecklistEditor } from '@/components/editor/ChecklistEditor';
-
 import { EditorBottomBar } from '@/components/editor/EditorBottomBar';
-
 import { EditorOptionsSheet } from '@/components/editor/EditorOptionsSheet';
-
 import { LinkDialog } from '@/components/editor/LinkDialog';
-
 import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
-
 import { useNoteEditor } from '@/hooks/useNoteEditor';
-
 import {
-
   prefixLinesWithBullet,
-
   wrapSelection,
-
   wrapSelectionAsLink,
-
 } from '@/lib/text/markdown';
-
 import { contentColorForBackground, noteSurfaceStyle } from '@/theme/contrast';
-
-import { useUiStore } from '@/store/uiStore';
-
-import type { EditorRoute } from '@/store/uiStore';
-
 import { useToastStore } from '@/store/toastStore';
-
 import { useRef, useState, type ReactNode } from 'react';
-
-
+import { useParams, useNavigate } from 'react-router-dom';
 
 interface EditorScreenProps {
-
-  route: Exclude<EditorRoute, { mode: 'closed' }>;
-
-  /** When embedded in desktop split pane, skip modal overlay chrome. */
-  variant?: 'modal' | 'embedded';
-
+  mode: 'new' | 'edit';
 }
 
-
-
-export function EditorScreen({ route, variant = 'modal' }: EditorScreenProps) {
-
-  const noteId = route.mode === 'new' ? 'new' : route.noteId;
-
-  const closeEditor = useUiStore((s) => s.closeEditor);
+export function EditorScreen({ mode }: EditorScreenProps) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const noteId = mode === 'new' ? 'new' : (id || 'new');
 
   const editor = useNoteEditor(noteId);
-
   const { state } = editor;
-
   const [showOptions, setShowOptions] = useState(false);
-
   const [showLinkDialog, setShowLinkDialog] = useState(false);
-
   const [hasTextSelection, setHasTextSelection] = useState(false);
-
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
-
-
   const surface = noteSurfaceStyle(state.color);
-
   const contentColor = contentColorForBackground(state.color);
-
   const showLockOverlay = state.isLocked && !state.isAccessGranted;
-
   const hasChecklist = state.checklist.length > 0;
 
-
-
   const updateTextSelection = () => {
-
     const field = contentRef.current;
-
     if (!field) return;
-
     setHasTextSelection(field.selectionStart !== field.selectionEnd);
-
   };
-
-
 
   const applyFormatting = (
-
     updater: (
-
       text: string,
-
       selectionStart: number,
-
       selectionEnd: number,
-
     ) => { text: string; selectionStart: number; selectionEnd: number } | null,
-
   ) => {
-
     const field = contentRef.current;
-
     if (!field) return;
-
     const result = editor.applyContentFormatting(
-
       updater,
-
       field.selectionStart,
-
       field.selectionEnd,
-
     );
-
     if (!result) return;
-
     requestAnimationFrame(() => {
-
       field.focus();
-
       field.setSelectionRange(result.selectionStart, result.selectionEnd);
-
       updateTextSelection();
-
     });
-
   };
-
-
 
   const handleBack = async () => {
-
-    await editor.flushSave();
-
-    closeEditor();
-
+    try {
+      await editor.flushSave();
+    } catch {
+      // Save failed — navigate back anyway
+    }
+    navigate('/', { replace: true });
   };
-
-
 
   const handleDelete = async () => {
-
     await editor.trashNote();
-
-    closeEditor();
-
+    navigate('/', { replace: true });
   };
-
-
 
   const handleTogglePin = () => {
-
     const wasPinned = state.isPinned;
-
     editor.togglePin();
-
     useToastStore.getState().show(wasPinned ? 'Note unpinned' : 'Note pinned');
-
   };
-
-
 
   const handleToggleArchive = () => {
-
     const wasArchived = state.isArchived;
-
     editor.toggleArchive();
-
     useToastStore.getState().show(wasArchived ? 'Note unarchived' : 'Note archived');
-
   };
-
-
 
   const handleAddLink = (url: string) => {
-
     setShowLinkDialog(false);
-
     applyFormatting((text, start, end) => wrapSelectionAsLink(text, start, end, url));
-
   };
 
-
-
   const editorShell = (children: ReactNode) => {
-    if (variant === 'embedded') {
-      return (
-        <div className="relative flex h-full w-full flex-col" style={surface}>
-          {children}
-        </div>
-      );
-    }
-
     return (
-      <div className="fixed inset-0 z-40 flex flex-col bg-black/40 lg:items-center lg:justify-center lg:p-6 xl:p-10">
-        <div
-          className="relative flex h-full w-full flex-col lg:max-h-[92vh] lg:max-w-editor lg:rounded-note lg:shadow-2xl lg:ring-1 lg:ring-brand-outline/30"
-          style={surface}
-        >
+      <div className="fixed inset-0 z-50 flex flex-col bg-[#121214] animate-in fade-in duration-300" style={{ height: '100dvh' }}>
+        <div className="relative flex h-full w-full flex-col" style={surface}>
           {children}
         </div>
       </div>
@@ -214,14 +113,11 @@ export function EditorScreen({ route, variant = 'modal' }: EditorScreenProps) {
 
       <>
 
-        <header className="flex items-center px-2 pt-safe lg:px-4">
+        <header className="flex items-center px-2 pt-safe">
 
           <button
-
             type="button"
-
-            onClick={closeEditor}
-
+            onClick={() => navigate('/', { replace: true })}
             className="flex size-11 items-center justify-center rounded-full note-surface-hover"
 
             style={{ color: contentColor }}
@@ -288,7 +184,7 @@ export function EditorScreen({ route, variant = 'modal' }: EditorScreenProps) {
 
       <header
 
-        className="flex items-center justify-between px-2 pt-safe lg:px-4"
+        className="flex items-center justify-between px-1 pt-safe"
 
         style={{ color: contentColor }}
 
@@ -350,13 +246,13 @@ export function EditorScreen({ route, variant = 'modal' }: EditorScreenProps) {
 
 
 
-      <div className="flex-1 overflow-y-auto px-layout-gap pb-28 pt-4">
+      <div className="flex-1 overflow-y-auto px-4 pb-28 pt-4 sm:px-6 sm:pt-6">
         <input
           type="text"
           value={state.title}
           onChange={(event) => editor.setTitle(event.target.value)}
           placeholder="Title"
-          className="w-full bg-transparent text-xl font-bold tracking-tight outline-none placeholder:text-current placeholder:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary/50"
+          className="w-full bg-transparent text-[20px] font-bold tracking-tight outline-none placeholder:text-current placeholder:opacity-30 focus-visible:outline-none sm:text-[24px]"
           style={{ color: contentColor }}
         />
 
@@ -437,11 +333,8 @@ export function EditorScreen({ route, variant = 'modal' }: EditorScreenProps) {
             ) : null}
 
             <textarea
-
               ref={contentRef}
-
               value={state.content}
-
               onChange={(event) => {
                 const field = event.target;
                 const result = editor.setContentSmart(
@@ -458,59 +351,33 @@ export function EditorScreen({ route, variant = 'modal' }: EditorScreenProps) {
                   updateTextSelection();
                 });
               }}
-
               onSelect={updateTextSelection}
-
               onKeyUp={updateTextSelection}
-
               onMouseUp={updateTextSelection}
-
               placeholder="Note"
-
               rows={12}
-
-              className="mt-2 w-full resize-none bg-transparent text-base leading-relaxed outline-none placeholder:text-current placeholder:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary/50"
-
+              className="mt-3 w-full resize-none bg-transparent text-[15px] leading-[1.6em] outline-none placeholder:text-current placeholder:opacity-30 focus-visible:outline-none sm:mt-4 sm:text-[17px] sm:leading-[1.65em]"
               style={{ color: contentColor }}
-
             />
 
             {state.content.trim() ? (
-
               <button
-
                 type="button"
-
                 onClick={editor.convertContentToChecklist}
-
-                className="mt-3 text-sm font-medium opacity-75 hover:opacity-100"
-
+                className="mt-6 text-sm font-bold uppercase tracking-wider opacity-60 hover:opacity-100 transition-opacity"
                 style={{ color: contentColor }}
-
               >
-
                 Convert to checklist
-
               </button>
-
             ) : (
-
               <button
-
                 type="button"
-
                 onClick={editor.convertContentToChecklist}
-
-                className="mt-4 text-sm font-medium opacity-75 hover:opacity-100"
-
+                className="mt-8 text-sm font-bold uppercase tracking-wider opacity-60 hover:opacity-100 transition-opacity"
                 style={{ color: contentColor }}
-
               >
-
                 + Add checklist
-
               </button>
-
             )}
 
           </>

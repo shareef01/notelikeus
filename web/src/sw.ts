@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
-import { CacheFirst, NetworkFirst } from 'workbox-strategies';
+import { CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { createHandlerBoundToURL } from 'workbox-precaching';
 
@@ -9,6 +9,14 @@ declare let self: ServiceWorkerGlobalScope;
 
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
+
+self.addEventListener('install', () => {
+  void self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
 
 const handler = createHandlerBoundToURL('/index.html');
 const navigationRoute = new NavigationRoute(handler, {
@@ -32,14 +40,10 @@ registerRoute(
   }),
 );
 
-registerRoute(
-  /^https:\/\/firestore\.googleapis\.com\/.*/i,
-  new NetworkFirst({
-    cacheName: 'firestore-api',
-    networkTimeoutSeconds: 10,
-    plugins: [new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 })],
-  }),
-);
+// Firestore has its own IndexedDB offline persistence — do NOT
+// cache API responses in the service worker. Cached error/403
+// responses can permanently break sync until the cache expires.
+
 
 interface SwReminder {
   noteId: string;
@@ -90,6 +94,10 @@ function syncSwReminders(reminders: SwReminder[]) {
 
 self.addEventListener('message', (event) => {
   const data = event.data as { type?: string; reminders?: SwReminder[] } | null;
+  if (data?.type === 'SKIP_WAITING') {
+    void self.skipWaiting();
+    return;
+  }
   if (data?.type === 'SYNC_REMINDERS' && Array.isArray(data.reminders)) {
     syncSwReminders(data.reminders);
   }

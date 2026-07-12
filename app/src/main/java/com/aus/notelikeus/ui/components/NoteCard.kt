@@ -2,12 +2,15 @@ package com.aus.notelikeus.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -15,15 +18,18 @@ import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
@@ -34,21 +40,36 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.editor.RichTextParser
-import com.aus.notelikeus.ui.navigation.LocalAnimatedVisibilityScope
-import com.aus.notelikeus.ui.navigation.LocalSharedTransitionScope
 import com.aus.notelikeus.ui.theme.NoteCardBodyStyle
 import com.aus.notelikeus.ui.theme.NoteCardTitleStyle
 import com.aus.notelikeus.ui.theme.getContentColor
 
 private val NoteCardContentPadding = 16.dp
+private val NoteCardInnerRadius = 14.dp
+private const val MaxChecklistPreviewItems = 3
+private const val MaxContentPreviewLines = 5
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
+private fun relativeTime(timestamp: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - timestamp
+    return when {
+        diff < 60_000 -> "Just now"
+        diff < 3_600_000 -> "${diff / 60_000}m ago"
+        diff < 86_400_000 -> "${diff / 3_600_000}h ago"
+        diff < 604_800_000 -> "${diff / 86_400_000}d ago"
+        else -> "${diff / 604_800_000}w ago"
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NoteCard(
     note: Note,
@@ -62,9 +83,6 @@ fun NoteCard(
     reorderDragModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
-    val sharedTransitionScope = LocalSharedTransitionScope.current
-    val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
-
     val containerColor by animateColorAsState(
         targetValue = when {
             isSelected -> MaterialTheme.colorScheme.secondaryContainer
@@ -80,7 +98,8 @@ fun NoteCard(
     )
 
     val scale by animateFloatAsState(
-        targetValue = if (isSelected) 0.985f else 1f,
+        targetValue = if (isSelected) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
         label = "selection_scale"
     )
 
@@ -89,6 +108,10 @@ fun NoteCard(
         note.color == 0 -> MaterialTheme.colorScheme.onSurface
         else -> Color(note.color).getContentColor(fallback = MaterialTheme.colorScheme.onSurface)
     }
+
+    val statusIconTint = contentColor.copy(alpha = 0.55f)
+    val hasAccent = note.color != 0 && !isSelected
+    val accentColor = if (hasAccent) Color(note.color).copy(alpha = 0.85f) else Color.Transparent
 
     val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
     val lockedNoteLabel = stringResource(R.string.locked_note)
@@ -102,6 +125,7 @@ fun NoteCard(
         note.content.isNotBlank() -> note.content.lineSequence().first()
         else -> untitledLabel
     }
+    val showStatusRow = note.isPinned || note.reminderTimestamp != null || note.isLocked
     val accessibilityDescription = buildString {
         append(noteDescription)
         if (note.isPinned) {
@@ -132,22 +156,11 @@ fun NoteCard(
         modifier = modifier
             .fillMaxWidth()
             .scale(scale)
-            .then(
-                if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                    with(sharedTransitionScope) {
-                        Modifier.sharedElement(
-                            rememberSharedContentState(key = "note-${note.id}"),
-                            animatedVisibilityScope = animatedVisibilityScope
-                        )
-                    }
-                } else Modifier
-            )
-            .clip(MaterialTheme.shapes.large) // Enforcing 16.dp corner radius
-            .combinedClickable(
+            .combinedClickableWithFeedback(
                 onClick = onClick,
-                onLongClick = onLongClick
+                onLongClick = onLongClick,
             ),
-        shape = MaterialTheme.shapes.large, // Enforcing 16.dp corner radius
+        shape = RoundedCornerShape(NoteCardInnerRadius),
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
             contentColor = contentColor
@@ -159,18 +172,28 @@ fun NoteCard(
             else -> null
         }
     ) {
-        Box {
-            if (showReorderHandle) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            if (hasAccent) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .size(48.dp)
-                        .semantics { contentDescription = reorderLabel }
-                        .then(reorderDragModifier),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DragIndicator,
+                        .width(4.dp)
+                        .fillMaxHeight()
+                        .defaultMinSize(minHeight = 64.dp)
+                        .background(accentColor)
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                if (showReorderHandle) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .size(48.dp)
+                            .semantics { contentDescription = reorderLabel }
+                            .then(reorderDragModifier),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DragIndicator,
                         contentDescription = null,
                         tint = contentColor.copy(alpha = 0.38f),
                         modifier = Modifier.size(20.dp)
@@ -200,7 +223,12 @@ fun NoteCard(
                 } else {
                     if (note.title.isNotEmpty()) {
                         Text(
-                            text = buildHighlightedString(note.title, searchQuery, contentColor, highlightColor),
+                            text = RichTextParser.parse(
+                                text = note.title,
+                                contentColor = contentColor,
+                                highlightColor = highlightColor,
+                                searchQuery = searchQuery
+                            ),
                             style = NoteCardTitleStyle,
                             maxLines = if (compact) 1 else 2,
                             overflow = TextOverflow.Ellipsis
@@ -219,7 +247,7 @@ fun NoteCard(
                                 linkColor = MaterialTheme.colorScheme.primary
                             ),
                             style = NoteCardBodyStyle,
-                            maxLines = if (compact) 2 else 10,
+                            maxLines = if (compact) 2 else MaxContentPreviewLines,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
@@ -237,15 +265,17 @@ fun NoteCard(
 
                     if (!compact && note.checklist.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        note.checklist.take(3).forEach { item ->
+                        val previewItems = note.checklist.take(MaxChecklistPreviewItems)
+                        previewItems.forEach { item ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    Icons.Default.CheckCircle,
+                                    imageVector = if (item.isChecked) Icons.Default.CheckCircle
+                                    else Icons.Outlined.RadioButtonUnchecked,
                                     contentDescription = stringResource(
                                         if (item.isChecked) R.string.cd_checked else R.string.cd_unchecked
                                     ),
                                     modifier = Modifier.size(16.dp),
-                                    tint = contentColor.copy(alpha = 0.6f)
+                                    tint = contentColor.copy(alpha = if (item.isChecked) 0.7f else 0.35f)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
@@ -257,7 +287,12 @@ fun NoteCard(
                                     ),
                                     style = NoteCardBodyStyle.copy(
                                         fontSize = MaterialTheme.typography.labelSmall.fontSize,
-                                        lineHeight = MaterialTheme.typography.labelSmall.lineHeight
+                                        lineHeight = MaterialTheme.typography.labelSmall.lineHeight,
+                                        textDecoration = if (item.isChecked) {
+                                            TextDecoration.LineThrough
+                                        } else {
+                                            TextDecoration.None
+                                        },
                                     ),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -265,6 +300,43 @@ fun NoteCard(
                                 )
                             }
                         }
+                        val overflowCount = note.checklist.size - previewItems.size
+                        if (overflowCount > 0) {
+                            Text(
+                                text = stringResource(R.string.checklist_more, overflowCount),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = contentColor.copy(alpha = 0.55f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+
+                    // Mini checklist progress bar (compact mode)
+                    if (compact && note.checklist.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val progress = note.checklist.count { it.isChecked }.toFloat() / note.checklist.size
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = contentColor.copy(alpha = 0.5f),
+                            trackColor = contentColor.copy(alpha = 0.12f),
+                        )
+                    }
+
+                    // Timestamp
+                    if (note.content.isNotEmpty() || note.checklist.isNotEmpty() || note.title.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = relativeTime(note.timestamp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.45f),
+                            maxLines = 1
+                        )
                     }
 
                     if (!compact && note.labels.isNotEmpty()) {
@@ -285,14 +357,16 @@ fun NoteCard(
                                         Text(
                                             text = label.name,
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = contentColor
+                                            color = contentColor,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     },
-                                    shape = CircleShape,
+                                    shape = RoundedCornerShape(8.dp),
                                     colors = SuggestionChipDefaults.suggestionChipColors(
-                                        containerColor = contentColor.copy(alpha = 0.1f)
+                                        containerColor = contentColor.copy(alpha = 0.12f)
                                     ),
-                                    border = null
+                                    border = BorderStroke(1.dp, contentColor.copy(alpha = 0.2f))
                                 )
                             }
                             val overflowCount = note.labels.size - 2
@@ -360,8 +434,9 @@ fun NoteCard(
                     }
                 }
             }
-        }
-    }
+            } // inner Box (weight 1f)
+        } // Row (fillMaxWidth)
+    } // Card
 }
 
 private fun buildHighlightedString(
