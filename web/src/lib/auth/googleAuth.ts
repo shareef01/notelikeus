@@ -1,6 +1,7 @@
 import { deleteAllCloudData } from '@/lib/firestore/notesRepository';
 import { resetCloudMergeState } from '@/lib/notes/notesSyncService';
 import { getFirebaseAuth, initFirebase } from '@/lib/firebase';
+import { useNotesStore } from '@/store/notesStore';
 import {
   GoogleAuthProvider,
   getRedirectResult,
@@ -9,15 +10,11 @@ import {
   signOut,
 } from 'firebase/auth';
 
-const PERSISTED_STORE_KEYS = ['notelikeus-notes', 'notelikeus-settings', 'notelikeus-ui'];
+const PERSISTED_STORE_KEYS = ['notelikeus-settings', 'notelikeus-ui'];
 
 function clearLocalStores(): void {
   for (const key of PERSISTED_STORE_KEYS) {
-    try {
-      localStorage.removeItem(key);
-    } catch {
-      // ignore
-    }
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
   }
 }
 
@@ -68,9 +65,10 @@ export async function signOutGoogle(deleteCloudData = false): Promise<void> {
     await deleteAllCloudData(userId);
   }
 
-  // Clear all locally-persisted data so the next sign-in starts fresh.
-  // This prevents old notes from being uploaded to a different account.
+  // Clear persisted data and in-memory notes so the next sign-in starts fresh.
   clearLocalStores();
+  useNotesStore.getState().reset();
+
   if (userId) {
     resetCloudMergeState(userId);
   } else {
