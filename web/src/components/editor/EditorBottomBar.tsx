@@ -2,6 +2,7 @@ interface EditorBottomBarProps {
   timestamp: number;
   isSaving: boolean;
   contentColor: string;
+  contentLength?: number;
   reminderTimestamp?: number | null;
   onMoreClick: () => void;
 }
@@ -15,10 +16,20 @@ function formatReminder(timestamp: number): string {
   }).format(new Date(timestamp));
 }
 
+const MAX_CONTENT = 500_000;
+const CHAR_WARN_THRESHOLD = 450_000;
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
 export function EditorBottomBar({
   timestamp,
   isSaving,
   contentColor,
+  contentLength,
   reminderTimestamp,
   onMoreClick,
 }: EditorBottomBarProps) {
@@ -26,6 +37,9 @@ export function EditorBottomBar({
     hour: 'numeric',
     minute: '2-digit',
   }).format(new Date(timestamp));
+
+  const nearLimit = contentLength != null && contentLength >= CHAR_WARN_THRESHOLD;
+  const atLimit = contentLength != null && contentLength >= MAX_CONTENT;
 
   return (
     <footer
@@ -47,6 +61,16 @@ export function EditorBottomBar({
             `Edited ${editedLabel}`
           )}
         </span>
+        {contentLength != null && contentLength > 0 && (
+          <span
+            className={`text-[10px] mt-0.5 block font-medium ${
+              atLimit ? 'text-red-400 opacity-90' : nearLimit ? 'text-amber-400 opacity-80' : 'opacity-40'
+            }`}
+          >
+            {formatCount(contentLength)} / {formatCount(MAX_CONTENT)}
+            {atLimit ? ' — limit reached' : ''}
+          </span>
+        )}
       </div>
       <div className="flex flex-1 justify-end">
         <button

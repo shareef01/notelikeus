@@ -19,14 +19,21 @@ A robust, full-stack notes ecosystem engineered for high performance, privacy, a
 
 ## 📱 User Interface
 
+### Mobile Experience
 <p align="center">
-  <img src="screenshots/1.png" width="30%" />
-  <img src="screenshots/2.png" width="30%" />
-  <img src="screenshots/3.png" width="30%" />
+  <img src="screenshots/1.png" width="32%" />
+  <img src="screenshots/3.png" width="32%" />
+  <img src="screenshots/4.png" width="32%" />
 </p>
 <p align="center">
-  <img src="screenshots/4.png" width="30%" />
-  <img src="screenshots/5.png" width="30%" />
+  <img src="screenshots/5.png" width="32%" />
+  <img src="screenshots/6.png" width="32%" />
+  <img src="screenshots/2.png" width="32%" />
+</p>
+
+### Web PWA Dashboard
+<p align="center">
+  <img src="screenshots/7.png" width="100%" />
 </p>
 
 ---
@@ -44,9 +51,22 @@ A robust, full-stack notes ecosystem engineered for high performance, privacy, a
 
 ### Web (PWA)
 - **Stack**: React 18 + TypeScript + Vite
+- **Architecture**: Functional Components + Custom Hooks for logic reuse
 - **Styling**: Tailwind CSS (Optimized for performance and rapid iteration)
 - **State**: Zustand (Lightweight, atomic state management)
-- **PWA**: Service Workers for full offline capability and background installation prompts.
+- **Persistence**: IndexedDB for robust local storage on the web
+- **PWA**: Advanced Service Worker implementation for full offline capability, asset caching, and background installation prompts.
+
+---
+
+## 🌐 Web PWA Architecture
+
+The Notelikeus Web PWA is not just a companion app but a fully featured, desktop-class experience. It mirrors the Android app's logic while leveraging web-specific APIs:
+
+- **Reactive Sync Engine**: Uses Firestore's snapshot listeners to maintain a real-time reactive data stream, ensuring the UI is always in sync with the cloud.
+- **Offline Reliability**: Implements a "Stale-While-Revalidate" strategy via Service Workers, allowing the app to load instantly even on flaky connections.
+- **Responsive Engineering**: A mobile-first design that scales into a multi-column dashboard on larger screens, optimizing the workspace for productivity.
+- **Modular Logic**: Shared TypeScript types and utility functions ensure data consistency between the Android and Web implementations.
 
 ### Cloud & DevOps
 - **Backend**: Firebase (Auth, Firestore, Hosting)
@@ -90,4 +110,4 @@ cd web && npm install && npm run dev
 Notelikeus is built on the principle of data sovereignty. Every design decision—from choosing **SQLCipher** over standard Room to implementing **Google Sign-In** for direct user-to-cloud communication—was made to ensure that the user, and only the user, has access to their data.
 
 ---
-Developed with ❤️ by [shareef01](https://github.com/shareef01)
+© 2026 [shareef01](https://github.com/shareef01). All rights reserved.

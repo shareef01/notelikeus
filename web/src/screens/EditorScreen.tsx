@@ -398,6 +398,8 @@ export function EditorScreen({ mode }: EditorScreenProps) {
 
           contentColor={contentColor}
 
+          contentLength={state.content.length}
+
           reminderTimestamp={state.reminderTimestamp}
 
           onMoreClick={() => setShowOptions(true)}

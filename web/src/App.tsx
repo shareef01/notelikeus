@@ -1,4 +1,4 @@
-import { useAuthSync } from '@/hooks/useAuth';
+import { useAuthSync, useAuthListener } from '@/hooks/useAuth';
 import { useNotesSync } from '@/hooks/useNotesSync';
 import { isFirebaseConfigured } from '@/lib/config';
 import { MainScreen } from '@/screens/MainScreen';
@@ -27,6 +27,9 @@ export default function App() {
   useAuthSync();
   useNotesSync(firebaseReady);
 
+  const { user, isReady } = useAuthListener();
+  const isAuthenticated = isReady && user != null;
+
   if (!firebaseReady) {
     return (
       <div className="flex min-h-full items-center justify-center bg-true-black p-6 text-center">
@@ -36,6 +39,27 @@ export default function App() {
           <span className="mt-2 block opacity-70">Check web/.env and VITE_FIREBASE_APP_ID.</span>
         </p>
       </div>
+    );
+  }
+
+  // Show loading spinner while Firebase Auth initializes
+  if (!isReady) {
+    return (
+      <div className="flex min-h-full items-center justify-center bg-true-black">
+        <div className="size-8 animate-spin rounded-full border-2 border-white/20 border-t-white/80" />
+      </div>
+    );
+  }
+
+  // Not signed in — show the auth gate
+  if (!isAuthenticated) {
+    return (
+      <>
+        <ThemeApplier />
+        <Suspense fallback={null}>
+          <AuthScreen mode={authScreen || 'signin'} dismissible={false} />
+        </Suspense>
+      </>
     );
   }
 
