@@ -4,7 +4,6 @@ import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.ReceiveTurbine
 import app.cash.turbine.test
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
-import com.aus.notelikeus.data.remote.ReminderScheduler
 import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
@@ -29,7 +28,6 @@ class EditorViewModelTest {
     private lateinit var viewModel: EditorViewModel
     private lateinit var repository: NoteRepository
     private lateinit var settingsRepository: SettingsRepository
-    private lateinit var reminderScheduler: ReminderScheduler
     private lateinit var cloudNoteSyncCoordinator: CloudNoteSyncCoordinator
     private val testDispatcher = UnconfinedTestDispatcher()
 
@@ -38,7 +36,6 @@ class EditorViewModelTest {
         Dispatchers.setMain(testDispatcher)
         repository = mockk(relaxed = true)
         settingsRepository = mockk(relaxed = true)
-        reminderScheduler = mockk(relaxed = true)
         cloudNoteSyncCoordinator = mockk(relaxed = true)
         every { repository.getLabels() } returns flowOf(emptyList())
         every { settingsRepository.appTheme } returns flowOf(AppTheme.AUTO)
@@ -49,7 +46,6 @@ class EditorViewModelTest {
         return EditorViewModel(
             repository,
             settingsRepository,
-            reminderScheduler,
             cloudNoteSyncCoordinator,
             savedStateHandle
         )
@@ -164,7 +160,7 @@ class EditorViewModelTest {
         viewModel.updateChecklistItem(firstId, "Buy milk", false)
         viewModel.updateChecklistItem(firstId, text = "Buy milk", isChecked = true)
 
-        val updated = viewModel.state.value.checklist.first { it.id == firstId }
+        val updated = viewModel.state.value.checklist.last { it.id == firstId }
         assertEquals("Buy milk", updated.text)
         assertEquals(true, updated.isChecked)
     }
@@ -185,7 +181,7 @@ class EditorViewModelTest {
     }
 
     @Test
-    fun `locking note cancels reminder`() = runTest {
+    fun `locking note persists locked state through repository`() = runTest {
         val note = Note(
             id = 1L,
             title = "Secret",
@@ -211,7 +207,7 @@ class EditorViewModelTest {
             cancelAndIgnoreRemainingEvents()
         }
 
-        coVerify { reminderScheduler.cancelReminder(1L) }
+        coVerify { repository.updateNote(match { it.id == 1L && it.isLocked }) }
     }
 
     @Test
@@ -228,5 +224,55 @@ class EditorViewModelTest {
 
         assertEquals("Line one\nLine two", viewModel.state.value.content)
         assertEquals(emptyList<com.aus.notelikeus.domain.model.ChecklistItem>(), viewModel.state.value.checklist)
+    }
+
+    @Test
+    fun `checked checklist item moves to bottom`() = runTest {
+        val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
+        viewModel = createViewModel(savedStateHandle)
+        advanceUntilIdle()
+
+        viewModel.addChecklistItem()
+        viewModel.addChecklistItem()
+        val ids = viewModel.state.value.checklist.map { it.id!! }
+        viewModel.updateChecklistItem(ids[0], "First", false)
+        viewModel.updateChecklistItem(ids[1], "Second", false)
+        viewModel.updateChecklistItem(ids[0], "First", true)
+
+        val checklist = viewModel.state.value.checklist
+        assertEquals("Second", checklist.first().text)
+        assertEquals("First", checklist.last().text)
+        assertEquals(true, checklist.last().isChecked)
+    }
+
+    @Test
+    fun `autosave debounces repository writes`() = runTest {
+        val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
+        viewModel = createViewModel(savedStateHandle)
+        advanceUntilIdle()
+
+        viewModel.onTitleChange("A")
+        viewModel.onTitleChange("AB")
+        viewModel.onTitleChange("ABC")
+        advanceTimeBy(399)
+        coVerify(exactly = 0) { repository.insertNoteWithResult(any()) }
+        coVerify(exactly = 0) { repository.updateNote(any()) }
+
+        advanceTimeBy(1)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.insertNoteWithResult(match { it.title == "ABC" }) }
+    }
+
+    @Test
+    fun `flushPendingSave persists immediately without waiting for debounce`() = runTest {
+        val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
+        viewModel = createViewModel(savedStateHandle)
+        advanceUntilIdle()
+
+        viewModel.onTitleChange("Draft")
+        viewModel.flushPendingSave()
+
+        coVerify(exactly = 1) { repository.insertNoteWithResult(match { it.title == "Draft" }) }
     }
 }

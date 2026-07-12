@@ -3,6 +3,7 @@ package com.aus.notelikeus.ui.main
 import android.content.ContentResolver
 import android.net.Uri
 import android.util.Log
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aus.notelikeus.data.backup.NoteBackupExporter
@@ -45,6 +46,7 @@ private data class PendingUndo(
     val type: UndoAction
 )
 
+@Immutable
 data class MainState(
     val notes: List<Note> = emptyList(),
     val filteredNotes: List<Note> = emptyList(),
@@ -469,10 +471,8 @@ class MainViewModel @Inject constructor(
     }
 
     private fun applyFilters() {
-        viewModelScope.launch {
-            val s = _state.value
-            _state.update { it.copy(filteredNotes = filterAndSortNotes(s)) }
-        }
+        val s = _state.value
+        _state.update { it.copy(filteredNotes = filterAndSortNotes(s)) }
     }
 
     private fun filterAndSortNotes(s: MainState): List<Note> {

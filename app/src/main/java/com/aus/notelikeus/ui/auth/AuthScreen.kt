@@ -63,7 +63,7 @@ fun AuthScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.End,
             ) {
                 IconButton(onClick = onDismiss) {
@@ -75,7 +75,7 @@ fun AuthScreen(
                 modifier = Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp)
+                    .padding(horizontal = 16.dp)
                     .padding(bottom = 32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {

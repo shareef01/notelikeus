@@ -14,6 +14,7 @@
     <string name="search_trash">Search trash</string>
     <string name="no_matching_notes">No matching notes</string>
     <string name="no_archived_notes">No archived notes</string>
+    <string name="empty_archived_subtitle">Notes you archive stay here until you restore them</string>
     <string name="no_trashed_notes">No notes in trash</string>
     <string name="empty_notes_hint">Notes you add appear here</string>
     <string name="empty_notes_subtitle">Capture ideas, lists, and reminders in one place</string>
@@ -196,6 +197,7 @@
     <string name="all_colors">All Colors</string>
     <string name="all_labels">All Labels</string>
     <string name="labels_more">+%1$d</string>
+    <string name="checklist_more">+%1$d more</string>
     <string name="selected_color">Selected color</string>
     <string name="cd_color_swatch">Note color</string>
 

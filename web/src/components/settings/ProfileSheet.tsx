@@ -106,10 +106,13 @@ const SORT_LABELS = {
 
 const VIEW_ORDER: ViewColumns[] = [1, 2, 3];
 
-const VIEW_LABELS: Record<ViewColumns, string> = {
+const VIEW_LABELS: Record<number, string> = {
   1: 'List',
   2: 'Grid (2 columns)',
   3: 'Grid (3 columns)',
+  4: 'Grid (4 columns)',
+  5: 'Grid (5 columns)',
+  6: 'Grid (6 columns)',
 };
 
 const SORT_ORDER = ['manual', 'newest', 'oldest'] as const;

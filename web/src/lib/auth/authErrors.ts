@@ -13,6 +13,10 @@ export function formatAuthError(error: unknown): string {
         return 'Network error. Check your connection and try again.';
       case 'auth/unauthorized-domain':
         return 'This domain is not authorized in Firebase. Add it under Authentication → Settings.';
+      case 'auth/invalid-api-key':
+        return 'Firebase API key is invalid. Rebuild the PWA with a correct web/.env (see web/.env.example).';
+      case 'auth/operation-not-allowed':
+        return 'Google sign-in is disabled. Enable it in Firebase Console → Authentication → Sign-in method.';
       default:
         return error.message;
     }

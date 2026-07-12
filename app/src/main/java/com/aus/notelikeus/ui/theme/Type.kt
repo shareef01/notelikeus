@@ -44,29 +44,27 @@ val Typography = Typography(
     titleLarge = inter(FontWeight.SemiBold, 20f, 28f, -0.5f),
     titleMedium = inter(FontWeight.SemiBold, 16f, 24f, -0.25f),
     titleSmall = inter(FontWeight.Medium, 14f, 20f, 0f),
-    bodyLarge = inter(FontWeight.Normal, 16f, 24f, 0.25f),
-    bodyMedium = inter(FontWeight.Normal, 14f, 20f, 0.15f),
-    bodySmall = inter(FontWeight.Normal, 12f, 16f, 0.1f),
-    labelLarge = inter(FontWeight.SemiBold, 14f, 20f, 0.5f),
-    labelMedium = inter(FontWeight.Medium, 12f, 16f, 0.5f),
-    labelSmall = inter(FontWeight.Medium, 11f, 16f, 0.5f)
+    bodyLarge = inter(FontWeight.Normal, 16f, 26f, 0.15f),
+    bodyMedium = inter(FontWeight.Normal, 14f, 22f, 0.1f),
+    bodySmall = inter(FontWeight.Normal, 12f, 18f, 0.1f),
+    labelLarge = inter(FontWeight.SemiBold, 14f, 20f, 0.3f),
+    labelMedium = inter(FontWeight.Medium, 12f, 16f, 0.3f),
+    labelSmall = inter(FontWeight.Medium, 11f, 14f, 0.3f)
 )
 
 /**
- * Constraint: Premium Typography
- * Note Titles: SemiBold, 18.sp, -0.5.sp kerning.
+ * Card typography — optimized for scanability at a glance.
  */
-val NoteCardTitleStyle = inter(FontWeight.SemiBold, 18f, 25f, -0.5f)
+val NoteCardTitleStyle = inter(FontWeight.SemiBold, 17f, 23f, -0.4f)
 
 /**
- * Constraint: Body Text
- * Body: Regular, 14.sp, 1.4em line height (19.6sp).
+ * Card body — slightly tighter than bodyLarge for card density.
  */
-val NoteCardBodyStyle = inter(FontWeight.Normal, 14f, 19.6f, 0f)
+val NoteCardBodyStyle = inter(FontWeight.Normal, 14f, 21f, 0f)
 
 /**
- * Editor typography — aligned with card styles for shared-element continuity.
+ * Editor typography — larger body for comfortable long-form writing.
  */
 val EditorTitleStyle = NoteCardTitleStyle
 
-val EditorBodyStyle = inter(FontWeight.Normal, 16f, 22.4f, 0f)
+val EditorBodyStyle = inter(FontWeight.Normal, 16f, 26f, 0f)

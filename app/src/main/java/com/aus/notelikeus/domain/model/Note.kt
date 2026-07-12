@@ -1,5 +1,8 @@
 package com.aus.notelikeus.domain.model
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 data class Note(
     val id: Long? = null,
     val cloudId: String = "",

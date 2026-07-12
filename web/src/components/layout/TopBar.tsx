@@ -1,5 +1,3 @@
-import { BrandMark } from '@/components/brand/BrandMark';
-
 import { ViewModeButton } from '@/components/layout/ViewModeButton';
 import { FilterRow } from '@/components/layout/FilterRow';
 
@@ -218,18 +216,12 @@ export function TopBar({
 
 
   return (
-
     <header
-
-      className={`sticky top-0 z-30 border-b border-brand-outline/20 bg-true-black transition-shadow ${
-
-        listScrolled ? 'shadow-header-scroll' : ''
-
+      className={`sticky top-0 z-30 bg-true-surface/80 backdrop-blur-md transition-shadow ${
+        listScrolled ? 'shadow-[0_1px_0_rgba(255,255,255,0.03)]' : ''
       }`}
-
     >
-
-      <div className="mx-auto w-full max-w-content px-3 sm:px-4 lg:px-6">
+<div className="mx-auto w-full max-w-content">
 
         {selectionMode && onClearSelection && onToggleSelectAll ? (
 
@@ -263,7 +255,7 @@ export function TopBar({
 
         ) : (
 
-        <div className="flex h-14 items-center gap-2 pt-safe sm:gap-2.5 lg:h-[3.25rem]">
+        <div className="flex h-[3.25rem] items-center gap-1.5 pt-safe sm:gap-2.5">
 
           <button
 
@@ -271,7 +263,7 @@ export function TopBar({
 
             onClick={onMenuClick}
 
-            className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted interactive-hover lg:hidden"
+            className="flex size-10 shrink-0 items-center justify-center rounded-xl text-brand-muted interactive-hover lg:hidden"
 
             aria-label="Open menu"
 
@@ -284,11 +276,8 @@ export function TopBar({
 
 
           <form
-
             onSubmit={handleSearchSubmit}
-
-            className="flex h-10 min-w-0 flex-1 items-center rounded-full bg-true-surface-variant/70 px-3 sm:h-11 sm:px-4"
-
+            className="flex h-10 min-w-0 flex-1 items-center rounded-xl bg-white/[0.03] px-3 transition-all focus-within:bg-white/[0.06] focus-within:ring-1 focus-within:ring-white/5"
           >
 
             <input
@@ -307,7 +296,7 @@ export function TopBar({
 
               placeholder={SEARCH_PLACEHOLDERS[currentFilter]}
 
-              className="min-w-0 flex-1 bg-transparent text-base text-brand-primary outline-none placeholder:text-brand-muted/60"
+              className="min-w-0 flex-1 bg-transparent text-[13px] font-medium text-brand-primary outline-none placeholder:text-brand-muted/40 sm:text-[14px]"
 
               aria-label={SEARCH_PLACEHOLDERS[currentFilter]}
 
@@ -323,13 +312,13 @@ export function TopBar({
 
                 onClick={() => onSearchQueryChange('')}
 
-                className="ml-1 flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted interactive-hover"
+                className="ml-1 flex size-8 shrink-0 items-center justify-center rounded-lg text-brand-muted interactive-hover"
 
                 aria-label="Clear search"
 
               >
 
-                <CloseIcon size={20} />
+                <CloseIcon size={16} />
 
               </button>
 
@@ -349,29 +338,13 @@ export function TopBar({
 
             onClick={onProfileClick}
 
-            className="flex size-10 shrink-0 items-center justify-center rounded-full interactive-hover lg:hidden"
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl text-brand-muted interactive-hover"
 
             aria-label="Open settings"
 
           >
 
-            <BrandMark size={32} />
-
-          </button>
-
-          <button
-
-            type="button"
-
-            onClick={onProfileClick}
-
-            className="hidden size-10 shrink-0 items-center justify-center rounded-full text-brand-muted interactive-hover lg:flex"
-
-            aria-label="Open settings"
-
-          >
-
-            <SettingsIcon size={22} />
+            <SettingsIcon size={20} />
 
           </button>
 
@@ -385,15 +358,13 @@ export function TopBar({
 
               onClick={onNewNote}
 
-              className="hidden shrink-0 items-center gap-1.5 rounded-note bg-brand-primary px-3.5 py-2 text-sm font-semibold text-true-black lg:flex"
+              className="ml-1 hidden h-9 shrink-0 items-center gap-1.5 rounded-xl bg-brand-primary px-3 text-[13px] font-bold text-true-black transition-all hover:scale-[1.02] active:scale-[0.98] lg:flex"
 
             >
 
-              <AddIcon size={18} />
+              <AddIcon size={16} />
 
-              <span className="hidden xl:inline">New note</span>
-
-              <span className="xl:hidden">New</span>
+              <span>New Note</span>
 
             </button>
 
@@ -493,7 +464,6 @@ export function TopBar({
 
 
 
-      {listScrolled ? <div className="h-px bg-brand-outline/35" /> : null}
 
     </header>
 

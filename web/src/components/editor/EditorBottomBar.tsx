@@ -29,16 +29,23 @@ export function EditorBottomBar({
 
   return (
     <footer
-      className="flex items-center justify-between px-2 pb-safe pt-2"
+      className="flex items-center justify-between px-3 pb-safe pt-2"
       style={{ color: contentColor }}
     >
       <div className="flex-1" />
-      <div className="text-center text-xs font-medium opacity-70">
+      <div className="text-center">
         {reminderTimestamp ? (
-          <span className="block">Reminder {formatReminder(reminderTimestamp)}</span>
+          <span className="block text-[11px] font-medium opacity-60">Reminder {formatReminder(reminderTimestamp)}</span>
         ) : null}
-        <span className={reminderTimestamp ? 'mt-0.5 block opacity-80' : undefined}>
-          {isSaving ? 'Saving…' : `Edited ${editedLabel}`}
+        <span className={`text-[11px] font-medium opacity-50 ${reminderTimestamp ? 'mt-0.5 block' : ''}`}>
+          {isSaving ? (
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block size-2.5 rounded-full bg-current animate-pulse" />
+              Saving
+            </span>
+          ) : (
+            `Edited ${editedLabel}`
+          )}
         </span>
       </div>
       <div className="flex flex-1 justify-end">
