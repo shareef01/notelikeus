@@ -71,7 +71,11 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       return;
     }
 
-    await saveNote(note);
+    try {
+      await saveNote(note);
+    } catch (err) {
+      console.warn('[Notelikeus] Save failed (non-fatal):', err);
+    }
     scheduleNoteReminder(note);
     setState({ ...working, isSaving: false, lastSavedAt: updatedTimestamp });
   }, []);
