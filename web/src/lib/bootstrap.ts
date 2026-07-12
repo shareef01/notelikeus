@@ -4,15 +4,14 @@ import { initFirebase } from '@/lib/firebase';
 import { recoverFromStaleServiceWorkerIfNeeded } from '@/lib/swRecovery';
 import { ensureReminderSync } from '@/lib/reminders/reminderSync';
 import { migrateEncryptedStorage } from '@/lib/crypto/migrate';
-import { useNotesStore } from '@/store/notesStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useUiStore } from '@/store/uiStore';
 
-const STORAGE_KEYS = ['notelikeus-notes', 'notelikeus-settings', 'notelikeus-ui'] as const;
+// Notes are Firestore-only (no offline cache). Only settings & UI state are persisted locally.
+const STORAGE_KEYS = ['notelikeus-settings', 'notelikeus-ui'] as const;
 
 async function rehydrateStores(): Promise<void> {
   await Promise.all([
-    useNotesStore.persist.rehydrate(),
     useSettingsStore.persist.rehydrate(),
     useUiStore.persist.rehydrate(),
   ]);

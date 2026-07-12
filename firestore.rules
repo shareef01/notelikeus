@@ -2,30 +2,74 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ═══════════════════════════════════════════════════════
+    //  Auth
+    // ═══════════════════════════════════════════════════════
     function isOwner(userId) {
       return request.auth != null && request.auth.uid == userId;
     }
 
+    // ═══════════════════════════════════════════════════════
+    //  Field validators — accept absent | null | valid
+    // ═══════════════════════════════════════════════════════
     function optionalString(data, field, maxLen) {
-      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+      return !(field in data)
+        || data[field] == null
+        || (data[field] is string && data[field].size() <= maxLen);
     }
 
     function optionalInt(data, field) {
-      return !(field in data) || data[field] is int;
+      return !(field in data)
+        || data[field] == null
+        || data[field] is int;
     }
 
     function optionalBool(data, field) {
-      return !(field in data) || data[field] is bool;
+      return !(field in data)
+        || data[field] == null
+        || data[field] is bool;
     }
 
     function optionalNumber(data, field) {
-      return !(field in data) || data[field] is number;
+      return !(field in data)
+        || data[field] == null
+        || data[field] is number;
     }
 
-    function optionalList(data, field) {
-      return !(field in data) || data[field] is list;
+    // ═══════════════════════════════════════════════════════
+    //  CloudId UUID v4 format
+    // ═══════════════════════════════════════════════════════
+    function isValidCloudId(id) {
+      return id is string
+        && id.size() <= 64
+        && id.matches('[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}');
     }
 
+    // ═══════════════════════════════════════════════════════
+    //  Nested list size limits
+    // ═══════════════════════════════════════════════════════
+    function validLabels(data) {
+      return !('labels' in data)
+        || data.labels == null
+        || (data.labels is list && data.labels.size() <= 500);
+    }
+
+    function validChecklist(data) {
+      return !('checklist' in data)
+        || data.checklist == null
+        || (data.checklist is list && data.checklist.size() <= 1000);
+    }
+
+    function validAttachments(data) {
+      return !('attachments' in data)
+        || data.attachments == null
+        || (data.attachments is list && data.attachments.size() <= 50);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  Note document validation
+    // ═══════════════════════════════════════════════════════
     function lockedNoteHasNoPlaintext(data) {
       return !('isLocked' in data)
         || !data.isLocked
@@ -34,14 +78,16 @@ service cloud.firestore {
 
     function validNote(data) {
       return data.keys().hasAll(['title', 'content', 'timestamp'])
+        // ── required fields ──
         && data.title is string
         && data.title.size() <= 10000
         && data.content is string
         && data.content.size() <= 500000
         && data.timestamp is number
         && data.timestamp > 0
-        && data.timestamp < 4102444800000
+        // ── optional metadata ──
         && optionalString(data, 'cloudId', 64)
+        && (!('cloudId' in data) || data.cloudId == null || isValidCloudId(data.cloudId))
         && optionalInt(data, 'localId')
         && optionalInt(data, 'color')
         && optionalInt(data, 'position')
@@ -50,20 +96,31 @@ service cloud.firestore {
         && optionalBool(data, 'isTrashed')
         && optionalBool(data, 'isLocked')
         && optionalNumber(data, 'reminderTimestamp')
-        && optionalList(data, 'labels')
-        && optionalList(data, 'checklist')
-        && optionalList(data, 'attachments')
+        // ── nested lists ──
+        && validLabels(data)
+        && validChecklist(data)
+        && validAttachments(data)
+        // ── locked notes must not leak plaintext ──
         && lockedNoteHasNoPlaintext(data);
     }
 
+    // ═══════════════════════════════════════════════════════
+    //  Access rules
+    // ═══════════════════════════════════════════════════════
+
+    // User notes — one document per note, keyed by cloudId (UUID)
     match /users/{userId}/notes/{noteId} {
       allow read: if isOwner(userId);
       allow delete: if isOwner(userId);
-      allow create, update: if isOwner(userId) && validNote(request.resource.data);
+      allow create, update: if isOwner(userId)
+        && validNote(request.resource.data)
+        && noteId.size() <= 64;
     }
 
-    match /users/{userId}/_meta/sync {
-      allow read, write: if isOwner(userId);
+    // Sync metadata & connection pings — shared by Android + Web
+    match /users/{userId}/_meta/{document} {
+      allow read, write: if isOwner(userId)
+        && document.size() <= 100;
     }
   }
 }

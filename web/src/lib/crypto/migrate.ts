@@ -5,7 +5,7 @@
  * After this runs once, the app uses plain localStorage exclusively.
  */
 
-const STORAGE_KEYS = ['notelikeus-notes', 'notelikeus-settings', 'notelikeus-ui'];
+const STORAGE_KEYS = ['notelikeus-settings', 'notelikeus-ui'];
 
 async function getKeyFromIndexedDB(): Promise<CryptoKey | null> {
   try {

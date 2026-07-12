@@ -409,6 +409,7 @@ fun EditorScreen(
             AnimatedVisibility(visible = !imeVisible) {
                 EditorBottomBar(
                     timestamp = state.timestamp,
+                    contentLength = state.content.length,
                     reminderTimestamp = state.reminderTimestamp,
                     isSaving = state.isSaving,
                     onMoreClick = { showBottomSheet = true },

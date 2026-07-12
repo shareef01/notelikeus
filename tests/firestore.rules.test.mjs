@@ -124,4 +124,33 @@ describe('firestore.rules', () => {
       }),
     );
   });
+
+  it('allows owners to write connection ping', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(
+      setDoc(doc(alice, 'users/alice/_meta/connection'), {
+        connectedAt: Date.now(),
+        platform: 'android',
+        email: 'test@example.com',
+      }),
+    );
+  });
+
+  it('accepts null for optional fields', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(
+      setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ reminderTimestamp: null })),
+    );
+    await assertSucceeds(
+      setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ color: null })),
+    );
+  });
+
+  it('rejects oversized labels array', async () => {
+    const alice = authed('alice');
+    const hugeLabels = Array.from({ length: 501 }, (_, i) => ({ name: `label-${i}` }));
+    await assertFails(
+      setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ labels: hugeLabels })),
+    );
+  });
 });

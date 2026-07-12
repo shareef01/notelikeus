@@ -15,27 +15,18 @@ const COPY: Record<
     title: string;
     subtitle: string;
     googleLabel: string;
-    switchPrompt: string;
-    switchMode: AuthMode;
-    switchLabel: string;
   }
 > = {
   signin: {
     title: 'Welcome back',
     subtitle: 'Sign in to sync your notes across this browser and your Android device.',
     googleLabel: 'Sign in with Google',
-    switchPrompt: "Don't have an account?",
-    switchMode: 'signup',
-    switchLabel: 'Create one',
   },
   signup: {
     title: 'Create your account',
     subtitle:
       'Use Google to back up notes, sync with Android, and keep everything in one place.',
     googleLabel: 'Sign up with Google',
-    switchPrompt: 'Already have an account?',
-    switchMode: 'signin',
-    switchLabel: 'Sign in',
   },
 };
 
@@ -43,7 +34,7 @@ const FEATURES = [
   {
     icon: CloudIcon,
     title: 'Cloud backup',
-    text: 'Your notes are safely backed up with your Google account',
+    text: 'Your notes are safely stored and backed up with your Google account',
   },
   {
     icon: SyncIcon,
@@ -52,8 +43,8 @@ const FEATURES = [
   },
   {
     icon: NotesIcon,
-    title: 'Offline first',
-    text: 'Keep writing offline — sync automatically when you connect',
+    title: 'Rich notes',
+    text: 'Checklists, markdown, reminders, colors, pinning, and labels',
   },
   {
     icon: LockIcon,
@@ -64,9 +55,10 @@ const FEATURES = [
 
 interface AuthScreenProps {
   mode: AuthMode;
+  dismissible?: boolean;
 }
 
-export function AuthScreen({ mode }: AuthScreenProps) {
+export function AuthScreen({ mode, dismissible = true }: AuthScreenProps) {
   const closeAuthScreen = useUiStore((s) => s.closeAuthScreen);
   const openAuthScreen = useUiStore((s) => s.openAuthScreen);
   const { user, isReady } = useAuthListener();
@@ -104,134 +96,105 @@ export function AuthScreen({ mode }: AuthScreenProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex min-h-screen flex-col overflow-y-auto bg-[#09090B]">
-      {/* Subtle background decoration */}
+    <div className="fixed inset-0 z-[60] flex min-h-dvh flex-col bg-[#09090B]">
+      {/* Ambient glow */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-brand-primary/[0.02] blur-3xl" />
-        <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-brand-primary/[0.015] blur-3xl" />
+        <div className="absolute -left-32 -top-32 h-[28rem] w-[28rem] rounded-full bg-brand-primary/[0.015] blur-3xl" />
+        <div className="absolute -bottom-32 -right-32 h-[24rem] w-[24rem] rounded-full bg-brand-primary/[0.01] blur-3xl" />
       </div>
 
-      <header className="relative z-10 flex items-center justify-end px-4 pt-safe">
-        <button
-          type="button"
-          onClick={closeAuthScreen}
-          className="flex size-11 items-center justify-center rounded-full text-brand-muted/60 transition-colors hover:bg-white/5 hover:text-brand-primary"
-          aria-label="Close"
-        >
-          <CloseIcon size={22} />
-        </button>
-      </header>
+      {/* Close button — modal mode only */}
+      {dismissible && (
+        <header className="relative z-10 flex items-center justify-end px-3 pt-safe md:px-5">
+          <button type="button" onClick={closeAuthScreen}
+            className="flex size-10 items-center justify-center rounded-full text-brand-muted/50 transition-colors hover:bg-white/5 hover:text-brand-primary"
+            aria-label="Close">
+            <CloseIcon size={20} />
+          </button>
+        </header>
+      )}
 
-      <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-5 pb-safe sm:px-6">
-        <div
-          className={`w-full max-w-sm transition-all duration-700 ease-out ${
-            animateIn ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'
-          }`}
-        >
-          {/* Brand hero */}
-          <div className="flex flex-col items-center text-center">
-            <div className="relative">
-              <div className="absolute -inset-4 rounded-full bg-brand-primary/5 blur-xl" />
-              <BrandMark size={80} />
+      {/* Main layout: flex-col on mobile, side-by-side on md+ */}
+      <div className={`relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center gap-6 px-4 pb-safe sm:px-6 md:flex-row md:gap-12 md:px-8 lg:gap-20 lg:px-10 ${!dismissible ? 'pt-8' : ''}`}>
+
+        {/* ── Left: Brand ── */}
+        <div className={`w-full max-w-sm flex-shrink-0 text-center transition-all duration-700 ease-out md:max-w-md md:text-left ${animateIn ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'}`}>
+          <BrandMark size={dismissible ? 64 : 80} />
+          <p className="mt-5 text-[26px] font-bold tracking-tight text-brand-primary sm:text-[28px]">
+            {copy.title}
+          </p>
+          <p className="mt-2 max-w-xs text-[15px] leading-relaxed text-brand-muted/80 mx-auto md:mx-0">
+            {copy.subtitle}
+          </p>
+        </div>
+
+        {/* ── Right: Sign-in card + features ── */}
+        <div className={`w-full max-w-sm flex-shrink-0 transition-all duration-700 ease-out delay-150 md:max-w-[360px] ${animateIn ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}`}>
+          {/* Card */}
+          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-5 backdrop-blur-sm sm:p-6 md:rounded-3xl md:p-7">
+            {/* Tab toggle */}
+            <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-1">
+              <div className="grid grid-cols-2 gap-1">
+                {(['signin', 'signup'] as const).map((tab) => {
+                  const active = mode === tab;
+                  return (
+                    <button key={tab} type="button" onClick={() => openAuthScreen(tab)}
+                      className={`rounded-lg px-3 py-2.5 text-[13px] font-semibold transition-all sm:text-sm ${active ? 'bg-white/10 text-brand-primary shadow-sm' : 'text-brand-muted/50 hover:text-brand-primary/80'}`}>
+                      {tab === 'signin' ? 'Sign in' : 'Sign up'}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <p className="mt-6 text-2xl font-bold tracking-tight text-brand-primary sm:text-[28px]">
-              {copy.title}
-            </p>
-            <p className="mt-2 max-w-xs text-sm leading-relaxed text-brand-muted sm:text-base">
-              {copy.subtitle}
-            </p>
-          </div>
 
-          {/* Tab toggle */}
-          <div className="mt-7 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-1">
-            <div className="grid grid-cols-2 gap-1">
-              {(['signin', 'signup'] as const).map((tab) => {
-                const active = mode === tab;
-                return (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => openAuthScreen(tab)}
-                    className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
-                      active
-                        ? 'bg-white/10 text-brand-primary shadow-sm'
-                        : 'text-brand-muted/60 hover:text-brand-primary'
-                    }`}
-                  >
-                    {tab === 'signin' ? 'Sign in' : 'Sign up'}
+            {/* Google button + error */}
+            <div className="mt-5 space-y-4 sm:mt-6">
+              <GoogleSignInButton
+                label={copy.googleLabel}
+                onClick={() => void handleGoogle()}
+                loading={loading}
+              />
+
+              {error ? (
+                <p className="rounded-xl border border-red-900/40 bg-red-950/25 px-4 py-3 text-center text-[13px] text-red-200 sm:text-sm">
+                  {error}
+                </p>
+              ) : null}
+
+              {dismissible && (
+                <>
+                  <div className="relative flex items-center gap-3">
+                    <div className="h-px flex-1 bg-white/[0.06]" />
+                    <span className="text-xs font-medium uppercase tracking-wider text-brand-muted/40">
+                      or
+                    </span>
+                    <div className="h-px flex-1 bg-white/[0.06]" />
+                  </div>
+                  <button type="button" onClick={closeAuthScreen}
+                    className="w-full rounded-xl border border-white/[0.08] px-4 py-3 text-sm font-semibold text-brand-muted transition-all hover:bg-white/[0.03] hover:text-brand-primary active:scale-[0.98]">
+                    Continue without an account
                   </button>
-                );
-              })}
+                </>
+              )}
             </div>
           </div>
 
-          {/* Feature list */}
-          <div className="mt-7 space-y-3">
+          {/* Feature tiles — below card on all screen sizes */}
+          <div className="mt-5 space-y-2.5">
             {FEATURES.map(({ icon: Icon, title, text }) => (
-              <div
-                key={title}
-                className="flex items-start gap-3.5 rounded-xl border border-white/[0.04] bg-white/[0.02] px-4 py-3.5 transition-colors hover:bg-white/[0.04]"
-              >
-                <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-primary/8 text-brand-primary">
-                  <Icon size={17} />
+              <div key={title} className="flex items-start gap-3 rounded-xl border border-white/[0.03] bg-white/[0.015] px-3.5 py-3 transition-colors hover:bg-white/[0.03]">
+                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-primary/8 text-brand-primary">
+                  <Icon size={16} />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-brand-primary">{title}</p>
-                  <p className="mt-0.5 text-xs leading-relaxed text-brand-muted/70">{text}</p>
+                  <p className="text-[13px] font-semibold text-brand-primary">{title}</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-brand-muted/60">{text}</p>
                 </div>
               </div>
             ))}
           </div>
-
-          {/* Auth actions */}
-          <div className="mt-7 space-y-4">
-            <GoogleSignInButton
-              label={copy.googleLabel}
-              onClick={() => void handleGoogle()}
-              loading={loading}
-            />
-
-            {error ? (
-              <p className="rounded-xl border border-red-900/50 bg-red-950/30 px-4 py-3 text-center text-sm text-red-200">
-                {error}
-              </p>
-            ) : null}
-
-            <div className="relative flex items-center gap-3 py-0.5">
-              <div className="h-px flex-1 bg-white/[0.06]" />
-              <span className="text-xs font-medium uppercase tracking-wider text-brand-muted/40">
-                or
-              </span>
-              <div className="h-px flex-1 bg-white/[0.06]" />
-            </div>
-
-            <button
-              type="button"
-              onClick={closeAuthScreen}
-              className="w-full rounded-xl border border-white/[0.08] px-4 py-3 text-sm font-semibold text-brand-muted transition-all hover:bg-white/[0.03] hover:text-brand-primary active:scale-[0.98]"
-            >
-              Continue without an account
-            </button>
-          </div>
-
-          {/* Switch mode */}
-          <p className="mt-7 text-center text-sm text-brand-muted/60">
-            {copy.switchPrompt}{' '}
-            <button
-              type="button"
-              onClick={() => openAuthScreen(copy.switchMode)}
-              className="font-semibold text-brand-primary underline-offset-2 transition-colors hover:underline"
-            >
-              {copy.switchLabel}
-            </button>
-          </p>
-
-          {/* Terms */}
-          <p className="mt-6 text-center text-[11px] leading-relaxed text-brand-muted/40">
-            By continuing, you agree that synced notes are stored in your Firebase account
-            under your Google identity. Locked notes are never uploaded.
-          </p>
         </div>
+
       </div>
     </div>
   );
