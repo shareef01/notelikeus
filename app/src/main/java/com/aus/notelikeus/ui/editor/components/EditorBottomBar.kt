@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -22,15 +23,27 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import android.text.format.DateFormat
 import com.aus.notelikeus.R
 import java.util.Date
 
+// Mirrors Firestore security rules
+private const val MAX_CONTENT = 500_000
+private const val CHAR_WARN = 450_000
+
+private fun formatCount(n: Int): String = when {
+    n >= 1_000_000 -> "${"%.1f".format(n / 1_000_000f)}M"
+    n >= 1_000 -> "${"%.1f".format(n / 1_000f)}K"
+    else -> n.toString()
+}
+
 @Composable
 fun EditorBottomBar(
     timestamp: Long,
+    contentLength: Int = 0,
     reminderTimestamp: Long? = null,
     isSaving: Boolean = false,
     onMoreClick: () -> Unit,
@@ -80,6 +93,26 @@ fun EditorBottomBar(
                 color = contentColor.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center
             )
+            if (contentLength > 0) {
+                val nearLimit = contentLength >= CHAR_WARN
+                val atLimit = contentLength >= MAX_CONTENT
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${formatCount(contentLength)} / ${formatCount(MAX_CONTENT)}" +
+                        if (atLimit) " — limit reached" else "",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = if (atLimit) FontWeight.Bold else FontWeight.Normal
+                    ),
+                    color = contentColor.copy(
+                        alpha = when {
+                            atLimit -> 0.95f
+                            nearLimit -> 0.75f
+                            else -> 0.4f
+                        }
+                    ),
+                    textAlign = TextAlign.Center
+                )
+            }
         }
 
         Spacer(modifier = Modifier.weight(1f))

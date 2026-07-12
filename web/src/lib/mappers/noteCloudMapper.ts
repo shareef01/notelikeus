@@ -36,9 +36,16 @@ export interface FirestoreNoteDocument {
   }>;
 }
 
+/** Mirrors Firestore security rules — writes exceeding these limits are rejected. */
+const MAX_TITLE_LENGTH = 10_000;
+const MAX_CONTENT_LENGTH = 500_000;
+const MAX_LABELS = 500;
+const MAX_CHECKLIST_ITEMS = 1_000;
+const MAX_ATTACHMENTS = 50;
+
 function checklistToCloudMap(item: ChecklistItem): Record<string, unknown> {
   return stripUndefined({
-    text: item.text,
+    text: item.text.slice(0, MAX_TITLE_LENGTH),
     isChecked: item.isChecked,
     position: item.position,
   }) as Record<string, unknown>;
@@ -68,8 +75,8 @@ export function noteToCloudMap(note: Note): FirestoreNoteDocument {
   const payload: FirestoreNoteDocument = stripUndefined({
     cloudId: noteCloudDocumentId(note),
     localId: note.localId,
-    title: note.title,
-    content: note.content,
+    title: note.title.slice(0, MAX_TITLE_LENGTH),
+    content: note.content.slice(0, MAX_CONTENT_LENGTH),
     timestamp: note.timestamp,
     color: note.color,
     isPinned: note.isPinned,
@@ -78,12 +85,12 @@ export function noteToCloudMap(note: Note): FirestoreNoteDocument {
     position: note.position,
     isLocked: note.isLocked,
     reminderTimestamp: note.reminderTimestamp,
-    labels: note.labels.map((label) => ({ name: label.name })),
-    checklist: note.checklist.map(checklistToCloudMap),
+    labels: note.labels.slice(0, MAX_LABELS).map((label) => ({ name: label.name })),
+    checklist: note.checklist.slice(0, MAX_CHECKLIST_ITEMS).map(checklistToCloudMap),
   }) as FirestoreNoteDocument;
 
   if (note.attachments.length > 0) {
-    payload.attachments = note.attachments.map((attachment) => ({
+    payload.attachments = note.attachments.slice(0, MAX_ATTACHMENTS).map((attachment) => ({
       storagePath: attachment.storagePath,
       type: attachment.type,
       mimeType: attachment.mimeType,

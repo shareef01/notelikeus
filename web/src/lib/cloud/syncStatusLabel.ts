@@ -10,8 +10,6 @@ export function formatSyncStatus(status: CloudSyncStatus): string {
       return 'Syncing…';
     case 'synced':
       return 'Up to date';
-    case 'offline':
-      return 'Offline';
     case 'error':
       return 'Sync error';
     default:

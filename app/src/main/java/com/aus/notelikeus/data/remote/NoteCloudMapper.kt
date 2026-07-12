@@ -4,11 +4,17 @@ import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 
+// Mirrors Firestore security rules — writes exceeding these limits are rejected.
+private const val MAX_TITLE_LENGTH = 10_000
+private const val MAX_CONTENT_LENGTH = 500_000
+private const val MAX_LABELS = 500
+private const val MAX_CHECKLIST_ITEMS = 1_000
+
 internal fun Note.toCloudMap(): Map<String, Any> = buildMap {
     put("cloudId", CloudIds.ensure(cloudId))
     id?.let { put("localId", it) }
-    put("title", title)
-    put("content", content)
+    put("title", title.take(MAX_TITLE_LENGTH))
+    put("content", content.take(MAX_CONTENT_LENGTH))
     put("timestamp", timestamp)
     put("color", color)
     put("isPinned", isPinned)
@@ -19,13 +25,13 @@ internal fun Note.toCloudMap(): Map<String, Any> = buildMap {
     reminderTimestamp?.let { put("reminderTimestamp", it) }
     put(
         "labels",
-        labels.map { label ->
+        labels.take(MAX_LABELS).map { label ->
             mapOf("name" to label.name)
         }
     )
     put(
         "checklist",
-        checklist.map { item -> item.toCloudMap() }
+        checklist.take(MAX_CHECKLIST_ITEMS).map { item -> item.toCloudMap() }
     )
 }
 
