@@ -22,7 +22,7 @@ export function ChecklistEditor({
   const sorted = sortChecklistItems(items);
 
   return (
-    <div className="mt-4 space-y-1">
+    <div className="mt-5 space-y-1">
       {sorted.map((item) => (
         <div key={item.id} className="flex min-h-12 items-center gap-2">
           <input
@@ -46,7 +46,7 @@ export function ChecklistEditor({
           <button
             type="button"
             onClick={() => onRemove(item.id)}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full opacity-60 hover:bg-black/10 hover:opacity-100"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full opacity-60 transition-[opacity,background-color] hover:bg-black/10 hover:opacity-100"
             style={{ color: contentColor }}
             aria-label="Remove item"
           >
@@ -58,7 +58,7 @@ export function ChecklistEditor({
       <button
         type="button"
         onClick={onAdd}
-        className="mt-2 flex items-center gap-2 rounded-note px-2 py-2 text-base font-medium opacity-90 hover:opacity-100"
+        className="mt-2 flex items-center gap-2 rounded-note px-2 py-2 text-base font-medium opacity-90 transition-opacity hover:opacity-100"
         style={{ color: contentColor }}
       >
         <span className="text-xl leading-none">+</span>
@@ -69,7 +69,7 @@ export function ChecklistEditor({
         <button
           type="button"
           onClick={onConvertToText}
-          className="mt-1 px-2 py-2 text-sm font-medium opacity-75 hover:opacity-100"
+          className="mt-1 px-2 py-2 text-sm font-medium opacity-75 transition-opacity hover:opacity-100"
           style={{ color: contentColor }}
         >
           Convert to text

@@ -25,3 +25,11 @@ export function userSyncMetaDocument(userId: string): DocumentReference {
 export function userAttachmentsCollection(userId: string): CollectionReference {
   return collection(getFirestoreDb(), 'users', userId, 'attachments');
 }
+
+export function userTombstonesCollection(userId: string): CollectionReference {
+  return collection(getFirestoreDb(), 'users', userId, 'tombstones');
+}
+
+export function userTombstoneDocument(userId: string, noteId: string | number): DocumentReference {
+  return doc(getFirestoreDb(), 'users', userId, 'tombstones', String(noteId));
+}

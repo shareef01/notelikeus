@@ -1,8 +1,8 @@
 import { deleteNote, upsertNote } from '@/lib/firestore/notesRepository';
-import { cancelNoteReminder } from '@/lib/reminders/reminderScheduler';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 
 async function pushNote(note: Note): Promise<void> {
@@ -25,9 +25,11 @@ export async function saveNote(note: Note): Promise<void> {
   await pushNote(note);
 }
 
-/** Remove locally and from Firestore when signed in. */
+/** Remove locally and from Firestore when signed in. Tombstoned so a later cloud
+ * merge can never resurrect it, even if the remote delete below fails or a stale
+ * copy exists from before this device last synced. */
 export async function removeNote(noteId: string): Promise<void> {
-  cancelNoteReminder(noteId);
+  useTombstoneStore.getState().markDeleted(noteId);
   useNotesStore.getState().removeLocalNote(noteId);
   const userId = useAuthStore.getState().user?.uid;
   if (!userId) return;
@@ -38,7 +40,6 @@ export async function trashNoteById(noteId: string): Promise<Note | null> {
   const note = getNote(noteId);
   if (!note) return null;
   const updated = withTimestamp(note, { isTrashed: true, isArchived: false, isPinned: false });
-  cancelNoteReminder(noteId);
   await pushNote(updated);
   return updated;
 }
@@ -69,8 +70,6 @@ export async function unarchiveNoteById(noteId: string): Promise<Note | null> {
 
 export async function emptyTrash(): Promise<number> {
   const trashed = useNotesStore.getState().notes.filter((note) => note.isTrashed);
-  for (const note of trashed) {
-    await removeNote(note.id);
-  }
+  await Promise.all(trashed.map((note) => removeNote(note.id)));
   return trashed.length;
 }

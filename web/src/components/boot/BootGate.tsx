@@ -71,7 +71,7 @@ export function BootGate() {
 
 function BootSplash() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-true-black px-6 text-center">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-true-surface px-6 text-center">
       <p className="text-lg font-semibold text-brand-primary">Notelikeus</p>
       <p className="mt-2 text-sm text-brand-muted">Loading your notes…</p>
       <div className="mt-6 size-8 animate-pulse rounded-full bg-brand-outline/60" aria-hidden />
@@ -89,14 +89,14 @@ function BootError({
   onReset: () => void;
 }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-true-black px-6 text-center">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-true-surface px-6 text-center">
       <h1 className="text-lg font-semibold text-brand-primary">Could not start Notelikeus</h1>
       <p className="mt-2 max-w-sm text-sm text-brand-muted">{message}</p>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <button
           type="button"
           onClick={onRetry}
-          className="rounded-note bg-brand-primary px-5 py-2.5 text-sm font-semibold text-true-black"
+          className="rounded-note bg-brand-primary px-5 py-2.5 text-sm font-semibold text-true-surface"
         >
           Retry
         </button>
