@@ -1,6 +1,5 @@
 package com.aus.notelikeus.data.remote
 
-import android.util.Log
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import androidx.work.*
 import kotlinx.coroutines.CoroutineScope
@@ -15,7 +14,6 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private const val TAG = "CloudNoteSync"
 private const val DEBOUNCE_MS = 2_000L
 
 @Singleton
@@ -23,23 +21,45 @@ class CloudNoteSyncCoordinator @Inject constructor(
     private val firebaseNoteSync: FirebaseNoteSync,
     private val firebaseSessionManager: FirebaseSessionManager,
     private val settingsRepository: SettingsRepository,
-    private val workManager: WorkManager
+    private val workManager: WorkManager,
+    private val pendingStore: PendingCloudSyncStore
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingUploads = ConcurrentHashMap.newKeySet<Long>()
     private val pendingDeletes = ConcurrentHashMap.newKeySet<Long>()
     private var flushJob: Job? = null
 
+    init {
+        pendingUploads.addAll(pendingStore.pendingUploads())
+        pendingDeletes.addAll(pendingStore.pendingDeletes())
+        if (pendingUploads.isNotEmpty() || pendingDeletes.isNotEmpty()) {
+            scheduleFlush()
+        }
+    }
+
     fun scheduleUpload(noteId: Long) {
         pendingDeletes.remove(noteId)
         pendingUploads.add(noteId)
+        persistPending()
         scheduleFlush()
     }
 
     fun scheduleDelete(noteId: Long) {
         pendingUploads.remove(noteId)
         pendingDeletes.add(noteId)
+        persistPending()
         scheduleFlush()
+    }
+
+    fun clearPending() {
+        flushJob?.cancel()
+        pendingUploads.clear()
+        pendingDeletes.clear()
+        pendingStore.clear()
+    }
+
+    private fun persistPending() {
+        pendingStore.save(pendingUploads.toSet(), pendingDeletes.toSet())
     }
 
     private fun scheduleFlush() {
@@ -63,11 +83,12 @@ class CloudNoteSyncCoordinator @Inject constructor(
         val deletes = pendingDeletes.toList()
         pendingUploads.clear()
         pendingDeletes.clear()
-        
+        pendingStore.clear()
+
         uploads.forEach { noteId ->
             enqueueSyncWork(noteId, isDelete = false)
         }
-        
+
         deletes.forEach { noteId ->
             enqueueSyncWork(noteId, isDelete = true)
         }

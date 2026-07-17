@@ -4,8 +4,10 @@ import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
 import com.aus.notelikeus.data.remote.ReminderScheduler
+import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.domain.repository.SettingsRepository
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -24,6 +26,7 @@ class EditorViewModelTest {
 
     private lateinit var viewModel: EditorViewModel
     private lateinit var repository: NoteRepository
+    private lateinit var settingsRepository: SettingsRepository
     private lateinit var reminderScheduler: ReminderScheduler
     private lateinit var cloudNoteSyncCoordinator: CloudNoteSyncCoordinator
     private val testDispatcher = UnconfinedTestDispatcher()
@@ -32,14 +35,18 @@ class EditorViewModelTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         repository = mockk(relaxed = true)
+        settingsRepository = mockk(relaxed = true)
         reminderScheduler = mockk(relaxed = true)
         cloudNoteSyncCoordinator = mockk(relaxed = true)
         every { repository.getLabels() } returns flowOf(emptyList())
+        every { settingsRepository.appTheme } returns flowOf(AppTheme.AUTO)
+        every { settingsRepository.isTrueDarkMode } returns flowOf(false)
     }
 
     private fun createViewModel(savedStateHandle: SavedStateHandle): EditorViewModel {
         return EditorViewModel(
             repository,
+            settingsRepository,
             reminderScheduler,
             cloudNoteSyncCoordinator,
             savedStateHandle
@@ -119,6 +126,9 @@ class EditorViewModelTest {
             val snapshot = viewModel.trashNoteForDelete()
             assertEquals("Title", snapshot?.title)
             assertEquals(true, awaitItem().isTrashed)
+            // trashNoteForDelete also persists the note, which bumps the timestamp
+            // in a follow-up emission — drain it instead of asserting on it.
+            cancelAndIgnoreRemainingEvents()
         }
     }
 

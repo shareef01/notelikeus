@@ -1,8 +1,27 @@
-import { subscribeToNotes, syncNotesWithCloud } from '@/lib/firestore/notesRepository';
+import { deleteNote, subscribeToNotes, syncNotesWithCloud } from '@/lib/firestore/notesRepository';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
 import { useNotesStore } from '@/store/notesStore';
+import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 import type { Unsubscribe } from 'firebase/firestore';
+
+/** Notes deleted on this device must never come back from a stale/racy cloud copy.
+ * Splits remote notes into what's safe to merge and what to purge from the cloud. */
+function partitionTombstoned(remoteNotes: Note[]): { live: Note[]; staleIds: string[] } {
+  const isDeleted = useTombstoneStore.getState().isDeleted;
+  const live: Note[] = [];
+  const staleIds: string[] = [];
+  for (const note of remoteNotes) {
+    if (isDeleted(note.id)) staleIds.push(note.id);
+    else live.push(note);
+  }
+  return { live, staleIds };
+}
+
+function purgeStaleCloudDocs(userId: string, staleIds: string[]): void {
+  if (staleIds.length === 0) return;
+  void Promise.all(staleIds.map((id) => deleteNote(userId, id)));
+}
 
 let mergedForUserId: string | null = null;
 let mergeInFlight: Promise<void> | null = null;
@@ -25,12 +44,19 @@ function applyNotes(incoming: Note[]) {
 function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
   const remoteIds = new Set(remoteNotes.map((note) => note.id));
   const isInitial = knownCloudIds.size === 0;
+  const isDeleted = useTombstoneStore.getState().isDeleted;
   const result = new Map<string, Note>();
 
   for (const remote of remoteNotes) {
+    if (isDeleted(remote.id)) continue;
     const local = localNotes.find((note) => note.id === remote.id);
-    if (!local || local.isLocked) {
+    if (!local) {
       result.set(remote.id, remote);
+    } else if (local.isLocked) {
+      // Locked notes are never uploaded (see isCloudSyncEligible), so any cloud copy
+      // that still exists for this id is necessarily a stale pre-lock version — never
+      // let it override local, matching mergeRemoteNotes' handling of the same case.
+      result.set(remote.id, local);
     } else if (local.timestamp > remote.timestamp) {
       result.set(remote.id, local);
     } else {
@@ -40,6 +66,11 @@ function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
 
   for (const local of localNotes) {
     if (result.has(local.id)) continue;
+    if (isDeleted(local.id)) {
+      // Match Android: keep locked locals despite a colliding tombstone id.
+      if (local.isLocked) result.set(local.id, local);
+      continue;
+    }
     if (local.isLocked) {
       result.set(local.id, local);
       continue;
@@ -87,8 +118,10 @@ export function mergeCloudNotesOnce(userId: string): Promise<void> {
     try {
       const localNotes = useNotesStore.getState().notes;
       const { merged, remoteIds } = await syncNotesWithCloud(userId, localNotes);
-      applyNotes(merged);
-      knownCloudIds = new Set(remoteIds);
+      const isDeleted = useTombstoneStore.getState().isDeleted;
+      applyNotes(merged.filter((note) => !isDeleted(note.id)));
+      purgeStaleCloudDocs(userId, remoteIds.filter(isDeleted));
+      knownCloudIds = new Set(remoteIds.filter((id) => !isDeleted(id)));
       mergedForUserId = userId;
     } catch (error) {
       useNotesStore.getState().setError(
@@ -112,8 +145,10 @@ export function startNotesRealtimeSync(userId: string): void {
   unsubscribeRealtime = subscribeToNotes(
     userId,
     (remoteNotes) => {
+      const { live, staleIds } = partitionTombstoned(remoteNotes);
+      purgeStaleCloudDocs(userId, staleIds);
       const localNotes = useNotesStore.getState().notes;
-      applyNotes(applyRemoteSnapshot(localNotes, remoteNotes));
+      applyNotes(applyRemoteSnapshot(localNotes, live));
     },
     (error) => {
       useNotesStore.getState().setError(error.message);

@@ -1,9 +1,10 @@
 import { useAuthListener } from '@/hooks/useAuth';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { syncNotesWithCloud, uploadAllNotes } from '@/lib/firestore/notesRepository';
+import { deleteNote, syncNotesWithCloud, uploadAllNotes } from '@/lib/firestore/notesRepository';
 import { useNotesStore } from '@/store/notesStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useToastStore } from '@/store/toastStore';
+import { useTombstoneStore } from '@/store/tombstoneStore';
 import { useCallback, useEffect, useState } from 'react';
 
 export type CloudSyncStatus = 'unknown' | 'ready' | 'syncing' | 'synced' | 'offline' | 'error';
@@ -58,9 +59,18 @@ export function useCloudSync() {
     }
     setStatus('syncing');
     try {
-      const { changes, merged } = await syncNotesWithCloud(userId, notes);
-      useNotesStore.getState().setNotes(merged);
-      setSyncedCount(merged.filter((n) => !n.isLocked).length);
+      const { changes, merged, remoteIds } = await syncNotesWithCloud(userId, notes);
+      // Same tombstone guard as the background merge in notesSyncService.ts — otherwise
+      // a note deleted on this device can be resurrected by a stale cloud copy that
+      // hasn't been cleaned up yet, and this path bypassed that check entirely before.
+      const isDeleted = useTombstoneStore.getState().isDeleted;
+      const filtered = merged.filter((note) => !isDeleted(note.id));
+      const staleIds = remoteIds.filter(isDeleted);
+      if (staleIds.length > 0) {
+        void Promise.all(staleIds.map((id) => deleteNote(userId, id)));
+      }
+      useNotesStore.getState().setNotes(filtered);
+      setSyncedCount(filtered.filter((n) => !n.isLocked).length);
       setStatus('synced');
       useToastStore.getState().show(
         changes > 0 ? `Restored ${changes} change${changes === 1 ? '' : 's'}` : 'Already up to date',

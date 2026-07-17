@@ -1,8 +1,6 @@
 /// <reference lib="webworker" />
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
-import { CacheFirst, NetworkFirst } from 'workbox-strategies';
-import { ExpirationPlugin } from 'workbox-expiration';
 import { createHandlerBoundToURL } from 'workbox-precaching';
 
 declare let self: ServiceWorkerGlobalScope;
@@ -15,31 +13,6 @@ const navigationRoute = new NavigationRoute(handler, {
   denylist: [/^\/_/, /\/[^/?]+\.[^/]+$/],
 });
 registerRoute(navigationRoute);
-
-registerRoute(
-  /^https:\/\/fonts\.googleapis\.com\/.*/i,
-  new CacheFirst({
-    cacheName: 'google-fonts-stylesheets',
-    plugins: [new ExpirationPlugin({ maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 })],
-  }),
-);
-
-registerRoute(
-  /^https:\/\/fonts\.gstatic\.com\/.*/i,
-  new CacheFirst({
-    cacheName: 'google-fonts-webfonts',
-    plugins: [new ExpirationPlugin({ maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 })],
-  }),
-);
-
-registerRoute(
-  /^https:\/\/firestore\.googleapis\.com\/.*/i,
-  new NetworkFirst({
-    cacheName: 'firestore-api',
-    networkTimeoutSeconds: 10,
-    plugins: [new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 })],
-  }),
-);
 
 interface SwReminder {
   noteId: string;
@@ -65,7 +38,7 @@ function scheduleSwReminder(reminder: SwReminder) {
 
   const timerId = setTimeout(() => {
     swTimers.delete(reminder.noteId);
-    void self.registration.showNotification(reminder.title || 'Note reminder', {
+    void self.registration.showNotification(reminder.title || 'Reminder', {
       body: reminder.body || 'You have a note reminder',
       icon: '/icons/icon-192.png',
       tag: `notelikeus-reminder-${reminder.noteId}`,
@@ -89,10 +62,41 @@ function syncSwReminders(reminders: SwReminder[]) {
 }
 
 self.addEventListener('message', (event) => {
+  // Only accept control messages from same-origin window clients (not arbitrary workers).
+  const source = event.source;
+  if (source && 'url' in source) {
+    try {
+      const clientUrl = new URL((source as Client).url);
+      if (clientUrl.origin !== self.location.origin) return;
+    } catch {
+      return;
+    }
+  }
+
   const data = event.data as { type?: string; reminders?: SwReminder[] } | null;
+  if (data?.type === 'SKIP_WAITING') {
+    // Sent by the client's updateSW(true) (see main.tsx's onNeedRefresh). With
+    // injectManifest, Workbox does not inject this call for us — without it, a
+    // waiting worker never activates until every tab for the origin is closed,
+    // so the "Reload" toast wouldn't actually serve the new bundle.
+    void self.skipWaiting();
+    return;
+  }
   if (data?.type === 'SYNC_REMINDERS' && Array.isArray(data.reminders)) {
     syncSwReminders(data.reminders);
   }
+});
+
+self.addEventListener('activate', (event) => {
+  // Drop legacy caches from older SW versions (Firestore API + remote Google Fonts).
+  event.waitUntil(
+    (async () => {
+      await caches.delete('firestore-api');
+      await caches.delete('google-fonts-stylesheets');
+      await caches.delete('google-fonts-webfonts');
+      await self.clients.claim();
+    })(),
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {

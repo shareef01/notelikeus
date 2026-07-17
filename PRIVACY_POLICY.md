@@ -2,12 +2,12 @@
 
 **Last updated:** July 2026
 
-Notelikeus is an offline-first notes application. This policy describes how the app handles information on your device and when you optionally enable cloud sync.
+Notelikeus is an offline-first notes application. This policy describes how the app handles information on your device and when you use cloud sync with Google sign-in.
 
 ## Summary
 
 - Notes are stored **locally on your device** in an encrypted database.
-- **Optional cloud sync** uploads note text to **your Firebase project** when you sign in with Google and choose to sync.
+- **Google sign-in is required.** Cloud sync uploads note text to **your Firebase account** when auto-sync is enabled.
 - Locked notes are **not** uploaded to the cloud.
 - The app does **not** include analytics or advertising SDKs.
 
@@ -19,25 +19,25 @@ The app may store:
 - Labels, checklists, and reminder times
 - Settings (for example dark mode, app lock, and auto-sync preferences)
 
-## Optional cloud sync
+## Cloud sync
 
-If you sign in with Google and use sync:
+When you sign in with Google and use sync:
 
 - Note content (except locked notes) is stored in **Google Firebase Firestore** under your Google account
 - Data is governed by [Google’s privacy policy](https://policies.google.com/privacy) and your Firebase project settings
-- You can sign out in Settings; cloud data remains until you delete it in Firebase or through a future in-app control
+- Signing out **clears local notes on this device** so the next account cannot inherit them; cloud data remains until you delete it (in-app “Sign out and delete cloud data” or Firebase console)
 
 ## Security
 
-- Notes are stored in a **SQLCipher-encrypted** Room database locally.
-- **Biometric lock** (optional) uses your device’s biometric APIs to protect the app or individual notes.
-- Locked notes are not synced to the cloud.
+- **Android:** Notes are stored in a **SQLCipher-encrypted** Room database. Biometric lock (optional) uses the device’s biometric APIs for the app or individual notes.
+- **Web:** Unlocked notes are stored in browser local storage. Hidden (locked) notes encrypt title, body, and checklist at rest (AES-GCM with a device-local key cleared on sign-out).
+- Locked notes are not synced to the cloud on either platform.
 
 ## Permissions
 
 | Permission | Purpose |
 |------------|---------|
-| Internet | Optional Firebase cloud sync |
+| Internet | Firebase auth and cloud sync |
 | Notifications | Deliver reminders you schedule for notes |
 | Biometric | Unlock the app or locked notes when enabled |
 | Exact alarms | Fire reminders at the time you choose |

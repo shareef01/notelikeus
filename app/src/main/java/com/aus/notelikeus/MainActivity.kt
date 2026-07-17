@@ -29,6 +29,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.compose.rememberNavController
+import com.aus.notelikeus.ui.auth.SignInGate
+import com.aus.notelikeus.ui.main.CloudSyncEvent
 import com.aus.notelikeus.ui.main.MainViewModel
 import com.aus.notelikeus.ui.navigation.NavGraph
 import com.aus.notelikeus.ui.navigation.Screen
@@ -114,6 +116,25 @@ class MainActivity : FragmentActivity() {
                 isTrueDarkMode = state.isTrueDarkMode, // Fallback/Legacy
                 useMonochromeTheme = state.useMonochromeTheme
             ) {
+                var gateError by remember { mutableStateOf<String?>(null) }
+                LaunchedEffect(state.pendingCloudSyncEvent) {
+                    when (val event = state.pendingCloudSyncEvent) {
+                        is CloudSyncEvent.Failure -> {
+                            gateError = event.message
+                            viewModel.clearPendingCloudSyncEvent()
+                        }
+                        else -> Unit
+                    }
+                }
+                if (!state.cloudAccount.isGoogleAccount) {
+                    SignInGate(
+                        onIdToken = { viewModel.signInWithGoogleIdToken(it) },
+                        onEmailPassword = { email, password, create ->
+                            viewModel.signInWithEmailPassword(email, password, create)
+                        },
+                        externalError = gateError
+                    )
+                } else {
                 if (showNotificationRationale) {
                     AlertDialog(
                         onDismissRequest = { showNotificationRationale = false },
@@ -179,6 +200,7 @@ class MainActivity : FragmentActivity() {
                         }
                     }
                 }
+                }
             }
         }
     }
@@ -222,7 +244,10 @@ class MainActivity : FragmentActivity() {
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
             .setSubtitle(getString(R.string.authenticate_subtitle))
-            .setNegativeButtonText(getString(R.string.action_cancel))
+            .setAllowedAuthenticators(
+                androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                    androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            )
             .build()
 
         biometricPrompt.authenticate(promptInfo)

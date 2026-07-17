@@ -2,6 +2,7 @@ import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
 import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
 import { useToastStore } from '@/store/toastStore';
 import { LockIcon, LockOpenIcon, TrashIcon, AddIcon } from '@/components/icons/Icons';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { Label } from '@/types/label';
 import { useState } from 'react';
 
@@ -58,6 +59,7 @@ export function EditorOptionsSheet({
 }: EditorOptionsSheetProps) {
   const [newLabel, setNewLabel] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const confirmDeletePanelRef = useFocusTrap<HTMLDivElement>(confirmDelete, () => setConfirmDelete(false));
 
   if (!open) return null;
 
@@ -119,7 +121,7 @@ export function EditorOptionsSheet({
               value={newLabel}
               onChange={(event) => setNewLabel(event.target.value)}
               placeholder="New label"
-              className="min-w-0 flex-1 rounded-note border border-brand-outline bg-true-black px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
+              className="min-w-0 flex-1 rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
             />
             <button
               type="button"
@@ -128,7 +130,7 @@ export function EditorOptionsSheet({
                 onCreateLabel(newLabel);
                 setNewLabel('');
               }}
-              className="flex items-center gap-1 rounded-note bg-brand-primary px-4 py-2 text-sm font-bold text-true-black disabled:opacity-40"
+              className="flex items-center gap-1 rounded-note bg-brand-primary px-4 py-2 text-sm font-bold text-true-surface disabled:opacity-40"
             >
               <AddIcon size={18} />
               Add
@@ -173,7 +175,7 @@ export function EditorOptionsSheet({
             type="datetime-local"
             value={formatReminderInputValue(reminderTimestamp)}
             onChange={(event) => void handleReminderInput(event.target.value)}
-            className="mt-4 w-full rounded-note border border-brand-outline bg-true-black px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
+            className="mt-4 w-full rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
           />
           {reminderTimestamp != null ? (
             <button
@@ -196,7 +198,7 @@ export function EditorOptionsSheet({
             className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-brand-primary transition-colors hover:bg-white/5"
           >
             {isLocked ? <LockOpenIcon size={24} className="text-brand-primary/60" /> : <LockIcon size={24} className="text-brand-primary/60" />}
-            {isLocked ? 'Unlock note' : 'Lock note'}
+            {isLocked ? 'Unhide note' : 'Hide note (this device only)'}
           </button>
           <button
             type="button"
@@ -212,17 +214,23 @@ export function EditorOptionsSheet({
       </ResponsiveSheet>
 
       {confirmDelete ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-[20px] bg-true-surface p-6 shadow-2xl border border-brand-outline">
-            <h4 className="text-lg font-bold">Delete note?</h4>
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 animate-in fade-in duration-200 sm:items-center sm:p-6">
+          <div
+            ref={confirmDeletePanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Delete note?"
+            className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl animate-in zoom-in-95 duration-200"
+          >
+            <h4 className="text-lg font-semibold">Delete note?</h4>
             <p className="mt-2 text-sm text-brand-muted">
               This note will be moved to trash on your synced devices.
             </p>
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setConfirmDelete(false)}
-                className="rounded-note px-4 py-2 text-sm font-medium text-brand-muted hover:text-brand-primary transition-colors"
+                className="rounded-note px-4 py-2 text-sm text-brand-muted transition-colors hover:text-brand-primary"
               >
                 Cancel
               </button>
@@ -233,7 +241,7 @@ export function EditorOptionsSheet({
                   onDeleteNote();
                   onClose();
                 }}
-                className="rounded-note bg-red-600 px-6 py-2 text-sm font-bold text-white transition-transform active:scale-95"
+                className="rounded-note bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700"
               >
                 Delete
               </button>

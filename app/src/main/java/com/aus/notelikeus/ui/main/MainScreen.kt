@@ -128,10 +128,25 @@ fun MainScreen(
         uri?.let {
             scope.launch {
                 val message = when (val result = viewModel.importBackup(context.contentResolver, it)) {
-                    is BackupImportResult.Success -> context.getString(
-                        R.string.import_success,
-                        result.notesImported
-                    )
+                    is BackupImportResult.Success -> {
+                        val successMessage = context.getString(
+                            R.string.import_success,
+                            result.notesImported
+                        )
+                        if (result.notesImported > 0 && state.cloudAccount.isGoogleAccount) {
+                            val snackResult = snackbarHostState.showSnackbar(
+                                message = successMessage,
+                                actionLabel = context.getString(R.string.cloud_sync_now),
+                                duration = SnackbarDuration.Long
+                            )
+                            if (snackResult == SnackbarResult.ActionPerformed) {
+                                viewModel.syncNotesToCloud()
+                            }
+                            null
+                        } else {
+                            successMessage
+                        }
+                    }
                     is BackupImportResult.InvalidFormat -> context.getString(
                         R.string.import_invalid_format,
                         result.message
@@ -139,7 +154,7 @@ fun MainScreen(
                     BackupImportResult.ReadFailed,
                     is BackupImportResult.Error -> context.getString(R.string.import_failed)
                 }
-                snackbarHostState.showSnackbar(message)
+                message?.let { snackbarHostState.showSnackbar(it) }
             }
         }
     }
@@ -410,8 +425,8 @@ fun MainScreen(
                                     Icon(
                                         Icons.Default.Description,
                                         contentDescription = null,
-                                        modifier = Modifier.size(64.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f)
+                                        modifier = Modifier.size(72.dp),
+                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                     Text(
@@ -540,7 +555,10 @@ fun MainScreen(
                             contentColor = MaterialTheme.colorScheme.error
                         )
                     ) {
-                        Text(stringResource(R.string.cloud_sign_out_delete_data))
+                        Text(
+                            stringResource(R.string.cloud_sign_out_delete_data),
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             },

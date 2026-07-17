@@ -1,6 +1,6 @@
 # Notelikeus
 
-A Google Keep–style notes app for **Android** and **web** (PWA). Notes are stored locally with SQLCipher encryption on Android (localStorage on web), with optional cloud sync to your own Firebase account via Google Sign-In.
+A Google Keep–style notes app for **Android** and **web** (PWA). Notes are stored locally with SQLCipher encryption on Android (localStorage on web). Google Sign-In is required; auto-sync to your Firebase account can be toggled in settings.
 
 ## Web PWA
 
@@ -17,7 +17,7 @@ The progressive web app lives in [`web/`](web/) and is hosted at **https://notel
 | Recent search history | Yes |
 | Smart editor (auto bullets, list continue) | Yes |
 | Google Sign-In + real-time Firestore sync | Yes |
-| Guest mode (local only) | Yes |
+| Guest mode (local only) | No — Google sign-in required |
 | JSON backup import/export | Yes |
 | Reminders | Browser + service worker notifications |
 | Offline mode + install prompt | Yes |
@@ -76,13 +76,18 @@ See [`web/README.md`](web/README.md) for full PWA setup and architecture notes.
 
 Install the debug APK from `app/build/outputs/apk/debug/`, or run directly from Android Studio.
 
-## Firebase setup (optional cloud sync)
+## Firebase setup (required for sign-in / sync)
 
 1. Create a Firebase project and add the Android app (`com.aus.notelikeus`).
 2. Download `google-services.json` into `app/`.
 3. Enable **Google** sign-in under Authentication.
 4. Create a **Firestore** database and publish rules from `firestore.rules`.
-5. Add debug and release SHA-1 fingerprints in Firebase project settings.
+5. Add debug and release SHA-1 / SHA-256 fingerprints in Firebase project settings.
+6. (Recommended) Enable **App Check** in Firebase Console:
+   - Android: Play Integrity (release) + debug token for debug builds
+   - Web: reCAPTCHA v3 or Enterprise — set `VITE_APPCHECK_RECAPTCHA_SITE_KEY` (or `_ENTERPRISE_`) in `web/.env`
+   - Keep enforcement **off** until tokens work; then enforce for Auth/Firestore
+7. (Optional) Enable **Email/Password** under Authentication for debug/test login (shown in `npm run dev` and Android debug builds)
 
 Cloud sync uses Firestore only (no Storage) so it fits the **Spark (free)** plan.
 
@@ -92,6 +97,9 @@ Cloud sync uses Firestore only (no Storage) so it fits the **Spark (free)** plan
 # Unit tests
 ./gradlew :app:testDebugUnitTest
 
+# Web unit tests
+cd web && npm test
+```
 # Instrumented tests (device/emulator required)
 ./gradlew :app:connectedDebugAndroidTest
 ```
