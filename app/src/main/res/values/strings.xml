@@ -81,10 +81,13 @@
     <!-- Reminders -->
     <string name="reminder_channel_name">Note Reminders</string>
     <string name="reminder_default_title">Reminder</string>
+    <string name="reminder_default_body">You have a note reminder</string>
     <string name="set_reminder">Set reminder</string>
     <string name="reminder_must_be_future">Choose a date and time in the future</string>
     <string name="reminder_permission_denied">Enable notifications to receive reminders</string>
     <string name="reminder_exact_alarm_hint">Allow alarms for exact reminder timing</string>
+    <string name="reminder_set_confirmation">Reminder set</string>
+    <string name="reminder_removed_confirmation">Reminder removed</string>
     <string name="notification_permission_title">Notifications</string>
     <string name="note_not_found">This note no longer exists</string>
 
@@ -143,9 +146,22 @@
     <string name="cloud_sign_out_success">Signed out</string>
     <string name="cloud_sign_out_deleted_success">Signed out and cloud data deleted</string>
     <string name="cloud_sign_out_confirm_title">Sign out of Google?</string>
-    <string name="cloud_sign_out_confirm_message">Notes on this device are not affected. Copies stored in the cloud remain unless you delete them.</string>
+    <string name="cloud_sign_out_confirm_message">Signing out clears notes on this device so another Google account cannot inherit them. Cloud copies remain unless you delete them. You\'ll need to sign in again to keep using Notelikeus.</string>
     <string name="cloud_sign_out_delete_data">Sign out and delete cloud data</string>
     <string name="cloud_signed_in_as">Signed in</string>
+    <string name="sign_in_gate_title">Sign in to continue</string>
+    <string name="sign_in_gate_subtitle">Notelikeus requires a Google account to back up and sync your notes. Your existing notes on this device are safe and will appear once you sign in.</string>
+    <string name="test_login_title">Test login (debug)</string>
+    <string name="test_login_email">Email</string>
+    <string name="test_login_password">Password</string>
+    <string name="test_login_sign_in">Sign in</string>
+    <string name="test_login_create">Create</string>
+    <string name="test_login_hint">Requires Email/Password enabled in Firebase Authentication.</string>
+    <string name="sign_in_no_play_services">Google Play Services isn\'t available on this device, so sign-in isn\'t possible right now.</string>
+    <string name="sign_in_cancelled">Sign-in was cancelled.</string>
+    <string name="sign_in_network_error">Network error. Check your connection and try again.</string>
+    <string name="sign_in_in_progress">Sign-in is already in progress.</string>
+    <string name="action_retry">Retry</string>
     <string name="cloud_auto_sync">Auto-sync</string>
     <string name="cloud_auto_sync_subtitle">Upload note changes automatically when signed in with Google</string>
     <string name="default_web_client_id">404285880902-cpiu3nj2itndnh0kkouvn374ec5ecl9v.apps.googleusercontent.com</string>
@@ -165,6 +181,7 @@
     <string name="widget_name">Notelikeus widget</string>
     <string name="widget_new">+ New</string>
     <string name="widget_empty">No notes yet</string>
+    <string name="widget_app_locked">Unlock the app to see notes</string>
     <string name="untitled">Untitled</string>
 
     <!-- Accessibility -->

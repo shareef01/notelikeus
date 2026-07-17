@@ -1,8 +1,8 @@
 package com.aus.notelikeus.ui.editor.components
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -58,29 +58,31 @@ fun EditorBottomBar(
         contentPadding = PaddingValues(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
         windowInsets = WindowInsets.navigationBars
     ) {
-        Spacer(modifier = Modifier.weight(1f))
-
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(horizontal = 16.dp)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 16.dp)
         ) {
-            Text(
-                text = editedLabel,
-                style = MaterialTheme.typography.labelMedium,
-                color = contentColor.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center
-            )
-            if (reminderLabel != null) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.align(Alignment.Center)
+            ) {
                 Text(
-                    text = reminderLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = contentColor.copy(alpha = 0.85f),
+                    text = editedLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = contentColor.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center
                 )
+                if (reminderLabel != null) {
+                    Text(
+                        text = reminderLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.85f),
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
         }
-
-        Spacer(modifier = Modifier.weight(1f))
 
         IconButton(onClick = {
             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)

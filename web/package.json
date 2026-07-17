@@ -8,9 +8,11 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
     "deploy": "npm run build && firebase deploy --only hosting,firestore:rules"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
     "firebase": "^11.10.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -21,15 +23,16 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "autoprefixer": "^10.4.21",
+    "happy-dom": "^20.10.6",
     "playwright": "^1.49.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
+    "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
     "vite-plugin-pwa": "^0.21.2",
-    "workbox-expiration": "^7.4.1",
+    "vitest": "^4.1.10",
     "workbox-precaching": "^7.4.1",
-    "workbox-routing": "^7.4.1",
-    "workbox-strategies": "^7.4.1"
+    "workbox-routing": "^7.4.1"
   }
 }

@@ -8,7 +8,7 @@ Progressive Web App twin of the Android Notelikeus client.
 - **Privacy policy** — in-app dialog (web-adapted copy)
 - **Cloud sync** — sync now, restore from cloud, sign-out with optional cloud delete
 - **Backup** — export/import JSON v3 (Android-compatible format)
-- **Guest mode** — notes persist in localStorage without sign-in; merge on first Google sign-in
+- **Auth** — Google sign-in required (no guest mode)
 - **Editor** — markdown toolbar (bold/italic/bullet/link), reminders with browser notifications
 - **PWA icons** — `public/icons/icon-192.png` and `icon-512.png` from Android launcher art
 - **Deploy** — `npm run deploy` from `web/` (Firebase Hosting + Firestore rules)
@@ -65,7 +65,7 @@ Firestore composite index: single-field `timestamp` ordering is automatic. No ex
 ## Step 1 — What's included
 
 - **Vite + React 19 + TypeScript**
-- **Tailwind CSS** — true dark (`#000000`), note palette tokens, Inter typography
+- **Tailwind CSS** — true dark (`#000000`), note palette tokens, self-hosted Inter typography
 - **vite-plugin-pwa / Workbox** — offline asset caching, auto-updating service worker
 - **Firebase v11** — Auth, Firestore (`persistentLocalCache` + multi-tab), Storage SDK
 

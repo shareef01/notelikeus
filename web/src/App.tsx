@@ -1,11 +1,13 @@
-import { useAuthSync } from '@/hooks/useAuth';
+import { useAuthListener, useAuthSync } from '@/hooks/useAuth';
 import { useNotesSync } from '@/hooks/useNotesSync';
 import { isFirebaseConfigured } from '@/lib/config';
 import { MainScreen } from '@/screens/MainScreen';
 import { ThemeApplier } from '@/components/theme/ThemeApplier';
 import { useUiStore } from '@/store/uiStore';
 import { useIsDesktop } from '@/hooks/useMediaQuery';
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
+
+const AUTH_READY_TIMEOUT_MS = 8_000;
 
 const EditorScreen = lazy(() =>
   import('@/screens/EditorScreen').then((module) => ({ default: module.EditorScreen })),
@@ -28,9 +30,21 @@ export default function App() {
   const labelsOpen = useUiStore((s) => s.labelsOpen);
   const setLabelsOpen = useUiStore((s) => s.setLabelsOpen);
   const openNewNote = useUiStore((s) => s.openNewNote);
+  const { user, isReady: authReady } = useAuthListener();
+  const isDesktop = useIsDesktop();
+  const [authTimedOut, setAuthTimedOut] = useState(false);
 
   useAuthSync();
   useNotesSync(firebaseReady);
+
+  useEffect(() => {
+    if (authReady) {
+      setAuthTimedOut(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setAuthTimedOut(true), AUTH_READY_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [authReady]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -42,7 +56,7 @@ export default function App() {
 
   if (!firebaseReady) {
     return (
-      <div className="flex min-h-full items-center justify-center bg-true-black p-6">
+      <div className="flex min-h-full items-center justify-center bg-true-surface p-6">
         <p className="max-w-md rounded-note border border-amber-900/50 bg-amber-950/30 px-4 py-3 text-center text-sm text-amber-200">
           Copy web/.env.example to web/.env and set VITE_FIREBASE_APP_ID from Firebase Console.
         </p>
@@ -50,7 +64,37 @@ export default function App() {
     );
   }
 
-  const isDesktop = useIsDesktop();
+  if (!authReady) {
+    return (
+      <div className="flex min-h-full flex-col items-center justify-center gap-4 bg-true-surface px-6 text-center">
+        <div className="size-8 animate-pulse rounded-full bg-brand-outline/60" aria-hidden />
+        <p className="text-sm text-brand-muted">Checking your sign-in status…</p>
+        {authTimedOut ? (
+          <>
+            <p className="max-w-xs text-xs text-brand-muted">
+              This is taking longer than expected. Your notes on this device are safe either way.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-note border border-brand-outline/50 px-4 py-2 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5"
+            >
+              Reload
+            </button>
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Suspense fallback={null}>
+        <AuthScreen mode="signin" mandatory />
+      </Suspense>
+    );
+  }
+
   const showMobileEditor = !isDesktop && editorMode !== 'closed';
 
   return (
