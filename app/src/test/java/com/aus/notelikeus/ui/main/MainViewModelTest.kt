@@ -64,7 +64,8 @@ class MainViewModelTest {
             mockk<FirebaseSessionManager>(relaxed = true),
             mockk<FirebaseNoteSync>(relaxed = true),
             mockk<GoogleSignInHelper>(relaxed = true),
-            mockk<CloudNoteSyncCoordinator>(relaxed = true)
+            mockk<CloudNoteSyncCoordinator>(relaxed = true),
+            mockk(relaxed = true)
         )
     }
 

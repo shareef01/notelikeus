@@ -121,7 +121,7 @@ fun SwipeableNoteCard(
                             if (isActive) color else Color.Transparent,
                             MaterialTheme.shapes.large
                         )
-                        .padding(horizontal = 24.dp),
+                        .padding(horizontal = 16.dp),
                     contentAlignment = when (direction) {
                         SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
                         SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
