@@ -138,11 +138,8 @@ fun LabelsScreen(
         AlertDialog(
             onDismissRequest = { labelToDelete = null },
             shape = MaterialTheme.shapes.large,
-            title = { 
-                Text(
-                    stringResource(R.string.delete_label_title),
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                ) 
+            title = {
+                Text(stringResource(R.string.delete_label_title))
             },
             text = { Text(stringResource(R.string.delete_label_message)) },
             confirmButton = {
@@ -213,11 +210,8 @@ private fun LabelEditDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = MaterialTheme.shapes.large,
-        title = { 
-            Text(
-                title,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-            ) 
+        title = {
+            Text(title)
         },
         text = {
             OutlinedTextField(
@@ -234,7 +228,7 @@ private fun LabelEditDialog(
                 onClick = { onConfirm(name) },
                 enabled = name.isNotBlank() && name != initialName
             ) {
-                Text(stringResource(R.string.action_ok), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.action_ok))
             }
         },
         dismissButton = {

@@ -12,7 +12,7 @@ import { EmptyTrashDialog } from '@/components/notes/EmptyTrashDialog';
 import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
 import { TrashBanner } from '@/components/notes/TrashBanner';
 
-import { ProfileSheet, THEME_ORDER } from '@/components/settings/ProfileSheet';
+import { ProfileSheet } from '@/components/settings/ProfileSheet';
 
 import { PrivacyPolicyDialog } from '@/components/settings/PrivacyPolicyDialog';
 
@@ -21,8 +21,6 @@ import { SignOutDialog } from '@/components/settings/SignOutDialog';
 import { useAuthListener } from '@/hooks/useAuth';
 
 import { useCloudSync } from '@/hooks/useCloudSync';
-
-import { useEffectiveColumns } from '@/hooks/useEffectiveColumns';
 
 import { useNotes } from '@/hooks/useNotes';
 
@@ -91,6 +89,7 @@ export function MainScreen() {
 
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
 
+  const setViewColumns = useUiStore((s) => s.setViewColumns);
   const cycleViewColumns = useUiStore((s) => s.cycleViewColumns);
 
   const setListScrolled = useUiStore((s) => s.setListScrolled);
@@ -110,12 +109,6 @@ export function MainScreen() {
   const toggleSelectAll = useUiStore((s) => s.toggleSelectAll);
 
   const selectionMode = selectedNoteIds.length > 0;
-
-
-
-  const effectiveColumns = useEffectiveColumns(viewColumns);
-
-
 
   const cloudAutoSyncEnabled = useSettingsStore((s) => s.cloudAutoSyncEnabled);
   const setCloudAutoSyncEnabled = useSettingsStore((s) => s.setCloudAutoSyncEnabled);
@@ -197,7 +190,7 @@ export function MainScreen() {
     (filters.sortOrder ?? 'manual') === 'manual' &&
     !hasActiveFilters &&
     !selectionMode &&
-    effectiveColumns === 1;
+    viewColumns === 1;
 
   const handleNavigateFilter = (filter: NoteFilter) => {
     clearSelection();
@@ -298,9 +291,9 @@ export function MainScreen() {
     const snapshots = getSelectedSnapshots();
     if (snapshots.length === 0) return;
     const pin = !selectionAllPinned;
-    for (const note of snapshots) {
-      await saveNote({ ...note, isPinned: pin, timestamp: Date.now() });
-    }
+    await Promise.all(
+      snapshots.map((note) => saveNote({ ...note, isPinned: pin, timestamp: Date.now() })),
+    );
     clearSelection();
     useToastStore.getState().show(
       `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} ${pin ? 'pinned' : 'unpinned'}`,
@@ -321,16 +314,12 @@ export function MainScreen() {
   const handleBulkArchive = async () => {
     const snapshots = getSelectedSnapshots();
     if (snapshots.length === 0) return;
-    for (const note of snapshots) {
-      await archiveNoteById(note.id);
-    }
+    await Promise.all(snapshots.map((note) => archiveNoteById(note.id)));
     clearSelection();
     showUndoToast({
       message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} archived`,
       revert: async () => {
-        for (const note of snapshots) {
-          await saveNote(note);
-        }
+        await Promise.all(snapshots.map((note) => saveNote(note)));
       },
     });
   };
@@ -338,16 +327,12 @@ export function MainScreen() {
   const handleBulkTrash = async () => {
     const snapshots = getSelectedSnapshots();
     if (snapshots.length === 0) return;
-    for (const note of snapshots) {
-      await trashNoteById(note.id);
-    }
+    await Promise.all(snapshots.map((note) => trashNoteById(note.id)));
     clearSelection();
     showUndoToast({
       message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} moved to trash`,
       revert: async () => {
-        for (const note of snapshots) {
-          await saveNote(note);
-        }
+        await Promise.all(snapshots.map((note) => saveNote(note)));
       },
     });
   };
@@ -355,9 +340,7 @@ export function MainScreen() {
   const handleBulkRestore = async () => {
     const snapshots = getSelectedSnapshots();
     if (snapshots.length === 0) return;
-    for (const note of snapshots) {
-      await restoreNoteById(note.id);
-    }
+    await Promise.all(snapshots.map((note) => restoreNoteById(note.id)));
     clearSelection();
     useToastStore.getState().show(
       `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} restored`,
@@ -368,9 +351,7 @@ export function MainScreen() {
     setShowBulkDeleteConfirm(false);
     const snapshots = getSelectedSnapshots();
     if (snapshots.length === 0) return;
-    for (const note of snapshots) {
-      await removeNote(note.id);
-    }
+    await Promise.all(snapshots.map((note) => removeNote(note.id)));
     clearSelection();
     useToastStore.getState().show(
       `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} deleted permanently`,
@@ -411,66 +392,62 @@ export function MainScreen() {
 
 
 
-  const handleImportBackup = async (file: File) => {
-
+  const handleExportBackup = () => {
     try {
+      exportNotesBackup(notes);
+      const hiddenCount = notes.filter((note) => note.isLocked).length;
+      useToastStore.getState().show(
+        hiddenCount > 0
+          ? `Backup exported — includes ${hiddenCount} hidden note${hiddenCount === 1 ? '' : 's'} in plain text`
+          : 'Backup exported',
+      );
+    } catch (error) {
+      useToastStore.getState().show(
+        error instanceof Error ? error.message : 'Export failed',
+        'error',
+      );
+    }
+  };
 
+  const handleImportBackup = async (file: File) => {
+    try {
       const json = await readBackupFile(file);
-
       const { merged, result } = importNotesFromBackup(json, notes);
-
       useNotesStore.getState().setNotes(merged);
 
-
-
-      if (user?.uid) {
-
-        await uploadAllNotes(user.uid, merged);
-
+      let uploadedToCloud = false;
+      if (user?.uid && result.notesImported > 0) {
+        const shouldUpload = window.confirm(
+          `Imported ${result.notesImported} note${result.notesImported === 1 ? '' : 's'} locally. Upload them to your cloud account now?`,
+        );
+        if (shouldUpload) {
+          await uploadAllNotes(user.uid, merged);
+          uploadedToCloud = true;
+        }
       }
-
-
 
       const parts: string[] = [];
-
       if (result.notesImported > 0) {
-
         parts.push(
-
           `${result.notesImported} note${result.notesImported === 1 ? '' : 's'}`,
-
         );
-
       }
-
       if (result.labelsCreated > 0) {
-
         parts.push(
-
           `${result.labelsCreated} label${result.labelsCreated === 1 ? '' : 's'}`,
-
         );
-
       }
-
+      const base =
+        parts.length > 0 ? `Imported ${parts.join(' and ')}` : 'No notes found in backup';
       useToastStore.getState().show(
-
-        parts.length > 0 ? `Imported ${parts.join(' and ')}` : 'No notes found in backup',
-
+        uploadedToCloud ? `${base} and synced to cloud` : base,
       );
-
     } catch (error) {
-
       useToastStore.getState().show(
-
         error instanceof Error ? error.message : 'Import failed',
-
         'error',
-
       );
-
     }
-
   };
 
 
@@ -479,10 +456,15 @@ export function MainScreen() {
 
   const isDesktop = useIsDesktop();
   const editorRoute = useUiStore((s) => s.editorRoute);
+  const editorLayout = useUiStore((s) => s.editorLayout);
   const desktopEditor = isDesktop && editorRoute.mode !== 'closed' ? editorRoute : null;
+  const dockedEditor =
+    desktopEditor && editorLayout === 'dock' ? desktopEditor : null;
+  const overlayEditor =
+    desktopEditor && editorLayout !== 'dock' ? desktopEditor : null;
 
   return (
-    <div className="flex min-h-screen w-full bg-true-black lg:mx-auto lg:max-w-shell">
+    <div className="flex min-h-screen w-full bg-true-surface lg:mx-auto lg:max-w-shell">
 
       <SideDrawer
 
@@ -511,7 +493,7 @@ export function MainScreen() {
 
 
       <div className="flex min-h-screen min-w-0 flex-1">
-        <div className={`flex flex-col min-w-0 flex-1 transition-all duration-300 ${isDesktop && editorRoute.mode !== 'closed' ? 'max-w-[400px] border-r border-brand-outline' : ''}`}>
+        <div className={`flex flex-col min-w-0 flex-1 transition-all duration-300 ${dockedEditor ? 'max-w-[400px] border-r border-brand-outline' : ''}`}>
           <TopBar
             searchQuery={filters.searchQuery ?? ''}
 
@@ -542,15 +524,10 @@ export function MainScreen() {
           onMenuClick={() => setDrawerOpen(true)}
 
           onProfileClick={() => setShowProfile(true)}
-
-          onViewModeCycle={cycleViewColumns}
-
+          viewColumns={viewColumns}
+          onViewColumnsChange={setViewColumns}
           onNewNote={openNewNote}
-
           showNewNote={filters.filter === 'active'}
-
-          viewColumns={effectiveColumns}
-
           selectionMode={selectionMode}
           selectedCount={selectedNoteIds.length}
           allFilteredSelected={allFilteredSelected}
@@ -599,7 +576,7 @@ export function MainScreen() {
             ) : null}
 
             {isLoading ? (
-              <NotesLoadingGrid columns={effectiveColumns} />
+              <NotesLoadingGrid viewPreference={viewColumns} />
             ) : filteredNotes.length === 0 ? (
 
               <NotesEmptyState
@@ -612,24 +589,7 @@ export function MainScreen() {
                   addRecentSearch(query);
                 }}
                 action={
-                  emptyState.showSignIn ? (
-                    <div className="flex flex-col items-center gap-3 sm:flex-row">
-                      <button
-                        type="button"
-                        onClick={() => openAuthScreen('signin')}
-                        className="rounded-note bg-brand-primary px-5 py-2.5 text-sm font-semibold text-true-black"
-                      >
-                        Sign in
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openAuthScreen('signup')}
-                        className="rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary"
-                      >
-                        Create account
-                      </button>
-                    </div>
-                  ) : emptyState.showClearFilters ? (
+                  emptyState.showClearFilters ? (
                     <button
                       type="button"
                       onClick={clearFilters}
@@ -645,7 +605,7 @@ export function MainScreen() {
             ) : (
               <NoteStaggeredGrid
                 notes={filteredNotes}
-                columns={desktopEditor ? 1 : effectiveColumns}
+                viewPreference={viewColumns}
                 filter={filters.filter}
                 onNoteClick={handleNoteClick}
                 onNoteLongPress={handleNoteLongPress}
@@ -682,7 +642,7 @@ export function MainScreen() {
 
             onClick={openNewNote}
 
-            className="fixed bottom-6 right-6 z-20 flex size-14 items-center justify-center rounded-note bg-brand-primary text-true-black shadow-lg transition-transform hover:scale-105 active:scale-95 pb-safe pr-safe lg:hidden"
+            className="fixed bottom-6 right-6 z-20 flex size-14 items-center justify-center rounded-note bg-brand-primary text-true-surface shadow-lg transition-transform hover:scale-105 active:scale-95 pb-safe pr-safe lg:hidden"
 
             aria-label="Add note"
 
@@ -694,11 +654,18 @@ export function MainScreen() {
         ) : null}
         </div>
 
-        {desktopEditor && (
-          <div className="relative flex-1 bg-true-surface animate-in slide-in-from-right duration-300">
-             <EditorScreen route={desktopEditor} />
+        {dockedEditor ? (
+          // No animate-in here: EditorScreen renders fixed-position descendants
+          // (EditorOptionsSheet, LinkDialog, ReminderPickerDialog), and tailwindcss-animate's
+          // shared `enter` keyframe always applies a transform — even for plain fade-in —
+          // which would make this non-fixed wrapper a containing block for those fixed
+          // descendants for the animation's duration, mispositioning them if opened mid-animation.
+          <div className="relative flex-1 bg-true-surface">
+            <EditorScreen route={dockedEditor} />
           </div>
-        )}
+        ) : null}
+
+        {overlayEditor ? <EditorScreen route={overlayEditor} /> : null}
       </div>
 
 
@@ -716,11 +683,7 @@ export function MainScreen() {
         onViewColumnsCycle={cycleViewColumns}
         onSortOrderCycle={cycleSortOrder}
         appTheme={appTheme}
-        onAppThemeCycle={() => {
-            const currentIdx = THEME_ORDER.indexOf(appTheme);
-            const next = THEME_ORDER[(currentIdx + 1) % THEME_ORDER.length];
-            setAppTheme(next);
-        }}
+        onAppThemeChange={setAppTheme}
         cloudAutoSyncEnabled={cloudAutoSyncEnabled}
 
         onCloudAutoSyncChange={setCloudAutoSyncEnabled}
@@ -737,7 +700,7 @@ export function MainScreen() {
 
         onRestore={() => void cloud.restoreFromCloud()}
 
-        onExportBackup={() => exportNotesBackup(notes)}
+        onExportBackup={handleExportBackup}
 
         onImportBackup={() => backupInputRef.current?.click()}
 
@@ -840,8 +803,6 @@ function getEmptyState(
 
   icon: 'brand' | 'archive' | 'trash';
 
-  showSignIn?: boolean;
-
   showClearFilters?: boolean;
 
 } {
@@ -902,11 +863,9 @@ function getEmptyState(
 
     message: 'Notes you add appear here',
 
-    subtitle: 'Sign in to sync with your Android device',
+    subtitle: 'Synced automatically with your Android device',
 
     icon: 'brand',
-
-    showSignIn: true,
 
   };
 

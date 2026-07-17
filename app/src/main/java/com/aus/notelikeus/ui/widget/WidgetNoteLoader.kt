@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.Configuration
 import androidx.glance.appwidget.updateAll
 import com.aus.notelikeus.R
+import com.aus.notelikeus.data.local.APP_LOCK_ENABLED_KEY
 import com.aus.notelikeus.data.local.TRUE_DARK_MODE_KEY
 import com.aus.notelikeus.data.local.USE_MONOCHROME_THEME_KEY
 import com.aus.notelikeus.data.local.model.NoteWithLabelsAndAttachments
@@ -21,7 +22,13 @@ data class WidgetNote(
 )
 
 object WidgetNoteLoader {
+    suspend fun isAppLockEnabled(context: Context): Boolean {
+        val preferences = context.settingsDataStore.data.first()
+        return preferences[APP_LOCK_ENABLED_KEY] ?: false
+    }
+
     suspend fun loadNotes(context: Context): List<WidgetNote> {
+        if (isAppLockEnabled(context)) return emptyList()
         val entryPoint = EntryPointAccessors.fromApplication(
             context.applicationContext,
             WidgetEntryPoint::class.java

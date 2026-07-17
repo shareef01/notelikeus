@@ -23,11 +23,18 @@ export function contentColorForBackground(argb: number): string {
   return relativeLuminance(argb) > LUMINANCE_THRESHOLD ? LIGHT_TEXT : DARK_TEXT;
 }
 
-export function noteSurfaceStyle(argb: number, _isDark = true): { backgroundColor: string; color: string } {
+export function noteSurfaceStyle(
+  argb: number,
+  options?: { solid?: boolean },
+): { backgroundColor: string; color: string } {
   if (argb === 0) {
     return {
-       backgroundColor: 'rgba(255, 255, 255, 0.05)',
-       color: 'var(--brand-primary)'
+      // Cards use a faint wash on the page; dialogs/shells need an opaque fill
+      // so content behind them (notes board, filters) does not bleed through.
+      backgroundColor: options?.solid
+        ? 'rgb(var(--surface-rgb))'
+        : 'rgba(255, 255, 255, 0.05)',
+      color: 'rgb(var(--primary-rgb))',
     };
   }
   return {

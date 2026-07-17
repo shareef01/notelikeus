@@ -19,6 +19,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.aus.notelikeus.MainActivity
+import com.aus.notelikeus.ui.navigation.markInternalNavigation
 import com.aus.notelikeus.R
 
 private data class WidgetStrings(
@@ -27,7 +28,8 @@ private data class WidgetStrings(
     val empty: String,
     val lockedNote: String,
     val untitled: String,
-    val pinned: String
+    val pinned: String,
+    val appLocked: String
 )
 
 /**
@@ -37,7 +39,12 @@ private data class WidgetStrings(
 class NoteWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val notes = runCatching { WidgetNoteLoader.loadNotes(context) }.getOrDefault(emptyList())
+        val appLocked = runCatching { WidgetNoteLoader.isAppLockEnabled(context) }.getOrDefault(false)
+        val notes = if (appLocked) {
+            emptyList()
+        } else {
+            runCatching { WidgetNoteLoader.loadNotes(context) }.getOrDefault(emptyList())
+        }
         val theme = runCatching { WidgetNoteLoader.loadTheme(context) }.getOrDefault(WidgetThemes.Light)
         val strings = WidgetStrings(
             appName = context.getString(R.string.app_name),
@@ -45,20 +52,21 @@ class NoteWidget : GlanceAppWidget() {
             empty = context.getString(R.string.widget_empty),
             lockedNote = context.getString(R.string.locked_note),
             untitled = context.getString(R.string.untitled),
-            pinned = context.getString(R.string.pinned_short)
+            pinned = context.getString(R.string.pinned_short),
+            appLocked = context.getString(R.string.widget_app_locked)
         )
-
         provideContent {
-            WidgetContent(notes = notes, theme = theme, strings = strings, context = context)
+            WidgetContent(context, notes, theme, strings, appLocked)
         }
     }
 
     @Composable
     private fun WidgetContent(
+        context: Context,
         notes: List<WidgetNote>,
         theme: WidgetThemeColors,
         strings: WidgetStrings,
-        context: Context
+        appLocked: Boolean
     ) {
         Column(
             modifier = GlanceModifier
@@ -80,30 +88,43 @@ class NoteWidget : GlanceAppWidget() {
                     ),
                     modifier = GlanceModifier.fillMaxWidth().then(GlanceModifier.defaultWeight())
                 )
-                Text(
-                    text = strings.newNote,
-                    style = TextStyle(
-                        color = theme.primary,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 14.sp
-                    ),
-                    modifier = GlanceModifier
-                        .cornerRadius(16.dp) // Strict 16.dp Geometry
-                        .background(theme.primaryContainer)
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                        .clickable(
-                            actionStartActivity(
-                                Intent(context, MainActivity::class.java).apply {
-                                    putExtra("createNote", true)
-                                }
+                if (!appLocked) {
+                    Text(
+                        text = strings.newNote,
+                        style = TextStyle(
+                            color = theme.primary,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 14.sp
+                        ),
+                        modifier = GlanceModifier
+                            .cornerRadius(16.dp) // Strict 16.dp Geometry
+                            .background(theme.primaryContainer)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .clickable(
+                                actionStartActivity(
+                                    Intent(context, MainActivity::class.java).apply {
+                                        markInternalNavigation()
+                                        putExtra("createNote", true)
+                                    }
+                                )
                             )
-                        )
-                )
+                    )
+                }
             }
 
             Spacer(modifier = GlanceModifier.height(12.dp))
 
-            if (notes.isEmpty()) {
+            if (appLocked) {
+                Text(
+                    text = strings.appLocked,
+                    style = TextStyle(
+                        color = theme.onSurfaceVariant,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    modifier = GlanceModifier.padding(top = 16.dp)
+                )
+            } else if (notes.isEmpty()) {
                 Text(
                     text = strings.empty,
                     style = TextStyle(
@@ -143,6 +164,7 @@ class NoteWidget : GlanceAppWidget() {
                 .clickable(
                     actionStartActivity(
                         Intent(context, MainActivity::class.java).apply {
+                            markInternalNavigation()
                             putExtra("noteId", note.id)
                         }
                     )
