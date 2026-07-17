@@ -106,6 +106,9 @@ fun EditorScreen(
         }
         viewModel.setReminder(millis)
         showDateTimePicker = false
+        scope.launch {
+            snackbarHostState.showSnackbar(context.getString(R.string.reminder_set_confirmation))
+        }
     }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -397,6 +400,9 @@ fun EditorScreen(
                     onRemove = {
                         viewModel.clearReminder()
                         showDateTimePicker = false
+                        scope.launch {
+                            snackbarHostState.showSnackbar(context.getString(R.string.reminder_removed_confirmation))
+                        }
                     },
                     onDismiss = { showDateTimePicker = false }
                 )

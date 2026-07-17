@@ -2,8 +2,83 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isValidNote() {
+      let data = request.resource.data;
+      return data.keys().hasAll([
+          'localId', 'title', 'content', 'timestamp', 'color',
+          'isPinned', 'isArchived', 'isTrashed', 'isLocked',
+          'position', 'labels', 'checklist'
+        ])
+        && data.localId is number
+        && data.title is string
+        && data.content is string
+        && data.title.size() <= 2000
+        && data.content.size() <= 100000
+        && data.timestamp is number
+        && data.color is int
+        && data.isPinned is bool
+        && data.isArchived is bool
+        && data.isTrashed is bool
+        && data.isLocked is bool
+        && data.position is int
+        && (!('reminderTimestamp' in data)
+          || data.reminderTimestamp == null
+          || data.reminderTimestamp is number)
+        && data.labels is list
+        && data.labels.size() <= 100
+        && data.checklist is list
+        && data.checklist.size() <= 500
+        && (!('attachments' in data)
+          || (data.attachments is list && data.attachments.size() <= 50));
+    }
+
+    function isValidSyncMeta() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['lastSyncAt', 'noteCount', 'platform'])
+        && (data.lastSyncAt is number || data.lastSyncAt is timestamp)
+        && data.noteCount is int
+        && data.noteCount >= 0
+        && data.noteCount <= 100000
+        && data.platform is string
+        && data.platform in ['android', 'web'];
+    }
+
+    function isValidConnectionMeta() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['connectedAt', 'platform'])
+        && data.connectedAt is number
+        && data.platform is string
+        && data.platform == 'android';
+    }
+
+    match /users/{userId} {
+      allow read, write: if false;
+
+      match /notes/{noteId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidNote();
+        allow delete: if isOwner(userId);
+      }
+
+      match /tombstones/{noteId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.keys().hasAll(['deletedAt'])
+          && request.resource.data.deletedAt is number;
+        allow delete: if isOwner(userId);
+      }
+
+      match /_meta/{docId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && ((docId == 'sync' && isValidSyncMeta())
+            || (docId == 'connection' && isValidConnectionMeta()));
+        allow delete: if isOwner(userId) && docId in ['sync', 'connection'];
+      }
     }
   }
 }

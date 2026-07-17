@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import type { Note, NoteQueryFilters } from '@/types/note';
 import { notesContentEqual, notesEqual } from '@/lib/notes/noteEquality';
+import { notesFromPersisted, notesToPersisted } from '@/lib/crypto/notesPersistCrypto';
 
 export type NotesLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -25,6 +26,37 @@ const defaultFilters: NoteQueryFilters = {
   colorArgb: null,
   labelName: null,
   sortOrder: 'manual',
+};
+
+/** Encrypts locked note secrets on write; decrypts on read. */
+const lockedNotesStorage = {
+  getItem: async (name: string): Promise<string | null> => {
+    const raw = localStorage.getItem(name);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as { state?: { notes?: unknown } };
+      if (Array.isArray(parsed?.state?.notes)) {
+        parsed.state!.notes = await notesFromPersisted(parsed.state!.notes as never);
+      }
+      return JSON.stringify(parsed);
+    } catch {
+      return raw;
+    }
+  },
+  setItem: async (name: string, value: string): Promise<void> => {
+    try {
+      const parsed = JSON.parse(value) as { state?: { notes?: Note[] } };
+      if (Array.isArray(parsed?.state?.notes)) {
+        parsed.state!.notes = (await notesToPersisted(parsed.state!.notes)) as never;
+      }
+      localStorage.setItem(name, JSON.stringify(parsed));
+    } catch {
+      localStorage.setItem(name, value);
+    }
+  },
+  removeItem: async (name: string): Promise<void> => {
+    localStorage.removeItem(name);
+  },
 };
 
 export const useNotesStore = create<NotesState>()(
@@ -84,6 +116,7 @@ export const useNotesStore = create<NotesState>()(
       name: 'notelikeus-notes',
       partialize: (state) => ({ notes: state.notes, filters: state.filters }),
       skipHydration: true,
+      storage: createJSONStorage(() => lockedNotesStorage),
     },
   ),
 );

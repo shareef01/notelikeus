@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { toSafeHref } from '@/lib/text/markdown';
 
 interface MarkdownBodyProps {
   text: string;
@@ -34,7 +35,7 @@ function renderInline(text: string, contentColor: string, keyPrefix: string): Re
       nodes.push(
         <a
           key={`${keyPrefix}-l-${index}`}
-          href={match[5]}
+          href={toSafeHref(match[5])}
           target="_blank"
           rel="noopener noreferrer"
           className="underline"
@@ -62,7 +63,7 @@ export function MarkdownBody({ text, contentColor, className = '' }: MarkdownBod
 
   return (
     <div
-      className={`whitespace-pre-wrap break-words text-[16px] leading-[1.4] ${className}`}
+      className={`whitespace-pre-wrap break-words text-[16px] leading-[1.55] tracking-[0.01em] ${className}`}
       style={{ color: contentColor }}
     >
       {text.split('\n').map((line, lineIndex) => {

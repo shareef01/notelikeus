@@ -139,7 +139,7 @@ export function SideDrawer({
               <button
                 type="button"
                 onClick={onSignOut}
-                className="w-full rounded-note border border-brand-outline bg-true-black px-4 py-2.5 text-sm font-bold text-brand-primary transition-colors hover:bg-white/5"
+                className="w-full rounded-note border border-brand-outline bg-true-surface-variant px-4 py-2.5 text-sm font-bold text-brand-primary transition-colors hover:bg-white/5"
               >
                 Sign out
               </button>
@@ -148,7 +148,7 @@ export function SideDrawer({
             <button
               type="button"
               onClick={onSignIn}
-              className="w-full rounded-note bg-brand-primary px-4 py-2.5 text-sm font-bold text-true-black transition-transform active:scale-95"
+              className="w-full rounded-note bg-brand-primary px-4 py-2.5 text-sm font-bold text-true-surface transition-transform active:scale-95"
             >
               Sign in with Google
             </button>

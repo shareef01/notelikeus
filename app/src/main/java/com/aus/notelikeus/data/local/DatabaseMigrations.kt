@@ -77,5 +77,43 @@ object DatabaseMigrations {
         }
     }
 
-    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    /**
+     * MIGRATION_1_2's raw SQL declared FOREIGN KEYs on note_label_cross_ref, but the Room
+     * entity never carried @ForeignKey annotations — so installs that ran that migration
+     * ended up with FK constraints Room's own schema validation didn't expect, crashing on
+     * every launch after an app update. This migration unconditionally recreates the table
+     * to the schema now declared on NoteLabelCrossRef (with FKs), converging both that path
+     * and any "clean" v4 install (which never had FKs) to the same schema. The copy also
+     * drops any already-orphaned rows left behind by the missing cascade.
+     */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("DROP TABLE IF EXISTS note_label_cross_ref_new")
+            db.execSQL(
+                """
+                CREATE TABLE note_label_cross_ref_new (
+                    noteId INTEGER NOT NULL,
+                    labelId INTEGER NOT NULL,
+                    PRIMARY KEY(noteId, labelId),
+                    FOREIGN KEY(noteId) REFERENCES notes(id) ON DELETE CASCADE,
+                    FOREIGN KEY(labelId) REFERENCES labels(id) ON DELETE CASCADE
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO note_label_cross_ref_new (noteId, labelId)
+                SELECT noteId, labelId FROM note_label_cross_ref
+                WHERE noteId IN (SELECT id FROM notes) AND labelId IN (SELECT id FROM labels)
+                """.trimIndent()
+            )
+            db.execSQL("DROP TABLE note_label_cross_ref")
+            db.execSQL("ALTER TABLE note_label_cross_ref_new RENAME TO note_label_cross_ref")
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_note_label_cross_ref_labelId ON note_label_cross_ref(labelId)"
+            )
+        }
+    }
+
+    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

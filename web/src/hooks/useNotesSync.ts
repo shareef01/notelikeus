@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { clearLocalUserData } from '@/lib/bootstrap';
 import {
   mergeCloudNotesOnce,
   resetCloudMergeState,
@@ -28,6 +29,11 @@ export function useNotesSync(enabled: boolean) {
 
     const bootstrap = async () => {
       if (lastMergedRef.current !== userId) {
+        // Account switch without a clean sign-out — drop prior user's local data first.
+        if (lastMergedRef.current != null) {
+          clearLocalUserData();
+          resetCloudMergeState();
+        }
         await mergeCloudNotesOnce(userId);
         if (cancelled) return;
         lastMergedRef.current = userId;
