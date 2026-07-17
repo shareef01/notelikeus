@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface ReminderPickerDialogProps {
   open: boolean;
@@ -29,6 +30,7 @@ export function ReminderPickerDialog({
   onRemove,
 }: ReminderPickerDialogProps) {
   const [value, setValue] = useState(toInputValue(initialTimestamp));
+  const panelRef = useFocusTrap<HTMLDivElement>(open, onCancel);
 
   useEffect(() => {
     if (open) setValue(toInputValue(initialTimestamp));
@@ -37,8 +39,14 @@ export function ReminderPickerDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 sm:items-center sm:p-6">
-      <div className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 animate-in fade-in duration-200 sm:items-center sm:p-6">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Set reminder"
+        className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl animate-in zoom-in-95 duration-200"
+      >
         <h4 className="text-lg font-semibold">Set reminder</h4>
         <input
           type="datetime-local"
@@ -51,7 +59,7 @@ export function ReminderPickerDialog({
             <button
               type="button"
               onClick={onRemove}
-              className="mr-auto rounded-note px-4 py-2 text-sm text-red-400"
+              className="mr-auto rounded-note px-4 py-2 text-sm text-red-400 transition-colors hover:bg-red-950/30"
             >
               Remove
             </button>
@@ -59,7 +67,7 @@ export function ReminderPickerDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-note px-4 py-2 text-sm text-brand-muted"
+            className="rounded-note px-4 py-2 text-sm text-brand-muted transition-colors hover:text-brand-primary"
           >
             Cancel
           </button>
@@ -67,7 +75,7 @@ export function ReminderPickerDialog({
             type="button"
             onClick={() => onConfirm(new Date(value).getTime())}
             disabled={!value}
-            className="rounded-note bg-brand-primary px-4 py-2 text-sm font-semibold text-true-black disabled:opacity-40"
+            className="rounded-note bg-brand-primary px-4 py-2 text-sm font-semibold text-true-surface transition-transform disabled:opacity-40 active:scale-95"
           >
             Set
           </button>

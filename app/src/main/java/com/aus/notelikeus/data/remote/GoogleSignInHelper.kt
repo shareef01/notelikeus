@@ -6,6 +6,8 @@ import com.aus.notelikeus.R
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.common.api.ApiException
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.tasks.await
@@ -23,6 +25,12 @@ class GoogleSignInHelper @Inject constructor(
             .requestEmail()
             .build()
         GoogleSignIn.getClient(context, options)
+    }
+
+    /** True if Google Play Services is present and usable; false means sign-in can't work at all. */
+    fun isPlayServicesAvailable(): Boolean {
+        val availability = GoogleApiAvailability.getInstance()
+        return availability.isGooglePlayServicesAvailable(context) == ConnectionResult.SUCCESS
     }
 
     fun getSignInIntent(): Intent = googleSignInClient.signInIntent

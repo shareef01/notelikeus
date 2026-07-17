@@ -1,5 +1,6 @@
 import {
   deleteDoc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -23,10 +24,18 @@ import {
   userNoteDocument,
   userNotesCollection,
   userSyncMetaDocument,
+  userTombstoneDocument,
+  userTombstonesCollection,
 } from '@/lib/firestore/paths';
 import type { Label } from '@/types/label';
 import type { Note } from '@/types/note';
 import { isCloudSyncEligible } from '@/types/note';
+import { useTombstoneStore } from '@/store/tombstoneStore';
+import {
+  fetchCloudTombstones,
+  pruneExpiredCloudTombstones,
+  writeCloudTombstone,
+} from '@/lib/firestore/tombstones';
 
 const BATCH_LIMIT = 400;
 
@@ -69,9 +78,23 @@ export function subscribeToNotes(
 }
 
 export async function upsertNote(userId: string, note: Note): Promise<void> {
-  const payload = noteToFirestorePayload(note);
+  const tombstoneSnap = await getDoc(userTombstoneDocument(userId, note.id));
+  if (tombstoneSnap.exists()) {
+    const raw = tombstoneSnap.data()?.deletedAt;
+    const deletedAt =
+      typeof raw === 'number' && Number.isFinite(raw) ? raw : Date.now();
+    useTombstoneStore.getState().mergeFromCloud({ [note.id]: deletedAt });
+  }
+
   const ref = userNoteDocument(userId, note.id);
+  if (useTombstoneStore.getState().isDeleted(note.id)) {
+    await deleteDoc(ref);
+    return;
+  }
+
+  const payload = noteToFirestorePayload(note);
   if (!payload) {
+    // Locked / ineligible: drop cloud copy without a tombstone so unlock can re-upload.
     await deleteDoc(ref);
     return;
   }
@@ -79,19 +102,31 @@ export async function upsertNote(userId: string, note: Note): Promise<void> {
 }
 
 export async function deleteNote(userId: string, noteId: string): Promise<void> {
+  await writeCloudTombstone(userId, noteId);
   await deleteDoc(userNoteDocument(userId, noteId));
 }
 
 export async function uploadAllNotes(userId: string, notes: Note[]): Promise<number> {
-  const eligible = notes.filter(isCloudSyncEligible);
+  const cloudTombstones = await fetchCloudTombstones(userId);
+  useTombstoneStore.getState().mergeFromCloud(cloudTombstones);
+  const isDeleted = (id: string) => useTombstoneStore.getState().isDeleted(id);
+  const eligible = notes.filter((note) => isCloudSyncEligible(note) && !isDeleted(note.id));
   if (eligible.length === 0) {
     await setDoc(userSyncMetaDocument(userId), syncMetaMap(0, 'web'), { merge: true });
     return 0;
   }
 
+  const remoteNotes = await fetchRemoteNotes(userId);
+  const remoteById = new Map(remoteNotes.map((note) => [note.id, note]));
+
+  const toUpload = eligible.filter((note) => {
+    const remote = remoteById.get(note.id);
+    return !remote || note.timestamp >= remote.timestamp;
+  });
+
   const db = getFirestoreDb();
-  for (let i = 0; i < eligible.length; i += BATCH_LIMIT) {
-    const chunk = eligible.slice(i, i + BATCH_LIMIT);
+  for (let i = 0; i < toUpload.length; i += BATCH_LIMIT) {
+    const chunk = toUpload.slice(i, i + BATCH_LIMIT);
     const batch = writeBatch(db);
     for (const note of chunk) {
       const payload = noteToCloudMap(note);
@@ -101,7 +136,7 @@ export async function uploadAllNotes(userId: string, notes: Note[]): Promise<num
   }
 
   await setDoc(userSyncMetaDocument(userId), syncMetaMap(eligible.length, 'web'), { merge: true });
-  return eligible.length;
+  return toUpload.length;
 }
 
 /**
@@ -139,6 +174,16 @@ export async function deleteAllCloudData(userId: string): Promise<number> {
     await batch.commit();
   }
 
+  const tombstones = await getDocs(userTombstonesCollection(userId));
+  for (let i = 0; i < tombstones.docs.length; i += BATCH_LIMIT) {
+    const chunk = tombstones.docs.slice(i, i + BATCH_LIMIT);
+    const batch = writeBatch(getFirestoreDb());
+    for (const document of chunk) {
+      batch.delete(document.ref);
+    }
+    await batch.commit();
+  }
+
   await deleteDoc(userSyncMetaDocument(userId)).catch(() => undefined);
   return deleted;
 }
@@ -165,13 +210,19 @@ export async function syncNotesWithCloud(
   userId: string,
   localNotes: Note[],
 ): Promise<{ changes: number; merged: Note[]; remoteIds: string[] }> {
+  const cloudTombstones = await fetchCloudTombstones(userId);
+  useTombstoneStore.getState().mergeFromCloud(cloudTombstones);
+
   const remoteNotes = await fetchRemoteNotes(userId);
   const cloudIds = new Set(remoteNotes.map((note) => note.id));
+  const isDeleted = (id: string) => useTombstoneStore.getState().isDeleted(id);
   let changes = 0;
 
   let merged = await mergeRemoteNotes(localNotes, remoteNotes);
+  merged = merged.filter((note) => !isDeleted(note.id));
 
   for (const localNote of localNotes.filter(isCloudSyncEligible)) {
+    if (isDeleted(localNote.id)) continue;
     const remote = remoteNotes.find((note) => note.id === localNote.id);
     if (!cloudIds.has(localNote.id)) {
       await upsertNote(userId, localNote);
@@ -186,10 +237,21 @@ export async function syncNotesWithCloud(
   }
 
   for (const remoteNote of remoteNotes) {
+    if (isDeleted(remoteNote.id)) continue;
     if (!merged.some((note) => note.id === remoteNote.id)) {
       merged.push(remoteNote);
       changes++;
     }
+  }
+
+  const liveIds = new Set(merged.map((note) => note.id));
+  const pruned = await pruneExpiredCloudTombstones(
+    userId,
+    useTombstoneStore.getState().deletedAtById,
+    liveIds,
+  );
+  if (pruned.length > 0) {
+    useTombstoneStore.getState().clearIds(pruned);
   }
 
   await touchSyncMeta(userId, merged.filter(isCloudSyncEligible).length);

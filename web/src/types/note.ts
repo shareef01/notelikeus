@@ -68,7 +68,21 @@ export function createEmptyNote(partial: Partial<Note> & Pick<Note, 'localId' | 
 
 export function allocateLocalNoteId(existing: Note[]): number {
   const maxId = existing.reduce((max, note) => Math.max(max, note.localId), 0);
-  const candidate = Date.now();
+  return nextLocalNoteIdAfter(maxId);
+}
+
+/**
+ * Same allocation rule as {@link allocateLocalNoteId}, but takes the current max directly
+ * instead of rescanning a notes array — lets callers that allocate many ids in a row (e.g.
+ * backup import) track a running max instead of an O(n) scan per id.
+ */
+export function nextLocalNoteIdAfter(maxId: number): number {
+  // A bare Date.now() can collide when two tabs/windows each create their first note
+  // within the same millisecond (both compute maxId=0 and the same candidate), silently
+  // clobbering one note's cloud document. The random suffix makes that require the same
+  // millisecond AND the same 1-in-1000 draw.
+  const randomSuffix = Math.floor(Math.random() * 1000);
+  const candidate = Date.now() * 1000 + randomSuffix;
   return Math.max(maxId + 1, candidate);
 }
 
@@ -81,6 +95,8 @@ export function filterNotes(notes: Note[], filters: NoteQueryFilters): Note[] {
     if (filters.colorArgb != null && !noteColorsMatch(note.color, filters.colorArgb)) return false;
     if (filters.labelName && !note.labels.some((l) => l.name === filters.labelName)) return false;
     if (!query) return true;
+    // Locked notes stay visible in the list but must not match on plaintext content.
+    if (note.isLocked) return false;
     const inTitle = note.title.toLowerCase().includes(query);
     const inContent = note.content.toLowerCase().includes(query);
     const inChecklist = note.checklist.some((item) => item.text.toLowerCase().includes(query));

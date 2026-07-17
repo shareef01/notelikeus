@@ -6,18 +6,29 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], application = android.app.Application::class)
 class NavigationIntentsTest {
 
     @Test
-    fun `extractEditorNoteId reads noteId extra`() {
-        val intent = Intent().putExtra("noteId", 42L)
+    fun `extractEditorNoteId reads noteId extra when marked internal`() {
+        val intent = Intent().markInternalNavigation().putExtra("noteId", 42L)
         assertEquals(42L, extractEditorNoteId(intent))
     }
 
     @Test
-    fun `extractEditorNoteId reads editor deep link uri`() {
-        val intent = Intent().apply {
+    fun `extractEditorNoteId ignores unmarked external noteId extra`() {
+        val intent = Intent().putExtra("noteId", 42L)
+        assertNull(extractEditorNoteId(intent))
+    }
+
+    @Test
+    fun `extractEditorNoteId reads editor deep link uri when marked internal`() {
+        val intent = Intent().markInternalNavigation().apply {
             data = android.net.Uri.parse("notelikeus://editor/99")
         }
         assertEquals(99L, extractEditorNoteId(intent))
@@ -29,8 +40,9 @@ class NavigationIntentsTest {
     }
 
     @Test
-    fun `intentRequestsNewNote detects create flag`() {
-        assertTrue(intentRequestsNewNote(Intent().putExtra("createNote", true)))
+    fun `intentRequestsNewNote detects create flag only when internal`() {
+        assertTrue(intentRequestsNewNote(Intent().markInternalNavigation().putExtra("createNote", true)))
+        assertFalse(intentRequestsNewNote(Intent().putExtra("createNote", true)))
         assertFalse(intentRequestsNewNote(Intent()))
     }
 }

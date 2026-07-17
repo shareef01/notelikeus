@@ -1,6 +1,18 @@
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEffect } from 'react';
 
+const THEME_CLASSES = [
+  'theme-light',
+  'theme-dark',
+  'theme-true-dark',
+  'theme-midnight',
+  'theme-forest',
+] as const;
+
+function themeClassName(theme: string): string {
+  return `theme-${theme.replaceAll('_', '-')}`;
+}
+
 /** Applies persisted appearance settings to the document root. */
 export function ThemeApplier() {
   const appTheme = useSettingsStore((s) => s.appTheme);
@@ -8,17 +20,29 @@ export function ThemeApplier() {
   useEffect(() => {
     const root = document.documentElement;
 
-    // Clear existing theme classes
-    root.classList.remove('theme-light', 'theme-dark', 'theme-true-dark', 'theme-midnight', 'theme-forest');
+    const apply = () => {
+      root.classList.remove(...THEME_CLASSES);
 
-    if (appTheme === 'auto') {
-        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        root.classList.add(isDark ? 'theme-true-dark' : 'theme-light');
-        root.classList.toggle('dark', isDark);
-    } else {
-        root.classList.add(`theme-${appTheme.replace('_', '-')}`);
-        root.classList.toggle('dark', appTheme !== 'light');
-    }
+      let effective = appTheme;
+      let isDark = appTheme !== 'light';
+
+      if (appTheme === 'auto') {
+        isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        effective = isDark ? 'true_dark' : 'light';
+      }
+
+      root.classList.add(themeClassName(effective));
+      root.classList.toggle('dark', isDark);
+    };
+
+    apply();
+
+    if (appTheme !== 'auto') return;
+
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => apply();
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
   }, [appTheme]);
 
   return null;

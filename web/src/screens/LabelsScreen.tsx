@@ -40,7 +40,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-true-black animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-50 flex flex-col bg-true-surface animate-in fade-in duration-300">
       <header className="flex items-center justify-between px-4 py-4 lg:px-6">
         <h2 className="text-xl font-bold tracking-tight text-brand-primary">Edit labels</h2>
         <button

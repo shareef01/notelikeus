@@ -24,13 +24,23 @@ class ReminderBootReceiver : BroadcastReceiver() {
                 val now = System.currentTimeMillis()
                 repository.getNotesWithActiveReminders(now).forEach { note ->
                     val noteId = note.id ?: return@forEach
+                    if (note.isLocked) return@forEach
                     val timestamp = note.reminderTimestamp ?: return@forEach
                     reminderScheduler.scheduleReminder(
                         noteId = noteId,
-                        title = note.title,
-                        content = note.content,
                         timestamp = timestamp
                     )
+                }
+                // Reminders due while the device was off never fire and, left alone, keep
+                // showing as "active" forever since nothing else clears them. Fire a catch-up
+                // notification for each and clear the timestamp so the note's reminder state
+                // reflects reality again.
+                repository.getNotesWithMissedReminders(now).forEach { note ->
+                    val noteId = note.id ?: return@forEach
+                    if (!note.isLocked) {
+                        ReminderReceiver.showReminderNotification(context, noteId)
+                    }
+                    repository.clearReminderTimestamp(noteId)
                 }
             } finally {
                 pendingResult.finish()

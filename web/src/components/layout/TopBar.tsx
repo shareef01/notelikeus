@@ -1,7 +1,8 @@
-import { BrandMark } from '@/components/brand/BrandMark';
 import { FilterRow } from '@/components/layout/FilterRow';
 import { SelectionBar } from '@/components/layout/SelectionBar';
-import { AddIcon, CloseIcon, GridViewIcon, MenuIcon } from '@/components/icons/Icons';
+import { ViewModeToggle } from '@/components/layout/ViewModeToggle';
+import { AddIcon, CloseIcon, MenuIcon, SettingsIcon } from '@/components/icons/Icons';
+import type { ViewColumns } from '@/store/uiStore';
 import type { Label } from '@/types/label';
 import type { NoteFilter } from '@/types/note';
 import { useState, useRef } from 'react';
@@ -28,9 +29,9 @@ interface TopBarProps {
   onClearFilters: () => void;
   onMenuClick: () => void;
   onProfileClick: () => void;
-  onViewModeCycle: () => void;
+  viewColumns: ViewColumns;
+  onViewColumnsChange: (columns: ViewColumns) => void;
   onNewNote?: () => void;
-  viewColumns: number;
   showNewNote?: boolean;
   selectionMode?: boolean;
   selectedCount?: number;
@@ -48,10 +49,6 @@ interface TopBarProps {
   onClearRecentSearches?: () => void;
 }
 
-/**
- * Top Bar Refinement
- * Implements "Recent Searches" logic synchronized with Android Elite standards.
- */
 export function TopBar({
   searchQuery,
   onSearchQueryChange,
@@ -68,9 +65,9 @@ export function TopBar({
   onClearFilters,
   onMenuClick,
   onProfileClick,
-  onViewModeCycle,
-  onNewNote,
   viewColumns,
+  onViewColumnsChange,
+  onNewNote,
   showNewNote = false,
   selectionMode = false,
   selectedCount = 0,
@@ -91,10 +88,7 @@ export function TopBar({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const showRecent =
-    !selectionMode &&
-    isSearchFocused &&
-    recentSearches.length > 0 &&
-    !searchQuery;
+    !selectionMode && isSearchFocused && recentSearches.length > 0 && !searchQuery;
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,7 +100,7 @@ export function TopBar({
 
   return (
     <header
-      className={`sticky top-0 z-30 bg-true-black transition-shadow ${
+      className={`sticky top-0 z-30 bg-true-surface transition-shadow ${
         listScrolled ? 'shadow-header-scroll' : ''
       }`}
     >
@@ -126,101 +120,94 @@ export function TopBar({
             onPermanentDelete={onBulkPermanentDelete}
           />
         ) : (
-        <div className="flex h-14 items-center gap-2 pt-safe sm:h-16 sm:gap-3">
-          <button
-            type="button"
-            onClick={onMenuClick}
-            className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 lg:hidden"
-            aria-label="Open menu"
-          >
-            <MenuIcon size={22} />
-          </button>
-
-          <form
-            onSubmit={handleSearchSubmit}
-            className="flex h-11 min-w-0 flex-1 items-center gap-1 rounded-full bg-true-surface-variant/70 px-1 sm:h-12"
-          >
-            <input
-              ref={searchInputRef}
-              type="search"
-              value={searchQuery}
-              onChange={(event) => onSearchQueryChange(event.target.value)}
-              onFocus={() => setIsSearchFocused(true)}
-              onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-              placeholder={SEARCH_PLACEHOLDERS[currentFilter]}
-              className="min-w-0 flex-1 bg-transparent px-2 text-base text-brand-primary outline-none placeholder:text-brand-muted/60 sm:px-3"
-              aria-label={SEARCH_PLACEHOLDERS[currentFilter]}
-            />
-
-            {searchQuery ? (
-              <button
-                type="button"
-                onClick={() => onSearchQueryChange('')}
-                className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5"
-                aria-label="Clear search"
-              >
-                <CloseIcon size={20} />
-              </button>
-            ) : null}
-
+          <div className="flex h-14 items-center gap-2 pt-safe sm:h-16 sm:gap-3">
             <button
               type="button"
-              onClick={onViewModeCycle}
-              className="hidden size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 sm:flex"
-              aria-label={`View mode: ${viewColumns} column${viewColumns > 1 ? 's' : ''}`}
+              onClick={onMenuClick}
+              className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 lg:hidden"
+              aria-label="Open menu"
             >
-              <GridViewIcon size={20} />
+              <MenuIcon size={22} />
             </button>
+
+            <form
+              onSubmit={handleSearchSubmit}
+              className="flex h-11 min-w-0 flex-1 items-center rounded-full bg-true-surface-variant/70 px-1 sm:h-12"
+            >
+              <input
+                ref={searchInputRef}
+                type="search"
+                value={searchQuery}
+                onChange={(event) => onSearchQueryChange(event.target.value)}
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+                placeholder={SEARCH_PLACEHOLDERS[currentFilter]}
+                className="min-w-0 flex-1 bg-transparent px-3 text-base text-brand-primary outline-none placeholder:text-brand-muted/60 sm:px-4"
+                aria-label={SEARCH_PLACEHOLDERS[currentFilter]}
+              />
+
+              {searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => onSearchQueryChange('')}
+                  className="mr-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5"
+                  aria-label="Clear search"
+                >
+                  <CloseIcon size={18} />
+                </button>
+              ) : null}
+            </form>
+
+            <ViewModeToggle value={viewColumns} onChange={onViewColumnsChange} />
 
             <button
               type="button"
               onClick={onProfileClick}
-              className="mr-0.5 flex size-10 shrink-0 items-center justify-center"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-white/5 hover:text-brand-primary"
               aria-label="Open settings"
             >
-              <BrandMark size={36} />
+              <SettingsIcon size={22} />
             </button>
-          </form>
 
-          {showNewNote && onNewNote ? (
-            <button
-              type="button"
-              onClick={onNewNote}
-              className="hidden shrink-0 items-center gap-2 rounded-note bg-brand-primary px-4 py-2.5 text-sm font-semibold text-true-black lg:flex"
-            >
-              <AddIcon size={18} />
-              New note
-            </button>
-          ) : null}
-        </div>
+            {showNewNote && onNewNote ? (
+              <button
+                type="button"
+                onClick={onNewNote}
+                className="hidden shrink-0 items-center gap-2 rounded-note bg-brand-primary px-4 py-2.5 text-sm font-semibold text-true-surface lg:flex"
+              >
+                <AddIcon size={18} />
+                New note
+              </button>
+            ) : null}
+          </div>
         )}
       </div>
 
       <div className="mx-auto w-full max-w-content overflow-hidden">
         {showRecent ? (
           <div className="flex items-center gap-2 px-4 py-2 animate-in slide-in-from-top-2">
-            <span className="text-brand-muted/50">🕒</span>
+            <span className="text-xs font-medium text-brand-muted">Recent</span>
             <div className="flex flex-1 gap-2 overflow-x-auto scrollbar-none py-1">
               {recentSearches.map((query) => (
                 <button
                   key={query}
                   type="button"
                   onClick={() => onRecentSearchClick?.(query)}
-                  className="whitespace-nowrap rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
+                  className="whitespace-nowrap rounded-full border border-brand-outline/50 px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
                 >
                   {query}
                 </button>
               ))}
             </div>
-            {onClearRecentSearches && (
+            {onClearRecentSearches ? (
               <button
                 type="button"
                 onClick={onClearRecentSearches}
-                className="px-2 text-xs font-bold text-brand-primary/80 hover:text-brand-primary"
+                className="px-2 text-xs font-semibold text-brand-primary/80 hover:text-brand-primary"
               >
                 Clear
               </button>
-            )}
+            ) : null}
           </div>
         ) : !selectionMode ? (
           <FilterRow

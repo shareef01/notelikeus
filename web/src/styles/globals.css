@@ -2,54 +2,62 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #F7F7F7;
-  --surface: #FFFFFF;
-  --surface-variant: #EFEFEF;
-  --primary: #000000;
-  --secondary: #5C5C5C;
-  --muted: #5C5C5C;
-  --outline: #D8D8D8;
+/*
+ * Theme colors are exposed as space-separated RGB channels (no hex, no `rgb()`
+ * wrapper) so tailwind.config.ts can compose them as `rgb(var(--x-rgb) / <alpha-value>)`
+ * — that's what lets `bg-true-surface`, `text-brand-primary/60`, etc. be genuine
+ * Tailwind utilities that follow the active theme, including their opacity variants,
+ * instead of colliding with Tailwind's own static-color utilities of the same name.
+ */
+:root,
+.theme-light {
+  --background-rgb: 247 247 247;
+  --surface-rgb: 255 255 255;
+  --surface-variant-rgb: 239 239 239;
+  --primary-rgb: 17 17 17;
+  --secondary-rgb: 82 82 82;
+  --muted-rgb: 107 107 107;
+  --outline-rgb: 216 216 216;
 }
 
 .theme-dark {
-  --background: #121212;
-  --surface: #1E1E1E;
-  --surface-variant: #2A2A2A;
-  --primary: #FFFFFF;
-  --secondary: #A8A8A8;
-  --muted: #B0B0B0;
-  --outline: #333333;
+  --background-rgb: 18 18 18;
+  --surface-rgb: 28 28 28;
+  --surface-variant-rgb: 40 40 40;
+  --primary-rgb: 245 245 245;
+  --secondary-rgb: 176 176 176;
+  --muted-rgb: 156 156 156;
+  --outline-rgb: 55 55 55;
 }
 
 .theme-true-dark {
-  --background: #000000;
-  --surface: #000000;
-  --surface-variant: #121212;
-  --primary: #FFFFFF;
-  --secondary: #A8A8A8;
-  --muted: #AAAAAA;
-  --outline: #222222;
+  --background-rgb: 0 0 0;
+  --surface-rgb: 0 0 0;
+  --surface-variant-rgb: 18 18 18;
+  --primary-rgb: 255 255 255;
+  --secondary-rgb: 168 168 168;
+  --muted-rgb: 153 153 153;
+  --outline-rgb: 38 38 38;
 }
 
 .theme-midnight {
-  --background: #080C14;
-  --surface: #0D121D;
-  --surface-variant: #161C29;
-  --primary: #D4E4FF;
-  --secondary: #A8A8A8;
-  --muted: #AAB8C9;
-  --outline: #232D3B;
+  --background-rgb: 7 10 18;
+  --surface-rgb: 12 17 28;
+  --surface-variant-rgb: 20 27 42;
+  --primary-rgb: 220 232 255;
+  --secondary-rgb: 154 172 204;
+  --muted-rgb: 138 156 184;
+  --outline-rgb: 40 52 72;
 }
 
 .theme-forest {
-  --background: #0A0F0A;
-  --surface: #121812;
-  --surface-variant: #1A211A;
-  --primary: #D4FFD4;
-  --secondary: #A8A8A8;
-  --muted: #A9B8A9;
-  --outline: #263326;
+  --background-rgb: 9 14 10;
+  --surface-rgb: 15 22 16;
+  --surface-variant-rgb: 24 33 25;
+  --primary-rgb: 214 240 214;
+  --secondary-rgb: 154 184 158;
+  --muted-rgb: 138 164 142;
+  --outline-rgb: 42 56 44;
 }
 
 @layer base {
@@ -63,8 +71,8 @@
   }
 
   body {
-    background-color: var(--background);
-    color: var(--primary);
+    background-color: rgb(var(--background-rgb));
+    color: rgb(var(--primary-rgb));
     @apply font-sans;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     transition: background-color 0.3s ease, color 0.3s ease;
@@ -99,31 +107,15 @@
 }
 
 @layer components {
-  .bg-true-surface {
-    background-color: var(--surface);
-  }
-  .bg-true-surface-variant {
-    background-color: var(--surface-variant);
-  }
-  .text-brand-primary {
-    color: var(--primary);
-  }
-  .text-brand-muted {
-    color: var(--muted);
-  }
-  .border-brand-outline {
-    border-color: var(--outline);
-  }
-
   .filter-chip {
-    @apply inline-flex h-8 max-h-8 items-center rounded-lg border border-brand-outline/50 px-3 text-xs font-medium transition-colors sm:h-9 sm:px-3.5 sm:text-sm;
+    @apply inline-flex h-8 max-h-8 items-center rounded-full border border-brand-outline/45 px-3 text-xs font-medium transition-colors sm:h-9 sm:px-3.5 sm:text-sm;
   }
 
   .filter-chip-active {
-    @apply border-brand-outline/50 bg-true-surface-variant/55 text-brand-primary;
+    @apply border-brand-primary/40 bg-brand-primary/10 text-brand-primary;
   }
 
   .filter-chip-inactive {
-    @apply border-brand-outline/50 bg-transparent text-brand-muted;
+    @apply border-brand-outline/45 bg-true-surface-variant/25 text-brand-muted hover:border-brand-outline/70 hover:text-brand-primary;
   }
 }
