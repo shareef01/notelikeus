@@ -54,7 +54,7 @@ export function InstallPrompt() {
           <button
             type="button"
             onClick={() => void install()}
-            className="rounded-note bg-brand-primary px-3 py-1.5 text-sm font-semibold text-true-black"
+            className="rounded-note bg-brand-primary px-3 py-1.5 text-sm font-semibold text-true-surface"
           >
             Install
           </button>

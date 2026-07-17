@@ -16,12 +16,10 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +34,7 @@ import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.ui.editor.MarkdownVisualTransformation
 import com.aus.notelikeus.ui.theme.EditorBodyStyle
+import com.aus.notelikeus.ui.theme.getContentColor
 
 @Composable
 fun ChecklistUI(
@@ -59,20 +58,18 @@ fun ChecklistUI(
                     .heightIn(min = 48.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 32.dp) {
-                    Checkbox(
-                        checked = item.isChecked,
-                        onCheckedChange = {
-                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            onUpdate(itemId, item.text, it)
-                        },
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = contentColor,
-                            uncheckedColor = contentColor.copy(alpha = 0.6f),
-                            checkmarkColor = if (contentColor == Color.White) Color.Black else Color.White
-                        )
+                Checkbox(
+                    checked = item.isChecked,
+                    onCheckedChange = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onUpdate(itemId, item.text, it)
+                    },
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = contentColor,
+                        uncheckedColor = contentColor.copy(alpha = 0.6f),
+                        checkmarkColor = contentColor.getContentColor()
                     )
-                }
+                )
 
                 BasicTextField(
                     value = item.text,
@@ -120,12 +117,12 @@ fun ChecklistUI(
         ) {
             Icon(
                 Icons.Default.Add,
-                contentDescription = stringResource(R.string.cd_add_list_item),
+                contentDescription = null,
                 tint = contentColor
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = stringResource(R.string.list_item_hint),
+                text = stringResource(R.string.cd_add_list_item),
                 color = contentColor,
                 style = EditorBodyStyle
             )

@@ -57,6 +57,8 @@ class EditorViewModel @Inject constructor(
 
     private var autosaveJob: Job? = null
     private val noteId: Long? = savedStateHandle.get<Long>("noteId")?.takeIf { it != -1L }
+    private val routedInitialColor: Int? =
+        savedStateHandle.get<Int>("initialColor")?.takeIf { it != Int.MIN_VALUE }
     private var hasAppliedInitialColor = false
 
     init {
@@ -68,13 +70,18 @@ class EditorViewModel @Inject constructor(
         viewModelScope.launch {
             // First, load the initial color based on theme to prevent blinking
             val theme = settingsRepository.appTheme.first()
-            val isTrueDark = theme == AppTheme.TRUE_DARK || 
+            val isTrueDark = theme == AppTheme.TRUE_DARK ||
                 (theme == AppTheme.AUTO && settingsRepository.isTrueDarkMode.first())
 
-            val initialColor = if (isTrueDark) {
+            val themeDefaultColor = if (isTrueDark) {
                 Color.Black.toArgb()
             } else {
                 BackgroundLight.toArgb()
+            }
+            val initialColor = if (noteId == null) {
+                routedInitialColor ?: themeDefaultColor
+            } else {
+                themeDefaultColor
             }
             _state.update { it.copy(color = initialColor) }
 
@@ -416,13 +423,11 @@ class EditorViewModel @Inject constructor(
     }
 
     private fun syncReminder(noteId: Long, state: EditorState) {
-        if (state.isTrashed || state.isArchived || state.reminderTimestamp == null) {
+        if (state.isTrashed || state.isArchived || state.isLocked || state.reminderTimestamp == null) {
             reminderScheduler.cancelReminder(noteId)
         } else {
             reminderScheduler.scheduleReminder(
                 noteId = noteId,
-                title = state.title,
-                content = state.content,
                 timestamp = state.reminderTimestamp
             )
         }
