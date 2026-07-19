@@ -42,7 +42,7 @@ class NoteBackupExporterTest {
         val json = JSONObject(exporter.createJson())
 
         assertEquals(NoteBackupExporter.BACKUP_VERSION, json.getInt("version"))
-        assertEquals("1.0", json.getString("appVersion"))
+        assertEquals("1.0.0", json.getString("appVersion"))
         assertEquals(1, json.getJSONArray("notes").length())
         assertEquals(1, json.getJSONArray("labels").length())
         assertEquals("Test", json.getJSONArray("notes").getJSONObject(0).getString("title"))
