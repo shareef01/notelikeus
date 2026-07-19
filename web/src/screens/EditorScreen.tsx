@@ -18,7 +18,9 @@ import { ReminderPickerDialog } from '@/components/editor/ReminderPickerDialog';
 import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
 import { useNoteEditor } from '@/hooks/useNoteEditor';
 import { useAuthListener } from '@/hooks/useAuth';
-import { useIsDesktop } from '@/hooks/useMediaQuery';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useIsTabletUp } from '@/hooks/useMediaQuery';
+import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset';
 import {
   prefixLinesWithBullet,
   wrapSelection,
@@ -27,7 +29,7 @@ import {
 import { isDeviceAuthAvailable, requireDeviceAuth } from '@/lib/auth/deviceAuth';
 import { contentColorForBackground, noteSurfaceStyle } from '@/theme/contrast';
 import { useUiStore, type EditorLayout, type EditorRoute } from '@/store/uiStore';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 interface EditorScreenProps {
   route: Exclude<EditorRoute, { mode: 'closed' }>;
@@ -38,7 +40,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const closeEditor = useUiStore((s) => s.closeEditor);
   const editorLayout = useUiStore((s) => s.editorLayout);
   const setEditorLayout = useUiStore((s) => s.setEditorLayout);
-  const isDesktop = useIsDesktop();
+  const isTabletUp = useIsTabletUp();
+  const keyboardInset = useVisualViewportBottomInset();
   const editor = useNoteEditor(noteId);
   const { state } = editor;
   const [showOptions, setShowOptions] = useState(false);
@@ -60,12 +63,17 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const contentColor = contentColorForBackground(state.color);
   const showLockOverlay = state.isLocked && !state.isAccessGranted;
   const hasChecklist = state.checklist.length > 0;
+  const isFloatLayout = isTabletUp && editorLayout === 'float';
+  const isOverlayShell = !isTabletUp || editorLayout === 'fullscreen' || isFloatLayout;
+  // Full-window shells need IME lift; float/dock panels sit in a constrained box.
+  const effectiveKeyboardInset =
+    !isTabletUp || editorLayout === 'fullscreen' ? keyboardInset : 0;
 
   useEffect(() => {
     const field = contentRef.current;
     if (!field || !contentFocused || hasChecklist) return;
     field.style.height = '0px';
-    field.style.height = `${Math.max(field.scrollHeight, 280)}px`;
+    field.style.height = `${Math.max(field.scrollHeight, 160)}px`;
   }, [state.content, contentFocused, hasChecklist]);
 
   const rememberSelection = () => {
@@ -115,10 +123,25 @@ export function EditorScreen({ route }: EditorScreenProps) {
     }
   };
 
-  const handleBack = async () => {
+  const handleBack = useCallback(async () => {
     await editor.flushSave();
     closeEditor();
-  };
+  }, [closeEditor, editor]);
+
+  const onFloatClose = useCallback(() => {
+    void handleBack();
+  }, [handleBack]);
+
+  const floatPanelRef = useFocusTrap<HTMLDivElement>(isFloatLayout, onFloatClose);
+
+  useEffect(() => {
+    if (!isOverlayShell) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [isOverlayShell]);
 
   const handleDelete = async () => {
     await editor.trashNote();
@@ -150,7 +173,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
   ];
 
   const editorShell = (children: ReactNode) => {
-    if (!isDesktop) {
+    if (!isTabletUp) {
       return (
         <div className="fixed inset-0 z-40 flex flex-col bg-black/40">
           <div className="relative flex h-full w-full flex-col" style={surface}>
@@ -181,9 +204,10 @@ export function EditorScreen({ route }: EditorScreenProps) {
     return (
       <div
         className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4 sm:p-6"
-        onClick={() => void handleBack()}
+        onClick={onFloatClose}
       >
         <div
+          ref={floatPanelRef}
           className="relative flex h-[min(52rem,90vh)] w-full max-w-editor flex-col overflow-hidden rounded-note border border-brand-outline/40 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
           style={surface}
           onClick={(event) => event.stopPropagation()}
@@ -197,7 +221,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
     );
   };
 
-  const layoutControls = isDesktop ? (
+  const layoutControls = isTabletUp ? (
     <div
       className="mr-1 flex h-9 items-center gap-0.5 rounded-full border border-current/15 bg-current/[0.07] p-1"
       role="group"
@@ -210,7 +234,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             key={button.id}
             type="button"
             onClick={() => setEditorLayout(button.id)}
-            className={`flex size-7 items-center justify-center rounded-full transition-[background-color,opacity] ${
+            className={`flex size-9 items-center justify-center rounded-full transition-[background-color,opacity] ${
               active
                 ? 'bg-current/20 opacity-100'
                 : 'opacity-45 hover:bg-current/10 hover:opacity-85'
@@ -330,7 +354,10 @@ export function EditorScreen({ route }: EditorScreenProps) {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-layout-gap pb-28 pt-5 sm:pt-6">
+      <div
+        className="flex-1 overflow-y-auto px-layout-gap pt-5 sm:pt-6"
+        style={{ paddingBottom: `calc(7rem + ${effectiveKeyboardInset}px)` }}
+      >
         <div className="flex min-h-full flex-col">
           <input
             type="text"
@@ -431,7 +458,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
                   }}
                   placeholder="Start writing…"
                   rows={1}
-                  className="mt-4 w-full min-h-[280px] resize-none overflow-hidden bg-transparent text-[16px] leading-[1.55] tracking-[0.01em] outline-none placeholder:opacity-35"
+                  className="mt-4 w-full min-h-40 resize-none overflow-hidden bg-transparent text-[16px] leading-[1.55] tracking-[0.01em] outline-none placeholder:opacity-35 sm:min-h-[280px]"
                   style={{ color: contentColor }}
                 />
               ) : (
@@ -441,7 +468,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
                     setContentFocused(true);
                     requestAnimationFrame(() => contentRef.current?.focus());
                   }}
-                  className="mt-4 w-full min-h-[280px] rounded-note text-left transition-opacity hover:opacity-95"
+                  className="mt-4 w-full min-h-40 rounded-note text-left transition-opacity hover:opacity-95 sm:min-h-[280px]"
                 >
                   <MarkdownBody text={state.content} contentColor={contentColor} />
                 </button>
@@ -460,7 +487,10 @@ export function EditorScreen({ route }: EditorScreenProps) {
         </div>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0" style={{ color: contentColor }}>
+      <div
+        className="absolute inset-x-0 bottom-0"
+        style={{ color: contentColor, bottom: effectiveKeyboardInset }}
+      >
         <EditorBottomBar
           timestamp={state.timestamp}
           isSaving={state.isSaving}

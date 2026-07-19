@@ -4,7 +4,7 @@ import { isFirebaseConfigured } from '@/lib/config';
 import { MainScreen } from '@/screens/MainScreen';
 import { ThemeApplier } from '@/components/theme/ThemeApplier';
 import { useUiStore } from '@/store/uiStore';
-import { useIsDesktop } from '@/hooks/useMediaQuery';
+import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { lazy, Suspense, useEffect, useState } from 'react';
 
 const AUTH_READY_TIMEOUT_MS = 8_000;
@@ -31,7 +31,7 @@ export default function App() {
   const setLabelsOpen = useUiStore((s) => s.setLabelsOpen);
   const openNewNote = useUiStore((s) => s.openNewNote);
   const { user, isReady: authReady } = useAuthListener();
-  const isDesktop = useIsDesktop();
+  const isTabletUp = useIsTabletUp();
   const [authTimedOut, setAuthTimedOut] = useState(false);
 
   useAuthSync();
@@ -95,7 +95,7 @@ export default function App() {
     );
   }
 
-  const showMobileEditor = !isDesktop && editorMode !== 'closed';
+  const showMobileEditor = !isTabletUp && editorMode !== 'closed';
 
   return (
     <>

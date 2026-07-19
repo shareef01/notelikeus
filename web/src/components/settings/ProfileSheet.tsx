@@ -115,11 +115,11 @@ function ThemeToggle({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`flex h-7 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors disabled:opacity-40 ${
+      className={`flex h-11 w-14 shrink-0 items-center rounded-full p-1 transition-colors disabled:opacity-40 ${
         checked ? 'justify-end bg-brand-primary' : 'justify-start bg-brand-outline/70'
       }`}
     >
-      <span className="size-6 rounded-full bg-true-surface shadow-sm" />
+      <span className="size-7 rounded-full bg-true-surface shadow-sm" />
     </button>
   );
 }

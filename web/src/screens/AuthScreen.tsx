@@ -187,86 +187,94 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
               loading={loading}
             />
 
-            <div className="relative flex items-center gap-3 py-1">
-              <div className="h-px flex-1 bg-brand-outline/40" />
-              <span className="text-xs font-medium uppercase tracking-wider text-brand-muted">or</span>
-              <div className="h-px flex-1 bg-brand-outline/40" />
-            </div>
+            {import.meta.env.DEV ? (
+              <>
+                <div className="relative flex items-center gap-3 py-1">
+                  <div className="h-px flex-1 bg-brand-outline/40" />
+                  <span className="text-xs font-medium uppercase tracking-wider text-brand-muted">or</span>
+                  <div className="h-px flex-1 bg-brand-outline/40" />
+                </div>
 
-            <form
-              className="space-y-3 rounded-note border border-brand-outline/70 bg-true-surface-variant/40 p-4"
-              data-testid="test-login"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const data = new FormData(e.currentTarget);
-                const email = String(data.get('email') ?? '');
-                const password = String(data.get('password') ?? '');
-                void handleTestSignIn(false, email, password);
-              }}
-            >
-              <p className="text-center text-sm font-semibold text-brand-primary">Test login</p>
-              <p className="text-center text-xs text-brand-muted">
-                Use any email + password (min 6 characters). Create once, then Sign in.
-              </p>
-              <label className="block text-left text-xs font-medium text-brand-muted" htmlFor="test-login-email">
-                Email
-              </label>
-              <input
-                id="test-login-email"
-                name="email"
-                type="email"
-                autoComplete="username"
-                placeholder="test@example.com"
-                defaultValue={testEmail}
-                required
-                className="w-full rounded-note border border-brand-outline/50 bg-true-surface px-3 py-2.5 text-sm text-brand-primary outline-none focus:border-brand-primary"
-              />
-              <label className="block text-left text-xs font-medium text-brand-muted" htmlFor="test-login-password">
-                Password
-              </label>
-              <input
-                id="test-login-password"
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                placeholder="At least 6 characters"
-                defaultValue={testPassword}
-                minLength={6}
-                required
-                className="w-full rounded-note border border-brand-outline/50 bg-true-surface px-3 py-2.5 text-sm text-brand-primary outline-none focus:border-brand-primary"
-              />
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 rounded-note bg-brand-primary px-3 py-2.5 text-sm font-semibold text-true-surface disabled:opacity-50"
-                >
-                  {loading ? 'Working…' : 'Sign in'}
-                </button>
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={(e) => {
-                    const form = e.currentTarget.form;
-                    if (!form) return;
-                    const data = new FormData(form);
-                    void handleTestSignIn(
-                      true,
-                      String(data.get('email') ?? ''),
-                      String(data.get('password') ?? ''),
-                    );
+                <form
+                  className="space-y-3 rounded-note border border-brand-outline/70 bg-true-surface-variant/40 p-4"
+                  data-testid="test-login"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const data = new FormData(e.currentTarget);
+                    const email = String(data.get('email') ?? '');
+                    const password = String(data.get('password') ?? '');
+                    void handleTestSignIn(false, email, password);
                   }}
-                  className="flex-1 rounded-note border border-brand-outline/50 px-3 py-2.5 text-sm font-semibold text-brand-primary disabled:opacity-50"
                 >
-                  {loading ? 'Working…' : 'Create account'}
-                </button>
-              </div>
-              {error ? (
-                <p className="rounded-note border border-red-900/50 bg-red-950/30 px-3 py-2 text-center text-sm text-red-200">
-                  {error}
-                </p>
-              ) : null}
-            </form>
+                  <p className="text-center text-sm font-semibold text-brand-primary">Test login</p>
+                  <p className="text-center text-xs text-brand-muted">
+                    Use any email + password (min 6 characters). Create once, then Sign in.
+                  </p>
+                  <label className="block text-left text-xs font-medium text-brand-muted" htmlFor="test-login-email">
+                    Email
+                  </label>
+                  <input
+                    id="test-login-email"
+                    name="email"
+                    type="email"
+                    autoComplete="username"
+                    placeholder="test@example.com"
+                    defaultValue={testEmail}
+                    required
+                    className="w-full rounded-note border border-brand-outline/50 bg-true-surface px-3 py-2.5 text-sm text-brand-primary outline-none focus:border-brand-primary"
+                  />
+                  <label className="block text-left text-xs font-medium text-brand-muted" htmlFor="test-login-password">
+                    Password
+                  </label>
+                  <input
+                    id="test-login-password"
+                    name="password"
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="At least 6 characters"
+                    defaultValue={testPassword}
+                    minLength={6}
+                    required
+                    className="w-full rounded-note border border-brand-outline/50 bg-true-surface px-3 py-2.5 text-sm text-brand-primary outline-none focus:border-brand-primary"
+                  />
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="flex-1 rounded-note bg-brand-primary px-3 py-2.5 text-sm font-semibold text-true-surface disabled:opacity-50"
+                    >
+                      {loading ? 'Working…' : 'Sign in'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={(e) => {
+                        const form = e.currentTarget.form;
+                        if (!form) return;
+                        const data = new FormData(form);
+                        void handleTestSignIn(
+                          true,
+                          String(data.get('email') ?? ''),
+                          String(data.get('password') ?? ''),
+                        );
+                      }}
+                      className="flex-1 rounded-note border border-brand-outline/50 px-3 py-2.5 text-sm font-semibold text-brand-primary disabled:opacity-50"
+                    >
+                      {loading ? 'Working…' : 'Create account'}
+                    </button>
+                  </div>
+                  {error ? (
+                    <p className="rounded-note border border-red-900/50 bg-red-950/30 px-3 py-2 text-center text-sm text-red-200">
+                      {error}
+                    </p>
+                  ) : null}
+                </form>
+              </>
+            ) : error ? (
+              <p className="rounded-note border border-red-900/50 bg-red-950/30 px-3 py-2 text-center text-sm text-red-200">
+                {error}
+              </p>
+            ) : null}
 
             {mandatory ? null : (
               <button
