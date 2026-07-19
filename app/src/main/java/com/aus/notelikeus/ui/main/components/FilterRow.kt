@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
@@ -70,9 +71,10 @@ fun FilterRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             item {
-                SortOrderFilterChip(
-                    sortOrder = sortOrder,
-                    onSortOrderChange = onSortOrderChange,
+                PrecisionFilterChip(
+                    selected = false,
+                    onClick = onSortOrderCycle,
+                    label = stringResource(sortOrderLabelRes(sortOrder))
                 )
             }
             if (hasActiveFilters) {
@@ -212,8 +214,8 @@ internal fun PrecisionFilterChip(
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
             )
         },
-        modifier = modifier.heightIn(min = 48.dp),
-        shape = RoundedCornerShape(16.dp),
+        modifier = modifier.heightIn(min = 40.dp),
+        shape = CircleShape,
         border = FilterChipDefaults.filterChipBorder(
             enabled = enabled,
             selected = selected,

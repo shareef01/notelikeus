@@ -1,6 +1,8 @@
 package com.aus.notelikeus.ui.components
 
 import android.text.format.DateUtils
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,6 +12,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -18,6 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -146,21 +151,39 @@ fun NoteStaggeredGrid(
                     }
                 }
 
-                is StaggeredGridEntry.NoteItem -> {
-                    val note = entry.note
-                    val index = entry.index
-                    item(
-                        key = entry.key,
-                        span = StaggeredGridItemSpan.SingleLane,
-                        contentType = "note",
-                    ) {
-                        val itemModifier = Modifier.animateItem()
-                        if (columns == 1) {
-                            val reorderDragModifier = if (canReorder) {
-                                Modifier.pointerInput(index, notes.size) {
-                                    detectDragGestures(
-                                        onDragStart = {
-                                            draggingIndex = index
+            item(
+                key = note.id ?: note.timestamp,
+                span = StaggeredGridItemSpan.SingleLane
+            ) {
+                val isBeingDragged = canReorder && draggingIndex == index
+                val dragScale by animateFloatAsState(
+                    targetValue = if (isBeingDragged) 1.03f else 1f,
+                    label = "dragScale"
+                )
+                val dragElevation by animateDpAsState(
+                    targetValue = if (isBeingDragged) 8.dp else 0.dp,
+                    label = "dragElevation"
+                )
+                val itemModifier = Modifier
+                    .animateItem()
+                    .scale(dragScale)
+                    .shadow(dragElevation, MaterialTheme.shapes.large)
+                if (columns == 1) {
+                    val reorderDragModifier = if (canReorder) {
+                        Modifier.pointerInput(index, notes.size) {
+                            detectDragGestures(
+                                onDragStart = {
+                                    draggingIndex = index
+                                    dragOffset = 0f
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                                onDrag = { _, dragAmount ->
+                                    if (draggingIndex != index) return@detectDragGestures
+                                    dragOffset += dragAmount.y
+                                    when {
+                                        dragOffset > reorderThresholdPx && draggingIndex < notes.lastIndex -> {
+                                            onMoveNote(draggingIndex, draggingIndex + 1)
+                                            draggingIndex++
                                             dragOffset = 0f
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         },

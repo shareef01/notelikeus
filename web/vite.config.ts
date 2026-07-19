@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vitest/config';
 import { VitePWA } from 'vite-plugin-pwa';
 
 const PLACEHOLDER_PATTERNS = [/placeholder/i, /^your-/i, /^1:your-/];
@@ -76,19 +76,9 @@ export default defineConfig(({ mode }) => {
       '@': path.resolve(__dirname, './src'),
     },
   },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (!id.includes('node_modules')) return;
-          if (id.includes('firebase')) return 'firebase';
-          if (id.includes('react-dom') || id.includes('react/') || id.includes('scheduler')) {
-            return 'react-vendor';
-          }
-          if (id.includes('zustand')) return 'zustand';
-        },
-      },
-    },
+  test: {
+    environment: 'happy-dom',
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
   },
   plugins: [
     react(),
