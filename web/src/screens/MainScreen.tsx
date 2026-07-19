@@ -52,7 +52,7 @@ import { useUiStore } from '@/store/uiStore';
 
 import type { Note, NoteFilter } from '@/types/note';
 
-import { useIsDesktop } from '@/hooks/useMediaQuery';
+import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { EditorScreen } from '@/screens/EditorScreen';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -454,10 +454,10 @@ export function MainScreen() {
 
   const emptyState = getEmptyState(filters.filter, hasActiveFilters, Boolean(filters.searchQuery));
 
-  const isDesktop = useIsDesktop();
+  const isTabletUp = useIsTabletUp();
   const editorRoute = useUiStore((s) => s.editorRoute);
   const editorLayout = useUiStore((s) => s.editorLayout);
-  const desktopEditor = isDesktop && editorRoute.mode !== 'closed' ? editorRoute : null;
+  const desktopEditor = isTabletUp && editorRoute.mode !== 'closed' ? editorRoute : null;
   const dockedEditor =
     desktopEditor && editorLayout === 'dock' ? desktopEditor : null;
   const overlayEditor =
@@ -493,7 +493,7 @@ export function MainScreen() {
 
 
       <div className="flex min-h-screen min-w-0 flex-1">
-        <div className={`flex flex-col min-w-0 flex-1 transition-all duration-300 ${dockedEditor ? 'max-w-[400px] border-r border-brand-outline' : ''}`}>
+        <div className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ${dockedEditor ? 'max-w-[min(32rem,46%)] border-r border-brand-outline xl:max-w-[min(36rem,42%)]' : ''}`}>
           <TopBar
             searchQuery={filters.searchQuery ?? ''}
 
@@ -593,9 +593,17 @@ export function MainScreen() {
                     <button
                       type="button"
                       onClick={clearFilters}
-                      className="rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5"
+                      className="min-h-11 rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5"
                     >
                       Clear filters
+                    </button>
+                  ) : emptyState.showCreate ? (
+                    <button
+                      type="button"
+                      onClick={openNewNote}
+                      className="min-h-11 rounded-note bg-brand-primary px-5 py-2.5 text-sm font-semibold text-true-surface transition-transform active:scale-95"
+                    >
+                      New note
                     </button>
                   ) : undefined
                 }
@@ -642,7 +650,7 @@ export function MainScreen() {
 
             onClick={openNewNote}
 
-            className="fixed bottom-6 right-6 z-20 flex size-14 items-center justify-center rounded-note bg-brand-primary text-true-surface shadow-lg transition-transform hover:scale-105 active:scale-95 pb-safe pr-safe lg:hidden"
+            className="fixed z-20 flex size-14 items-center justify-center rounded-note bg-brand-primary text-true-surface shadow-lg transition-transform hover:scale-105 active:scale-95 bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] right-[calc(1.5rem+env(safe-area-inset-right,0px))] md:hidden"
 
             aria-label="Add note"
 
@@ -805,6 +813,8 @@ function getEmptyState(
 
   showClearFilters?: boolean;
 
+  showCreate?: boolean;
+
 } {
 
   if (hasSearch) {
@@ -866,6 +876,8 @@ function getEmptyState(
     subtitle: 'Synced automatically with your Android device',
 
     icon: 'brand',
+
+    showCreate: true,
 
   };
 

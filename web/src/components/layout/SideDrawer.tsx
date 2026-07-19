@@ -1,6 +1,13 @@
 import { BrandMark } from '@/components/brand/BrandMark';
-import { ArchiveIcon, CloseIcon, NotesIcon, SettingsIcon, TrashIcon } from '@/components/icons/Icons';
-import { useIsDesktop } from '@/hooks/useMediaQuery';
+import {
+  ArchiveIcon,
+  CloseIcon,
+  LabelIcon,
+  NotesIcon,
+  SettingsIcon,
+  TrashIcon,
+} from '@/components/icons/Icons';
+import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import type { NoteFilter } from '@/types/note';
 
 interface SideDrawerProps {
@@ -38,12 +45,12 @@ export function SideDrawer({
   navCounts,
   onOpenSettings,
 }: SideDrawerProps) {
-  const isDesktop = useIsDesktop();
+  const isTabletUp = useIsTabletUp();
 
   return (
     <>
       <div
-        className={`fixed inset-0 z-40 bg-black/80 backdrop-blur-sm transition-opacity lg:hidden ${
+        className={`fixed inset-0 z-40 bg-black/80 backdrop-blur-sm transition-opacity md:hidden ${
           open ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onClick={onClose}
@@ -51,13 +58,13 @@ export function SideDrawer({
       />
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[min(320px,88vw)] flex-col bg-true-surface shadow-2xl transition-transform duration-300 ease-out lg:static lg:z-auto lg:w-64 lg:shrink-0 lg:translate-x-0 lg:border-r lg:border-brand-outline lg:shadow-none xl:w-72 ${
-          open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(320px,88vw)] flex-col bg-true-surface shadow-2xl transition-transform duration-300 ease-out md:static md:z-auto md:w-60 md:shrink-0 md:translate-x-0 md:border-r md:border-brand-outline md:shadow-none lg:w-64 xl:w-72 ${
+          open ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
-        aria-hidden={!open && !isDesktop}
+        aria-hidden={!open && !isTabletUp}
         aria-label="Navigation"
       >
-        <div className="flex items-center justify-between px-6 pb-6 pt-safe lg:pt-8">
+        <div className="flex items-center justify-between px-6 pb-6 pt-safe md:pt-8">
           <div className="flex items-center gap-3">
             <BrandMark size={44} />
             <div>
@@ -70,7 +77,7 @@ export function SideDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="flex size-10 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 lg:hidden transition-colors"
+            className="flex size-10 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-white/5 md:hidden"
             aria-label="Close menu"
           >
             <CloseIcon size={24} />
@@ -113,7 +120,7 @@ export function SideDrawer({
               }}
               className="flex items-center gap-4 rounded-note px-4 py-3 text-left text-base font-bold text-brand-muted transition-all hover:bg-white/5 hover:text-brand-primary"
             >
-              <span className="flex size-6 items-center justify-center text-brand-muted/60">🏷️</span>
+              <LabelIcon size={24} className="text-brand-muted/60" />
               Edit labels
             </button>
           ) : null}
@@ -132,7 +139,7 @@ export function SideDrawer({
           ) : null}
         </nav>
 
-        <div className="mt-auto border-t border-brand-outline p-6 pb-safe lg:pb-8">
+        <div className="mt-auto border-t border-brand-outline p-6 pb-safe md:pb-8">
           {userEmail ? (
             <div className="space-y-4">
               <p className="truncate text-sm font-medium text-brand-muted">{userEmail}</p>
