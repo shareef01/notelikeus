@@ -3,37 +3,31 @@ import { useLocation } from 'react-router-dom';
 import { useUiStore, type ViewColumns } from '@/store/uiStore';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
-/** Combines user column preference with viewport limits and pane states. */
-export function useEffectiveColumns(preference: ViewColumns): ViewColumns {
-  const location = useLocation();
+export type EffectiveColumns = 1 | 2 | 3 | 4;
+
+/**
+ * Maps the user's view preference onto a column count that keeps note cards
+ * well-proportioned at every breakpoint. Desktop never falls back to a single
+ * full-bleed column (that turns short notes into wide ribbons).
+ */
+export function useEffectiveColumns(preference: ViewColumns): EffectiveColumns {
   const isTablet = useMediaQuery('(min-width: 640px)');
   const isDesktop = useMediaQuery('(min-width: 1024px)');
-  const isWide = useMediaQuery('(min-width: 1440px)');
-  const isUltraWide = useMediaQuery('(min-width: 1920px)');
-
-  const editorOpen = location.pathname.startsWith('/note/');
-  const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
+  const isWide = useMediaQuery('(min-width: 1280px)');
+  const isVeryWide = useMediaQuery('(min-width: 1536px)');
 
   return useMemo(() => {
+    // Phones: always a single readable stack.
     if (!isTablet) return 1;
 
-    // Mobile/Tablet logic
-    if (!isDesktop) return Math.min(preference, 2) as ViewColumns;
-
-    // Desktop logic
-    if (editorOpen) {
-      // When editor is open, space for list is limited
-      return (isWide ? Math.min(preference, 2) : 1) as ViewColumns;
+    // Tablets: list stays 1; grid prefs share 2 columns.
+    if (!isDesktop) {
+      return preference === 1 ? 1 : 2;
     }
 
-    // Full screen list (no editor)
-    let maxColumns: ViewColumns = 3;
-    if (isUltraWide) maxColumns = 6;
-    else if (isWide) maxColumns = 4;
-
-    // If sidebar is collapsed, we might afford one more column or just more breathing room
-    if (sidebarCollapsed && isWide) maxColumns = Math.min(maxColumns + 1, 6) as ViewColumns;
-
-    return Math.min(preference, maxColumns) as ViewColumns;
-  }, [preference, isTablet, isDesktop, isWide, isUltraWide, editorOpen, sidebarCollapsed]);
+    // Desktop+: promote list → 2 so cards keep a card shape.
+    if (preference === 1) return 2;
+    if (preference === 2) return isWide ? 3 : 2;
+    return isVeryWide ? 4 : 3;
+  }, [preference, isTablet, isDesktop, isWide, isVeryWide]);
 }

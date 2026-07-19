@@ -2,8 +2,7 @@ package com.aus.notelikeus.ui.main.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -412,13 +411,15 @@ fun ProfileSheet(
                     null
                 },
                 colors = listItemColors,
-                modifier = Modifier.clickable(
-                    enabled = canSync,
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onCloudSyncClick()
-                    }
-                )
+                modifier = Modifier
+                    .alpha(if (canSync) 1f else 0.38f)
+                    .clickable(
+                        enabled = canSync,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onCloudSyncClick()
+                        }
+                    )
             )
             ListItem(
                 headlineContent = { Text(stringResource(R.string.cloud_restore)) },
@@ -430,13 +431,15 @@ fun ProfileSheet(
                     )
                 },
                 colors = listItemColors,
-                modifier = Modifier.clickable(
-                    enabled = canSync,
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onCloudRestoreClick()
-                    }
-                )
+                modifier = Modifier
+                    .alpha(if (canSync) 1f else 0.38f)
+                    .clickable(
+                        enabled = canSync,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onCloudRestoreClick()
+                        }
+                    )
             )
             ListItem(
                 headlineContent = { Text(stringResource(R.string.backup_export)) },

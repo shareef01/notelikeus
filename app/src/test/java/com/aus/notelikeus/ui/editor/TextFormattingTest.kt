@@ -18,7 +18,15 @@ class TextFormattingTest {
 
     @Test
     fun prefixLinesWithBullet_addsBulletPrefix() {
-        val input = TextFieldValue("line one\nline two", TextRange(0, 7))
+        val input = TextFieldValue("line one\nline two", TextRange(0, 17))
+        val result = TextFormatting.prefixLinesWithBullet(input)
+
+        assertEquals("• line one\nline two", result.text)
+    }
+
+    @Test
+    fun prefixLinesWithBullet_onlyAffectsSelectedBlock() {
+        val input = TextFieldValue("line one\nline two", TextRange(0, 4))
         val result = TextFormatting.prefixLinesWithBullet(input)
 
         assertEquals("• line one\nline two", result.text)

@@ -76,6 +76,7 @@ class SettingsRepositoryImpl @Inject constructor(
         context.settingsDataStore.edit { preferences ->
             preferences[APP_LOCK_ENABLED_KEY] = enabled
         }
+        refreshWidget()
     }
 
     override val noteViewMode: Flow<NoteViewMode> = context.settingsDataStore.data

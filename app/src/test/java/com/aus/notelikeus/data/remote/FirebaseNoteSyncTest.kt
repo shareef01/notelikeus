@@ -26,6 +26,7 @@ class FirebaseNoteSyncTest {
     private lateinit var sessionManager: FirebaseSessionManager
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var firestore: FirebaseFirestore
+    private lateinit var syncStateStore: NoteSyncStateStore
     private lateinit var sync: FirebaseNoteSync
 
     @Before
@@ -34,7 +35,33 @@ class FirebaseNoteSyncTest {
         sessionManager = mockk()
         settingsRepository = mockk(relaxed = true)
         firestore = mockk(relaxed = true)
-        sync = FirebaseNoteSync(noteRepository, sessionManager, settingsRepository, firestore)
+        syncStateStore = mockk(relaxed = true)
+        every { syncStateStore.isDeleted(any()) } returns false
+        every { syncStateStore.deletedAtById() } returns emptyMap()
+        sync = FirebaseNoteSync(noteRepository, sessionManager, firestore, syncStateStore)
+    }
+
+    private fun stubUserCollections(
+        notesCollection: CollectionReference,
+        metaCollection: CollectionReference = mockk(relaxed = true),
+        tombstonesCollection: CollectionReference = mockk(relaxed = true)
+    ) {
+        every { firestore.collection("users") } returns mockk(relaxed = true) {
+            every { document("uid") } returns mockk(relaxed = true) {
+                every { collection("notes") } returns notesCollection
+                every { collection("_meta") } returns metaCollection
+                every { collection("tombstones") } returns tombstonesCollection
+            }
+        }
+        every { tombstonesCollection.get() } returns Tasks.forResult(mockk(relaxed = true) {
+            every { documents } returns emptyList()
+        })
+        every { tombstonesCollection.document(any()) } returns mockk(relaxed = true) {
+            every { get() } returns Tasks.forResult(mockk(relaxed = true) {
+                every { exists() } returns false
+            })
+            every { set(any<Map<String, Any>>(), any()) } returns Tasks.forResult(null)
+        }
     }
 
     @Test
@@ -59,15 +86,11 @@ class FirebaseNoteSyncTest {
         val notesCollection = mockk<CollectionReference>(relaxed = true)
         val metaCollection = mockk<CollectionReference>(relaxed = true)
         val batch = mockk<WriteBatch>(relaxed = true)
-        every { firestore.collection("users") } returns mockk(relaxed = true) {
-            every { document("uid") } returns mockk(relaxed = true) {
-                every { collection("notes") } returns notesCollection
-                every { collection("_meta") } returns metaCollection
-            }
-        }
-        every { notesCollection.document(any()) } returns mockk(relaxed = true) {
-            every { delete() } returns Tasks.forResult(null)
-        }
+        stubUserCollections(notesCollection, metaCollection)
+        every { notesCollection.document(any()) } returns mockk(relaxed = true)
+        every { notesCollection.get() } returns Tasks.forResult(mockk(relaxed = true) {
+            every { documents } returns emptyList()
+        })
         every { metaCollection.document("sync") } returns mockk(relaxed = true) {
             every { set(any<Map<String, Any>>(), any()) } returns Tasks.forResult(null)
         }
@@ -100,12 +123,9 @@ class FirebaseNoteSyncTest {
 
         val notesCollection = mockk<CollectionReference>(relaxed = true)
         val document = mockk<DocumentReference>(relaxed = true)
-        every { firestore.collection("users") } returns mockk(relaxed = true) {
-            every { document("uid") } returns mockk(relaxed = true) {
-                every { collection("notes") } returns notesCollection
-            }
-        }
-        every { notesCollection.document(any()) } returns document
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
+        stubUserCollections(notesCollection)
+        every { notesCollection.document("9") } returns document
         every { document.delete() } returns Tasks.forResult(null)
 
         val result = sync.uploadNote(9L)
@@ -113,6 +133,41 @@ class FirebaseNoteSyncTest {
 
         assertTrue(result.isSuccess)
         verify { document.delete() }
+        verify(exactly = 0) { syncStateStore.markDeleted(any(), any()) }
+    }
+
+    @Test
+    fun `uploadNote respects cloud tombstone and deletes instead of writing`() = runTest {
+        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
+        var locallyDeleted = false
+        every { syncStateStore.mergeDeleted(any()) } answers {
+            locallyDeleted = true
+            Unit
+        }
+        every { syncStateStore.isDeleted(11L) } answers { locallyDeleted }
+        every { syncStateStore.deletedAtById() } returns mapOf(11L to 99L)
+
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
+        val tombstonesCollection = mockk<CollectionReference>(relaxed = true)
+        val noteDoc = mockk<DocumentReference>(relaxed = true)
+        val tombstoneDoc = mockk<DocumentReference>(relaxed = true)
+        stubUserCollections(notesCollection, tombstonesCollection = tombstonesCollection)
+        every { notesCollection.document("11") } returns noteDoc
+        every { noteDoc.delete() } returns Tasks.forResult(null)
+        every { tombstonesCollection.document("11") } returns tombstoneDoc
+        every { tombstoneDoc.get() } returns Tasks.forResult(mockk(relaxed = true) {
+            every { exists() } returns true
+            every { getLong("deletedAt") } returns 99L
+        })
+        every { tombstoneDoc.set(any<Map<String, Any>>(), any()) } returns Tasks.forResult(null)
+
+        val result = sync.uploadNote(11L)
+
+        assertTrue(result.isSuccess)
+        verify { syncStateStore.mergeDeleted(mapOf(11L to 99L)) }
+        verify { noteDoc.delete() }
+        verify { syncStateStore.markDeleted(11L, any()) }
+        coVerify(exactly = 0) { noteRepository.getNoteById(any()) }
     }
 
     @Test
