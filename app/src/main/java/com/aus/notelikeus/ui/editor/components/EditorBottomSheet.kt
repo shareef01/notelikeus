@@ -2,7 +2,6 @@ package com.aus.notelikeus.ui.editor.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import com.aus.notelikeus.ui.components.clickableWithFeedback
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -100,7 +99,10 @@ fun EditorBottomSheet(
                     NoteColorSwatch(
                         color = color,
                         isSelected = selectedColor == colorArgb,
-                        onClick = { onColorSelect(colorArgb) },
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onColorSelect(colorArgb)
+                        },
                         touchSize = 44.dp,
                         swatchSize = 32.dp
                     )
@@ -130,7 +132,10 @@ fun EditorBottomSheet(
                                 }
                             )
                         },
-                        modifier = Modifier.clickableWithFeedback(onClick = { onLabelToggle(label) }),
+                        modifier = Modifier.clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onLabelToggle(label)
+                        },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)
                     )
                     if (index < allLabels.lastIndex) {
@@ -194,10 +199,11 @@ fun EditorBottomSheet(
                         modifier = Modifier.size(24.dp)
                     )
                 },
-                modifier = Modifier.clickableWithFeedback(onClick = {
+                modifier = Modifier.clickable { 
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     onLockToggle()
                     onDismiss()
-                }),
+                },
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)
             )
             
@@ -216,7 +222,10 @@ fun EditorBottomSheet(
                         modifier = Modifier.size(24.dp)
                     ) 
                 },
-                modifier = Modifier.clickableWithFeedback(onClick = { showDeleteConfirm = true }),
+                modifier = Modifier.clickable {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    showDeleteConfirm = true
+                },
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }

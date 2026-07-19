@@ -45,19 +45,6 @@ function collectLabelNames(root: BackupRoot, noteEntries: unknown[]): Set<string
   return names;
 }
 
-function sanitizeLockedBackupData(
-  data: FirestoreNoteDocument & { isLocked?: boolean },
-): FirestoreNoteDocument {
-  if (!data.isLocked) return data;
-  return {
-    ...data,
-    title: '',
-    content: '',
-    labels: [],
-    checklist: [],
-  };
-}
-
 function noteFromBackupEntry(
   entry: unknown,
   localId: number,
@@ -66,11 +53,9 @@ function noteFromBackupEntry(
 ): Note | null {
   if (!entry || typeof entry !== 'object') return null;
 
-  const raw = entry as FirestoreNoteDocument & {
+  const data = entry as FirestoreNoteDocument & {
     labels?: unknown[];
-    isLocked?: boolean;
   };
-  const data = sanitizeLockedBackupData(raw);
 
   const labelNames = (data.labels ?? [])
     .map(parseLabelName)

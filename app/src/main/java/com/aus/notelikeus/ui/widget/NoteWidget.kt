@@ -5,15 +5,19 @@ import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.glance.*
+import androidx.glance.GlanceId
+import androidx.glance.GlanceModifier
 import androidx.glance.action.clickable
-import androidx.glance.appwidget.*
+import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.action.actionStartActivity
+import androidx.glance.appwidget.cornerRadius
+import androidx.glance.appwidget.provideContent
+import androidx.glance.background
 import androidx.glance.layout.*
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
 import com.aus.notelikeus.MainActivity
 import com.aus.notelikeus.ui.navigation.markInternalNavigation
 import com.aus.notelikeus.R
@@ -28,6 +32,10 @@ private data class WidgetStrings(
     val appLocked: String
 )
 
+/**
+ * App Widget Overhaul
+ * Geometric Discipline: Strict 16.dp corner radius and 16.dp grid padding.
+ */
 class NoteWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -64,7 +72,7 @@ class NoteWidget : GlanceAppWidget() {
             modifier = GlanceModifier
                 .fillMaxSize()
                 .background(theme.surface)
-                .padding(16.dp),
+                .padding(16.dp), // Disciplined 16.dp Grid
             verticalAlignment = Alignment.Top
         ) {
             Row(
@@ -78,7 +86,7 @@ class NoteWidget : GlanceAppWidget() {
                         fontSize = 16.sp,
                         color = theme.onSurface
                     ),
-                    modifier = GlanceModifier.fillMaxWidth().defaultWeight()
+                    modifier = GlanceModifier.fillMaxWidth().then(GlanceModifier.defaultWeight())
                 )
                 if (!appLocked) {
                     Text(
@@ -134,7 +142,7 @@ class NoteWidget : GlanceAppWidget() {
                         theme = theme,
                         strings = strings
                     )
-                    Spacer(modifier = GlanceModifier.height(8.dp))
+                    Spacer(modifier = GlanceModifier.height(8.dp)) // Disciplined 8.dp Grid
                 }
             }
         }
@@ -150,7 +158,7 @@ class NoteWidget : GlanceAppWidget() {
         Column(
             modifier = GlanceModifier
                 .fillMaxWidth()
-                .cornerRadius(16.dp)
+                .cornerRadius(16.dp) // Strict 16.dp Geometry
                 .background(theme.surfaceVariant)
                 .padding(12.dp)
                 .clickable(
@@ -189,7 +197,7 @@ class NoteWidget : GlanceAppWidget() {
                         fontSize = 14.sp
                     ),
                     maxLines = 1,
-                    modifier = GlanceModifier.fillMaxWidth().defaultWeight()
+                    modifier = GlanceModifier.defaultWeight()
                 )
             }
             if (!note.isLocked && note.preview.isNotBlank()) {

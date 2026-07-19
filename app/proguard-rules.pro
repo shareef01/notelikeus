@@ -32,12 +32,6 @@
 # JSON backup export/import
 -keep class com.aus.notelikeus.data.backup.** { *; }
 
-# Firestore cloud sync mappers
--keep class com.aus.notelikeus.data.remote.CloudIds { *; }
--keepclassmembers class com.aus.notelikeus.data.remote.** {
-    public <methods>;
-}
-
 # BuildConfig (version label in settings)
 -keep class com.aus.notelikeus.BuildConfig { *; }
 

@@ -1,6 +1,5 @@
 package com.aus.notelikeus.ui.main.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.Column
@@ -12,13 +11,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Backup
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudOff
@@ -29,24 +26,23 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PrivacyTip
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Stars
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,13 +52,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -106,9 +101,6 @@ fun ProfileSheet(
 ) {
     val haptic = LocalHapticFeedback.current
     var showPrivacyPolicy by remember { mutableStateOf(false) }
-    var showViewPicker by remember { mutableStateOf(false) }
-    var showSortPicker by remember { mutableStateOf(false) }
-    var showThemePicker by remember { mutableStateOf(false) }
     val canSync = cloudAccount.isGoogleAccount && cloudSyncStatus != CloudSyncStatus.Syncing
     val listItemColors = ListItemDefaults.colors(
         containerColor = MaterialTheme.colorScheme.surface
@@ -133,7 +125,7 @@ fun ProfileSheet(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
             ) {
                 BrandMarkIcon(
                     size = 56.dp,
@@ -162,75 +154,36 @@ fun ProfileSheet(
                 title = stringResource(R.string.section_layout),
                 isFirst = true
             )
-            SettingsPickerListItem(
+            SettingsCycleListItem(
                 icon = Icons.Default.ViewModule,
                 title = stringResource(R.string.default_view_mode),
                 subtitle = stringResource(viewModeLabelRes(viewMode)),
-                expanded = showViewPicker,
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    showSortPicker = false
-                    showThemePicker = false
-                    showViewPicker = !showViewPicker
+                    onViewModeChange(viewMode.next())
                 }
             )
-            if (showViewPicker) {
-                ViewPickerGrid(
-                    selectedMode = viewMode,
-                    onModeSelect = { mode ->
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onViewModeChange(mode)
-                        showViewPicker = false
-                    },
-                )
-            }
-            SettingsPickerListItem(
-                icon = Icons.AutoMirrored.Filled.Sort,
+            SettingsCycleListItem(
+                icon = Icons.Default.Sort,
                 title = stringResource(R.string.sort_order),
                 subtitle = stringResource(sortOrderLabelRes(sortOrder)),
-                expanded = showSortPicker,
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    showViewPicker = false
-                    showThemePicker = false
-                    showSortPicker = !showSortPicker
+                    onSortOrderChange(sortOrder.next())
                 }
             )
-            if (showSortPicker) {
-                SortPickerGrid(
-                    selectedOrder = sortOrder,
-                    onOrderSelect = { order ->
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onSortOrderChange(order)
-                        showSortPicker = false
-                    },
-                )
-            }
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(R.string.section_appearance))
-            SettingsPickerListItem(
+            SettingsCycleListItem(
                 icon = Icons.Default.Palette,
                 title = stringResource(R.string.app_theme),
                 subtitle = stringResource(appThemeLabelRes(appTheme)),
-                expanded = showThemePicker,
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    showViewPicker = false
-                    showSortPicker = false
-                    showThemePicker = !showThemePicker
+                    onAppThemeChange(appTheme.next())
                 }
             )
-            if (showThemePicker) {
-                ThemePickerGrid(
-                    selectedTheme = appTheme,
-                    onThemeSelect = { theme ->
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onAppThemeChange(theme)
-                        showThemePicker = false
-                    },
-                )
-            }
             SettingsToggleListItem(
                 icon = Icons.Default.Lock,
                 title = stringResource(R.string.app_lock_title),
@@ -244,80 +197,40 @@ fun ProfileSheet(
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(R.string.section_insights))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Surface(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(16.dp),
-                    tonalElevation = 2.dp,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Description,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                text = stringResource(R.string.total_notes),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text(
-                            text = noteCount.toString(),
-                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                }
-                Surface(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(16.dp),
-                    tonalElevation = 2.dp,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(
-                                imageVector = when (cloudSyncStatus) {
-                                    CloudSyncStatus.Connected, CloudSyncStatus.Synced -> Icons.Default.CloudDone
-                                    CloudSyncStatus.Syncing -> Icons.Default.CloudSync
-                                    CloudSyncStatus.Error, CloudSyncStatus.Offline -> Icons.Default.CloudOff
-                                    CloudSyncStatus.Unknown -> Icons.Default.CloudQueue
-                                },
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                text = stringResource(R.string.cloud_sync),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text(
-                            text = cloudStatusLabel(cloudSyncStatus, cloudSyncedNoteCount, cloudAccount),
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                }
-            }
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.total_notes)) },
+                supportingContent = {
+                    Text(
+                        text = noteCount.toString(),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                },
+                leadingContent = {
+                    SettingsLeadingIcon(
+                        icon = Icons.Default.Description,
+                        contentDescription = stringResource(R.string.total_notes)
+                    )
+                },
+                colors = listItemColors
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.cloud_sync)) },
+                supportingContent = {
+                    Text(cloudStatusLabel(cloudSyncStatus, cloudSyncedNoteCount, cloudAccount))
+                },
+                leadingContent = {
+                    SettingsLeadingIcon(
+                        icon = when (cloudSyncStatus) {
+                            CloudSyncStatus.Connected, CloudSyncStatus.Synced -> Icons.Default.CloudDone
+                            CloudSyncStatus.Syncing -> Icons.Default.CloudSync
+                            CloudSyncStatus.Error, CloudSyncStatus.Offline -> Icons.Default.CloudOff
+                            CloudSyncStatus.Unknown -> Icons.Default.CloudQueue
+                        },
+                        contentDescription = stringResource(R.string.cloud_sync)
+                    )
+                },
+                colors = listItemColors
+            )
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(R.string.section_account))
@@ -338,7 +251,7 @@ fun ProfileSheet(
                     supportingContent = { Text(stringResource(R.string.cloud_sign_out_subtitle)) },
                     leadingContent = {
                         SettingsLeadingIcon(
-                            icon = Icons.AutoMirrored.Filled.Logout,
+                            icon = Icons.Default.Logout,
                             contentDescription = stringResource(R.string.cloud_sign_out)
                         )
                     },
@@ -353,11 +266,9 @@ fun ProfileSheet(
                     headlineContent = { Text(stringResource(R.string.cloud_sign_in_google)) },
                     supportingContent = { Text(stringResource(R.string.cloud_sign_in_subtitle)) },
                     leadingContent = {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_google),
-                            contentDescription = stringResource(R.string.cloud_sign_in_google),
-                            modifier = Modifier.size(SettingsIconSize),
-                            tint = Color.Unspecified,
+                        SettingsLeadingIcon(
+                            icon = Icons.Default.Login,
+                            contentDescription = stringResource(R.string.cloud_sign_in_google)
                         )
                     },
                     colors = listItemColors,
@@ -399,16 +310,6 @@ fun ProfileSheet(
                         icon = Icons.Default.CloudUpload,
                         contentDescription = stringResource(R.string.cloud_sync_now)
                     )
-                },
-                trailingContent = if (cloudSyncStatus == CloudSyncStatus.Syncing) {
-                    {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    }
-                } else {
-                    null
                 },
                 colors = listItemColors,
                 modifier = Modifier
@@ -483,8 +384,7 @@ fun ProfileSheet(
                         contentDescription = stringResource(R.string.premium_subscription)
                     )
                 },
-                colors = listItemColors,
-                modifier = Modifier.alpha(0.55f),
+                colors = listItemColors
             )
             ListItem(
                 headlineContent = { Text(stringResource(R.string.privacy_policy)) },
@@ -512,196 +412,6 @@ fun ProfileSheet(
             )
         }
     }
-}
-
-@Composable
-private fun ViewPickerGrid(
-    selectedMode: NoteViewMode,
-    onModeSelect: (NoteViewMode) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    SettingsTextPickerGrid(
-        options = NoteViewMode.entries,
-        selected = selectedMode,
-        labelFor = { stringResource(viewModeLabelRes(it)) },
-        onSelect = onModeSelect,
-        modifier = modifier,
-    )
-}
-
-@Composable
-private fun SortPickerGrid(
-    selectedOrder: NoteSortOrder,
-    onOrderSelect: (NoteSortOrder) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    SettingsTextPickerGrid(
-        options = NoteSortOrder.entries,
-        selected = selectedOrder,
-        labelFor = { stringResource(sortOrderLabelRes(it)) },
-        onSelect = onOrderSelect,
-        modifier = modifier,
-    )
-}
-
-@Composable
-private fun <T> SettingsTextPickerGrid(
-    options: List<T>,
-    selected: T,
-    labelFor: @Composable (T) -> String,
-    onSelect: (T) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        options.chunked(2).forEach { rowOptions ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                rowOptions.forEach { option ->
-                    SettingsTextPickerOption(
-                        label = labelFor(option),
-                        selected = option == selected,
-                        onClick = { onSelect(option) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                if (rowOptions.size == 1) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsTextPickerOption(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (selected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-            },
-        ),
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 14.dp),
-        )
-    }
-}
-
-@Composable
-private fun ThemePickerGrid(
-    selectedTheme: AppTheme,
-    onThemeSelect: (AppTheme) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        AppTheme.entries.chunked(2).forEach { rowThemes ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                rowThemes.forEach { theme ->
-                    ThemePickerOption(
-                        theme = theme,
-                        selected = theme == selectedTheme,
-                        onClick = { onThemeSelect(theme) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                if (rowThemes.size == 1) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThemePickerOption(
-    theme: AppTheme,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (selected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-            },
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Surface(
-                modifier = Modifier.size(24.dp),
-                shape = CircleShape,
-                color = themePreviewColor(theme),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
-            ) {}
-            Text(
-                text = stringResource(appThemeLabelRes(theme)),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        }
-    }
-}
-
-private fun themePreviewColor(theme: AppTheme): Color = when (theme) {
-    AppTheme.AUTO -> Color(0xFF6B6B6B)
-    AppTheme.LIGHT -> Color(0xFFF7F7F7)
-    AppTheme.DARK -> Color(0xFF121212)
-    AppTheme.TRUE_DARK -> Color.Black
-    AppTheme.MIDNIGHT -> Color(0xFF080C14)
-    AppTheme.FOREST -> Color(0xFF0A0F0A)
 }
 
 @Composable
@@ -749,11 +459,10 @@ fun SettingsLeadingIcon(
 }
 
 @Composable
-fun SettingsPickerListItem(
+fun SettingsCycleListItem(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    expanded: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -770,9 +479,9 @@ fun SettingsPickerListItem(
         },
         trailingContent = {
             Icon(
-                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = stringResource(R.string.action_change),
-                modifier = Modifier.size(20.dp),
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier.semantics { invisibleToUser() },
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
             )
         },
@@ -821,7 +530,9 @@ fun SettingsToggleListItem(
             )
         },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = modifier,
+        modifier = modifier.clickable(enabled = enabled) {
+            onCheckedChange(!checked)
+        }
     )
 }
 
@@ -831,20 +542,17 @@ private fun cloudStatusLabel(
     syncedCount: Int,
     account: CloudAccount
 ): String {
-    if (!account.isGoogleAccount) {
-        return stringResource(R.string.cloud_status_not_signed_in)
+    if (account.isGoogleAccount && !account.email.isNullOrBlank()) {
+        val localPart = account.email.substringBefore('@')
+        if (localPart.length <= 12) return localPart
+        return localPart.take(10) + "…"
     }
-    val statusText = when (status) {
+    return when (status) {
         CloudSyncStatus.Unknown -> stringResource(R.string.cloud_status_checking)
         CloudSyncStatus.Connected -> stringResource(R.string.cloud_status_ready)
         CloudSyncStatus.Offline -> stringResource(R.string.cloud_status_offline)
         CloudSyncStatus.Syncing -> stringResource(R.string.cloud_status_syncing)
-        CloudSyncStatus.Synced -> stringResource(R.string.cloud_status_synced)
+        CloudSyncStatus.Synced -> syncedCount.toString()
         CloudSyncStatus.Error -> stringResource(R.string.cloud_status_error)
-    }
-    return if (status == CloudSyncStatus.Syncing || status == CloudSyncStatus.Error) {
-        statusText
-    } else {
-        stringResource(R.string.cloud_status_with_count, statusText, syncedCount)
     }
 }

@@ -33,10 +33,9 @@ interface ColorSwatchProps {
   selected: boolean;
   onClick: () => void;
   label?: string;
-  compact?: boolean;
 }
 
-export function ColorSwatch({ argb, selected, onClick, label, compact = false }: ColorSwatchProps) {
+export function ColorSwatch({ argb, selected, onClick, label }: ColorSwatchProps) {
   const isDefault = argb === 0;
   const checkColor = isDefault ? undefined : contentColorForBackground(argb);
 

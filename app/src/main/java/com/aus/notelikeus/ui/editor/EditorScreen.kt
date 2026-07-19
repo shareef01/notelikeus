@@ -1,6 +1,5 @@
 package com.aus.notelikeus.ui.editor
 
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -18,11 +17,8 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -30,12 +26,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.toArgb
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import android.Manifest
 import android.app.AlarmManager
 import android.content.Intent
@@ -54,9 +46,11 @@ import com.aus.notelikeus.ui.editor.components.ChecklistUI
 import com.aus.notelikeus.ui.editor.components.EditorBottomBar
 import com.aus.notelikeus.ui.editor.components.EditorBottomSheet
 import com.aus.notelikeus.ui.editor.components.RichTextToolbar
-import com.aus.notelikeus.ui.theme.getContentColor
+import com.aus.notelikeus.ui.navigation.LocalAnimatedVisibilityScope
+import com.aus.notelikeus.ui.navigation.LocalSharedTransitionScope
 import com.aus.notelikeus.ui.theme.EditorBodyStyle
-import androidx.compose.ui.text.font.FontWeight
+import com.aus.notelikeus.ui.theme.EditorTitleStyle
+import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import android.text.format.DateFormat
@@ -67,6 +61,7 @@ private val EditorVerticalPadding = 16.dp
 
 @OptIn(
     ExperimentalMaterial3Api::class,
+    ExperimentalSharedTransitionApi::class,
     ExperimentalLayoutApi::class
 )
 @Composable
@@ -75,22 +70,12 @@ fun EditorScreen(
     onBack: () -> Unit,
     onStageUndo: (Note, UndoAction, String) -> Unit
 ) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
+    val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val undoLabel = stringResource(R.string.action_undo)
-    val reminderExactAlarmHint = stringResource(R.string.reminder_exact_alarm_hint)
-    val reminderPermissionDenied = stringResource(R.string.reminder_permission_denied)
-    val reminderMustBeFuture = stringResource(R.string.reminder_must_be_future)
-    val lockedNoteTitle = stringResource(R.string.locked_note)
-    val noteNotFoundMessage = stringResource(R.string.note_not_found)
-    val notePinnedMessage = stringResource(R.string.note_pinned)
-    val noteUnpinnedMessage = stringResource(R.string.note_unpinned)
-    val noteUnarchivedMessage = stringResource(R.string.note_unarchived)
-    val noteArchivedMessage = stringResource(R.string.note_archived)
-    val noteTrashedMessage = stringResource(R.string.note_trashed)
     val noteColor = if (state.color == 0) {
         MaterialTheme.colorScheme.background
     } else {
@@ -111,7 +96,7 @@ fun EditorScreen(
             val alarmManager = context.getSystemService(AlarmManager::class.java)
             if (!alarmManager.canScheduleExactAlarms()) {
                 scope.launch {
-                    snackbarHostState.showSnackbar(reminderExactAlarmHint)
+                    snackbarHostState.showSnackbar(context.getString(R.string.reminder_exact_alarm_hint))
                 }
                 context.startActivity(
                     Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
@@ -136,7 +121,7 @@ fun EditorScreen(
             scheduleReminderIfAllowed(millis)
         } else if (!granted) {
             scope.launch {
-                snackbarHostState.showSnackbar(reminderPermissionDenied)
+                snackbarHostState.showSnackbar(context.getString(R.string.reminder_permission_denied))
             }
         }
     }
@@ -144,7 +129,7 @@ fun EditorScreen(
     fun confirmReminder(millis: Long) {
         if (millis <= System.currentTimeMillis()) {
             scope.launch {
-                snackbarHostState.showSnackbar(reminderMustBeFuture)
+                snackbarHostState.showSnackbar(context.getString(R.string.reminder_must_be_future))
             }
             return
         }
@@ -169,28 +154,29 @@ fun EditorScreen(
         }
     }
 
-    val isLoadingExistingNote = state.id != null && !state.isNoteLoaded && !state.noteNotFound
+    val sharedTransitionScope = LocalSharedTransitionScope.current
+    val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
+
+    val sharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                rememberSharedContentState(key = "note-${state.id}"),
+                animatedVisibilityScope = animatedVisibilityScope
+            )
+        }
+    } else {
+        Modifier
+    }
+
     val showLockOverlay = state.isNoteLoaded && state.isLocked && !state.isAccessGranted
     val imeVisible = WindowInsets.isImeVisible
     var hasPromptedLockAuth by remember { mutableStateOf(false) }
-    val lifecycleOwner = LocalLifecycleOwner.current
-
-    DisposableEffect(lifecycleOwner, state.isLocked) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                viewModel.revokeAccessIfLocked()
-                hasPromptedLockAuth = false
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
 
     LaunchedEffect(showLockOverlay) {
         if (showLockOverlay && !hasPromptedLockAuth) {
             hasPromptedLockAuth = true
             (context as MainActivity).showBiometricPrompt(
-                title = lockedNoteTitle,
+                title = context.getString(R.string.locked_note),
                 onSuccess = { viewModel.grantAccess() },
                 onError = { onBack() }
             )
@@ -199,19 +185,10 @@ fun EditorScreen(
 
     LaunchedEffect(state.noteNotFound) {
         if (state.noteNotFound) {
-            snackbarHostState.showSnackbar(noteNotFoundMessage)
+            snackbarHostState.showSnackbar(context.getString(R.string.note_not_found))
             onBack()
         }
     }
-
-    val navigateBack: () -> Unit = {
-        scope.launch {
-            viewModel.flushPendingSave()
-            onBack()
-        }
-    }
-
-    BackHandler(onBack = navigateBack)
 
     if (showLockOverlay) {
         Surface(
@@ -222,7 +199,7 @@ fun EditorScreen(
                 TopAppBar(
                     title = {},
                     navigationIcon = {
-                        IconButton(onClick = navigateBack) {
+                        IconButton(onClick = onBack) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = stringResource(R.string.cd_back),
@@ -241,7 +218,7 @@ fun EditorScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp)
+                        .padding(horizontal = 32.dp)
                         .navigationBarsPadding(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
@@ -258,18 +235,11 @@ fun EditorScreen(
                     style = MaterialTheme.typography.titleLarge,
                     color = contentColor
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.locked_note_subtitle),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor.copy(alpha = 0.7f),
-                    textAlign = TextAlign.Center
-                )
                 Spacer(modifier = Modifier.height(24.dp))
                 FilledTonalButton(
                     onClick = {
                         (context as MainActivity).showBiometricPrompt(
-                            title = lockedNoteTitle,
+                            title = context.getString(R.string.locked_note),
                             onSuccess = { viewModel.grantAccess() },
                             onError = { onBack() }
                         )
@@ -281,7 +251,7 @@ fun EditorScreen(
                 ) {
                     Text(stringResource(R.string.unlock))
                 }
-                TextButton(onClick = navigateBack) {
+                TextButton(onClick = onBack) {
                     Text(stringResource(R.string.go_back), color = contentColor)
                 }
                 }
@@ -297,21 +267,16 @@ fun EditorScreen(
                 modifier = Modifier
                     .navigationBarsPadding()
                     .padding(bottom = 56.dp)
-            ) { data ->
-                Snackbar(
-                    snackbarData = data,
-                    shape = MaterialTheme.shapes.medium,
-                    containerColor = MaterialTheme.colorScheme.inverseSurface,
-                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                    actionColor = MaterialTheme.colorScheme.inversePrimary
-                )
-            }
+            )
         },
         topBar = {
             TopAppBar(
                 title = {},
                 navigationIcon = {
-                    IconButton(onClick = navigateBack) {
+                    IconButton(onClick = { 
+                        viewModel.saveNote()
+                        onBack() 
+                    }) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.cd_back),
@@ -336,7 +301,9 @@ fun EditorScreen(
                         viewModel.togglePin()
                         scope.launch {
                             snackbarHostState.showSnackbar(
-                                if (willPin) notePinnedMessage else noteUnpinnedMessage
+                                context.getString(
+                                    if (willPin) R.string.note_pinned else R.string.note_unpinned
+                                )
                             )
                         }
                     }) {
@@ -347,24 +314,16 @@ fun EditorScreen(
                         )
                     }
                     IconButton(onClick = {
-                        val wasArchived = state.isArchived
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        if (wasArchived) {
-                            viewModel.toggleArchive()
+                        viewModel.toggleArchive { snapshot ->
                             scope.launch {
-                                snackbarHostState.showSnackbar(noteUnarchivedMessage)
-                            }
-                        } else {
-                            viewModel.toggleArchive { snapshot ->
-                                scope.launch {
-                                    val result = snackbarHostState.showSnackbar(
-                                        message = noteArchivedMessage,
-                                        actionLabel = undoLabel,
-                                        duration = SnackbarDuration.Short
-                                    )
-                                    if (result == SnackbarResult.ActionPerformed) {
-                                        viewModel.undoArchive(snapshot)
-                                    }
+                                val result = snackbarHostState.showSnackbar(
+                                    message = context.getString(R.string.note_archived),
+                                    actionLabel = undoLabel,
+                                    duration = SnackbarDuration.Short
+                                )
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    viewModel.undoArchive(snapshot)
                                 }
                             }
                         }
@@ -389,9 +348,7 @@ fun EditorScreen(
             AnimatedVisibility(visible = !imeVisible) {
                 EditorBottomBar(
                     timestamp = state.timestamp,
-                    contentLength = state.content.length,
                     reminderTimestamp = state.reminderTimestamp,
-                    isSaving = state.isSaving,
                     onMoreClick = { showBottomSheet = true },
                     contentColor = contentColor,
                     modifier = Modifier.background(noteColor)
@@ -399,7 +356,7 @@ fun EditorScreen(
             }
         },
         containerColor = noteColor,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize().then(sharedModifier)
     ) { paddingValues ->
         val showFormattingToolbar = state.contentValue.selection.length > 0
 
@@ -409,23 +366,6 @@ fun EditorScreen(
                 .padding(paddingValues)
                 .imePadding()
         ) {
-            if (isLoadingExistingNote) {
-                LinearProgressIndicator(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth(),
-                    color = contentColor,
-                    trackColor = contentColor.copy(alpha = 0.18f),
-                )
-            }
-
-            AnimatedVisibility(
-                visible = !isLoadingExistingNote,
-                enter = fadeIn(animationSpec = tween(120)),
-                exit = fadeOut(animationSpec = tween(80)),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-            Box(modifier = Modifier.fillMaxSize()) {
             if (showBottomSheet) {
                 EditorBottomSheet(
                     selectedColor = state.color,
@@ -443,7 +383,7 @@ fun EditorScreen(
                                 onStageUndo(
                                     snapshot,
                                     UndoAction.TRASH,
-                                    noteTrashedMessage
+                                    context.getString(R.string.note_trashed)
                                 )
                             }
                             onBack()
@@ -480,7 +420,9 @@ fun EditorScreen(
             }
 
             Column(
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
             ) {
                 EditorTextContent(
                     title = state.title,
@@ -495,12 +437,7 @@ fun EditorScreen(
                     onUpdateChecklistItem = viewModel::updateChecklistItem,
                     onAddChecklistItem = viewModel::addChecklistItem,
                     onRemoveChecklistItem = viewModel::removeChecklistItem,
-                    onConvertChecklistToContent = viewModel::convertChecklistToContent,
-                    onConvertContentToChecklist = viewModel::convertContentToChecklist,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    focusBodyOnOpen = state.id == null && state.isNoteLoaded,
+                    onConvertChecklistToContent = viewModel::convertChecklistToContent
                 )
             }
 
@@ -527,8 +464,6 @@ fun EditorScreen(
                     modifier = Modifier.animateContentSize()
                 )
             }
-            }
-            }
         }
     }
 }
@@ -548,27 +483,11 @@ private fun EditorTextContent(
     onAddChecklistItem: () -> Unit,
     onRemoveChecklistItem: (Long) -> Unit,
     onConvertChecklistToContent: () -> Unit,
-    onConvertContentToChecklist: () -> Unit,
-    modifier: Modifier = Modifier,
-    focusBodyOnOpen: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
-    val titleStyle = MaterialTheme.typography.titleLarge.copy(
-        fontWeight = FontWeight.Bold,
-        color = contentColor,
-    )
-    val bodyStyle = EditorBodyStyle.copy(color = contentColor)
-    val placeholderColor = contentColor.copy(alpha = 0.5f)
-    val bodyFocusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(focusBodyOnOpen) {
-        if (focusBodyOnOpen && checklist.isEmpty()) {
-            bodyFocusRequester.requestFocus()
-        }
-    }
-
     Column(
         modifier = modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .padding(
                 start = EditorHorizontalPadding,
                 end = EditorHorizontalPadding,
@@ -579,21 +498,18 @@ private fun EditorTextContent(
         BasicTextField(
             value = title,
             onValueChange = onTitleChange,
-            textStyle = titleStyle,
+            textStyle = EditorTitleStyle.copy(color = contentColor),
             cursorBrush = SolidColor(contentColor),
-            maxLines = 4,
             modifier = Modifier.fillMaxWidth(),
             decorationBox = { innerTextField ->
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    if (title.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.title_hint),
-                            style = titleStyle,
-                            color = placeholderColor,
-                        )
-                    }
-                    innerTextField()
+                if (title.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.title_hint),
+                        style = EditorTitleStyle,
+                        color = contentColor.copy(alpha = 0.5f)
+                    )
                 }
+                innerTextField()
             }
         )
 
@@ -636,10 +552,7 @@ private fun EditorTextContent(
                 onAdd = onAddChecklistItem,
                 onRemove = onRemoveChecklistItem,
                 onConvertToText = onConvertChecklistToContent,
-                contentColor = contentColor,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                contentColor = contentColor
             )
         } else {
             val markdownTransformation = remember(contentColor) {
@@ -648,45 +561,23 @@ private fun EditorTextContent(
             BasicTextField(
                 value = contentValue,
                 onValueChange = onContentValueChange,
-                textStyle = bodyStyle,
+                textStyle = EditorBodyStyle.copy(color = contentColor),
                 visualTransformation = markdownTransformation,
                 cursorBrush = SolidColor(contentColor),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .focusRequester(bodyFocusRequester),
+                    .heightIn(min = 100.dp),
                 decorationBox = { innerTextField ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight()
-                    ) {
-                        if (content.isEmpty()) {
-                            Text(
-                                text = stringResource(R.string.note_hint),
-                                style = bodyStyle,
-                                color = placeholderColor,
-                                modifier = Modifier.align(Alignment.TopStart),
-                            )
-                        }
-                        innerTextField()
+                    if (content.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.note_hint),
+                            style = EditorBodyStyle,
+                            color = contentColor.copy(alpha = 0.5f)
+                        )
                     }
+                    innerTextField()
                 }
             )
-
-            TextButton(
-                onClick = onConvertContentToChecklist,
-                contentPadding = PaddingValues(top = 12.dp),
-            ) {
-                Text(
-                    text = if (content.isBlank()) {
-                        stringResource(R.string.add_checklist)
-                    } else {
-                        stringResource(R.string.convert_to_checklist)
-                    },
-                    color = contentColor.copy(alpha = 0.75f),
-                )
-            }
         }
 
         if (showFormattingToolbar) {
@@ -787,24 +678,14 @@ private fun LinkDialog(
         shape = MaterialTheme.shapes.large,
         title = { Text(stringResource(R.string.link_dialog_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = stringResource(R.string.link_dialog_subtitle),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text(stringResource(R.string.link_url_hint)) },
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.medium,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
-                    ),
-                )
-            }
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text(stringResource(R.string.link_url_hint)) },
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium
+            )
         },
         confirmButton = {
             TextButton(

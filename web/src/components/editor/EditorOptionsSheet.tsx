@@ -1,7 +1,5 @@
 import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
-import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';
-import { ModalScrim, modalPanelProps } from '@/components/layout/ModalScrim';
-import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
+import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
 import { useToastStore } from '@/store/toastStore';
 import { LockIcon, LockOpenIcon, TrashIcon, AddIcon } from '@/components/icons/Icons';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -148,7 +146,7 @@ export function EditorOptionsSheet({
             <button
               type="button"
               onClick={() => onReminderChange(Date.now() + 3600000)}
-              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary interactive-hover"
+              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
             >
               In 1 hour
             </button>
@@ -160,14 +158,14 @@ export function EditorOptionsSheet({
                 date.setHours(9, 0, 0, 0);
                 onReminderChange(date.getTime());
               }}
-              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary interactive-hover"
+              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
             >
               Tomorrow morning
             </button>
             <button
               type="button"
               onClick={() => onReminderChange(Date.now() + 7 * 86400000)}
-              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary interactive-hover"
+              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
             >
               Next week
             </button>
@@ -197,7 +195,7 @@ export function EditorOptionsSheet({
               onLockToggle();
               onClose();
             }}
-            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-brand-primary transition-colors interactive-hover"
+            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-brand-primary transition-colors hover:bg-white/5"
           >
             {isLocked ? <LockOpenIcon size={24} className="text-brand-primary/60" /> : <LockIcon size={24} className="text-brand-primary/60" />}
             {isLocked ? 'Unhide note' : 'Hide note (this device only)'}
@@ -205,7 +203,7 @@ export function EditorOptionsSheet({
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-red-400 transition-colors interactive-hover"
+            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-red-400 transition-colors hover:bg-white/5"
           >
             <TrashIcon size={24} className="text-red-400/70" />
             Delete note
@@ -249,7 +247,7 @@ export function EditorOptionsSheet({
               </button>
             </div>
           </div>
-        </ModalScrim>
+        </div>
       ) : null}
     </>
   );

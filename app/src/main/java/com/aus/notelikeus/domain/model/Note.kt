@@ -12,7 +12,6 @@ import androidx.compose.runtime.Immutable
 @Immutable
 data class Note(
     val id: Long? = null,
-    val cloudId: String = "",
     val title: String,
     val content: String,
     val timestamp: Long,

@@ -30,12 +30,9 @@ export function EditorBottomBar({
   }).format(new Date(timestamp));
   const reminderLabel = formatReminderLabel(reminderTimestamp);
 
-  const nearLimit = contentLength != null && contentLength >= CHAR_WARN_THRESHOLD;
-  const atLimit = contentLength != null && contentLength >= MAX_CONTENT;
-
   return (
     <footer
-      className="flex items-center justify-between px-3 pb-safe pt-2"
+      className="flex items-center justify-between px-2 pb-safe pt-2"
       style={{ color: contentColor }}
     >
       <div className="flex-1" />
@@ -49,7 +46,7 @@ export function EditorBottomBar({
         <button
           type="button"
           onClick={onMoreClick}
-          className="flex size-10 items-center justify-center rounded-full note-surface-hover"
+          className="flex size-10 items-center justify-center rounded-full hover:bg-black/10"
           aria-label="More options"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>

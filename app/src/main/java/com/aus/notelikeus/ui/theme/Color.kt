@@ -5,7 +5,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 
 /**
- * Masterpiece UI/UX Architecture
+ * System Role & Objective: Elite UI/UX Architecture
  * Constraint: OLED Absolute Black Background for Dark Mode
  */
 
@@ -17,13 +17,13 @@ val SurfaceLight = Color(0xFFFFFFFF)
 
 val PrimaryDark = Color(0xFFFFFFFF)
 val SecondaryDark = Color(0xFFA8A8A8)
-val BackgroundDark = Color(0xFF121212)
+val BackgroundDark = Color(0xFF121212) // Modern Dark (material default)
 val SurfaceDark = Color(0xFF1E1E1E)
 
-// Theme Bases
-val BackgroundMidnight = Color(0xFF000000) // OLED True Black
-val SurfaceMidnight = Color(0xFF121212)
-val PrimaryMidnight = Color(0xFFD0BCFF) // Elite Purple Accent
+// New Theme Bases
+val BackgroundMidnight = Color(0xFF080C14)
+val SurfaceMidnight = Color(0xFF0D121D)
+val PrimaryMidnight = Color(0xFFD4E4FF)
 
 val BackgroundForest = Color(0xFF0A0F0A)
 val SurfaceForest = Color(0xFF121812)
@@ -49,20 +49,20 @@ val NotePurpleLight = Color(0xFFE1BEE7)
 val NotePinkLight = Color(0xFFF8BBD0)
 
 /**
- * Dynamic Text Contrast — ensures WCAG AA readability on any note color.
- * Light backgrounds (> 0.5 luminance) → near-black text (#141414)
- * Dark backgrounds (≤ 0.5 luminance) → off-white text (#F0F0F0)
- * Transparent → uses fallback
+ * Dynamic Text Contrast Utility
+ * Enforces strict WCAG contrast readability across all note color variations.
+ * Light backgrounds -> Dark Gray (#121212)
+ * Dark backgrounds -> Pure White (#FFFFFF)
  */
 fun Color.getContentColor(fallback: Color = Color.White): Color {
-    if (this == Color.Transparent || this.alpha == 0f) return fallback
-    return if (this.luminance() > 0.5f) Color(0xFF141414) else Color(0xFFF0F0F0)
+    if (this == Color.Transparent) return fallback
+    return if (this.luminance() > 0.45f) Color(0xFF121212) else Color.White
 }
 
 data class NoteColorOption(val light: Color, val dark: Color)
 
 val NOTE_COLOR_OPTIONS: List<NoteColorOption> = listOf(
-    NoteColorOption(Color.Transparent, Color.Transparent),
+    NoteColorOption(Color.Transparent, Color.Transparent), // Use theme default
     NoteColorOption(NoteRedLight, NoteRedDark),
     NoteColorOption(NoteOrangeLight, NoteOrangeDark),
     NoteColorOption(NoteYellowLight, NoteYellowDark),
@@ -90,7 +90,7 @@ fun noteColorCounterpart(argb: Int): Int? {
 fun noteColorsMatch(noteArgb: Int, filterArgb: Int): Boolean =
     noteArgb == filterArgb || noteColorCounterpart(noteArgb) == filterArgb
 
-val SwipeArchiveLight = Color(0xFFE2E2E2)
-val SwipeArchiveDark = Color(0xFF2A2A2A)
-val SwipeDeleteLight = Color(0xFFF28B82)
-val SwipeDeleteDark = Color(0xFF4A2B2B)
+val SwipeArchiveLight = Color(0xFF2A2A2A)
+val SwipeArchiveDark = Color(0xFFE8E8E8)
+val SwipeDeleteLight = Color(0xFF5C2B2B)
+val SwipeDeleteDark = Color(0xFF8B4545)

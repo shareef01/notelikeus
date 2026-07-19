@@ -16,6 +16,7 @@ class FirebaseNoteSync @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val syncStateStore: NoteSyncStateStore
 ) {
+
     suspend fun uploadAllNotes(): Result<Int> {
         return try {
             val uid = sessionManager.ensureGoogleSignedIn().getOrThrow()
