@@ -35,7 +35,7 @@ export function ResponsiveSheet({
   return (
     <>
       <div
-        className="fixed inset-0 z-50 overlay-scrim backdrop-blur-sm"
+        className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden
       />

@@ -10,7 +10,6 @@ import com.aus.notelikeus.data.local.USE_MONOCHROME_THEME_KEY
 import com.aus.notelikeus.data.local.model.NoteWithLabelsAndAttachments
 import com.aus.notelikeus.data.local.settingsDataStore
 import com.aus.notelikeus.di.WidgetEntryPoint
-import com.aus.notelikeus.domain.model.AppTheme
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.first
 
@@ -58,17 +57,17 @@ object WidgetNoteLoader {
 
     suspend fun loadTheme(context: Context): WidgetThemeColors {
         val preferences = context.settingsDataStore.data.first()
-        val appTheme = AppTheme.fromName(preferences[APP_THEME_KEY])
+        val isTrueDark = preferences[TRUE_DARK_MODE_KEY] ?: false
+        val isMonochrome = preferences[USE_MONOCHROME_THEME_KEY] ?: true
         val isSystemDark =
             (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
                 Configuration.UI_MODE_NIGHT_YES
-        return when (appTheme) {
-            AppTheme.TRUE_DARK -> WidgetThemes.TrueDark
-            AppTheme.MIDNIGHT -> WidgetThemes.Midnight
-            AppTheme.FOREST -> WidgetThemes.Forest
-            AppTheme.LIGHT -> WidgetThemes.Light
-            AppTheme.DARK -> WidgetThemes.Dark
-            AppTheme.AUTO -> if (isSystemDark) WidgetThemes.Dark else WidgetThemes.Light
+        return when {
+            isTrueDark -> WidgetThemes.TrueDark
+            isMonochrome && isSystemDark -> WidgetThemes.MonochromeDark
+            isMonochrome -> WidgetThemes.MonochromeLight
+            isSystemDark -> WidgetThemes.Dark
+            else -> WidgetThemes.Light
         }
     }
 }

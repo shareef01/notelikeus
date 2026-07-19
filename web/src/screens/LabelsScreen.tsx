@@ -16,7 +16,6 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
   const { labels, createLabel, updateLabel, deleteLabel } = useLabelManagement();
   const [newLabelName, setNewLabelName] = useState('');
   const [labelToEdit, setLabelToEdit] = useState<Label | null>(null);
-  const [labelToDelete, setLabelToDelete] = useState<Label | null>(null);
   const [editName, setEditName] = useState('');
   const [labelToDelete, setLabelToDelete] = useState<Label | null>(null);
 
@@ -38,13 +37,6 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
       updateLabel(labelToEdit.id, editName.trim());
     }
     setLabelToEdit(null);
-  };
-
-  const handleConfirmDelete = () => {
-    if (labelToDelete) {
-      deleteLabel(labelToDelete.id);
-      setLabelToDelete(null);
-    }
   };
 
   return (
@@ -76,7 +68,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
           {newLabelName.trim() ? (
             <button
               type="submit"
-              className="rounded-note px-4 py-2 text-sm font-bold text-brand-primary transition-colors interactive-hover"
+              className="rounded-note px-4 py-2 text-sm font-bold text-brand-primary transition-colors hover:bg-white/5"
             >
               Create
             </button>
@@ -96,8 +88,8 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
           <div className="space-y-0">
             {labels.map((label, index) => (
               <div key={label.id}>
-                <div className="flex min-h-[56px] items-center gap-4 rounded-note px-4 transition-colors interactive-hover">
-                  <LabelIcon size={22} className="opacity-40" />
+                <div className="flex min-h-[56px] items-center gap-4 rounded-note px-4 transition-colors hover:bg-white/5">
+                  <span className="text-xl opacity-40">🏷️</span>
 
                   {labelToEdit?.id === label.id ? (
                     <input
@@ -111,7 +103,6 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
                     />
                   ) : (
                     <button
-                      type="button"
                       onClick={() => handleStartEdit(label)}
                       className="flex-1 truncate text-left text-base text-brand-primary"
                     >
