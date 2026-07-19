@@ -141,7 +141,11 @@ describe('firestore.rules', () => {
     await assertSucceeds(
       setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ reminderTimestamp: null })),
     );
-    await assertSucceeds(
+  });
+
+  it('rejects null for required color', async () => {
+    const alice = authed('alice');
+    await assertFails(
       setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ color: null })),
     );
   });

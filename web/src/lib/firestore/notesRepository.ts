@@ -15,7 +15,6 @@ import {
 import { getFirestoreDb } from '@/lib/firebase';
 import {
   cloudMapToNote,
-  noteCloudDocumentId,
   noteToCloudMap,
   noteToFirestorePayload,
   syncMetaMap,
@@ -28,7 +27,6 @@ import {
   userTombstoneDocument,
   userTombstonesCollection,
 } from '@/lib/firestore/paths';
-import { applyRemoteDeletions } from '@/lib/notes/cloudSyncState';
 import type { Label } from '@/types/label';
 import type { Note } from '@/types/note';
 import { isCloudSyncEligible } from '@/types/note';
@@ -49,13 +47,6 @@ function parseNoteDoc(
   labelResolver: (name: string) => Label,
 ): Note {
   return cloudMapToNote(snapshot.id, snapshot.data() as FirestoreNoteDocument, labelResolver);
-}
-
-function findLocalByRemote(localNotes: Note[], remote: Note): Note | undefined {
-  return (
-    localNotes.find((note) => note.cloudId === remote.cloudId) ??
-    localNotes.find((note) => note.id === remote.id)
-  );
 }
 
 export function subscribeToNotes(
@@ -139,7 +130,7 @@ export async function uploadAllNotes(userId: string, notes: Note[]): Promise<num
     const batch = writeBatch(db);
     for (const note of chunk) {
       const payload = noteToCloudMap(note);
-      batch.set(userNoteDocument(userId, noteCloudDocumentId(note)), payload, { merge: true });
+      batch.set(userNoteDocument(userId, note.id), payload, { merge: true });
     }
     await batch.commit();
   }
@@ -152,24 +143,21 @@ export async function uploadAllNotes(userId: string, notes: Note[]): Promise<num
  * Last-write-wins merge using `timestamp`, matching Android FirebaseNoteSync.
  */
 export async function mergeRemoteNotes(localNotes: Note[], remoteNotes: Note[]): Promise<Note[]> {
-  const byCloudId = new Map<string, Note>();
-  for (const note of localNotes) {
-    byCloudId.set(note.cloudId, note);
-  }
+  const byId = new Map<string, Note>(localNotes.map((note) => [note.id, note]));
 
   for (const remote of remoteNotes) {
-    const local = findLocalByRemote(localNotes, remote);
+    const local = byId.get(remote.id);
     if (!local) {
-      byCloudId.set(remote.cloudId, remote);
+      byId.set(remote.id, remote);
       continue;
     }
     if (local.isLocked) continue;
     if (remote.timestamp >= local.timestamp) {
-      byCloudId.set(remote.cloudId, { ...remote, id: local.id, localId: local.localId });
+      byId.set(remote.id, remote);
     }
   }
 
-  return Array.from(byCloudId.values());
+  return Array.from(byId.values());
 }
 
 export async function deleteAllCloudData(userId: string): Promise<number> {
@@ -291,11 +279,7 @@ export async function syncNotesWithCloud(
   }
 
   await touchSyncMeta(userId, merged.filter(isCloudSyncEligible).length);
-  return {
-    changes,
-    merged,
-    remoteCloudIds: remoteNotes.map((note) => note.cloudId),
-  };
+  return { changes, merged, remoteIds: remoteNotes.map((note) => note.id) };
 }
 
 export async function touchSyncMeta(userId: string, noteCount: number): Promise<void> {

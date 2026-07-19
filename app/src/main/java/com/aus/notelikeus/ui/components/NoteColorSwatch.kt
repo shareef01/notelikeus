@@ -2,6 +2,7 @@ package com.aus.notelikeus.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -46,7 +47,7 @@ fun NoteColorSwatch(
             .size(touchSize)
             .clip(CircleShape)
             .semantics { this.contentDescription = description }
-            .clickableWithFeedback(onClick = onClick, rippleRadius = 20.dp),
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Box(

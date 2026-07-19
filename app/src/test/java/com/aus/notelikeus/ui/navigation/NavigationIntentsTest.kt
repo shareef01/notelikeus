@@ -1,9 +1,6 @@
 package com.aus.notelikeus.ui.navigation
 
 import android.content.Intent
-import android.net.Uri
-import io.mockk.every
-import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -64,10 +61,7 @@ class NavigationIntentsTest {
 
     @Test
     fun `extractEditorNoteId returns null when missing`() {
-        val intent = mockk<Intent>()
-        every { intent.getLongExtra("noteId", -1L) } returns -1L
-        every { intent.data } returns null
-        assertNull(extractEditorNoteId(intent))
+        assertNull(extractEditorNoteId(Intent()))
     }
 
     @Test

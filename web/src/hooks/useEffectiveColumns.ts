@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
-import { useUiStore, type ViewColumns } from '@/store/uiStore';
+import type { ViewColumns } from '@/store/uiStore';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export type EffectiveColumns = 1 | 2 | 3 | 4;

@@ -32,12 +32,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.R
-import com.aus.notelikeus.ui.components.GoogleSignInButton
 import com.aus.notelikeus.ui.main.components.PrecisionFilterChip
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 
 private val EmptyStateIconSize = 72.dp
-private const val EmptyStateIconAlpha = 0.35f
+private const val EmptyStateIconAlpha = 0.2f
 
 @Composable
 fun NotesEmptyState(
@@ -46,8 +45,6 @@ fun NotesEmptyState(
     icon: ImageVector? = null,
     showCreateButton: Boolean = false,
     showClearFilters: Boolean = false,
-    showSignInActions: Boolean = false,
-    onSignInClick: () -> Unit = {},
     recentSearches: List<String> = emptyList(),
     onRecentSearchClick: (String) -> Unit = {},
     onCreateClick: () -> Unit = {},
@@ -63,7 +60,7 @@ fun NotesEmptyState(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(horizontal = 16.dp)
+            modifier = Modifier.padding(horizontal = 40.dp)
         ) {
             EmptyStateVisual(
                 icon = icon,
@@ -91,10 +88,8 @@ fun NotesEmptyState(
                     textAlign = TextAlign.Center
                 )
             }
-            if (showCreateButton || showSignInActions) {
-                Spacer(modifier = Modifier.height(28.dp))
-            }
             if (showCreateButton) {
+                Spacer(modifier = Modifier.height(28.dp))
                 FilledTonalButton(onClick = onCreateClick) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -106,15 +101,6 @@ fun NotesEmptyState(
                         Text(stringResource(R.string.add_note))
                     }
                 }
-            }
-            if (showSignInActions) {
-                if (showCreateButton) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-                GoogleSignInButton(
-                    onClick = onSignInClick,
-                    modifier = Modifier.fillMaxWidth(),
-                )
             }
             if (showClearFilters) {
                 Spacer(modifier = Modifier.height(12.dp))

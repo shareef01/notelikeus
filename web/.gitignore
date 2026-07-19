@@ -6,6 +6,3 @@ dist-ssr
 .env.local
 .DS_Store
 dev-dist
-test-results
-playwright-report
-blob-report

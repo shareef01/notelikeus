@@ -41,6 +41,10 @@ interface PrivacyPolicyDialogProps {
   onClose: () => void;
 }
 
+/**
+ * Privacy Policy Overhaul
+ * Geometric Discipline: Absolute 20px radius and backdrop-blur synchronization.
+ */
 export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
 
@@ -72,16 +76,6 @@ export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps)
         <p className="mt-4 whitespace-pre-line text-[14px] leading-[1.4em] text-brand-muted">
           {PRIVACY_POLICY_BODY}
         </p>
-        <p className="mt-4 text-sm">
-          <a
-            href={PRIVACY_POLICY_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-semibold text-brand-primary underline underline-offset-2"
-          >
-            View full policy online
-          </a>
-        </p>
         <div className="mt-6 flex justify-end">
           <button
             type="button"
@@ -92,6 +86,6 @@ export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps)
           </button>
         </div>
       </div>
-    </ModalScrim>
+    </div>
   );
 }

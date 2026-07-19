@@ -2,7 +2,6 @@ package com.aus.notelikeus.data.remote
 
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
-import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
@@ -13,8 +12,6 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -22,9 +19,9 @@ import org.junit.Before
 import org.junit.Test
 
 class FirebaseNoteSyncTest {
+
     private lateinit var noteRepository: NoteRepository
     private lateinit var sessionManager: FirebaseSessionManager
-    private lateinit var settingsRepository: SettingsRepository
     private lateinit var firestore: FirebaseFirestore
     private lateinit var syncStateStore: NoteSyncStateStore
     private lateinit var sync: FirebaseNoteSync
@@ -33,7 +30,6 @@ class FirebaseNoteSyncTest {
     fun setup() {
         noteRepository = mockk(relaxed = true)
         sessionManager = mockk()
-        settingsRepository = mockk(relaxed = true)
         firestore = mockk(relaxed = true)
         syncStateStore = mockk(relaxed = true)
         every { syncStateStore.isDeleted(any()) } returns false
@@ -99,7 +95,6 @@ class FirebaseNoteSyncTest {
         every { batch.commit() } returns Tasks.forResult(null)
 
         val result = sync.uploadAllNotes()
-        advanceUntilIdle()
 
         assertTrue(result.isSuccess)
         assertEquals(1, result.getOrNull())
@@ -109,19 +104,9 @@ class FirebaseNoteSyncTest {
     @Test
     fun `uploadNote on locked note removes it from cloud`() = runTest {
         coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
-        val cloudId = "11111111-1111-4111-8111-111111111111"
-        val locked = Note(
-            id = 9L,
-            cloudId = cloudId,
-            title = "Secret",
-            content = "",
-            timestamp = 1L,
-            color = 0,
-            isLocked = true
-        )
+        val locked = Note(id = 9L, title = "Secret", content = "", timestamp = 1L, color = 0, isLocked = true)
         coEvery { noteRepository.getNoteById(9L) } returns locked
 
-        val notesCollection = mockk<CollectionReference>(relaxed = true)
         val document = mockk<DocumentReference>(relaxed = true)
         val notesCollection = mockk<CollectionReference>(relaxed = true)
         stubUserCollections(notesCollection)
@@ -129,7 +114,6 @@ class FirebaseNoteSyncTest {
         every { document.delete() } returns Tasks.forResult(null)
 
         val result = sync.uploadNote(9L)
-        advanceUntilIdle()
 
         assertTrue(result.isSuccess)
         verify { document.delete() }

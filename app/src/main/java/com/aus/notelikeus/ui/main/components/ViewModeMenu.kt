@@ -83,7 +83,7 @@ fun ViewModeMenu(
                         contentDescription = null,
                         modifier = Modifier
                             .size(20.dp)
-                            .semantics { @Suppress("DEPRECATION") invisibleToUser() },
+                            .semantics { invisibleToUser() },
                         tint = if (isSelected) {
                             MaterialTheme.colorScheme.primary
                         } else {
@@ -98,7 +98,7 @@ fun ViewModeMenu(
                             contentDescription = null,
                             modifier = Modifier
                                 .size(18.dp)
-                                .semantics { @Suppress("DEPRECATION") invisibleToUser() },
+                                .semantics { invisibleToUser() },
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }

@@ -18,7 +18,7 @@ export function ThemeApplier() {
   const appTheme = useSettingsStore((s) => s.appTheme);
 
   useEffect(() => {
-    applyTheme(appTheme);
+    const root = document.documentElement;
 
     const apply = () => {
       root.classList.remove(...THEME_CLASSES);

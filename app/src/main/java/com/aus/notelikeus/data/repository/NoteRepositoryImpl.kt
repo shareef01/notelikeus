@@ -58,10 +58,6 @@ class NoteRepositoryImpl @Inject constructor(
         return noteDao.getNoteById(id)?.toNote()
     }
 
-    override suspend fun getNoteByCloudId(cloudId: String): Note? {
-        return noteDao.getNoteByCloudId(cloudId)?.toNote()
-    }
-
     override suspend fun insertNote(note: Note) {
         insertNoteWithResult(note)
     }

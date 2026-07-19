@@ -37,18 +37,14 @@ function rememberKnownCloudIds(ids: Set<string>) {
 }
 
 function applyNotes(incoming: Note[]) {
-  // Deduplicate by cloudId — keep the version with the latest timestamp
-  const deduped = Array.from(
-    new Map(incoming.map((note) => [note.cloudId || note.id, note])).values(),
-  );
   const current = useNotesStore.getState().notes;
-  if (notesContentEqual(current, deduped)) {
+  if (notesContentEqual(current, incoming)) {
     if (useNotesStore.getState().status !== 'ready') {
       useNotesStore.getState().setStatus('ready');
     }
     return;
   }
-  useNotesStore.getState().setNotes(deduped);
+  useNotesStore.getState().setNotes(incoming);
 }
 
 function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
@@ -56,13 +52,6 @@ function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
   const isInitial = knownCloudIds.size === 0;
   const isDeleted = useTombstoneStore.getState().isDeleted;
   const result = new Map<string, Note>();
-
-  // Clean up pending deletes that are now confirmed gone from the server
-  for (const cloudId of pendingLocalDeletes) {
-    if (!remoteCloudIds.has(cloudId)) {
-      pendingLocalDeletes.delete(cloudId);
-    }
-  }
 
   for (const remote of remoteNotes) {
     if (isDeleted(remote.id)) continue;
@@ -75,9 +64,9 @@ function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
       // let it override local, matching mergeRemoteNotes' handling of the same case.
       result.set(remote.id, local);
     } else if (local.timestamp > remote.timestamp) {
-      result.set(local.cloudId, local);
+      result.set(remote.id, local);
     } else {
-      result.set(remote.cloudId, { ...remote, id: local.id, localId: local.localId });
+      result.set(remote.id, remote);
     }
   }
 
@@ -89,13 +78,13 @@ function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
       continue;
     }
     if (local.isLocked) {
-      result.set(local.cloudId, local);
+      result.set(local.id, local);
       continue;
     }
-    if (!isInitial && previousKnownCloudIds.has(local.cloudId) && !remoteCloudIds.has(local.cloudId)) {
+    if (!isInitial && knownCloudIds.has(local.id) && !remoteIds.has(local.id)) {
       continue;
     }
-    result.set(local.cloudId, local);
+    result.set(local.id, local);
   }
 
   rememberKnownCloudIds(remoteIds);
@@ -106,7 +95,7 @@ function attachVisibilityRefresh(userId: string) {
   if (visibilityHandler) return;
   visibilityHandler = () => {
     if (document.visibilityState !== 'visible' || realtimeUserId !== userId) return;
-    void mergeCloudNotesOnce(userId, true);
+    void mergeCloudNotesOnce(userId);
   };
   document.addEventListener('visibilitychange', visibilityHandler);
 }
@@ -117,9 +106,9 @@ function detachVisibilityRefresh() {
   visibilityHandler = null;
 }
 
-/** Merge local notes with cloud. When force=true, re-runs even after the first merge this session. */
-export function mergeCloudNotesOnce(userId: string, force = false): Promise<void> {
-  if (!force && mergedForUserId === userId && !mergeInFlight) {
+/** One-time cloud merge when the user signs in. No live listener (avoids render storms). */
+export function mergeCloudNotesOnce(userId: string): Promise<void> {
+  if (mergedForUserId === userId && !mergeInFlight) {
     return Promise.resolve();
   }
 
@@ -147,10 +136,9 @@ export function mergeCloudNotesOnce(userId: string, force = false): Promise<void
       rememberKnownCloudIds(new Set(remoteIds.filter((id) => !isDeleted(id))));
       mergedForUserId = userId;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Cloud merge failed';
-      if (!message.includes('permission')) {
-        useNotesStore.getState().setError(message);
-      }
+      useNotesStore.getState().setError(
+        error instanceof Error ? error.message : 'Cloud merge failed',
+      );
     } finally {
       mergeInFlight = null;
     }
@@ -165,7 +153,6 @@ export function startNotesRealtimeSync(userId: string): void {
 
   stopNotesRealtimeSync();
   realtimeUserId = userId;
-  knownCloudIds = loadKnownCloudIds(userId);
 
   unsubscribeRealtime = subscribeToNotes(
     userId,
@@ -180,53 +167,6 @@ export function startNotesRealtimeSync(userId: string): void {
     },
   );
 
-  const start = () => {
-    if (realtimeUserId !== userId) return;
-
-    unsubscribeRealtime = subscribeToNotes(
-      userId,
-      (remoteNotes) => {
-        retryCount = 0; // Reset on success
-        useNotesStore.getState().setError(null);
-        const localNotes = useNotesStore.getState().notes;
-        const merged = applyRemoteSnapshot(localNotes, remoteNotes, knownCloudIds);
-        applyNotes(merged);
-        knownCloudIds = new Set(remoteNotes.map((note) => note.cloudId));
-        saveKnownCloudIds(userId, knownCloudIds);
-      },
-      (error) => {
-        // Don't show permissions errors as note-list errors — they're auth-related
-        if (error.message.includes('permission')) {
-          retryCount++;
-          if (retryCount > MAX_RETRIES) {
-            console.error('[Notelikeus] Sync failed after', MAX_RETRIES, 'retries:', error.message);
-            useNotesStore.getState().setError(
-              'Sync unavailable. Try signing out and back in, or check your connection.',
-            );
-            return;
-          }
-          const delay = Math.min(2000 * Math.pow(2, retryCount - 1), 30000);
-          console.warn(
-            `[Notelikeus] Sync deferred (attempt ${retryCount}/${MAX_RETRIES}), retrying in ${delay / 1000}s:`,
-            error.message,
-          );
-          if (!retryTimer) {
-            retryTimer = setTimeout(() => {
-              retryTimer = null;
-              stopNotesRealtimeSync();
-              realtimeUserId = userId;
-              knownCloudIds = loadKnownCloudIds(userId);
-              start();
-            }, delay);
-          }
-          return;
-        }
-        useNotesStore.getState().setError(error.message);
-      },
-    );
-  };
-
-  start();
   attachVisibilityRefresh(userId);
 }
 
@@ -237,7 +177,7 @@ export function stopNotesRealtimeSync(): void {
   detachVisibilityRefresh();
 }
 
-export function resetCloudMergeState(userId?: string): void {
+export function resetCloudMergeState(): void {
   mergedForUserId = null;
   mergeInFlight = null;
   // Keep persisted IDs across auth blips; clearLocalUserData wipes storage on sign-out.

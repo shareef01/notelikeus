@@ -27,10 +27,6 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE id = :id")
     suspend fun getNoteById(id: Long): NoteWithLabelsAndAttachments?
 
-    @Transaction
-    @Query("SELECT * FROM notes WHERE cloudId = :cloudId LIMIT 1")
-    suspend fun getNoteByCloudId(cloudId: String): NoteWithLabelsAndAttachments?
-
     @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM notes WHERE isTrashed = 0 AND isArchived = 0")
     suspend fun getNextNotePosition(): Int
 

@@ -11,7 +11,6 @@ import { useNotesStore } from '@/store/notesStore';
 import { createChecklistItem, sortChecklistItems } from '@/types/checklist';
 import type { Label } from '@/types/label';
 import { allocateLocalNoteId } from '@/types/note';
-import { ensureCloudId } from '@/lib/cloudIds';
 import { labelFromName } from '@/types/label';
 import { processSmartText, type TextEdit } from '@/lib/text/smartTextProcessor';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -89,8 +88,8 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
       void persistNow();
-    };
-  }, [noteId, sourceTimestamp, persistNow]);
+    }, AUTOSAVE_MS);
+  }, [persistNow]);
 
   useEffect(() => {
     if (!noteId) {
@@ -194,14 +193,12 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     setColor: (color: number) => patch((s) => ({ ...s, color })),
     togglePin: () => patch((s) => ({ ...s, isPinned: !s.isPinned })),
     toggleArchive: () => patch((s) => ({ ...s, isArchived: !s.isArchived })),
-    toggleLock: () => {
+    toggleLock: () =>
       patch((s) => ({
         ...s,
         isLocked: !s.isLocked,
         isAccessGranted: s.isLocked ? true : s.isAccessGranted,
-      }));
-      void persistNow();
-    },
+      })),
     grantAccess: () => patch((s) => ({ ...s, isAccessGranted: true })),
     toggleLabel: (label: Label) =>
       patch((s) => {

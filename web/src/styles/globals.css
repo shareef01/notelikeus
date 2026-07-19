@@ -77,15 +77,6 @@
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     transition: background-color 0.3s ease, color 0.3s ease;
   }
-
-  :focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--primary) 60%, transparent);
-    outline-offset: 2px;
-  }
-
-  :focus:not(:focus-visible) {
-    outline: none;
-  }
 }
 
 @layer utilities {
@@ -95,15 +86,6 @@
   }
 
   .scrollbar-none::-webkit-scrollbar {
-    display: none;
-  }
-
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
 

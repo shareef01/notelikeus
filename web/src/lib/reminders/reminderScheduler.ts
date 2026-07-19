@@ -17,7 +17,7 @@ async function postRemindersToServiceWorker(reminders: SwReminder[]) {
   }
 }
 
-export function notesEligibleForReminders(notes: Note[]): Note[] {
+function buildSwReminders(notes: Note[]): SwReminder[] {
   const now = Date.now();
   return notes
     .filter(

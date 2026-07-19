@@ -1,6 +1,5 @@
 package com.aus.notelikeus.ui.labels
 
-import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aus.notelikeus.domain.model.Label
@@ -10,7 +9,6 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-@Immutable
 data class LabelsState(
     val labels: List<Label> = emptyList(),
     val isLoading: Boolean = true

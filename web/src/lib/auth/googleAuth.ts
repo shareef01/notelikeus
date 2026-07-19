@@ -51,16 +51,6 @@ export async function signOutGoogle(deleteCloudData = false): Promise<void> {
     await deleteAllCloudData(userId);
   }
 
-  // Clear persisted data and in-memory notes so the next sign-in starts fresh.
-  clearLocalStores();
-  useNotesStore.getState().reset();
-
-  if (userId) {
-    resetCloudMergeState(userId);
-  } else {
-    resetCloudMergeState();
-  }
-
   await signOut(auth);
   resetCloudMergeState();
   clearLocalUserData();

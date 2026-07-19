@@ -9,7 +9,6 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.common.api.ApiException
-import com.google.android.gms.common.api.CommonStatusCodes
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -53,24 +52,5 @@ class GoogleSignInHelper @Inject constructor(
 
     suspend fun signOutFromGoogle() {
         googleSignInClient.signOut().await()
-    }
-
-    fun diagnose(error: Throwable): String {
-        if (error is ApiException) {
-            return when (error.statusCode) {
-                CommonStatusCodes.CANCELED,
-                12501 -> "Google sign-in was canceled."
-                CommonStatusCodes.DEVELOPER_ERROR,
-                10 -> {
-                    "Google sign-in configuration error. Add this device's SHA-1 in " +
-                        "Firebase Console → Project settings → Your apps → Add fingerprint, " +
-                        "then re-download google-services.json. Run: ./gradlew :app:signingReport"
-                }
-                CommonStatusCodes.NETWORK_ERROR -> "Network error during Google sign-in."
-                else -> "Google sign-in failed (code ${error.statusCode})."
-            }
-        }
-        return error.message?.takeIf { it.isNotBlank() }
-            ?: "Google sign-in failed."
     }
 }
