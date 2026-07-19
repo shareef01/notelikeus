@@ -1,6 +1,5 @@
 package com.aus.notelikeus.data.mapper
 
-import com.aus.notelikeus.data.remote.CloudIds
 import com.aus.notelikeus.data.local.entity.*
 import com.aus.notelikeus.data.local.model.NoteWithLabelsAndAttachments
 import com.aus.notelikeus.domain.model.*
@@ -12,7 +11,6 @@ fun NoteEntity.toNote(
 ): Note {
     return Note(
         id = if (id == 0L) null else id,
-        cloudId = cloudId,
         title = title,
         content = content,
         timestamp = timestamp,
@@ -32,7 +30,6 @@ fun NoteEntity.toNote(
 fun Note.toNoteEntity(): NoteEntity {
     return NoteEntity(
         id = id ?: 0L,
-        cloudId = CloudIds.ensure(cloudId),
         title = title,
         content = content,
         timestamp = timestamp,

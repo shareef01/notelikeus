@@ -134,14 +134,8 @@ export async function bootstrapApp(): Promise<void> {
   ensureReminderSync();
 
   if (isFirebaseConfigured()) {
-    if (!isFirebaseEnvValid()) {
-      console.error('[Notelikeus] Firebase env looks invalid. Rebuild with web/.env or run scripts/setup-web-env.ps1');
-      return;
-    }
-
     try {
       initFirebase();
-      await completeRedirectSignInIfNeeded();
     } catch (error) {
       console.error('[Notelikeus] Firebase init failed:', error);
     }

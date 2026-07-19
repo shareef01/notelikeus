@@ -33,7 +33,12 @@ service cloud.firestore {
         && data.checklist is list
         && data.checklist.size() <= 500
         && (!('attachments' in data)
-          || (data.attachments is list && data.attachments.size() <= 50));
+          || (data.attachments is list && data.attachments.size() <= 50))
+        // Locked notes must not store plaintext body fields in the cloud.
+        && (!data.isLocked
+          || (data.title.size() == 0
+            && data.content.size() == 0
+            && data.checklist.size() == 0));
     }
 
     function isValidSyncMeta() {

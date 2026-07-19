@@ -7,7 +7,6 @@ import androidx.room.PrimaryKey
 data class NoteEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
-    val cloudId: String = "",
     val title: String,
     val content: String,
     val timestamp: Long,

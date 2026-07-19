@@ -1,11 +1,9 @@
 package com.aus.notelikeus.data.remote
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
-import android.app.NotificationManager.IMPORTANCE_HIGH
 import com.aus.notelikeus.R
 
 object NotificationChannels {
@@ -18,10 +16,8 @@ object NotificationChannels {
         val channel = NotificationChannel(
             REMINDERS_ID,
             context.getString(R.string.reminder_channel_name),
-            IMPORTANCE_HIGH
-        ).apply {
-            lockscreenVisibility = Notification.VISIBILITY_SECRET
-        }
+            NotificationManager.IMPORTANCE_HIGH
+        )
         manager.createNotificationChannel(channel)
     }
 }

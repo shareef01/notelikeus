@@ -50,6 +50,6 @@ export function EmptyTrashDialog({
           </button>
         </div>
       </div>
-    </ModalScrim>
+    </div>
   );
 }

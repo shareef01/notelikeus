@@ -59,6 +59,9 @@ const config: Config = {
         content: '88rem',
         editor: '48rem',
       },
+      boxShadow: {
+        'header-scroll': '0 1px 0 0 rgba(255, 255, 255, 0.06)',
+      },
     },
   },
   plugins: [tailwindcssAnimate],

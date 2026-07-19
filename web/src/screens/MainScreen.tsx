@@ -2,13 +2,13 @@ import { AddIcon } from '@/components/icons/Icons';
 
 import { ToastHost } from '@/components/feedback/ToastHost';
 import { InstallPrompt } from '@/components/layout/InstallPrompt';
+import { OfflineBanner } from '@/components/layout/OfflineBanner';
 import { SideDrawer } from '@/components/layout/SideDrawer';
 import { TopBar } from '@/components/layout/TopBar';
 import { NoteStaggeredGrid } from '@/components/notes/NoteStaggeredGrid';
 import { NotesEmptyState } from '@/components/notes/NotesEmptyState';
 import { BulkDeleteDialog } from '@/components/notes/BulkDeleteDialog';
 import { EmptyTrashDialog } from '@/components/notes/EmptyTrashDialog';
-import { BackupImportDialog } from '@/components/notes/BackupImportDialog';
 import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
 import { TrashBanner } from '@/components/notes/TrashBanner';
 
@@ -26,7 +26,7 @@ import { useNotes } from '@/hooks/useNotes';
 
 import { exportNotesBackup } from '@/lib/backup/exportBackup';
 
-import { importNotesFromBackup, readBackupFile, type BackupImportResult } from '@/lib/backup/importBackup';
+import { importNotesFromBackup, readBackupFile } from '@/lib/backup/importBackup';
 
 import { signOutGoogle } from '@/lib/auth/googleAuth';
 import {
@@ -49,34 +49,44 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useToastStore } from '@/store/toastStore';
 
 import { useUiStore } from '@/store/uiStore';
+
 import type { Note, NoteFilter } from '@/types/note';
 
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { EditorScreen } from '@/screens/EditorScreen';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+
+
+
+const SORT_ORDERS = ['manual', 'newest', 'oldest'] as const;
+
+
 
 export function MainScreen() {
-  const navigate = useNavigate();
+
   const scrollRef = useRef<HTMLDivElement>(null);
+
   const backupInputRef = useRef<HTMLInputElement>(null);
+
   const { user } = useAuthListener();
 
   const [showProfile, setShowProfile] = useState(false);
+
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
-  const [backupPreview, setBackupPreview] = useState<{
-    fileName: string;
-    merged: Note[];
-    result: BackupImportResult;
-  } | null>(null);
+
+
 
   const drawerOpen = useUiStore((s) => s.drawerOpen);
+
   const viewColumns = useUiStore((s) => s.viewColumns);
+
   const listScrolled = useUiStore((s) => s.listScrolled);
+
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
 
   const setViewColumns = useUiStore((s) => s.setViewColumns);
@@ -84,9 +94,9 @@ export function MainScreen() {
 
   const setListScrolled = useUiStore((s) => s.setListScrolled);
 
-  const openNewNote = () => navigate('/note/new');
-  const openNote = (noteId: string) => navigate(`/note/${noteId}`);
+  const openNewNote = useUiStore((s) => s.openNewNote);
 
+  const openNote = useUiStore((s) => s.openNote);
   const openAuthScreen = useUiStore((s) => s.openAuthScreen);
   const setLabelsOpen = useUiStore((s) => s.setLabelsOpen);
   const recentSearches = useUiStore((s) => s.recentSearches);
@@ -107,31 +117,35 @@ export function MainScreen() {
 
   const cloud = useCloudSync();
 
+
+
   const {
+
     notes,
+
     filteredNotes,
+
     labels,
+
     filters,
+
     setSearchQuery,
+
     setColorFilter,
+
     setLabelFilter,
+
     setNoteFilter,
+
     setSortOrder,
+
     clearFilters,
+
     isLoading,
+
     error,
+
   } = useNotes();
-
-  const selectedNoteModels = useMemo(
-    () =>
-      selectedNoteIds
-        .map((id) => notes.find((note) => note.id === id))
-        .filter((note): note is Note => note != null),
-    [selectedNoteIds, notes],
-  );
-
-  const selectionAllPinned =
-    selectedNoteModels.length > 0 && selectedNoteModels.every((note) => note.isPinned);
 
 
 
@@ -214,6 +228,20 @@ export function MainScreen() {
     setListScrolled(element.scrollTop > 0);
 
   }, [setListScrolled]);
+
+
+
+  const cycleSortOrder = () => {
+
+    const index = SORT_ORDERS.indexOf(filters.sortOrder ?? 'manual');
+
+    const next = SORT_ORDERS[(index + 1) % SORT_ORDERS.length];
+
+    setSortOrder(next);
+
+  };
+
+
 
   const handleArchiveNote = async (note: Note) => {
     const previous = { ...note };
@@ -439,16 +467,27 @@ export function MainScreen() {
     <div className="flex min-h-screen w-full bg-true-surface lg:mx-auto lg:max-w-shell">
 
       <SideDrawer
+
         open={drawerOpen}
+
         currentFilter={filters.filter}
+
         onClose={() => setDrawerOpen(false)}
+
         onNavigate={handleNavigateFilter}
+
         userEmail={user?.email ?? null}
+
         onSignIn={() => openAuthScreen('signin')}
+
         onSignOut={() => setShowSignOutConfirm(true)}
+
         onEditLabels={() => setLabelsOpen(true)}
+
         navCounts={navCounts}
+
         onOpenSettings={() => setShowProfile(true)}
+
       />
 
 
@@ -457,45 +496,8 @@ export function MainScreen() {
         <div className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ${dockedEditor ? 'max-w-[min(32rem,46%)] border-r border-brand-outline xl:max-w-[min(36rem,42%)]' : ''}`}>
           <TopBar
             searchQuery={filters.searchQuery ?? ''}
-            onSearchQueryChange={setSearchQuery}
-            currentFilter={filters.filter}
-            listScrolled={listScrolled}
-            sortOrder={filters.sortOrder ?? 'manual'}
-            onSortOrderChange={setSortOrder}
-            selectedColor={filters.colorArgb ?? null}
-            onColorSelect={setColorFilter}
-            labels={labels}
-            selectedLabelName={filters.labelName ?? null}
-            onLabelSelect={setLabelFilter}
-            hasActiveFilters={hasActiveFilters}
-            onClearFilters={clearFilters}
-            onMenuClick={() => setDrawerOpen(true)}
-            onProfileClick={() => setShowProfile(true)}
-            onViewColumnsChange={setViewColumns}
-            onNewNote={openNewNote}
-            showNewNote={filters.filter === 'active'}
-            viewColumns={effectiveColumns}
-            selectionMode={selectionMode}
-            selectionAllPinned={selectionAllPinned}
-            selectedCount={selectedNoteIds.length}
-            allFilteredSelected={allFilteredSelected}
-            onClearSelection={clearSelection}
-            onToggleSelectAll={() => toggleSelectAll(filteredNoteIds)}
-            onBulkPin={() => void handleBulkPin()}
-            onBulkUnpin={() => void handleBulkUnpin()}
-            onBulkArchive={() => void handleBulkArchive()}
-            onBulkRestore={() => void handleBulkRestore()}
-            onBulkTrash={() => void handleBulkTrash()}
-            onBulkPermanentDelete={() => setShowBulkDeleteConfirm(true)}
-            recentSearches={recentSearches}
-            onRecentSearchClick={(query) => {
-              setSearchQuery(query);
-              addRecentSearch(query);
-            }}
-            onClearRecentSearches={clearRecentSearches}
-          />
 
-          <InstallPrompt />
+          onSearchQueryChange={setSearchQuery}
 
           currentFilter={filters.filter}
 
@@ -652,99 +654,12 @@ export function MainScreen() {
 
             aria-label="Add note"
 
-          <main
-            ref={scrollRef}
-            onScroll={handleScroll}
-            className="flex-1 overflow-y-auto overscroll-contain px-3 pt-1 sm:px-4 sm:pt-2"
           >
-            <div className="mx-auto w-full max-w-content pb-28">
-              {error ? (
-                <div className="px-4 py-8 text-center text-sm text-red-400 font-medium">{error}</div>
-              ) : null}
 
-              {isLoading ? (
-                <NotesLoadingGrid columns={effectiveColumns} />
-              ) : filteredNotes.length === 0 ? (
-                <div className="pt-12 sm:pt-20">
-                  <NotesEmptyState
-                    message={emptyState.message}
-                    subtitle={emptyState.subtitle}
-                    icon={emptyState.icon}
-                    recentSearches={recentSearches}
-                    onRecentSearchClick={(query) => {
-                      setSearchQuery(query);
-                      addRecentSearch(query);
-                    }}
-                    action={
-                      emptyState.actionType === 'clearFilters' ? (
-                        <button
-                          type="button"
-                          onClick={clearFilters}
-                          className="rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary interactive-hover"
-                        >
-                          Clear filters
-                        </button>
-                      ) : emptyState.actionType === 'addNote' ? (
-                        <div className="flex flex-col items-center gap-3 sm:flex-row">
-                          <button
-                            type="button"
-                            onClick={openNewNote}
-                            className="rounded-note bg-brand-primary px-6 py-2.5 text-sm font-bold text-true-black transition-transform active:scale-95"
-                          >
-                            Add note
-                          </button>
-                          {!user ? (
-                            <button
-                              type="button"
-                              onClick={() => openAuthScreen('signin')}
-                              className="rounded-note border border-brand-outline/50 px-6 py-2.5 text-sm font-bold text-brand-primary transition-colors interactive-hover"
-                            >
-                              Sign in
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : undefined
-                    }
-                  />
-                </div>
-              ) : (
-                <NoteStaggeredGrid
-                  notes={filteredNotes}
-                  columns={effectiveColumns}
-                  filter={filters.filter}
-                  onNoteClick={handleNoteClick}
-                  onNoteLongPress={handleNoteLongPress}
-                  selectedNoteIds={selectedNoteIds}
-                  selectionMode={selectionMode}
-                  onLabelClick={(name) => {
-                    setNoteFilter('active');
-                    setLabelFilter(name);
-                  }}
-                  listActions={{
-                    onArchive: (note) => void handleArchiveNote(note),
-                    onTrash: (note) => void handleTrashNote(note),
-                    onRestore: (note) => void handleRestoreNote(note),
-                    onPermanentDelete: (note) => void handlePermanentDelete(note),
-                  }}
-                  searchQuery={filters.searchQuery ?? ''}
-                  allowReorder={allowReorder}
-                  onMoveNote={handleMoveNote}
-                  onReorderComplete={handleReorderComplete}
-                />
-              )}
-            </div>
-          </main>
+            <AddIcon size={28} />
 
-          {filters.filter === 'active' && !selectionMode ? (
-            <button
-              type="button"
-              onClick={openNewNote}
-              className="fixed bottom-6 right-5 z-20 flex size-12 items-center justify-center rounded-full bg-brand-primary text-true-black shadow-xl transition-all hover:scale-105 active:scale-95 pb-safe pr-safe sm:bottom-8 sm:right-8 sm:size-14 sm:rounded-note lg:hidden"
-              aria-label="Add note"
-            >
-              <AddIcon size={24} />
-            </button>
-          ) : null}
+          </button>
+        ) : null}
         </div>
 
         {dockedEditor ? (
@@ -761,6 +676,8 @@ export function MainScreen() {
         {overlayEditor ? <EditorScreen route={overlayEditor} /> : null}
       </div>
 
+
+
       <ProfileSheet
 
         open={showProfile}
@@ -771,8 +688,8 @@ export function MainScreen() {
 
         viewColumns={viewColumns}
         sortOrder={filters.sortOrder ?? 'manual'}
-        onViewColumnsChange={setViewColumns}
-        onSortOrderChange={setSortOrder}
+        onViewColumnsCycle={cycleViewColumns}
+        onSortOrderCycle={cycleSortOrder}
         appTheme={appTheme}
         onAppThemeChange={setAppTheme}
         cloudAutoSyncEnabled={cloudAutoSyncEnabled}
@@ -831,16 +748,6 @@ export function MainScreen() {
         onCancel={() => setShowEmptyTrashConfirm(false)}
         onConfirm={() => void handleEmptyTrash()}
       />
-
-      {backupPreview ? (
-        <BackupImportDialog
-          open
-          fileName={backupPreview.fileName}
-          result={backupPreview.result}
-          onCancel={() => setBackupPreview(null)}
-          onConfirm={() => void handleConfirmBackupImport()}
-        />
-      ) : null}
 
 
 

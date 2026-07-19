@@ -56,6 +56,6 @@ export function SignOutDialog({
           </button>
         </div>
       </div>
-    </ModalScrim>
+    </div>
   );
 }

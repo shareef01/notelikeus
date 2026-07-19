@@ -5,15 +5,6 @@ import { ThemePicker } from '@/components/settings/ThemePicker';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { ViewColumns } from '@/store/uiStore';
 import type { AppTheme } from '@/store/settingsStore';
-import type { CloudSyncStatus } from '@/hooks/useCloudSync';
-import { formatSyncStatus } from '@/lib/cloud/syncStatusLabel';
-import { SettingsOptionPicker } from '@/components/settings/SettingsOptionPicker';
-import {
-  ThemeSwatch,
-  ThemePickerGrid,
-  THEME_LABELS,
-} from '@/components/settings/ThemeSwatch';
-import { GoogleIcon } from '@/components/icons/GoogleIcon';
 import {
   GridViewIcon,
   SortIcon,
@@ -74,8 +65,7 @@ function SettingsRow({
   disabled?: boolean;
   destructive?: boolean;
 }) {
-  const isInteractive = Boolean(onClick) && !disabled;
-  const Tag = isInteractive ? 'button' : 'div';
+  const Tag = onClick ? 'button' : 'div';
   return (
     <Tag
       type={onClick ? 'button' : undefined}
@@ -135,14 +125,12 @@ function ThemeToggle({
 }
 
 const SORT_LABELS = {
-  manual: 'Manual Sort',
+  manual: 'Manual order',
   newest: 'Newest first',
   oldest: 'Oldest first',
 } as const;
 
-const VIEW_ORDER: ViewColumns[] = [1, 2, 3];
-
-const VIEW_LABELS: Record<number, string> = {
+const VIEW_LABELS: Record<ViewColumns, string> = {
   1: 'List',
   2: 'Grid',
   3: 'Dense grid',
@@ -153,16 +141,16 @@ interface ProfileSheetProps {
   onClose: () => void;
   noteCount: number;
   viewColumns: ViewColumns;
-  sortOrder: SortOrder;
-  onViewColumnsChange: (columns: ViewColumns) => void;
-  onSortOrderChange: (order: SortOrder) => void;
+  sortOrder: 'manual' | 'newest' | 'oldest';
+  onViewColumnsCycle: () => void;
+  onSortOrderCycle: () => void;
   appTheme: AppTheme;
   onAppThemeChange: (theme: AppTheme) => void;
   cloudAutoSyncEnabled: boolean;
   onCloudAutoSyncChange: (enabled: boolean) => void;
   isGoogleAccount: boolean;
   userEmail: string | null;
-  syncStatus: CloudSyncStatus;
+  syncStatus: string;
   syncedNoteCount: number;
   onSyncNow: () => void;
   onRestore: () => void;
@@ -181,8 +169,8 @@ export function ProfileSheet({
   noteCount,
   viewColumns,
   sortOrder,
-  onViewColumnsChange,
-  onSortOrderChange,
+  onViewColumnsCycle,
+  onSortOrderCycle,
   appTheme,
   onAppThemeChange,
   cloudAutoSyncEnabled,

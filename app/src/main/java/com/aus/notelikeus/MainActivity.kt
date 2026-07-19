@@ -16,7 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -67,7 +66,7 @@ class MainActivity : FragmentActivity() {
         setContent {
             val windowSizeClass = calculateWindowSizeClass(this)
             val viewModel: MainViewModel = hiltViewModel()
-            val state by viewModel.state.collectAsStateWithLifecycle()
+            val state by viewModel.state.collectAsState()
             var isUnlocked by remember { mutableStateOf(true) }
             var needsUnlock by remember { mutableStateOf(false) }
             var hasInitializedLock by remember { mutableStateOf(false) }

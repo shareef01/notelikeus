@@ -3,7 +3,6 @@ package com.aus.notelikeus.ui.main
 import android.content.ContentResolver
 import android.net.Uri
 import android.util.Log
-import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aus.notelikeus.data.backup.NoteBackupExporter
@@ -18,7 +17,6 @@ import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
 import com.aus.notelikeus.data.remote.FirebaseNoteSync
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
-import com.aus.notelikeus.data.remote.FirestoreNotesRealtimeSync
 import com.aus.notelikeus.data.remote.GoogleSignInHelper
 import com.aus.notelikeus.data.remote.NoteSyncStateStore
 import com.aus.notelikeus.domain.repository.NoteRepository
@@ -45,7 +43,6 @@ private data class PendingUndo(
     val type: UndoAction
 )
 
-@Immutable
 data class MainState(
     val notes: List<Note> = emptyList(),
     val filteredNotes: List<Note> = emptyList(),
@@ -67,7 +64,6 @@ data class MainState(
     val archivedNoteCount: Int = 0,
     val trashedNoteCount: Int = 0,
     val listRevision: Int = 0,
-    val isNotesLoading: Boolean = true,
     val cloudSyncStatus: CloudSyncStatus = CloudSyncStatus.Unknown,
     val cloudSyncedNoteCount: Int = 0,
     val cloudSyncError: String? = null,
@@ -121,7 +117,6 @@ class MainViewModel @Inject constructor(
         _state.update {
             it.copy(
                 cloudAccount = CloudAccount(
-                    userId = account.userId,
                     email = account.email,
                     isGoogleAccount = account.isGoogleAccount,
                     isAnonymous = account.isAnonymous
@@ -392,16 +387,15 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private fun mergeLocalWithCloudSilently() {
+    private fun uploadAllNotesSilently() {
         viewModelScope.launch {
-            firebaseNoteSync.downloadAllNotes()
+            firebaseNoteSync.uploadAllNotes()
                 .onSuccess { count ->
                     _state.update {
                         it.copy(
                             cloudSyncStatus = CloudSyncStatus.Synced,
                             cloudSyncedNoteCount = count,
-                            cloudSyncError = null,
-                            listRevision = it.listRevision + 1
+                            cloudSyncError = null
                         )
                     }
                 }
@@ -549,18 +543,13 @@ class MainViewModel @Inject constructor(
                         filtered.filter { !it.isPinned }.sortedBy { it.timestamp }
                 }
             }
+            _state.update { it.copy(filteredNotes = sorted) }
         }
     }
 
     fun setFilter(filter: NoteFilter) {
         currentNotesJob?.cancel()
-        _state.update {
-            it.copy(
-                currentFilter = filter,
-                selectedNotes = emptySet(),
-                isNotesLoading = true,
-            )
-        }
+        _state.update { it.copy(currentFilter = filter, selectedNotes = emptySet()) }
 
         val notesFlow = when (filter) {
             NoteFilter.ACTIVE -> repository.getActiveNotes()
@@ -572,7 +561,7 @@ class MainViewModel @Inject constructor(
             .onEach { notes ->
                 val emittedIds = notes.mapNotNull { it.id }.toSet()
                 pendingHiddenIds.removeIf { it !in emittedIds }
-                _state.update { it.copy(notes = notes, isNotesLoading = false) }
+                _state.update { it.copy(notes = notes) }
                 applyFilters()
             }
             .launchIn(viewModelScope)
@@ -877,17 +866,6 @@ class MainViewModel @Inject constructor(
             if (wrote) BackupExportResult.Success else BackupExportResult.WriteFailed
         } catch (error: Exception) {
             BackupExportResult.Error(error)
-        }
-    }
-
-    suspend fun previewBackupImport(resolver: ContentResolver, uri: Uri): NoteBackupImporter.ImportResult? {
-        return try {
-            val json = resolver.openInputStream(uri)?.use { stream ->
-                stream.readBytes().toString(Charsets.UTF_8)
-            } ?: return null
-            backupImporter.previewFromJson(json)
-        } catch (_: Exception) {
-            null
         }
     }
 

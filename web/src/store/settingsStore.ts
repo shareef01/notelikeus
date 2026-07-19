@@ -22,9 +22,6 @@ export const useSettingsStore = create<SettingsState>()(
       setAppTheme: (appTheme) =>
         set((state) => (state.appTheme === appTheme ? state : { appTheme })),
     }),
-    {
-      name: 'notelikeus-settings',
-      skipHydration: true,
-    },
+    { name: 'notelikeus-settings', skipHydration: true },
   ),
 );

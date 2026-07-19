@@ -52,9 +52,9 @@ class NoteBackupExporter @Inject constructor(
 
         root.put("exportedAt", System.currentTimeMillis())
 
-        root.put("app", runCatching { context.getString(R.string.app_name) }.getOrDefault(""))
+        root.put("app", context.getString(R.string.app_name))
 
-        root.put("appVersion", BuildConfig.VERSION_NAME.orEmpty())
+        root.put("appVersion", BuildConfig.VERSION_NAME)
 
 
 
@@ -67,13 +67,9 @@ class NoteBackupExporter @Inject constructor(
 
 
         root.put("notes", JSONArray().apply {
-            notes.forEach { note ->
-                if (note.isLocked) {
-                    put(note.toLockedBackupJson())
-                } else {
-                    put(note.toJson())
-                }
-            }
+
+            notes.forEach { put(it.toJson()) }
+
         })
 
 
@@ -85,13 +81,19 @@ class NoteBackupExporter @Inject constructor(
 
 
     private fun Label.toJson(): JSONObject = JSONObject().apply {
-        id?.let { put("id", it) }
+
+        put("id", id)
+
         put("name", name)
+
     }
 
+
+
     private fun Note.toJson(): JSONObject = JSONObject().apply {
-        id?.let { put("id", it) }
-        if (cloudId.isNotBlank()) put("cloudId", cloudId)
+
+        put("id", id)
+
         put("title", title)
 
         put("content", content)
@@ -115,23 +117,7 @@ class NoteBackupExporter @Inject constructor(
         put("labels", JSONArray().apply { labels.forEach { put(it.name) } })
 
         put("checklist", JSONArray().apply { checklist.forEach { put(it.toJson()) } })
-    }
 
-    private fun Note.toLockedBackupJson(): JSONObject = JSONObject().apply {
-        id?.let { put("id", it) }
-        if (cloudId.isNotBlank()) put("cloudId", cloudId)
-        put("isLocked", true)
-        put("title", "")
-        put("content", "")
-        put("timestamp", timestamp)
-        put("color", color)
-        put("isPinned", isPinned)
-        put("isArchived", isArchived)
-        put("isTrashed", isTrashed)
-        put("position", position)
-        reminderTimestamp?.let { put("reminderTimestamp", it) }
-        put("labels", JSONArray())
-        put("checklist", JSONArray())
     }
 
 
