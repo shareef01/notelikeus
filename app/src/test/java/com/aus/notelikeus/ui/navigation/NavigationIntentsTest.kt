@@ -8,28 +8,57 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], application = android.app.Application::class)
 class NavigationIntentsTest {
 
+    @Before
+    fun setup() {
+        InternalNavigationToken.resetForTests()
+        InternalNavigationToken.init(RuntimeEnvironment.getApplication())
+    }
+
     @Test
-    fun `extractEditorNoteId reads noteId extra`() {
-        val intent = mockk<Intent>()
-        every { intent.getLongExtra("noteId", -1L) } returns 42L
-        every { intent.data } returns null
+    fun `extractEditorNoteId reads noteId extra when marked internal`() {
+        val intent = Intent().markInternalNavigation().putExtra("noteId", 42L)
         assertEquals(42L, extractEditorNoteId(intent))
     }
 
     @Test
-    fun `extractEditorNoteId reads editor deep link uri`() {
-        val uri = mockk<Uri>()
-        every { uri.scheme } returns "notelikeus"
-        every { uri.host } returns "editor"
-        every { uri.pathSegments } returns listOf("99")
-        every { uri.lastPathSegment } returns "99"
-        val intent = mockk<Intent>()
-        every { intent.getLongExtra("noteId", -1L) } returns -1L
-        every { intent.data } returns uri
+    fun `extractEditorNoteId ignores unmarked external noteId extra`() {
+        val intent = Intent().putExtra("noteId", 42L)
+        assertNull(extractEditorNoteId(intent))
+    }
+
+    @Test
+    fun `extractEditorNoteId ignores forged INTERNAL_NAV boolean without token`() {
+        @Suppress("DEPRECATION")
+        val intent = Intent()
+            .putExtra(EXTRA_INTERNAL_NAV, true)
+            .putExtra("noteId", 42L)
+        assertNull(extractEditorNoteId(intent))
+    }
+
+    @Test
+    fun `extractEditorNoteId ignores wrong token`() {
+        val intent = Intent()
+            .putExtra(EXTRA_INTERNAL_NAV_TOKEN, "forged-token")
+            .putExtra("noteId", 42L)
+        assertNull(extractEditorNoteId(intent))
+    }
+
+    @Test
+    fun `extractEditorNoteId reads editor deep link uri when marked internal`() {
+        val intent = Intent().markInternalNavigation().apply {
+            data = android.net.Uri.parse("notelikeus://editor/99")
+        }
         assertEquals(99L, extractEditorNoteId(intent))
     }
 
@@ -42,13 +71,9 @@ class NavigationIntentsTest {
     }
 
     @Test
-    fun `intentRequestsNewNote detects create flag`() {
-        val intent = mockk<Intent>()
-        every { intent.getBooleanExtra("createNote", false) } returns true
-        assertTrue(intentRequestsNewNote(intent))
-
-        val emptyIntent = mockk<Intent>()
-        every { emptyIntent.getBooleanExtra("createNote", false) } returns false
-        assertFalse(intentRequestsNewNote(emptyIntent))
+    fun `intentRequestsNewNote detects create flag only when internal`() {
+        assertTrue(intentRequestsNewNote(Intent().markInternalNavigation().putExtra("createNote", true)))
+        assertFalse(intentRequestsNewNote(Intent().putExtra("createNote", true)))
+        assertFalse(intentRequestsNewNote(Intent()))
     }
 }

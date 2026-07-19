@@ -1,8 +1,8 @@
 import type { FirestoreNoteDocument } from '@/lib/mappers/noteCloudMapper';
 import { cloudMapToNote } from '@/lib/mappers/noteCloudMapper';
-import { allocateLocalNoteId, createEmptyNote, type Note } from '@/types/note';
+import { createEmptyNote, nextLocalNoteIdAfter, type Note } from '@/types/note';
 import { labelFromName } from '@/types/label';
-import { BACKUP_VERSION } from '@/lib/backup/constants';
+import { BACKUP_VERSION, MAX_BACKUP_FILE_BYTES, MAX_BACKUP_NOTES } from '@/lib/backup/constants';
 
 export interface BackupImportResult {
   notesImported: number;
@@ -110,6 +110,9 @@ export function importNotesFromBackup(json: unknown, existingNotes: Note[]): {
   if (noteEntries.length === 0) {
     return { merged: existingNotes, result: { notesImported: 0, labelsCreated: 0 } };
   }
+  if (noteEntries.length > MAX_BACKUP_NOTES) {
+    throw new Error(`Backup has too many notes (max ${MAX_BACKUP_NOTES})`);
+  }
 
   const existingLabelKeys = new Set(
     existingNotes.flatMap((note) => note.labels.map((label) => label.name.toLowerCase())),
@@ -133,17 +136,17 @@ export function importNotesFromBackup(json: unknown, existingNotes: Note[]): {
     return label;
   };
 
-  const working = [...existingNotes];
-  const basePosition = nextNotePosition(working);
+  const basePosition = nextNotePosition(existingNotes);
+  let runningMaxId = existingNotes.reduce((max, note) => Math.max(max, note.localId), 0);
   const imported: Note[] = [];
 
   for (const entry of noteEntries) {
-    const localId = allocateLocalNoteId(working);
+    const localId = nextLocalNoteIdAfter(runningMaxId);
+    runningMaxId = localId;
     const position = basePosition + imported.length;
     const note = noteFromBackupEntry(entry, localId, position, resolveLabel);
     if (!note) continue;
     imported.push(note);
-    working.push(note);
   }
 
   return {
@@ -153,6 +156,9 @@ export function importNotesFromBackup(json: unknown, existingNotes: Note[]): {
 }
 
 export async function readBackupFile(file: File): Promise<unknown> {
+  if (file.size > MAX_BACKUP_FILE_BYTES) {
+    throw new Error('Backup file is too large');
+  }
   const text = await file.text();
   try {
     return JSON.parse(text) as unknown;

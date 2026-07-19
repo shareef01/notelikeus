@@ -1,6 +1,7 @@
 import { useLabelManagement } from '@/hooks/useLabelManagement';
-import { ModalScrim, modalPanelProps } from '@/components/layout/ModalScrim';
-import { CloseIcon, LabelIcon, TrashIcon, AddIcon } from '@/components/icons/Icons';import { useState } from 'react';
+import { DeleteLabelDialog } from '@/components/labels/DeleteLabelDialog';
+import { CloseIcon, TrashIcon, AddIcon } from '@/components/icons/Icons';
+import { useState } from 'react';
 import type { Label } from '@/types/label';
 
 interface LabelsScreenProps {
@@ -17,6 +18,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
   const [labelToEdit, setLabelToEdit] = useState<Label | null>(null);
   const [labelToDelete, setLabelToDelete] = useState<Label | null>(null);
   const [editName, setEditName] = useState('');
+  const [labelToDelete, setLabelToDelete] = useState<Label | null>(null);
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,14 +48,14 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-true-black animate-in fade-in duration-300">
-      <header className="flex items-center justify-between px-4 py-4 lg:px-6">
+    <div className="fixed inset-0 z-50 flex flex-col bg-true-surface animate-in fade-in duration-300">
+      <header className="flex items-center justify-between px-4 py-4 pt-safe lg:px-6">
         <h2 className="text-xl font-bold tracking-tight text-brand-primary">Edit labels</h2>
         <button
           type="button"
           onClick={onClose}
-          className="flex size-11 items-center justify-center rounded-full interactive-hover transition-colors"
-          aria-label="Close labels"
+          className="flex size-11 items-center justify-center rounded-full hover:bg-white/5 transition-colors"
+          aria-label="Close"
         >
           <CloseIcon size={24} />
         </button>
@@ -119,7 +121,6 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
 
                   <div className="flex items-center gap-1">
                     <button
-                      type="button"
                       onClick={() => setLabelToDelete(label)}
                       className="flex size-10 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-red-500/10 hover:text-red-400"
                       aria-label="Delete label"
@@ -137,32 +138,17 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
         )}
       </div>
 
-      {labelToDelete ? (
-        <ModalScrim zIndexClass="z-[60]" onScrimClick={() => setLabelToDelete(null)}>
-          <div {...modalPanelProps('w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl')}>
-            <h4 className="text-lg font-semibold">Delete label?</h4>
-            <p className="mt-2 text-sm text-brand-muted">
-              &ldquo;{labelToDelete.name}&rdquo; will be removed from all notes. This cannot be undone.
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setLabelToDelete(null)}
-                className="rounded-note px-4 py-2 text-sm text-brand-muted"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                className="rounded-note bg-red-600 px-4 py-2 text-sm font-semibold text-white"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </ModalScrim>
-      ) : null}
+      <DeleteLabelDialog
+        open={labelToDelete != null}
+        labelName={labelToDelete?.name ?? ''}
+        onCancel={() => setLabelToDelete(null)}
+        onConfirm={() => {
+          if (labelToDelete) {
+            deleteLabel(labelToDelete.id);
+            setLabelToDelete(null);
+          }
+        }}
+      />
     </div>
   );
 }

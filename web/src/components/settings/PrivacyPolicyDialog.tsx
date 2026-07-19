@@ -1,7 +1,7 @@
-import { PRIVACY_POLICY_URL } from '@/lib/constants';
-import { ModalScrim, modalPanelProps } from '@/components/layout/ModalScrim';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useEffect } from 'react';
 
-const PRIVACY_POLICY_BODY = `Notelikeus is an offline-first notes app. Your notes are stored locally in this browser. Optional cloud sync uploads note text to your own Firebase account when you sign in and choose to sync.
+const PRIVACY_POLICY_BODY = `Notelikeus is an offline-first notes app. Sign-in with Google is required. Your notes are stored locally in this browser. Cloud sync uploads note text to your own Firebase account when auto-sync is enabled.
 
 Data stored on device
 • Note text, titles, colors, labels, checklists, and reminders
@@ -10,17 +10,20 @@ Data stored on device
 Cloud sync
 • When enabled, note text (except locked notes) syncs to Firebase Firestore under your Google account
 • Locked notes are never uploaded
+• Signing out clears local notes on this device so the next account cannot inherit them
 
 Security
-• Notes in this browser are stored in local storage on your device
-• Per-note lock hides content until you unlock it in the app
+• Unlocked notes in this browser are stored in local storage on your device
+• Hidden (locked) notes encrypt title, body, and checklist at rest with a device-local key (AES-GCM). The key never leaves this browser profile and is cleared on sign-out. This protects against casual inspection of storage; it is not a substitute for full-disk encryption or a strong account passphrase.
+• Per-note hide also keeps content out of the feed, search, reminders, and cloud sync until you show it again. On browsers that support it, revealing a hidden note requires your device's screen lock (fingerprint, face, or PIN).
 
 Permissions
-• Notifications: used only for note reminders you set
+• Notifications: used only for note reminders you set (reminders show a generic message, not note text)
 • Storage: used when you export or import backup files
 
 Backups
 • JSON backups are created and restored only when you choose. Backup files are saved where you pick and are your responsibility to protect.
+• Unlike cloud sync, backups include hidden notes in plain text, since a backup is meant to be a complete copy of your data
 
 Links
 • Tapping a link in a note opens it in your browser. Notelikeus does not track link visits.
@@ -39,17 +42,31 @@ interface PrivacyPolicyDialogProps {
 }
 
 export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps) {
+  const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
+
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
+
   if (!open) return null;
 
   return (
-    <ModalScrim zIndexClass="z-[70]" align="center" onScrimClick={onClose}>
+    <div
+      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/80 p-4 backdrop-blur-sm sm:items-center"
+      onClick={onClose}
+    >
       <div
-        {...modalPanelProps(
-          'max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-[20px] border border-brand-outline bg-true-surface p-6 shadow-2xl',
-        )}
+        ref={panelRef}
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-[20px] border border-brand-outline bg-true-surface p-6 shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label="Privacy policy"
+        onClick={(event) => event.stopPropagation()}
       >
         <h4 className="text-xl font-bold tracking-tight text-brand-primary">Privacy policy</h4>
         <p className="mt-4 whitespace-pre-line text-[14px] leading-[1.4em] text-brand-muted">
@@ -69,7 +86,7 @@ export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps)
           <button
             type="button"
             onClick={onClose}
-            className="rounded-note bg-brand-primary px-6 py-2 text-sm font-bold text-true-black transition-transform active:scale-95"
+            className="min-h-11 rounded-note bg-brand-primary px-6 py-2 text-sm font-bold text-true-surface transition-transform active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
           >
             Close
           </button>

@@ -1,31 +1,50 @@
+import type { ViewColumns } from '@/store/uiStore';
+
 interface NotesLoadingGridProps {
-  columns: number;
+  viewPreference: ViewColumns;
 }
 
-export function NotesLoadingGrid({ columns }: NotesLoadingGridProps) {
-  const count = columns === 1 ? 4 : columns === 2 ? 6 : 9;
+const CARD_MIN_PX: Record<2 | 3, number> = {
+  2: 220,
+  3: 156,
+};
+
+const SKELETON_HEIGHT: Record<ViewColumns, number> = {
+  1: 72,
+  2: 140,
+  3: 108,
+};
+
+export function NotesLoadingGrid({ viewPreference }: NotesLoadingGridProps) {
+  const isList = viewPreference === 1;
+  const count = isList ? 5 : viewPreference === 2 ? 8 : 12;
+  const gapClass =
+    viewPreference === 3
+      ? 'gap-2 sm:gap-2.5'
+      : isList
+        ? 'gap-2 sm:gap-2.5'
+        : 'gap-3 sm:gap-3.5';
 
   return (
     <div
-      className={`gap-note-gap px-3 pb-24 pt-2 sm:px-4 lg:px-6 ${
-        columns === 1 ? 'flex flex-col' : columns === 2 ? 'columns-2' : 'columns-3'
+      className={`grid w-full ${gapClass} px-3 pb-24 pt-3 sm:px-4 lg:px-6 ${
+        isList ? 'max-w-3xl grid-cols-1' : 'mx-auto max-w-content items-start'
       }`}
-      style={columns > 1 ? { columnGap: '12px' } : undefined}
+      style={
+        isList
+          ? undefined
+          : {
+              gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${CARD_MIN_PX[viewPreference]}px), 1fr))`,
+            }
+      }
       aria-hidden
     >
       {Array.from({ length: count }, (_, index) => (
         <div
           key={index}
-          className={`rounded-note ${columns > 1 ? 'mb-note-gap break-inside-avoid' : 'mb-3'}`}
-        >
-          <div className="animate-pulse rounded-note bg-white/[0.04]">
-            <div className="space-y-3 p-5">
-              <div className="h-4 w-3/4 rounded-md bg-white/[0.06]" />
-              <div className="h-3 w-full rounded-md bg-white/[0.04]" />
-              <div className="h-3 w-5/6 rounded-md bg-white/[0.04]" />
-            </div>
-          </div>
-        </div>
+          className="animate-pulse rounded-note bg-true-surface-variant/60"
+          style={{ height: SKELETON_HEIGHT[viewPreference] }}
+        />
       ))}
     </div>
   );

@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.ReceiveTurbine
 import app.cash.turbine.test
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
+import com.aus.notelikeus.data.remote.ReminderScheduler
 import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
@@ -28,6 +29,7 @@ class EditorViewModelTest {
     private lateinit var viewModel: EditorViewModel
     private lateinit var repository: NoteRepository
     private lateinit var settingsRepository: SettingsRepository
+    private lateinit var reminderScheduler: ReminderScheduler
     private lateinit var cloudNoteSyncCoordinator: CloudNoteSyncCoordinator
     private val testDispatcher = UnconfinedTestDispatcher()
 
@@ -36,6 +38,7 @@ class EditorViewModelTest {
         Dispatchers.setMain(testDispatcher)
         repository = mockk(relaxed = true)
         settingsRepository = mockk(relaxed = true)
+        reminderScheduler = mockk(relaxed = true)
         cloudNoteSyncCoordinator = mockk(relaxed = true)
         every { repository.getLabels() } returns flowOf(emptyList())
         every { settingsRepository.appTheme } returns flowOf(AppTheme.AUTO)
@@ -46,6 +49,7 @@ class EditorViewModelTest {
         return EditorViewModel(
             repository,
             settingsRepository,
+            reminderScheduler,
             cloudNoteSyncCoordinator,
             savedStateHandle
         )
@@ -127,9 +131,15 @@ class EditorViewModelTest {
         viewModel = createViewModel(savedStateHandle)
         advanceUntilIdle()
 
-        val snapshot = viewModel.trashNoteForDelete()
-        assertEquals("Title", snapshot?.title)
-        assertEquals(true, viewModel.state.value.isTrashed)
+        viewModel.state.test {
+            awaitItem()
+            val snapshot = viewModel.trashNoteForDelete()
+            assertEquals("Title", snapshot?.title)
+            assertEquals(true, awaitItem().isTrashed)
+            // trashNoteForDelete also persists the note, which bumps the timestamp
+            // in a follow-up emission — drain it instead of asserting on it.
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test

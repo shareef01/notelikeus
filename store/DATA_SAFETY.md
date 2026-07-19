@@ -6,19 +6,22 @@ Use these answers when completing the **Data safety** form in Play Console for N
 
 | Question | Answer |
 |----------|--------|
-| Does your app collect or share any of the required user data types? | **Yes** — when the user opts into cloud sync |
+| Does your app collect or share any of the required user data types? | **Yes** — Google account + note content synced to the user’s Firebase project |
 | Is all user data encrypted in transit? | **Yes** (TLS to Firebase) |
-| Do you provide a way for users to request data deletion? | **Yes** — delete notes in-app, sign out, or uninstall |
+| Do you provide a way for users to request data deletion? | **Yes** — delete notes in-app, “Sign out and delete cloud data”, or uninstall |
 
-## When cloud sync is **not** used
+## Sign-in and sync
 
-If the user never signs in with Google or never syncs, note content stays on device only. You may answer **No** data collected for users who do not use cloud features — clarify in the form notes that collection is optional.
+Google sign-in is **required** to use the app. Note content stays on device in an encrypted database; when auto-sync is enabled, eligible notes (not locked) are uploaded to Firestore under that Google account.
 
-## When cloud sync **is** used
+Signing out **clears local notes** on the device so the next account cannot inherit them. Cloud copies remain until the user deletes them in-app or via Firebase.
+
+## Data types when signed in
 
 | Data type | Collected | Shared | Purpose | Optional |
 |-----------|-----------|--------|---------|----------|
-| User-generated content (notes) | Yes | No (stored in user’s Firebase project) | App functionality — sync across devices | Yes — requires Google sign-in + user action |
+| Personal info (email / Google account id) | Yes | No (Firebase Auth) | Account authentication | No — required to use the app |
+| User-generated content (notes) | Yes | No (stored under the user’s Firebase account) | App functionality — sync across devices | Sync of note bodies can be disabled via auto-sync; locked notes are never uploaded |
 
 **Not collected:** analytics events, advertising IDs, contacts, location, photos (attachment feature removed).
 
@@ -28,19 +31,19 @@ If the user never signs in with Google or never syncs, note content stays on dev
 |----------|--------|
 | Data encrypted at rest on device | **Yes** (SQLCipher) |
 | Data encrypted in transit | **Yes** (HTTPS/TLS to Firebase) |
-| Users can request data deletion | **Yes** (delete notes / uninstall; cloud copy in Firebase until user deletes project data) |
+| Users can request data deletion | **Yes** (delete notes / sign out and delete cloud data / uninstall) |
 
 ## Permissions (declared in manifest)
 
-- `INTERNET` — optional Firebase cloud sync
+- `INTERNET` — Firebase auth and cloud sync
 - `POST_NOTIFICATIONS` — user-scheduled note reminders
 - `USE_BIOMETRIC` — optional app/note unlock
 - `SCHEDULE_EXACT_ALARM` — reminder alarms
 
 ## Backup
 
-Android cloud backup excludes the encrypted database, legacy attachment paths, DataStore settings, and encryption key preferences. Users may export JSON backups manually.
+Android cloud backup excludes the encrypted database, legacy attachment paths, DataStore settings, encryption key preferences, sync tombstones, and pending sync queues. Users may export JSON backups manually.
 
 ## Privacy policy URL
 
-Host the policy at **https://notelike.web.app/privacy.html** (also in `web/public/privacy.html`).
+Host [`PRIVACY_POLICY.md`](../PRIVACY_POLICY.md) on GitHub Pages or your website, or paste the same text into Play Console’s privacy policy field.

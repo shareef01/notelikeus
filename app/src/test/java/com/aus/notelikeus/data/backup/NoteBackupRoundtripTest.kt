@@ -7,29 +7,25 @@ import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
-import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], application = android.app.Application::class)
 class NoteBackupRoundtripTest {
 
     private val repository = mockk<NoteRepository>()
     private val reminderScheduler = mockk<ReminderScheduler>(relaxed = true)
-    private val context = mockk<android.content.Context>()
-    private lateinit var exporter: NoteBackupExporter
+    private val exporter = NoteBackupExporter(repository, mockk(relaxed = true))
     private val importer = NoteBackupImporter(repository, reminderScheduler)
-
-    @Before
-    fun setup() {
-        every { context.getString(any<Int>()) } returns "Notelikeus"
-        exporter = NoteBackupExporter(repository, context)
-    }
 
     @Test
     fun `exported json can be imported again`() = runTest {
@@ -60,7 +56,7 @@ class NoteBackupRoundtripTest {
 
     @Test
     fun `import ignores legacy attachment data`() = runTest {
-        val encoded = java.util.Base64.getEncoder().encodeToString(byteArrayOf(9, 8, 7))
+        val encoded = android.util.Base64.encodeToString(byteArrayOf(9, 8, 7), android.util.Base64.NO_WRAP)
         val json = JSONObject().apply {
             put("version", 2)
             put("notes", org.json.JSONArray().apply {

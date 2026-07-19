@@ -2,6 +2,13 @@ package com.aus.notelikeus.domain.model
 
 import androidx.compose.runtime.Immutable
 
+/**
+ * Marked @Immutable so Compose can skip recomposing NoteCard/SwipeableNoteCard when an
+ * unrelated note changes — without it, the plain List<> fields make this class
+ * Compose-unstable by default, forcing every visible card to recompose on any single
+ * note mutation. Safe because every field is truly immutable: val-only, never mutated
+ * in place, always replaced via .copy().
+ */
 @Immutable
 data class Note(
     val id: Long? = null,

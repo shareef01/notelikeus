@@ -1,6 +1,5 @@
 package com.aus.notelikeus.data.backup
 
-import com.aus.notelikeus.data.remote.CloudIds
 import com.aus.notelikeus.data.remote.ReminderScheduler
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
@@ -22,61 +21,15 @@ class NoteBackupImporter @Inject constructor(
     )
 
     suspend fun importFromJson(json: String): ImportResult {
-        val root = parseRoot(json)
-        return importParsedRoot(root)
-    }
-
-    suspend fun previewFromJson(json: String): ImportResult {
-        val root = parseRoot(json)
-        return previewParsedRoot(root)
-    }
-
-    private fun parseRoot(json: String): JSONObject {
+        if (json.length > MAX_BACKUP_CHARS) {
+            throw IllegalArgumentException("Backup file is too large")
+        }
         val root = JSONObject(json)
         val version = root.optInt("version", 0)
         if (version > NoteBackupExporter.BACKUP_VERSION) {
             throw IllegalArgumentException("Unsupported backup version: $version")
         }
-        return root
-    }
 
-    private suspend fun previewParsedRoot(root: JSONObject): ImportResult {
-        val labelMap = repository.getAllLabelsSnapshot()
-            .associateBy { it.name.lowercase() }
-            .toMutableMap()
-        var labelsCreated = 0
-
-        fun trackLabel(name: String) {
-            val key = name.trim().lowercase()
-            if (key.isEmpty() || labelMap.containsKey(key)) return
-            labelMap[key] = Label(name = name.trim())
-            labelsCreated++
-        }
-
-        if (root.has("labels")) {
-            val labelsArray = root.getJSONArray("labels")
-            for (i in 0 until labelsArray.length()) {
-                val labelJson = labelsArray.getJSONObject(i)
-                trackLabel(labelJson.optString("name", ""))
-            }
-        }
-
-        val notesArray = root.optJSONArray("notes") ?: JSONArray()
-        for (i in 0 until notesArray.length()) {
-            val noteJson = notesArray.getJSONObject(i)
-            val labelNames = noteJson.optJSONArray("labels") ?: JSONArray()
-            for (j in 0 until labelNames.length()) {
-                trackLabel(labelNames.getString(j))
-            }
-        }
-
-        return ImportResult(
-            notesImported = notesArray.length(),
-            labelsCreated = labelsCreated
-        )
-    }
-
-    private suspend fun importParsedRoot(root: JSONObject): ImportResult {
         val labelMap = repository.getAllLabelsSnapshot()
             .associateBy { it.name.lowercase() }
             .toMutableMap()
@@ -94,6 +47,9 @@ class NoteBackupImporter @Inject constructor(
 
         if (root.has("labels")) {
             val labelsArray = root.getJSONArray("labels")
+            if (labelsArray.length() > MAX_BACKUP_LABELS) {
+                throw IllegalArgumentException("Backup has too many labels (max $MAX_BACKUP_LABELS)")
+            }
             for (i in 0 until labelsArray.length()) {
                 val labelJson = labelsArray.getJSONObject(i)
                 val name = labelJson.optString("name", "").trim()
@@ -102,17 +58,19 @@ class NoteBackupImporter @Inject constructor(
         }
 
         val notesArray = root.optJSONArray("notes") ?: JSONArray()
+        if (notesArray.length() > MAX_BACKUP_NOTES) {
+            throw IllegalArgumentException("Backup has too many notes (max $MAX_BACKUP_NOTES)")
+        }
         val basePosition = repository.getNextNotePosition()
         var notesImported = 0
 
         for (i in 0 until notesArray.length()) {
             val noteJson = notesArray.getJSONObject(i)
             val labelNames = noteJson.optJSONArray("labels") ?: JSONArray()
-            val resolvedLabels = mutableListOf<Label>()
-            for (j in 0 until labelNames.length()) {
-                val name = labelNames.getString(j)
-                if (name.isNotBlank()) {
-                    resolvedLabels.add(ensureLabel(name))
+            val resolvedLabels = buildList {
+                for (j in 0 until labelNames.length()) {
+                    val name = labelNames.getString(j)
+                    if (name.isNotBlank()) add(ensureLabel(name))
                 }
             }
 
@@ -122,7 +80,7 @@ class NoteBackupImporter @Inject constructor(
                         val item = array.getJSONObject(j)
                         add(
                             ChecklistItem(
-                                text = item.optString("text", ""),
+                                text = item.optString("text", "").take(MAX_FIELD_CHARS),
                                 isChecked = item.optBoolean("isChecked", false),
                                 position = item.optInt("position", size)
                             )
@@ -131,27 +89,27 @@ class NoteBackupImporter @Inject constructor(
                 }
             } ?: emptyList()
 
-            val reminderTimestamp = noteJson.optLong("reminderTimestamp").takeIf { noteJson.has("reminderTimestamp") }
+            // A past-due reminder from the backup would never actually fire (scheduleReminder
+            // silently no-ops for past timestamps) yet would still show as "active" on the note
+            // forever, since nothing else clears it — drop it instead of carrying it over.
+            val reminderTimestamp = noteJson.optLong("reminderTimestamp")
+                .takeIf { noteJson.has("reminderTimestamp") && it > System.currentTimeMillis() }
             val isTrashed = noteJson.optBoolean("isTrashed", false)
 
-            val isLocked = noteJson.optBoolean("isLocked", false)
-            val cloudId = CloudIds.ensure(noteJson.optString("cloudId").takeUnless { it.isBlank() })
-
             val note = Note(
-                cloudId = cloudId,
-                title = if (isLocked) "" else noteJson.optString("title", ""),
-                content = if (isLocked) "" else noteJson.optString("content", ""),
+                title = noteJson.optString("title", "").take(MAX_FIELD_CHARS),
+                content = noteJson.optString("content", "").take(MAX_CONTENT_CHARS),
                 timestamp = noteJson.optLong("timestamp", System.currentTimeMillis()),
                 color = noteJson.optInt("color", 0xFFFFFFFF.toInt()),
                 isPinned = noteJson.optBoolean("isPinned", false),
                 isArchived = noteJson.optBoolean("isArchived", false),
                 isTrashed = isTrashed,
                 position = basePosition + notesImported,
-                isLocked = isLocked,
+                isLocked = noteJson.optBoolean("isLocked", false),
                 reminderTimestamp = reminderTimestamp,
-                labels = if (isLocked) emptyList() else resolvedLabels,
+                labels = resolvedLabels,
                 attachments = emptyList(),
-                checklist = if (isLocked) emptyList() else checklist
+                checklist = checklist
             )
 
             repository.insertNoteWithResult(note)
@@ -159,5 +117,13 @@ class NoteBackupImporter @Inject constructor(
         }
 
         return ImportResult(notesImported = notesImported, labelsCreated = labelsCreated)
+    }
+
+    companion object {
+        const val MAX_BACKUP_CHARS = 10 * 1024 * 1024
+        const val MAX_BACKUP_NOTES = 5_000
+        const val MAX_BACKUP_LABELS = 2_000
+        const val MAX_FIELD_CHARS = 2_000
+        const val MAX_CONTENT_CHARS = 100_000
     }
 }

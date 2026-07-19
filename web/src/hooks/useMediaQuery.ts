@@ -21,6 +21,11 @@ export function useIsDesktop(): boolean {
   return useMediaQuery('(min-width: 1024px)');
 }
 
+/** Tablet and up — permanent drawer, desktop-style editor chrome (float/dock). */
+export function useIsTabletUp(): boolean {
+  return useMediaQuery('(min-width: 768px)');
+}
+
 export function useIsWide(): boolean {
   return useMediaQuery('(min-width: 1280px)');
 }

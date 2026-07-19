@@ -1,31 +1,39 @@
-import { subscribeToNotes, syncNotesWithCloud } from '@/lib/firestore/notesRepository';
-import {
-  applyRemoteDeletions,
-  clearKnownCloudIds,
-  loadKnownCloudIds,
-  saveKnownCloudIds,
-} from '@/lib/notes/cloudSyncState';
+import { deleteNote, subscribeToNotes, syncNotesWithCloud } from '@/lib/firestore/notesRepository';
+import { loadKnownCloudIds, saveKnownCloudIds } from '@/lib/notes/knownCloudIds';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
 import { useNotesStore } from '@/store/notesStore';
+import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 import type { Unsubscribe } from 'firebase/firestore';
+
+/** Notes deleted on this device must never come back from a stale/racy cloud copy.
+ * Splits remote notes into what's safe to merge and what to purge from the cloud. */
+function partitionTombstoned(remoteNotes: Note[]): { live: Note[]; staleIds: string[] } {
+  const isDeleted = useTombstoneStore.getState().isDeleted;
+  const live: Note[] = [];
+  const staleIds: string[] = [];
+  for (const note of remoteNotes) {
+    if (isDeleted(note.id)) staleIds.push(note.id);
+    else live.push(note);
+  }
+  return { live, staleIds };
+}
+
+function purgeStaleCloudDocs(userId: string, staleIds: string[]): void {
+  if (staleIds.length === 0) return;
+  void Promise.all(staleIds.map((id) => deleteNote(userId, id)));
+}
 
 let mergedForUserId: string | null = null;
 let mergeInFlight: Promise<void> | null = null;
 let unsubscribeRealtime: Unsubscribe | null = null;
 let realtimeUserId: string | null = null;
-let knownCloudIds = new Set<string>();
+let knownCloudIds = loadKnownCloudIds();
 let visibilityHandler: (() => void) | null = null;
 
-/** Cloud IDs that were just deleted locally and should not be re-added by realtime snapshots. */
-const pendingLocalDeletes = new Set<string>();
-
-/**
- * Marks a cloud ID as locally deleted so realtime snapshots won't restore it
- * before the Firestore delete propagates.
- */
-export function markCloudIdsForLocalDeletion(cloudId: string): void {
-  pendingLocalDeletes.add(cloudId);
+function rememberKnownCloudIds(ids: Set<string>) {
+  knownCloudIds = ids;
+  saveKnownCloudIds(ids);
 }
 
 function applyNotes(incoming: Note[]) {
@@ -43,13 +51,10 @@ function applyNotes(incoming: Note[]) {
   useNotesStore.getState().setNotes(deduped);
 }
 
-export function applyRemoteSnapshot(
-  localNotes: Note[],
-  remoteNotes: Note[],
-  previousKnownCloudIds: Set<string>,
-): Note[] {
-  const remoteCloudIds = new Set(remoteNotes.map((note) => note.cloudId));
-  const isInitial = previousKnownCloudIds.size === 0;
+function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
+  const remoteIds = new Set(remoteNotes.map((note) => note.id));
+  const isInitial = knownCloudIds.size === 0;
+  const isDeleted = useTombstoneStore.getState().isDeleted;
   const result = new Map<string, Note>();
 
   // Clean up pending deletes that are now confirmed gone from the server
@@ -60,16 +65,15 @@ export function applyRemoteSnapshot(
   }
 
   for (const remote of remoteNotes) {
-    // Skip notes that were just deleted locally — the Firestore delete hasn't propagated yet
-    if (pendingLocalDeletes.has(remote.cloudId)) continue;
-
-    const local = localNotes.find(
-      (note) => note.cloudId === remote.cloudId || note.id === remote.id,
-    );
-    if (local?.isLocked) {
-      result.set(local.cloudId, local);
-    } else if (!local) {
-      result.set(remote.cloudId, remote);
+    if (isDeleted(remote.id)) continue;
+    const local = localNotes.find((note) => note.id === remote.id);
+    if (!local) {
+      result.set(remote.id, remote);
+    } else if (local.isLocked) {
+      // Locked notes are never uploaded (see isCloudSyncEligible), so any cloud copy
+      // that still exists for this id is necessarily a stale pre-lock version — never
+      // let it override local, matching mergeRemoteNotes' handling of the same case.
+      result.set(remote.id, local);
     } else if (local.timestamp > remote.timestamp) {
       result.set(local.cloudId, local);
     } else {
@@ -78,7 +82,12 @@ export function applyRemoteSnapshot(
   }
 
   for (const local of localNotes) {
-    if (result.has(local.cloudId)) continue;
+    if (result.has(local.id)) continue;
+    if (isDeleted(local.id)) {
+      // Match Android: keep locked locals despite a colliding tombstone id.
+      if (local.isLocked) result.set(local.id, local);
+      continue;
+    }
     if (local.isLocked) {
       result.set(local.cloudId, local);
       continue;
@@ -89,8 +98,8 @@ export function applyRemoteSnapshot(
     result.set(local.cloudId, local);
   }
 
-  knownCloudIds = remoteCloudIds;
-  return applyRemoteDeletions(Array.from(result.values()), previousKnownCloudIds, remoteCloudIds);
+  rememberKnownCloudIds(remoteIds);
+  return Array.from(result.values());
 }
 
 function attachVisibilityRefresh(userId: string) {
@@ -125,15 +134,17 @@ export function mergeCloudNotesOnce(userId: string, force = false): Promise<void
 
     try {
       const localNotes = useNotesStore.getState().notes;
-      const persistedKnown = loadKnownCloudIds(userId);
-      const { merged, remoteCloudIds } = await syncNotesWithCloud(
+      const previouslyKnown = loadKnownCloudIds();
+      knownCloudIds = previouslyKnown;
+      const { merged, remoteIds } = await syncNotesWithCloud(
         userId,
         localNotes,
-        persistedKnown,
+        previouslyKnown,
       );
-      applyNotes(merged);
-      knownCloudIds = new Set(remoteCloudIds);
-      saveKnownCloudIds(userId, knownCloudIds);
+      const isDeleted = useTombstoneStore.getState().isDeleted;
+      applyNotes(merged.filter((note) => !isDeleted(note.id)));
+      purgeStaleCloudDocs(userId, remoteIds.filter(isDeleted));
+      rememberKnownCloudIds(new Set(remoteIds.filter((id) => !isDeleted(id))));
       mergedForUserId = userId;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Cloud merge failed';
@@ -156,9 +167,18 @@ export function startNotesRealtimeSync(userId: string): void {
   realtimeUserId = userId;
   knownCloudIds = loadKnownCloudIds(userId);
 
-  let retryCount = 0;
-  const MAX_RETRIES = 5;
-  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  unsubscribeRealtime = subscribeToNotes(
+    userId,
+    (remoteNotes) => {
+      const { live, staleIds } = partitionTombstoned(remoteNotes);
+      purgeStaleCloudDocs(userId, staleIds);
+      const localNotes = useNotesStore.getState().notes;
+      applyNotes(applyRemoteSnapshot(localNotes, live));
+    },
+    (error) => {
+      useNotesStore.getState().setError(error.message);
+    },
+  );
 
   const start = () => {
     if (realtimeUserId !== userId) return;
@@ -220,10 +240,7 @@ export function stopNotesRealtimeSync(): void {
 export function resetCloudMergeState(userId?: string): void {
   mergedForUserId = null;
   mergeInFlight = null;
-  knownCloudIds = new Set();
-  pendingLocalDeletes.clear();
-  if (userId) {
-    clearKnownCloudIds(userId);
-  }
+  // Keep persisted IDs across auth blips; clearLocalUserData wipes storage on sign-out.
+  knownCloudIds = loadKnownCloudIds();
   stopNotesRealtimeSync();
 }

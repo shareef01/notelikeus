@@ -1,6 +1,7 @@
 package com.aus.notelikeus.data.remote
 
 import android.util.Log
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
@@ -17,6 +18,7 @@ private const val TAG = "FirebaseSession"
 data class FirebaseAccount(
     val userId: String?,
     val email: String?,
+    /** True for Google or email/password (test) accounts — i.e. cloud sync eligible. */
     val isGoogleAccount: Boolean,
     val isAnonymous: Boolean
 )
@@ -28,33 +30,26 @@ class FirebaseSessionManager @Inject constructor(
 ) {
     fun getCurrentAccount(): FirebaseAccount = auth.currentUser.toAccount()
 
-    suspend fun ensureSignedIn(): Result<String> {
+    suspend fun signInWithGoogle(idToken: String): Result<Unit> {
         return try {
-            auth.currentUser?.uid?.let { return Result.success(it) }
-            val result = auth.signInAnonymously().await()
-            val uid = result.user?.uid ?: error("Anonymous sign-in returned no user")
-            Result.success(uid)
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            auth.signInWithCredential(credential).await()
+            Result.success(Unit)
         } catch (error: Throwable) {
             Result.failure(error)
         }
     }
 
-    suspend fun signInWithGoogle(idToken: String): Result<Unit> {
+    suspend fun signInWithEmailPassword(
+        email: String,
+        password: String,
+        createAccount: Boolean
+    ): Result<Unit> {
         return try {
-            val credential = GoogleAuthProvider.getCredential(idToken, null)
-            val currentUser = auth.currentUser
-            if (currentUser != null && currentUser.isAnonymous) {
-                try {
-                    currentUser.linkWithCredential(credential).await()
-                } catch (linkError: FirebaseAuthException) {
-                    if (linkError.errorCode == "ERROR_CREDENTIAL_ALREADY_IN_USE") {
-                        auth.signInWithCredential(credential).await()
-                    } else {
-                        throw linkError
-                    }
-                }
+            if (createAccount) {
+                auth.createUserWithEmailAndPassword(email.trim(), password).await()
             } else {
-                auth.signInWithCredential(credential).await()
+                auth.signInWithEmailAndPassword(email.trim(), password).await()
             }
             Result.success(Unit)
         } catch (error: Throwable) {
@@ -76,7 +71,7 @@ class FirebaseSessionManager @Inject constructor(
         if (!account.isGoogleAccount) {
             return Result.failure(IllegalStateException("Google sign-in required"))
         }
-        return Result.success(account.userId ?: error("Google sign-in returned no user"))
+        return Result.success(account.userId ?: error("Sign-in returned no user"))
     }
 
     suspend fun verifyConnection(): Result<Unit> {
@@ -89,8 +84,7 @@ class FirebaseSessionManager @Inject constructor(
                 .set(
                     mapOf(
                         "connectedAt" to System.currentTimeMillis(),
-                        "platform" to "android",
-                        "email" to (auth.currentUser?.email ?: "")
+                        "platform" to "android"
                     ),
                     SetOptions.merge()
                 )
@@ -117,7 +111,7 @@ class FirebaseSessionManager @Inject constructor(
                 error.errorCode == "ERROR_OPERATION_NOT_ALLOWED" ||
                     detail.contains("ADMIN_ONLY_OPERATION", ignoreCase = true)
                 ) -> {
-                "Sign-in disabled. Firebase Console → Authentication → enable Anonymous and Google."
+                "Sign-in disabled. Firebase Console → Authentication → enable Google (and Email/Password for test login)."
             }
             error is FirebaseAuthException && error.errorCode == "ERROR_CREDENTIAL_ALREADY_IN_USE" ->
                 "This Google account is already linked to another user."
@@ -139,12 +133,15 @@ class FirebaseSessionManager @Inject constructor(
                 isAnonymous = true
             )
         }
-        val hasGoogle = providerData.any { it.providerId == GoogleAuthProvider.PROVIDER_ID }
+        val hasCloudProvider = providerData.any { provider ->
+            provider.providerId == GoogleAuthProvider.PROVIDER_ID ||
+                provider.providerId == EmailAuthProvider.PROVIDER_ID
+        }
         return FirebaseAccount(
             userId = uid,
             email = email,
-            isGoogleAccount = hasGoogle,
-            isAnonymous = isAnonymous && !hasGoogle
+            isGoogleAccount = hasCloudProvider,
+            isAnonymous = isAnonymous && !hasCloudProvider
         )
     }
 }
