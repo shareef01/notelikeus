@@ -1,4 +1,3 @@
-import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { BrandMark } from '@/components/brand/BrandMark';
 import {
   ArchiveIcon,
@@ -10,7 +9,6 @@ import {
 } from '@/components/icons/Icons';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import type { NoteFilter } from '@/types/note';
-import { useEffect, useRef } from 'react';
 
 interface SideDrawerProps {
   open: boolean;
@@ -31,12 +29,8 @@ const NAV_ITEMS: Array<{ filter: NoteFilter; label: string; Icon: typeof NotesIc
   { filter: 'trashed', label: 'Trash', Icon: TrashIcon },
 ];
 
-const FOCUSABLE =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
 /**
  * Side Drawer Overhaul
- * Adaptive Sidebar: Supports expanded and collapsed (rail) modes on desktop.
  * Geometric Discipline: Strict 16px radius and brand-aligned spacing.
  */
 export function SideDrawer({
@@ -72,10 +66,10 @@ export function SideDrawer({
       >
         <div className="flex items-center justify-between px-6 pb-6 pt-safe md:pt-8">
           <div className="flex items-center gap-3">
-            <BrandMark size={32} />
+            <BrandMark size={44} />
             <div>
-              <p className="text-base font-bold tracking-tighter text-brand-primary">Notelikeus</p>
-              <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-brand-muted/60">
+              <p className="text-xl font-bold tracking-tight text-brand-primary">Notelikeus</p>
+              <p className="text-[12px] font-semibold uppercase tracking-[0.8px] text-brand-muted/65">
                 Capture
               </p>
             </div>
@@ -86,11 +80,11 @@ export function SideDrawer({
             className="flex size-10 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-white/5 md:hidden"
             aria-label="Close menu"
           >
-            {isDesktop ? <MenuIcon size={18} /> : <CloseIcon size={22} />}
+            <CloseIcon size={24} />
           </button>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4 lg:px-4">
+        <nav className="flex flex-col gap-1.5 px-3">
           {NAV_ITEMS.map(({ filter, label, Icon }) => {
             const active = currentFilter === filter;
             const count = navCounts?.[filter];
@@ -100,68 +94,61 @@ export function SideDrawer({
                 type="button"
                 onClick={() => {
                   onNavigate(filter);
-                  if (!isDesktop) onClose();
+                  onClose();
                 }}
                 aria-current={active ? 'page' : undefined}
-                className={`flex h-12 w-full items-center gap-3 rounded-xl px-3 transition-all active:scale-[0.98] ${
+                className={`flex items-center gap-4 rounded-note px-4 py-3 text-left text-base font-bold transition-all active:scale-[0.98] ${
                   active
-                    ? 'bg-white/10 text-white'
-                    : 'text-brand-muted hover:text-brand-primary hover:bg-white/5'
+                    ? 'bg-brand-primary/15 text-brand-primary'
+                    : 'text-brand-muted hover:bg-white/5 hover:text-brand-primary'
                 }`}
               >
-                <Icon size={20} className={active ? 'text-white' : 'text-brand-muted/50'} />
-                <span className="flex-1 text-[14px] font-semibold tracking-tight">{label}</span>
-                {count != null && count > 0 && (
-                  <span className="text-[11px] font-bold text-brand-muted/60">{count}</span>
-                )}
+                <Icon size={24} className={active ? 'text-brand-primary' : 'text-brand-muted/60'} />
+                <span className="flex-1">{label}</span>
+                {count != null && count > 0 ? (
+                  <span className="text-xs font-semibold text-brand-muted">{count}</span>
+                ) : null}
               </button>
             );
           })}
-
-          <div className="my-2 h-px bg-white/[0.03]" />
-
           {onEditLabels ? (
             <button
               type="button"
               onClick={() => {
                 onEditLabels();
-                if (!isDesktop) onClose();
+                onClose();
               }}
-              className="flex h-12 w-full items-center gap-3 rounded-xl px-3 transition-all text-brand-muted hover:text-brand-primary hover:bg-white/5"
+              className="flex items-center gap-4 rounded-note px-4 py-3 text-left text-base font-bold text-brand-muted transition-all hover:bg-white/5 hover:text-brand-primary"
             >
               <LabelIcon size={24} className="text-brand-muted/60" />
               Edit labels
             </button>
           ) : null}
-
           {onOpenSettings ? (
             <button
               type="button"
               onClick={() => {
                 onOpenSettings();
-                if (!isDesktop) onClose();
+                onClose();
               }}
-              className="flex h-12 w-full items-center gap-3 rounded-xl px-3 transition-all text-brand-muted hover:text-brand-primary hover:bg-white/5"
+              className="flex items-center gap-4 rounded-note px-4 py-3 text-left text-base font-bold text-brand-muted transition-all hover:bg-white/5 hover:text-brand-primary"
             >
-              <SettingsIcon size={20} className="text-brand-muted/50" />
-              <span className="text-[14px] font-semibold tracking-tight">Settings</span>
+              <SettingsIcon size={24} className="text-brand-muted/60" />
+              Settings
             </button>
           ) : null}
         </nav>
 
         <div className="mt-auto border-t border-brand-outline p-6 pb-safe md:pb-8">
           {userEmail ? (
-            <div className="flex flex-col gap-3">
-              <div>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-brand-muted/40">Signed in</p>
-                <p className="truncate text-[12px] font-medium text-brand-muted/70">{userEmail}</p>
-              </div>
+            <div className="space-y-4">
+              <p className="truncate text-sm font-medium text-brand-muted">{userEmail}</p>
               <button
                 type="button"
                 onClick={onSignOut}
                 className="w-full rounded-note border border-brand-outline bg-true-surface-variant px-4 py-2.5 text-sm font-bold text-brand-primary transition-colors hover:bg-white/5"
               >
-                <span>Sign Out</span>
+                Sign out
               </button>
             </div>
           ) : (

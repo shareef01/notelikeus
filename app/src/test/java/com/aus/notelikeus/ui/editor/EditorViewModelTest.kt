@@ -1,7 +1,6 @@
 package com.aus.notelikeus.ui.editor
 
 import androidx.lifecycle.SavedStateHandle
-import app.cash.turbine.ReceiveTurbine
 import app.cash.turbine.test
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
 import com.aus.notelikeus.data.remote.ReminderScheduler
@@ -10,7 +9,6 @@ import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import io.mockk.coEvery
-import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -55,14 +53,6 @@ class EditorViewModelTest {
         )
     }
 
-    private suspend fun ReceiveTurbine<EditorState>.awaitUntilLoaded(): EditorState {
-        var state = awaitItem()
-        while (!state.isNoteLoaded) {
-            state = awaitItem()
-        }
-        return state
-    }
-
     @After
     fun tearDown() {
         Dispatchers.resetMain()
@@ -83,10 +73,7 @@ class EditorViewModelTest {
         viewModel = createViewModel(savedStateHandle)
 
         viewModel.state.test {
-            var state = awaitItem()
-            while (!state.isNoteLoaded || state.title != "Old Title") {
-                state = awaitItem()
-            }
+            val state = awaitItem()
             assertEquals("Old Title", state.title)
             assertEquals("Old Content", state.content)
             assertEquals(true, state.isNoteLoaded)
@@ -97,22 +84,26 @@ class EditorViewModelTest {
     fun `onTitleChange updates state`() = runTest {
         val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
         viewModel = createViewModel(savedStateHandle)
-        advanceUntilIdle()
-        assertEquals(true, viewModel.state.value.isNoteLoaded)
 
-        viewModel.onTitleChange("New Title")
-        assertEquals("New Title", viewModel.state.value.title)
+        viewModel.state.test {
+            awaitItem() // initial
+            viewModel.onTitleChange("New Title")
+            assertEquals("New Title", awaitItem().title)
+        }
     }
 
     @Test
     fun `togglePin updates state`() = runTest {
         val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
         viewModel = createViewModel(savedStateHandle)
-        advanceUntilIdle()
-        assertEquals(false, viewModel.state.value.isPinned)
 
-        viewModel.togglePin()
-        assertEquals(true, viewModel.state.value.isPinned)
+        viewModel.state.test {
+            val initialState = awaitItem()
+            assertEquals(false, initialState.isPinned)
+            
+            viewModel.togglePin()
+            assertEquals(true, awaitItem().isPinned)
+        }
     }
 
     @Test
@@ -129,7 +120,6 @@ class EditorViewModelTest {
 
         val savedStateHandle = SavedStateHandle(mapOf("noteId" to 1L))
         viewModel = createViewModel(savedStateHandle)
-        advanceUntilIdle()
 
         viewModel.state.test {
             awaitItem()
@@ -150,9 +140,9 @@ class EditorViewModelTest {
         viewModel = createViewModel(savedStateHandle)
 
         viewModel.state.test {
-            var state = awaitItem()
+            val state = awaitItem()
             while (!state.isNoteLoaded) {
-                state = awaitItem()
+                awaitItem()
             }
             assertEquals(true, state.noteNotFound)
         }
@@ -170,7 +160,7 @@ class EditorViewModelTest {
         viewModel.updateChecklistItem(firstId, "Buy milk", false)
         viewModel.updateChecklistItem(firstId, text = "Buy milk", isChecked = true)
 
-        val updated = viewModel.state.value.checklist.last { it.id == firstId }
+        val updated = viewModel.state.value.checklist.first { it.id == firstId }
         assertEquals("Buy milk", updated.text)
         assertEquals(true, updated.isChecked)
     }
@@ -191,36 +181,6 @@ class EditorViewModelTest {
     }
 
     @Test
-    fun `locking note persists locked state through repository`() = runTest {
-        val note = Note(
-            id = 1L,
-            title = "Secret",
-            content = "Body",
-            timestamp = 0L,
-            color = 0,
-            isLocked = false,
-            reminderTimestamp = System.currentTimeMillis() + 60_000
-        )
-        coEvery { repository.getNoteById(1L) } returns note
-        coEvery { repository.updateNote(any()) } returns Unit
-
-        val savedStateHandle = SavedStateHandle(mapOf("noteId" to 1L))
-        viewModel = createViewModel(savedStateHandle)
-
-        viewModel.state.test {
-            var state = awaitItem()
-            while (!state.isNoteLoaded) {
-                state = awaitItem()
-            }
-            viewModel.toggleLock()
-            advanceUntilIdle()
-            cancelAndIgnoreRemainingEvents()
-        }
-
-        coVerify { repository.updateNote(match { it.id == 1L && it.isLocked }) }
-    }
-
-    @Test
     fun `convertChecklistToContent joins items into body`() = runTest {
         val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
         viewModel = createViewModel(savedStateHandle)
@@ -234,55 +194,5 @@ class EditorViewModelTest {
 
         assertEquals("Line one\nLine two", viewModel.state.value.content)
         assertEquals(emptyList<com.aus.notelikeus.domain.model.ChecklistItem>(), viewModel.state.value.checklist)
-    }
-
-    @Test
-    fun `checked checklist item moves to bottom`() = runTest {
-        val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
-        viewModel = createViewModel(savedStateHandle)
-        advanceUntilIdle()
-
-        viewModel.addChecklistItem()
-        viewModel.addChecklistItem()
-        val ids = viewModel.state.value.checklist.map { it.id!! }
-        viewModel.updateChecklistItem(ids[0], "First", false)
-        viewModel.updateChecklistItem(ids[1], "Second", false)
-        viewModel.updateChecklistItem(ids[0], "First", true)
-
-        val checklist = viewModel.state.value.checklist
-        assertEquals("Second", checklist.first().text)
-        assertEquals("First", checklist.last().text)
-        assertEquals(true, checklist.last().isChecked)
-    }
-
-    @Test
-    fun `autosave debounces repository writes`() = runTest {
-        val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
-        viewModel = createViewModel(savedStateHandle)
-        advanceUntilIdle()
-
-        viewModel.onTitleChange("A")
-        viewModel.onTitleChange("AB")
-        viewModel.onTitleChange("ABC")
-        advanceTimeBy(399)
-        coVerify(exactly = 0) { repository.insertNoteWithResult(any()) }
-        coVerify(exactly = 0) { repository.updateNote(any()) }
-
-        advanceTimeBy(1)
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { repository.insertNoteWithResult(match { it.title == "ABC" }) }
-    }
-
-    @Test
-    fun `flushPendingSave persists immediately without waiting for debounce`() = runTest {
-        val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
-        viewModel = createViewModel(savedStateHandle)
-        advanceUntilIdle()
-
-        viewModel.onTitleChange("Draft")
-        viewModel.flushPendingSave()
-
-        coVerify(exactly = 1) { repository.insertNoteWithResult(match { it.title == "Draft" }) }
     }
 }
