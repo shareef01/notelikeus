@@ -121,7 +121,7 @@ function NoteCardImpl({
               event.stopPropagation();
               onLabelClick(label.name);
             }}
-            className={`rounded-full font-semibold uppercase tracking-wider hover:opacity-80 ${
+            className={`rounded-full font-semibold uppercase tracking-wider hover:opacity-80 pointer-events-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
               isDense ? 'px-1.5 py-px text-[9px]' : 'px-2 py-0.5 text-[10px]'
             }`}
             style={labelChipStyle}
@@ -141,26 +141,18 @@ function NoteCardImpl({
         ),
       )}
       {note.labels.length > labelLimit ? (
-        <span className="self-center text-[10px] font-semibold uppercase tracking-wider opacity-65">
+        <span className="self-center text-[10px] font-semibold uppercase tracking-wider opacity-70">
           +{note.labels.length - labelLimit}
         </span>
       ) : null}
     </div>
   ) : null;
 
+  const openLabel = [title, ...statusParts].join(', ');
+
   return (
     <article
-      role="button"
-      tabIndex={0}
-      onClick={handleClick}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          handleClick();
-        }
-      }}
-      {...(onLongPress ? longPressProps : {})}
-      className={`relative flex w-full cursor-pointer overflow-hidden rounded-note text-left shadow-sm transition-[transform,box-shadow,background-color] duration-200 ${
+      className={`relative flex w-full overflow-hidden rounded-note text-left shadow-sm transition-[transform,box-shadow,background-color] duration-200 ${
         isList
           ? 'h-full flex-row items-stretch gap-0'
           : isDense
@@ -174,20 +166,31 @@ function NoteCardImpl({
             : 'hover:-translate-y-0.5 hover:shadow-md active:translate-y-0'
       }`}
       style={surface}
-      aria-pressed={isSelected || undefined}
-      aria-label={[title, ...statusParts].join(', ')}
     >
+      {/* Stretch control — keeps nested buttons valid (no role=button wrapping buttons). */}
+      <button
+        type="button"
+        className="absolute inset-0 z-0 cursor-pointer rounded-note focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+        onClick={handleClick}
+        aria-pressed={isSelected || undefined}
+        aria-label={openLabel}
+        {...(onLongPress ? longPressProps : {})}
+      />
+
       {showReorderHandle && reorderHandleProps ? (
         <button
           type="button"
           aria-label="Reorder note"
-          className="absolute left-0 top-1/2 z-10 flex size-10 -translate-y-1/2 cursor-grab touch-none items-center justify-center text-brand-muted/40 active:cursor-grabbing"
+          className="absolute left-0 top-1/2 z-10 flex size-10 -translate-y-1/2 cursor-grab touch-none items-center justify-center text-brand-muted/40 pointer-events-auto active:cursor-grabbing focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
           {...reorderHandleProps}
         >
           <DragHandleIcon size={18} />
         </button>
       ) : null}
 
+      <div className={`relative z-[1] flex min-h-0 min-w-0 flex-1 pointer-events-none ${
+        isList ? 'flex-row items-stretch' : 'flex-col'
+      }`}>
       {isList ? (
         <>
           <span
@@ -203,12 +206,12 @@ function NoteCardImpl({
                 {highlight(title)}
               </h2>
               {showBody ? (
-                <p className="mt-1.5 line-clamp-2 text-[13px] leading-[1.45] opacity-[0.58]">
+                <p className="mt-1.5 line-clamp-2 text-[13px] leading-[1.45] opacity-75">
                   {highlight(previewBody)}
                 </p>
               ) : null}
               {showChecklist ? (
-                <p className="mt-2 text-[11px] font-medium tracking-wide opacity-45">
+                <p className="mt-2 text-[11px] font-medium tracking-wide opacity-65">
                   {checkedCount}/{note.checklist.length} checked
                 </p>
               ) : null}
@@ -219,7 +222,7 @@ function NoteCardImpl({
               {statusIcons(15)}
               <time
                 dateTime={new Date(note.timestamp).toISOString()}
-                className="text-[11px] font-medium tabular-nums tracking-wide opacity-40"
+                className="text-[11px] font-medium tabular-nums tracking-wide opacity-60"
               >
                 {timeLabel}
               </time>
@@ -245,8 +248,8 @@ function NoteCardImpl({
             <p
               className={
                 isDense
-                  ? 'mt-1.5 line-clamp-3 text-[11px] leading-snug opacity-65'
-                  : 'mt-2 line-clamp-4 text-[13px] leading-[1.45] opacity-[0.62] sm:line-clamp-5'
+                  ? 'mt-1.5 line-clamp-3 text-[11px] leading-snug opacity-75'
+                  : 'mt-2 line-clamp-4 text-[13px] leading-[1.45] opacity-75 sm:line-clamp-5'
               }
             >
               {highlight(previewBody)}
@@ -255,7 +258,7 @@ function NoteCardImpl({
 
           {showChecklist ? (
             isDense ? (
-              <p className="mt-2 text-[10px] font-medium tracking-wide opacity-45">
+              <p className="mt-2 text-[10px] font-medium tracking-wide opacity-65">
                 {checkedCount}/{note.checklist.length} checked
               </p>
             ) : (
@@ -263,11 +266,11 @@ function NoteCardImpl({
                 {note.checklist.slice(0, 3).map((item) => (
                   <div key={item.id} className="flex items-center gap-1.5">
                     {item.isChecked ? (
-                      <CheckCircleIcon size={14} className="shrink-0 opacity-55" />
+                      <CheckCircleIcon size={14} className="shrink-0 opacity-70" />
                     ) : (
-                      <CheckCircleOutlineIcon size={14} className="shrink-0 opacity-55" />
+                      <CheckCircleOutlineIcon size={14} className="shrink-0 opacity-70" />
                     )}
-                    <span className="line-clamp-1 text-[12px] leading-snug opacity-55">
+                    <span className="line-clamp-1 text-[12px] leading-snug opacity-70">
                       {highlight(stripMarkdownForPreview(item.text))}
                     </span>
                   </div>
@@ -285,7 +288,7 @@ function NoteCardImpl({
           >
             <time
               dateTime={new Date(note.timestamp).toISOString()}
-              className={`font-medium tabular-nums tracking-wide opacity-40 ${
+              className={`font-medium tabular-nums tracking-wide opacity-60 ${
                 isDense ? 'text-[10px]' : 'text-[11px]'
               }`}
             >
@@ -294,6 +297,7 @@ function NoteCardImpl({
           </div>
         </>
       )}
+      </div>
     </article>
   );
 }

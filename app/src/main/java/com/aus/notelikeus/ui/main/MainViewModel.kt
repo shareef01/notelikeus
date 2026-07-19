@@ -103,6 +103,13 @@ class MainViewModel @Inject constructor(
         setupSearchOptimization()
         refreshCloudAccount()
         loadRecentSearches()
+        // Backfill / enforce last-merged UID for an already-restored Firebase session so a
+        // later account switch without in-app sign-out still wipes prior local data.
+        if (firebaseSessionManager.getCurrentAccount().isGoogleAccount) {
+            viewModelScope.launch {
+                prepareLocalDataForSignedInUser()
+            }
+        }
     }
 
     private fun refreshCloudAccount() {
@@ -150,6 +157,7 @@ class MainViewModel @Inject constructor(
 
     private suspend fun onSignInSuccess() {
         refreshCloudAccount()
+        prepareLocalDataForSignedInUser()
         verifyFirebaseConnection()
         if (_state.value.isCloudAutoSyncEnabled) {
             // Download first so a fresh account (after local wipe) fills from cloud.
@@ -162,6 +170,35 @@ class MainViewModel @Inject constructor(
                 }
         }
         _state.update { it.copy(pendingCloudSyncEvent = CloudSyncEvent.SignedIn) }
+    }
+
+    /**
+     * If a different Firebase UID signs in without a clean in-app sign-out, drop the prior
+     * user's local notes and sync prefs before cloud merge (same guard as web useNotesSync).
+     */
+    private suspend fun prepareLocalDataForSignedInUser() {
+        val userId = firebaseSessionManager.getCurrentAccount().userId ?: return
+        val previousUserId = noteSyncStateStore.lastMergedUserId()
+        if (previousUserId != null && previousUserId != userId) {
+            Log.i(TAG, "Account switch without local wipe; clearing prior user data")
+            repository.clearAllUserData()
+            noteSyncStateStore.clear()
+            cloudNoteSyncCoordinator.clearPending()
+            _state.update {
+                it.copy(
+                    cloudSyncStatus = CloudSyncStatus.Unknown,
+                    cloudSyncedNoteCount = 0,
+                    notes = emptyList(),
+                    filteredNotes = emptyList(),
+                    allLabels = emptyList(),
+                    totalNoteCount = 0,
+                    archivedNoteCount = 0,
+                    trashedNoteCount = 0,
+                    listRevision = it.listRevision + 1
+                )
+            }
+        }
+        noteSyncStateStore.setLastMergedUserId(userId)
     }
 
     fun signOutFromCloud(deleteCloudData: Boolean = false) {
@@ -252,6 +289,7 @@ class MainViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
+            prepareLocalDataForSignedInUser()
             _state.update {
                 it.copy(
                     cloudSyncStatus = CloudSyncStatus.Syncing,
@@ -292,6 +330,7 @@ class MainViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
+            prepareLocalDataForSignedInUser()
             _state.update {
                 it.copy(
                     cloudSyncStatus = CloudSyncStatus.Syncing,

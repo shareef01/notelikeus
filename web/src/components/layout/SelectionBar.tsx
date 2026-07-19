@@ -2,6 +2,9 @@ import type { ReactNode } from 'react';
 import { ArchiveIcon, CloseIcon, NotesIcon, PinIcon, TrashIcon } from '@/components/icons/Icons';
 import type { NoteFilter } from '@/types/note';
 
+const CHROME_FOCUS =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary';
+
 interface SelectionBarProps {
   selectedCount: number;
   allFilteredSelected: boolean;
@@ -32,11 +35,11 @@ export function SelectionBar({
   const label = selectedCount === 1 ? '1 selected' : `${selectedCount} selected`;
 
   return (
-    <div className="flex h-14 items-center gap-2 pt-safe sm:h-16 sm:gap-3">
+    <div className="flex h-14 items-center gap-2 sm:h-16 sm:gap-3">
       <button
         type="button"
         onClick={onClearSelection}
-        className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5"
+        className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 ${CHROME_FOCUS}`}
         aria-label="Clear selection"
       >
         <CloseIcon size={22} />
@@ -105,7 +108,7 @@ function IconAction({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`flex size-10 items-center justify-center rounded-full transition-colors ${
+      className={`flex size-10 items-center justify-center rounded-full transition-colors ${CHROME_FOCUS} ${
         danger
           ? 'text-red-400 hover:bg-red-500/10'
           : 'text-brand-muted hover:bg-white/5 hover:text-brand-primary'

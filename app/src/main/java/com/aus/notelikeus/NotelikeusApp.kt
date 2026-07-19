@@ -12,6 +12,7 @@ import com.aus.notelikeus.data.remote.AppCheckInitializer
 import com.aus.notelikeus.data.local.LegacyAttachmentCleanup
 import com.aus.notelikeus.data.remote.NotificationChannels
 import com.aus.notelikeus.data.remote.ReconciliationSyncWorker
+import com.aus.notelikeus.ui.navigation.InternalNavigationToken
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -32,6 +33,7 @@ class NotelikeusApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        InternalNavigationToken.init(this)
         AppCheckInitializer.install(this)
         NotificationChannels.createReminderChannel(this)
         legacyAttachmentCleanup.scheduleIfNeeded()

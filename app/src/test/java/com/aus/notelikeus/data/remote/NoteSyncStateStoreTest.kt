@@ -68,4 +68,13 @@ class NoteSyncStateStoreTest {
         assertFalse(migrated.isDeleted(0L))
         assertTrue(prefs.getString("deleted_at_by_id", null)!!.isNotBlank())
     }
+
+    @Test
+    fun `lastMergedUserId persists and clears`() {
+        assertEquals(null, store.lastMergedUserId())
+        store.setLastMergedUserId("uid-a")
+        assertEquals("uid-a", store.lastMergedUserId())
+        store.clear()
+        assertEquals(null, store.lastMergedUserId())
+    }
 }

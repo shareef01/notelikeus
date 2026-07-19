@@ -1,4 +1,5 @@
 import { deleteNote, subscribeToNotes, syncNotesWithCloud } from '@/lib/firestore/notesRepository';
+import { loadKnownCloudIds, saveKnownCloudIds } from '@/lib/notes/knownCloudIds';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
@@ -27,8 +28,13 @@ let mergedForUserId: string | null = null;
 let mergeInFlight: Promise<void> | null = null;
 let unsubscribeRealtime: Unsubscribe | null = null;
 let realtimeUserId: string | null = null;
-let knownCloudIds = new Set<string>();
+let knownCloudIds = loadKnownCloudIds();
 let visibilityHandler: (() => void) | null = null;
+
+function rememberKnownCloudIds(ids: Set<string>) {
+  knownCloudIds = ids;
+  saveKnownCloudIds(ids);
+}
 
 function applyNotes(incoming: Note[]) {
   const current = useNotesStore.getState().notes;
@@ -81,7 +87,7 @@ function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
     result.set(local.id, local);
   }
 
-  knownCloudIds = remoteIds;
+  rememberKnownCloudIds(remoteIds);
   return Array.from(result.values());
 }
 
@@ -117,11 +123,17 @@ export function mergeCloudNotesOnce(userId: string): Promise<void> {
 
     try {
       const localNotes = useNotesStore.getState().notes;
-      const { merged, remoteIds } = await syncNotesWithCloud(userId, localNotes);
+      const previouslyKnown = loadKnownCloudIds();
+      knownCloudIds = previouslyKnown;
+      const { merged, remoteIds } = await syncNotesWithCloud(
+        userId,
+        localNotes,
+        previouslyKnown,
+      );
       const isDeleted = useTombstoneStore.getState().isDeleted;
       applyNotes(merged.filter((note) => !isDeleted(note.id)));
       purgeStaleCloudDocs(userId, remoteIds.filter(isDeleted));
-      knownCloudIds = new Set(remoteIds.filter((id) => !isDeleted(id)));
+      rememberKnownCloudIds(new Set(remoteIds.filter((id) => !isDeleted(id))));
       mergedForUserId = userId;
     } catch (error) {
       useNotesStore.getState().setError(
@@ -168,6 +180,7 @@ export function stopNotesRealtimeSync(): void {
 export function resetCloudMergeState(): void {
   mergedForUserId = null;
   mergeInFlight = null;
-  knownCloudIds = new Set();
+  // Keep persisted IDs across auth blips; clearLocalUserData wipes storage on sign-out.
+  knownCloudIds = loadKnownCloudIds();
   stopNotesRealtimeSync();
 }

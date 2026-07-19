@@ -45,20 +45,20 @@ export function ColorSwatch({ argb, selected, onClick, label }: ColorSwatchProps
       onClick={onClick}
       aria-label={label ?? (isDefault ? 'No color' : 'Note color')}
       aria-pressed={selected}
-      className={`relative flex size-8 shrink-0 items-center justify-center rounded-full border-2 transition-[transform,box-shadow,border-color] ${
+      className={`relative flex size-10 shrink-0 items-center justify-center rounded-full border-2 transition-[transform,box-shadow,border-color] ${
         selected
           ? 'scale-110 border-brand-primary shadow-[0_0_0_2px_rgb(var(--primary-rgb)/0.2)]'
           : 'border-brand-outline/55 hover:scale-105 hover:border-brand-outline'
       }`}
       style={{ backgroundColor: isDefault ? 'rgb(var(--surface-variant-rgb))' : argbToCss(argb) }}
     >
-      {isDefault && !selected ? <BlockIcon size={14} className="text-brand-muted/55" /> : null}
+      {isDefault && !selected ? <BlockIcon size={16} className="text-brand-muted/55" /> : null}
       {selected ? (
         <span
           className={isDefault ? 'text-brand-primary' : undefined}
           style={checkColor ? { color: checkColor } : undefined}
         >
-          <CheckIcon size={14} />
+          <CheckIcon size={16} />
         </span>
       ) : null}
     </button>
@@ -90,7 +90,7 @@ export function ColorSwatchRow({
           onClick={onSelectAll}
           aria-label="All colors"
           aria-pressed={allSelected}
-          className={`relative flex size-8 shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-bold uppercase tracking-wide transition-[transform,border-color] ${
+          className={`relative flex size-10 shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-bold uppercase tracking-wide transition-[transform,border-color] ${
             allSelected
               ? 'scale-110 border-brand-primary bg-brand-primary text-true-surface shadow-[0_0_0_2px_rgb(var(--primary-rgb)/0.2)]'
               : 'border-brand-outline/60 bg-true-surface text-brand-muted hover:border-brand-outline hover:text-brand-primary'

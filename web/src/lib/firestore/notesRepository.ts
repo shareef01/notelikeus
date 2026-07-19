@@ -204,11 +204,13 @@ export async function fetchRemoteNotes(userId: string): Promise<Note[]> {
 
 /**
  * Merges cloud notes into local state and uploads any newer / missing local notes.
- * Matches Android `downloadAllNotes` conflict behavior.
+ * Matches Android `downloadAllNotes` conflict behavior, including delete-on-absence
+ * for IDs that were previously known in cloud (e.g. locked notes removed without tombstone).
  */
 export async function syncNotesWithCloud(
   userId: string,
   localNotes: Note[],
+  previouslyKnownCloudIds: Set<string> = new Set(),
 ): Promise<{ changes: number; merged: Note[]; remoteIds: string[] }> {
   const cloudTombstones = await fetchCloudTombstones(userId);
   useTombstoneStore.getState().mergeFromCloud(cloudTombstones);
@@ -217,23 +219,45 @@ export async function syncNotesWithCloud(
   const cloudIds = new Set(remoteNotes.map((note) => note.id));
   const isDeleted = (id: string) => useTombstoneStore.getState().isDeleted(id);
   let changes = 0;
+  const droppedLocalIds = new Set<string>();
 
   let merged = await mergeRemoteNotes(localNotes, remoteNotes);
   merged = merged.filter((note) => !isDeleted(note.id));
 
-  for (const localNote of localNotes.filter(isCloudSyncEligible)) {
+  for (const localNote of localNotes) {
     if (isDeleted(localNote.id)) continue;
-    const remote = remoteNotes.find((note) => note.id === localNote.id);
-    if (!cloudIds.has(localNote.id)) {
-      await upsertNote(userId, localNote);
-      changes++;
+
+    if (cloudIds.has(localNote.id)) {
+      if (!isCloudSyncEligible(localNote)) continue;
+      const remote = remoteNotes.find((note) => note.id === localNote.id);
+      if (remote && localNote.timestamp > remote.timestamp) {
+        await upsertNote(userId, localNote);
+        merged = merged.map((note) => (note.id === localNote.id ? localNote : note));
+        changes++;
+      }
       continue;
     }
-    if (remote && localNote.timestamp > remote.timestamp) {
+
+    // Absent from cloud: if we previously knew this id there, do not re-upload
+    // (Android deletes the local row; lock flow drops cloud without a tombstone).
+    if (previouslyKnownCloudIds.has(localNote.id)) {
+      if (!localNote.isLocked) {
+        droppedLocalIds.add(localNote.id);
+        useTombstoneStore.getState().markDeleted(localNote.id);
+        await writeCloudTombstone(userId, localNote.id);
+        changes++;
+      }
+      continue;
+    }
+
+    if (isCloudSyncEligible(localNote)) {
       await upsertNote(userId, localNote);
-      merged = merged.map((note) => (note.id === localNote.id ? localNote : note));
       changes++;
     }
+  }
+
+  if (droppedLocalIds.size > 0) {
+    merged = merged.filter((note) => !droppedLocalIds.has(note.id));
   }
 
   for (const remoteNote of remoteNotes) {
