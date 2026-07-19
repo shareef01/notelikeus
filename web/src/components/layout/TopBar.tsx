@@ -7,6 +7,9 @@ import type { Label } from '@/types/label';
 import type { NoteFilter } from '@/types/note';
 import { useState, useRef } from 'react';
 
+const CHROME_FOCUS =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary';
+
 const SEARCH_PLACEHOLDERS: Record<NoteFilter, string> = {
   active: 'Search notes',
   archived: 'Search archive',
@@ -100,7 +103,7 @@ export function TopBar({
 
   return (
     <header
-      className={`sticky top-0 z-30 bg-true-surface transition-shadow ${
+      className={`sticky top-0 z-30 bg-true-surface pt-safe transition-shadow ${
         listScrolled ? 'shadow-header-scroll' : ''
       }`}
     >
@@ -120,11 +123,11 @@ export function TopBar({
             onPermanentDelete={onBulkPermanentDelete}
           />
         ) : (
-          <div className="flex h-14 items-center gap-2 pt-safe sm:h-16 sm:gap-3">
+          <div className="flex h-14 items-center gap-2 sm:h-16 sm:gap-3">
             <button
               type="button"
               onClick={onMenuClick}
-              className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 lg:hidden"
+              className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 md:hidden ${CHROME_FOCUS}`}
               aria-label="Open menu"
             >
               <MenuIcon size={22} />
@@ -142,7 +145,7 @@ export function TopBar({
                 onFocus={() => setIsSearchFocused(true)}
                 onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
                 placeholder={SEARCH_PLACEHOLDERS[currentFilter]}
-                className="min-w-0 flex-1 bg-transparent px-3 text-base text-brand-primary outline-none placeholder:text-brand-muted/60 sm:px-4"
+                className={`min-w-0 flex-1 bg-transparent px-3 text-base text-brand-primary outline-none placeholder:text-brand-muted/60 sm:px-4 ${CHROME_FOCUS} rounded-full`}
                 aria-label={SEARCH_PLACEHOLDERS[currentFilter]}
               />
 
@@ -150,7 +153,7 @@ export function TopBar({
                 <button
                   type="button"
                   onClick={() => onSearchQueryChange('')}
-                  className="mr-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5"
+                  className={`mr-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 ${CHROME_FOCUS}`}
                   aria-label="Clear search"
                 >
                   <CloseIcon size={18} />
@@ -163,7 +166,7 @@ export function TopBar({
             <button
               type="button"
               onClick={onProfileClick}
-              className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-white/5 hover:text-brand-primary"
+              className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-white/5 hover:text-brand-primary ${CHROME_FOCUS}`}
               aria-label="Open settings"
             >
               <SettingsIcon size={22} />
@@ -173,7 +176,7 @@ export function TopBar({
               <button
                 type="button"
                 onClick={onNewNote}
-                className="hidden shrink-0 items-center gap-2 rounded-note bg-brand-primary px-4 py-2.5 text-sm font-semibold text-true-surface lg:flex"
+                className={`hidden shrink-0 items-center gap-2 rounded-note bg-brand-primary px-4 py-2.5 text-sm font-semibold text-true-surface md:flex ${CHROME_FOCUS}`}
               >
                 <AddIcon size={18} />
                 New note
