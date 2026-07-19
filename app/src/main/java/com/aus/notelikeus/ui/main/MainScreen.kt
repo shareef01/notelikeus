@@ -219,7 +219,6 @@ fun MainScreen(
     }
 
     val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
-    val showNavRail = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
     val navigator = rememberListDetailPaneScaffoldNavigator<Long?>()
 
     val drawerContent = @Composable {
@@ -370,11 +369,7 @@ fun MainScreen(
                             viewModel = viewModel,
                             onNoteClick = { noteId ->
                                 scope.launch {
-                                    if (showNavRail) {
-                                        navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, noteId)
-                                    } else {
-                                        onNoteClick(noteId)
-                                    }
+                                    navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, noteId)
                                 }
                             },
                             gridState = gridState,
@@ -459,15 +454,7 @@ fun MainScreen(
             MainScaffold(
                 state = state,
                 viewModel = viewModel,
-                onNoteClick = { noteId ->
-                    if (showNavRail) {
-                        scope.launch {
-                            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, noteId)
-                        }
-                    } else {
-                        onNoteClick(noteId)
-                    }
-                },
+                onNoteClick = { noteId -> onNoteClick(noteId) },
                 gridState = gridState,
                 snackbarHostState = snackbarHostState,
                 showProfileSheet = showProfileSheet,

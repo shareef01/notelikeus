@@ -53,6 +53,11 @@ class CloudNoteSyncCoordinator @Inject constructor(
 
     fun clearPending() {
         flushJob?.cancel()
+        // Drop already-enqueued WorkManager jobs so they cannot run under a new Firebase user.
+        workManager.cancelAllWorkByTag(SyncWorker.WORK_TAG)
+        for (noteId in pendingUploads + pendingDeletes) {
+            workManager.cancelUniqueWork(uniqueWorkName(noteId))
+        }
         pendingUploads.clear()
         pendingDeletes.clear()
         pendingStore.clear()
@@ -95,6 +100,8 @@ class CloudNoteSyncCoordinator @Inject constructor(
     }
 
     private fun enqueueSyncWork(noteId: Long, isDelete: Boolean) {
+        val expectedUid = firebaseSessionManager.getCurrentAccount().userId ?: return
+
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
@@ -102,18 +109,24 @@ class CloudNoteSyncCoordinator @Inject constructor(
         val data = Data.Builder()
             .putLong(SyncWorker.KEY_NOTE_ID, noteId)
             .putBoolean(SyncWorker.KEY_IS_DELETE, isDelete)
+            .putString(SyncWorker.KEY_EXPECTED_UID, expectedUid)
             .build()
 
         val workRequest = OneTimeWorkRequestBuilder<SyncWorker>()
             .setConstraints(constraints)
             .setInputData(data)
+            .addTag(SyncWorker.WORK_TAG)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
 
         workManager.enqueueUniqueWork(
-            "sync_$noteId",
+            uniqueWorkName(noteId),
             ExistingWorkPolicy.REPLACE,
             workRequest
         )
+    }
+
+    companion object {
+        fun uniqueWorkName(noteId: Long): String = "sync_$noteId"
     }
 }
