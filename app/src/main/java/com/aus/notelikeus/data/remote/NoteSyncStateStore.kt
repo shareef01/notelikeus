@@ -104,6 +104,13 @@ class NoteSyncStateStore @Inject constructor(
         prefs.edit().putStringSet(KEY_KNOWN_CLOUD, ids.map { it.toString() }.toSet()).apply()
     }
 
+    fun lastMergedUserId(): String? =
+        prefs.getString(KEY_LAST_MERGED_USER_ID, null)?.takeIf { it.isNotBlank() }
+
+    fun setLastMergedUserId(userId: String) {
+        prefs.edit().putString(KEY_LAST_MERGED_USER_ID, userId).apply()
+    }
+
     fun clear() {
         prefs.edit().clear().apply()
     }
@@ -121,6 +128,7 @@ class NoteSyncStateStore @Inject constructor(
         private const val KEY_DELETED = "deleted_ids"
         private const val KEY_DELETED_JSON = "deleted_at_by_id"
         private const val KEY_KNOWN_CLOUD = "known_cloud_ids"
+        private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
         const val TOMBSTONE_TTL_MS = 30L * 24 * 60 * 60 * 1000
     }
 }

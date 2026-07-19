@@ -133,7 +133,7 @@ internal fun PrecisionFilterChip(
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
             )
         },
-        modifier = modifier.heightIn(max = 32.dp),
+        modifier = modifier.heightIn(min = 40.dp),
         shape = CircleShape,
         border = FilterChipDefaults.filterChipBorder(
             enabled = enabled,

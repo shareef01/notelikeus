@@ -108,7 +108,7 @@
 
 @layer components {
   .filter-chip {
-    @apply inline-flex h-8 max-h-8 items-center rounded-full border border-brand-outline/45 px-3 text-xs font-medium transition-colors sm:h-9 sm:px-3.5 sm:text-sm;
+    @apply inline-flex min-h-11 items-center rounded-full border border-brand-outline/45 px-3.5 text-sm font-medium transition-colors sm:px-4;
   }
 
   .filter-chip-active {
