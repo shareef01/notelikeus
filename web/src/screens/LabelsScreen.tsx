@@ -41,11 +41,13 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-true-surface animate-in fade-in duration-300">
-      <header className="flex items-center justify-between px-4 py-4 lg:px-6">
+      <header className="flex items-center justify-between px-4 py-4 pt-safe lg:px-6">
         <h2 className="text-xl font-bold tracking-tight text-brand-primary">Edit labels</h2>
         <button
+          type="button"
           onClick={onClose}
-          className="flex size-10 items-center justify-center rounded-full hover:bg-white/5 transition-colors"
+          className="flex size-11 items-center justify-center rounded-full hover:bg-white/5 transition-colors"
+          aria-label="Close"
         >
           <CloseIcon size={24} />
         </button>

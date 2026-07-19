@@ -105,4 +105,13 @@ class CloudNoteSyncCoordinatorTest {
             workManager.enqueueUniqueWork("sync_7", ExistingWorkPolicy.REPLACE, any<OneTimeWorkRequest>())
         }
     }
+
+    @Test
+    fun `clearPending cancels WorkManager sync jobs`() {
+        coordinator.scheduleUpload(5L)
+        coordinator.clearPending()
+
+        verify { workManager.cancelAllWorkByTag(SyncWorker.WORK_TAG) }
+        verify { workManager.cancelUniqueWork("sync_5") }
+    }
 }
