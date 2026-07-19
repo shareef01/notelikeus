@@ -4,13 +4,11 @@ import {
   ArchiveIcon,
   CloseIcon,
   LabelIcon,
-  MenuIcon,
   NotesIcon,
   SettingsIcon,
   TrashIcon,
 } from '@/components/icons/Icons';
-import { useIsDesktop } from '@/hooks/useMediaQuery';
-import { useUiStore } from '@/store/uiStore';
+import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import type { NoteFilter } from '@/types/note';
 import { useEffect, useRef } from 'react';
 
@@ -53,59 +51,12 @@ export function SideDrawer({
   navCounts,
   onOpenSettings,
 }: SideDrawerProps) {
-  const isDesktop = useIsDesktop();
-  const collapsed = useUiStore((s) => s.sidebarCollapsed);
-  const toggleSidebar = useUiStore((s) => s.toggleSidebar);
-
-  const drawerRef = useRef<HTMLElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const trapFocus = open && !isDesktop;
-
-  useEffect(() => {
-    if (!trapFocus) return;
-
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
-    const drawer = drawerRef.current;
-    const focusables = drawer?.querySelectorAll<HTMLElement>(FOCUSABLE);
-    focusables?.[0]?.focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (event.key !== 'Tab' || !drawer) return;
-
-      const items = drawer.querySelectorAll<HTMLElement>(FOCUSABLE);
-      if (items.length === 0) return;
-
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousFocusRef.current?.focus?.();
-    };
-  }, [trapFocus, onClose]);
+  const isTabletUp = useIsTabletUp();
 
   return (
     <>
       <div
-        className={`fixed inset-0 z-40 bg-black/70 backdrop-blur-sm transition-opacity duration-300 lg:hidden ${
+        className={`fixed inset-0 z-40 bg-black/80 backdrop-blur-sm transition-opacity md:hidden ${
           open ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onClick={onClose}
@@ -113,16 +64,13 @@ export function SideDrawer({
       />
 
       <aside
-        ref={drawerRef}
-        role={trapFocus ? 'dialog' : undefined}
-        aria-modal={trapFocus ? true : undefined}
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[80vw] flex-col bg-[#0C0C0E] shadow-2xl transition-transform duration-300 ease-out lg:static lg:z-auto lg:w-64 xl:w-72 lg:translate-x-0 lg:border-r lg:border-white/[0.03] lg:shadow-none lg:transition-none ${
-          collapsed && isDesktop ? 'lg:w-[72px]' : ''
-        } ${open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
-        aria-hidden={!open && !isDesktop}
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(320px,88vw)] flex-col bg-true-surface shadow-2xl transition-transform duration-300 ease-out md:static md:z-auto md:w-60 md:shrink-0 md:translate-x-0 md:border-r md:border-brand-outline md:shadow-none lg:w-64 xl:w-72 ${
+          open ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}
+        aria-hidden={!open && !isTabletUp}
         aria-label="Navigation"
       >
-        <div className="flex items-center justify-between px-4 pb-4 pt-safe lg:px-5 lg:pt-8">
+        <div className="flex items-center justify-between px-6 pb-6 pt-safe md:pt-8">
           <div className="flex items-center gap-3">
             <BrandMark size={32} />
             <div>
@@ -134,9 +82,9 @@ export function SideDrawer({
           </div>
           <button
             type="button"
-            onClick={isDesktop ? toggleSidebar : onClose}
-            className="flex size-9 shrink-0 items-center justify-center rounded-xl text-brand-muted interactive-hover transition-colors"
-            aria-label={isDesktop ? (collapsed ? 'Expand sidebar' : 'Collapse sidebar') : 'Close menu'}
+            onClick={onClose}
+            className="flex size-10 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-white/5 md:hidden"
+            aria-label="Close menu"
           >
             {isDesktop ? <MenuIcon size={18} /> : <CloseIcon size={22} />}
           </button>
@@ -181,8 +129,8 @@ export function SideDrawer({
               }}
               className="flex h-12 w-full items-center gap-3 rounded-xl px-3 transition-all text-brand-muted hover:text-brand-primary hover:bg-white/5"
             >
-              <LabelIcon size={20} className="text-brand-muted/50" />
-              <span className="text-[14px] font-semibold tracking-tight">Edit labels</span>
+              <LabelIcon size={24} className="text-brand-muted/60" />
+              Edit labels
             </button>
           ) : null}
 
@@ -201,7 +149,7 @@ export function SideDrawer({
           ) : null}
         </nav>
 
-        <div className="border-t border-white/[0.03] px-4 py-4 pb-safe lg:px-5 lg:py-5">
+        <div className="mt-auto border-t border-brand-outline p-6 pb-safe md:pb-8">
           {userEmail ? (
             <div className="flex flex-col gap-3">
               <div>
@@ -211,18 +159,19 @@ export function SideDrawer({
               <button
                 type="button"
                 onClick={onSignOut}
-                className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/10 text-[12px] font-bold tracking-tight text-brand-muted transition-all hover:bg-white/5 hover:text-white active:scale-[0.98]"
+                className="w-full rounded-note border border-brand-outline bg-true-surface-variant px-4 py-2.5 text-sm font-bold text-brand-primary transition-colors hover:bg-white/5"
               >
                 <span>Sign Out</span>
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
-              <p className="text-[11px] leading-relaxed text-brand-muted/50">
-                Sign in to sync your notes across devices.
-              </p>
-              <GoogleSignInButton label="Sign in with Google" onClick={onSignIn} />
-            </div>
+            <button
+              type="button"
+              onClick={onSignIn}
+              className="w-full rounded-note bg-brand-primary px-4 py-2.5 text-sm font-bold text-true-surface transition-transform active:scale-95"
+            >
+              Sign in with Google
+            </button>
           )}
         </div>
       </aside>

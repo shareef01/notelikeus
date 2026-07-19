@@ -15,13 +15,12 @@ class ReminderScheduler @Inject constructor(
 ) {
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-    fun scheduleReminder(noteId: Long, title: String, content: String, timestamp: Long): ReminderScheduleResult {
+    /** Schedules a reminder that only carries [noteId] — never note title/body (lock-screen safe). */
+    fun scheduleReminder(noteId: Long, timestamp: Long): ReminderScheduleResult {
         if (timestamp <= System.currentTimeMillis()) return ReminderScheduleResult.PAST_TIME
 
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             putExtra("noteId", noteId)
-            putExtra("title", title.ifBlank { context.getString(com.aus.notelikeus.R.string.reminder_default_title) })
-            putExtra("content", content)
         }
         val pendingIntent = PendingIntent.getBroadcast(
             context,

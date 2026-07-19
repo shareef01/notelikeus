@@ -1,7 +1,9 @@
-import { NoteCard, type NoteReorderHandleProps } from '@/components/notes/NoteCard';
+import { NoteCard, type NoteCardDensity, type NoteReorderHandleProps } from '@/components/notes/NoteCard';
 import { NoteSectionHeader } from '@/components/notes/NoteSectionHeader';
 import { SwipeableNoteCard } from '@/components/notes/SwipeableNoteCard';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { getDateHeader } from '@/lib/text/dateTime';
+import type { ViewColumns } from '@/store/uiStore';
 import type { Note, NoteFilter } from '@/types/note';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 
@@ -14,7 +16,8 @@ interface NoteListActions {
 
 interface NoteStaggeredGridProps {
   notes: Note[];
-  columns: number;
+  /** User view preference — drives card min-width + density. */
+  viewPreference: ViewColumns;
   filter: NoteFilter;
   onNoteClick: (note: Note) => void;
   onNoteLongPress: (note: Note) => void;
@@ -28,20 +31,52 @@ interface NoteStaggeredGridProps {
   onReorderComplete?: () => void;
 }
 
-const COLUMN_CLASSES: Record<number, string> = {
-  1: '',
-  2: 'columns-2',
-  3: 'columns-3',
-  4: 'columns-4',
-  5: 'columns-5',
-  6: 'columns-6',
+/**
+ * Grid/dense pack with auto-fill. List is a single readable column —
+ * never multi-column ribbons that fight the “list” metaphor.
+ */
+const CARD_MIN_PX: Record<2 | 3, number> = {
+  2: 220,
+  3: 156,
+};
+
+const DENSITY: Record<ViewColumns, NoteCardDensity> = {
+  1: 'list',
+  2: 'grid',
+  3: 'dense',
 };
 
 const REORDER_THRESHOLD_PX = 72;
 
+type BoardItem =
+  | { type: 'header'; key: string; title: string }
+  | { type: 'note'; key: string; note: Note; index: number };
+
+function buildBoardItems(notes: Note[]): BoardItem[] {
+  const items: BoardItem[] = [];
+  notes.forEach((note, index) => {
+    const prev = notes[index - 1];
+
+    if (note.isPinned && index === 0) {
+      items.push({ type: 'header', key: 'header-pinned', title: 'Pinned' });
+    }
+
+    if (!note.isPinned) {
+      const header = getDateHeader(note.timestamp);
+      const prevHeader = prev && !prev.isPinned ? getDateHeader(prev.timestamp) : null;
+      if (header !== prevHeader) {
+        items.push({ type: 'header', key: `header-${header}-${index}`, title: header });
+      }
+    }
+
+    items.push({ type: 'note', key: note.id, note, index });
+  });
+  return items;
+}
+
 export function NoteStaggeredGrid({
   notes,
-  columns,
+  viewPreference,
   filter,
   onNoteClick,
   onNoteLongPress,
@@ -54,17 +89,23 @@ export function NoteStaggeredGrid({
   onMoveNote,
   onReorderComplete,
 }: NoteStaggeredGridProps) {
-  const compact = columns > 1;
+  const isPhone = !useMediaQuery('(min-width: 640px)');
+  const density = DENSITY[viewPreference];
+  const isList = viewPreference === 1;
+  const cardMin = isList ? 0 : CARD_MIN_PX[viewPreference as 2 | 3];
   const selectedSet = useMemo(() => new Set(selectedNoteIds), [selectedNoteIds]);
-  const swipeEnabled = columns === 1 && Boolean(listActions) && !selectionMode;
-  const canReorder = allowReorder && columns === 1 && !selectionMode && Boolean(onMoveNote);
+  // Swipe + pointer-capture fights mouse clicks on desktop — keep it phone-only.
+  const swipeEnabled = isPhone && isList && Boolean(listActions) && !selectionMode;
+  const canReorder =
+    allowReorder && isList && !selectionMode && Boolean(onMoveNote);
+  const boardItems = useMemo(() => buildBoardItems(notes), [notes]);
 
   const [draggingIndex, setDraggingIndex] = useState(-1);
   const dragOffsetRef = useRef(0);
 
   const cardProps = (note: Note) => ({
     note,
-    compact,
+    density,
     onClick: () => onNoteClick(note),
     onLongPress: () => onNoteLongPress(note),
     onLabelClick,
@@ -149,96 +190,56 @@ export function NoteStaggeredGrid({
     }
   };
 
-  if (columns === 1) {
-    return (
-      <div className="flex flex-col gap-note-gap px-3 pb-24 pt-2 sm:px-4 lg:px-5 lg:pt-3">
-        {notes.map((note, index) => {
-          const prevNote = notes[index - 1];
-
-          // 1. Pinned Header
-          const showPinnedHeader = note.isPinned && index === 0;
-
-          // 2. Date Section Headers (for unpinned notes)
-          let dateHeader: string | null = null;
-          if (!note.isPinned) {
-            const currentHeader = getDateHeader(note.timestamp);
-            const prevHeader = prevNote ? (prevNote.isPinned ? null : getDateHeader(prevNote.timestamp)) : null;
-            if (currentHeader !== prevHeader) {
-              dateHeader = currentHeader;
-            }
-          }
-
-          return (
-            <div key={note.id}>
-              {showPinnedHeader ? <NoteSectionHeader title="Pinned" /> : null}
-              {dateHeader ? <NoteSectionHeader title={dateHeader} /> : null}
-              {canReorder ? (
-                <ReorderRow
-                  index={index}
-                  isDragging={draggingIndex === index}
-                  onDragStart={handleDragStart}
-                  onDragMove={handleDragMove}
-                  onDragEnd={handleDragEnd}
-                  render={(reorderHandleProps) => renderCard(note, reorderHandleProps)}
-                />
-              ) : (
-                renderCard(note)
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  const pinned = notes.filter((note) => note.isPinned);
-  const others = notes.filter((note) => !note.isPinned);
-  const columnClass = COLUMN_CLASSES[columns];
-
-  const renderDateSections = (sectionNotes: Note[]) => {
-    const sections: { header: string; notes: Note[] }[] = [];
-    sectionNotes.forEach((note) => {
-      const header = getDateHeader(note.timestamp);
-      const lastSection = sections[sections.length - 1];
-      if (lastSection?.header === header) {
-        lastSection.notes.push(note);
-      } else {
-        sections.push({ header, notes: [note] });
-      }
-    });
-
-    return sections.map((section) => (
-      <div key={section.header} className="mb-note-gap break-inside-avoid">
-        <NoteSectionHeader title={section.header} />
-        <div className="mt-note-gap flex flex-col gap-note-gap">
-          {section.notes.map((note) => (
-            <div key={note.id} className="break-inside-avoid">
-              {renderCard(note)}
-            </div>
-          ))}
-        </div>
-      </div>
-    ));
-  };
+  const gapClass =
+    viewPreference === 3
+      ? 'gap-2 sm:gap-2.5'
+      : isList
+        ? 'gap-2 sm:gap-2.5'
+        : 'gap-3 sm:gap-3.5';
 
   return (
     <div
-      className={`${columnClass} gap-note-gap px-3 pb-24 pt-3 sm:px-4 lg:px-6`}
-      style={{ columnGap: '12px' }}
+      className={`grid w-full ${gapClass} px-3 pb-24 pt-3 sm:px-4 lg:px-6 ${
+        isList ? 'max-w-3xl grid-cols-1' : 'mx-auto max-w-content items-start'
+      }`}
+      style={
+        isList
+          ? undefined
+          : {
+              gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${cardMin}px), 1fr))`,
+            }
+      }
     >
-      {pinned.length > 0 ? (
-        <div className="mb-note-gap break-inside-avoid">
-          <NoteSectionHeader title="Pinned" />
-          <div className="mt-note-gap flex flex-col gap-note-gap">
-            {pinned.map((note) => (
-              <div key={note.id} className="break-inside-avoid">
-                {renderCard(note)}
-              </div>
-            ))}
+      {boardItems.map((item) => {
+        if (item.type === 'header') {
+          return (
+            <div key={item.key} className="col-span-full">
+              <NoteSectionHeader title={item.title} />
+            </div>
+          );
+        }
+
+        const { note, index } = item;
+        if (canReorder) {
+          return (
+            <ReorderRow
+              key={note.id}
+              index={index}
+              isDragging={draggingIndex === index}
+              onDragStart={handleDragStart}
+              onDragMove={handleDragMove}
+              onDragEnd={handleDragEnd}
+              render={(reorderHandleProps) => renderCard(note, reorderHandleProps)}
+            />
+          );
+        }
+
+        return (
+          <div key={note.id} className="min-w-0">
+            {renderCard(note)}
           </div>
-        </div>
-      ) : null}
-      {renderDateSections(others)}
+        );
+      })}
     </div>
   );
 }
@@ -272,7 +273,11 @@ function ReorderRow({
   };
 
   return (
-    <div className={isDragging ? 'opacity-90' : ''}>
+    <div
+      className={`min-w-0 transition-[opacity,transform,box-shadow] duration-150 ${
+        isDragging ? 'scale-[1.02] opacity-90 shadow-lg' : ''
+      }`}
+    >
       {render(reorderHandleProps)}
     </div>
   );

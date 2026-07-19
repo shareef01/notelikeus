@@ -1,3 +1,4 @@
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useEffect, useState } from 'react';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -8,6 +9,7 @@ interface BeforeInstallPromptEvent extends Event {
 const DISMISS_KEY = 'notelikeus-install-dismissed';
 
 export function InstallPrompt() {
+  const online = useOnlineStatus();
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [visible, setVisible] = useState(false);
 
@@ -25,7 +27,8 @@ export function InstallPrompt() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  if (!visible || !deferred) return null;
+  // Don't stack with the offline banner — install is irrelevant while offline.
+  if (!online || !visible || !deferred) return null;
 
   const dismiss = () => {
     localStorage.setItem(DISMISS_KEY, '1');
@@ -42,19 +45,21 @@ export function InstallPrompt() {
   return (
     <div className="border-b border-brand-outline/40 bg-true-surface-variant/50 px-4 py-3">
       <div className="mx-auto flex max-w-content items-center justify-between gap-3">
-        <p className="text-sm text-brand-secondary">Install Notelikeus for quick access and offline use.</p>
+        <p className="min-w-0 text-sm text-brand-secondary">
+          Install Notelikeus for quick access and offline use.
+        </p>
         <div className="flex shrink-0 gap-2">
           <button
             type="button"
             onClick={dismiss}
-            className="rounded-note px-3 py-1.5 text-sm text-brand-muted hover:text-brand-primary"
+            className="min-h-11 rounded-note px-3 py-2 text-sm text-brand-muted hover:text-brand-primary"
           >
             Not now
           </button>
           <button
             type="button"
             onClick={() => void install()}
-            className="rounded-note bg-brand-primary px-3 py-1.5 text-sm font-semibold text-true-black"
+            className="min-h-11 rounded-note bg-brand-primary px-3 py-2 text-sm font-semibold text-true-surface"
           >
             Install
           </button>

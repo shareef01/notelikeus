@@ -1,5 +1,6 @@
 package com.aus.notelikeus.ui.main
 
+import android.util.Log
 import app.cash.turbine.test
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
@@ -15,12 +16,16 @@ import com.aus.notelikeus.data.remote.FirebaseNoteSync
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
 import com.aus.notelikeus.data.remote.FirestoreNotesRealtimeSync
 import com.aus.notelikeus.data.remote.GoogleSignInHelper
+import com.aus.notelikeus.data.remote.NoteSyncStateStore
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -37,13 +42,26 @@ class MainViewModelTest {
     private lateinit var viewModel: MainViewModel
     private lateinit var repository: NoteRepository
     private lateinit var settingsRepository: SettingsRepository
-    private val testDispatcher = StandardTestDispatcher()
+    private lateinit var firebaseSessionManager: FirebaseSessionManager
+    private lateinit var firebaseNoteSync: FirebaseNoteSync
+    private lateinit var cloudNoteSyncCoordinator: CloudNoteSyncCoordinator
+    private lateinit var noteSyncStateStore: NoteSyncStateStore
+    private val testDispatcher = UnconfinedTestDispatcher()
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
+        mockkStatic(Log::class)
+        every { Log.i(any(), any()) } returns 0
+        every { Log.w(any(), any<String>()) } returns 0
+        every { Log.e(any(), any<String>()) } returns 0
+        every { Log.e(any(), any<String>(), any()) } returns 0
         repository = mockk(relaxed = true)
         settingsRepository = mockk(relaxed = true)
+        firebaseSessionManager = mockk(relaxed = true)
+        firebaseNoteSync = mockk(relaxed = true)
+        cloudNoteSyncCoordinator = mockk(relaxed = true)
+        noteSyncStateStore = mockk(relaxed = true)
         every { repository.getActiveNotes() } returns flowOf(emptyList())
         every { repository.getArchivedNotes() } returns flowOf(emptyList())
         every { repository.getTrashedNotes() } returns flowOf(emptyList())
@@ -57,10 +75,18 @@ class MainViewModelTest {
         every { settingsRepository.noteSortOrder } returns flowOf(NoteSortOrder.MANUAL)
         every { settingsRepository.useMonochromeTheme } returns flowOf(true)
         every { settingsRepository.isCloudAutoSyncEnabled } returns flowOf(true)
+        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+            userId = null,
+            email = null,
+            isGoogleAccount = false,
+            isAnonymous = true
+        )
+        viewModel = createViewModel()
     }
 
     @After
     fun tearDown() {
+        unmockkStatic(Log::class)
         Dispatchers.resetMain()
     }
 
@@ -77,11 +103,11 @@ class MainViewModelTest {
             settingsRepository,
             mockk<NoteBackupExporter>(relaxed = true),
             mockk<NoteBackupImporter>(relaxed = true),
-            sessionManager,
-            mockk<FirebaseNoteSync>(relaxed = true),
+            firebaseSessionManager,
+            firebaseNoteSync,
             mockk<GoogleSignInHelper>(relaxed = true),
-            mockk<CloudNoteSyncCoordinator>(relaxed = true),
-            mockk<FirestoreNotesRealtimeSync>(relaxed = true)
+            cloudNoteSyncCoordinator,
+            noteSyncStateStore
         )
     }
 
@@ -330,5 +356,114 @@ class MainViewModelTest {
             repository.updateNote(match { it.id == 2L && it.isPinned })
         }
         assertEquals(emptySet<Long>(), viewModel.state.value.selectedNotes)
+    }
+
+    @Test
+    fun `sign-in for different user clears prior local data before merge`() = runTest {
+        every { noteSyncStateStore.lastMergedUserId() } returns "uid-a"
+        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+            userId = "uid-b",
+            email = "b@example.com",
+            isGoogleAccount = true,
+            isAnonymous = false
+        )
+        coEvery { firebaseSessionManager.signInWithGoogle(any()) } returns Result.success(Unit)
+        coEvery { firebaseSessionManager.verifyConnection() } returns Result.success(Unit)
+        coEvery { firebaseNoteSync.downloadAllNotes() } returns Result.success(0)
+        coEvery { firebaseNoteSync.uploadAllNotes() } returns Result.success(0)
+        coEvery { repository.clearAllUserData() } returns Unit
+
+        viewModel = createViewModel()
+        viewModel.signInWithGoogleIdToken("token")
+        advanceUntilIdle()
+
+        coVerify { repository.clearAllUserData() }
+        verify { noteSyncStateStore.clear() }
+        verify { cloudNoteSyncCoordinator.clearPending() }
+        verify { noteSyncStateStore.setLastMergedUserId("uid-b") }
+        coVerify { firebaseNoteSync.downloadAllNotes() }
+    }
+
+    @Test
+    fun `sign-in for same user does not clear local data`() = runTest {
+        every { noteSyncStateStore.lastMergedUserId() } returns "uid-a"
+        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+            userId = "uid-a",
+            email = "a@example.com",
+            isGoogleAccount = true,
+            isAnonymous = false
+        )
+        coEvery { firebaseSessionManager.signInWithGoogle(any()) } returns Result.success(Unit)
+        coEvery { firebaseSessionManager.verifyConnection() } returns Result.success(Unit)
+        coEvery { firebaseNoteSync.downloadAllNotes() } returns Result.success(0)
+        coEvery { firebaseNoteSync.uploadAllNotes() } returns Result.success(0)
+
+        viewModel = createViewModel()
+        viewModel.signInWithGoogleIdToken("token")
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repository.clearAllUserData() }
+        verify(exactly = 0) { noteSyncStateStore.clear() }
+        verify { noteSyncStateStore.setLastMergedUserId("uid-a") }
+    }
+
+    @Test
+    fun `first sign-in with no prior merged uid does not clear local data`() = runTest {
+        every { noteSyncStateStore.lastMergedUserId() } returns null
+        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+            userId = "uid-new",
+            email = "new@example.com",
+            isGoogleAccount = true,
+            isAnonymous = false
+        )
+        coEvery { firebaseSessionManager.signInWithGoogle(any()) } returns Result.success(Unit)
+        coEvery { firebaseSessionManager.verifyConnection() } returns Result.success(Unit)
+        coEvery { firebaseNoteSync.downloadAllNotes() } returns Result.success(0)
+        coEvery { firebaseNoteSync.uploadAllNotes() } returns Result.success(0)
+
+        viewModel = createViewModel()
+        viewModel.signInWithGoogleIdToken("token")
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repository.clearAllUserData() }
+        verify(exactly = 0) { noteSyncStateStore.clear() }
+        verify { noteSyncStateStore.setLastMergedUserId("uid-new") }
+    }
+
+    @Test
+    fun `cold start with restored Google session backfills last merged uid`() = runTest {
+        every { noteSyncStateStore.lastMergedUserId() } returns null
+        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+            userId = "uid-a",
+            email = "a@example.com",
+            isGoogleAccount = true,
+            isAnonymous = false
+        )
+
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repository.clearAllUserData() }
+        verify { noteSyncStateStore.setLastMergedUserId("uid-a") }
+    }
+
+    @Test
+    fun `cold start with mismatched restored session clears prior local data`() = runTest {
+        every { noteSyncStateStore.lastMergedUserId() } returns "uid-a"
+        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+            userId = "uid-b",
+            email = "b@example.com",
+            isGoogleAccount = true,
+            isAnonymous = false
+        )
+        coEvery { repository.clearAllUserData() } returns Unit
+
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
+        coVerify { repository.clearAllUserData() }
+        verify { noteSyncStateStore.clear() }
+        verify { cloudNoteSyncCoordinator.clearPending() }
+        verify { noteSyncStateStore.setLastMergedUserId("uid-b") }
     }
 }

@@ -62,6 +62,8 @@ class EditorViewModel @Inject constructor(
 
     private var autosaveJob: Job? = null
     private val noteId: Long? = savedStateHandle.get<Long>("noteId")?.takeIf { it != -1L }
+    private val routedInitialColor: Int? =
+        savedStateHandle.get<Int>("initialColor")?.takeIf { it != Int.MIN_VALUE }
     private var hasAppliedInitialColor = false
 
     init {
@@ -76,46 +78,50 @@ class EditorViewModel @Inject constructor(
     private fun loadNote() {
         val id = noteId ?: return
         viewModelScope.launch {
-            repository.getNoteById(id)?.let { note ->
-                _state.update {
-                    it.copy(
-                        id = note.id,
-                        title = note.title,
-                        content = note.content,
-                        contentValue = TextFieldValue(note.content),
-                        color = note.color,
-                        isPinned = note.isPinned,
-                        isArchived = note.isArchived,
-                        isTrashed = note.isTrashed,
-                        isLocked = note.isLocked,
-                        reminderTimestamp = note.reminderTimestamp,
-                        labels = note.labels,
-                        checklist = sortChecklistItems(note.checklist),
-                        timestamp = note.timestamp,
-                        position = note.position,
-                        isNoteLoaded = true,
-                        isAccessGranted = !note.isLocked
-                    )
-                }
-            } ?: run {
-                _state.update { it.copy(isNoteLoaded = true, noteNotFound = true) }
-            }
-        }
-    }
-
-    private fun loadDefaultColorForNewNote() {
-        if (noteId != null) return
-        viewModelScope.launch {
+            // First, load the initial color based on theme to prevent blinking
             val theme = settingsRepository.appTheme.first()
             val isTrueDark = theme == AppTheme.TRUE_DARK ||
                 (theme == AppTheme.AUTO && settingsRepository.isTrueDarkMode.first())
-            val initialColor = if (isTrueDark) {
+
+            val themeDefaultColor = if (isTrueDark) {
                 Color.Black.toArgb()
             } else {
                 BackgroundLight.toArgb()
             }
-            if (!hasAppliedInitialColor && _state.value.id == null) {
-                _state.update { it.copy(color = initialColor) }
+            val initialColor = if (noteId == null) {
+                routedInitialColor ?: themeDefaultColor
+            } else {
+                themeDefaultColor
+            }
+            _state.update { it.copy(color = initialColor) }
+
+            if (noteId == null) {
+                _state.update { it.copy(isNoteLoaded = true) }
+            } else {
+                repository.getNoteById(noteId)?.let { note ->
+                    _state.update {
+                        it.copy(
+                            id = note.id,
+                            title = note.title,
+                            content = note.content,
+                            contentValue = TextFieldValue(note.content),
+                            color = note.color,
+                            isPinned = note.isPinned,
+                            isArchived = note.isArchived,
+                            isTrashed = note.isTrashed,
+                            isLocked = note.isLocked,
+                            reminderTimestamp = note.reminderTimestamp,
+                            labels = note.labels,
+                            checklist = note.checklist.sortedWith(compareBy({ it.isChecked }, { it.position })),
+                            timestamp = note.timestamp,
+                            position = note.position,
+                            isNoteLoaded = true,
+                            isAccessGranted = !note.isLocked
+                        )
+                    }
+                } ?: run {
+                    _state.update { it.copy(isNoteLoaded = true, noteNotFound = true) }
+                }
             }
         }
     }
@@ -453,8 +459,14 @@ class EditorViewModel @Inject constructor(
         }
     }
 
-    override fun onCleared() {
-        autosaveJob?.cancel()
-        super.onCleared()
+    private fun syncReminder(noteId: Long, state: EditorState) {
+        if (state.isTrashed || state.isArchived || state.isLocked || state.reminderTimestamp == null) {
+            reminderScheduler.cancelReminder(noteId)
+        } else {
+            reminderScheduler.scheduleReminder(
+                noteId = noteId,
+                timestamp = state.reminderTimestamp
+            )
+        }
     }
 }

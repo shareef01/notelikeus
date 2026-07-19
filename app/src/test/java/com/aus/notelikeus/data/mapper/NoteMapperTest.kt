@@ -20,7 +20,7 @@ class NoteMapperTest {
             isTrashed = false,
             position = 0,
             isLocked = false,
-            reminderTimestamp = null,
+            reminderTimestamp = null
         )
 
         val domain = entity.toNote()

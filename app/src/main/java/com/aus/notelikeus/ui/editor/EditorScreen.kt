@@ -3,34 +3,11 @@ package com.aus.notelikeus.ui.editor
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.isImeVisible
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -145,6 +122,9 @@ fun EditorScreen(
         }
         viewModel.setReminder(millis)
         showDateTimePicker = false
+        scope.launch {
+            snackbarHostState.showSnackbar(context.getString(R.string.reminder_set_confirmation))
+        }
     }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -481,6 +461,9 @@ fun EditorScreen(
                     onRemove = {
                         viewModel.clearReminder()
                         showDateTimePicker = false
+                        scope.launch {
+                            snackbarHostState.showSnackbar(context.getString(R.string.reminder_removed_confirmation))
+                        }
                     },
                     onDismiss = { showDateTimePicker = false }
                 )
@@ -527,7 +510,6 @@ fun EditorScreen(
                 exit = fadeOut() + scaleOut(),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .imePadding()
                     .navigationBarsPadding()
                     .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
             ) {
@@ -619,7 +601,7 @@ private fun EditorTextContent(
             Spacer(modifier = Modifier.height(12.dp))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 labels.forEach { label ->
                     SuggestionChip(
@@ -627,16 +609,19 @@ private fun EditorTextContent(
                         enabled = false,
                         label = {
                             Text(
-                                label.name,
-                                color = contentColor,
-                                style = MaterialTheme.typography.labelMedium
+                                text = label.name,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = contentColor
                             )
                         },
+                        shape = CircleShape,
                         colors = SuggestionChipDefaults.suggestionChipColors(
                             containerColor = contentColor.copy(alpha = 0.12f),
                             labelColor = contentColor,
+                            disabledContainerColor = contentColor.copy(alpha = 0.12f),
+                            disabledLabelColor = contentColor
                         ),
-                        border = null,
+                        border = null
                     )
                 }
             }
@@ -754,6 +739,7 @@ private fun ReminderPickerDialog(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {

@@ -1,16 +1,45 @@
 import { useEffect, useRef, useState } from 'react';
 import { FilterChip } from '@/components/layout/FilterChip';
 import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
+import { SortIcon } from '@/components/icons/Icons';
 import type { Label } from '@/types/label';
+import type { ReactNode } from 'react';
 
-const SORT_ORDER = ['manual', 'newest', 'oldest'] as const;
-export type SortOrder = (typeof SORT_ORDER)[number];
+interface FilterChipProps {
+  label: string;
+  selected?: boolean;
+  onClick?: () => void;
+  disabled?: boolean;
+  leading?: ReactNode;
+}
 
-const SORT_LABELS: Record<SortOrder, string> = {
+function FilterChip({
+  label,
+  selected = false,
+  onClick,
+  disabled = false,
+  leading,
+}: FilterChipProps) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`filter-chip shrink-0 gap-1.5 ${selected ? 'filter-chip-active' : 'filter-chip-inactive'} ${
+        disabled ? 'cursor-default opacity-70' : 'cursor-pointer'
+      }`}
+    >
+      {leading}
+      {label}
+    </button>
+  );
+}
+
+const SORT_LABELS = {
   manual: 'Manual',
   newest: 'Newest',
   oldest: 'Oldest',
-};
+} as const;
 
 interface FilterRowProps {
   sortOrder: SortOrder;
@@ -107,25 +136,34 @@ export function FilterRow({
   const showLabelRow = labels.length > 0;
 
   return (
-    <div className="flex flex-col gap-2 pb-3">
-      <div className="flex items-center gap-2 overflow-x-auto px-3 py-1.5 scrollbar-hide sm:gap-3 sm:px-6">
-        <SortFilterChip sortOrder={sortOrder} onSortOrderChange={onSortOrderChange} />
+    <div className="flex flex-col gap-1 pb-1.5">
+      <div className="flex items-center gap-2 overflow-x-auto px-3 py-1 scrollbar-none sm:px-4 lg:px-6">
+        <FilterChip
+          label={SORT_LABELS[sortOrder]}
+          onClick={onSortOrderCycle}
+          leading={<SortIcon size={14} className="opacity-70" />}
+        />
 
         {hasActiveFilters ? (
-          <FilterChip label="Clear" compact selected onClick={onClearFilters} />
+          <FilterChip label="Clear filters" selected onClick={onClearFilters} />
         ) : null}
 
-        <div className="h-4 w-px bg-white/[0.05] mx-1" />
-
-        <ColorSwatchRow selectedColor={selectedColor} onSelect={onColorSelect} compact />
-
-        {selectedColor !== null ? (
-          <FilterChip label="All colors" compact onClick={() => onColorSelect(null)} />
-        ) : null}
+        <div
+          className="flex min-w-0 items-center gap-1.5 rounded-full border border-brand-outline/40 bg-true-surface-variant/30 px-2 py-1"
+          role="group"
+          aria-label="Color filter"
+        >
+          <ColorSwatchRow
+            selectedColor={selectedColor}
+            onSelect={onColorSelect}
+            allSelected={selectedColor === null}
+            onSelectAll={() => onColorSelect(null)}
+          />
+        </div>
       </div>
 
-      {showLabelRow ? (
-        <div className="flex gap-1.5 overflow-x-auto px-3 py-0.5 scrollbar-hide sm:gap-2 sm:px-6">
+      {labels.length > 0 ? (
+        <div className="flex gap-1.5 overflow-x-auto px-3 py-1 scrollbar-none sm:px-4 md:flex-wrap md:overflow-visible lg:px-6">
           <FilterChip
             label="All labels"
             compact

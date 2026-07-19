@@ -20,16 +20,15 @@ import com.aus.notelikeus.data.remote.FirebaseNoteSync
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
 import com.aus.notelikeus.data.remote.FirestoreNotesRealtimeSync
 import com.aus.notelikeus.data.remote.GoogleSignInHelper
+import com.aus.notelikeus.data.remote.NoteSyncStateStore
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.ui.theme.noteColorsMatch
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -89,7 +88,7 @@ class MainViewModel @Inject constructor(
     private val firebaseNoteSync: FirebaseNoteSync,
     private val googleSignInHelper: GoogleSignInHelper,
     private val cloudNoteSyncCoordinator: CloudNoteSyncCoordinator,
-    private val firestoreNotesRealtimeSync: FirestoreNotesRealtimeSync
+    private val noteSyncStateStore: NoteSyncStateStore
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(MainState())
@@ -108,35 +107,13 @@ class MainViewModel @Inject constructor(
         setupSearchOptimization()
         refreshCloudAccount()
         loadRecentSearches()
-        observeCloudRealtimeSync()
-        mergeCloudOnColdStartIfNeeded()
-    }
-
-    private fun mergeCloudOnColdStartIfNeeded() {
-        viewModelScope.launch {
-            val account = firebaseSessionManager.getCurrentAccount()
-            if (!account.isGoogleAccount) return@launch
-            if (!settingsRepository.isCloudAutoSyncEnabled.first()) return@launch
-            mergeLocalWithCloudSilently()
-        }
-    }
-
-    private fun observeCloudRealtimeSync() {
-        combine(
-            _state.map { it.isCloudAutoSyncEnabled }.distinctUntilChanged(),
-            _state.map { it.cloudAccount.isGoogleAccount to it.cloudAccount.userId }.distinctUntilChanged()
-        ) { autoSync, account ->
-            autoSync to account
-        }.onEach { (autoSync, account) ->
-            val (isGoogleAccount, userId) = account
-            if (autoSync && isGoogleAccount && userId != null) {
-                firestoreNotesRealtimeSync.start(userId) {
-                    _state.update { it.copy(listRevision = it.listRevision + 1) }
-                }
-            } else {
-                firestoreNotesRealtimeSync.stop()
+        // Backfill / enforce last-merged UID for an already-restored Firebase session so a
+        // later account switch without in-app sign-out still wipes prior local data.
+        if (firebaseSessionManager.getCurrentAccount().isGoogleAccount) {
+            viewModelScope.launch {
+                prepareLocalDataForSignedInUser()
             }
-        }.launchIn(viewModelScope)
+        }
     }
 
     private fun refreshCloudAccount() {
@@ -157,12 +134,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             firebaseSessionManager.signInWithGoogle(idToken)
                 .onSuccess {
-                    refreshCloudAccount()
-                    verifyFirebaseConnection()
-                    if (_state.value.isCloudAutoSyncEnabled) {
-                        mergeLocalWithCloudSilently()
-                    }
-                    _state.update { it.copy(pendingCloudSyncEvent = CloudSyncEvent.SignedIn) }
+                    onSignInSuccess()
                 }
                 .onFailure { error ->
                     val message = firebaseSessionManager.diagnose(error)
@@ -171,6 +143,67 @@ class MainViewModel @Inject constructor(
                     }
                 }
         }
+    }
+
+    fun signInWithEmailPassword(email: String, password: String, createAccount: Boolean) {
+        viewModelScope.launch {
+            firebaseSessionManager.signInWithEmailPassword(email, password, createAccount)
+                .onSuccess {
+                    onSignInSuccess()
+                }
+                .onFailure { error ->
+                    val message = firebaseSessionManager.diagnose(error)
+                    _state.update {
+                        it.copy(pendingCloudSyncEvent = CloudSyncEvent.Failure(message))
+                    }
+                }
+        }
+    }
+
+    private suspend fun onSignInSuccess() {
+        refreshCloudAccount()
+        prepareLocalDataForSignedInUser()
+        verifyFirebaseConnection()
+        if (_state.value.isCloudAutoSyncEnabled) {
+            // Download first so a fresh account (after local wipe) fills from cloud.
+            firebaseNoteSync.downloadAllNotes()
+                .onSuccess {
+                    uploadAllNotesSilently()
+                }
+                .onFailure {
+                    uploadAllNotesSilently()
+                }
+        }
+        _state.update { it.copy(pendingCloudSyncEvent = CloudSyncEvent.SignedIn) }
+    }
+
+    /**
+     * If a different Firebase UID signs in without a clean in-app sign-out, drop the prior
+     * user's local notes and sync prefs before cloud merge (same guard as web useNotesSync).
+     */
+    private suspend fun prepareLocalDataForSignedInUser() {
+        val userId = firebaseSessionManager.getCurrentAccount().userId ?: return
+        val previousUserId = noteSyncStateStore.lastMergedUserId()
+        if (previousUserId != null && previousUserId != userId) {
+            Log.i(TAG, "Account switch without local wipe; clearing prior user data")
+            repository.clearAllUserData()
+            noteSyncStateStore.clear()
+            cloudNoteSyncCoordinator.clearPending()
+            _state.update {
+                it.copy(
+                    cloudSyncStatus = CloudSyncStatus.Unknown,
+                    cloudSyncedNoteCount = 0,
+                    notes = emptyList(),
+                    filteredNotes = emptyList(),
+                    allLabels = emptyList(),
+                    totalNoteCount = 0,
+                    archivedNoteCount = 0,
+                    trashedNoteCount = 0,
+                    listRevision = it.listRevision + 1
+                )
+            }
+        }
+        noteSyncStateStore.setLastMergedUserId(userId)
     }
 
     fun signOutFromCloud(deleteCloudData: Boolean = false) {
@@ -188,16 +221,21 @@ class MainViewModel @Inject constructor(
             googleSignInHelper.signOutFromGoogle()
             firebaseSessionManager.signOut()
                 .onSuccess {
-                    val userId = _state.value.cloudAccount.userId
-                    firestoreNotesRealtimeSync.stop()
-                    if (userId != null) {
-                        settingsRepository.clearLastKnownCloudIds(userId)
-                    }
+                    repository.clearAllUserData()
+                    noteSyncStateStore.clear()
+                    cloudNoteSyncCoordinator.clearPending()
                     refreshCloudAccount()
                     _state.update {
                         it.copy(
                             cloudSyncStatus = CloudSyncStatus.Unknown,
                             cloudSyncedNoteCount = 0,
+                            notes = emptyList(),
+                            filteredNotes = emptyList(),
+                            allLabels = emptyList(),
+                            totalNoteCount = 0,
+                            archivedNoteCount = 0,
+                            trashedNoteCount = 0,
+                            listRevision = it.listRevision + 1,
                             pendingCloudSyncEvent = CloudSyncEvent.SignedOut(cloudDataDeleted = deleteCloudData)
                         )
                     }
@@ -256,6 +294,7 @@ class MainViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
+            prepareLocalDataForSignedInUser()
             _state.update {
                 it.copy(
                     cloudSyncStatus = CloudSyncStatus.Syncing,
@@ -296,6 +335,7 @@ class MainViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
+            prepareLocalDataForSignedInUser()
             _state.update {
                 it.copy(
                     cloudSyncStatus = CloudSyncStatus.Syncing,
@@ -471,39 +511,43 @@ class MainViewModel @Inject constructor(
     }
 
     private fun applyFilters() {
-        val s = _state.value
-        _state.update { it.copy(filteredNotes = filterAndSortNotes(s)) }
-    }
+        // Runs on the caller's dispatcher (no withContext hop) so concurrent
+        // triggers (search/color/label/sort each launch independently) can't
+        // race and let a stale computation overwrite a newer one.
+        viewModelScope.launch {
+            val s = _state.value
+            val filtered = s.notes.filter { note ->
+                val noteId = note.id
+                if (noteId != null && noteId in pendingHiddenIds) return@filter false
 
-    private fun filterAndSortNotes(s: MainState): List<Note> {
-        val filtered = s.notes.filter { note ->
-            val noteId = note.id
-            if (noteId != null && noteId in pendingHiddenIds) return@filter false
+                val matchesSearch = s.searchQuery.isEmpty() || (
+                    !note.isLocked && (
+                        note.title.contains(s.searchQuery, ignoreCase = true) ||
+                        note.content.contains(s.searchQuery, ignoreCase = true) ||
+                        note.checklist.any { it.text.contains(s.searchQuery, ignoreCase = true) } ||
+                        note.labels.any { it.name.contains(s.searchQuery, ignoreCase = true) }
+                    )
+                )
 
-            val matchesSearch = s.searchQuery.isEmpty() ||
-                note.title.contains(s.searchQuery, ignoreCase = true) ||
-                note.content.contains(s.searchQuery, ignoreCase = true) ||
-                note.checklist.any { it.text.contains(s.searchQuery, ignoreCase = true) } ||
-                note.labels.any { it.name.contains(s.searchQuery, ignoreCase = true) }
+                val matchesColor = s.selectedColor == null || noteColorsMatch(note.color, s.selectedColor)
 
-            val matchesColor = s.selectedColor == null || noteColorsMatch(note.color, s.selectedColor)
+                val matchesLabel = s.selectedLabelId == null ||
+                    note.labels.any { it.id == s.selectedLabelId }
 
-            val matchesLabel = s.selectedLabelId == null ||
-                note.labels.any { it.id == s.selectedLabelId }
-
-            matchesSearch && matchesColor && matchesLabel
-        }
-        return when (s.sortOrder) {
-            NoteSortOrder.MANUAL -> {
-                filtered.filter { it.isPinned } + filtered.filter { !it.isPinned }
+                matchesSearch && matchesColor && matchesLabel
             }
-            NoteSortOrder.NEWEST -> {
-                filtered.filter { it.isPinned }.sortedByDescending { it.timestamp } +
-                    filtered.filter { !it.isPinned }.sortedByDescending { it.timestamp }
-            }
-            NoteSortOrder.OLDEST -> {
-                filtered.filter { it.isPinned }.sortedBy { it.timestamp } +
-                    filtered.filter { !it.isPinned }.sortedBy { it.timestamp }
+            val sorted = when (s.sortOrder) {
+                NoteSortOrder.MANUAL -> {
+                    filtered.filter { it.isPinned } + filtered.filter { !it.isPinned }
+                }
+                NoteSortOrder.NEWEST -> {
+                    filtered.filter { it.isPinned }.sortedByDescending { it.timestamp } +
+                        filtered.filter { !it.isPinned }.sortedByDescending { it.timestamp }
+                }
+                NoteSortOrder.OLDEST -> {
+                    filtered.filter { it.isPinned }.sortedBy { it.timestamp } +
+                        filtered.filter { !it.isPinned }.sortedBy { it.timestamp }
+                }
             }
         }
     }
@@ -606,6 +650,7 @@ class MainViewModel @Inject constructor(
     }
 
     private fun deleteNoteFromCloud(noteId: Long) {
+        noteSyncStateStore.markDeleted(noteId)
         cloudNoteSyncCoordinator.scheduleDelete(noteId)
     }
 
@@ -810,7 +855,15 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             val notes = _state.value.notes
             repository.updateNotePositions(notes)
-            notes.mapNotNull { it.id }.forEach { syncNoteToCloud(it) }
+            // Only the notes whose position actually changed need a cloud sync — matches
+            // the same note.position != index check updateNotePositions uses for the DB
+            // write, instead of fanning a sync out to every note on any reorder.
+            notes.forEachIndexed { index, note ->
+                val noteId = note.id ?: return@forEachIndexed
+                if (note.position != index) {
+                    syncNoteToCloud(noteId)
+                }
+            }
         }
     }
 
@@ -841,7 +894,8 @@ class MainViewModel @Inject constructor(
     suspend fun importBackup(resolver: ContentResolver, uri: Uri): BackupImportResult {
         return try {
             val json = resolver.openInputStream(uri)?.use { stream ->
-                stream.readBytes().toString(Charsets.UTF_8)
+                readBackupBytes(stream, NoteBackupImporter.MAX_BACKUP_CHARS)
+                    .toString(Charsets.UTF_8)
             } ?: return BackupImportResult.ReadFailed
             val result = backupImporter.importFromJson(json)
             BackupImportResult.Success(result.notesImported, result.labelsCreated)
@@ -850,5 +904,21 @@ class MainViewModel @Inject constructor(
         } catch (error: Exception) {
             BackupImportResult.Error(error)
         }
+    }
+
+    private fun readBackupBytes(stream: java.io.InputStream, maxBytes: Int): ByteArray {
+        val output = java.io.ByteArrayOutputStream()
+        val chunk = ByteArray(8 * 1024)
+        var total = 0
+        while (true) {
+            val read = stream.read(chunk)
+            if (read < 0) break
+            if (total + read > maxBytes) {
+                throw IllegalArgumentException("Backup file is too large")
+            }
+            output.write(chunk, 0, read)
+            total += read
+        }
+        return output.toByteArray()
     }
 }

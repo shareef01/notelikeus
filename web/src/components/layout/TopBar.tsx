@@ -1,10 +1,9 @@
-import { ViewModeButton } from '@/components/layout/ViewModeButton';
 import { FilterRow } from '@/components/layout/FilterRow';
 
 import { SelectionBar } from '@/components/layout/SelectionBar';
-
-import { AddIcon, CloseIcon, MenuIcon, ScheduleIcon, SettingsIcon } from '@/components/icons/Icons';
-
+import { ViewModeToggle } from '@/components/layout/ViewModeToggle';
+import { AddIcon, CloseIcon, MenuIcon, SettingsIcon } from '@/components/icons/Icons';
+import type { ViewColumns } from '@/store/uiStore';
 import type { Label } from '@/types/label';
 
 import type { NoteFilter } from '@/types/note';
@@ -13,7 +12,8 @@ import type { ViewColumns } from '@/store/uiStore';
 
 import { useState, useRef } from 'react';
 
-
+const CHROME_FOCUS =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary';
 
 const SEARCH_PLACEHOLDERS: Record<NoteFilter, string> = {
 
@@ -58,13 +58,9 @@ interface TopBarProps {
   onMenuClick: () => void;
 
   onProfileClick: () => void;
-
-  onViewColumnsChange: (columns: ViewColumns) => void;
-
-  onNewNote?: () => void;
-
   viewColumns: ViewColumns;
-
+  onViewColumnsChange: (columns: ViewColumns) => void;
+  onNewNote?: () => void;
   showNewNote?: boolean;
 
   selectionMode?: boolean;
@@ -78,11 +74,6 @@ interface TopBarProps {
   onClearSelection?: () => void;
 
   onToggleSelectAll?: () => void;
-
-  onBulkPin?: () => void;
-
-  onBulkUnpin?: () => void;
-
   onBulkArchive?: () => void;
 
   onBulkRestore?: () => void;
@@ -90,7 +81,8 @@ interface TopBarProps {
   onBulkTrash?: () => void;
 
   onBulkPermanentDelete?: () => void;
-
+  selectionAllPinned?: boolean;
+  onBulkPinToggle?: () => void;
   recentSearches?: string[];
 
   onRecentSearchClick?: (query: string) => void;
@@ -98,16 +90,6 @@ interface TopBarProps {
   onClearRecentSearches?: () => void;
 
 }
-
-
-
-/**
-
- * Top Bar Refinement
-
- * Search field is dedicated to query input; actions live outside the pill.
-
- */
 
 export function TopBar({
 
@@ -140,13 +122,9 @@ export function TopBar({
   onMenuClick,
 
   onProfileClick,
-
-  onViewColumnsChange,
-
-  onNewNote,
-
   viewColumns,
-
+  onViewColumnsChange,
+  onNewNote,
   showNewNote = false,
 
   selectionMode = false,
@@ -160,11 +138,6 @@ export function TopBar({
   onClearSelection,
 
   onToggleSelectAll,
-
-  onBulkPin,
-
-  onBulkUnpin,
-
   onBulkArchive,
 
   onBulkRestore,
@@ -172,7 +145,8 @@ export function TopBar({
   onBulkTrash,
 
   onBulkPermanentDelete,
-
+  selectionAllPinned = false,
+  onBulkPinToggle,
   recentSearches = [],
 
   onRecentSearchClick,
@@ -188,14 +162,7 @@ export function TopBar({
 
 
   const showRecent =
-
-    !selectionMode &&
-
-    isSearchFocused &&
-
-    recentSearches.length > 0 &&
-
-    !searchQuery;
+    !selectionMode && isSearchFocused && recentSearches.length > 0 && !searchQuery;
 
 
 
@@ -217,8 +184,8 @@ export function TopBar({
 
   return (
     <header
-      className={`sticky top-0 z-30 bg-true-surface/80 backdrop-blur-md transition-shadow ${
-        listScrolled ? 'shadow-[0_1px_0_rgba(255,255,255,0.03)]' : ''
+      className={`sticky top-0 z-30 bg-true-surface pt-safe transition-shadow ${
+        listScrolled ? 'shadow-header-scroll' : ''
       }`}
     >
 <div className="mx-auto w-full max-w-content">
@@ -238,11 +205,8 @@ export function TopBar({
             onClearSelection={onClearSelection}
 
             onToggleSelectAll={onToggleSelectAll}
-
-            onPin={onBulkPin}
-
-            onUnpin={onBulkUnpin}
-
+            onPinToggle={onBulkPinToggle}
+            selectionAllPinned={selectionAllPinned}
             onArchive={onBulkArchive}
 
             onRestore={onBulkRestore}
@@ -254,124 +218,66 @@ export function TopBar({
           />
 
         ) : (
-
-        <div className="flex h-[3.25rem] items-center gap-1.5 pt-safe sm:gap-2.5">
-
-          <button
-
-            type="button"
-
-            onClick={onMenuClick}
-
-            className="flex size-10 shrink-0 items-center justify-center rounded-xl text-brand-muted interactive-hover lg:hidden"
-
-            aria-label="Open menu"
-
-          >
-
-            <MenuIcon size={22} />
-
-          </button>
-
-
-
-          <form
-            onSubmit={handleSearchSubmit}
-            className="flex h-10 min-w-0 flex-1 items-center rounded-xl bg-white/[0.03] px-3 transition-all focus-within:bg-white/[0.06] focus-within:ring-1 focus-within:ring-white/5"
-          >
-
-            <input
-
-              ref={searchInputRef}
-
-              type="search"
-
-              value={searchQuery}
-
-              onChange={(event) => onSearchQueryChange(event.target.value)}
-
-              onFocus={() => setIsSearchFocused(true)}
-
-              onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-
-              placeholder={SEARCH_PLACEHOLDERS[currentFilter]}
-
-              className="min-w-0 flex-1 bg-transparent text-[13px] font-medium text-brand-primary outline-none placeholder:text-brand-muted/40 sm:text-[14px]"
-
-              aria-label={SEARCH_PLACEHOLDERS[currentFilter]}
-
-            />
-
-
-
-            {searchQuery ? (
-
-              <button
-
-                type="button"
-
-                onClick={() => onSearchQueryChange('')}
-
-                className="ml-1 flex size-8 shrink-0 items-center justify-center rounded-lg text-brand-muted interactive-hover"
-
-                aria-label="Clear search"
-
-              >
-
-                <CloseIcon size={16} />
-
-              </button>
-
-            ) : null}
-
-          </form>
-
-
-
-          <ViewModeButton viewColumns={viewColumns} onViewColumnsChange={onViewColumnsChange} />
-
-
-
-          <button
-
-            type="button"
-
-            onClick={onProfileClick}
-
-            className="flex size-9 shrink-0 items-center justify-center rounded-xl text-brand-muted interactive-hover"
-
-            aria-label="Open settings"
-
-          >
-
-            <SettingsIcon size={20} />
-
-          </button>
-
-
-
-          {showNewNote && onNewNote ? (
-
+          <div className="flex h-14 items-center gap-2 sm:h-16 sm:gap-3">
             <button
-
               type="button"
-
-              onClick={onNewNote}
-
-              className="ml-1 hidden h-9 shrink-0 items-center gap-1.5 rounded-xl bg-brand-primary px-3 text-[13px] font-bold text-true-black transition-all hover:scale-[1.02] active:scale-[0.98] lg:flex"
-
+              onClick={onMenuClick}
+              className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 md:hidden ${CHROME_FOCUS}`}
+              aria-label="Open menu"
             >
-
-              <AddIcon size={16} />
-
-              <span>New Note</span>
-
+              <MenuIcon size={22} />
             </button>
 
-          ) : null}
+            <form
+              onSubmit={handleSearchSubmit}
+              className="flex h-11 min-w-0 flex-1 items-center rounded-full bg-true-surface-variant/70 px-1 sm:h-12"
+            >
+              <input
+                ref={searchInputRef}
+                type="search"
+                value={searchQuery}
+                onChange={(event) => onSearchQueryChange(event.target.value)}
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+                placeholder={SEARCH_PLACEHOLDERS[currentFilter]}
+                className={`min-w-0 flex-1 bg-transparent px-3 text-base text-brand-primary outline-none placeholder:text-brand-muted/60 sm:px-4 ${CHROME_FOCUS} rounded-full`}
+                aria-label={SEARCH_PLACEHOLDERS[currentFilter]}
+              />
 
-        </div>
+              {searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => onSearchQueryChange('')}
+                  className={`mr-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 ${CHROME_FOCUS}`}
+                  aria-label="Clear search"
+                >
+                  <CloseIcon size={18} />
+                </button>
+              ) : null}
+            </form>
 
+            <ViewModeToggle value={viewColumns} onChange={onViewColumnsChange} />
+
+            <button
+              type="button"
+              onClick={onProfileClick}
+              className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-white/5 hover:text-brand-primary ${CHROME_FOCUS}`}
+              aria-label="Open settings"
+            >
+              <SettingsIcon size={22} />
+            </button>
+
+            {showNewNote && onNewNote ? (
+              <button
+                type="button"
+                onClick={onNewNote}
+                className={`hidden shrink-0 items-center gap-2 rounded-note bg-brand-primary px-4 py-2.5 text-sm font-semibold text-true-surface md:flex ${CHROME_FOCUS}`}
+              >
+                <AddIcon size={18} />
+                New note
+              </button>
+            ) : null}
+          </div>
         )}
 
       </div>
@@ -383,11 +289,8 @@ export function TopBar({
         {showRecent ? (
 
           <div className="flex items-center gap-2 px-4 py-2 animate-in slide-in-from-top-2">
-
-            <ScheduleIcon size={18} className="shrink-0 text-brand-muted/50" />
-
-            <div className="flex flex-1 gap-2 overflow-x-auto scrollbar-hide py-1">
-
+            <span className="text-xs font-medium text-brand-muted">Recent</span>
+            <div className="flex flex-1 gap-2 overflow-x-auto scrollbar-none py-1">
               {recentSearches.map((query) => (
 
                 <button
@@ -397,9 +300,7 @@ export function TopBar({
                   type="button"
 
                   onClick={() => onRecentSearchClick?.(query)}
-
-                  className="filter-chip filter-chip-inactive whitespace-nowrap"
-
+                  className="whitespace-nowrap rounded-full border border-brand-outline/50 px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
                 >
 
                   {query}
@@ -409,25 +310,19 @@ export function TopBar({
               ))}
 
             </div>
-
             {onClearRecentSearches ? (
-
               <button
 
                 type="button"
 
                 onClick={onClearRecentSearches}
-
-                className="min-h-11 px-2 text-xs font-bold text-brand-primary/80 hover:text-brand-primary"
-
+                className="px-2 text-xs font-semibold text-brand-primary/80 hover:text-brand-primary"
               >
 
                 Clear
 
               </button>
-
             ) : null}
-
           </div>
 
         ) : null}

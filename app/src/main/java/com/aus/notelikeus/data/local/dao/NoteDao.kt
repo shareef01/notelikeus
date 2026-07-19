@@ -49,6 +49,21 @@ interface NoteDao {
     )
     suspend fun getNotesWithActiveReminders(now: Long): List<NoteWithLabelsAndAttachments>
 
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM notes
+        WHERE reminderTimestamp IS NOT NULL
+        AND reminderTimestamp <= :now
+        AND isTrashed = 0
+        AND isArchived = 0
+        """
+    )
+    suspend fun getNotesWithMissedReminders(now: Long): List<NoteWithLabelsAndAttachments>
+
+    @Query("UPDATE notes SET reminderTimestamp = NULL WHERE id = :noteId")
+    suspend fun clearReminderTimestamp(noteId: Long)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNote(note: NoteEntity): Long
 
@@ -81,6 +96,15 @@ interface NoteDao {
 
     @Query("DELETE FROM attachments")
     suspend fun deleteAllAttachments()
+
+    @Query("DELETE FROM checklist_items")
+    suspend fun deleteAllChecklistItems()
+
+    @Query("DELETE FROM note_label_cross_ref")
+    suspend fun deleteAllNoteLabelCrossRefs()
+
+    @Query("DELETE FROM notes")
+    suspend fun deleteAllNotes()
 
     @Transaction
     @Query("SELECT * FROM notes WHERE isTrashed = 0 AND isArchived = 0 ORDER BY isPinned DESC, position ASC, timestamp DESC LIMIT 5")

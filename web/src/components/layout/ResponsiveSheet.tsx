@@ -1,4 +1,5 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface ResponsiveSheetProps {
   open: boolean;
@@ -9,9 +10,6 @@ interface ResponsiveSheetProps {
   maxHeightClass?: string;
 }
 
-const FOCUSABLE =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
 /** Bottom sheet on mobile; centered modal on tablet and desktop. */
 export function ResponsiveSheet({
   open,
@@ -21,49 +19,16 @@ export function ResponsiveSheet({
   maxWidthClass = 'md:max-w-lg',
   maxHeightClass = 'max-h-[92vh] md:max-h-[85vh]',
 }: ResponsiveSheetProps) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
 
   useEffect(() => {
     if (!open) return;
-
-    previousFocusRef.current = document.activeElement as HTMLElement | null;
-    const panel = panelRef.current;
-    const focusables = panel?.querySelectorAll<HTMLElement>(FOCUSABLE);
-    focusables?.[0]?.focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (event.key !== 'Tab' || !panel) return;
-
-      const items = panel.querySelectorAll<HTMLElement>(FOCUSABLE);
-      if (items.length === 0) return;
-
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-
     return () => {
-      document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = previousOverflow;
-      previousFocusRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
