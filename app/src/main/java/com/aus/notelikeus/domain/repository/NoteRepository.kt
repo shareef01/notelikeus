@@ -15,10 +15,14 @@ interface NoteRepository {
     suspend fun updateNote(note: Note)
     suspend fun updateNotePositions(notes: List<Note>)
     suspend fun deleteNote(note: Note)
+    /** Wipes notes/labels/reminders for account switch. Does not touch the SQLCipher key. */
+    suspend fun clearAllUserData()
     suspend fun getNextNotePosition(): Int
     suspend fun getAllNotesForBackup(): List<Note>
     suspend fun getAllLabelsSnapshot(): List<Label>
     suspend fun getNotesWithActiveReminders(now: Long): List<Note>
+    suspend fun getNotesWithMissedReminders(now: Long): List<Note>
+    suspend fun clearReminderTimestamp(noteId: Long)
     fun getActiveNoteCount(): Flow<Int>
 
     fun getLabels(): Flow<List<Label>>

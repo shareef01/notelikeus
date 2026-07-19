@@ -2,6 +2,10 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { BootGate } from '@/components/boot/BootGate';
 import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
 import './styles/globals.css';
 
 const root = document.getElementById('root')!;
@@ -17,31 +21,16 @@ createRoot(root).render(
 void (async () => {
   try {
     const { registerSW } = await import('virtual:pwa-register');
-    registerSW({
+    // Auto-reload when a new SW is waiting. The "Reload" toast only mounts inside
+    // the signed-in shell — on the login gate users would otherwise stay stuck on
+    // a precached AuthScreen forever and never see new UI (e.g. test login).
+    const updateSW = registerSW({
       immediate: true,
+      onNeedRefresh() {
+        void updateSW(true);
+      },
       onOfflineReady() {
         console.info('[PWA] App ready to work offline.');
-      },
-      onNeedRefresh() {
-        window.location.reload();
-      },
-      onRegisteredSW(_url, registration) {
-        if (!registration) return;
-
-        if (registration.waiting) {
-          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
-
-        registration.addEventListener('updatefound', () => {
-          const installing = registration.installing;
-          if (!installing) return;
-
-          installing.addEventListener('statechange', () => {
-            if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-              installing.postMessage({ type: 'SKIP_WAITING' });
-            }
-          });
-        });
       },
     });
 
