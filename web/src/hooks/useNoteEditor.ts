@@ -13,7 +13,6 @@ import type { Label } from '@/types/label';
 import { allocateLocalNoteId } from '@/types/note';
 import { ensureCloudId } from '@/lib/cloudIds';
 import { labelFromName } from '@/types/label';
-import { cancelNoteReminder, scheduleNoteReminder } from '@/lib/reminders/reminderScheduler';
 import { processSmartText, type TextEdit } from '@/lib/text/smartTextProcessor';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -43,10 +42,20 @@ export function useNoteEditor(noteId: string | 'new' | null) {
   stateRef.current = state;
 
   const persistNow = useCallback(async () => {
+    if (autosaveTimer.current) {
+      clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
+    }
+
+    // Identifies the editor session this save belongs to, so a flush triggered
+    // by navigating away can't land its result on whatever note loads next.
+    const savingForRoute = loadedRouteRef.current;
+    const isCurrentRoute = () => loadedRouteRef.current === savingForRoute;
+
     const current = stateRef.current;
     if (isNoteEmpty(current)) return;
 
-    setState((prev) => ({ ...prev, isSaving: true }));
+    setState((prev) => (isCurrentRoute() ? { ...prev, isSaving: true } : prev));
 
     let working = { ...current };
     const updatedTimestamp = Date.now();
@@ -58,7 +67,6 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         ...working,
         id,
         localId,
-        cloudId: ensureCloudId(working.cloudId),
         position: working.position || nextNotePosition(),
       };
     }
@@ -67,32 +75,24 @@ export function useNoteEditor(noteId: string | 'new' | null) {
 
     const note = buildNoteFromEditor(working);
     if (!note) {
-      setState((prev) => ({ ...prev, isSaving: false }));
+      setState((prev) => (isCurrentRoute() ? { ...prev, isSaving: false } : prev));
       return;
     }
 
-    try {
-      await saveNote(note);
-    } catch (err) {
-      console.warn('[Notelikeus] Save failed (non-fatal):', err);
+    await saveNote(note);
+    if (isCurrentRoute()) {
+      setState({ ...working, isSaving: false, lastSavedAt: updatedTimestamp });
     }
-    scheduleNoteReminder(note);
-    setState({ ...working, isSaving: false, lastSavedAt: updatedTimestamp });
   }, []);
 
   const scheduleAutosave = useCallback(() => {
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
       void persistNow();
-    }, AUTOSAVE_MS);
-  }, [persistNow]);
+    };
+  }, [noteId, sourceTimestamp, persistNow]);
 
   useEffect(() => {
-    if (autosaveTimer.current) {
-      clearTimeout(autosaveTimer.current);
-      autosaveTimer.current = null;
-    }
-
     if (!noteId) {
       loadedRouteRef.current = null;
       return;
@@ -100,8 +100,16 @@ export function useNoteEditor(noteId: string | 'new' | null) {
 
     if (loadedRouteRef.current === noteId) return;
 
+    // Flush any pending autosave for the note being navigated away from —
+    // stateRef still holds its content until setState below replaces it.
+    if (autosaveTimer.current) void persistNow();
+
     if (noteId === 'new') {
-      const blank = createBlankEditorState(DEFAULT_EDITOR_COLOR, nextNotePosition());
+      const filterColor = useNotesStore.getState().filters.colorArgb;
+      const blank = createBlankEditorState(
+        filterColor ?? DEFAULT_EDITOR_COLOR,
+        nextNotePosition(),
+      );
       setState(blank);
       lastContentEditRef.current = { text: '', selectionStart: 0, selectionEnd: 0 };
       loadedRouteRef.current = noteId;
@@ -118,22 +126,24 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         selectionEnd: existing.content.length,
       };
     }
-
-    return () => {
-      if (autosaveTimer.current) {
-        clearTimeout(autosaveTimer.current);
-        autosaveTimer.current = null;
-      }
-      void persistNow();
-    };
   }, [noteId, sourceTimestamp, persistNow]);
 
+  // Flush on tab close/refresh and on backgrounding (mobile browsers don't
+  // reliably fire beforeunload) so a pending debounce never silently drops.
   useEffect(() => {
-    const onPageHide = () => {
-      void persistNow();
+    const flushIfPending = () => {
+      if (autosaveTimer.current) void persistNow();
     };
-    window.addEventListener('pagehide', onPageHide);
-    return () => window.removeEventListener('pagehide', onPageHide);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushIfPending();
+    };
+    window.addEventListener('pagehide', flushIfPending);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', flushIfPending);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (autosaveTimer.current) void persistNow();
+    };
   }, [persistNow]);
 
   const patch = useCallback(
@@ -277,13 +287,11 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       const updated = { ...stateRef.current, isTrashed: true };
       stateRef.current = updated;
       setState(updated);
-      cancelNoteReminder(updated.id ?? '');
       await persistNow();
     },
     deleteNote: async () => {
       const current = stateRef.current;
       if (current.id) {
-        cancelNoteReminder(current.id);
         await removeNote(current.id);
       }
     },

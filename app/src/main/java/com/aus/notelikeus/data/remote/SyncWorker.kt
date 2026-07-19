@@ -11,14 +11,22 @@ import dagger.assisted.AssistedInject
 class SyncWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
-    private val firebaseNoteSync: FirebaseNoteSync
+    private val firebaseNoteSync: FirebaseNoteSync,
+    private val firebaseSessionManager: FirebaseSessionManager
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
         val noteId = inputData.getLong(KEY_NOTE_ID, -1L)
         val isDelete = inputData.getBoolean(KEY_IS_DELETE, false)
+        val expectedUid = inputData.getString(KEY_EXPECTED_UID)
 
         if (noteId == -1L) return Result.failure()
+
+        // Stale work from a prior Firebase session — do not touch the current user's cloud.
+        val currentUid = firebaseSessionManager.getCurrentAccount().userId
+        if (expectedUid.isNullOrBlank() || expectedUid != currentUid) {
+            return Result.success()
+        }
 
         val result = if (isDelete) {
             firebaseNoteSync.deleteNote(noteId)
@@ -38,8 +46,10 @@ class SyncWorker @AssistedInject constructor(
     }
 
     companion object {
+        const val WORK_TAG = "cloud_note_sync"
         const val KEY_NOTE_ID = "note_id"
         const val KEY_IS_DELETE = "is_delete"
+        const val KEY_EXPECTED_UID = "expected_uid"
         private const val MAX_RETRIES = 3
     }
 }

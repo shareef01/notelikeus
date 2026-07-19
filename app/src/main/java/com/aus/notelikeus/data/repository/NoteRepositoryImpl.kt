@@ -1,6 +1,8 @@
 package com.aus.notelikeus.data.repository
 
 import android.content.Context
+import androidx.room.withTransaction
+import com.aus.notelikeus.data.local.NotelikeusDatabase
 import com.aus.notelikeus.data.local.dao.LabelDao
 import com.aus.notelikeus.data.local.dao.NoteDao
 import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
@@ -20,6 +22,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 class NoteRepositoryImpl @Inject constructor(
+    private val database: NotelikeusDatabase,
     private val noteDao: NoteDao,
     private val labelDao: LabelDao,
     private val reminderScheduler: ReminderScheduler,
@@ -64,58 +67,64 @@ class NoteRepositoryImpl @Inject constructor(
     }
 
     override suspend fun insertNoteWithResult(note: Note): Long {
-        val noteId = noteDao.insertNote(note.toNoteEntity())
-        
-        // Handle labels
-        noteDao.deleteNoteLabelCrossRefs(noteId)
-        note.labels.forEach { label ->
-            label.id?.let { labelId ->
-                noteDao.insertNoteLabelCrossRef(NoteLabelCrossRef(noteId, labelId))
-            }
-        }
-        
-        // Handle checklists
-        noteDao.deleteChecklistItems(noteId)
-        note.checklist.forEach { item ->
-            noteDao.insertChecklistItem(item.toChecklistItemEntity(noteId))
-        }
+        val noteId = database.withTransaction {
+            val insertedId = noteDao.insertNote(note.toNoteEntity())
 
-        // Drop legacy attachment rows; feature archived.
-        noteDao.deleteAttachments(noteId)
+            // Handle labels
+            noteDao.deleteNoteLabelCrossRefs(insertedId)
+            note.labels.forEach { label ->
+                label.id?.let { labelId ->
+                    noteDao.insertNoteLabelCrossRef(NoteLabelCrossRef(insertedId, labelId))
+                }
+            }
+
+            // Handle checklists
+            noteDao.deleteChecklistItems(insertedId)
+            note.checklist.forEach { item ->
+                noteDao.insertChecklistItem(item.toChecklistItemEntity(insertedId))
+            }
+
+            // Drop legacy attachment rows; feature archived.
+            noteDao.deleteAttachments(insertedId)
+            insertedId
+        }
         syncReminderForNote(note.copy(id = noteId))
         refreshWidget()
         return noteId
     }
 
     override suspend fun updateNote(note: Note) {
-        val noteId = note.id
-        noteDao.updateNote(note.toNoteEntity())
-        if (noteId == null) return
-        
-        // Handle labels
-        noteDao.deleteNoteLabelCrossRefs(noteId)
-        note.labels.forEach { label ->
-            label.id?.let { labelId ->
-                noteDao.insertNoteLabelCrossRef(NoteLabelCrossRef(noteId, labelId))
+        val noteId = note.id ?: return
+        database.withTransaction {
+            noteDao.updateNote(note.toNoteEntity())
+
+            // Handle labels
+            noteDao.deleteNoteLabelCrossRefs(noteId)
+            note.labels.forEach { label ->
+                label.id?.let { labelId ->
+                    noteDao.insertNoteLabelCrossRef(NoteLabelCrossRef(noteId, labelId))
+                }
             }
-        }
 
-        // Handle checklists
-        noteDao.deleteChecklistItems(noteId)
-        note.checklist.forEach { item ->
-            noteDao.insertChecklistItem(item.toChecklistItemEntity(noteId))
-        }
+            // Handle checklists
+            noteDao.deleteChecklistItems(noteId)
+            note.checklist.forEach { item ->
+                noteDao.insertChecklistItem(item.toChecklistItemEntity(noteId))
+            }
 
-        noteDao.deleteAttachments(noteId)
+            noteDao.deleteAttachments(noteId)
+        }
         syncReminderForNote(note)
         refreshWidget()
     }
 
     override suspend fun updateNotePositions(notes: List<Note>) {
-        notes.forEachIndexed { index, note ->
-            val noteId = note.id ?: return@forEachIndexed
-            if (note.position != index) {
-                noteDao.updateNotePosition(noteId, index)
+        database.withTransaction {
+            notes.forEachIndexed { index, note ->
+                val noteId = note.id ?: return@forEachIndexed
+                if (note.position != index) {
+                    noteDao.updateNotePosition(noteId, index)
+                }
             }
         }
         refreshWidget()
@@ -123,8 +132,28 @@ class NoteRepositoryImpl @Inject constructor(
 
     override suspend fun deleteNote(note: Note) {
         note.id?.let { reminderScheduler.cancelReminder(it) }
-        note.id?.let { noteDao.deleteAttachments(it) }
-        noteDao.deleteNote(note.toNoteEntity())
+        database.withTransaction {
+            note.id?.let {
+                noteDao.deleteAttachments(it)
+                noteDao.deleteNoteLabelCrossRefs(it)
+            }
+            noteDao.deleteNote(note.toNoteEntity())
+        }
+        refreshWidget()
+    }
+
+    override suspend fun clearAllUserData() {
+        val notes = noteDao.getAllNotesForBackup()
+        notes.forEach { entity ->
+            reminderScheduler.cancelReminder(entity.note.id)
+        }
+        database.withTransaction {
+            noteDao.deleteAllChecklistItems()
+            noteDao.deleteAllNoteLabelCrossRefs()
+            noteDao.deleteAllAttachments()
+            noteDao.deleteAllNotes()
+            labelDao.deleteAllLabels()
+        }
         refreshWidget()
     }
 
@@ -134,6 +163,15 @@ class NoteRepositoryImpl @Inject constructor(
 
     override suspend fun getNotesWithActiveReminders(now: Long): List<Note> {
         return noteDao.getNotesWithActiveReminders(now).map { it.toNote() }
+    }
+
+    override suspend fun getNotesWithMissedReminders(now: Long): List<Note> {
+        return noteDao.getNotesWithMissedReminders(now).map { it.toNote() }
+    }
+
+    override suspend fun clearReminderTimestamp(noteId: Long) {
+        noteDao.clearReminderTimestamp(noteId)
+        refreshWidget()
     }
 
     override suspend fun getAllNotesForBackup(): List<Note> {
@@ -162,20 +200,22 @@ class NoteRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteLabel(label: Label) {
-        labelDao.deleteLabel(label.toLabelEntity())
+        database.withTransaction {
+            label.id?.let { labelDao.deleteCrossRefsForLabel(it) }
+            labelDao.deleteLabel(label.toLabelEntity())
+        }
         refreshWidget()
     }
 
     private fun syncReminderForNote(note: Note) {
         val noteId = note.id ?: return
-        val shouldCancel = note.isTrashed || note.isArchived || note.isLocked || note.reminderTimestamp == null
+        val shouldCancel =
+            note.isTrashed || note.isArchived || note.isLocked || note.reminderTimestamp == null
         if (shouldCancel) {
             reminderScheduler.cancelReminder(noteId)
         } else {
             reminderScheduler.scheduleReminder(
                 noteId = noteId,
-                title = note.title,
-                content = note.content,
                 timestamp = note.reminderTimestamp
             )
         }

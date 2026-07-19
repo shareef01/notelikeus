@@ -31,10 +31,13 @@ export function useNotes() {
 
   const filteredNotes = useMemo(
     () => filterNotes(notes, filters),
-    [notesKey, filterKey, notes, filters],
+    // notesKey/filterKey are content-derived guards: `notes` and `filters` get new references
+    // on every store update even when nothing relevant to filtering changed, so they're
+    // deliberately left out of the deps to avoid recomputing on every render.
+    [notesKey, filterKey],
   );
 
-  const labels = useMemo(() => collectLabels(notes), [notesKey, notes]);
+  const labels = useMemo(() => collectLabels(notes), [notesKey]);
 
   const actions = useMemo(
     () => ({

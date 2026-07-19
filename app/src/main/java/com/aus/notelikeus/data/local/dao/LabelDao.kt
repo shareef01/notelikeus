@@ -24,4 +24,10 @@ interface LabelDao {
 
     @Query("SELECT * FROM labels WHERE id = :id")
     suspend fun getLabelById(id: Long): LabelEntity?
+
+    @Query("DELETE FROM note_label_cross_ref WHERE labelId = :labelId")
+    suspend fun deleteCrossRefsForLabel(labelId: Long)
+
+    @Query("DELETE FROM labels")
+    suspend fun deleteAllLabels()
 }

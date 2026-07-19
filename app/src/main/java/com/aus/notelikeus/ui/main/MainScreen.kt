@@ -155,13 +155,34 @@ fun MainScreen(
     ) { uri ->
         uri?.let {
             scope.launch {
-                val preview = viewModel.previewBackupImport(context.contentResolver, it)
-                if (preview != null) {
-                    val fileName = it.lastPathSegment ?: "backup.json"
-                    pendingBackupImport = Triple(it, fileName, preview)
-                } else {
-                    snackbarHostState.showSnackbar(appContext.getString(R.string.import_failed))
+                val message = when (val result = viewModel.importBackup(context.contentResolver, it)) {
+                    is BackupImportResult.Success -> {
+                        val successMessage = context.getString(
+                            R.string.import_success,
+                            result.notesImported
+                        )
+                        if (result.notesImported > 0 && state.cloudAccount.isGoogleAccount) {
+                            val snackResult = snackbarHostState.showSnackbar(
+                                message = successMessage,
+                                actionLabel = context.getString(R.string.cloud_sync_now),
+                                duration = SnackbarDuration.Long
+                            )
+                            if (snackResult == SnackbarResult.ActionPerformed) {
+                                viewModel.syncNotesToCloud()
+                            }
+                            null
+                        } else {
+                            successMessage
+                        }
+                    }
+                    is BackupImportResult.InvalidFormat -> context.getString(
+                        R.string.import_invalid_format,
+                        result.message
+                    )
+                    BackupImportResult.ReadFailed,
+                    is BackupImportResult.Error -> context.getString(R.string.import_failed)
                 }
+                message?.let { snackbarHostState.showSnackbar(it) }
             }
         }
     }
@@ -248,7 +269,6 @@ fun MainScreen(
     }
 
     val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
-    val showNavRail = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
     val navigator = rememberListDetailPaneScaffoldNavigator<Long?>()
 
     val drawerContent = @Composable {
@@ -435,11 +455,7 @@ fun MainScreen(
                             viewModel = viewModel,
                             onNoteClick = { noteId ->
                                 scope.launch {
-                                    if (showNavRail) {
-                                        navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, noteId)
-                                    } else {
-                                        onNoteClick(noteId)
-                                    }
+                                    navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, noteId)
                                 }
                             },
                             gridState = gridState,
@@ -491,8 +507,8 @@ fun MainScreen(
                                     Icon(
                                         Icons.Default.Description,
                                         contentDescription = null,
-                                        modifier = Modifier.size(64.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f)
+                                        modifier = Modifier.size(72.dp),
+                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                     Text(
@@ -525,15 +541,7 @@ fun MainScreen(
             MainScaffold(
                 state = state,
                 viewModel = viewModel,
-                onNoteClick = { noteId ->
-                    if (showNavRail) {
-                        scope.launch {
-                            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, noteId)
-                        }
-                    } else {
-                        onNoteClick(noteId)
-                    }
-                },
+                onNoteClick = { noteId -> onNoteClick(noteId) },
                 gridState = gridState,
                 snackbarHostState = snackbarHostState,
                 showProfileSheet = showProfileSheet,
@@ -635,7 +643,10 @@ fun MainScreen(
                             contentColor = MaterialTheme.colorScheme.error
                         )
                     ) {
-                        Text(stringResource(R.string.cloud_sign_out_delete_data))
+                        Text(
+                            stringResource(R.string.cloud_sign_out_delete_data),
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             },

@@ -197,10 +197,7 @@ fun LabelsScreen(
             onDismissRequest = { labelToDelete = null },
             shape = MaterialTheme.shapes.large,
             title = {
-                Text(
-                    stringResource(R.string.delete_label_title),
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                )
+                Text(stringResource(R.string.delete_label_title))
             },
             text = { Text(stringResource(R.string.delete_label_message, label.name)) },
             confirmButton = {
@@ -346,5 +343,46 @@ private fun LabelListItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onEditClick)
+    )
+}
+
+@Composable
+private fun LabelEditDialog(
+    title: String,
+    initialName: String = "",
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by remember { mutableStateOf(initialName) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = MaterialTheme.shapes.large,
+        title = {
+            Text(title)
+        },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.label_name_hint)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(name) },
+                enabled = name.isNotBlank() && name != initialName
+            ) {
+                Text(stringResource(R.string.action_ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        }
     )
 }
