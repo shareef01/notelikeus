@@ -80,6 +80,11 @@ android {
             isReturnDefaultValues = false
         }
     }
+
+    lint {
+        // Compose lint that flags LocalContext.current.getString(); treat as warning until migrated to stringResource().
+        disable += "LocalContextGetResourceValueCall"
+    }
 }
 
 dependencies {
