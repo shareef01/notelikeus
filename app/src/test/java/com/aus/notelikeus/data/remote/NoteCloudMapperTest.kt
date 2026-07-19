@@ -64,9 +64,7 @@ class NoteCloudMapperTest {
 
 
 
-        val cloudId = map["cloudId"] as String
         assertEquals(42L, map["localId"])
-        assertTrue(CloudIds.isValid(cloudId))
 
         assertEquals("Groceries", map["title"])
 
@@ -113,9 +111,8 @@ class NoteCloudMapperTest {
         )
 
         val cloud = original.toCloudMap()
-        val cloudId = cloud["cloudId"] as String
 
-        val restored = cloud.toCloudNote(7L, cloudId) { Label(id = 2L, name = it) }
+        val restored = cloud.toCloudNote(7L) { Label(id = 2L, name = it) }
 
 
 
