@@ -22,8 +22,6 @@ import { useAuthListener } from '@/hooks/useAuth';
 
 import { useCloudSync } from '@/hooks/useCloudSync';
 
-import { useEffectiveColumns } from '@/hooks/useEffectiveColumns';
-
 import { useNotes } from '@/hooks/useNotes';
 
 import { exportNotesBackup } from '@/lib/backup/exportBackup';
@@ -53,6 +51,9 @@ import { useToastStore } from '@/store/toastStore';
 import { useUiStore } from '@/store/uiStore';
 import type { Note, NoteFilter } from '@/types/note';
 
+import { useIsTabletUp } from '@/hooks/useMediaQuery';
+import { EditorScreen } from '@/screens/EditorScreen';
+
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -77,7 +78,10 @@ export function MainScreen() {
   const viewColumns = useUiStore((s) => s.viewColumns);
   const listScrolled = useUiStore((s) => s.listScrolled);
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
+
   const setViewColumns = useUiStore((s) => s.setViewColumns);
+  const cycleViewColumns = useUiStore((s) => s.cycleViewColumns);
+
   const setListScrolled = useUiStore((s) => s.setListScrolled);
 
   const openNewNote = () => navigate('/note/new');
@@ -95,7 +99,6 @@ export function MainScreen() {
   const toggleSelectAll = useUiStore((s) => s.toggleSelectAll);
 
   const selectionMode = selectedNoteIds.length > 0;
-  const effectiveColumns = useEffectiveColumns(viewColumns);
 
   const cloudAutoSyncEnabled = useSettingsStore((s) => s.cloudAutoSyncEnabled);
   const setCloudAutoSyncEnabled = useSettingsStore((s) => s.setCloudAutoSyncEnabled);
@@ -157,12 +160,23 @@ export function MainScreen() {
     filteredNotes.length > 0 &&
     filteredNotes.every((note) => selectedNoteIds.includes(note.id));
 
+  const selectedNoteModels = useMemo(
+    () =>
+      selectedNoteIds
+        .map((id) => notes.find((note) => note.id === id))
+        .filter((note): note is Note => note != null),
+    [notes, selectedNoteIds],
+  );
+
+  const selectionAllPinned =
+    selectedNoteModels.length > 0 && selectedNoteModels.every((note) => note.isPinned);
+
   const allowReorder =
     filters.filter === 'active' &&
     (filters.sortOrder ?? 'manual') === 'manual' &&
     !hasActiveFilters &&
     !selectionMode &&
-    effectiveColumns === 1;
+    viewColumns === 1;
 
   const handleNavigateFilter = (filter: NoteFilter) => {
     clearSelection();
@@ -245,27 +259,16 @@ export function MainScreen() {
     );
   };
 
-  const handleBulkPin = async () => {
+  const handleBulkPinToggle = async () => {
     const snapshots = getSelectedSnapshots();
     if (snapshots.length === 0) return;
-    for (const note of snapshots) {
-      await saveNote({ ...note, isPinned: true, timestamp: Date.now() });
-    }
-    clearSelection();
-    useToastStore.getState().show(
-      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} pinned`,
+    const pin = !selectionAllPinned;
+    await Promise.all(
+      snapshots.map((note) => saveNote({ ...note, isPinned: pin, timestamp: Date.now() })),
     );
-  };
-
-  const handleBulkUnpin = async () => {
-    const snapshots = getSelectedSnapshots();
-    if (snapshots.length === 0) return;
-    for (const note of snapshots) {
-      await saveNote({ ...note, isPinned: false, timestamp: Date.now() });
-    }
     clearSelection();
     useToastStore.getState().show(
-      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} unpinned`,
+      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} ${pin ? 'pinned' : 'unpinned'}`,
     );
   };
 
@@ -283,16 +286,12 @@ export function MainScreen() {
   const handleBulkArchive = async () => {
     const snapshots = getSelectedSnapshots();
     if (snapshots.length === 0) return;
-    for (const note of snapshots) {
-      await archiveNoteById(note.id);
-    }
+    await Promise.all(snapshots.map((note) => archiveNoteById(note.id)));
     clearSelection();
     showUndoToast({
       message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} archived`,
       revert: async () => {
-        for (const note of snapshots) {
-          await saveNote(note);
-        }
+        await Promise.all(snapshots.map((note) => saveNote(note)));
       },
     });
   };
@@ -300,16 +299,12 @@ export function MainScreen() {
   const handleBulkTrash = async () => {
     const snapshots = getSelectedSnapshots();
     if (snapshots.length === 0) return;
-    for (const note of snapshots) {
-      await trashNoteById(note.id);
-    }
+    await Promise.all(snapshots.map((note) => trashNoteById(note.id)));
     clearSelection();
     showUndoToast({
       message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} moved to trash`,
       revert: async () => {
-        for (const note of snapshots) {
-          await saveNote(note);
-        }
+        await Promise.all(snapshots.map((note) => saveNote(note)));
       },
     });
   };
@@ -317,9 +312,7 @@ export function MainScreen() {
   const handleBulkRestore = async () => {
     const snapshots = getSelectedSnapshots();
     if (snapshots.length === 0) return;
-    for (const note of snapshots) {
-      await restoreNoteById(note.id);
-    }
+    await Promise.all(snapshots.map((note) => restoreNoteById(note.id)));
     clearSelection();
     useToastStore.getState().show(
       `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} restored`,
@@ -330,9 +323,7 @@ export function MainScreen() {
     setShowBulkDeleteConfirm(false);
     const snapshots = getSelectedSnapshots();
     if (snapshots.length === 0) return;
-    for (const note of snapshots) {
-      await removeNote(note.id);
-    }
+    await Promise.all(snapshots.map((note) => removeNote(note.id)));
     clearSelection();
     useToastStore.getState().show(
       `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} deleted permanently`,
@@ -373,104 +364,80 @@ export function MainScreen() {
 
 
 
-  const handleImportBackup = async (file: File) => {
-
+  const handleExportBackup = () => {
     try {
-
-      const json = await readBackupFile(file);
-
-      const { merged, result } = importNotesFromBackup(json, notes);
-
-      setBackupPreview({ fileName: file.name, merged, result });
-
-    } catch (error) {
-
+      exportNotesBackup(notes);
+      const hiddenCount = notes.filter((note) => note.isLocked).length;
       useToastStore.getState().show(
-
-        error instanceof Error ? error.message : 'Import failed',
-
-        'error',
-
+        hiddenCount > 0
+          ? `Backup exported — includes ${hiddenCount} hidden note${hiddenCount === 1 ? '' : 's'} in plain text`
+          : 'Backup exported',
       );
-
+    } catch (error) {
+      useToastStore.getState().show(
+        error instanceof Error ? error.message : 'Export failed',
+        'error',
+      );
     }
-
   };
 
-
-
-  const handleConfirmBackupImport = async () => {
-
-    if (!backupPreview) return;
-
+  const handleImportBackup = async (file: File) => {
     try {
+      const json = await readBackupFile(file);
+      const { merged, result } = importNotesFromBackup(json, notes);
+      useNotesStore.getState().setNotes(merged);
 
-      useNotesStore.getState().setNotes(backupPreview.merged);
-
-
-
-      if (user?.uid) {
-
-        await uploadAllNotes(user.uid, backupPreview.merged);
-
+      let uploadedToCloud = false;
+      if (user?.uid && result.notesImported > 0) {
+        const shouldUpload = window.confirm(
+          `Imported ${result.notesImported} note${result.notesImported === 1 ? '' : 's'} locally. Upload them to your cloud account now?`,
+        );
+        if (shouldUpload) {
+          await uploadAllNotes(user.uid, merged);
+          uploadedToCloud = true;
+        }
       }
-
-
-
-      const { result } = backupPreview;
 
       const parts: string[] = [];
-
       if (result.notesImported > 0) {
-
         parts.push(
-
           `${result.notesImported} note${result.notesImported === 1 ? '' : 's'}`,
-
         );
-
       }
-
       if (result.labelsCreated > 0) {
-
         parts.push(
-
           `${result.labelsCreated} label${result.labelsCreated === 1 ? '' : 's'}`,
-
         );
-
       }
-
+      const base =
+        parts.length > 0 ? `Imported ${parts.join(' and ')}` : 'No notes found in backup';
       useToastStore.getState().show(
-
-        parts.length > 0 ? `Imported ${parts.join(' and ')}` : 'No notes found in backup',
-
+        uploadedToCloud ? `${base} and synced to cloud` : base,
       );
-
     } catch (error) {
-
       useToastStore.getState().show(
-
         error instanceof Error ? error.message : 'Import failed',
-
         'error',
-
       );
-
-    } finally {
-
-      setBackupPreview(null);
-
     }
-
   };
 
 
 
   const emptyState = getEmptyState(filters.filter, hasActiveFilters, Boolean(filters.searchQuery));
 
+  const isTabletUp = useIsTabletUp();
+  const editorRoute = useUiStore((s) => s.editorRoute);
+  const editorLayout = useUiStore((s) => s.editorLayout);
+  const desktopEditor = isTabletUp && editorRoute.mode !== 'closed' ? editorRoute : null;
+  const dockedEditor =
+    desktopEditor && editorLayout === 'dock' ? desktopEditor : null;
+  const overlayEditor =
+    desktopEditor && editorLayout !== 'dock' ? desktopEditor : null;
+
   return (
-    <div className="flex h-dvh w-full bg-[#09090B] overflow-hidden">
+    <div className="flex min-h-screen w-full bg-true-surface lg:mx-auto lg:max-w-shell">
+
       <SideDrawer
         open={drawerOpen}
         currentFilter={filters.filter}
@@ -484,8 +451,10 @@ export function MainScreen() {
         onOpenSettings={() => setShowProfile(true)}
       />
 
-      <div className="flex flex-1 min-w-0 bg-[#0C0C0E]">
-        <div className="flex flex-col min-w-0 flex-1 transition-all duration-500 ease-in-out">
+
+
+      <div className="flex min-h-screen min-w-0 flex-1">
+        <div className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ${dockedEditor ? 'max-w-[min(32rem,46%)] border-r border-brand-outline xl:max-w-[min(36rem,42%)]' : ''}`}>
           <TopBar
             searchQuery={filters.searchQuery ?? ''}
             onSearchQueryChange={setSearchQuery}
@@ -528,9 +497,160 @@ export function MainScreen() {
 
           <InstallPrompt />
 
-          {filters.filter === 'trashed' && filteredNotes.length > 0 ? (
-            <TrashBanner onEmptyTrash={() => setShowEmptyTrashConfirm(true)} />
-          ) : null}
+          currentFilter={filters.filter}
+
+          listScrolled={listScrolled}
+
+          sortOrder={filters.sortOrder ?? 'manual'}
+
+          onSortOrderCycle={cycleSortOrder}
+
+          selectedColor={filters.colorArgb ?? null}
+
+          onColorSelect={setColorFilter}
+
+          labels={labels}
+
+          selectedLabelName={filters.labelName ?? null}
+
+          onLabelSelect={setLabelFilter}
+
+          hasActiveFilters={hasActiveFilters}
+
+          onClearFilters={clearFilters}
+
+          onMenuClick={() => setDrawerOpen(true)}
+
+          onProfileClick={() => setShowProfile(true)}
+          viewColumns={viewColumns}
+          onViewColumnsChange={setViewColumns}
+          onNewNote={openNewNote}
+          showNewNote={filters.filter === 'active'}
+          selectionMode={selectionMode}
+          selectedCount={selectedNoteIds.length}
+          allFilteredSelected={allFilteredSelected}
+          onClearSelection={clearSelection}
+          onToggleSelectAll={() => toggleSelectAll(filteredNoteIds)}
+          selectionAllPinned={selectionAllPinned}
+          onBulkPinToggle={() => void handleBulkPinToggle()}
+          onBulkArchive={() => void handleBulkArchive()}
+          onBulkRestore={() => void handleBulkRestore()}
+          onBulkTrash={() => void handleBulkTrash()}
+          onBulkPermanentDelete={() => setShowBulkDeleteConfirm(true)}
+          recentSearches={recentSearches}
+          onRecentSearchClick={(query) => {
+            setSearchQuery(query);
+            addRecentSearch(query);
+          }}
+          onClearRecentSearches={clearRecentSearches}
+        />
+
+
+
+        <OfflineBanner />
+
+        <InstallPrompt />
+
+        {filters.filter === 'trashed' && filteredNotes.length > 0 ? (
+          <TrashBanner onEmptyTrash={() => setShowEmptyTrashConfirm(true)} />
+        ) : null}
+
+
+
+        <main
+
+          ref={scrollRef}
+
+          onScroll={handleScroll}
+
+          className="flex-1 overflow-y-auto overscroll-contain"
+
+        >
+
+          <div className="mx-auto w-full max-w-content">
+
+            {error ? (
+              <div className="px-4 py-6 text-center text-sm text-red-300">{error}</div>
+            ) : null}
+
+            {isLoading ? (
+              <NotesLoadingGrid viewPreference={viewColumns} />
+            ) : filteredNotes.length === 0 ? (
+
+              <NotesEmptyState
+                message={emptyState.message}
+                subtitle={emptyState.subtitle}
+                icon={emptyState.icon}
+                recentSearches={recentSearches}
+                onRecentSearchClick={(query) => {
+                  setSearchQuery(query);
+                  addRecentSearch(query);
+                }}
+                action={
+                  emptyState.showClearFilters ? (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="min-h-11 rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5"
+                    >
+                      Clear filters
+                    </button>
+                  ) : emptyState.showCreate ? (
+                    <button
+                      type="button"
+                      onClick={openNewNote}
+                      className="min-h-11 rounded-note bg-brand-primary px-5 py-2.5 text-sm font-semibold text-true-surface transition-transform active:scale-95"
+                    >
+                      New note
+                    </button>
+                  ) : undefined
+                }
+
+              />
+
+            ) : (
+              <NoteStaggeredGrid
+                notes={filteredNotes}
+                viewPreference={viewColumns}
+                filter={filters.filter}
+                onNoteClick={handleNoteClick}
+                onNoteLongPress={handleNoteLongPress}
+                selectedNoteIds={selectedNoteIds}
+                selectionMode={selectionMode}
+                onLabelClick={(name) => {
+                  setNoteFilter('active');
+                  setLabelFilter(name);
+                }}
+                listActions={{
+                  onArchive: (note) => void handleArchiveNote(note),
+                  onTrash: (note) => void handleTrashNote(note),
+                  onRestore: (note) => void handleRestoreNote(note),
+                  onPermanentDelete: (note) => void handlePermanentDelete(note),
+                }}
+                searchQuery={filters.searchQuery ?? ''}
+                allowReorder={allowReorder}
+                onMoveNote={handleMoveNote}
+                onReorderComplete={handleReorderComplete}
+              />
+            )}
+
+          </div>
+
+        </main>
+
+
+
+        {filters.filter === 'active' && !selectionMode ? (
+
+          <button
+
+            type="button"
+
+            onClick={openNewNote}
+
+            className="fixed z-20 flex size-14 items-center justify-center rounded-note bg-brand-primary text-true-surface shadow-lg transition-transform hover:scale-105 active:scale-95 bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] right-[calc(1.5rem+env(safe-area-inset-right,0px))] md:hidden"
+
+            aria-label="Add note"
 
           <main
             ref={scrollRef}
@@ -626,6 +746,19 @@ export function MainScreen() {
             </button>
           ) : null}
         </div>
+
+        {dockedEditor ? (
+          // No animate-in here: EditorScreen renders fixed-position descendants
+          // (EditorOptionsSheet, LinkDialog, ReminderPickerDialog), and tailwindcss-animate's
+          // shared `enter` keyframe always applies a transform — even for plain fade-in —
+          // which would make this non-fixed wrapper a containing block for those fixed
+          // descendants for the animation's duration, mispositioning them if opened mid-animation.
+          <div className="relative flex-1 bg-true-surface">
+            <EditorScreen route={dockedEditor} />
+          </div>
+        ) : null}
+
+        {overlayEditor ? <EditorScreen route={overlayEditor} /> : null}
       </div>
 
       <ProfileSheet
@@ -658,7 +791,7 @@ export function MainScreen() {
 
         onRestore={() => void cloud.restoreFromCloud()}
 
-        onExportBackup={() => exportNotesBackup(notes)}
+        onExportBackup={handleExportBackup}
 
         onImportBackup={() => backupInputRef.current?.click()}
 
@@ -771,7 +904,9 @@ function getEmptyState(
 
   icon: 'brand' | 'archive' | 'trash';
 
-  actionType?: 'addNote' | 'clearFilters';
+  showClearFilters?: boolean;
+
+  showCreate?: boolean;
 
 } {
 
@@ -785,7 +920,7 @@ function getEmptyState(
 
       icon: 'brand',
 
-      actionType: 'clearFilters',
+      showClearFilters: true,
 
     };
 
@@ -801,7 +936,7 @@ function getEmptyState(
 
       icon: 'brand',
 
-      actionType: 'clearFilters',
+      showClearFilters: true,
 
     };
 
@@ -831,9 +966,11 @@ function getEmptyState(
 
     message: 'Notes you add appear here',
 
+    subtitle: 'Synced automatically with your Android device',
+
     icon: 'brand',
 
-    actionType: 'addNote',
+    showCreate: true,
 
   };
 

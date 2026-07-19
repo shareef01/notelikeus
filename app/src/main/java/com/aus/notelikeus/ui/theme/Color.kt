@@ -29,31 +29,24 @@ val BackgroundForest = Color(0xFF0A0F0A)
 val SurfaceForest = Color(0xFF121812)
 val PrimaryForest = Color(0xFFD4FFD4)
 
-// Vibrant Muted Note Palette (Dark Mode - balanced for OLED visibility)
-val NoteRedDark = Color(0xFF5A3333)
-val NoteOrangeDark = Color(0xFF5A4030)
-val NoteYellowDark = Color(0xFF555022)
-val NoteGreenDark = Color(0xFF364A2A)
-val NoteTealDark = Color(0xFF2A4845)
-val NoteBlueDark = Color(0xFF2A3E4A)
-val NoteDarkBlueDark = Color(0xFF333650)
-val NotePurpleDark = Color(0xFF453355)
-val NotePinkDark = Color(0xFF553342)
-val NoteBrownDark = Color(0xFF4A3830)
-val NoteGrayDark = Color(0xFF323232)
+// 8 solid Material-inspired note colors (light containers / rich dark surfaces)
+val NoteRedDark = Color(0xFF6D2B2B)
+val NoteOrangeDark = Color(0xFF6B4520)
+val NoteYellowDark = Color(0xFF6B5C18)
+val NoteGreenDark = Color(0xFF2E5A32)
+val NoteTealDark = Color(0xFF1E5650)
+val NoteBlueDark = Color(0xFF2A4A6E)
+val NotePurpleDark = Color(0xFF4A2D62)
+val NotePinkDark = Color(0xFF6B2D48)
 
-// Modern Light Palette — soft pastels with excellent text contrast
-val NoteRedLight = Color(0xFFFFD6D2)
+val NoteRedLight = Color(0xFFFFCDD2)
 val NoteOrangeLight = Color(0xFFFFE0B2)
-val NoteYellowLight = Color(0xFFFFF9C4)
-val NoteGreenLight = Color(0xFFDCEDC8)
+val NoteYellowLight = Color(0xFFFFF59D)
+val NoteGreenLight = Color(0xFFC8E6C9)
 val NoteTealLight = Color(0xFFB2DFDB)
 val NoteBlueLight = Color(0xFFBBDEFB)
-val NoteDarkBlueLight = Color(0xFFC5CAE9)
 val NotePurpleLight = Color(0xFFE1BEE7)
 val NotePinkLight = Color(0xFFF8BBD0)
-val NoteBrownLight = Color(0xFFD7CCC8)
-val NoteGrayLight = Color(0xFFE0E0E0)
 
 /**
  * Dynamic Text Contrast — ensures WCAG AA readability on any note color.
@@ -76,11 +69,8 @@ val NOTE_COLOR_OPTIONS: List<NoteColorOption> = listOf(
     NoteColorOption(NoteGreenLight, NoteGreenDark),
     NoteColorOption(NoteTealLight, NoteTealDark),
     NoteColorOption(NoteBlueLight, NoteBlueDark),
-    NoteColorOption(NoteDarkBlueLight, NoteDarkBlueDark),
     NoteColorOption(NotePurpleLight, NotePurpleDark),
     NoteColorOption(NotePinkLight, NotePinkDark),
-    NoteColorOption(NoteBrownLight, NoteBrownDark),
-    NoteColorOption(NoteGrayLight, NoteGrayDark)
 )
 
 fun noteColorsForTheme(isDarkTheme: Boolean): List<Color> =

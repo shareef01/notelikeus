@@ -1,7 +1,7 @@
+import { clearLocalUserData } from '@/lib/bootstrap';
 import { deleteAllCloudData } from '@/lib/firestore/notesRepository';
 import { resetCloudMergeState } from '@/lib/notes/notesSyncService';
 import { getFirebaseAuth, initFirebase } from '@/lib/firebase';
-import { useNotesStore } from '@/store/notesStore';
 import {
   GoogleAuthProvider,
   getRedirectResult,
@@ -9,51 +9,37 @@ import {
   signInWithRedirect,
   signOut,
 } from 'firebase/auth';
+import { FirebaseError } from 'firebase/app';
 
-const PERSISTED_STORE_KEYS = ['notelikeus-settings', 'notelikeus-ui'];
-
-function clearLocalStores(): void {
-  for (const key of PERSISTED_STORE_KEYS) {
-    try { localStorage.removeItem(key); } catch { /* ignore */ }
-  }
-}
-
-/** PWA / mobile browsers often block Google popups — use full-page redirect instead. */
-export function shouldUseRedirectSignIn(): boolean {
-  if (typeof window === 'undefined') return false;
-
-  const isStandalone =
-    window.matchMedia('(display-mode: standalone)').matches ||
-    (navigator as Navigator & { standalone?: boolean }).standalone === true;
-  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-  return isStandalone || isMobile;
-}
-
-function createGoogleProvider(): GoogleAuthProvider {
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: 'select_account' });
-  return provider;
-}
-
-/** Call once on startup to finish a redirect-based Google sign-in. */
-export async function completeRedirectSignInIfNeeded(): Promise<void> {
-  initFirebase();
-  const auth = getFirebaseAuth();
-  await getRedirectResult(auth);
-}
+// Environments where a popup can't open at all (blocked, or an in-app/standalone
+// browser that doesn't support window.open-based OAuth) — retry via full-page
+// redirect instead. Deliberately excludes popup-closed-by-user/cancelled codes,
+// since those mean the user intentionally backed out and shouldn't be redirected.
+const REDIRECT_FALLBACK_CODES = new Set([
+  'auth/popup-blocked',
+  'auth/operation-not-supported-in-this-environment',
+]);
 
 export async function signInWithGoogle(): Promise<void> {
   initFirebase();
   const auth = getFirebaseAuth();
-  const provider = createGoogleProvider();
-
-  if (shouldUseRedirectSignIn()) {
-    await signInWithRedirect(auth, provider);
-    return;
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (error) {
+    if (error instanceof FirebaseError && REDIRECT_FALLBACK_CODES.has(error.code)) {
+      await signInWithRedirect(auth, provider);
+      return;
+    }
+    throw error;
   }
+}
 
-  await signInWithPopup(auth, provider);
+/** Completes a signInWithRedirect flow after the page reloads. Call once at startup. */
+export async function completeGoogleRedirectSignIn(): Promise<void> {
+  initFirebase();
+  await getRedirectResult(getFirebaseAuth());
 }
 
 export async function signOutGoogle(deleteCloudData = false): Promise<void> {
@@ -76,4 +62,6 @@ export async function signOutGoogle(deleteCloudData = false): Promise<void> {
   }
 
   await signOut(auth);
+  resetCloudMergeState();
+  clearLocalUserData();
 }

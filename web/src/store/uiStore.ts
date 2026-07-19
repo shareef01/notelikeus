@@ -5,11 +5,21 @@ export type ViewColumns = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type AuthMode = 'signin' | 'signup';
 
+/** Desktop editor chrome — mobile always uses a full-screen overlay. */
+export type EditorLayout = 'float' | 'dock' | 'fullscreen';
+
+export type EditorRoute =
+  | { mode: 'closed' }
+  | { mode: 'new' }
+  | { mode: 'edit'; noteId: string };
+
 interface UiState {
   drawerOpen: boolean;
   sidebarCollapsed: boolean;
   viewColumns: ViewColumns;
   listScrolled: boolean;
+  editorRoute: EditorRoute;
+  editorLayout: EditorLayout;
   authScreen: AuthMode | null;
   labelsOpen: boolean;
   selectedNoteIds: string[];
@@ -21,6 +31,10 @@ interface UiState {
   setViewColumns: (columns: ViewColumns) => void;
   cycleViewColumns: () => void;
   setListScrolled: (scrolled: boolean) => void;
+  setEditorLayout: (layout: EditorLayout) => void;
+  openNewNote: () => void;
+  openNote: (noteId: string) => void;
+  closeEditor: () => void;
   openAuthScreen: (mode: AuthMode) => void;
   closeAuthScreen: () => void;
   setLabelsOpen: (open: boolean) => void;
@@ -38,6 +52,8 @@ export const useUiStore = create<UiState>()(
       sidebarCollapsed: false,
       viewColumns: 2,
       listScrolled: false,
+      editorRoute: { mode: 'closed' },
+      editorLayout: 'float',
       authScreen: null,
       labelsOpen: false,
       selectedNoteIds: [],
@@ -55,6 +71,11 @@ export const useUiStore = create<UiState>()(
       },
       setListScrolled: (listScrolled) =>
         set((state) => (state.listScrolled === listScrolled ? state : { listScrolled })),
+      setEditorLayout: (editorLayout) =>
+        set((state) => (state.editorLayout === editorLayout ? state : { editorLayout })),
+      openNewNote: () => set({ editorRoute: { mode: 'new' }, drawerOpen: false }),
+      openNote: (noteId) => set({ editorRoute: { mode: 'edit', noteId }, drawerOpen: false }),
+      closeEditor: () => set({ editorRoute: { mode: 'closed' } }),
       openAuthScreen: (authScreen) => set({ authScreen, drawerOpen: false }),
       closeAuthScreen: () =>
         set((state) => (state.authScreen === null ? state : { authScreen: null })),
@@ -91,7 +112,8 @@ export const useUiStore = create<UiState>()(
       name: 'notelikeus-ui',
       partialize: (state) => ({
         viewColumns: state.viewColumns,
-        recentSearches: state.recentSearches
+        recentSearches: state.recentSearches,
+        editorLayout: state.editorLayout,
       }),
       skipHydration: true,
     },

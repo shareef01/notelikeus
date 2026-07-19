@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import com.aus.notelikeus.R
 
 @Composable
@@ -24,10 +23,7 @@ fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         shape = MaterialTheme.shapes.large,
         title = {
-            Text(
-                text = stringResource(R.string.privacy_policy_title),
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-            )
+            Text(text = stringResource(R.string.privacy_policy_title))
         },
         text = {
             Text(
@@ -38,10 +34,7 @@ fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(
-                    text = stringResource(R.string.action_ok),
-                    fontWeight = FontWeight.Bold
-                )
+                Text(text = stringResource(R.string.action_ok))
             }
         },
         dismissButton = {

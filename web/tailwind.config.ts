@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import tailwindcssAnimate from 'tailwindcss-animate';
 
 const config: Config = {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
@@ -7,39 +8,33 @@ const config: Config = {
     extend: {
       colors: {
         true: {
-          black: 'var(--background)',
-          surface: 'var(--surface)',
-          'surface-variant': 'var(--surface-variant)',
+          black: '#000000', // OLED Absolute Black — intentionally static, not theme-reactive
+          surface: 'rgb(var(--surface-rgb) / <alpha-value>)',
+          'surface-variant': 'rgb(var(--surface-variant-rgb) / <alpha-value>)',
         },
         brand: {
-          primary: 'var(--primary)',
-          secondary: 'var(--secondary)',
-          muted: 'var(--muted)',
-          outline: 'var(--outline)',
+          primary: 'rgb(var(--primary-rgb) / <alpha-value>)',
+          secondary: 'rgb(var(--secondary-rgb) / <alpha-value>)',
+          muted: 'rgb(var(--muted-rgb) / <alpha-value>)',
+          outline: 'rgb(var(--outline-rgb) / <alpha-value>)',
         },
         note: {
-          'red-light': '#F28B82',
-          'red-dark': '#4A2B2B',
-          'orange-light': '#FBBC04',
-          'orange-dark': '#4B3621',
-          'yellow-light': '#FFF475',
-          'yellow-dark': '#4B451A',
-          'green-light': '#CCFF90',
-          'green-dark': '#2E3D23',
-          'teal-light': '#A7FFEB',
-          'teal-dark': '#233D3A',
-          'blue-light': '#CBF0F8',
-          'blue-dark': '#23353D',
-          'dark-blue-light': '#AECBFA',
-          'dark-blue-dark': '#2B2E4A',
-          'purple-light': '#D7AEFB',
-          'purple-dark': '#3B2B4A',
-          'pink-light': '#FDCFE8',
-          'pink-dark': '#4A2B3E',
-          'brown-light': '#E6C9A8',
-          'brown-dark': '#3D2E23',
-          'gray-light': '#E8EAED',
-          'gray-dark': '#2A2A2A',
+          'red-light': '#FFCDD2',
+          'red-dark': '#6D2B2B',
+          'orange-light': '#FFE0B2',
+          'orange-dark': '#6B4520',
+          'yellow-light': '#FFF59D',
+          'yellow-dark': '#6B5C18',
+          'green-light': '#C8E6C9',
+          'green-dark': '#2E5A32',
+          'teal-light': '#B2DFDB',
+          'teal-dark': '#1E5650',
+          'blue-light': '#BBDEFB',
+          'blue-dark': '#2A4A6E',
+          'purple-light': '#E1BEE7',
+          'purple-dark': '#4A2D62',
+          'pink-light': '#F8BBD0',
+          'pink-dark': '#6B2D48',
           default: '#121212',
         },
       },
@@ -60,13 +55,13 @@ const config: Config = {
         sheet: '16px',
       },
       maxWidth: {
-        shell: '90rem',
-        content: '72rem',
+        shell: '116rem',
+        content: '88rem',
         editor: '48rem',
       },
     },
   },
-  plugins: [],
+  plugins: [tailwindcssAnimate],
 };
 
 export default config;
