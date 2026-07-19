@@ -7,7 +7,6 @@ import com.aus.notelikeus.data.local.APP_THEME_KEY
 import com.aus.notelikeus.data.local.CLOUD_AUTO_SYNC_ENABLED_KEY
 import com.aus.notelikeus.data.local.NOTE_SORT_ORDER_KEY
 import com.aus.notelikeus.data.local.NOTE_VIEW_MODE_KEY
-import com.aus.notelikeus.data.local.LAST_KNOWN_CLOUD_IDS_KEY
 import com.aus.notelikeus.data.local.RECENT_SEARCHES_KEY
 import com.aus.notelikeus.data.local.TRUE_DARK_MODE_KEY
 import com.aus.notelikeus.data.local.USE_MONOCHROME_THEME_KEY
@@ -22,11 +21,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -141,47 +137,6 @@ class SettingsRepositoryImpl @Inject constructor(
     override suspend fun clearRecentSearches() {
         context.settingsDataStore.edit { preferences ->
             preferences.remove(RECENT_SEARCHES_KEY)
-        }
-    }
-
-    override suspend fun getLastKnownCloudIds(userId: String): Set<String> {
-        val raw = context.settingsDataStore.data.first()[LAST_KNOWN_CLOUD_IDS_KEY]
-        return parseKnownCloudIds(raw, userId)
-    }
-
-    override suspend fun setLastKnownCloudIds(userId: String, cloudIds: Set<String>) {
-        context.settingsDataStore.edit { preferences ->
-            val root = JSONObject(preferences[LAST_KNOWN_CLOUD_IDS_KEY] ?: "{}")
-            root.put(userId, JSONArray(cloudIds.toList()))
-            preferences[LAST_KNOWN_CLOUD_IDS_KEY] = root.toString()
-        }
-    }
-
-    override suspend fun clearLastKnownCloudIds(userId: String) {
-        context.settingsDataStore.edit { preferences ->
-            val raw = preferences[LAST_KNOWN_CLOUD_IDS_KEY] ?: return@edit
-            val root = JSONObject(raw)
-            root.remove(userId)
-            if (root.length() == 0) {
-                preferences.remove(LAST_KNOWN_CLOUD_IDS_KEY)
-            } else {
-                preferences[LAST_KNOWN_CLOUD_IDS_KEY] = root.toString()
-            }
-        }
-    }
-
-    private fun parseKnownCloudIds(raw: String?, userId: String): Set<String> {
-        if (raw.isNullOrBlank()) return emptySet()
-        return try {
-            val array = JSONObject(raw).optJSONArray(userId) ?: return emptySet()
-            buildSet {
-                for (index in 0 until array.length()) {
-                    val value = array.optString(index)
-                    if (value.isNotBlank()) add(value)
-                }
-            }
-        } catch (_: Exception) {
-            emptySet()
         }
     }
 

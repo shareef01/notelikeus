@@ -9,7 +9,6 @@ interface SelectionBarProps {
   selectedCount: number;
   allFilteredSelected: boolean;
   currentFilter: NoteFilter;
-  selectionAllPinned?: boolean;
   onClearSelection: () => void;
   onToggleSelectAll: () => void;
   selectionAllPinned?: boolean;
@@ -24,7 +23,6 @@ export function SelectionBar({
   selectedCount,
   allFilteredSelected,
   currentFilter,
-  selectionAllPinned = false,
   onClearSelection,
   onToggleSelectAll,
   selectionAllPinned = false,
@@ -113,7 +111,7 @@ function IconAction({
       className={`flex size-10 items-center justify-center rounded-full transition-colors ${CHROME_FOCUS} ${
         danger
           ? 'text-red-400 hover:bg-red-500/10'
-          : 'text-brand-muted interactive-hover hover:text-brand-primary'
+          : 'text-brand-muted hover:bg-white/5 hover:text-brand-primary'
       }`}
     >
       {children}

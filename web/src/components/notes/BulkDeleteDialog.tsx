@@ -50,6 +50,6 @@ export function BulkDeleteDialog({
           </button>
         </div>
       </div>
-    </ModalScrim>
+    </div>
   );
 }

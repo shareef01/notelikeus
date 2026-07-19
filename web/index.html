@@ -12,45 +12,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Notelikeus" />
     <title>Notelikeus</title>
-    <script>
-      (function () {
-        var RECOVERY_KEY = 'notelikeus-build-recovery';
-        if (sessionStorage.getItem(RECOVERY_KEY) === '1') return;
-
-        function clearCachesAndReload() {
-          sessionStorage.setItem(RECOVERY_KEY, '1');
-          var tasks = [];
-          if ('serviceWorker' in navigator) {
-            tasks.push(
-              navigator.serviceWorker.getRegistrations().then(function (regs) {
-                return Promise.all(regs.map(function (reg) { return reg.unregister(); }));
-              }),
-            );
-          }
-          if ('caches' in window) {
-            tasks.push(
-              caches.keys().then(function (keys) {
-                return Promise.all(keys.map(function (key) { return caches.delete(key); }));
-              }),
-            );
-          }
-          Promise.all(tasks).finally(function () {
-            window.location.reload();
-          });
-        }
-
-        fetch('/build-info.json?ts=' + Date.now(), { cache: 'no-store' })
-          .then(function (response) { return response.json(); })
-          .then(function (info) {
-            if (!info || !info.main) return;
-            var script = document.querySelector('script[src*="assets/index-"]');
-            var loaded = script && script.getAttribute('src');
-            if (!loaded || loaded.indexOf(info.main) !== -1) return;
-            clearCachesAndReload();
-          })
-          .catch(function () {});
-      })();
-    </script>
   </head>
   <body class="bg-true-black text-brand-primary antialiased">
     <div id="root">

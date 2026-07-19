@@ -36,30 +36,12 @@ object WidgetThemes {
     )
 
     val TrueDark = WidgetThemeColors(
-        surface = ColorProvider(Color.Black),
+        surface = ColorProvider(Color.Black), // OLED Absolute Black
         onSurface = ColorProvider(Color.White),
         onSurfaceVariant = ColorProvider(Color(0xFFAAAAAA)),
         primary = ColorProvider(Color(0xFFFFFFFF)),
         primaryContainer = ColorProvider(Color(0xFF121212)),
         surfaceVariant = ColorProvider(Color(0xFF121212))
-    )
-
-    val Midnight = WidgetThemeColors(
-        surface = ColorProvider(Color(0xFF080C14)),
-        onSurface = ColorProvider(Color.White),
-        onSurfaceVariant = ColorProvider(Color(0xFFAAB8C9)),
-        primary = ColorProvider(Color(0xFFD4E4FF)),
-        primaryContainer = ColorProvider(Color(0xFF161C29)),
-        surfaceVariant = ColorProvider(Color(0xFF0D121D))
-    )
-
-    val Forest = WidgetThemeColors(
-        surface = ColorProvider(Color(0xFF0A0F0A)),
-        onSurface = ColorProvider(Color.White),
-        onSurfaceVariant = ColorProvider(Color(0xFFA9B8A9)),
-        primary = ColorProvider(Color(0xFFD4FFD4)),
-        primaryContainer = ColorProvider(Color(0xFF1A211A)),
-        surfaceVariant = ColorProvider(Color(0xFF121812))
     )
 
     val MonochromeLight = Light
