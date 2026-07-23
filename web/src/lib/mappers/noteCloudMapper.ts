@@ -30,6 +30,28 @@ export interface FirestoreNoteDocument {
   }>;
 }
 
+/**
+ * Field readers that never trust the input's type. Cloud documents are type-checked by
+ * firestore.rules, but this same mapper parses backup files, which are arbitrary user JSON —
+ * a non-string title would otherwise reach the store and throw on the next search or render.
+ * Mirrors Android's `Map<String, Any?>.toCloudNote` (`as? String ?: ""`).
+ */
+function asString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function asNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function asBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
 function checklistToCloudMap(item: ChecklistItem): Record<string, unknown> {
   return {
     text: item.text,
@@ -77,47 +99,55 @@ export function cloudMapToNote(
   const localId =
     Number.isFinite(parsedId) && parsedId > 0
       ? parsedId
-      : typeof data.localId === 'number'
-        ? data.localId
-        : Date.now();
+      : asNumber(data.localId, Date.now());
 
   const id = Number.isFinite(parsedId) && parsedId > 0 ? documentId : String(localId);
 
   const labels: Label[] = [];
-  for (const entry of data.labels ?? []) {
-    const name = entry.name?.trim();
+  for (const entry of asArray(data.labels)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const name = asString((entry as { name?: unknown }).name).trim();
     if (name) labels.push(resolveLabel(name));
   }
 
-  const checklist: ChecklistItem[] = (data.checklist ?? []).map((item, index) => ({
-    id: `chk-${localId}-${index}`,
-    text: item.text ?? '',
-    isChecked: item.isChecked ?? false,
-    position: typeof item.position === 'number' ? item.position : index,
-  }));
+  const checklist: ChecklistItem[] = asArray(data.checklist).map((raw, index) => {
+    const item = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    return {
+      id: `chk-${localId}-${index}`,
+      text: asString(item.text),
+      isChecked: asBoolean(item.isChecked),
+      position: asNumber(item.position, index),
+    };
+  });
 
-  const attachments = (data.attachments ?? []).map((item, index) => ({
-    id: `att-${localId}-${index}`,
-    noteId: localId,
-    storagePath: item.storagePath ?? '',
-    type: item.type ?? 'image',
-    mimeType: item.mimeType,
-    sizeBytes: item.sizeBytes,
-  }));
+  const attachments = asArray(data.attachments).map((raw, index) => {
+    const item = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    return {
+      id: `att-${localId}-${index}`,
+      noteId: localId,
+      storagePath: asString(item.storagePath),
+      type: asString(item.type, 'image'),
+      mimeType: typeof item.mimeType === 'string' ? item.mimeType : undefined,
+      sizeBytes: typeof item.sizeBytes === 'number' ? item.sizeBytes : undefined,
+    };
+  });
 
   return {
     id,
     localId,
-    title: data.title ?? '',
-    content: data.content ?? '',
-    timestamp: data.timestamp ?? Date.now(),
-    color: data.color ?? (0xff1a1a1a | 0),
-    isPinned: data.isPinned ?? false,
-    isArchived: data.isArchived ?? false,
-    isTrashed: data.isTrashed ?? false,
-    position: data.position ?? 0,
-    isLocked: data.isLocked ?? false,
-    reminderTimestamp: data.reminderTimestamp ?? null,
+    title: asString(data.title),
+    content: asString(data.content),
+    timestamp: asNumber(data.timestamp, Date.now()),
+    color: asNumber(data.color, 0xff1a1a1a | 0),
+    isPinned: asBoolean(data.isPinned),
+    isArchived: asBoolean(data.isArchived),
+    isTrashed: asBoolean(data.isTrashed),
+    position: asNumber(data.position, 0),
+    isLocked: asBoolean(data.isLocked),
+    reminderTimestamp: typeof data.reminderTimestamp === 'number' &&
+      Number.isFinite(data.reminderTimestamp)
+      ? data.reminderTimestamp
+      : null,
     labels,
     attachments,
     checklist,

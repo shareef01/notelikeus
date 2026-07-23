@@ -18,10 +18,13 @@ class PendingCloudSyncStore @Inject constructor(
 
     fun pendingDeletes(): Set<Long> = readIds(KEY_DELETES)
 
-    fun save(uploads: Set<Long>, deletes: Set<Long>) {
+    fun pendingRestores(): Set<Long> = readIds(KEY_RESTORES)
+
+    fun save(uploads: Set<Long>, deletes: Set<Long>, restores: Set<Long>) {
         prefs.edit()
             .putStringSet(KEY_UPLOADS, uploads.map { it.toString() }.toSet())
             .putStringSet(KEY_DELETES, deletes.map { it.toString() }.toSet())
+            .putStringSet(KEY_RESTORES, restores.map { it.toString() }.toSet())
             .apply()
     }
 
@@ -39,5 +42,6 @@ class PendingCloudSyncStore @Inject constructor(
         private const val PREFS_NAME = "pending_cloud_sync"
         private const val KEY_UPLOADS = "uploads"
         private const val KEY_DELETES = "deletes"
+        private const val KEY_RESTORES = "restores"
     }
 }

@@ -12,6 +12,8 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // happy-dom ships no IndexedDB, which is where the locked-note key lives.
+    setupFiles: ['./src/test/setup.ts'],
   },
   plugins: [
     react(),
@@ -20,6 +22,10 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.ts',
       registerType: 'autoUpdate',
+      // main.tsx registers via `virtual:pwa-register`. Pinned to null so the plugin can never
+      // fall back to injecting an inline registration script — the CSP in firebase.json has no
+      // 'unsafe-inline' in script-src, and an injected inline script would be blocked.
+      injectRegister: null,
       includeAssets: ['favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],

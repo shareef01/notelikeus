@@ -30,10 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.toArgb
 import android.Manifest
 import android.app.AlarmManager
-import android.content.Intent
-import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import androidx.core.content.ContextCompat
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
@@ -92,23 +89,22 @@ fun EditorScreen(
     var pendingReminderMillis by remember { mutableStateOf<Long?>(null) }
 
     fun scheduleReminderIfAllowed(millis: Long) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val alarmManager = context.getSystemService(AlarmManager::class.java)
-            if (!alarmManager.canScheduleExactAlarms()) {
-                scope.launch {
-                    snackbarHostState.showSnackbar(context.getString(R.string.reminder_exact_alarm_hint))
-                }
-                context.startActivity(
-                    Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                    }
-                )
-            }
-        }
+        // The app no longer declares SCHEDULE_EXACT_ALARM, so on API 31+ the alarm is inexact.
+        // Say so rather than sending the user to a Settings screen that can't grant it.
+        val isExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
         viewModel.setReminder(millis)
         showDateTimePicker = false
         scope.launch {
-            snackbarHostState.showSnackbar(context.getString(R.string.reminder_set_confirmation))
+            snackbarHostState.showSnackbar(
+                context.getString(
+                    if (isExact) {
+                        R.string.reminder_set_confirmation
+                    } else {
+                        R.string.reminder_set_confirmation_approximate
+                    }
+                )
+            )
         }
     }
 

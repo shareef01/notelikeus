@@ -155,6 +155,54 @@ class FirebaseNoteSyncTest {
     }
 
     @Test
+    fun `restoreNote clears both tombstones and re-uploads the note`() = runTest {
+        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
+        val restored = Note(id = 11L, title = "Back", content = "body", timestamp = 5L, color = 0)
+        coEvery { noteRepository.getNoteById(11L) } returns restored
+
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
+        val tombstonesCollection = mockk<CollectionReference>(relaxed = true)
+        val noteDoc = mockk<DocumentReference>(relaxed = true)
+        val tombstoneDoc = mockk<DocumentReference>(relaxed = true)
+        stubUserCollections(notesCollection, tombstonesCollection = tombstonesCollection)
+        every { notesCollection.document("11") } returns noteDoc
+        every { noteDoc.set(any<Map<String, Any?>>(), any()) } returns Tasks.forResult(null)
+        every { tombstonesCollection.document("11") } returns tombstoneDoc
+        every { tombstoneDoc.delete() } returns Tasks.forResult(null)
+
+        val result = sync.restoreNote(11L)
+
+        assertTrue(result.isSuccess)
+        verify { syncStateStore.clearDeleted(listOf(11L)) }
+        verify { tombstoneDoc.delete() }
+        verify { noteDoc.set(any<Map<String, Any?>>(), any()) }
+        verify(exactly = 0) { noteDoc.delete() }
+    }
+
+    @Test
+    fun `restoreNote skips the upload for a locked note but still clears the tombstone`() = runTest {
+        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
+        val locked = Note(id = 12L, title = "Secret", content = "", timestamp = 5L, color = 0, isLocked = true)
+        coEvery { noteRepository.getNoteById(12L) } returns locked
+
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
+        val tombstonesCollection = mockk<CollectionReference>(relaxed = true)
+        val noteDoc = mockk<DocumentReference>(relaxed = true)
+        val tombstoneDoc = mockk<DocumentReference>(relaxed = true)
+        stubUserCollections(notesCollection, tombstonesCollection = tombstonesCollection)
+        every { notesCollection.document("12") } returns noteDoc
+        every { tombstonesCollection.document("12") } returns tombstoneDoc
+        every { tombstoneDoc.delete() } returns Tasks.forResult(null)
+
+        val result = sync.restoreNote(12L)
+
+        assertTrue(result.isSuccess)
+        verify { syncStateStore.clearDeleted(listOf(12L)) }
+        verify { tombstoneDoc.delete() }
+        verify(exactly = 0) { noteDoc.set(any<Map<String, Any?>>(), any()) }
+    }
+
+    @Test
     fun `deleteAllCloudData fails when Google sign-in is required`() = runTest {
         coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.failure(
             IllegalStateException("Google sign-in required")

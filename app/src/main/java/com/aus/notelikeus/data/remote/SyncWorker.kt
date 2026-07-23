@@ -18,6 +18,7 @@ class SyncWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val noteId = inputData.getLong(KEY_NOTE_ID, -1L)
         val isDelete = inputData.getBoolean(KEY_IS_DELETE, false)
+        val isRestore = inputData.getBoolean(KEY_IS_RESTORE, false)
         val expectedUid = inputData.getString(KEY_EXPECTED_UID)
 
         if (noteId == -1L) return Result.failure()
@@ -28,10 +29,10 @@ class SyncWorker @AssistedInject constructor(
             return Result.success()
         }
 
-        val result = if (isDelete) {
-            firebaseNoteSync.deleteNote(noteId)
-        } else {
-            firebaseNoteSync.uploadNote(noteId)
+        val result = when {
+            isDelete -> firebaseNoteSync.deleteNote(noteId)
+            isRestore -> firebaseNoteSync.restoreNote(noteId)
+            else -> firebaseNoteSync.uploadNote(noteId)
         }
 
         return if (result.isSuccess) {
@@ -49,6 +50,7 @@ class SyncWorker @AssistedInject constructor(
         const val WORK_TAG = "cloud_note_sync"
         const val KEY_NOTE_ID = "note_id"
         const val KEY_IS_DELETE = "is_delete"
+        const val KEY_IS_RESTORE = "is_restore"
         const val KEY_EXPECTED_UID = "expected_uid"
         private const val MAX_RETRIES = 3
     }

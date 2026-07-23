@@ -6,8 +6,11 @@ import androidx.work.WorkManager
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -104,6 +107,49 @@ class CloudNoteSyncCoordinatorTest {
         verify {
             workManager.enqueueUniqueWork("sync_7", ExistingWorkPolicy.REPLACE, any<OneTimeWorkRequest>())
         }
+    }
+
+    @Test
+    fun `flush enqueues restore work carrying the restore flag`() = runTest {
+        every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(true)
+        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+            userId = "uid",
+            email = "user@example.com",
+            isGoogleAccount = true,
+            isAnonymous = false
+        )
+        val request = slot<OneTimeWorkRequest>()
+
+        coordinator.scheduleRestore(3L)
+        coordinator.flushNowForTest()
+
+        verify {
+            workManager.enqueueUniqueWork("sync_3", ExistingWorkPolicy.REPLACE, capture(request))
+        }
+        val data = request.captured.workSpec.input
+        assertTrue(data.getBoolean(SyncWorker.KEY_IS_RESTORE, false))
+        assertFalse(data.getBoolean(SyncWorker.KEY_IS_DELETE, false))
+    }
+
+    @Test
+    fun `scheduleRestore supersedes a pending delete for the same note`() = runTest {
+        every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(true)
+        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+            userId = "uid",
+            email = "user@example.com",
+            isGoogleAccount = true,
+            isAnonymous = false
+        )
+        val requests = mutableListOf<OneTimeWorkRequest>()
+
+        coordinator.scheduleDelete(4L)
+        coordinator.scheduleRestore(4L)
+        coordinator.flushNowForTest()
+
+        verify(exactly = 1) {
+            workManager.enqueueUniqueWork("sync_4", ExistingWorkPolicy.REPLACE, capture(requests))
+        }
+        assertTrue(requests.single().workSpec.input.getBoolean(SyncWorker.KEY_IS_RESTORE, false))
     }
 
     @Test

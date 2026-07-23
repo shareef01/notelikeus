@@ -19,14 +19,18 @@ import com.aus.notelikeus.data.remote.FirebaseNoteSync
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
 import com.aus.notelikeus.data.remote.GoogleSignInHelper
 import com.aus.notelikeus.data.remote.NoteSyncStateStore
+import com.aus.notelikeus.di.DefaultDispatcher
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.ui.theme.noteColorsMatch
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -84,7 +88,8 @@ class MainViewModel @Inject constructor(
     private val firebaseNoteSync: FirebaseNoteSync,
     private val googleSignInHelper: GoogleSignInHelper,
     private val cloudNoteSyncCoordinator: CloudNoteSyncCoordinator,
-    private val noteSyncStateStore: NoteSyncStateStore
+    private val noteSyncStateStore: NoteSyncStateStore,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(MainState())
@@ -93,6 +98,7 @@ class MainViewModel @Inject constructor(
     private var currentNotesJob: Job? = null
     private var pendingUndo: PendingUndo? = null
     private val pendingHiddenIds = mutableSetOf<Long>()
+    private val filterGeneration = AtomicInteger(0)
 
     init {
         setFilter(NoteFilter.ACTIVE)
@@ -504,46 +510,58 @@ class MainViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
+    /**
+     * Filtering scans every note's title, content, checklist and labels, so it runs off the main
+     * thread. The generation counter replaces the old "stay on the caller's dispatcher" guard:
+     * search/color/label/sort each trigger independently, and only the newest pass may publish —
+     * an older one that finishes late is dropped instead of overwriting it.
+     */
     private fun applyFilters() {
-        // Runs on the caller's dispatcher (no withContext hop) so concurrent
-        // triggers (search/color/label/sort each launch independently) can't
-        // race and let a stale computation overwrite a newer one.
+        val generation = filterGeneration.incrementAndGet()
+        // Both snapshots are taken on the caller's thread: pendingHiddenIds is a plain set
+        // mutated from the main thread, so the background pass must not read it live.
+        val snapshot = _state.value
+        val hiddenIds = pendingHiddenIds.toSet()
         viewModelScope.launch {
-            val s = _state.value
-            val filtered = s.notes.filter { note ->
-                val noteId = note.id
-                if (noteId != null && noteId in pendingHiddenIds) return@filter false
-
-                val matchesSearch = s.searchQuery.isEmpty() || (
-                    !note.isLocked && (
-                        note.title.contains(s.searchQuery, ignoreCase = true) ||
-                        note.content.contains(s.searchQuery, ignoreCase = true) ||
-                        note.checklist.any { it.text.contains(s.searchQuery, ignoreCase = true) } ||
-                        note.labels.any { it.name.contains(s.searchQuery, ignoreCase = true) }
-                    )
-                )
-
-                val matchesColor = s.selectedColor == null || noteColorsMatch(note.color, s.selectedColor)
-
-                val matchesLabel = s.selectedLabelId == null ||
-                    note.labels.any { it.id == s.selectedLabelId }
-
-                matchesSearch && matchesColor && matchesLabel
-            }
-            val sorted = when (s.sortOrder) {
-                NoteSortOrder.MANUAL -> {
-                    filtered.filter { it.isPinned } + filtered.filter { !it.isPinned }
-                }
-                NoteSortOrder.NEWEST -> {
-                    filtered.filter { it.isPinned }.sortedByDescending { it.timestamp } +
-                        filtered.filter { !it.isPinned }.sortedByDescending { it.timestamp }
-                }
-                NoteSortOrder.OLDEST -> {
-                    filtered.filter { it.isPinned }.sortedBy { it.timestamp } +
-                        filtered.filter { !it.isPinned }.sortedBy { it.timestamp }
-                }
-            }
+            val sorted = withContext(defaultDispatcher) { filterAndSort(snapshot, hiddenIds) }
+            if (generation != filterGeneration.get()) return@launch
             _state.update { it.copy(filteredNotes = sorted) }
+        }
+    }
+
+    private fun filterAndSort(s: MainState, hiddenIds: Set<Long>): List<Note> {
+        val filtered = s.notes.filter { note ->
+            val noteId = note.id
+            if (noteId != null && noteId in hiddenIds) return@filter false
+
+            val matchesSearch = s.searchQuery.isEmpty() || (
+                !note.isLocked && (
+                    note.title.contains(s.searchQuery, ignoreCase = true) ||
+                    note.content.contains(s.searchQuery, ignoreCase = true) ||
+                    note.checklist.any { it.text.contains(s.searchQuery, ignoreCase = true) } ||
+                    note.labels.any { it.name.contains(s.searchQuery, ignoreCase = true) }
+                )
+            )
+
+            val matchesColor = s.selectedColor == null || noteColorsMatch(note.color, s.selectedColor)
+
+            val matchesLabel = s.selectedLabelId == null ||
+                note.labels.any { it.id == s.selectedLabelId }
+
+            matchesSearch && matchesColor && matchesLabel
+        }
+        return when (s.sortOrder) {
+            NoteSortOrder.MANUAL -> {
+                filtered.filter { it.isPinned } + filtered.filter { !it.isPinned }
+            }
+            NoteSortOrder.NEWEST -> {
+                filtered.filter { it.isPinned }.sortedByDescending { it.timestamp } +
+                    filtered.filter { !it.isPinned }.sortedByDescending { it.timestamp }
+            }
+            NoteSortOrder.OLDEST -> {
+                filtered.filter { it.isPinned }.sortedBy { it.timestamp } +
+                    filtered.filter { !it.isPinned }.sortedBy { it.timestamp }
+            }
         }
     }
 
@@ -641,6 +659,16 @@ class MainViewModel @Inject constructor(
     private fun deleteNoteFromCloud(noteId: Long) {
         noteSyncStateStore.markDeleted(noteId)
         cloudNoteSyncCoordinator.scheduleDelete(noteId)
+    }
+
+    /**
+     * Undo of a permanent delete. The local tombstone has to go now rather than when the worker
+     * runs: any sync in between calls purgeLocalTombstonedNotes, which would delete the note we
+     * just brought back. The cloud tombstone is cleared by the scheduled restore work.
+     */
+    private fun restoreNoteToCloud(noteId: Long) {
+        noteSyncStateStore.clearDeleted(listOf(noteId))
+        cloudNoteSyncCoordinator.scheduleRestore(noteId)
     }
 
     fun setUseMonochromeTheme(enabled: Boolean) {
@@ -812,7 +840,7 @@ class MainViewModel @Inject constructor(
                 UndoAction.PERMANENT_DELETE -> {
                     undo.notes.forEach { note ->
                         val restoredId = repository.insertNoteWithResult(note)
-                        syncNoteToCloud(restoredId)
+                        restoreNoteToCloud(restoredId)
                     }
                     _state.update { it.copy(listRevision = it.listRevision + 1) }
                 }
@@ -863,7 +891,11 @@ class MainViewModel @Inject constructor(
                 stream.write(json.toByteArray(Charsets.UTF_8))
                 true
             } ?: false
-            if (wrote) BackupExportResult.Success else BackupExportResult.WriteFailed
+            if (wrote) {
+                BackupExportResult.Success(repository.getLockedNoteCount())
+            } else {
+                BackupExportResult.WriteFailed
+            }
         } catch (error: Exception) {
             BackupExportResult.Error(error)
         }

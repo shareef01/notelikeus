@@ -15,11 +15,15 @@ import com.aus.notelikeus.ui.widget.WidgetUpdater
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+private const val WIDGET_REFRESH_DEBOUNCE_MS = 250L
 
 class NoteRepositoryImpl @Inject constructor(
     private val database: NotelikeusDatabase,
@@ -30,10 +34,22 @@ class NoteRepositoryImpl @Inject constructor(
 ) : NoteRepository {
 
     private val widgetScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val widgetRefreshLock = Any()
+    private var widgetRefreshJob: Job? = null
 
+    /**
+     * Conflated: a widget refresh is a full Glance updateAll (DataStore read + DAO query per
+     * widget), and every write below asks for one. Bulk paths — a 5,000-note backup import, or
+     * a full cloud download — would otherwise fire one per note. Trailing-edge only, so a burst
+     * of writes collapses into a single update once it settles.
+     */
     private fun refreshWidget() {
-        widgetScope.launch {
-            WidgetUpdater.refresh(context)
+        synchronized(widgetRefreshLock) {
+            widgetRefreshJob?.cancel()
+            widgetRefreshJob = widgetScope.launch {
+                delay(WIDGET_REFRESH_DEBOUNCE_MS)
+                WidgetUpdater.refresh(context)
+            }
         }
     }
     override fun getActiveNotes(): Flow<List<Note>> {
@@ -173,6 +189,10 @@ class NoteRepositoryImpl @Inject constructor(
     override suspend fun getAllNotesForBackup(): List<Note> {
         return noteDao.getAllNotesForBackup().map { it.toNote() }
     }
+
+    override suspend fun getCloudEligibleNoteCount(): Int = noteDao.getCloudEligibleNoteCount()
+
+    override suspend fun getLockedNoteCount(): Int = noteDao.getLockedNoteCount()
 
     override suspend fun getAllLabelsSnapshot(): List<Label> {
         return labelDao.getAllLabelsOnce().map { it.toLabel() }
