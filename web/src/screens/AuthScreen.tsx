@@ -53,11 +53,14 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
   const { user, isReady } = useAuthListener();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Read behind the DEV check, not just rendered behind it: Vite inlines env values at build
+  // time, so an unguarded read would bake these credentials into the production bundle for
+  // anyone who has them set in .env.
   const [testEmail, setTestEmail] = useState(
-    () => import.meta.env.VITE_TEST_LOGIN_EMAIL?.trim() ?? '',
+    () => (import.meta.env.DEV ? (import.meta.env.VITE_TEST_LOGIN_EMAIL?.trim() ?? '') : ''),
   );
   const [testPassword, setTestPassword] = useState(
-    () => import.meta.env.VITE_TEST_LOGIN_PASSWORD ?? '',
+    () => (import.meta.env.DEV ? (import.meta.env.VITE_TEST_LOGIN_PASSWORD ?? '') : ''),
   );
 
   const copy = COPY[mode];
