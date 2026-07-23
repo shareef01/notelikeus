@@ -78,6 +78,9 @@ export function subscribeToNotes(
 }
 
 export async function upsertNote(userId: string, note: Note): Promise<void> {
+  // Costs one read per save, deliberately: this is what stops a note deleted on another device
+  // from being resurrected by an in-flight save here. Debouncing saves is the way to reduce it —
+  // dropping the read would trade delete propagation for the saving.
   const tombstoneSnap = await getDoc(userTombstoneDocument(userId, note.id));
   if (tombstoneSnap.exists()) {
     const raw = tombstoneSnap.data()?.deletedAt;

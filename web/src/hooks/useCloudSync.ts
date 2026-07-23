@@ -57,6 +57,11 @@ export function useCloudSync() {
       useToastStore.getState().show('Sign in with Google to restore');
       return;
     }
+    if (!online) {
+      setStatus('offline');
+      useToastStore.getState().show('You are offline', 'error');
+      return;
+    }
     setStatus('syncing');
     try {
       const { changes, merged, remoteIds } = await syncNotesWithCloud(userId, notes);

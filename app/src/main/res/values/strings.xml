@@ -44,6 +44,10 @@
 
     <!-- Export / Import -->
     <string name="export_success">Backup exported</string>
+    <plurals name="export_success_with_hidden">
+        <item quantity="one">Backup exported — includes %d hidden note in plain text</item>
+        <item quantity="other">Backup exported — includes %d hidden notes in plain text</item>
+    </plurals>
     <string name="export_failed">Export failed</string>
     <string name="export_backup_subtitle">Save notes as JSON</string>
     <string name="import_success">%1$d notes imported</string>
@@ -85,7 +89,7 @@
     <string name="set_reminder">Set reminder</string>
     <string name="reminder_must_be_future">Choose a date and time in the future</string>
     <string name="reminder_permission_denied">Enable notifications to receive reminders</string>
-    <string name="reminder_exact_alarm_hint">Allow alarms for exact reminder timing</string>
+    <string name="reminder_set_confirmation_approximate">Reminder set — may arrive a few minutes late</string>
     <string name="reminder_set_confirmation">Reminder set</string>
     <string name="reminder_removed_confirmation">Reminder removed</string>
     <string name="notification_permission_title">Notifications</string>
