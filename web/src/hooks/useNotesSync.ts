@@ -1,6 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { clearLocalUserData } from '@/lib/bootstrap';
 import {
+  loadLastMergedUserId,
+  saveLastMergedUserId,
+} from '@/lib/notes/lastMergedUser';
+import {
   mergeCloudNotesOnce,
   resetCloudMergeState,
   startNotesRealtimeSync,
@@ -28,15 +32,18 @@ export function useNotesSync(enabled: boolean) {
     let cancelled = false;
 
     const bootstrap = async () => {
-      if (lastMergedRef.current !== userId) {
+      // Seeded from storage so the guard survives a reload, not just this mount.
+      const lastMerged = lastMergedRef.current ?? loadLastMergedUserId();
+      if (lastMerged !== userId) {
         // Account switch without a clean sign-out — drop prior user's local data first.
-        if (lastMergedRef.current != null) {
+        if (lastMerged != null) {
           clearLocalUserData();
           resetCloudMergeState();
         }
         await mergeCloudNotesOnce(userId);
         if (cancelled) return;
         lastMergedRef.current = userId;
+        saveLastMergedUserId(userId);
       }
 
       if (cloudAutoSyncEnabled) {

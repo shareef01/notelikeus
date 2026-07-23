@@ -18,6 +18,8 @@ interface NoteRepository {
     suspend fun clearAllUserData()
     suspend fun getNextNotePosition(): Int
     suspend fun getAllNotesForBackup(): List<Note>
+    suspend fun getCloudEligibleNoteCount(): Int
+    suspend fun getLockedNoteCount(): Int
     suspend fun getAllLabelsSnapshot(): List<Label>
     suspend fun getNotesWithActiveReminders(now: Long): List<Note>
     suspend fun getNotesWithMissedReminders(now: Long): List<Note>
