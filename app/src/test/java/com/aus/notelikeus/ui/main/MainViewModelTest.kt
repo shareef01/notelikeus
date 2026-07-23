@@ -91,7 +91,8 @@ class MainViewModelTest {
             firebaseNoteSync,
             mockk<GoogleSignInHelper>(relaxed = true),
             cloudNoteSyncCoordinator,
-            noteSyncStateStore
+            noteSyncStateStore,
+            testDispatcher
         )
     }
 
@@ -186,6 +187,29 @@ class MainViewModelTest {
         viewModel.undoLastAction()
 
         coVerify { repository.updateNote(note.copy(isTrashed = false)) }
+    }
+
+    @Test
+    fun `undo of a permanent delete clears the tombstone that would re-delete the note`() = runTest {
+        val note = Note(id = 3L, title = "Gone", content = "Body", timestamp = 0L, color = 0, isTrashed = true)
+        every { repository.getTrashedNotes() } returns flowOf(listOf(note))
+        coEvery { repository.insertNoteWithResult(note) } returns 3L
+        viewModel = createViewModel()
+        viewModel.setFilter(NoteFilter.TRASHED)
+        advanceUntilIdle()
+
+        viewModel.trashNote(note)
+        advanceUntilIdle()
+        verify { noteSyncStateStore.markDeleted(3L, any()) }
+
+        viewModel.undoLastAction()
+        advanceUntilIdle()
+
+        // Without this the re-created note is turned straight back into a delete by
+        // FirebaseNoteSync.uploadNote, then purged locally by the next download.
+        verify { noteSyncStateStore.clearDeleted(listOf(3L)) }
+        verify { cloudNoteSyncCoordinator.scheduleRestore(3L) }
+        verify(exactly = 0) { cloudNoteSyncCoordinator.scheduleUpload(3L) }
     }
 
     @Test
