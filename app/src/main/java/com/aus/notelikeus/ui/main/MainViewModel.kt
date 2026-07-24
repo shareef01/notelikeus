@@ -668,6 +668,9 @@ class MainViewModel @Inject constructor(
      */
     private fun restoreNoteToCloud(noteId: Long) {
         noteSyncStateStore.clearDeleted(listOf(noteId))
+        // Held until the cloud tombstone is confirmed deleted, so a restore whose sync work
+        // fails is retried by the next full sync rather than losing the note again.
+        noteSyncStateStore.markRestored(noteId)
         cloudNoteSyncCoordinator.scheduleRestore(noteId)
     }
 
