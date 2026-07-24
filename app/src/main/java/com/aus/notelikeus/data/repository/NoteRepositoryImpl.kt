@@ -192,8 +192,6 @@ class NoteRepositoryImpl @Inject constructor(
 
     override suspend fun getCloudEligibleNoteCount(): Int = noteDao.getCloudEligibleNoteCount()
 
-    override suspend fun getLockedNoteCount(): Int = noteDao.getLockedNoteCount()
-
     override suspend fun getAllLabelsSnapshot(): List<Label> {
         return labelDao.getAllLabelsOnce().map { it.toLabel() }
     }
@@ -226,7 +224,7 @@ class NoteRepositoryImpl @Inject constructor(
     private fun syncReminderForNote(note: Note) {
         val noteId = note.id ?: return
         val shouldCancel =
-            note.isTrashed || note.isArchived || note.isLocked || note.reminderTimestamp == null
+            note.isTrashed || note.isArchived || note.reminderTimestamp == null
         if (shouldCancel) {
             reminderScheduler.cancelReminder(noteId)
         } else {

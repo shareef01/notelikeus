@@ -17,7 +17,6 @@ data class WidgetNote(
     val id: Long,
     val title: String,
     val preview: String,
-    val isLocked: Boolean,
     val isPinned: Boolean
 )
 
@@ -39,7 +38,6 @@ object WidgetNoteLoader {
                 id = note.id,
                 title = note.title,
                 preview = buildPreview(context, noteWithRelations),
-                isLocked = note.isLocked,
                 isPinned = note.isPinned
             )
         }

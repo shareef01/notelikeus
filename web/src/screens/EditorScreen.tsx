@@ -4,7 +4,6 @@ import {
   DockIcon,
   FloatWindowIcon,
   FullscreenIcon,
-  LockIcon,
   NotificationActiveIcon,
   NotificationIcon,
   PinIcon,
@@ -17,7 +16,6 @@ import { MarkdownBody } from '@/components/editor/MarkdownPreview';
 import { ReminderPickerDialog } from '@/components/editor/ReminderPickerDialog';
 import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
 import { useNoteEditor } from '@/hooks/useNoteEditor';
-import { useAuthListener } from '@/hooks/useAuth';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset';
@@ -26,7 +24,6 @@ import {
   wrapSelection,
   wrapSelectionAsLink,
 } from '@/lib/text/markdown';
-import { isDeviceAuthAvailable, requireDeviceAuth } from '@/lib/auth/deviceAuth';
 import { contentColorForBackground, noteSurfaceStyle } from '@/theme/contrast';
 import { useUiStore, type EditorLayout, type EditorRoute } from '@/store/uiStore';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -50,18 +47,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const [contentFocused, setContentFocused] = useState(true);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const selectionRef = useRef({ start: 0, end: 0 });
-  const { user } = useAuthListener();
-  const [deviceAuthAvailable, setDeviceAuthAvailable] = useState<boolean | null>(null);
-  const [revealError, setRevealError] = useState<string | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
-
-  useEffect(() => {
-    void isDeviceAuthAvailable().then(setDeviceAuthAvailable);
-  }, []);
-
   const surface = noteSurfaceStyle(state.color, { solid: true });
   const contentColor = contentColorForBackground(state.color);
-  const showLockOverlay = state.isLocked && !state.isAccessGranted;
   const hasChecklist = state.checklist.length > 0;
   const isFloatLayout = isTabletUp && editorLayout === 'float';
   const isOverlayShell = !isTabletUp || editorLayout === 'fullscreen' || isFloatLayout;
@@ -148,24 +135,6 @@ export function EditorScreen({ route }: EditorScreenProps) {
     closeEditor();
   };
 
-  const handleReveal = async () => {
-    if (deviceAuthAvailable === null) return;
-    if (deviceAuthAvailable === false) {
-      editor.grantAccess();
-      return;
-    }
-    setRevealError(null);
-    setIsVerifying(true);
-    try {
-      await requireDeviceAuth(user?.uid ?? 'local', user?.email ?? 'Notelikeus');
-      editor.grantAccess();
-    } catch (error) {
-      setRevealError(error instanceof Error ? error.message : 'Device verification failed.');
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
   const layoutButtons: { id: EditorLayout; label: string; icon: ReactNode }[] = [
     { id: 'float', label: 'Float note', icon: <FloatWindowIcon size={16} /> },
     { id: 'dock', label: 'Dock note', icon: <DockIcon size={16} /> },
@@ -250,61 +219,6 @@ export function EditorScreen({ route }: EditorScreenProps) {
     </div>
   ) : null;
 
-  if (showLockOverlay) {
-    return editorShell(
-      <>
-        <header className="flex items-center justify-between px-2 pt-safe lg:px-4">
-          <button
-            type="button"
-            onClick={() => void handleBack()}
-            className="flex size-11 items-center justify-center rounded-full transition-colors hover:bg-black/10"
-            style={{ color: contentColor }}
-            aria-label="Back"
-          >
-            <ArrowBackIcon size={22} />
-          </button>
-          <div className="flex items-center" style={{ color: contentColor }}>
-            {layoutControls}
-          </div>
-        </header>
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
-          <span className="opacity-60" style={{ color: contentColor }}>
-            <LockIcon size={48} />
-          </span>
-          <p className="text-xl font-semibold sm:text-2xl" style={{ color: contentColor }}>
-            This note is hidden
-          </p>
-          <p className="max-w-xs text-sm opacity-70" style={{ color: contentColor }}>
-            {deviceAuthAvailable === null
-              ? 'Hidden notes are kept off your feed and out of cloud sync on this device.'
-              : deviceAuthAvailable
-                ? "Hidden notes are kept off your feed and out of cloud sync on this device. Verify with this device's screen lock to view it."
-                : "Hidden notes are kept off your feed and out of cloud sync on this device. This browser can't verify your device lock, so anyone with access to it can reveal this note."}
-          </p>
-          {revealError ? (
-            <p className="max-w-xs text-sm font-medium text-red-300 animate-in fade-in duration-200">
-              {revealError}
-            </p>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => void handleReveal()}
-            disabled={isVerifying || deviceAuthAvailable === null}
-            className="flex items-center gap-2 rounded-note bg-black/15 px-6 py-3 text-sm font-semibold backdrop-blur-sm transition-opacity disabled:opacity-60"
-            style={{ color: contentColor }}
-          >
-            {isVerifying ? (
-              <span
-                className="size-4 animate-spin rounded-full border-2 border-current/20 border-t-current"
-                aria-hidden
-              />
-            ) : null}
-            {isVerifying ? 'Verifying…' : 'Show note'}
-          </button>
-        </div>
-      </>,
-    );
-  }
 
   return editorShell(
     <>
@@ -511,8 +425,6 @@ export function EditorScreen({ route }: EditorScreenProps) {
         onCreateLabel={editor.createLabel}
         reminderTimestamp={state.reminderTimestamp}
         onReminderChange={editor.setReminderTimestamp}
-        isLocked={state.isLocked}
-        onLockToggle={editor.toggleLock}
         onDeleteNote={() => void handleDelete()}
       />
       <LinkDialog

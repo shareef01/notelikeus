@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { Note, NoteQueryFilters } from '@/types/note';
 import { notesContentEqual, notesEqual } from '@/lib/notes/noteEquality';
-import { notesFromPersisted, notesToPersisted } from '@/lib/crypto/notesPersistCrypto';
+import { unlockPersistedNotes, type MaybeLockedNote } from '@/lib/crypto/unlockMigration';
 
 export type NotesLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -28,15 +28,21 @@ const defaultFilters: NoteQueryFilters = {
   sortOrder: 'manual',
 };
 
-/** Encrypts locked note secrets on write; decrypts on read. */
-const lockedNotesStorage = {
+/**
+ * Notes are stored plainly now that locking is gone. Reads still run the unlock migration, so
+ * notes written by a build that encrypted their body come back with their text restored rather
+ * than silently blank.
+ */
+const notesStorage = {
   getItem: async (name: string): Promise<string | null> => {
     const raw = localStorage.getItem(name);
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw) as { state?: { notes?: unknown } };
       if (Array.isArray(parsed?.state?.notes)) {
-        parsed.state!.notes = await notesFromPersisted(parsed.state!.notes as never);
+        parsed.state!.notes = await unlockPersistedNotes(
+          parsed.state!.notes as MaybeLockedNote[],
+        );
       }
       return JSON.stringify(parsed);
     } catch {
@@ -44,15 +50,7 @@ const lockedNotesStorage = {
     }
   },
   setItem: async (name: string, value: string): Promise<void> => {
-    try {
-      const parsed = JSON.parse(value) as { state?: { notes?: Note[] } };
-      if (Array.isArray(parsed?.state?.notes)) {
-        parsed.state!.notes = (await notesToPersisted(parsed.state!.notes)) as never;
-      }
-      localStorage.setItem(name, JSON.stringify(parsed));
-    } catch {
-      localStorage.setItem(name, value);
-    }
+    localStorage.setItem(name, value);
   },
   removeItem: async (name: string): Promise<void> => {
     localStorage.removeItem(name);
@@ -116,7 +114,7 @@ export const useNotesStore = create<NotesState>()(
       name: 'notelikeus-notes',
       partialize: (state) => ({ notes: state.notes, filters: state.filters }),
       skipHydration: true,
-      storage: createJSONStorage(() => lockedNotesStorage),
+      storage: createJSONStorage(() => notesStorage),
     },
   ),
 );
