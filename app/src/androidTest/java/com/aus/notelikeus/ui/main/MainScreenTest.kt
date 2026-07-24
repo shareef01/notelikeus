@@ -1,14 +1,23 @@
 package com.aus.notelikeus.ui.main
 
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.theme.NotelikeusTheme
 import io.mockk.every
 import io.mockk.mockk
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Rule
 import org.junit.Test
+
+/** Phone-sized window, so these assertions exercise the single-pane layout. */
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
+private fun compactWindowSizeClass(): WindowSizeClass =
+    WindowSizeClass.calculateFromSize(DpSize(400.dp, 800.dp))
 
 class MainScreenTest {
 
@@ -30,7 +39,9 @@ class MainScreenTest {
             NotelikeusTheme {
                 MainScreen(
                     viewModel = viewModel,
-                    onNoteClick = { _ -> }
+                    onNoteClick = { _ -> },
+                    onEditLabels = {},
+                    windowSizeClass = compactWindowSizeClass()
                 )
             }
         }
@@ -48,7 +59,9 @@ class MainScreenTest {
             NotelikeusTheme {
                 MainScreen(
                     viewModel = viewModel,
-                    onNoteClick = { _ -> }
+                    onNoteClick = { _ -> },
+                    onEditLabels = {},
+                    windowSizeClass = compactWindowSizeClass()
                 )
             }
         }
@@ -74,7 +87,9 @@ class MainScreenTest {
             NotelikeusTheme {
                 MainScreen(
                     viewModel = viewModel,
-                    onNoteClick = { _ -> }
+                    onNoteClick = { _ -> },
+                    onEditLabels = {},
+                    windowSizeClass = compactWindowSizeClass()
                 )
             }
         }
