@@ -28,3 +28,9 @@ signing.properties
 web/node_modules/
 web/dist/
 /node_modules/
+
+# Firebase emulator artefacts
+firestore-debug.log
+firebase-debug.log
+ui-debug.log
+database-debug.log
