@@ -54,9 +54,16 @@ export default function App() {
     }
   }, [openNewNote]);
 
+  // Mounted above every early return below: it renders nothing and only sets the theme class on
+  // <html>. Sitting under the `!user` return meant the loading and sign-in screens — the first
+  // thing anyone sees — ran with no theme class, falling back to :root's light palette on the
+  // shell's dark background.
+  const themeApplier = <ThemeApplier />;
+
   if (!firebaseReady) {
     return (
       <div className="flex min-h-full items-center justify-center bg-true-surface p-6">
+        {themeApplier}
         <p className="max-w-md rounded-note border border-amber-900/50 bg-amber-950/30 px-4 py-3 text-center text-sm text-amber-200">
           Copy web/.env.example to web/.env and set VITE_FIREBASE_APP_ID from Firebase Console.
         </p>
@@ -67,6 +74,7 @@ export default function App() {
   if (!authReady) {
     return (
       <div className="flex min-h-full flex-col items-center justify-center gap-4 bg-true-surface px-6 text-center">
+        {themeApplier}
         <div className="size-8 animate-pulse rounded-full bg-brand-outline/60" aria-hidden />
         <p className="text-sm text-brand-muted">Checking your sign-in status…</p>
         {authTimedOut ? (
@@ -89,9 +97,12 @@ export default function App() {
 
   if (!user) {
     return (
-      <Suspense fallback={null}>
-        <AuthScreen mode="signin" mandatory />
-      </Suspense>
+      <>
+        {themeApplier}
+        <Suspense fallback={null}>
+          <AuthScreen mode="signin" mandatory />
+        </Suspense>
+      </>
     );
   }
 
@@ -99,7 +110,7 @@ export default function App() {
 
   return (
     <>
-      <ThemeApplier />
+      {themeApplier}
       <MainScreen />
       {showMobileEditor ? (
         <Suspense fallback={null}>
