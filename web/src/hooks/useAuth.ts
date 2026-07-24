@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import { completeGoogleRedirectSignIn } from '@/lib/auth/googleAuth';
 import { formatAuthError } from '@/lib/auth/authErrors';
 import { useToastStore } from '@/store/toastStore';
+import { forgetSignedIn, rememberSignedIn } from '@/lib/auth/sessionHint';
 
 /** Mount once in App — registers the only Firebase auth listener. */
 export function useAuthSync() {
@@ -26,6 +27,8 @@ export function useAuthSync() {
 
     const auth = getFirebaseAuth();
     return onAuthStateChanged(auth, (nextUser) => {
+      if (nextUser) rememberSignedIn();
+      else forgetSignedIn();
       useAuthStore.setState((state) => {
         if (state.user?.uid === nextUser?.uid && state.isReady) {
           return state;
