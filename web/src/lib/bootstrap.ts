@@ -2,6 +2,7 @@ import { isFirebaseConfigured } from '@/lib/config';
 import { initFirebase } from '@/lib/firebase';
 import { clearKnownCloudIds, KNOWN_CLOUD_IDS_STORAGE_KEY } from '@/lib/notes/knownCloudIds';
 import { clearLastMergedUserId, LAST_MERGED_USER_STORAGE_KEY } from '@/lib/notes/lastMergedUser';
+import { forgetSignedIn, SESSION_HINT_STORAGE_KEY } from '@/lib/auth/sessionHint';
 import { ensureReminderSync } from '@/lib/reminders/reminderSync';
 import { useLabelRegistryStore } from '@/store/labelRegistryStore';
 import { useNotesStore } from '@/store/notesStore';
@@ -18,6 +19,7 @@ const STORAGE_KEYS = [
   'notelikeus-lock-key',
   KNOWN_CLOUD_IDS_STORAGE_KEY,
   LAST_MERGED_USER_STORAGE_KEY,
+  SESSION_HINT_STORAGE_KEY,
 ] as const;
 
 /** User-owned note data — cleared on sign-out / account switch. Settings/UI prefs stay. */
@@ -28,6 +30,7 @@ const USER_DATA_STORAGE_KEYS = [
   'notelikeus-lock-key',
   KNOWN_CLOUD_IDS_STORAGE_KEY,
   LAST_MERGED_USER_STORAGE_KEY,
+  SESSION_HINT_STORAGE_KEY,
 ] as const;
 
 const REHYDRATE_TIMEOUT_MS = 8_000;
@@ -108,6 +111,7 @@ export function clearLocalUserData(): void {
   useTombstoneStore.getState().reset();
   clearKnownCloudIds();
   clearLastMergedUserId();
+  forgetSignedIn();
   for (const key of USER_DATA_STORAGE_KEYS) {
     try {
       localStorage.removeItem(key);
