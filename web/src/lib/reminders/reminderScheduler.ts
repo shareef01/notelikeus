@@ -24,7 +24,6 @@ function buildSwReminders(notes: Note[]): SwReminder[] {
       (note) =>
         note.reminderTimestamp != null &&
         !note.isTrashed &&
-        !note.isLocked &&
         note.reminderTimestamp > now,
     )
     .map((note) => ({

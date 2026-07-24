@@ -31,7 +31,6 @@ data class EditorState(
     val isPinned: Boolean = false,
     val isArchived: Boolean = false,
     val isTrashed: Boolean = false,
-    val isLocked: Boolean = false,
     val reminderTimestamp: Long? = null,
     val labels: List<Label> = emptyList(),
     val allLabels: List<Label> = emptyList(),
@@ -39,7 +38,6 @@ data class EditorState(
     val timestamp: Long = System.currentTimeMillis(),
     val position: Int = 0,
     val isNoteLoaded: Boolean = false,
-    val isAccessGranted: Boolean = true,
     val noteNotFound: Boolean = false
 )
 
@@ -99,14 +97,12 @@ class EditorViewModel @Inject constructor(
                             isPinned = note.isPinned,
                             isArchived = note.isArchived,
                             isTrashed = note.isTrashed,
-                            isLocked = note.isLocked,
                             reminderTimestamp = note.reminderTimestamp,
                             labels = note.labels,
                             checklist = note.checklist.sortedWith(compareBy({ it.isChecked }, { it.position })),
                             timestamp = note.timestamp,
                             position = note.position,
                             isNoteLoaded = true,
-                            isAccessGranted = !note.isLocked
                         )
                     }
                 } ?: run {
@@ -200,7 +196,6 @@ class EditorViewModel @Inject constructor(
             isArchived = state.isArchived,
             isTrashed = state.isTrashed,
             position = state.position,
-            isLocked = state.isLocked,
             reminderTimestamp = state.reminderTimestamp,
             labels = state.labels,
             attachments = emptyList(),
@@ -241,11 +236,6 @@ class EditorViewModel @Inject constructor(
     suspend fun undoArchive(snapshot: Note) {
         _state.update { it.copy(isArchived = false) }
         repository.updateNote(snapshot)
-    }
-
-    fun toggleLock() {
-        _state.update { it.copy(isLocked = !it.isLocked) }
-        saveNote()
     }
 
     fun setReminder(timestamp: Long?) {
@@ -290,10 +280,6 @@ class EditorViewModel @Inject constructor(
             }
             triggerAutosave()
         }
-    }
-
-    fun grantAccess() {
-        _state.update { it.copy(isAccessGranted = true) }
     }
 
     fun applyBoldToSelection() {
@@ -423,7 +409,7 @@ class EditorViewModel @Inject constructor(
     }
 
     private fun syncReminder(noteId: Long, state: EditorState) {
-        if (state.isTrashed || state.isArchived || state.isLocked || state.reminderTimestamp == null) {
+        if (state.isTrashed || state.isArchived || state.reminderTimestamp == null) {
             reminderScheduler.cancelReminder(noteId)
         } else {
             reminderScheduler.scheduleReminder(

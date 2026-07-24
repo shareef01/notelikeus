@@ -164,21 +164,7 @@ fun EditorScreen(
         Modifier
     }
 
-    val showLockOverlay = state.isNoteLoaded && state.isLocked && !state.isAccessGranted
     val imeVisible = WindowInsets.isImeVisible
-    var hasPromptedLockAuth by remember { mutableStateOf(false) }
-
-    LaunchedEffect(showLockOverlay) {
-        if (showLockOverlay && !hasPromptedLockAuth) {
-            hasPromptedLockAuth = true
-            (context as MainActivity).showBiometricPrompt(
-                title = context.getString(R.string.locked_note),
-                onSuccess = { viewModel.grantAccess() },
-                onError = { onBack() }
-            )
-        }
-    }
-
     LaunchedEffect(state.noteNotFound) {
         if (state.noteNotFound) {
             snackbarHostState.showSnackbar(context.getString(R.string.note_not_found))
@@ -186,75 +172,6 @@ fun EditorScreen(
         }
     }
 
-    if (showLockOverlay) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = noteColor
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                TopAppBar(
-                    title = {},
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.cd_back),
-                                tint = contentColor
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        navigationIconContentColor = contentColor,
-                        actionIconContentColor = contentColor,
-                        titleContentColor = contentColor
-                    ),
-                    windowInsets = WindowInsets.statusBars
-                )
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 32.dp)
-                        .navigationBarsPadding(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                Icon(
-                    Icons.Default.Lock,
-                    contentDescription = stringResource(R.string.locked_note),
-                    modifier = Modifier.size(64.dp),
-                    tint = contentColor.copy(alpha = 0.6f)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = stringResource(R.string.locked_note_message),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = contentColor
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                FilledTonalButton(
-                    onClick = {
-                        (context as MainActivity).showBiometricPrompt(
-                            title = context.getString(R.string.locked_note),
-                            onSuccess = { viewModel.grantAccess() },
-                            onError = { onBack() }
-                        )
-                    },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = contentColor.copy(alpha = 0.16f),
-                        contentColor = contentColor
-                    )
-                ) {
-                    Text(stringResource(R.string.unlock))
-                }
-                TextButton(onClick = onBack) {
-                    Text(stringResource(R.string.go_back), color = contentColor)
-                }
-                }
-            }
-        }
-        return
-    }
 
     Scaffold(
         snackbarHost = {
@@ -370,8 +287,6 @@ fun EditorScreen(
                     selectedLabels = state.labels,
                     onLabelToggle = viewModel::toggleLabel,
                     onCreateLabel = viewModel::createLabel,
-                    isLocked = state.isLocked,
-                    onLockToggle = viewModel::toggleLock,
                     onDeleteNote = {
                         scope.launch {
                             val snapshot = viewModel.trashNoteForDelete()

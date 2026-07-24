@@ -20,7 +20,6 @@ export interface Note {
   isArchived: boolean;
   isTrashed: boolean;
   position: number;
-  isLocked: boolean;
   reminderTimestamp: number | null;
   labels: Label[];
   attachments: Attachment[];
@@ -40,8 +39,12 @@ export interface NoteQueryFilters {
   sortOrder?: 'manual' | 'newest' | 'oldest';
 }
 
-export function isCloudSyncEligible(note: Note): boolean {
-  return !note.isLocked;
+/**
+ * Every note syncs. Kept as a named predicate because the sync paths read better for it and
+ * it is the single place to reintroduce an exclusion if one is ever needed again.
+ */
+export function isCloudSyncEligible(_note: Note): boolean {
+  return true;
 }
 
 export function createEmptyNote(partial: Partial<Note> & Pick<Note, 'localId' | 'id'>): Note {
@@ -55,7 +58,6 @@ export function createEmptyNote(partial: Partial<Note> & Pick<Note, 'localId' | 
     isArchived: false,
     isTrashed: false,
     position: 0,
-    isLocked: false,
     reminderTimestamp: null,
     labels: [],
     attachments: [],
@@ -95,8 +97,6 @@ export function filterNotes(notes: Note[], filters: NoteQueryFilters): Note[] {
     if (filters.colorArgb != null && !noteColorsMatch(note.color, filters.colorArgb)) return false;
     if (filters.labelName && !note.labels.some((l) => l.name === filters.labelName)) return false;
     if (!query) return true;
-    // Locked notes stay visible in the list but must not match on plaintext content.
-    if (note.isLocked) return false;
     const inTitle = note.title.toLowerCase().includes(query);
     const inContent = note.content.toLowerCase().includes(query);
     const inChecklist = note.checklist.some((item) => item.text.toLowerCase().includes(query));
@@ -132,6 +132,5 @@ export function filterNotes(notes: Note[], filters: NoteQueryFilters): Note[] {
 }
 
 export function shouldApplyRemoteNote(local: Note, remote: Note): boolean {
-  if (local.isLocked) return false;
   return remote.timestamp >= local.timestamp;
 }

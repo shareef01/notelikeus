@@ -109,19 +109,9 @@ fun MainScreen(
     ) { uri ->
         uri?.let {
             scope.launch {
-                when (val result = viewModel.exportBackup(context.contentResolver, it)) {
-                    // Backups are plain JSON, so hidden notes leave the app unencrypted —
-                    // say so, matching the web export toast.
-                    is BackupExportResult.Success -> snackbarHostState.showSnackbar(
-                        if (result.lockedNoteCount > 0) {
-                            context.resources.getQuantityString(
-                                R.plurals.export_success_with_hidden,
-                                result.lockedNoteCount,
-                                result.lockedNoteCount
-                            )
-                        } else {
-                            context.getString(R.string.export_success)
-                        }
+                when (viewModel.exportBackup(context.contentResolver, it)) {
+                    BackupExportResult.Success -> snackbarHostState.showSnackbar(
+                        context.getString(R.string.export_success)
                     )
                     BackupExportResult.WriteFailed,
                     is BackupExportResult.Error -> snackbarHostState.showSnackbar(

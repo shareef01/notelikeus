@@ -88,9 +88,11 @@ describe('firestore.rules', () => {
     );
   });
 
-  it('rejects locked notes with plaintext content', async () => {
+  // Note locking was removed. Clients that predate the removal still send isLocked, so it must
+  // stay accepted; clients that postdate it omit the field entirely, which must also be accepted.
+  it('still accepts isLocked from clients that predate its removal', async () => {
     const alice = authed('alice');
-    await assertFails(
+    await assertSucceeds(
       setDoc(
         noteRef(alice, 'alice', 'note-1'),
         validNote({ isLocked: true, title: 'Secret', content: 'Hidden' }),
@@ -98,13 +100,16 @@ describe('firestore.rules', () => {
     );
   });
 
-  it('allows locked notes with redacted content', async () => {
+  it('accepts a note with no isLocked field at all', async () => {
     const alice = authed('alice');
-    await assertSucceeds(
-      setDoc(
-        noteRef(alice, 'alice', 'note-1'),
-        validNote({ isLocked: true, title: '', content: '' }),
-      ),
+    const { isLocked: _dropped, ...withoutLock } = validNote();
+    await assertSucceeds(setDoc(noteRef(alice, 'alice', 'note-1'), withoutLock));
+  });
+
+  it('rejects a non-boolean isLocked', async () => {
+    const alice = authed('alice');
+    await assertFails(
+      setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ isLocked: 'yes' })),
     );
   });
 

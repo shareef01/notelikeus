@@ -16,7 +16,6 @@ import { getFirestoreDb } from '@/lib/firebase';
 import {
   cloudMapToNote,
   noteToCloudMap,
-  noteToFirestorePayload,
   syncMetaMap,
   type FirestoreNoteDocument,
 } from '@/lib/mappers/noteCloudMapper';
@@ -95,13 +94,7 @@ export async function upsertNote(userId: string, note: Note): Promise<void> {
     return;
   }
 
-  const payload = noteToFirestorePayload(note);
-  if (!payload) {
-    // Locked / ineligible: drop cloud copy without a tombstone so unlock can re-upload.
-    await deleteDoc(ref);
-    return;
-  }
-  await setDoc(ref, payload, { merge: true });
+  await setDoc(ref, noteToCloudMap(note), { merge: true });
 }
 
 export async function deleteNote(userId: string, noteId: string): Promise<void> {
@@ -154,7 +147,6 @@ export async function mergeRemoteNotes(localNotes: Note[], remoteNotes: Note[]):
       byId.set(remote.id, remote);
       continue;
     }
-    if (local.isLocked) continue;
     if (remote.timestamp >= local.timestamp) {
       byId.set(remote.id, remote);
     }
@@ -208,7 +200,7 @@ export async function fetchRemoteNotes(userId: string): Promise<Note[]> {
 /**
  * Merges cloud notes into local state and uploads any newer / missing local notes.
  * Matches Android `downloadAllNotes` conflict behavior, including delete-on-absence
- * for IDs that were previously known in cloud (e.g. locked notes removed without tombstone).
+ * for IDs that were previously known in cloud.
  */
 export async function syncNotesWithCloud(
   userId: string,
@@ -241,15 +233,13 @@ export async function syncNotesWithCloud(
       continue;
     }
 
-    // Absent from cloud: if we previously knew this id there, do not re-upload
-    // (Android deletes the local row; lock flow drops cloud without a tombstone).
+    // Absent from cloud: if we previously knew this id there, it was deleted elsewhere, so
+    // do not re-upload it (Android deletes the local row in the same situation).
     if (previouslyKnownCloudIds.has(localNote.id)) {
-      if (!localNote.isLocked) {
-        droppedLocalIds.add(localNote.id);
-        useTombstoneStore.getState().markDeleted(localNote.id);
-        await writeCloudTombstone(userId, localNote.id);
-        changes++;
-      }
+      droppedLocalIds.add(localNote.id);
+      useTombstoneStore.getState().markDeleted(localNote.id);
+      await writeCloudTombstone(userId, localNote.id);
+      changes++;
       continue;
     }
 

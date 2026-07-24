@@ -1,5 +1,4 @@
 import { isFirebaseConfigured } from '@/lib/config';
-import { clearLockKey } from '@/lib/crypto/lockedNoteCrypto';
 import { initFirebase } from '@/lib/firebase';
 import { clearKnownCloudIds, KNOWN_CLOUD_IDS_STORAGE_KEY } from '@/lib/notes/knownCloudIds';
 import { clearLastMergedUserId, LAST_MERGED_USER_STORAGE_KEY } from '@/lib/notes/lastMergedUser';
@@ -107,9 +106,6 @@ export function clearLocalUserData(): void {
   useNotesStore.getState().reset();
   useLabelRegistryStore.getState().reset();
   useTombstoneStore.getState().reset();
-  // Async now that the key lives in IndexedDB; not awaited because every caller of this is a
-  // synchronous sign-out path, and IndexedDB orders the next account's key write after it.
-  void clearLockKey();
   clearKnownCloudIds();
   clearLastMergedUserId();
   for (const key of USER_DATA_STORAGE_KEYS) {

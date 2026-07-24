@@ -30,7 +30,9 @@ internal fun Note.toCloudMap(): Map<String, Any?> = buildMap {
 
     put("position", position)
 
-    put("isLocked", isLocked)
+    // Locking was removed, but older clients and the deployed rules still expect this key.
+
+    put("isLocked", false)
 
     put("reminderTimestamp", reminderTimestamp)
 
@@ -126,8 +128,6 @@ internal suspend fun Map<String, Any?>.toCloudNote(
 
         position = (this["position"] as? Number)?.toInt() ?: 0,
 
-        isLocked = this["isLocked"] as? Boolean ?: false,
-
         reminderTimestamp = (this["reminderTimestamp"] as? Number)?.toLong(),
 
         labels = labels,
@@ -154,7 +154,9 @@ private fun ChecklistItem.toCloudMap(): Map<String, Any> = mapOf(
 
 
 
-internal fun Note.isCloudSyncEligible(): Boolean = !isLocked
+/** Every note syncs now that locking is gone; kept as the single place to reintroduce a rule. */
+
+internal fun Note.isCloudSyncEligible(): Boolean = true
 
 internal fun syncMetaMap(noteCount: Int): Map<String, Any> = mapOf(
 

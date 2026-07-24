@@ -75,7 +75,7 @@ export function useCloudSync() {
         void Promise.all(staleIds.map((id) => deleteNote(userId, id)));
       }
       useNotesStore.getState().setNotes(filtered);
-      setSyncedCount(filtered.filter((n) => !n.isLocked).length);
+      setSyncedCount(filtered.length);
       setStatus('synced');
       useToastStore.getState().show(
         changes > 0 ? `Restored ${changes} change${changes === 1 ? '' : 's'}` : 'Already up to date',

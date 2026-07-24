@@ -15,6 +15,13 @@ data class NoteEntity(
     val isArchived: Boolean,
     val isTrashed: Boolean,
     val position: Int,
-    val isLocked: Boolean,
+    /**
+     * Vestigial. Note locking was removed, but the column stays so the schema is unchanged
+     * and no migration is needed. Recreating `notes` to drop it would fire the ON DELETE
+     * CASCADE that `checklist_items` and `note_label_cross_ref` declare against it, and
+     * SQLite's DROP TABLE performs an implicit DELETE FROM — not worth risking every
+     * user's checklists and label links to reclaim one boolean.
+     */
+    val isLocked: Boolean = false,
     val reminderTimestamp: Long?
 )

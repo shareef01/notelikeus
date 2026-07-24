@@ -58,11 +58,6 @@ function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
     const local = localNotes.find((note) => note.id === remote.id);
     if (!local) {
       result.set(remote.id, remote);
-    } else if (local.isLocked) {
-      // Locked notes are never uploaded (see isCloudSyncEligible), so any cloud copy
-      // that still exists for this id is necessarily a stale pre-lock version — never
-      // let it override local, matching mergeRemoteNotes' handling of the same case.
-      result.set(remote.id, local);
     } else if (local.timestamp > remote.timestamp) {
       result.set(remote.id, local);
     } else {
@@ -72,15 +67,7 @@ function applyRemoteSnapshot(localNotes: Note[], remoteNotes: Note[]): Note[] {
 
   for (const local of localNotes) {
     if (result.has(local.id)) continue;
-    if (isDeleted(local.id)) {
-      // Match Android: keep locked locals despite a colliding tombstone id.
-      if (local.isLocked) result.set(local.id, local);
-      continue;
-    }
-    if (local.isLocked) {
-      result.set(local.id, local);
-      continue;
-    }
+    if (isDeleted(local.id)) continue;
     if (!isInitial && knownCloudIds.has(local.id) && !remoteIds.has(local.id)) {
       continue;
     }

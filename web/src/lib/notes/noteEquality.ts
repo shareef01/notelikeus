@@ -18,7 +18,6 @@ export function noteContentKey(note: Note): string {
     note.isPinned ? 1 : 0,
     note.isArchived ? 1 : 0,
     note.isTrashed ? 1 : 0,
-    note.isLocked ? 1 : 0,
     note.reminderTimestamp ?? '',
     note.title,
     note.content,

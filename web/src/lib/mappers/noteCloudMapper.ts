@@ -72,7 +72,9 @@ export function noteToCloudMap(note: Note): FirestoreNoteDocument {
     isArchived: note.isArchived,
     isTrashed: note.isTrashed,
     position: note.position,
-    isLocked: note.isLocked,
+    // Note locking is gone, but older clients and the deployed rules still expect the field.
+    // Writing a constant keeps this build compatible with both without a deploy ordering rule.
+    isLocked: false,
     reminderTimestamp: note.reminderTimestamp,
     labels: note.labels.map((label) => ({ name: label.name })),
     checklist: note.checklist.map(checklistToCloudMap),
@@ -143,7 +145,6 @@ export function cloudMapToNote(
     isArchived: asBoolean(data.isArchived),
     isTrashed: asBoolean(data.isTrashed),
     position: asNumber(data.position, 0),
-    isLocked: asBoolean(data.isLocked),
     reminderTimestamp: typeof data.reminderTimestamp === 'number' &&
       Number.isFinite(data.reminderTimestamp)
       ? data.reminderTimestamp

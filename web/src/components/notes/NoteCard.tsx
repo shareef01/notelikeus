@@ -2,7 +2,6 @@ import {
   CheckCircleIcon,
   CheckCircleOutlineIcon,
   DragHandleIcon,
-  LockIcon,
   NotificationIcon,
   PinIcon,
 } from '@/components/icons/Icons';
@@ -60,16 +59,16 @@ function NoteCardImpl({
     note.color === 0
       ? { backgroundColor: 'rgba(255,255,255,0.12)', color: contentColor }
       : { backgroundColor: argbToCssAlpha(note.color, 0.1), color: contentColor };
-  const title = note.isLocked ? 'Hidden note' : note.title || 'Untitled';
-  const showBody = !note.isLocked && note.content.length > 0;
+  const title = note.title || 'Untitled';
+  const showBody = note.content.length > 0;
   const previewBody = stripMarkdownForPreview(note.content);
   const highlight = (text: string) => highlightSearchText(text, searchQuery);
   const hasReminder =
     note.reminderTimestamp != null && note.reminderTimestamp > Date.now() && !note.isTrashed;
-  const showStatusCluster = !isSelected && (note.isPinned || hasReminder || note.isLocked);
+  const showStatusCluster = !isSelected && (note.isPinned || hasReminder);
   const checkedCount = note.checklist.filter((item) => item.isChecked).length;
-  const showChecklist = !note.isLocked && note.checklist.length > 0;
-  const showLabels = !note.isLocked && note.labels.length > 0;
+  const showChecklist = note.checklist.length > 0;
+  const showLabels = note.labels.length > 0;
   const labelLimit = isDense ? 1 : isList ? 3 : 2;
   const timeLabel = formatListTimestamp(note.timestamp);
 
@@ -85,7 +84,6 @@ function NoteCardImpl({
   const statusParts = [
     note.isPinned ? 'Pinned' : null,
     hasReminder ? 'Reminder set' : null,
-    note.isLocked ? 'Hidden note' : null,
     isSelected ? 'Selected' : null,
   ].filter(Boolean);
 
@@ -105,7 +103,6 @@ function NoteCardImpl({
       <div className="flex shrink-0 items-center gap-1.5 opacity-50" aria-hidden>
         {note.isPinned ? <PinIcon size={size} /> : null}
         {hasReminder ? <NotificationIcon size={size} /> : null}
-        {note.isLocked ? <LockIcon size={size} /> : null}
       </div>
     );
   };
