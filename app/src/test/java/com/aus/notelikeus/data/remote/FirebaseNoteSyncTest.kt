@@ -34,6 +34,7 @@ class FirebaseNoteSyncTest {
         syncStateStore = mockk(relaxed = true)
         every { syncStateStore.isDeleted(any()) } returns false
         every { syncStateStore.deletedAtById() } returns emptyMap()
+        every { syncStateStore.restoredIds() } returns emptySet()
         sync = FirebaseNoteSync(noteRepository, sessionManager, firestore, syncStateStore)
     }
 
@@ -200,6 +201,40 @@ class FirebaseNoteSyncTest {
         verify { syncStateStore.clearDeleted(listOf(12L)) }
         verify { tombstoneDoc.delete() }
         verify(exactly = 0) { noteDoc.set(any<Map<String, Any?>>(), any()) }
+    }
+
+    @Test
+    fun `a sync after a failed restore finishes the cleanup instead of re-deleting the note`() = runTest {
+        // The restore's own work exhausted its retries, so the cloud tombstone is still there
+        // and the marker is still set. This sync must delete that tombstone rather than merge it.
+        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
+        every { syncStateStore.restoredIds() } returns setOf(11L)
+        coEvery { noteRepository.getAllNotesForBackup() } returns emptyList()
+
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
+        val metaCollection = mockk<CollectionReference>(relaxed = true)
+        val tombstonesCollection = mockk<CollectionReference>(relaxed = true)
+        val tombstoneDoc = mockk<DocumentReference>(relaxed = true)
+        stubUserCollections(notesCollection, metaCollection, tombstonesCollection)
+        every { tombstonesCollection.get() } returns Tasks.forResult(mockk(relaxed = true) {
+            every { documents } returns listOf(mockk(relaxed = true) {
+                every { id } returns "11"
+                every { getLong("deletedAt") } returns 500L
+            })
+        })
+        every { tombstonesCollection.document("11") } returns tombstoneDoc
+        every { tombstoneDoc.delete() } returns Tasks.forResult(null)
+        every { metaCollection.document("sync") } returns mockk(relaxed = true) {
+            every { set(any<Map<String, Any>>(), any()) } returns Tasks.forResult(null)
+        }
+
+        val result = sync.uploadAllNotes()
+
+        assertTrue(result.isSuccess)
+        verify { tombstoneDoc.delete() }
+        verify { syncStateStore.clearRestored(listOf(11L)) }
+        // The crucial part: the stale tombstone must not come back into the local store.
+        verify(exactly = 0) { syncStateStore.mergeDeleted(match { it.containsKey(11L) }) }
     }
 
     @Test
