@@ -23,6 +23,16 @@ class NoteSyncStateStoreTest {
     }
 
     @Test
+    fun `restored ids round-trip and clear`() {
+        store.markRestored(3L)
+        store.markRestored(4L)
+        assertEquals(setOf(3L, 4L), store.restoredIds())
+
+        store.clearRestored(listOf(3L))
+        assertEquals(setOf(4L), store.restoredIds())
+    }
+
+    @Test
     fun `markDeleted and isDeleted`() {
         store.markDeleted(7L, 1_000L)
         assertTrue(store.isDeleted(7L))

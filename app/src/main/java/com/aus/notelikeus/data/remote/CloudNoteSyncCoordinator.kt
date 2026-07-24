@@ -27,18 +27,21 @@ class CloudNoteSyncCoordinator @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingUploads = ConcurrentHashMap.newKeySet<Long>()
     private val pendingDeletes = ConcurrentHashMap.newKeySet<Long>()
+    private val pendingRestores = ConcurrentHashMap.newKeySet<Long>()
     private var flushJob: Job? = null
 
     init {
         pendingUploads.addAll(pendingStore.pendingUploads())
         pendingDeletes.addAll(pendingStore.pendingDeletes())
-        if (pendingUploads.isNotEmpty() || pendingDeletes.isNotEmpty()) {
+        pendingRestores.addAll(pendingStore.pendingRestores())
+        if (pendingUploads.isNotEmpty() || pendingDeletes.isNotEmpty() || pendingRestores.isNotEmpty()) {
             scheduleFlush()
         }
     }
 
     fun scheduleUpload(noteId: Long) {
         pendingDeletes.remove(noteId)
+        pendingRestores.remove(noteId)
         pendingUploads.add(noteId)
         persistPending()
         scheduleFlush()
@@ -46,7 +49,20 @@ class CloudNoteSyncCoordinator @Inject constructor(
 
     fun scheduleDelete(noteId: Long) {
         pendingUploads.remove(noteId)
+        pendingRestores.remove(noteId)
         pendingDeletes.add(noteId)
+        persistPending()
+        scheduleFlush()
+    }
+
+    /**
+     * Undo of a permanent delete. Distinct from [scheduleUpload] because a plain upload is
+     * vetoed by the note's own tombstone — the restore has to drop the tombstone first.
+     */
+    fun scheduleRestore(noteId: Long) {
+        pendingUploads.remove(noteId)
+        pendingDeletes.remove(noteId)
+        pendingRestores.add(noteId)
         persistPending()
         scheduleFlush()
     }
@@ -55,16 +71,17 @@ class CloudNoteSyncCoordinator @Inject constructor(
         flushJob?.cancel()
         // Drop already-enqueued WorkManager jobs so they cannot run under a new Firebase user.
         workManager.cancelAllWorkByTag(SyncWorker.WORK_TAG)
-        for (noteId in pendingUploads + pendingDeletes) {
+        for (noteId in pendingUploads + pendingDeletes + pendingRestores) {
             workManager.cancelUniqueWork(uniqueWorkName(noteId))
         }
         pendingUploads.clear()
         pendingDeletes.clear()
+        pendingRestores.clear()
         pendingStore.clear()
     }
 
     private fun persistPending() {
-        pendingStore.save(pendingUploads.toSet(), pendingDeletes.toSet())
+        pendingStore.save(pendingUploads.toSet(), pendingDeletes.toSet(), pendingRestores.toSet())
     }
 
     private fun scheduleFlush() {
@@ -86,8 +103,10 @@ class CloudNoteSyncCoordinator @Inject constructor(
 
         val uploads = pendingUploads.toList()
         val deletes = pendingDeletes.toList()
+        val restores = pendingRestores.toList()
         pendingUploads.clear()
         pendingDeletes.clear()
+        pendingRestores.clear()
         pendingStore.clear()
 
         uploads.forEach { noteId ->
@@ -97,9 +116,13 @@ class CloudNoteSyncCoordinator @Inject constructor(
         deletes.forEach { noteId ->
             enqueueSyncWork(noteId, isDelete = true)
         }
+
+        restores.forEach { noteId ->
+            enqueueSyncWork(noteId, isDelete = false, isRestore = true)
+        }
     }
 
-    private fun enqueueSyncWork(noteId: Long, isDelete: Boolean) {
+    private fun enqueueSyncWork(noteId: Long, isDelete: Boolean, isRestore: Boolean = false) {
         val expectedUid = firebaseSessionManager.getCurrentAccount().userId ?: return
 
         val constraints = Constraints.Builder()
@@ -109,6 +132,7 @@ class CloudNoteSyncCoordinator @Inject constructor(
         val data = Data.Builder()
             .putLong(SyncWorker.KEY_NOTE_ID, noteId)
             .putBoolean(SyncWorker.KEY_IS_DELETE, isDelete)
+            .putBoolean(SyncWorker.KEY_IS_RESTORE, isRestore)
             .putString(SyncWorker.KEY_EXPECTED_UID, expectedUid)
             .build()
 

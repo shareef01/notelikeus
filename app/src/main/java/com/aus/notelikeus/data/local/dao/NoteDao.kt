@@ -109,4 +109,11 @@ interface NoteDao {
     @Transaction
     @Query("SELECT * FROM notes ORDER BY timestamp DESC")
     suspend fun getAllNotesForBackup(): List<NoteWithLabelsAndAttachments>
+
+    /** Cloud-eligible == not locked, matching `Note.isCloudSyncEligible()`. */
+    @Query("SELECT COUNT(*) FROM notes WHERE isLocked = 0")
+    suspend fun getCloudEligibleNoteCount(): Int
+
+    @Query("SELECT COUNT(*) FROM notes WHERE isLocked = 1")
+    suspend fun getLockedNoteCount(): Int
 }

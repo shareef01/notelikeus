@@ -21,8 +21,11 @@ class FirebaseNoteSync @Inject constructor(
         return try {
             val uid = sessionManager.ensureGoogleSignedIn().getOrThrow()
             mergeCloudTombstones(uid)
-            purgeLocalTombstonedNotes()
-            val notes = noteRepository.getAllNotesForBackup().filter { note ->
+            val localNotes = noteRepository.getAllNotesForBackup()
+            // Purge drops exactly the tombstoned notes the filter below already excludes, so the
+            // single read above covers both.
+            purgeLocalTombstonedNotes(localNotes)
+            val notes = localNotes.filter { note ->
                 val id = note.id ?: return@filter false
                 note.isCloudSyncEligible() && !syncStateStore.isDeleted(id)
             }
@@ -83,10 +86,33 @@ class FirebaseNoteSync @Inject constructor(
                     .await()
                 return Result.success(Unit)
             }
-            userNotesCollection(uid)
+            putCloudNote(uid, note)
+            Result.success(Unit)
+        } catch (error: Throwable) {
+            Result.failure(error)
+        }
+    }
+
+    /**
+     * Undo of a permanent delete. [uploadNote] deliberately lets a tombstone veto an upload
+     * (that is how a delete on another device propagates), so restoring has to clear both the
+     * local and the cloud tombstone first — otherwise the re-created note is turned straight
+     * back into a delete here, and purged locally by the next [downloadAllNotes].
+     */
+    suspend fun restoreNote(noteId: Long): Result<Unit> {
+        return try {
+            syncStateStore.clearDeleted(listOf(noteId))
+            val uid = sessionManager.ensureGoogleSignedIn().getOrThrow()
+            userTombstonesCollection(uid)
                 .document(noteId.toString())
-                .set(note.toCloudMap(), SetOptions.merge())
+                .delete()
                 .await()
+            // Cloud tombstone is gone, so the restore marker has done its job.
+            syncStateStore.clearRestored(listOf(noteId))
+            val note = noteRepository.getNoteById(noteId)
+                ?: return Result.success(Unit)
+            if (!note.isCloudSyncEligible()) return Result.success(Unit)
+            putCloudNote(uid, note)
             Result.success(Unit)
         } catch (error: Throwable) {
             Result.failure(error)
@@ -113,7 +139,11 @@ class FirebaseNoteSync @Inject constructor(
         return try {
             val uid = sessionManager.ensureGoogleSignedIn().getOrThrow()
             mergeCloudTombstones(uid)
-            var changes = purgeLocalTombstonedNotes()
+            // One read of the note table for the whole sync: purge, the merge loop below, and
+            // the local-only loop all work off this snapshot.
+            val localNotesBeforePurge = noteRepository.getAllNotesForBackup()
+            val purgedIds = purgeLocalTombstonedNotes(localNotesBeforePurge)
+            var changes = purgedIds.size
             val snapshot = userNotesCollection(uid).get().await()
 
             val labelMap = noteRepository.getAllLabelsSnapshot()
@@ -130,7 +160,7 @@ class FirebaseNoteSync @Inject constructor(
             }
 
             val cloudNoteIds = mutableSetOf<Long>()
-            val allLocalNotes = noteRepository.getAllNotesForBackup()
+            val allLocalNotes = localNotesBeforePurge.filter { note -> note.id !in purgedIds }
             val localNotesById = allLocalNotes.mapNotNull { note -> note.id?.let { it to note } }.toMap()
             val previouslyKnownCloudIds = syncStateStore.knownCloudIds()
 
@@ -163,7 +193,10 @@ class FirebaseNoteSync @Inject constructor(
                         changes++
                     }
                     else -> {
-                        uploadNote(noteId)
+                        // Local wins. Write it directly rather than via uploadNote(), which would
+                        // re-resolve the uid and re-read this note's tombstone over the network —
+                        // both already known here.
+                        putCloudNote(uid, localNote)
                         changes++
                     }
                 }
@@ -186,15 +219,14 @@ class FirebaseNoteSync @Inject constructor(
                 }
 
                 if (localNote.isCloudSyncEligible()) {
-                    uploadNote(noteId)
+                    putCloudNote(uid, localNote)
                     changes++
                 }
             }
 
             syncStateStore.setKnownCloudIds(cloudNoteIds)
             pruneExpiredTombstones(uid, cloudNoteIds)
-            val eligibleCount = noteRepository.getAllNotesForBackup().count { it.isCloudSyncEligible() }
-            updateSyncMeta(uid, eligibleCount)
+            updateSyncMeta(uid, noteRepository.getCloudEligibleNoteCount())
 
             Result.success(changes)
         } catch (error: Throwable) {
@@ -239,27 +271,55 @@ class FirebaseNoteSync @Inject constructor(
             val id = doc.id.toLongOrNull() ?: -1L
             id to (doc.getLong("deletedAt") ?: System.currentTimeMillis())
         }.filterKeys { it != -1L }
-        syncStateStore.mergeDeleted(remote)
+
+        // A restore that never managed to delete its cloud tombstone would otherwise have the
+        // note purged again here. Finish that cleanup instead, and only then drop the marker.
+        val restored = syncStateStore.restoredIds()
+        val stale = remote.keys.filter { it in restored }
+        if (stale.isNotEmpty()) {
+            for (noteId in stale) {
+                userTombstonesCollection(uid).document(noteId.toString()).delete().await()
+            }
+            syncStateStore.clearRestored(stale)
+        }
+
+        syncStateStore.mergeDeleted(remote.filterKeys { it !in restored })
     }
 
     private suspend fun refreshCloudTombstone(uid: String, noteId: Long) {
+        // Same reason as above: an ordinary edit-and-upload of a restored note must not be
+        // turned into a delete by the tombstone its own restore is still trying to clear.
+        if (noteId in syncStateStore.restoredIds()) return
         val snap = userTombstonesCollection(uid).document(noteId.toString()).get().await()
         if (!snap.exists()) return
         val deletedAt = snap.getLong("deletedAt") ?: System.currentTimeMillis()
         syncStateStore.mergeDeleted(mapOf(noteId to deletedAt))
     }
 
-    /** Removes unlocked local notes that were deleted on another device (cloud tombstone). */
-    private suspend fun purgeLocalTombstonedNotes(): Int {
-        var purged = 0
-        for (note in noteRepository.getAllNotesForBackup()) {
+    /**
+     * Removes unlocked local notes that were deleted on another device (cloud tombstone).
+     * Takes the caller's note snapshot and returns the purged ids so the caller can keep using
+     * that snapshot instead of re-reading the table.
+     */
+    private suspend fun purgeLocalTombstonedNotes(localNotes: List<Note>): Set<Long> {
+        val purged = mutableSetOf<Long>()
+        for (note in localNotes) {
             val id = note.id ?: continue
             if (!syncStateStore.isDeleted(id)) continue
             if (note.isLocked) continue
             noteRepository.deleteNote(note)
-            purged++
+            purged.add(id)
         }
         return purged
+    }
+
+    /** Writes a note we already hold — no uid lookup, no tombstone round-trip, no DB re-read. */
+    private suspend fun putCloudNote(uid: String, note: Note) {
+        val noteId = note.id ?: return
+        userNotesCollection(uid)
+            .document(noteId.toString())
+            .set(note.toCloudMap(), SetOptions.merge())
+            .await()
     }
 
     private suspend fun writeCloudTombstone(

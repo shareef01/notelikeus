@@ -2,7 +2,15 @@ import type { FirestoreNoteDocument } from '@/lib/mappers/noteCloudMapper';
 import { cloudMapToNote } from '@/lib/mappers/noteCloudMapper';
 import { createEmptyNote, nextLocalNoteIdAfter, type Note } from '@/types/note';
 import { labelFromName } from '@/types/label';
-import { BACKUP_VERSION, MAX_BACKUP_FILE_BYTES, MAX_BACKUP_NOTES } from '@/lib/backup/constants';
+import {
+  BACKUP_VERSION,
+  MAX_BACKUP_FILE_BYTES,
+  MAX_BACKUP_NOTES,
+  MAX_NOTE_CHECKLIST_ITEMS,
+  MAX_NOTE_CONTENT_CHARS,
+  MAX_NOTE_LABELS,
+  MAX_NOTE_TITLE_CHARS,
+} from '@/lib/backup/constants';
 
 export interface BackupImportResult {
   notesImported: number;
@@ -21,9 +29,12 @@ function nextNotePosition(notes: Note[]): number {
 }
 
 function parseLabelName(entry: unknown): string {
-  if (typeof entry === 'string') return entry.trim();
+  if (typeof entry === 'string') return entry.trim().slice(0, MAX_NOTE_TITLE_CHARS);
   if (entry && typeof entry === 'object' && 'name' in entry) {
-    return String((entry as { name?: string }).name ?? '').trim();
+    const name = (entry as { name?: unknown }).name;
+    // Deliberately not String(name): a non-string would stringify to "[object Object]".
+    if (typeof name !== 'string') return '';
+    return name.trim().slice(0, MAX_NOTE_TITLE_CHARS);
   }
   return '';
 }
@@ -57,10 +68,13 @@ function noteFromBackupEntry(
     labels?: unknown[];
   };
 
-  const labelNames = (data.labels ?? [])
+  const labelNames = (Array.isArray(data.labels) ? data.labels : [])
     .map(parseLabelName)
-    .filter((name) => name.length > 0);
+    .filter((name) => name.length > 0)
+    .slice(0, MAX_NOTE_LABELS);
 
+  // cloudMapToNote coerces types; the caps below keep an imported note inside the limits
+  // firestore.rules enforces, so it can still sync after import.
   const mapped = cloudMapToNote(String(localId), {
     ...data,
     localId,
@@ -73,6 +87,11 @@ function noteFromBackupEntry(
     id: String(localId),
     localId,
     position,
+    title: mapped.title.slice(0, MAX_NOTE_TITLE_CHARS),
+    content: mapped.content.slice(0, MAX_NOTE_CONTENT_CHARS),
+    checklist: mapped.checklist
+      .slice(0, MAX_NOTE_CHECKLIST_ITEMS)
+      .map((item) => ({ ...item, text: item.text.slice(0, MAX_NOTE_TITLE_CHARS) })),
     attachments: [],
   });
 }
