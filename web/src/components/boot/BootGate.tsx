@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import App from '@/App';
 import { bootstrapApp, clearPersistedAppData } from '@/lib/bootstrap';
+import { AppSplash } from '@/components/boot/AppSplash';
 
 type BootState =
   | { status: 'loading' }
@@ -32,7 +33,7 @@ export function BootGate() {
   }, []);
 
   if (boot.status === 'loading') {
-    return <BootSplash />;
+    return <AppSplash />;
   }
 
   if (boot.status === 'error') {
@@ -67,16 +68,6 @@ export function BootGate() {
   }
 
   return <App />;
-}
-
-function BootSplash() {
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-true-surface px-6 text-center">
-      <p className="text-lg font-semibold text-brand-primary">Notelikeus</p>
-      <p className="mt-2 text-sm text-brand-muted">Loading your notes…</p>
-      <div className="mt-6 size-8 animate-pulse rounded-full bg-brand-outline/60" aria-hidden />
-    </div>
-  );
 }
 
 function BootError({
