@@ -23,6 +23,45 @@ interface SwReminder {
 
 const swTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+/**
+ * Timers do not survive the worker. The browser terminates an idle service worker within
+ * seconds, taking every pending setTimeout with it, so an in-memory schedule alone means any
+ * reminder further out than that is simply lost — there is no wake-up for a plain timer.
+ *
+ * Reminders are therefore persisted, and every event that happens to start the worker
+ * (activate, a message, a navigation fetch) triggers a catch-up that fires anything already
+ * due. Delivery is best-effort and can be late; without the Push API there is no way to
+ * guarantee a service worker runs at an arbitrary future moment.
+ */
+const REMINDER_CACHE = 'notelikeus-reminders';
+const REMINDER_KEY = '/__reminders';
+
+async function loadReminders(): Promise<SwReminder[]> {
+  try {
+    const cache = await caches.open(REMINDER_CACHE);
+    const stored = await cache.match(REMINDER_KEY);
+    if (!stored) return [];
+    const parsed: unknown = await stored.json();
+    return Array.isArray(parsed) ? (parsed as SwReminder[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveReminders(reminders: SwReminder[]): Promise<void> {
+  try {
+    const cache = await caches.open(REMINDER_CACHE);
+    await cache.put(
+      REMINDER_KEY,
+      new Response(JSON.stringify(reminders), {
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+  } catch {
+    // Storage unavailable — in-memory timers still cover this worker's lifetime.
+  }
+}
+
 function cancelSwReminder(noteId: string) {
   const timerId = swTimers.get(noteId);
   if (timerId != null) {
@@ -31,34 +70,56 @@ function cancelSwReminder(noteId: string) {
   }
 }
 
-function scheduleSwReminder(reminder: SwReminder) {
+function fireReminder(reminder: SwReminder): Promise<void> {
+  return self.registration.showNotification(reminder.title || 'Reminder', {
+    body: reminder.body || 'You have a note reminder',
+    icon: '/icons/icon-192.png',
+    // Same tag per note, so a catch-up that races an armed timer replaces rather than stacks.
+    tag: `notelikeus-reminder-${reminder.noteId}`,
+  });
+}
+
+function armTimer(reminder: SwReminder) {
   cancelSwReminder(reminder.noteId);
   const delay = reminder.fireAt - Date.now();
   if (delay <= 0) return;
 
   const timerId = setTimeout(() => {
     swTimers.delete(reminder.noteId);
-    void self.registration.showNotification(reminder.title || 'Reminder', {
-      body: reminder.body || 'You have a note reminder',
-      icon: '/icons/icon-192.png',
-      tag: `notelikeus-reminder-${reminder.noteId}`,
-    });
+    void (async () => {
+      await fireReminder(reminder);
+      // Drop it from storage so a later catch-up does not fire it a second time.
+      const remaining = (await loadReminders()).filter((r) => r.noteId !== reminder.noteId);
+      await saveReminders(remaining);
+    })();
   }, Math.min(delay, 2_147_483_647));
 
   swTimers.set(reminder.noteId, timerId);
 }
 
-function syncSwReminders(reminders: SwReminder[]) {
-  const activeIds = new Set<string>();
-  for (const reminder of reminders) {
-    activeIds.add(reminder.noteId);
-    scheduleSwReminder(reminder);
+/** Fires anything already due and re-arms the rest. Safe to call on any worker wake-up. */
+async function catchUpReminders(): Promise<void> {
+  const stored = await loadReminders();
+  if (stored.length === 0) return;
+
+  const now = Date.now();
+  const due = stored.filter((reminder) => reminder.fireAt <= now);
+  const upcoming = stored.filter((reminder) => reminder.fireAt > now);
+
+  for (const reminder of due) {
+    await fireReminder(reminder);
   }
-  for (const noteId of swTimers.keys()) {
-    if (!activeIds.has(noteId)) {
-      cancelSwReminder(noteId);
-    }
+  if (due.length > 0) await saveReminders(upcoming);
+  for (const reminder of upcoming) armTimer(reminder);
+}
+
+async function syncSwReminders(reminders: SwReminder[]): Promise<void> {
+  const activeIds = new Set(reminders.map((reminder) => reminder.noteId));
+  for (const noteId of [...swTimers.keys()]) {
+    if (!activeIds.has(noteId)) cancelSwReminder(noteId);
   }
+  await saveReminders(reminders);
+  for (const reminder of reminders) armTimer(reminder);
 }
 
 self.addEventListener('message', (event) => {
@@ -83,8 +144,19 @@ self.addEventListener('message', (event) => {
     return;
   }
   if (data?.type === 'SYNC_REMINDERS' && Array.isArray(data.reminders)) {
-    syncSwReminders(data.reminders);
+    event.waitUntil(syncSwReminders(data.reminders));
   }
+});
+
+// Any navigation is a chance to deliver something the worker slept through. Throttled so a
+// burst of requests does not re-read storage repeatedly.
+let lastCatchUp = 0;
+self.addEventListener('fetch', (event) => {
+  if (event.request.mode !== 'navigate') return;
+  const now = Date.now();
+  if (now - lastCatchUp < 30_000) return;
+  lastCatchUp = now;
+  event.waitUntil(catchUpReminders());
 });
 
 self.addEventListener('activate', (event) => {
@@ -95,6 +167,8 @@ self.addEventListener('activate', (event) => {
       await caches.delete('google-fonts-stylesheets');
       await caches.delete('google-fonts-webfonts');
       await self.clients.claim();
+      // Deliver anything that came due while no worker was running.
+      await catchUpReminders();
     })(),
   );
 });
