@@ -78,14 +78,6 @@ class FirebaseNoteSync @Inject constructor(
             }
             val note = noteRepository.getNoteById(noteId)
                 ?: return Result.success(Unit)
-            if (!note.isCloudSyncEligible()) {
-                // Drop cloud copy without a tombstone so unlock can re-upload later.
-                userNotesCollection(uid)
-                    .document(noteId.toString())
-                    .delete()
-                    .await()
-                return Result.success(Unit)
-            }
             putCloudNote(uid, note)
             Result.success(Unit)
         } catch (error: Throwable) {
@@ -111,7 +103,6 @@ class FirebaseNoteSync @Inject constructor(
             syncStateStore.clearRestored(listOf(noteId))
             val note = noteRepository.getNoteById(noteId)
                 ?: return Result.success(Unit)
-            if (!note.isCloudSyncEligible()) return Result.success(Unit)
             putCloudNote(uid, note)
             Result.success(Unit)
         } catch (error: Throwable) {
@@ -187,7 +178,6 @@ class FirebaseNoteSync @Inject constructor(
                         noteRepository.insertNoteWithResult(cloudNote)
                         changes++
                     }
-                    localNote.isLocked -> Unit
                     cloudNote.timestamp >= localNote.timestamp -> {
                         noteRepository.updateNote(cloudNote)
                         changes++
@@ -208,13 +198,11 @@ class FirebaseNoteSync @Inject constructor(
                 if (syncStateStore.isDeleted(noteId)) continue
 
                 if (noteId in previouslyKnownCloudIds) {
-                    if (!localNote.isLocked) {
-                        noteRepository.deleteNote(localNote)
-                        val deletedAt = System.currentTimeMillis()
-                        syncStateStore.markDeleted(noteId, deletedAt)
-                        writeCloudTombstone(uid, noteId, deletedAt)
-                        changes++
-                    }
+                    noteRepository.deleteNote(localNote)
+                    val deletedAt = System.currentTimeMillis()
+                    syncStateStore.markDeleted(noteId, deletedAt)
+                    writeCloudTombstone(uid, noteId, deletedAt)
+                    changes++
                     continue
                 }
 
@@ -306,7 +294,6 @@ class FirebaseNoteSync @Inject constructor(
         for (note in localNotes) {
             val id = note.id ?: continue
             if (!syncStateStore.isDeleted(id)) continue
-            if (note.isLocked) continue
             noteRepository.deleteNote(note)
             purged.add(id)
         }

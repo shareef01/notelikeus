@@ -44,10 +44,6 @@
 
     <!-- Export / Import -->
     <string name="export_success">Backup exported</string>
-    <plurals name="export_success_with_hidden">
-        <item quantity="one">Backup exported — includes %d hidden note in plain text</item>
-        <item quantity="other">Backup exported — includes %d hidden notes in plain text</item>
-    </plurals>
     <string name="export_failed">Export failed</string>
     <string name="export_backup_subtitle">Save notes as JSON</string>
     <string name="import_success">%1$d notes imported</string>
@@ -76,9 +72,7 @@
     <string name="title_hint">Title</string>
     <string name="note_hint">Note</string>
     <string name="list_item_hint">List item</string>
-    <string name="locked_note">Locked note</string>
     <string name="locked_note_message">This note is locked</string>
-    <string name="unlock">Unlock</string>
     <string name="go_back">Go back</string>
     <string name="authenticate_subtitle">Authenticate to access this note</string>
 
@@ -185,7 +179,6 @@
     <string name="widget_name">Notelikeus widget</string>
     <string name="widget_new">+ New</string>
     <string name="widget_empty">No notes yet</string>
-    <string name="widget_app_locked">Unlock the app to see notes</string>
     <string name="untitled">Untitled</string>
 
     <!-- Accessibility -->
@@ -244,8 +237,6 @@
     <string name="theme_forest">Forest</string>
     <string name="nav_edit_labels">Edit labels</string>
     <string name="new_label_hint">New label</string>
-    <string name="lock_note">Lock note</string>
-    <string name="unlock_note">Unlock note</string>
     <string name="format_bold">Bold</string>
     <string name="format_italic">Italic</string>
     <string name="format_list">List</string>
