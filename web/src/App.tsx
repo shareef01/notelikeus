@@ -5,6 +5,7 @@ import { MainScreen } from '@/screens/MainScreen';
 import { ThemeApplier } from '@/components/theme/ThemeApplier';
 import { useUiStore } from '@/store/uiStore';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
+import { hadSessionLastLoad } from '@/lib/auth/sessionHint';
 import { lazy, Suspense, useEffect, useState } from 'react';
 
 const AUTH_READY_TIMEOUT_MS = 8_000;
@@ -33,6 +34,14 @@ export default function App() {
   const { user, isReady: authReady } = useAuthListener();
   const isTabletUp = useIsTabletUp();
   const [authTimedOut, setAuthTimedOut] = useState(false);
+  // Read once, so it cannot flip mid-render as auth resolves.
+  const [hadSession] = useState(hadSessionLastLoad);
+
+  // Firebase restores its session asynchronously, so authReady is false for a moment on every
+  // load. Notes are already rehydrated from local storage by this point, so someone who was
+  // signed in last time gets the app immediately instead of a full-screen "checking sign-in"
+  // gate on every refresh. If auth then resolves to no user, the sign-in screen takes over.
+  const assumeSignedIn = !authReady && hadSession;
 
   useAuthSync();
   useNotesSync(firebaseReady);
@@ -71,7 +80,7 @@ export default function App() {
     );
   }
 
-  if (!authReady) {
+  if (!authReady && !hadSession) {
     return (
       <div className="flex min-h-full flex-col items-center justify-center gap-4 bg-true-surface px-6 text-center">
         {themeApplier}
@@ -95,7 +104,7 @@ export default function App() {
     );
   }
 
-  if (!user) {
+  if (!user && !assumeSignedIn) {
     return (
       <>
         {themeApplier}
