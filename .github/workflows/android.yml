@@ -26,6 +26,12 @@ jobs:
       - name: Run unit tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
 
+      # No task below compiles androidTest, so the instrumented suite silently drifted out of
+      # sync with the composables it tests and stopped compiling. Compiling it here catches that
+      # without needing an emulator.
+      - name: Compile instrumented tests
+        run: ./gradlew :app:compileDebugAndroidTestKotlin --stacktrace
+
       - name: Run Android lint
         run: ./gradlew :app:lintDebug --stacktrace
 
