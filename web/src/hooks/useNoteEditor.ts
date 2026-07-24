@@ -193,13 +193,6 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     setColor: (color: number) => patch((s) => ({ ...s, color })),
     togglePin: () => patch((s) => ({ ...s, isPinned: !s.isPinned })),
     toggleArchive: () => patch((s) => ({ ...s, isArchived: !s.isArchived })),
-    toggleLock: () =>
-      patch((s) => ({
-        ...s,
-        isLocked: !s.isLocked,
-        isAccessGranted: s.isLocked ? true : s.isAccessGranted,
-      })),
-    grantAccess: () => patch((s) => ({ ...s, isAccessGranted: true })),
     toggleLabel: (label: Label) =>
       patch((s) => {
         const exists = s.labels.some((entry) => entry.id === label.id);
