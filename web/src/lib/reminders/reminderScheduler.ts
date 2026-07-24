@@ -45,10 +45,15 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * The service worker is the single owner of reminder delivery (`sw.ts`'s
- * `showNotification` call) — it can fire even when no tab is open, which a
- * page-context timer never could. This just keeps it in sync with current
- * note state; it does not itself schedule or show any notification.
+ * The service worker is the single owner of reminder delivery (`sw.ts`'s `showNotification`
+ * call). This just keeps it in sync with current note state; it does not itself schedule or
+ * show any notification.
+ *
+ * Delivery is best-effort and may be late. The worker is terminated when idle, so its timers
+ * do not survive; `sw.ts` persists the schedule and fires anything overdue the next time the
+ * worker runs for any reason. A reminder for a browser that is never reopened will not fire at
+ * its appointed time — guaranteeing that needs the Push API and a server. Android's
+ * AlarmManager path does not share this limitation.
  */
 export function rescheduleAllReminders(notes: Note[]) {
   void postRemindersToServiceWorker(buildSwReminders(notes));
