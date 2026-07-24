@@ -9,7 +9,25 @@
  * Tailwind utilities that follow the active theme, including their opacity variants,
  * instead of colliding with Tailwind's own static-color utilities of the same name.
  */
-:root,
+/*
+ * :root carries the app's default theme (true dark, per settingsStore) rather than the light
+ * palette, so the static shell in index.html is self-consistent before React mounts. It used to
+ * share the light block, which meant the shell's dark background rendered near-black text on
+ * black until ThemeApplier ran. An inline theme script in <head> is the usual fix, but the CSP
+ * has no 'unsafe-inline' in script-src, so the default belongs here.
+ *
+ * ThemeApplier adds a .theme-* class on mount; those follow below and win on source order.
+ */
+:root {
+  --background-rgb: 0 0 0;
+  --surface-rgb: 0 0 0;
+  --surface-variant-rgb: 18 18 18;
+  --primary-rgb: 255 255 255;
+  --secondary-rgb: 168 168 168;
+  --muted-rgb: 153 153 153;
+  --outline-rgb: 38 38 38;
+}
+
 .theme-light {
   --background-rgb: 247 247 247;
   --surface-rgb: 255 255 255;
