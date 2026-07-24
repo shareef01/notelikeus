@@ -107,6 +107,8 @@ class FirebaseNoteSync @Inject constructor(
                 .document(noteId.toString())
                 .delete()
                 .await()
+            // Cloud tombstone is gone, so the restore marker has done its job.
+            syncStateStore.clearRestored(listOf(noteId))
             val note = noteRepository.getNoteById(noteId)
                 ?: return Result.success(Unit)
             if (!note.isCloudSyncEligible()) return Result.success(Unit)
@@ -269,10 +271,25 @@ class FirebaseNoteSync @Inject constructor(
             val id = doc.id.toLongOrNull() ?: -1L
             id to (doc.getLong("deletedAt") ?: System.currentTimeMillis())
         }.filterKeys { it != -1L }
-        syncStateStore.mergeDeleted(remote)
+
+        // A restore that never managed to delete its cloud tombstone would otherwise have the
+        // note purged again here. Finish that cleanup instead, and only then drop the marker.
+        val restored = syncStateStore.restoredIds()
+        val stale = remote.keys.filter { it in restored }
+        if (stale.isNotEmpty()) {
+            for (noteId in stale) {
+                userTombstonesCollection(uid).document(noteId.toString()).delete().await()
+            }
+            syncStateStore.clearRestored(stale)
+        }
+
+        syncStateStore.mergeDeleted(remote.filterKeys { it !in restored })
     }
 
     private suspend fun refreshCloudTombstone(uid: String, noteId: Long) {
+        // Same reason as above: an ordinary edit-and-upload of a restored note must not be
+        // turned into a delete by the tombstone its own restore is still trying to clear.
+        if (noteId in syncStateStore.restoredIds()) return
         val snap = userTombstonesCollection(uid).document(noteId.toString()).get().await()
         if (!snap.exists()) return
         val deletedAt = snap.getLong("deletedAt") ?: System.currentTimeMillis()

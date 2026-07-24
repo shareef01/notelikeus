@@ -94,6 +94,33 @@ class NoteSyncStateStore @Inject constructor(
         if (changed) writeDeletedMap(map)
     }
 
+    /**
+     * Notes brought back by an undo of a permanent delete, held until the cloud tombstone is
+     * confirmed gone. Without this, a restore whose sync work exhausts its retries leaves the
+     * cloud tombstone in place, and the next [mergeDeleted] re-imports it and the note is purged
+     * again — so the marker survives process death and every sync re-attempts the cleanup.
+     */
+    fun markRestored(noteId: Long) {
+        val ids = restoredIds().toMutableSet()
+        if (ids.add(noteId)) writeRestored(ids)
+    }
+
+    fun restoredIds(): Set<Long> =
+        prefs.getStringSet(KEY_RESTORED, emptySet())
+            .orEmpty()
+            .mapNotNull { it.toLongOrNull() }
+            .toSet()
+
+    fun clearRestored(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        val current = restoredIds().toMutableSet()
+        if (current.removeAll(ids.toSet())) writeRestored(current)
+    }
+
+    private fun writeRestored(ids: Set<Long>) {
+        prefs.edit().putStringSet(KEY_RESTORED, ids.map { it.toString() }.toSet()).apply()
+    }
+
     fun knownCloudIds(): Set<Long> =
         prefs.getStringSet(KEY_KNOWN_CLOUD, emptySet())
             .orEmpty()
@@ -128,6 +155,7 @@ class NoteSyncStateStore @Inject constructor(
         private const val KEY_DELETED = "deleted_ids"
         private const val KEY_DELETED_JSON = "deleted_at_by_id"
         private const val KEY_KNOWN_CLOUD = "known_cloud_ids"
+        private const val KEY_RESTORED = "restored_ids"
         private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
         const val TOMBSTONE_TTL_MS = 30L * 24 * 60 * 60 * 1000
     }
