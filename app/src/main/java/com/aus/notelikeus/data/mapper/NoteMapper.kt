@@ -19,7 +19,6 @@ fun NoteEntity.toNote(
         isArchived = isArchived,
         isTrashed = isTrashed,
         position = position,
-        isLocked = isLocked,
         reminderTimestamp = reminderTimestamp,
         labels = labels,
         attachments = attachments,
@@ -38,7 +37,6 @@ fun Note.toNoteEntity(): NoteEntity {
         isArchived = isArchived,
         isTrashed = isTrashed,
         position = position,
-        isLocked = isLocked,
         reminderTimestamp = reminderTimestamp
     )
 }

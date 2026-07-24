@@ -24,7 +24,6 @@ class ReminderBootReceiver : BroadcastReceiver() {
                 val now = System.currentTimeMillis()
                 repository.getNotesWithActiveReminders(now).forEach { note ->
                     val noteId = note.id ?: return@forEach
-                    if (note.isLocked) return@forEach
                     val timestamp = note.reminderTimestamp ?: return@forEach
                     reminderScheduler.scheduleReminder(
                         noteId = noteId,
@@ -37,9 +36,7 @@ class ReminderBootReceiver : BroadcastReceiver() {
                 // reflects reality again.
                 repository.getNotesWithMissedReminders(now).forEach { note ->
                     val noteId = note.id ?: return@forEach
-                    if (!note.isLocked) {
-                        ReminderReceiver.showReminderNotification(context, noteId)
-                    }
+                    ReminderReceiver.showReminderNotification(context, noteId)
                     repository.clearReminderTimestamp(noteId)
                 }
             } finally {

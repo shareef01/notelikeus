@@ -11,8 +11,6 @@ export interface EditorState {
   isPinned: boolean;
   isArchived: boolean;
   isTrashed: boolean;
-  isLocked: boolean;
-  isAccessGranted: boolean;
   reminderTimestamp: number | null;
   labels: Label[];
   checklist: ChecklistItem[];
@@ -40,7 +38,6 @@ export function buildNoteFromEditor(state: EditorState): Note | null {
     isArchived: state.isArchived,
     isTrashed: state.isTrashed,
     position: state.position,
-    isLocked: state.isLocked,
     reminderTimestamp: state.reminderTimestamp,
     labels: state.labels,
     attachments: [],
@@ -58,8 +55,6 @@ export function editorStateFromNote(note: Note): EditorState {
     isPinned: note.isPinned,
     isArchived: note.isArchived,
     isTrashed: note.isTrashed,
-    isLocked: note.isLocked,
-    isAccessGranted: !note.isLocked,
     reminderTimestamp: note.reminderTimestamp,
     labels: note.labels,
     checklist: [...note.checklist].sort((a, b) => {
@@ -84,8 +79,6 @@ export function createBlankEditorState(color = DEFAULT_EDITOR_COLOR, position = 
     isPinned: false,
     isArchived: false,
     isTrashed: false,
-    isLocked: false,
-    isAccessGranted: true,
     reminderTimestamp: null,
     labels: [],
     checklist: [],

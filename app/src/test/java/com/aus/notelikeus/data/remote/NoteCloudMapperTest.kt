@@ -134,47 +134,13 @@ class NoteCloudMapperTest {
 
     @Test
 
-    fun `isCloudSyncEligible excludes locked notes`() {
+    fun `every note is cloud sync eligible now that locking is removed`() {
 
-        val locked = Note(
+        val note = Note(id = 2L, title = "Open", content = "", timestamp = 2L, color = 0)
 
-            id = 1L,
-
-            title = "Secret",
-
-            content = "",
-
-            timestamp = 1L,
-
-            color = 0,
-
-            isLocked = true
-
-        )
-
-        val unlocked = Note(
-
-            id = 2L,
-
-            title = "Open",
-
-            content = "",
-
-            timestamp = 2L,
-
-            color = 0
-
-        )
-
-
-
-        assertFalse(locked.isCloudSyncEligible())
-
-        assertTrue(unlocked.isCloudSyncEligible())
+        assertTrue(note.isCloudSyncEligible())
 
     }
-
-
 
     @Test
 

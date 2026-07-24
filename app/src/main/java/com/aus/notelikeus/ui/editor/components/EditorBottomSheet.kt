@@ -34,8 +34,6 @@ fun EditorBottomSheet(
     selectedLabels: List<Label>,
     onLabelToggle: (Label) -> Unit,
     onCreateLabel: (String) -> Unit,
-    isLocked: Boolean,
-    onLockToggle: () -> Unit,
     onDeleteNote: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -178,34 +176,6 @@ fun EditorBottomSheet(
 
             // Actions
             SettingsSectionHeader(title = stringResource(R.string.section_actions))
-            ListItem(
-                headlineContent = {
-                    Text(
-                        if (isLocked) {
-                            stringResource(R.string.unlock_note)
-                        } else {
-                            stringResource(R.string.lock_note)
-                        }
-                    )
-                },
-                leadingContent = { 
-                    Icon(
-                        if (isLocked) Icons.Default.LockOpen else Icons.Default.Lock,
-                        contentDescription = if (isLocked) {
-                            stringResource(R.string.unlock)
-                        } else {
-                            stringResource(R.string.locked_note)
-                        },
-                        modifier = Modifier.size(24.dp)
-                    )
-                },
-                modifier = Modifier.clickable { 
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onLockToggle()
-                    onDismiss()
-                },
-                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)
-            )
             
             ListItem(
                 headlineContent = {

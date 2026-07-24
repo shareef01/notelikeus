@@ -110,8 +110,6 @@ class NoteBackupExporter @Inject constructor(
 
         put("position", position)
 
-        put("isLocked", isLocked)
-
         reminderTimestamp?.let { put("reminderTimestamp", it) }
 
         put("labels", JSONArray().apply { labels.forEach { put(it.name) } })

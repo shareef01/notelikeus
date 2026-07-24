@@ -74,11 +74,11 @@ class FirebaseNoteSyncTest {
     }
 
     @Test
-    fun `uploadAllNotes skips locked notes`() = runTest {
+    fun `uploadAllNotes uploads every note`() = runTest {
         coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
-        val unlocked = Note(id = 1L, title = "Open", content = "", timestamp = 1L, color = 0)
-        val locked = Note(id = 2L, title = "Secret", content = "", timestamp = 2L, color = 0, isLocked = true)
-        coEvery { noteRepository.getAllNotesForBackup() } returns listOf(unlocked, locked)
+        val first = Note(id = 1L, title = "Open", content = "", timestamp = 1L, color = 0)
+        val second = Note(id = 2L, title = "Also open", content = "", timestamp = 2L, color = 0)
+        coEvery { noteRepository.getAllNotesForBackup() } returns listOf(first, second)
 
         val notesCollection = mockk<CollectionReference>(relaxed = true)
         val metaCollection = mockk<CollectionReference>(relaxed = true)
@@ -98,27 +98,8 @@ class FirebaseNoteSyncTest {
         val result = sync.uploadAllNotes()
 
         assertTrue(result.isSuccess)
-        assertEquals(1, result.getOrNull())
-        verify(exactly = 1) { batch.set(any(), any<Map<String, Any?>>(), any()) }
-    }
-
-    @Test
-    fun `uploadNote on locked note removes it from cloud`() = runTest {
-        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
-        val locked = Note(id = 9L, title = "Secret", content = "", timestamp = 1L, color = 0, isLocked = true)
-        coEvery { noteRepository.getNoteById(9L) } returns locked
-
-        val document = mockk<DocumentReference>(relaxed = true)
-        val notesCollection = mockk<CollectionReference>(relaxed = true)
-        stubUserCollections(notesCollection)
-        every { notesCollection.document("9") } returns document
-        every { document.delete() } returns Tasks.forResult(null)
-
-        val result = sync.uploadNote(9L)
-
-        assertTrue(result.isSuccess)
-        verify { document.delete() }
-        verify(exactly = 0) { syncStateStore.markDeleted(any(), any()) }
+        assertEquals(2, result.getOrNull())
+        verify(exactly = 2) { batch.set(any(), any<Map<String, Any?>>(), any()) }
     }
 
     @Test
@@ -178,29 +159,6 @@ class FirebaseNoteSyncTest {
         verify { tombstoneDoc.delete() }
         verify { noteDoc.set(any<Map<String, Any?>>(), any()) }
         verify(exactly = 0) { noteDoc.delete() }
-    }
-
-    @Test
-    fun `restoreNote skips the upload for a locked note but still clears the tombstone`() = runTest {
-        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
-        val locked = Note(id = 12L, title = "Secret", content = "", timestamp = 5L, color = 0, isLocked = true)
-        coEvery { noteRepository.getNoteById(12L) } returns locked
-
-        val notesCollection = mockk<CollectionReference>(relaxed = true)
-        val tombstonesCollection = mockk<CollectionReference>(relaxed = true)
-        val noteDoc = mockk<DocumentReference>(relaxed = true)
-        val tombstoneDoc = mockk<DocumentReference>(relaxed = true)
-        stubUserCollections(notesCollection, tombstonesCollection = tombstonesCollection)
-        every { notesCollection.document("12") } returns noteDoc
-        every { tombstonesCollection.document("12") } returns tombstoneDoc
-        every { tombstoneDoc.delete() } returns Tasks.forResult(null)
-
-        val result = sync.restoreNote(12L)
-
-        assertTrue(result.isSuccess)
-        verify { syncStateStore.clearDeleted(listOf(12L)) }
-        verify { tombstoneDoc.delete() }
-        verify(exactly = 0) { noteDoc.set(any<Map<String, Any?>>(), any()) }
     }
 
     @Test

@@ -549,14 +549,11 @@ class MainViewModel @Inject constructor(
             val noteId = note.id
             if (noteId != null && noteId in hiddenIds) return@filter false
 
-            val matchesSearch = s.searchQuery.isEmpty() || (
-                !note.isLocked && (
-                    note.title.contains(s.searchQuery, ignoreCase = true) ||
-                    note.content.contains(s.searchQuery, ignoreCase = true) ||
-                    note.checklist.any { it.text.contains(s.searchQuery, ignoreCase = true) } ||
-                    note.labels.any { it.name.contains(s.searchQuery, ignoreCase = true) }
-                )
-            )
+            val matchesSearch = s.searchQuery.isEmpty() ||
+                note.title.contains(s.searchQuery, ignoreCase = true) ||
+                note.content.contains(s.searchQuery, ignoreCase = true) ||
+                note.checklist.any { it.text.contains(s.searchQuery, ignoreCase = true) } ||
+                note.labels.any { it.name.contains(s.searchQuery, ignoreCase = true) }
 
             val matchesColor = s.selectedColor == null || noteColorsMatch(note.color, s.selectedColor)
 
@@ -909,11 +906,7 @@ class MainViewModel @Inject constructor(
                 stream.write(json.toByteArray(Charsets.UTF_8))
                 true
             } ?: false
-            if (wrote) {
-                BackupExportResult.Success(repository.getLockedNoteCount())
-            } else {
-                BackupExportResult.WriteFailed
-            }
+            if (wrote) BackupExportResult.Success else BackupExportResult.WriteFailed
         } catch (error: Exception) {
             BackupExportResult.Error(error)
         }

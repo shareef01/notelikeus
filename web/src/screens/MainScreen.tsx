@@ -395,12 +395,7 @@ export function MainScreen() {
   const handleExportBackup = () => {
     try {
       exportNotesBackup(notes);
-      const hiddenCount = notes.filter((note) => note.isLocked).length;
-      useToastStore.getState().show(
-        hiddenCount > 0
-          ? `Backup exported — includes ${hiddenCount} hidden note${hiddenCount === 1 ? '' : 's'} in plain text`
-          : 'Backup exported',
-      );
+      useToastStore.getState().show('Backup exported');
     } catch (error) {
       useToastStore.getState().show(
         error instanceof Error ? error.message : 'Export failed',

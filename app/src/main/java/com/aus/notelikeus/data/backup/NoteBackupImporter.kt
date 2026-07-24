@@ -105,7 +105,6 @@ class NoteBackupImporter @Inject constructor(
                 isArchived = noteJson.optBoolean("isArchived", false),
                 isTrashed = isTrashed,
                 position = basePosition + notesImported,
-                isLocked = noteJson.optBoolean("isLocked", false),
                 reminderTimestamp = reminderTimestamp,
                 labels = resolvedLabels,
                 attachments = emptyList(),

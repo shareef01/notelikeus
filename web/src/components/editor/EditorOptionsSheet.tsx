@@ -1,7 +1,7 @@
 import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
 import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
 import { useToastStore } from '@/store/toastStore';
-import { LockIcon, LockOpenIcon, TrashIcon, AddIcon } from '@/components/icons/Icons';
+import { TrashIcon, AddIcon } from '@/components/icons/Icons';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { Label } from '@/types/label';
 import { useState } from 'react';
@@ -33,8 +33,6 @@ interface EditorOptionsSheetProps {
   onCreateLabel: (name: string) => void;
   reminderTimestamp: number | null;
   onReminderChange: (timestamp: number | null) => void;
-  isLocked: boolean;
-  onLockToggle: () => void;
   onDeleteNote: () => void;
 }
 
@@ -53,8 +51,6 @@ export function EditorOptionsSheet({
   onCreateLabel,
   reminderTimestamp,
   onReminderChange,
-  isLocked,
-  onLockToggle,
   onDeleteNote,
 }: EditorOptionsSheetProps) {
   const [newLabel, setNewLabel] = useState('');
@@ -189,17 +185,6 @@ export function EditorOptionsSheet({
         </section>
 
         <section className="mt-4 border-t border-brand-outline/60">
-          <button
-            type="button"
-            onClick={() => {
-              onLockToggle();
-              onClose();
-            }}
-            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-brand-primary transition-colors hover:bg-white/5"
-          >
-            {isLocked ? <LockOpenIcon size={24} className="text-brand-primary/60" /> : <LockIcon size={24} className="text-brand-primary/60" />}
-            {isLocked ? 'Unhide note' : 'Hide note (this device only)'}
-          </button>
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}

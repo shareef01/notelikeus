@@ -28,13 +28,10 @@ describe('mergeRemoteNotes', () => {
     expect(merged[0]?.title).toBe('Remote');
   });
 
-  it('never overwrites a locked local note', async () => {
-    const local = [
-      note({ id: '1', localId: 1, timestamp: 10, title: 'Secret', isLocked: true }),
-    ];
-    const remote = [note({ id: '1', localId: 1, timestamp: 99, title: 'Stale cloud' })];
+  it('keeps the local note when it is strictly newer than the remote copy', async () => {
+    const local = [note({ id: '1', localId: 1, timestamp: 99, title: 'Local wins' })];
+    const remote = [note({ id: '1', localId: 1, timestamp: 10, title: 'Stale cloud' })];
     const merged = await mergeRemoteNotes(local, remote);
-    expect(merged[0]?.title).toBe('Secret');
-    expect(merged[0]?.isLocked).toBe(true);
+    expect(merged[0]?.title).toBe('Local wins');
   });
 });
