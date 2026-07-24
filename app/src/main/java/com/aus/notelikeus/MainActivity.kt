@@ -67,18 +67,21 @@ class MainActivity : FragmentActivity() {
             val windowSizeClass = calculateWindowSizeClass(this)
             val viewModel: MainViewModel = hiltViewModel()
             val state by viewModel.state.collectAsState()
-            var isUnlocked by remember { mutableStateOf(true) }
+            // Starts locked and opens only once the persisted setting says it may. The previous
+            // default of `true` plus a one-shot init keyed on isAppLockEnabled meant the guard
+            // was spent on the pre-load default of `false`, so a cold start never prompted.
+            var isUnlocked by remember { mutableStateOf(false) }
             var needsUnlock by remember { mutableStateOf(false) }
             var hasInitializedLock by remember { mutableStateOf(false) }
             val lifecycleOwner = LocalLifecycleOwner.current
 
-            LaunchedEffect(state.isAppLockEnabled) {
-                if (!hasInitializedLock) {
-                    hasInitializedLock = true
-                    if (state.isAppLockEnabled) {
-                        isUnlocked = false
-                        needsUnlock = true
-                    }
+            LaunchedEffect(state.areSettingsLoaded, state.isAppLockEnabled) {
+                if (!state.areSettingsLoaded || hasInitializedLock) return@LaunchedEffect
+                hasInitializedLock = true
+                if (state.isAppLockEnabled) {
+                    needsUnlock = true
+                } else {
+                    isUnlocked = true
                 }
             }
 
@@ -187,8 +190,12 @@ class MainActivity : FragmentActivity() {
                             onAppLockEnabled = { isUnlocked = true }
                         )
 
-                        if (state.isAppLockEnabled && !isUnlocked) {
+                        if (!isUnlocked) {
+                            // While the setting is still loading we cover the content but show
+                            // no lock affordance — users without app lock would otherwise see a
+                            // "locked" flash on every launch.
                             AppLockOverlay(
+                                showLockPrompt = state.areSettingsLoaded && state.isAppLockEnabled,
                                 onUnlock = {
                                     showBiometricPrompt(
                                         title = getString(R.string.unlock_app),
@@ -255,11 +262,12 @@ class MainActivity : FragmentActivity() {
 }
 
 @Composable
-private fun AppLockOverlay(onUnlock: () -> Unit) {
+private fun AppLockOverlay(showLockPrompt: Boolean, onUnlock: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surface
     ) {
+        if (!showLockPrompt) return@Surface
         Column(
             modifier = Modifier
                 .fillMaxSize()
