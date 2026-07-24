@@ -28,6 +28,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
@@ -60,6 +61,12 @@ data class MainState(
     val useMonochromeTheme: Boolean = true,
     val isTrueDarkMode: Boolean = false,
     val isAppLockEnabled: Boolean = false,
+    /**
+     * False until the persisted app-lock setting has actually been read. [isAppLockEnabled]
+     * defaults to false, so without this the UI cannot tell "lock is off" from "we don't know
+     * yet" — and treating the latter as the former is what let a cold start skip the lock.
+     */
+    val areSettingsLoaded: Boolean = false,
     val pendingUndoMessage: String? = null,
     val selectedNotes: Set<Long> = emptySet(),
     val currentFilter: NoteFilter = NoteFilter.ACTIVE,
@@ -449,8 +456,16 @@ class MainViewModel @Inject constructor(
             .launchIn(viewModelScope)
 
         settingsRepository.isAppLockEnabled
+            // A DataStore read failure would otherwise leave areSettingsLoaded false forever,
+            // and the UI holds content back until it flips — i.e. a corrupt prefs file would
+            // brick the app behind a blank screen. Fall back to the same default the repository
+            // uses and carry on.
+            .catch { error ->
+                Log.w(TAG, "App lock setting unreadable; treating as disabled", error)
+                emit(false)
+            }
             .onEach { enabled ->
-                _state.update { it.copy(isAppLockEnabled = enabled) }
+                _state.update { it.copy(isAppLockEnabled = enabled, areSettingsLoaded = true) }
             }
             .launchIn(viewModelScope)
 

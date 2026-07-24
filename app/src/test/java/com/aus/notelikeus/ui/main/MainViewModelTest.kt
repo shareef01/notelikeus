@@ -26,6 +26,8 @@ import io.mockk.unmockkStatic
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.After
@@ -51,6 +53,7 @@ class MainViewModelTest {
         mockkStatic(Log::class)
         every { Log.i(any(), any()) } returns 0
         every { Log.w(any(), any<String>()) } returns 0
+        every { Log.w(any(), any<String>(), any()) } returns 0
         every { Log.e(any(), any<String>()) } returns 0
         every { Log.e(any(), any<String>(), any()) } returns 0
         repository = mockk(relaxed = true)
@@ -187,6 +190,37 @@ class MainViewModelTest {
         viewModel.undoLastAction()
 
         coVerify { repository.updateNote(note.copy(isTrashed = false)) }
+    }
+
+    @Test
+    fun `settings are not reported loaded until the app lock flow actually emits`() = runTest {
+        // The real DataStore flow emits after first composition. Until it does, the UI must be
+        // able to tell "lock is off" apart from "not read yet" — conflating them is what let a
+        // cold start walk straight past the lock screen.
+        val appLock = MutableSharedFlow<Boolean>(replay = 0)
+        every { settingsRepository.isAppLockEnabled } returns appLock
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.state.value.areSettingsLoaded)
+        assertEquals(false, viewModel.state.value.isAppLockEnabled)
+
+        appLock.emit(true)
+        advanceUntilIdle()
+
+        assertEquals(true, viewModel.state.value.areSettingsLoaded)
+        assertEquals(true, viewModel.state.value.isAppLockEnabled)
+    }
+
+    @Test
+    fun `an unreadable app lock setting still reports loaded so the UI cannot hang locked`() = runTest {
+        every { settingsRepository.isAppLockEnabled } returns
+            flow { throw java.io.IOException("corrupt preferences") }
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(true, viewModel.state.value.areSettingsLoaded)
+        assertEquals(false, viewModel.state.value.isAppLockEnabled)
     }
 
     @Test

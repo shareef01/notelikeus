@@ -287,6 +287,14 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       await persistNow();
     },
     deleteNote: async () => {
+      // Cancel the debounce first. Otherwise the unmount flush below runs persistNow after the
+      // delete, and pushNote's upsertLocalNote puts the note straight back into the store — the
+      // cloud copy stays deleted via the tombstone, so the user sees it reappear until the next
+      // merge quietly removes it again.
+      if (autosaveTimer.current) {
+        clearTimeout(autosaveTimer.current);
+        autosaveTimer.current = null;
+      }
       const current = stateRef.current;
       if (current.id) {
         await removeNote(current.id);
