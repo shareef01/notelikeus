@@ -3,6 +3,7 @@ import { useNotesSync } from '@/hooks/useNotesSync';
 import { isFirebaseConfigured } from '@/lib/config';
 import { MainScreen } from '@/screens/MainScreen';
 import { ThemeApplier } from '@/components/theme/ThemeApplier';
+import { AppSplash } from '@/components/boot/AppSplash';
 import { useUiStore } from '@/store/uiStore';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { hadSessionLastLoad } from '@/lib/auth/sessionHint';
@@ -81,13 +82,15 @@ export default function App() {
   }
 
   if (!authReady && !hadSession) {
+    // Same splash the boot screen shows, so a first visit reads as one continuous "Loading…"
+    // rather than a third differently-styled screen. The timeout affordance only appears if
+    // auth genuinely stalls.
     return (
-      <div className="flex min-h-full flex-col items-center justify-center gap-4 bg-true-surface px-6 text-center">
+      <>
         {themeApplier}
-        <div className="size-8 animate-pulse rounded-full bg-brand-outline/60" aria-hidden />
-        <p className="text-sm text-brand-muted">Checking your sign-in status…</p>
+        <AppSplash />
         {authTimedOut ? (
-          <>
+          <div className="fixed inset-x-0 bottom-16 flex flex-col items-center gap-3 px-6 text-center">
             <p className="max-w-xs text-xs text-brand-muted">
               This is taking longer than expected. Your notes on this device are safe either way.
             </p>
@@ -98,9 +101,9 @@ export default function App() {
             >
               Reload
             </button>
-          </>
+          </div>
         ) : null}
-      </div>
+      </>
     );
   }
 
@@ -108,7 +111,10 @@ export default function App() {
     return (
       <>
         {themeApplier}
-        <Suspense fallback={null}>
+        {/* Splash, not null, while the AuthScreen chunk loads — otherwise the shell flashes
+            blank on a first visit, and on an expired session flashes blank between the notes
+            we optimistically showed and this gate. */}
+        <Suspense fallback={<AppSplash />}>
           <AuthScreen mode="signin" mandatory />
         </Suspense>
       </>
