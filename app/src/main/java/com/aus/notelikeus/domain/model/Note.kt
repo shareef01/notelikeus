@@ -20,7 +20,6 @@ data class Note(
     val isArchived: Boolean = false,
     val isTrashed: Boolean = false,
     val position: Int = 0,
-    val isLocked: Boolean = false,
     val reminderTimestamp: Long? = null,
     val labels: List<Label> = emptyList(),
     val attachments: List<Attachment> = emptyList(),

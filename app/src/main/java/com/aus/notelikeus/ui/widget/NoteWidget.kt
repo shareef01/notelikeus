@@ -26,7 +26,6 @@ private data class WidgetStrings(
     val appName: String,
     val newNote: String,
     val empty: String,
-    val lockedNote: String,
     val untitled: String,
     val pinned: String,
     val appLocked: String
@@ -50,10 +49,9 @@ class NoteWidget : GlanceAppWidget() {
             appName = context.getString(R.string.app_name),
             newNote = context.getString(R.string.widget_new),
             empty = context.getString(R.string.widget_empty),
-            lockedNote = context.getString(R.string.locked_note),
             untitled = context.getString(R.string.untitled),
             pinned = context.getString(R.string.pinned_short),
-            appLocked = context.getString(R.string.widget_app_locked)
+            appLocked = context.getString(R.string.app_lock_title)
         )
         provideContent {
             WidgetContent(context, notes, theme, strings, appLocked)
@@ -186,11 +184,7 @@ class NoteWidget : GlanceAppWidget() {
                     )
                 }
                 Text(
-                    text = when {
-                        note.isLocked -> strings.lockedNote
-                        note.title.isNotBlank() -> note.title
-                        else -> strings.untitled
-                    },
+                    text = if (note.title.isNotBlank()) note.title else strings.untitled,
                     style = TextStyle(
                         fontWeight = FontWeight.Medium,
                         color = theme.onSurface,
@@ -200,7 +194,7 @@ class NoteWidget : GlanceAppWidget() {
                     modifier = GlanceModifier.defaultWeight()
                 )
             }
-            if (!note.isLocked && note.preview.isNotBlank()) {
+            if (note.preview.isNotBlank()) {
                 Spacer(modifier = GlanceModifier.height(4.dp))
                 Text(
                     text = note.preview,
