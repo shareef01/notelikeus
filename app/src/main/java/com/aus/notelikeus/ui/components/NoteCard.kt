@@ -4,8 +4,10 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -18,6 +20,8 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -26,17 +30,25 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import android.text.format.DateFormat
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.editor.RichTextParser
@@ -47,6 +59,51 @@ import com.aus.notelikeus.ui.theme.NoteCardTitleStyle
 import com.aus.notelikeus.ui.theme.getContentColor
 
 private val NoteCardContentPadding = 16.dp
+
+/** Compact uppercase label pill, matching the web card's chip typography. */
+private val NoteCardLabelChipStyle = TextStyle(
+    fontWeight = FontWeight.SemiBold,
+    fontSize = 10.sp,
+    lineHeight = 14.sp,
+    letterSpacing = 0.6.sp
+)
+
+/**
+ * Relative time label mirroring web's formatListTimestamp: today shows the clock time,
+ * yesterday shows "Yesterday", anything older shows "MMM d". The locale is read from
+ * LocalConfiguration so the label recomposes if the device locale changes.
+ */
+@Composable
+private fun noteTimestampLabel(timestamp: Long): String {
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
+    val is24Hour = DateFormat.is24HourFormat(context)
+    val yesterdayLabel = stringResource(R.string.section_yesterday)
+    return remember(timestamp, locale, is24Hour, yesterdayLabel) {
+        formatNoteTimestamp(timestamp, locale, is24Hour, yesterdayLabel)
+    }
+}
+
+private fun formatNoteTimestamp(
+    timestamp: Long,
+    locale: Locale,
+    is24Hour: Boolean,
+    yesterdayLabel: String
+): String {
+    val now = Calendar.getInstance()
+    val then = Calendar.getInstance().apply { timeInMillis = timestamp }
+    fun sameDay(a: Calendar, b: Calendar) =
+        a.get(Calendar.YEAR) == b.get(Calendar.YEAR) &&
+            a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
+
+    if (sameDay(now, then)) {
+        val pattern = if (is24Hour) "H:mm" else "h:mm a"
+        return SimpleDateFormat(pattern, locale).format(Date(timestamp))
+    }
+    val yesterday = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
+    if (sameDay(yesterday, then)) return yesterdayLabel
+    return SimpleDateFormat("MMM d", locale).format(Date(timestamp))
+}
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -258,40 +315,60 @@ fun NoteCard(
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         note.labels.take(2).forEach { label ->
                             val labelId = label.id
-                            SuggestionChip(
-                                onClick = {
-                                    labelId?.let { onLabelClick?.invoke(it) }
-                                },
-                                enabled = labelId != null && onLabelClick != null,
-                                label = {
-                                    Text(
-                                        text = label.name,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = contentColor
+                            // Compact uppercase pill, matching the web note card's label chips
+                            // (rounded-full, uppercase, tracking-wider, colour @ 10% surface).
+                            val clickable = labelId != null && onLabelClick != null
+                            Text(
+                                text = label.name.uppercase(),
+                                style = NoteCardLabelChipStyle,
+                                color = contentColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(contentColor.copy(alpha = 0.1f))
+                                    .then(
+                                        if (clickable) {
+                                            Modifier.clickable { onLabelClick.invoke(labelId) }
+                                        } else Modifier
                                     )
-                                },
-                                shape = CircleShape,
-                                colors = SuggestionChipDefaults.suggestionChipColors(
-                                    containerColor = contentColor.copy(alpha = 0.1f)
-                                ),
-                                border = null
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
                             )
                         }
                         val overflowCount = note.labels.size - 2
                         if (overflowCount > 0) {
                             Text(
                                 text = stringResource(R.string.labels_more, overflowCount),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = contentColor.copy(alpha = 0.65f)
+                                style = NoteCardLabelChipStyle,
+                                color = contentColor.copy(alpha = 0.7f)
                             )
                         }
                     }
                 }
+
+                // Bottom meta row: divider + relative timestamp, mirroring the web card anatomy
+                // (border-t border-current/10, then a compact time label).
+                Spacer(modifier = Modifier.height(if (compact) 10.dp else 12.dp))
+                HorizontalDivider(
+                    thickness = 1.dp,
+                    color = contentColor.copy(alpha = 0.1f)
+                )
+                Spacer(modifier = Modifier.height(if (compact) 8.dp else 10.dp))
+                Text(
+                    text = noteTimestampLabel(note.timestamp),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Medium,
+                        fontFeatureSettings = "tnum",
+                        letterSpacing = 0.2.sp,
+                        fontSize = if (compact) 10.sp else 11.sp
+                    ),
+                    color = contentColor.copy(alpha = 0.6f)
+                )
             }
 
             if (isSelected) {
