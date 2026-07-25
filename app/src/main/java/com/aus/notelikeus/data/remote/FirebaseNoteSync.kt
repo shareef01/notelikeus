@@ -69,6 +69,54 @@ class FirebaseNoteSync @Inject constructor(
         }
     }
 
+    /**
+     * Incremental upload path for the periodic reconciliation worker.
+     *
+     * [uploadAllNotes] reads the entire cloud collection every run to compare timestamps; on a
+     * device with many notes that is a full-collection read every cycle, forever, even when
+     * nothing changed. This variant still pulls cloud tombstones (so deletions made on other
+     * devices propagate — that housekeeping must not be skipped), but only re-checks notes changed
+     * locally since the last successful reconcile, reading just those few remote docs. An idle
+     * device therefore pays only for the tombstone read.
+     *
+     * Upload-only and idempotent: a note missed here is still pushed by its per-note SyncWorker or
+     * the next reconcile, so the worst case is a delayed upload, never lost local data.
+     */
+    suspend fun reconcileUploads(): Result<Int> {
+        return try {
+            val uid = sessionManager.ensureGoogleSignedIn().getOrThrow()
+            mergeCloudTombstones(uid)
+            val localNotes = noteRepository.getAllNotesForBackup()
+            purgeLocalTombstonedNotes(localNotes)
+
+            val since = syncStateStore.lastReconciledAt()
+            // Captured before the scan so a note written mid-reconcile stays eligible next time.
+            val highWater = System.currentTimeMillis()
+            val changed = localNotes.filter { note ->
+                val id = note.id ?: return@filter false
+                note.timestamp > since && note.isCloudSyncEligible() && !syncStateStore.isDeleted(id)
+            }
+
+            var uploaded = 0
+            for (note in changed) {
+                val noteId = note.id ?: continue
+                val remote = userNotesCollection(uid).document(noteId.toString()).get().await()
+                val remoteTs = if (remote.exists()) remote.getLong("timestamp") else null
+                // Only push when the cloud copy is absent or strictly older — never clobber a
+                // newer remote, and skip an already-synced note (no redundant write).
+                if (remoteTs != null && remoteTs >= note.timestamp) continue
+                putCloudNote(uid, note)
+                uploaded++
+            }
+
+            updateSyncMeta(uid, noteRepository.getCloudEligibleNoteCount())
+            syncStateStore.markReconciled(highWater)
+            Result.success(uploaded)
+        } catch (error: Throwable) {
+            Result.failure(error)
+        }
+    }
+
     suspend fun uploadNote(noteId: Long): Result<Unit> {
         return try {
             val uid = sessionManager.ensureGoogleSignedIn().getOrThrow()
