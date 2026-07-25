@@ -12,9 +12,9 @@ import kotlinx.coroutines.flow.first
 /**
  * Safety net for the per-note debounced sync in [CloudNoteSyncCoordinator]: that mechanism keeps
  * pending uploads in memory only, so a process death within its debounce window silently drops
- * the upload with nothing to retry it later. This worker periodically re-uploads every eligible
- * local note (last-write-wins, same as the manual "sync now" action), catching anything the
- * debounced path missed without needing to track which specific notes fell through.
+ * the upload with nothing to retry it later. This worker periodically re-checks local notes and
+ * re-uploads anything the debounced path missed. It uses [FirebaseNoteSync.reconcileUploads],
+ * which only reads notes changed since the last reconcile rather than the whole cloud collection.
  */
 @HiltWorker
 class ReconciliationSyncWorker @AssistedInject constructor(
@@ -27,7 +27,7 @@ class ReconciliationSyncWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         if (!settingsRepository.isCloudAutoSyncEnabled.first()) return Result.success()
 
-        val result = firebaseNoteSync.uploadAllNotes()
+        val result = firebaseNoteSync.reconcileUploads()
         return if (result.isSuccess) {
             Result.success()
         } else if (runAttemptCount < MAX_RETRIES) {

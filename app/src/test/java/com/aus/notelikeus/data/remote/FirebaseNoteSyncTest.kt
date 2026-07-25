@@ -196,6 +196,66 @@ class FirebaseNoteSyncTest {
     }
 
     @Test
+    fun `reconcileUploads pushes only notes changed since the last reconcile and does no full read`() = runTest {
+        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
+        every { syncStateStore.lastReconciledAt() } returns 100L
+        val changed = Note(id = 1L, title = "New", content = "", timestamp = 200L, color = 0)
+        val unchanged = Note(id = 2L, title = "Old", content = "", timestamp = 50L, color = 0)
+        coEvery { noteRepository.getAllNotesForBackup() } returns listOf(changed, unchanged)
+        coEvery { noteRepository.getCloudEligibleNoteCount() } returns 2
+
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
+        val metaCollection = mockk<CollectionReference>(relaxed = true)
+        val changedDoc = mockk<DocumentReference>(relaxed = true)
+        stubUserCollections(notesCollection, metaCollection)
+        every { notesCollection.document("1") } returns changedDoc
+        every { changedDoc.get() } returns Tasks.forResult(mockk(relaxed = true) {
+            every { exists() } returns false
+        })
+        every { changedDoc.set(any<Map<String, Any?>>(), any()) } returns Tasks.forResult(null)
+        every { metaCollection.document("sync") } returns mockk(relaxed = true) {
+            every { set(any<Map<String, Any>>(), any()) } returns Tasks.forResult(null)
+        }
+
+        val result = sync.reconcileUploads()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, result.getOrNull())
+        verify { changedDoc.set(any<Map<String, Any?>>(), any()) }
+        verify(exactly = 0) { notesCollection.document("2") }
+        verify(exactly = 0) { notesCollection.get() }
+        verify { syncStateStore.markReconciled(any()) }
+    }
+
+    @Test
+    fun `reconcileUploads does not clobber a newer cloud copy`() = runTest {
+        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
+        every { syncStateStore.lastReconciledAt() } returns 0L
+        val local = Note(id = 5L, title = "Local", content = "", timestamp = 100L, color = 0)
+        coEvery { noteRepository.getAllNotesForBackup() } returns listOf(local)
+        coEvery { noteRepository.getCloudEligibleNoteCount() } returns 1
+
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
+        val metaCollection = mockk<CollectionReference>(relaxed = true)
+        val doc = mockk<DocumentReference>(relaxed = true)
+        stubUserCollections(notesCollection, metaCollection)
+        every { notesCollection.document("5") } returns doc
+        every { doc.get() } returns Tasks.forResult(mockk(relaxed = true) {
+            every { exists() } returns true
+            every { getLong("timestamp") } returns 999L
+        })
+        every { metaCollection.document("sync") } returns mockk(relaxed = true) {
+            every { set(any<Map<String, Any>>(), any()) } returns Tasks.forResult(null)
+        }
+
+        val result = sync.reconcileUploads()
+
+        assertTrue(result.isSuccess)
+        assertEquals(0, result.getOrNull())
+        verify(exactly = 0) { doc.set(any<Map<String, Any?>>(), any()) }
+    }
+
+    @Test
     fun `deleteAllCloudData fails when Google sign-in is required`() = runTest {
         coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.failure(
             IllegalStateException("Google sign-in required")
