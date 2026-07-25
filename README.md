@@ -9,7 +9,7 @@ A Google Keep–style notes app for **Android** and **web** (PWA). Notes are sto
     - Implemented **SQLCipher** for military-grade at-rest encryption of the local SQLite database.
     - Integrated **Biometric Auth** and custom secure-gate logic for sensitive data protection.
 - **Distributed System Sync**: 
-    - Designed an **offline-first** synchronization engine using Firestore's real-time listeners.
+    - Designed an **offline-first** synchronization engine on Firestore — real-time snapshot listeners on web, download-plus-reconciliation sync on Android.
     - Conflict resolution strategy optimized for low-latency updates across mobile and web clients.
 - **Enterprise-Grade UI/UX**: 
     - Design system built on **Material 3**, featuring dynamic color support and adaptive layouts for foldable and large-screen devices.
@@ -74,7 +74,7 @@ See [`web/README.md`](web/README.md) for full PWA setup and architecture notes.
 
 - Android 8.0+ (API 26)
 - Android Studio Ladybug or newer recommended
-- JDK 11+
+- JDK 17 (to build; the app targets Java 11 bytecode)
 
 ## Build and run
 
@@ -115,7 +115,7 @@ See [`web/README.md`](web/README.md) for full PWA setup and architecture notes.
 - **Architecture**: Functional Components + Custom Hooks for logic reuse
 - **Styling**: Tailwind CSS (Optimized for performance and rapid iteration)
 - **State**: Zustand (Lightweight, atomic state management)
-- **Persistence**: IndexedDB for robust local storage on the web
+- **Persistence**: `localStorage` (via Zustand persist) for notes and settings on the web
 - **PWA**: Advanced Service Worker implementation for full offline capability, asset caching, and background installation prompts.
 
 ---
@@ -127,11 +127,11 @@ The Notelikeus Web PWA is not just a companion app but a fully featured, desktop
 - **Reactive Sync Engine**: Uses Firestore's snapshot listeners to maintain a real-time reactive data stream, ensuring the UI is always in sync with the cloud.
 - **Offline Reliability**: Implements a "Stale-While-Revalidate" strategy via Service Workers, allowing the app to load instantly even on flaky connections.
 - **Responsive Engineering**: A mobile-first design that scales into a multi-column dashboard on larger screens, optimizing the workspace for productivity.
-- **Modular Logic**: Shared TypeScript types and utility functions ensure data consistency between the Android and Web implementations.
+- **Matched Data Models**: The Android (Kotlin) and Web (TypeScript) clients are independent implementations that keep their note/label/checklist models and cloud mapping in lock-step, with a shared Firestore schema.
 
 ### Cloud & DevOps
 - **Backend**: Firebase (Auth, Firestore, Hosting)
-- **CI/CD**: GitHub Actions (Automated unit testing, linting, and deployment)
+- **CI**: GitHub Actions (automated unit tests, linting, and debug/release builds; deploys are run manually)
 - **Analytics**: Designed for Zero-Tracking (User privacy focus)
 
 ---
@@ -190,7 +190,7 @@ Cloud sync uses Firestore only (no Storage) so it fits the **Spark (free)** plan
 
 # Web unit tests
 cd web && npm test
-```
+
 # Instrumented tests (device/emulator required)
 ./gradlew :app:connectedDebugAndroidTest
 ```
@@ -211,7 +211,7 @@ The editor hides markers while typing (WYSIWYG). Note cards render formatted tex
 
 ## Backup format
 
-JSON v2 files (`notelikeus_backup_YYYYMMDD.json`) include notes, labels, and checklists. Import is append-only and matches labels by name.
+JSON v3 files (`notelikeus_backup_YYYY-MM-DD.json`) include notes, labels, and checklists. Import is append-only and matches labels by name.
 
 ## Release builds
 
