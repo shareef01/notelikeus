@@ -8,7 +8,6 @@ Notelikeus is an offline-first notes application. This policy describes how the 
 
 - Notes are stored **locally on your device** in an encrypted database.
 - **Google sign-in is required.** Cloud sync uploads note text to **your Firebase account** when auto-sync is enabled.
-- Locked notes are **not** uploaded to the cloud.
 - The app does **not** include analytics or advertising SDKs.
 
 ## Information stored on your device
@@ -23,15 +22,14 @@ The app may store:
 
 When you sign in with Google and use sync:
 
-- Note content (except locked notes) is stored in **Google Firebase Firestore** under your Google account
+- Note content is stored in **Google Firebase Firestore** under your Google account
 - Data is governed by [Google’s privacy policy](https://policies.google.com/privacy) and your Firebase project settings
 - Signing out **clears local notes on this device** so the next account cannot inherit them; cloud data remains until you delete it (in-app “Sign out and delete cloud data” or Firebase console)
 
 ## Security
 
-- **Android:** Notes are stored in a **SQLCipher-encrypted** Room database. Biometric lock (optional) uses the device’s biometric APIs for the app or individual notes.
-- **Web:** Unlocked notes are stored in browser local storage. Hidden (locked) notes encrypt title, body, and checklist at rest (AES-GCM with a device-local key cleared on sign-out).
-- Locked notes are not synced to the cloud on either platform.
+- **Android:** Notes are stored in a **SQLCipher-encrypted** Room database. An optional app-wide lock uses the device’s biometric APIs to gate opening the app.
+- **Web:** Notes are stored in browser local storage on your device.
 
 ## Permissions
 
@@ -39,8 +37,7 @@ When you sign in with Google and use sync:
 |------------|---------|
 | Internet | Firebase auth and cloud sync |
 | Notifications | Deliver reminders you schedule for notes |
-| Biometric | Unlock the app or locked notes when enabled |
-| Exact alarms | Fire reminders at the time you choose |
+| Biometric | Unlock the app when app lock is enabled |
 
 When you export or import backups, the system file picker is used; the app only accesses files you select.
 
