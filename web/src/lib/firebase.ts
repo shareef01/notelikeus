@@ -8,13 +8,11 @@ import {
   persistentMultipleTabManager,
   type Firestore,
 } from 'firebase/firestore';
-import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import { loadFirebaseEnv } from './config';
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
-let storage: FirebaseStorage | null = null;
 let initError: Error | null = null;
 
 function createFirestore(instance: FirebaseApp): Firestore {
@@ -74,10 +72,9 @@ export function initFirebase(): {
   app: FirebaseApp;
   auth: Auth;
   db: Firestore;
-  storage: FirebaseStorage;
 } {
-  if (app && auth && db && storage) {
-    return { app, auth, db, storage };
+  if (app && auth && db) {
+    return { app, auth, db };
   }
 
   if (initError) {
@@ -98,9 +95,8 @@ export function initFirebase(): {
     initAppCheck(app);
     auth = getAuth(app);
     db = createFirestore(app);
-    storage = getStorage(app);
 
-    return { app, auth, db, storage };
+    return { app, auth, db };
   } catch (error) {
     initError = error instanceof Error ? error : new Error(String(error));
     throw initError;
@@ -115,6 +111,3 @@ export function getFirestoreDb(): Firestore {
   return initFirebase().db;
 }
 
-export function getFirebaseStorage(): FirebaseStorage {
-  return initFirebase().storage;
-}
