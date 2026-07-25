@@ -23,6 +23,13 @@ class NoteSyncStateStoreTest {
     }
 
     @Test
+    fun `reconciled high-water mark round-trips and defaults to zero`() {
+        assertEquals(0L, store.lastReconciledAt())
+        store.markReconciled(1_234L)
+        assertEquals(1_234L, store.lastReconciledAt())
+    }
+
+    @Test
     fun `restored ids round-trip and clear`() {
         store.markRestored(3L)
         store.markRestored(4L)

@@ -121,6 +121,17 @@ class NoteSyncStateStore @Inject constructor(
         prefs.edit().putStringSet(KEY_RESTORED, ids.map { it.toString() }.toSet()).apply()
     }
 
+    /**
+     * High-water mark (note timestamp) up to which the periodic reconciliation worker has already
+     * pushed local changes. It lets that worker re-check only notes changed since, instead of
+     * reading the whole cloud collection every cycle.
+     */
+    fun lastReconciledAt(): Long = prefs.getLong(KEY_LAST_RECONCILED, 0L)
+
+    fun markReconciled(at: Long) {
+        prefs.edit().putLong(KEY_LAST_RECONCILED, at).apply()
+    }
+
     fun knownCloudIds(): Set<Long> =
         prefs.getStringSet(KEY_KNOWN_CLOUD, emptySet())
             .orEmpty()
@@ -157,6 +168,7 @@ class NoteSyncStateStore @Inject constructor(
         private const val KEY_KNOWN_CLOUD = "known_cloud_ids"
         private const val KEY_RESTORED = "restored_ids"
         private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
+        private const val KEY_LAST_RECONCILED = "last_reconciled_at"
         const val TOMBSTONE_TTL_MS = 30L * 24 * 60 * 60 * 1000
     }
 }
