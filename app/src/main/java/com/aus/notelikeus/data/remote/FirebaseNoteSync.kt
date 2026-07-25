@@ -285,7 +285,7 @@ class FirebaseNoteSync @Inject constructor(
     }
 
     /**
-     * Removes unlocked local notes that were deleted on another device (cloud tombstone).
+     * Removes local notes that were deleted on another device (cloud tombstone).
      * Takes the caller's note snapshot and returns the purged ids so the caller can keep using
      * that snapshot instead of re-reading the table.
      */

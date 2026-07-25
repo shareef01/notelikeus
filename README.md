@@ -30,7 +30,6 @@ A Google Keep–style notes app for **Android** and **web** (PWA). Notes are sto
 | JSON backup import/export | Yes |
 | Reminders | Browser + service worker notifications |
 | Offline mode + install prompt | Yes |
-| Per-note lock | Unlock gate (no biometric on web) |
 
 ```bash
 cd web
@@ -52,7 +51,7 @@ See [`web/README.md`](web/README.md) for full PWA setup and architecture notes.
 
 - **Notes** — titles, rich text (bold, italic, links, bullets), checklists, colors, and labels
 - **Organization** — pin, archive, trash, search, color/label filters, list/grid layout, drag-to-reorder (list view)
-- **Security** — SQLCipher-encrypted Room database, per-note biometric lock, optional app-wide lock
+- **Security** — SQLCipher-encrypted Room database, optional app-wide biometric lock
 - **Cloud sync** — optional Firestore sync when signed in with Google (Spark/free tier friendly; text only)
 - **Reminders** — date/time notifications that open the note
 - **Backup** — export and import notes as JSON from Settings
