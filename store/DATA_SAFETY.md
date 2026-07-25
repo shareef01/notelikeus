@@ -12,7 +12,7 @@ Use these answers when completing the **Data safety** form in Play Console for N
 
 ## Sign-in and sync
 
-Google sign-in is **required** to use the app. Note content stays on device in an encrypted database; when auto-sync is enabled, eligible notes (not locked) are uploaded to Firestore under that Google account.
+Google sign-in is **required** to use the app. Note content stays on device in an encrypted database; when auto-sync is enabled, notes are uploaded to Firestore under that Google account.
 
 Signing out **clears local notes** on the device so the next account cannot inherit them. Cloud copies remain until the user deletes them in-app or via Firebase.
 
@@ -21,7 +21,7 @@ Signing out **clears local notes** on the device so the next account cannot inhe
 | Data type | Collected | Shared | Purpose | Optional |
 |-----------|-----------|--------|---------|----------|
 | Personal info (email / Google account id) | Yes | No (Firebase Auth) | Account authentication | No — required to use the app |
-| User-generated content (notes) | Yes | No (stored under the user’s Firebase account) | App functionality — sync across devices | Sync of note bodies can be disabled via auto-sync; locked notes are never uploaded |
+| User-generated content (notes) | Yes | No (stored under the user’s Firebase account) | App functionality — sync across devices | Sync of note bodies can be disabled via auto-sync |
 
 **Not collected:** analytics events, advertising IDs, contacts, location, photos (attachment feature removed).
 
@@ -37,8 +37,8 @@ Signing out **clears local notes** on the device so the next account cannot inhe
 
 - `INTERNET` — Firebase auth and cloud sync
 - `POST_NOTIFICATIONS` — user-scheduled note reminders
-- `USE_BIOMETRIC` — optional app/note unlock
-- `SCHEDULE_EXACT_ALARM` — reminder alarms
+- `USE_BIOMETRIC` — optional app unlock
+- `RECEIVE_BOOT_COMPLETED` — reschedule reminders after a device restart
 
 ## Backup
 

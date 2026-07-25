@@ -1,7 +1,8 @@
 Notelikeus 1.0.0
 
-• Cross-device sync with stable cloud IDs and realtime updates
-• Locked notes stay private in backups, reminders, and cloud sync
-• PWA + Android parity for labels, checklists, archive/trash, and search
-• JSON backup import/export with redacted locked notes
-• Biometric app lock, per-note lock, reminders, and home screen widget
+• Google sign-in with cloud sync across your devices
+• Realtime Firestore sync on web; background sync on Android
+• Labels, checklists, colors, pin, archive, trash, and search
+• Date/time reminders and a home screen widget
+• Optional biometric app lock
+• JSON backup import and export
