@@ -72,9 +72,8 @@
     <string name="title_hint">Title</string>
     <string name="note_hint">Note</string>
     <string name="list_item_hint">List item</string>
-    <string name="locked_note_message">This note is locked</string>
     <string name="go_back">Go back</string>
-    <string name="authenticate_subtitle">Authenticate to access this note</string>
+    <string name="authenticate_subtitle">Authenticate to open Notelikeus</string>
 
     <!-- Reminders -->
     <string name="reminder_channel_name">Note Reminders</string>

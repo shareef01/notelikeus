@@ -37,8 +37,7 @@ Add your hosting domain (e.g. `notelikeus.web.app`) to Firebase Auth → Authori
 - **EditorScreen** — full-screen editor with note-colored background and dynamic text contrast
 - **Debounced autosave** — 1000ms delay (matches Android), writes to Firestore offline cache via `upsertNote`
 - **ChecklistEditor** — checked items sink to bottom with strikethrough; convert text ↔ checklist
-- **EditorOptionsSheet** — color swatches, label toggles, create label, lock, delete
-- **Lock overlay** — web unlock gate (biometric deferred to native apps)
+- **EditorOptionsSheet** — color swatches, label toggles, create label, delete
 - **Editor routing** — `openNewNote` / `openNote` / `closeEditor` in `uiStore`
 
 ## Step 3 — What's included
@@ -58,7 +57,7 @@ Add your hosting domain (e.g. `notelikeus.web.app`) to Firebase Auth → Authori
 - **Cloud mapper** — `noteToCloudMap` / `cloudMapToNote` (matches Android `NoteCloudMapper.kt`)
 - **Firestore repository** — `subscribeToNotes` (`onSnapshot`), `upsertNote`, `deleteNote`, `uploadAllNotes`
 - **Hooks** — `useAuth`, `useNotes` piping real-time updates into Zustand
-- **Conflict rule** — last-write-wins on `timestamp`; locked notes excluded from upload
+- **Conflict rule** — last-write-wins on `timestamp`
 
 Firestore composite index: single-field `timestamp` ordering is automatic. No extra index required for Step 2.
 

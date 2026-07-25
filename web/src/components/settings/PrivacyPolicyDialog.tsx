@@ -8,14 +8,11 @@ Data stored on device
 • Optional settings such as theme and auto-sync preferences
 
 Cloud sync
-• When enabled, note text (except locked notes) syncs to Firebase Firestore under your Google account
-• Locked notes are never uploaded
+• When enabled, note text syncs to Firebase Firestore under your Google account
 • Signing out clears local notes on this device so the next account cannot inherit them
 
 Security
-• Unlocked notes in this browser are stored in local storage on your device
-• Hidden (locked) notes encrypt title, body, and checklist at rest with a device-local key (AES-GCM). The key never leaves this browser profile and is cleared on sign-out. This protects against casual inspection of storage; it is not a substitute for full-disk encryption or a strong account passphrase.
-• Per-note hide also keeps content out of the feed, search, reminders, and cloud sync until you show it again. On browsers that support it, revealing a hidden note requires your device's screen lock (fingerprint, face, or PIN).
+• Notes in this browser are stored in local storage on your device. This protects against casual inspection but is not a substitute for full-disk encryption or a strong account passphrase.
 
 Permissions
 • Notifications: used only for note reminders you set (reminders show a generic message, not note text)
@@ -23,7 +20,7 @@ Permissions
 
 Backups
 • JSON backups are created and restored only when you choose. Backup files are saved where you pick and are your responsibility to protect.
-• Unlike cloud sync, backups include hidden notes in plain text, since a backup is meant to be a complete copy of your data
+• Backups contain all your notes in plain text, since a backup is meant to be a complete copy of your data
 
 Links
 • Tapping a link in a note opens it in your browser. Notelikeus does not track link visits.
