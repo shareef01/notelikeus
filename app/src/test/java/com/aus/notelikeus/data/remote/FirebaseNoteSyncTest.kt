@@ -3,9 +3,11 @@ package com.aus.notelikeus.data.remote
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.google.android.gms.tasks.Tasks
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.QueryDocumentSnapshot
 import com.google.firebase.firestore.WriteBatch
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -35,6 +37,9 @@ class FirebaseNoteSyncTest {
         every { syncStateStore.isDeleted(any()) } returns false
         every { syncStateStore.deletedAtById() } returns emptyMap()
         every { syncStateStore.restoredIds() } returns emptySet()
+        // Steady state: local data has already been confirmed to belong to "uid" (see the
+        // lastMergedUserId guard test below for the account-switch-race case).
+        every { syncStateStore.lastMergedUserId() } returns "uid"
         sync = FirebaseNoteSync(noteRepository, sessionManager, firestore, syncStateStore)
     }
 
@@ -84,7 +89,11 @@ class FirebaseNoteSyncTest {
         val metaCollection = mockk<CollectionReference>(relaxed = true)
         val batch = mockk<WriteBatch>(relaxed = true)
         stubUserCollections(notesCollection, metaCollection)
-        every { notesCollection.document(any()) } returns mockk(relaxed = true)
+        every { notesCollection.document(any()) } returns mockk(relaxed = true) {
+            // Post-write readback (see putCloudNote/refreshServerTimestamp) needs a completed
+            // Task, or awaiting an entirely unstubbed one on a relaxed mock never resumes.
+            every { get() } returns Tasks.forResult(mockk(relaxed = true))
+        }
         every { notesCollection.get() } returns Tasks.forResult(mockk(relaxed = true) {
             every { documents } returns emptyList()
         })
@@ -100,6 +109,31 @@ class FirebaseNoteSyncTest {
         assertTrue(result.isSuccess)
         assertEquals(2, result.getOrNull())
         verify(exactly = 2) { batch.set(any(), any<Map<String, Any?>>(), any()) }
+    }
+
+    @Test
+    fun `uploadNote refreshes the local serverUpdatedAt cache after a successful upload`() = runTest {
+        // Without this readback, Room's cached serverUpdatedAt goes stale the moment this device
+        // uploads its own edit, and a later reconcile/download pass could mistake a fresh remote
+        // timestamp (from this very upload) for evidence that remote is ahead of local.
+        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
+        val note = Note(id = 7L, title = "Edited", content = "", timestamp = 1L, color = 0)
+        coEvery { noteRepository.getNoteById(7L) } returns note
+
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
+        val tombstonesCollection = mockk<CollectionReference>(relaxed = true)
+        val noteDoc = mockk<DocumentReference>(relaxed = true)
+        stubUserCollections(notesCollection, tombstonesCollection = tombstonesCollection)
+        every { notesCollection.document("7") } returns noteDoc
+        every { noteDoc.set(any<Map<String, Any?>>(), any()) } returns Tasks.forResult(null)
+        every { noteDoc.get() } returns Tasks.forResult(mockk(relaxed = true) {
+            every { getTimestamp("serverUpdatedAt") } returns Timestamp(42L, 0)
+        })
+
+        val result = sync.uploadNote(7L)
+
+        assertTrue(result.isSuccess)
+        coVerify { noteRepository.updateServerTimestamp(7L, 42_000L) }
     }
 
     @Test
@@ -149,6 +183,8 @@ class FirebaseNoteSyncTest {
         stubUserCollections(notesCollection, tombstonesCollection = tombstonesCollection)
         every { notesCollection.document("11") } returns noteDoc
         every { noteDoc.set(any<Map<String, Any?>>(), any()) } returns Tasks.forResult(null)
+        // Post-write readback (see putCloudNote) needs a completed Task.
+        every { noteDoc.get() } returns Tasks.forResult(mockk(relaxed = true))
         every { tombstonesCollection.document("11") } returns tombstoneDoc
         every { tombstoneDoc.delete() } returns Tasks.forResult(null)
 
@@ -253,6 +289,129 @@ class FirebaseNoteSyncTest {
         assertTrue(result.isSuccess)
         assertEquals(0, result.getOrNull())
         verify(exactly = 0) { doc.set(any<Map<String, Any?>>(), any()) }
+    }
+
+    @Test
+    fun `reconcileUploads skips when local data has not been confirmed for this uid`() = runTest {
+        // ReconciliationSyncWorker runs on its own 12h schedule, independent of sign-in. If it
+        // fires in the window where MainViewModel.prepareLocalDataForSignedInUser is still
+        // wiping a previous account's local notes (before it records lastMergedUserId), it must
+        // not upload whatever is currently in Room — that data does not belong to "uid" yet.
+        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
+        every { syncStateStore.lastMergedUserId() } returns "some-other-uid"
+
+        val result = sync.reconcileUploads()
+
+        assertTrue(result.isSuccess)
+        assertEquals(0, result.getOrNull())
+        coVerify(exactly = 0) { noteRepository.getAllNotesForBackup() }
+        verify(exactly = 0) { syncStateStore.markReconciled(any()) }
+    }
+
+    @Test
+    fun `downloadAllNotes trusts serverUpdatedAt over a skewed client timestamp`() = runTest {
+        // Local's own serverUpdatedAt (100) is server-confirmed newer than remote's (50), even
+        // though the remote document's client `timestamp` — a different device's clock — reads
+        // far higher. Server time must decide the conflict, not either device's clock.
+        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
+        // Timestamp's constructor takes seconds, not millis — Timestamp(50, 0) resolves to
+        // 50_000ms, so local's serverUpdatedAt has to clear that bar to prove it wins.
+        val local = Note(
+            id = 5L, title = "Local", content = "", timestamp = 500L, color = 0,
+            serverUpdatedAt = 500_000L
+        )
+        coEvery { noteRepository.getAllNotesForBackup() } returns listOf(local)
+        coEvery { noteRepository.getAllLabelsSnapshot() } returns emptyList()
+        coEvery { noteRepository.getCloudEligibleNoteCount() } returns 1
+        every { syncStateStore.knownCloudIds() } returns emptySet()
+        every { syncStateStore.pruneExpired(any()) } returns emptySet()
+
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
+        val metaCollection = mockk<CollectionReference>(relaxed = true)
+        val tombstonesCollection = mockk<CollectionReference>(relaxed = true)
+        val remoteDoc = mockk<QueryDocumentSnapshot>(relaxed = true)
+        val noteDoc = mockk<DocumentReference>(relaxed = true)
+        stubUserCollections(notesCollection, metaCollection, tombstonesCollection)
+
+        every { remoteDoc.id } returns "5"
+        every { remoteDoc.data } returns mapOf(
+            "title" to "Clock-skewed remote",
+            "content" to "",
+            "timestamp" to 999_999L,
+            "serverUpdatedAt" to Timestamp(50L, 0),
+            "color" to 0,
+            "isPinned" to false,
+            "isArchived" to false,
+            "isTrashed" to false,
+            "position" to 0,
+            "labels" to emptyList<Any>(),
+            "checklist" to emptyList<Any>()
+        )
+        every { notesCollection.get() } returns Tasks.forResult(mockk(relaxed = true) {
+            every { documents } returns listOf(remoteDoc)
+        })
+        every { notesCollection.document("5") } returns noteDoc
+        every { noteDoc.set(any<Map<String, Any?>>(), any()) } returns Tasks.forResult(null)
+        // Post-write readback (see putCloudNote) needs a completed Task.
+        every { noteDoc.get() } returns Tasks.forResult(mockk(relaxed = true))
+        every { metaCollection.document("sync") } returns mockk(relaxed = true) {
+            every { set(any<Map<String, Any>>(), any()) } returns Tasks.forResult(null)
+        }
+
+        val result = sync.downloadAllNotes()
+
+        assertTrue(result.isSuccess)
+        coVerify(exactly = 0) { noteRepository.updateNote(any()) }
+        verify { noteDoc.set(any<Map<String, Any?>>(), any()) }
+    }
+
+    @Test
+    fun `downloadAllNotes accepts the cloud copy when its serverUpdatedAt is newer`() = runTest {
+        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
+        val local = Note(
+            id = 5L, title = "Local", content = "", timestamp = 999_999L, color = 0,
+            serverUpdatedAt = 10L
+        )
+        coEvery { noteRepository.getAllNotesForBackup() } returns listOf(local)
+        coEvery { noteRepository.getAllLabelsSnapshot() } returns emptyList()
+        coEvery { noteRepository.getCloudEligibleNoteCount() } returns 1
+        every { syncStateStore.knownCloudIds() } returns emptySet()
+        every { syncStateStore.pruneExpired(any()) } returns emptySet()
+
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
+        val metaCollection = mockk<CollectionReference>(relaxed = true)
+        val tombstonesCollection = mockk<CollectionReference>(relaxed = true)
+        val remoteDoc = mockk<QueryDocumentSnapshot>(relaxed = true)
+        val noteDoc = mockk<DocumentReference>(relaxed = true)
+        stubUserCollections(notesCollection, metaCollection, tombstonesCollection)
+
+        every { remoteDoc.id } returns "5"
+        every { remoteDoc.data } returns mapOf(
+            "title" to "Server-confirmed remote",
+            "content" to "",
+            "timestamp" to 1L,
+            "serverUpdatedAt" to Timestamp(200L, 0),
+            "color" to 0,
+            "isPinned" to false,
+            "isArchived" to false,
+            "isTrashed" to false,
+            "position" to 0,
+            "labels" to emptyList<Any>(),
+            "checklist" to emptyList<Any>()
+        )
+        every { notesCollection.get() } returns Tasks.forResult(mockk(relaxed = true) {
+            every { documents } returns listOf(remoteDoc)
+        })
+        every { notesCollection.document("5") } returns noteDoc
+        every { metaCollection.document("sync") } returns mockk(relaxed = true) {
+            every { set(any<Map<String, Any>>(), any()) } returns Tasks.forResult(null)
+        }
+
+        val result = sync.downloadAllNotes()
+
+        assertTrue(result.isSuccess)
+        coVerify { noteRepository.updateNote(match { it.title == "Server-confirmed remote" }) }
+        verify(exactly = 0) { noteDoc.set(any<Map<String, Any?>>(), any()) }
     }
 
     @Test

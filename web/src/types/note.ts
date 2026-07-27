@@ -5,7 +5,7 @@ import { noteColorsMatch } from '@/theme/colors';
 
 /**
  * Canonical note model — field names match Android Room + Firestore cloud map.
- * `timestamp` is the conflict-resolution clock (Android uses this, not `updatedAt`).
+ * `timestamp` is the client-set edit clock, shown to the user and used for display sort order.
  */
 export interface Note {
   /** Firestore document id (string form of Android localId). */
@@ -21,6 +21,14 @@ export interface Note {
   isTrashed: boolean;
   position: number;
   reminderTimestamp: number | null;
+  /**
+   * Firestore's server-assigned commit time (epoch millis) as of the last time this device
+   * observed a write to this note in the cloud. Null until the note has synced at least once
+   * under this scheme. This — not `timestamp` — is what conflict resolution compares, since a
+   * device's own clock can be wrong or spoofed; see notesRepository.ts's `mergeRemoteNotes` and
+   * Android's FirebaseNoteSync.kt.
+   */
+  serverUpdatedAt: number | null;
   labels: Label[];
   attachments: Attachment[];
   checklist: ChecklistItem[];
@@ -59,6 +67,7 @@ export function createEmptyNote(partial: Partial<Note> & Pick<Note, 'localId' | 
     isTrashed: false,
     position: 0,
     reminderTimestamp: null,
+    serverUpdatedAt: null,
     labels: [],
     attachments: [],
     checklist: [],
@@ -129,8 +138,4 @@ export function filterNotes(notes: Note[], filters: NoteQueryFilters): Note[] {
   }
 
   return result;
-}
-
-export function shouldApplyRemoteNote(local: Note, remote: Note): boolean {
-  return remote.timestamp >= local.timestamp;
 }
