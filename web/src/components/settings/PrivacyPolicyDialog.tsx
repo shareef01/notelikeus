@@ -1,18 +1,18 @@
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEffect } from 'react';
 
-const PRIVACY_POLICY_BODY = `Notelikeus is an offline-first notes app. Sign-in with Google is required. Your notes are stored locally in this browser. Cloud sync uploads note text to your own Firebase account when auto-sync is enabled.
+const PRIVACY_POLICY_BODY = `Sign-in with Google is required to use Notelikeus on the web. Your notes are stored in Firestore under your Google account — this browser keeps only a temporary in-memory copy while the app is open, plus a Firestore-managed offline cache for continuity without a connection.
 
 Data stored on device
-• Note text, titles, colors, labels, checklists, and reminders
-• Optional settings such as theme and auto-sync preferences
+• App preferences: theme and layout
+• Note text, titles, colors, labels, checklists, and reminders live in your Firebase account, not in this browser's storage
 
 Cloud sync
-• When enabled, note text syncs to Firebase Firestore under your Google account
-• Signing out clears local notes on this device so the next account cannot inherit them
+• Note text always syncs to Firebase Firestore under your Google account — there's no separate offline-only mode on the web
+• Signing out clears any locally cached labels and preferences tied to this account so the next account cannot inherit them
 
 Security
-• Notes in this browser are stored in local storage on your device. This protects against casual inspection but is not a substitute for full-disk encryption or a strong account passphrase.
+• Notes are not stored on this device — they live in Firestore, protected by your Google account and Firestore's access rules, not by anything in this browser.
 
 Permissions
 • Notifications: used only for note reminders you set (reminders show a generic message, not note text)
@@ -38,10 +38,6 @@ interface PrivacyPolicyDialogProps {
   onClose: () => void;
 }
 
-/**
- * Privacy Policy Overhaul
- * Geometric Discipline: Absolute 20px radius and backdrop-blur synchronization.
- */
 export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
 

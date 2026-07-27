@@ -3,8 +3,10 @@ package com.aus.notelikeus
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -145,8 +147,19 @@ class MainActivity : FragmentActivity() {
                         title = { Text(stringResource(R.string.notification_permission_title)) },
                         text = { Text(stringResource(R.string.reminder_permission_denied)) },
                         confirmButton = {
+                            TextButton(onClick = {
+                                showNotificationRationale = false
+                                startActivity(
+                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                        .setData(Uri.fromParts("package", packageName, null))
+                                )
+                            }) {
+                                Text(stringResource(R.string.cd_open_settings))
+                            }
+                        },
+                        dismissButton = {
                             TextButton(onClick = { showNotificationRationale = false }) {
-                                Text(stringResource(R.string.action_ok))
+                                Text(stringResource(R.string.action_cancel))
                             }
                         }
                     )

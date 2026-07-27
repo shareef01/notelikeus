@@ -2,21 +2,23 @@
 
 **Last updated:** July 2026
 
-Notelikeus is an offline-first notes application. This policy describes how the app handles information on your device and when you use cloud sync with Google sign-in.
+Notelikeus is offline-first on Android; the web app requires a Google account and keeps notes in the cloud. This policy describes how the app handles information on your device and when you use cloud sync with Google sign-in.
 
 ## Summary
 
-- Notes are stored **locally on your device** in an encrypted database.
-- **Google sign-in is required.** Cloud sync uploads note text to **your Firebase account** when auto-sync is enabled.
+- **Android:** Notes are stored **locally on your device** in an encrypted database. Cloud sync uploads note text to **your Firebase account** when auto-sync is enabled.
+- **Web:** Google sign-in is required to use the app. Note text is stored only in **your Firebase account**; edits sync automatically, with no separate offline copy on the device.
 - The app does **not** include analytics or advertising SDKs.
 
 ## Information stored on your device
 
-The app may store:
+**Android** may store:
 
 - Note titles, body text, colors, and positions
 - Labels, checklists, and reminder times
 - Settings (for example dark mode, app lock, and auto-sync preferences)
+
+**Web** stores only app preferences on your device (theme, layout, reminder scheduling) — note text lives in Firestore, not the browser.
 
 ## Cloud sync
 
@@ -24,12 +26,12 @@ When you sign in with Google and use sync:
 
 - Note content is stored in **Google Firebase Firestore** under your Google account
 - Data is governed by [Google’s privacy policy](https://policies.google.com/privacy) and your Firebase project settings
-- Signing out **clears local notes on this device** so the next account cannot inherit them; cloud data remains until you delete it (in-app “Sign out and delete cloud data” or Firebase console)
+- Signing out **clears locally cached data on this device** (Android's local database; on web, any local labels and app preferences tied to the account) so the next account cannot inherit them; cloud data remains until you delete it (in-app “Sign out and delete cloud data” or Firebase console)
 
 ## Security
 
 - **Android:** Notes are stored in a **SQLCipher-encrypted** Room database. An optional app-wide lock uses the device’s biometric APIs to gate opening the app.
-- **Web:** Notes are stored in browser local storage on your device.
+- **Web:** Notes are not stored on the device — they live in Firestore, protected by your Google account and Firestore's access rules. The browser keeps only a temporary in-memory copy while the app is open, plus a Firestore-managed offline cache for continuity without a connection.
 
 ## Permissions
 

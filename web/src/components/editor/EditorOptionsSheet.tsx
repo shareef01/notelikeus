@@ -1,6 +1,5 @@
 import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
-import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
-import { useToastStore } from '@/store/toastStore';
+import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';
 import { TrashIcon, AddIcon } from '@/components/icons/Icons';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { Label } from '@/types/label';
@@ -36,10 +35,6 @@ interface EditorOptionsSheetProps {
   onDeleteNote: () => void;
 }
 
-/**
- * Editor Options Overhaul
- * Integrated with Elite Architecture and Premium Icons.
- */
 export function EditorOptionsSheet({
   open,
   onClose,
@@ -59,22 +54,15 @@ export function EditorOptionsSheet({
 
   if (!open) return null;
 
-  const handleReminderInput = async (value: string) => {
+  // Permission + future-date checks live in useNoteEditor's setReminderTimestamp, shared with
+  // the quick-pick chips below and the bell-icon dialog — not duplicated here.
+  const handleReminderInput = (value: string) => {
     if (!value) {
       onReminderChange(null);
       return;
     }
     const nextTimestamp = new Date(value).getTime();
     if (Number.isNaN(nextTimestamp)) return;
-    if (nextTimestamp <= Date.now()) {
-      useToastStore.getState().show('Choose a future date and time', 'error');
-      return;
-    }
-    const granted = await requestNotificationPermission();
-    if (!granted) {
-      useToastStore.getState().show('Enable notifications to use reminders', 'error');
-      return;
-    }
     onReminderChange(nextTimestamp);
   };
 
@@ -170,7 +158,7 @@ export function EditorOptionsSheet({
           <input
             type="datetime-local"
             value={formatReminderInputValue(reminderTimestamp)}
-            onChange={(event) => void handleReminderInput(event.target.value)}
+            onChange={(event) => handleReminderInput(event.target.value)}
             className="mt-4 w-full rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
           />
           {reminderTimestamp != null ? (
