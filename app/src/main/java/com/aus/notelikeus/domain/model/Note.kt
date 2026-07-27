@@ -21,6 +21,14 @@ data class Note(
     val isTrashed: Boolean = false,
     val position: Int = 0,
     val reminderTimestamp: Long? = null,
+    /**
+     * Firestore's server-assigned commit time (epoch millis) as of the last time this device
+     * observed a write to this note in the cloud — either its own upload or a download. Null
+     * until the note has synced at least once under this scheme. Used instead of [timestamp]
+     * (a client clock, spoofable and skew-prone across devices) to decide which copy wins a
+     * sync conflict; see FirebaseNoteSync.kt.
+     */
+    val serverUpdatedAt: Long? = null,
     val labels: List<Label> = emptyList(),
     val attachments: List<Attachment> = emptyList(),
     val checklist: List<ChecklistItem> = emptyList()

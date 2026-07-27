@@ -1,8 +1,7 @@
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
 import type { Note, NoteQueryFilters } from '@/types/note';
 import { notesContentEqual, notesEqual } from '@/lib/notes/noteEquality';
-import { unlockPersistedNotes, type MaybeLockedNote } from '@/lib/crypto/unlockMigration';
 
 export type NotesLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -29,34 +28,12 @@ const defaultFilters: NoteQueryFilters = {
 };
 
 /**
- * Notes are stored plainly now that locking is gone. Reads still run the unlock migration, so
- * notes written by a build that encrypted their body come back with their text restored rather
- * than silently blank.
+ * Notes themselves are not persisted: Firestore is the sole source of truth (see
+ * notesSyncService.ts). `notes` is just the in-memory mirror the UI reads from — populated by
+ * the realtime listener on launch, kept live while the app is open, and empty again on the next
+ * cold start until that listener delivers its first snapshot. Only `filters` (the UI's last
+ * sort/view preference) is persisted, under its own storage key so it survives reloads.
  */
-const notesStorage = {
-  getItem: async (name: string): Promise<string | null> => {
-    const raw = localStorage.getItem(name);
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw) as { state?: { notes?: unknown } };
-      if (Array.isArray(parsed?.state?.notes)) {
-        parsed.state!.notes = await unlockPersistedNotes(
-          parsed.state!.notes as MaybeLockedNote[],
-        );
-      }
-      return JSON.stringify(parsed);
-    } catch {
-      return raw;
-    }
-  },
-  setItem: async (name: string, value: string): Promise<void> => {
-    localStorage.setItem(name, value);
-  },
-  removeItem: async (name: string): Promise<void> => {
-    localStorage.removeItem(name);
-  },
-};
-
 export const useNotesStore = create<NotesState>()(
   persist(
     (set, get) => ({
@@ -90,8 +67,7 @@ export const useNotesStore = create<NotesState>()(
         if (next.length === get().notes.length) return;
         set({ notes: next, status: 'ready' });
       },
-      setStatus: (status) =>
-        set((state) => (state.status === status ? state : { status })),
+      setStatus: (status) => set((state) => (state.status === status ? state : { status })),
       setError: (error) =>
         set((state) =>
           state.error === error && state.status === 'error' ? state : { error, status: 'error' },
@@ -111,10 +87,9 @@ export const useNotesStore = create<NotesState>()(
       reset: () => set({ notes: [], status: 'ready', error: null, filters: defaultFilters }),
     }),
     {
-      name: 'notelikeus-notes',
-      partialize: (state) => ({ notes: state.notes, filters: state.filters }),
+      name: 'notelikeus-note-filters',
       skipHydration: true,
-      storage: createJSONStorage(() => notesStorage),
+      partialize: (state) => ({ filters: state.filters }),
     },
   ),
 );

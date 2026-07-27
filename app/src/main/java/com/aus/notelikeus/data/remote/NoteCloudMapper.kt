@@ -8,11 +8,21 @@ import com.aus.notelikeus.domain.model.Label
 
 import com.aus.notelikeus.domain.model.Note
 
+import com.google.firebase.Timestamp
+
+import com.google.firebase.firestore.FieldValue
+
 
 
 internal fun Note.toCloudMap(): Map<String, Any?> = buildMap {
 
     put("localId", id)
+
+    // Server-assigned, not the value in [Note.serverUpdatedAt] — Firestore resolves this
+    // sentinel to its own commit time, which is what makes cross-device conflict resolution
+    // immune to a device's clock being wrong (see FirebaseNoteSync.kt's comparisons). Rules
+    // additionally enforce this is exactly request.time, so a client cannot forge it.
+    put("serverUpdatedAt", FieldValue.serverTimestamp())
 
     put("title", title)
 
@@ -129,6 +139,10 @@ internal suspend fun Map<String, Any?>.toCloudNote(
         position = (this["position"] as? Number)?.toInt() ?: 0,
 
         reminderTimestamp = (this["reminderTimestamp"] as? Number)?.toLong(),
+
+        serverUpdatedAt = (this["serverUpdatedAt"] as? Timestamp)?.let {
+            it.seconds * 1000 + it.nanoseconds / 1_000_000
+        },
 
         labels = labels,
 
