@@ -4,9 +4,9 @@ Progressive Web App twin of the Android Notelikeus client.
 
 ## Post–Step 4 — Settings & backup
 
-- **Profile sheet** — layout, appearance (brand theme, true dark), sync status, Google account, auto-sync
+- **Profile sheet** — layout, appearance (brand theme, true dark), sync status, Google account
 - **Privacy policy** — in-app dialog (web-adapted copy)
-- **Cloud sync** — sync now, restore from cloud, sign-out with optional cloud delete
+- **Cloud sync** — always on while signed in (no toggle); notes live in Firestore only, with no separate local copy; sign-out with optional cloud delete
 - **Backup** — export/import JSON v3 (Android-compatible format)
 - **Auth** — Google sign-in required (no guest mode)
 - **Editor** — markdown toolbar (bold/italic/bullet/link), reminders with browser notifications
@@ -57,7 +57,7 @@ Add your hosting domain (e.g. `notelikeus.web.app`) to Firebase Auth → Authori
 - **Cloud mapper** — `noteToCloudMap` / `cloudMapToNote` (matches Android `NoteCloudMapper.kt`)
 - **Firestore repository** — `subscribeToNotes` (`onSnapshot`), `upsertNote`, `deleteNote`, `uploadAllNotes`
 - **Hooks** — `useAuth`, `useNotes` piping real-time updates into Zustand
-- **Conflict rule** — last-write-wins on `timestamp`
+- **Conflict rule** — last-write-wins on the server-assigned `serverUpdatedAt` (falls back to the client `timestamp` only for a note that hasn't synced under this scheme yet)
 
 Firestore composite index: single-field `timestamp` ordering is automatic. No extra index required for Step 2.
 
@@ -106,7 +106,8 @@ In Chrome/Edge: Application tab → Manifest / Service workers, or use the brows
 | Item | Value |
 |------|--------|
 | Firestore path | `users/{uid}/notes/{localId}` |
-| Timestamp field | `timestamp` (matches Android cloud mapper) |
+| Display timestamp field | `timestamp` (matches Android cloud mapper) |
+| Conflict-resolution field | `serverUpdatedAt` (Firestore server timestamp, matches Android `FirebaseNoteSync.kt`) |
 | Note colors | Same ARGB integers as Android `Color.kt` |
 
 ## Icons

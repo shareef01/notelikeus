@@ -11,7 +11,6 @@ import {
   NotesIcon,
   CloudIcon,
   AccountIcon,
-  SyncIcon,
   BackupIcon,
   AddIcon,
   PrivacyIcon,
@@ -96,34 +95,6 @@ function SettingsRow({
   );
 }
 
-function ThemeToggle({
-  checked,
-  disabled,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (next: boolean) => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={`flex h-11 w-14 shrink-0 items-center rounded-full p-1 transition-colors disabled:opacity-40 ${
-        checked ? 'justify-end bg-brand-primary' : 'justify-start bg-brand-outline/70'
-      }`}
-    >
-      <span className="size-7 rounded-full bg-true-surface shadow-sm" />
-    </button>
-  );
-}
-
 const SORT_LABELS = {
   manual: 'Manual order',
   newest: 'Newest first',
@@ -146,21 +117,16 @@ interface ProfileSheetProps {
   onSortOrderCycle: () => void;
   appTheme: AppTheme;
   onAppThemeChange: (theme: AppTheme) => void;
-  cloudAutoSyncEnabled: boolean;
-  onCloudAutoSyncChange: (enabled: boolean) => void;
   isGoogleAccount: boolean;
   userEmail: string | null;
   syncStatus: string;
   syncedNoteCount: number;
-  onSyncNow: () => void;
-  onRestore: () => void;
   onExportBackup: () => void;
   onImportBackup: () => void;
   onPrivacyPolicy: () => void;
   onSignIn: () => void;
   onSignUp: () => void;
   onSignOut: () => void;
-  isSyncing: boolean;
 }
 
 export function ProfileSheet({
@@ -173,21 +139,16 @@ export function ProfileSheet({
   onSortOrderCycle,
   appTheme,
   onAppThemeChange,
-  cloudAutoSyncEnabled,
-  onCloudAutoSyncChange,
   isGoogleAccount,
   userEmail,
   syncStatus,
   syncedNoteCount,
-  onSyncNow,
-  onRestore,
   onExportBackup,
   onImportBackup,
   onPrivacyPolicy,
   onSignIn,
   onSignUp,
   onSignOut,
-  isSyncing,
 }: ProfileSheetProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
 
@@ -201,8 +162,6 @@ export function ProfileSheet({
   }, [open]);
 
   if (!open) return null;
-
-  const canSync = isGoogleAccount && !isSyncing;
 
   return (
     <div
@@ -324,33 +283,6 @@ export function ProfileSheet({
                   />
                 </>
               )}
-              <SettingsRow
-                title="Auto-sync"
-                subtitle="Save edits to the cloud automatically"
-                icon={<SyncIcon size={18} />}
-                trailing={
-                  <ThemeToggle
-                    checked={cloudAutoSyncEnabled}
-                    disabled={!isGoogleAccount}
-                    onChange={onCloudAutoSyncChange}
-                    label="Auto-sync"
-                  />
-                }
-              />
-              <SettingsRow
-                title="Sync now"
-                subtitle={isSyncing ? 'Syncing…' : 'Upload all notes to the cloud'}
-                onClick={canSync ? onSyncNow : undefined}
-                icon={<SyncIcon size={18} />}
-                disabled={!canSync}
-              />
-              <SettingsRow
-                title="Restore from cloud"
-                subtitle="Merge notes from your account"
-                onClick={canSync ? onRestore : undefined}
-                icon={<CloudIcon size={18} />}
-                disabled={!canSync}
-              />
               <SettingsRow
                 title="Export backup"
                 subtitle="Download notes as JSON"
