@@ -15,6 +15,9 @@ export interface EditorState {
   labels: Label[];
   checklist: ChecklistItem[];
   timestamp: number;
+  /** Carried through unedited so saving an already-synced note doesn't lose its sync history —
+   *  see Note.serverUpdatedAt. */
+  serverUpdatedAt: number | null;
   position: number;
   isLoaded: boolean;
   isSaving: boolean;
@@ -39,6 +42,7 @@ export function buildNoteFromEditor(state: EditorState): Note | null {
     isTrashed: state.isTrashed,
     position: state.position,
     reminderTimestamp: state.reminderTimestamp,
+    serverUpdatedAt: state.serverUpdatedAt,
     labels: state.labels,
     attachments: [],
     checklist: state.checklist,
@@ -62,6 +66,7 @@ export function editorStateFromNote(note: Note): EditorState {
       return a.position - b.position;
     }),
     timestamp: note.timestamp,
+    serverUpdatedAt: note.serverUpdatedAt,
     position: note.position,
     isLoaded: true,
     isSaving: false,
@@ -83,6 +88,7 @@ export function createBlankEditorState(color = DEFAULT_EDITOR_COLOR, position = 
     labels: [],
     checklist: [],
     timestamp: Date.now(),
+    serverUpdatedAt: null,
     position,
     isLoaded: true,
     isSaving: false,

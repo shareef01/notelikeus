@@ -1,6 +1,6 @@
 import { clearLocalUserData } from '@/lib/bootstrap';
 import { deleteAllCloudData } from '@/lib/firestore/notesRepository';
-import { resetCloudMergeState } from '@/lib/notes/notesSyncService';
+import { stopNotesRealtimeSync } from '@/lib/notes/notesSyncService';
 import { getFirebaseAuth, initFirebase } from '@/lib/firebase';
 import {
   GoogleAuthProvider,
@@ -52,6 +52,6 @@ export async function signOutGoogle(deleteCloudData = false): Promise<void> {
   }
 
   await signOut(auth);
-  resetCloudMergeState();
+  stopNotesRealtimeSync();
   clearLocalUserData();
 }

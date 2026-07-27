@@ -186,6 +186,10 @@ class NoteRepositoryImpl @Inject constructor(
         refreshWidget()
     }
 
+    override suspend fun updateServerTimestamp(noteId: Long, serverUpdatedAt: Long) {
+        noteDao.updateServerTimestamp(noteId, serverUpdatedAt)
+    }
+
     override suspend fun getAllNotesForBackup(): List<Note> {
         return noteDao.getAllNotesForBackup().map { it.toNote() }
     }

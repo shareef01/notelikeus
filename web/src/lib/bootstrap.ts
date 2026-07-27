@@ -1,7 +1,7 @@
 import { isFirebaseConfigured } from '@/lib/config';
 import { initFirebase } from '@/lib/firebase';
-import { clearKnownCloudIds, KNOWN_CLOUD_IDS_STORAGE_KEY } from '@/lib/notes/knownCloudIds';
-import { clearLastMergedUserId, LAST_MERGED_USER_STORAGE_KEY } from '@/lib/notes/lastMergedUser';
+import { LEGACY_NOTES_STORAGE_KEY } from '@/lib/notes/legacyLocalMigration';
+import { LAST_MERGED_USER_STORAGE_KEY } from '@/lib/notes/lastMergedUser';
 import { forgetSignedIn, SESSION_HINT_STORAGE_KEY } from '@/lib/auth/sessionHint';
 import { ensureReminderSync } from '@/lib/reminders/reminderSync';
 import { useLabelRegistryStore } from '@/store/labelRegistryStore';
@@ -11,25 +11,29 @@ import { useTombstoneStore } from '@/store/tombstoneStore';
 import { useUiStore } from '@/store/uiStore';
 
 const STORAGE_KEYS = [
-  'notelikeus-notes',
+  LEGACY_NOTES_STORAGE_KEY,
+  LAST_MERGED_USER_STORAGE_KEY,
+  'notelikeus-note-filters',
   'notelikeus-settings',
   'notelikeus-ui',
   'notelikeus-label-registry',
   'notelikeus-deleted-notes',
   'notelikeus-lock-key',
-  KNOWN_CLOUD_IDS_STORAGE_KEY,
-  LAST_MERGED_USER_STORAGE_KEY,
   SESSION_HINT_STORAGE_KEY,
 ] as const;
 
-/** User-owned note data — cleared on sign-out / account switch. Settings/UI prefs stay. */
+/**
+ * User-owned data — cleared on sign-out / account switch. Settings/UI/filter prefs stay, since
+ * those aren't per-account. `LEGACY_NOTES_STORAGE_KEY` is included defensively: if a not-yet-
+ * migrated user (see legacyLocalMigration.ts) switches accounts before migration ran, this stops
+ * their old local notes from being pushed into the next account's Firestore data.
+ */
 const USER_DATA_STORAGE_KEYS = [
-  'notelikeus-notes',
+  LEGACY_NOTES_STORAGE_KEY,
+  LAST_MERGED_USER_STORAGE_KEY,
   'notelikeus-label-registry',
   'notelikeus-deleted-notes',
   'notelikeus-lock-key',
-  KNOWN_CLOUD_IDS_STORAGE_KEY,
-  LAST_MERGED_USER_STORAGE_KEY,
   SESSION_HINT_STORAGE_KEY,
 ] as const;
 
@@ -48,7 +52,7 @@ function withTimeout(promise: Promise<void>, ms: number, label: string): Promise
   ]);
 }
 
-/** Fail closed on timeout so sync never runs against a half-empty notes store. */
+/** Fail closed on timeout so sync never runs against a half-empty tombstone/label store. */
 function requireRehydrate(promise: Promise<void>, ms: number, label: string): Promise<void> {
   return Promise.race([
     promise,
@@ -61,12 +65,13 @@ function requireRehydrate(promise: Promise<void>, ms: number, label: string): Pr
 }
 
 async function rehydrateStores(): Promise<void> {
-  // Notes/tombstones/labels must finish — soft-success would let cloud merge race an empty store.
+  // Tombstones/labels must finish before the Firestore listener starts, or a stale/empty
+  // tombstone set could let a just-deleted note flash back in from the first snapshot.
   await Promise.all([
     requireRehydrate(
       Promise.resolve(useNotesStore.persist.rehydrate()),
       REHYDRATE_TIMEOUT_MS,
-      'Notes store rehydrate',
+      'Note filters rehydrate',
     ),
     requireRehydrate(
       Promise.resolve(useTombstoneStore.persist.rehydrate()),
@@ -104,13 +109,11 @@ export function clearPersistedAppData(): void {
   }
 }
 
-/** Clears in-memory + persisted notes/labels/tombstones so the next account cannot inherit them. */
+/** Clears in-memory + persisted labels/tombstones so the next account cannot inherit them. */
 export function clearLocalUserData(): void {
   useNotesStore.getState().reset();
   useLabelRegistryStore.getState().reset();
   useTombstoneStore.getState().reset();
-  clearKnownCloudIds();
-  clearLastMergedUserId();
   forgetSignedIn();
   for (const key of USER_DATA_STORAGE_KEYS) {
     try {

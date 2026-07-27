@@ -23,5 +23,7 @@ data class NoteEntity(
      * user's checklists and label links to reclaim one boolean.
      */
     val isLocked: Boolean = false,
-    val reminderTimestamp: Long?
+    val reminderTimestamp: Long?,
+    /** See [com.aus.notelikeus.domain.model.Note.serverUpdatedAt]. */
+    val serverUpdatedAt: Long? = null
 )

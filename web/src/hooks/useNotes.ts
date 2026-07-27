@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { uploadAllNotes } from '@/lib/firestore/notesRepository';
 import { notesContentKey } from '@/lib/notes/noteEquality';
 import { saveNote, removeNote } from '@/lib/notes/noteActions';
 import { useNotesStore } from '@/store/notesStore';
@@ -55,12 +54,8 @@ export function useNotes() {
         useNotesStore.getState().setFilters({ searchQuery: '', colorArgb: null, labelName: null }),
       saveNote,
       removeNote,
-      syncAll: async () => {
-        if (!userId) return 0;
-        return uploadAllNotes(userId, useNotesStore.getState().notes);
-      },
     }),
-    [userId],
+    [],
   );
 
   return {
