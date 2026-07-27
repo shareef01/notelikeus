@@ -34,4 +34,28 @@ describe('mergeRemoteNotes', () => {
     const merged = await mergeRemoteNotes(local, remote);
     expect(merged[0]?.title).toBe('Local wins');
   });
+
+  it('prefers serverUpdatedAt over a skewed client timestamp when both sides have one', async () => {
+    // Local's device clock reads far in the future, but the server-confirmed order says remote
+    // is actually the more recent write — serverUpdatedAt must win the tie, not `timestamp`.
+    const local = [
+      note({ id: '1', localId: 1, timestamp: 999_999, serverUpdatedAt: 10, title: 'Clock-skewed local' }),
+    ];
+    const remote = [
+      note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 30, title: 'Server-confirmed remote' }),
+    ];
+    const merged = await mergeRemoteNotes(local, remote);
+    expect(merged[0]?.title).toBe('Server-confirmed remote');
+  });
+
+  it('falls back to timestamp when either side has no serverUpdatedAt yet', async () => {
+    const local = [
+      note({ id: '1', localId: 1, timestamp: 99, serverUpdatedAt: null, title: 'Local wins' }),
+    ];
+    const remote = [
+      note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500, title: 'Stale cloud' }),
+    ];
+    const merged = await mergeRemoteNotes(local, remote);
+    expect(merged[0]?.title).toBe('Local wins');
+  });
 });

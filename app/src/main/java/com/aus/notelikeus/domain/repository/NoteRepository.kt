@@ -23,6 +23,8 @@ interface NoteRepository {
     suspend fun getNotesWithActiveReminders(now: Long): List<Note>
     suspend fun getNotesWithMissedReminders(now: Long): List<Note>
     suspend fun clearReminderTimestamp(noteId: Long)
+    /** Refreshes only the cached sync-conflict clock — see Note.serverUpdatedAt. */
+    suspend fun updateServerTimestamp(noteId: Long, serverUpdatedAt: Long)
     fun getActiveNoteCount(): Flow<Int>
 
     fun getLabels(): Flow<List<Label>>

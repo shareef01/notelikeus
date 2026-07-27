@@ -9,7 +9,9 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  serverTimestamp,
   setDoc,
+  Timestamp,
 } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 
@@ -160,6 +162,41 @@ describe('firestore.rules', () => {
     const hugeLabels = Array.from({ length: 501 }, (_, i) => ({ name: `label-${i}` }));
     await assertFails(
       setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ labels: hugeLabels })),
+    );
+  });
+
+  // serverUpdatedAt is the conflict-resolution clock — see FirebaseNoteSync.kt / notesRepository.ts.
+  // It has to be genuinely server-assigned, or a malicious/modified client could forge it to win
+  // every sync conflict.
+  it('accepts a note with no serverUpdatedAt field at all', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(setDoc(noteRef(alice, 'alice', 'note-1'), validNote()));
+  });
+
+  it('accepts serverUpdatedAt when it resolves to the server timestamp sentinel', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(
+      setDoc(
+        noteRef(alice, 'alice', 'note-1'),
+        validNote({ serverUpdatedAt: serverTimestamp() }),
+      ),
+    );
+  });
+
+  it('rejects a client-forged serverUpdatedAt that is not the server commit time', async () => {
+    const alice = authed('alice');
+    await assertFails(
+      setDoc(
+        noteRef(alice, 'alice', 'note-1'),
+        validNote({ serverUpdatedAt: Timestamp.fromMillis(1) }),
+      ),
+    );
+  });
+
+  it('rejects a non-timestamp serverUpdatedAt', async () => {
+    const alice = authed('alice');
+    await assertFails(
+      setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ serverUpdatedAt: Date.now() })),
     );
   });
 });
