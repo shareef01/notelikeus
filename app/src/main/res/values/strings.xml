@@ -27,7 +27,9 @@
     <string name="add_note">Add note</string>
     <string name="note_archived">Note archived</string>
     <string name="note_trashed">Note moved to trash</string>
+    <string name="notes_trashed_count">%1$d notes moved to trash</string>
     <string name="note_deleted">Note deleted</string>
+    <string name="notes_deleted_count">%1$d notes deleted</string>
     <string name="auth_failed">Authentication failed</string>
 
     <!-- Delete confirmation -->
@@ -90,7 +92,6 @@
 
     <!-- Settings -->
     <string name="settings_local_app">Local notes app</string>
-    <string name="profile_avatar_initials">A</string>
     <string name="true_dark_mode">True Dark Mode</string>
     <string name="true_dark_mode_subtitle">Optimized for OLED displays</string>
     <string name="app_theme">App theme</string>
@@ -169,6 +170,7 @@
 
     <!-- Filters -->
     <string name="all_colors">All Colors</string>
+    <string name="no_color">No Color</string>
     <string name="all_labels">All Labels</string>
     <string name="labels_more">+%1$d</string>
     <string name="selected_color">Selected color</string>

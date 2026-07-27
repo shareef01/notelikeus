@@ -44,6 +44,7 @@ fun NotesEmptyState(
     subtitle: String? = null,
     icon: ImageVector? = null,
     showCreateButton: Boolean = false,
+    createButtonLabel: String? = null,
     showClearFilters: Boolean = false,
     recentSearches: List<String> = emptyList(),
     onRecentSearchClick: (String) -> Unit = {},
@@ -89,16 +90,17 @@ fun NotesEmptyState(
                 )
             }
             if (showCreateButton) {
+                val buttonLabel = createButtonLabel ?: stringResource(R.string.add_note)
                 Spacer(modifier = Modifier.height(28.dp))
                 FilledTonalButton(onClick = onCreateClick) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.Add,
-                            contentDescription = stringResource(R.string.add_note),
+                            contentDescription = buttonLabel,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.add_note))
+                        Text(buttonLabel)
                     }
                 }
             }
