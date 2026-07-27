@@ -574,10 +574,16 @@ fun MainScreen(
             text = { Text(stringResource(R.string.empty_trash_message)) },
             confirmButton = {
                 TextButton(onClick = {
+                    val trashedCount = state.notes.size
                     showEmptyTrashConfirm = false
                     viewModel.emptyTrash()
                     scope.launch {
-                        showUndoSnackbar(context.getString(R.string.note_deleted))
+                        val message = if (trashedCount == 1) {
+                            context.getString(R.string.note_deleted)
+                        } else {
+                            context.getString(R.string.notes_deleted_count, trashedCount)
+                        }
+                        showUndoSnackbar(message)
                     }
                 }) {
                     Text(
@@ -623,9 +629,17 @@ fun MainScreen(
                     showDeleteConfirm = false
                     viewModel.deleteSelectedNotes()
                     val message = if (state.currentFilter == NoteFilter.TRASHED) {
-                        context.getString(R.string.note_deleted)
+                        if (count == 1) {
+                            context.getString(R.string.note_deleted)
+                        } else {
+                            context.getString(R.string.notes_deleted_count, count)
+                        }
                     } else {
-                        context.getString(R.string.note_trashed)
+                        if (count == 1) {
+                            context.getString(R.string.note_trashed)
+                        } else {
+                            context.getString(R.string.notes_trashed_count, count)
+                        }
                     }
                     scope.launch { showUndoSnackbar(message) }
                 }) {

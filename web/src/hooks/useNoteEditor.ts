@@ -7,7 +7,9 @@ import {
 } from '@/store/editorTypes';
 import { useNoteLabels } from '@/hooks/useNoteLabels';
 import { saveNote, removeNote } from '@/lib/notes/noteActions';
+import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
 import { useNotesStore } from '@/store/notesStore';
+import { useToastStore } from '@/store/toastStore';
 import { createChecklistItem, sortChecklistItems } from '@/types/checklist';
 import type { Label } from '@/types/label';
 import { allocateLocalNoteId } from '@/types/note';
@@ -254,8 +256,25 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         const content = s.checklist.map((item) => item.text.trim()).join('\n');
         return { ...s, content, checklist: [] };
       }),
-    setReminderTimestamp: (reminderTimestamp: number | null) =>
-      patch((s) => ({ ...s, reminderTimestamp })),
+    // Async and validating so every entry point (the bell-icon dialog, the options sheet's
+    // quick-pick chips, and its date field) gets the same checks instead of each needing its
+    // own copy — a reminder saved without notification permission would silently never fire.
+    setReminderTimestamp: async (reminderTimestamp: number | null) => {
+      if (reminderTimestamp == null) {
+        patch((s) => ({ ...s, reminderTimestamp: null }));
+        return;
+      }
+      if (reminderTimestamp <= Date.now()) {
+        useToastStore.getState().show('Choose a future date and time', 'error');
+        return;
+      }
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        useToastStore.getState().show('Enable notifications to use reminders', 'error');
+        return;
+      }
+      patch((s) => ({ ...s, reminderTimestamp }));
+    },
     clearReminder: () => patch((s) => ({ ...s, reminderTimestamp: null })),
     applyContentFormatting: (
       updater: (
