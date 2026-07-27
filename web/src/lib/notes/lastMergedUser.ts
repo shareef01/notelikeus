@@ -1,12 +1,16 @@
 const STORAGE_KEY = 'notelikeus-last-merged-user';
 
 /**
- * UID of the account whose cloud data was last merged into local storage, persisted across
- * reloads — the web counterpart of Android's `NoteSyncStateStore.lastMergedUserId()`.
+ * UID of the account this device last synced as, persisted across reloads — the web counterpart
+ * of Android's `NoteSyncStateStore.lastMergedUserId()`. Used to tell a genuine account switch
+ * (Google account A signs out, account B signs in, without ever going through `signOutGoogle()`
+ * — e.g. a second tab of the same browser profile) apart from an ordinary page reload or first
+ * mount while still signed in as the same account.
  *
  * A `useRef` cannot do this job: it resets to null on every page load, so a session that starts
- * with another account's notes still in localStorage (second tab, shared browser profile, a
- * sign-out that failed partway) would skip the wipe and upload those notes into the new account.
+ * with another account's local data still around (second tab, shared browser profile, a
+ * sign-out that failed partway) would skip the wipe and merge that stale data into the new
+ * account instead.
  */
 export function loadLastMergedUserId(): string | null {
   try {

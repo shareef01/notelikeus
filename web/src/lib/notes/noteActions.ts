@@ -1,14 +1,13 @@
 import { deleteNote, upsertNote } from '@/lib/firestore/notesRepository';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
-import { useSettingsStore } from '@/store/settingsStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 
 async function pushNote(note: Note): Promise<void> {
   useNotesStore.getState().upsertLocalNote(note);
   const userId = useAuthStore.getState().user?.uid;
-  if (!userId || !useSettingsStore.getState().cloudAutoSyncEnabled) return;
+  if (!userId) return;
   await upsertNote(userId, note);
 }
 

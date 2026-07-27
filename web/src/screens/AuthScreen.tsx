@@ -38,7 +38,7 @@ const COPY: Record<
 const FEATURES = [
   { icon: CloudIcon, text: 'Cloud backup with your Google account' },
   { icon: SyncIcon, text: 'Sync notes with the Android app' },
-  { icon: NotesIcon, text: 'Keep writing offline — sync when you sign in' },
+  { icon: NotesIcon, text: 'Notes sync automatically, even after a dropped connection' },
 ] as const;
 
 interface AuthScreenProps {
@@ -141,7 +141,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
             <h1 className="mt-5 text-2xl font-semibold text-brand-primary">{copy.title}</h1>
             <p className="mt-2 text-sm text-brand-muted">
               {mandatory
-                ? 'Sign in to back up and sync your notes. Notes already on this device are safe and will appear once you sign in.'
+                ? 'Sign in with Google to use Notelikeus — your notes live in your account and sync automatically across every device you sign into.'
                 : copy.subtitle}
             </p>
           </div>

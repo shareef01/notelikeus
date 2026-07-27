@@ -1,56 +1,62 @@
 import { useEffect, useRef } from 'react';
 import { clearLocalUserData } from '@/lib/bootstrap';
+import { migrateLegacyLocalNotes } from '@/lib/notes/legacyLocalMigration';
 import {
   loadLastMergedUserId,
   saveLastMergedUserId,
 } from '@/lib/notes/lastMergedUser';
-import {
-  mergeCloudNotesOnce,
-  resetCloudMergeState,
-  startNotesRealtimeSync,
-  stopNotesRealtimeSync,
-} from '@/lib/notes/notesSyncService';
+import { startNotesRealtimeSync, stopNotesRealtimeSync } from '@/lib/notes/notesSyncService';
 import { useAuthStore, selectUserId } from '@/store/authStore';
-import { useSettingsStore } from '@/store/settingsStore';
+import { useNotesStore } from '@/store/notesStore';
 
-/** Cloud merge on sign-in plus a single Firestore listener when auto-sync is on. */
+/**
+ * Notes are Firestore-only now (see notesStore.ts). "Launch" sync is this: as soon as a user is
+ * signed in, subscribe the realtime listener, which Firestore serves from its persistent local
+ * cache instantly and then reconciles against the server. There is no separate "exit" sync to
+ * run — every edit already writes straight to Firestore (see noteActions.ts), so nothing is ever
+ * left batched up waiting for the app to close.
+ */
 export function useNotesSync(enabled: boolean) {
   const userId = useAuthStore(selectUserId);
   const isAuthReady = useAuthStore((state) => state.isReady);
-  const cloudAutoSyncEnabled = useSettingsStore((state) => state.cloudAutoSyncEnabled);
-  const lastMergedRef = useRef<string | null>(null);
+  const bootstrappedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!enabled || !isAuthReady) return;
 
     if (!userId) {
-      lastMergedRef.current = null;
-      resetCloudMergeState();
+      bootstrappedRef.current = null;
+      stopNotesRealtimeSync();
       return;
     }
 
     let cancelled = false;
 
     const bootstrap = async () => {
-      // Seeded from storage so the guard survives a reload, not just this mount.
-      const lastMerged = lastMergedRef.current ?? loadLastMergedUserId();
-      if (lastMerged !== userId) {
-        // Account switch without a clean sign-out — drop prior user's local data first.
-        if (lastMerged != null) {
+      if (bootstrappedRef.current !== userId) {
+        // Seeded from storage so the guard survives a reload, not just this mount.
+        const lastMerged = loadLastMergedUserId();
+        if (lastMerged != null && lastMerged !== userId) {
+          // Account switch without a clean sign-out (e.g. a second tab signed into a different
+          // account) — drop the prior account's labels/tombstones/any not-yet-migrated legacy
+          // notes before touching this one, or they could leak into this account's Firestore
+          // data or suppress/resurrect its notes. This also resets `notes`/`filters`, matching
+          // the reset a clean sign-out already does.
           clearLocalUserData();
-          resetCloudMergeState();
+        } else {
+          // Not a switch — just nothing loaded into the in-memory mirror yet this mount (first
+          // load, or a page reload). Clear only the display, not the persisted filter/sort
+          // preference, so it doesn't reset itself on every refresh.
+          useNotesStore.getState().setNotes([]);
         }
-        await mergeCloudNotesOnce(userId);
-        if (cancelled) return;
-        lastMergedRef.current = userId;
-        saveLastMergedUserId(userId);
-      }
+        useNotesStore.getState().setStatus('loading');
 
-      if (cloudAutoSyncEnabled) {
-        startNotesRealtimeSync(userId);
-      } else {
-        stopNotesRealtimeSync();
+        await migrateLegacyLocalNotes(userId);
+        if (cancelled) return;
+        saveLastMergedUserId(userId);
+        bootstrappedRef.current = userId;
       }
+      startNotesRealtimeSync(userId);
     };
 
     void bootstrap();
@@ -59,5 +65,5 @@ export function useNotesSync(enabled: boolean) {
       cancelled = true;
       stopNotesRealtimeSync();
     };
-  }, [enabled, isAuthReady, userId, cloudAutoSyncEnabled]);
+  }, [enabled, isAuthReady, userId]);
 }

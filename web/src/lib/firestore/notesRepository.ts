@@ -102,6 +102,27 @@ export async function deleteNote(userId: string, noteId: string): Promise<void> 
   await deleteDoc(userNoteDocument(userId, noteId));
 }
 
+/**
+ * Prefers serverUpdatedAt (server-assigned) over the client-set `timestamp` for deciding whether
+ * `note` should overwrite `remote`. Backup files are arbitrary user JSON — `cloudMapToNote` never
+ * resolves a plain JSON value into a real serverUpdatedAt, only an actual Firestore `Timestamp`
+ * does, so an imported note's serverUpdatedAt is always null. A hand-edited `timestamp` in that
+ * JSON must not be able to masquerade as newer than a remote note that's already confirmed-
+ * synced, so if remote has a serverUpdatedAt and `note` doesn't, the untrusted side loses
+ * outright — and symmetrically, a confirmed local note beats an unconfirmed remote one (a legacy
+ * doc that predates this field) regardless of either side's client timestamp. Only fall back to
+ * comparing client timestamps when *neither* side has been confirmed by the server yet.
+ */
+export function shouldUploadOverRemote(note: Note, remote: Note | undefined): boolean {
+  if (!remote) return true;
+  if (note.serverUpdatedAt != null && remote.serverUpdatedAt != null) {
+    return note.serverUpdatedAt >= remote.serverUpdatedAt;
+  }
+  if (remote.serverUpdatedAt != null) return false;
+  if (note.serverUpdatedAt != null) return true;
+  return note.timestamp >= remote.timestamp;
+}
+
 export async function uploadAllNotes(userId: string, notes: Note[]): Promise<number> {
   const cloudTombstones = await fetchCloudTombstones(userId);
   useTombstoneStore.getState().mergeFromCloud(cloudTombstones);
@@ -115,10 +136,7 @@ export async function uploadAllNotes(userId: string, notes: Note[]): Promise<num
   const remoteNotes = await fetchRemoteNotes(userId);
   const remoteById = new Map(remoteNotes.map((note) => [note.id, note]));
 
-  const toUpload = eligible.filter((note) => {
-    const remote = remoteById.get(note.id);
-    return !remote || note.timestamp >= remote.timestamp;
-  });
+  const toUpload = eligible.filter((note) => shouldUploadOverRemote(note, remoteById.get(note.id)));
 
   const db = getFirestoreDb();
   for (let i = 0; i < toUpload.length; i += BATCH_LIMIT) {
@@ -136,7 +154,10 @@ export async function uploadAllNotes(userId: string, notes: Note[]): Promise<num
 }
 
 /**
- * Last-write-wins merge using `timestamp`, matching Android FirebaseNoteSync.
+ * Last-write-wins merge, matching Android FirebaseNoteSync. Prefers the server-assigned
+ * `serverUpdatedAt` over the client-set `timestamp` — a device's own clock can be wrong or
+ * spoofed — falling back to `timestamp` only when one side has no server-timestamp history yet
+ * (a brand new note, or one from before this field existed).
  */
 export async function mergeRemoteNotes(localNotes: Note[], remoteNotes: Note[]): Promise<Note[]> {
   const byId = new Map<string, Note>(localNotes.map((note) => [note.id, note]));
@@ -147,7 +168,10 @@ export async function mergeRemoteNotes(localNotes: Note[], remoteNotes: Note[]):
       byId.set(remote.id, remote);
       continue;
     }
-    if (remote.timestamp >= local.timestamp) {
+    const remoteWins = remote.serverUpdatedAt != null && local.serverUpdatedAt != null
+      ? remote.serverUpdatedAt >= local.serverUpdatedAt
+      : remote.timestamp >= local.timestamp;
+    if (remoteWins) {
       byId.set(remote.id, remote);
     }
   }
@@ -225,7 +249,12 @@ export async function syncNotesWithCloud(
     if (cloudIds.has(localNote.id)) {
       if (!isCloudSyncEligible(localNote)) continue;
       const remote = remoteNotes.find((note) => note.id === localNote.id);
-      if (remote && localNote.timestamp > remote.timestamp) {
+      const localWins = remote != null && (
+        localNote.serverUpdatedAt != null && remote.serverUpdatedAt != null
+          ? localNote.serverUpdatedAt > remote.serverUpdatedAt
+          : localNote.timestamp > remote.timestamp
+      );
+      if (localWins) {
         await upsertNote(userId, localNote);
         merged = merged.map((note) => (note.id === localNote.id ? localNote : note));
         changes++;

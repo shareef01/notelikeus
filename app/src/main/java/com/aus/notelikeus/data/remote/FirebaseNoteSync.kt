@@ -3,11 +3,18 @@ package com.aus.notelikeus.data.remote
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private fun Timestamp.toEpochMillis(): Long = seconds * 1000 + nanoseconds / 1_000_000
 
 @Singleton
 class FirebaseNoteSync @Inject constructor(
@@ -36,29 +43,53 @@ class FirebaseNoteSync @Inject constructor(
             }
 
             val notesCollection = userNotesCollection(uid)
-            val remoteTimestamps = notesCollection.get().await().documents.associate { doc ->
+            val remoteDocs = notesCollection.get().await().documents
+            val remoteTimestamps = remoteDocs.associate { doc ->
                 val id = doc.id.toLongOrNull() ?: doc.getLong("localId") ?: -1L
                 id to (doc.getLong("timestamp") ?: 0L)
+            }
+            // Server-assigned, so cross-device comparisons aren't at the mercy of either
+            // device's clock. Falls back to the client `timestamp` map above only for a note
+            // that hasn't round-tripped through sync since this field was introduced.
+            val remoteServerTimestamps = remoteDocs.associate { doc ->
+                val id = doc.id.toLongOrNull() ?: doc.getLong("localId") ?: -1L
+                id to doc.getTimestamp("serverUpdatedAt")?.toEpochMillis()
             }
 
             var uploaded = 0
             notes.chunked(BATCH_LIMIT).forEach { chunk ->
                 val batch = firestore.batch()
                 var batchCount = 0
+                val uploadedIds = mutableListOf<Long>()
                 chunk.forEach { note ->
                     val noteId = note.id ?: return@forEach
-                    val remoteTs = remoteTimestamps[noteId]
-                    if (remoteTs != null && remoteTs > note.timestamp) return@forEach
+                    val remoteServerTs = remoteServerTimestamps[noteId]
+                    val localServerTs = note.serverUpdatedAt
+                    val remoteIsNewer = if (remoteServerTs != null && localServerTs != null) {
+                        remoteServerTs > localServerTs
+                    } else {
+                        val remoteTs = remoteTimestamps[noteId]
+                        remoteTs != null && remoteTs > note.timestamp
+                    }
+                    if (remoteIsNewer) return@forEach
                     batch.set(
                         notesCollection.document(noteId.toString()),
                         note.toCloudMap(),
                         SetOptions.merge()
                     )
+                    uploadedIds.add(noteId)
                     batchCount++
                 }
                 if (batchCount > 0) {
                     batch.commit().await()
                     uploaded += batchCount
+                    // Same staleness reasoning as putCloudNote — refresh Room's cache for every
+                    // note this chunk actually wrote, run concurrently since a chunk can be large.
+                    coroutineScope {
+                        uploadedIds
+                            .map { noteId -> async { refreshServerTimestamp(notesCollection.document(noteId.toString()), noteId) } }
+                            .awaitAll()
+                    }
                 }
             }
 
@@ -85,6 +116,16 @@ class FirebaseNoteSync @Inject constructor(
     suspend fun reconcileUploads(): Result<Int> {
         return try {
             val uid = sessionManager.ensureGoogleSignedIn().getOrThrow()
+            // This worker runs independently of sign-in/sign-out, on its own 12h schedule, so it
+            // cannot assume the local Room DB actually belongs to the currently signed-in uid. If
+            // a different account signs in without a clean sign-out, MainViewModel wipes local
+            // data before recording lastMergedUserId — a run that lands in that window would
+            // otherwise upload the previous account's still-present local notes into this uid's
+            // Firestore data. Bail out and let the next cycle (or the per-note SyncWorker path)
+            // pick it up once the wipe has actually completed.
+            if (syncStateStore.lastMergedUserId() != uid) {
+                return Result.success(0)
+            }
             mergeCloudTombstones(uid)
             val localNotes = noteRepository.getAllNotesForBackup()
             purgeLocalTombstonedNotes(localNotes)
@@ -101,10 +142,23 @@ class FirebaseNoteSync @Inject constructor(
             for (note in changed) {
                 val noteId = note.id ?: continue
                 val remote = userNotesCollection(uid).document(noteId.toString()).get().await()
-                val remoteTs = if (remote.exists()) remote.getLong("timestamp") else null
+                val remoteServerTs = if (remote.exists()) {
+                    remote.getTimestamp("serverUpdatedAt")?.toEpochMillis()
+                } else {
+                    null
+                }
+                val localServerTs = note.serverUpdatedAt
                 // Only push when the cloud copy is absent or strictly older — never clobber a
-                // newer remote, and skip an already-synced note (no redundant write).
-                if (remoteTs != null && remoteTs >= note.timestamp) continue
+                // newer remote, and skip an already-synced note (no redundant write). Prefers
+                // the server-assigned timestamp over the client one for the same reason as
+                // uploadAllNotes: it can't be skewed or spoofed by either device's clock.
+                val remoteIsNewerOrEqual = if (remoteServerTs != null && localServerTs != null) {
+                    remoteServerTs >= localServerTs
+                } else {
+                    val remoteTs = if (remote.exists()) remote.getLong("timestamp") else null
+                    remoteTs != null && remoteTs >= note.timestamp
+                }
+                if (remoteIsNewerOrEqual) continue
                 putCloudNote(uid, note)
                 uploaded++
             }
@@ -221,12 +275,29 @@ class FirebaseNoteSync @Inject constructor(
                 val cloudNote = data.toCloudNote(noteId) { name -> ensureLabel(name) }
                 val localNote = localNotesById[noteId]
 
+                val cloudWins = if (localNote == null) {
+                    true
+                } else {
+                    val remoteServerTs = cloudNote.serverUpdatedAt
+                    val localServerTs = localNote.serverUpdatedAt
+                    // Prefer the server-assigned timestamp on both sides — a device's own clock
+                    // can be wrong or spoofed, so comparing two devices' `timestamp` fields
+                    // against each other is not trustworthy. Falls back to the client timestamp
+                    // only for a note that hasn't round-tripped through sync since this field
+                    // was introduced (both clients still populate it identically either way).
+                    if (remoteServerTs != null && localServerTs != null) {
+                        remoteServerTs >= localServerTs
+                    } else {
+                        cloudNote.timestamp >= localNote.timestamp
+                    }
+                }
+
                 when {
                     localNote == null -> {
                         noteRepository.insertNoteWithResult(cloudNote)
                         changes++
                     }
-                    cloudNote.timestamp >= localNote.timestamp -> {
+                    cloudWins -> {
                         noteRepository.updateNote(cloudNote)
                         changes++
                     }
@@ -348,13 +419,26 @@ class FirebaseNoteSync @Inject constructor(
         return purged
     }
 
-    /** Writes a note we already hold — no uid lookup, no tombstone round-trip, no DB re-read. */
+    /**
+     * Writes a note we already hold, then refreshes Room's cached [Note.serverUpdatedAt] from
+     * the server-resolved value. Without this readback the cache goes stale the moment this
+     * device uploads its own edit — a later reconcile/download pass would then compare a fresh
+     * remote timestamp against a stale local one, conclude "remote is newer", and either skip a
+     * genuinely pending upload or overwrite a newer local edit with older cloud content. One
+     * extra read per write; correctness here matters more than the Spark-tier read count.
+     */
     private suspend fun putCloudNote(uid: String, note: Note) {
         val noteId = note.id ?: return
-        userNotesCollection(uid)
-            .document(noteId.toString())
-            .set(note.toCloudMap(), SetOptions.merge())
-            .await()
+        val docRef = userNotesCollection(uid).document(noteId.toString())
+        docRef.set(note.toCloudMap(), SetOptions.merge()).await()
+        refreshServerTimestamp(docRef, noteId)
+    }
+
+    private suspend fun refreshServerTimestamp(docRef: DocumentReference, noteId: Long) {
+        val resolved = docRef.get().await().getTimestamp("serverUpdatedAt")?.toEpochMillis()
+        if (resolved != null) {
+            noteRepository.updateServerTimestamp(noteId, resolved)
+        }
     }
 
     private suspend fun writeCloudTombstone(

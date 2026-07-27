@@ -20,6 +20,7 @@ fun NoteEntity.toNote(
         isTrashed = isTrashed,
         position = position,
         reminderTimestamp = reminderTimestamp,
+        serverUpdatedAt = serverUpdatedAt,
         labels = labels,
         attachments = attachments,
         checklist = checklist
@@ -37,7 +38,8 @@ fun Note.toNoteEntity(): NoteEntity {
         isArchived = isArchived,
         isTrashed = isTrashed,
         position = position,
-        reminderTimestamp = reminderTimestamp
+        reminderTimestamp = reminderTimestamp,
+        serverUpdatedAt = serverUpdatedAt
     )
 }
 

@@ -1,3 +1,4 @@
+import { serverTimestamp, Timestamp, type FieldValue } from 'firebase/firestore';
 import type { ChecklistItem } from '@/types/checklist';
 import type { Label } from '@/types/label';
 import type { Note } from '@/types/note';
@@ -16,6 +17,13 @@ export interface FirestoreNoteDocument {
   position?: number;
   isLocked?: boolean;
   reminderTimestamp?: number | null;
+  /**
+   * Server-assigned, not client-set — Firestore resolves the `serverTimestamp()` sentinel to
+   * its own commit time, which is what makes cross-device conflict resolution immune to a
+   * device's clock being wrong. Rules additionally enforce this is exactly request.time, so a
+   * client cannot forge it. `FieldValue` on write (the sentinel), `Timestamp` on read (resolved).
+   */
+  serverUpdatedAt?: FieldValue | Timestamp;
   labels?: Array<{ name?: string }>;
   checklist?: Array<{
     text?: string;
@@ -76,6 +84,7 @@ export function noteToCloudMap(note: Note): FirestoreNoteDocument {
     // Writing a constant keeps this build compatible with both without a deploy ordering rule.
     isLocked: false,
     reminderTimestamp: note.reminderTimestamp,
+    serverUpdatedAt: serverTimestamp(),
     labels: note.labels.map((label) => ({ name: label.name })),
     checklist: note.checklist.map(checklistToCloudMap),
   };
@@ -148,6 +157,12 @@ export function cloudMapToNote(
     reminderTimestamp: typeof data.reminderTimestamp === 'number' &&
       Number.isFinite(data.reminderTimestamp)
       ? data.reminderTimestamp
+      : null,
+    // Not `.toMillis()`: it keeps the sub-millisecond fraction (float division), while Android's
+    // equivalent conversion floors it (integer division) — same commit, two different numbers
+    // otherwise. Flooring on both sides is the coarsest representation both platforms agree on.
+    serverUpdatedAt: data.serverUpdatedAt instanceof Timestamp
+      ? data.serverUpdatedAt.seconds * 1000 + Math.floor(data.serverUpdatedAt.nanoseconds / 1_000_000)
       : null,
     labels,
     attachments,
