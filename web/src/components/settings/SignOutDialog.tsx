@@ -28,9 +28,10 @@ export function SignOutDialog({
       >
         <h4 className="text-lg font-semibold">Sign out of Google?</h4>
         <p className="mt-2 text-sm text-brand-muted">
-          Signing out clears notes on this device so another Google account cannot inherit them.
-          Cloud copies remain unless you delete them. You&apos;ll need to sign in again to keep
-          using Notelikeus.
+          Your notes stay in your Google account and aren&apos;t affected by signing out. This
+          just clears locally cached labels and preferences so another Google account on this
+          device can&apos;t inherit them. You&apos;ll need to sign in again to keep using
+          Notelikeus.
         </p>
         <button
           type="button"

@@ -39,9 +39,11 @@ export default function App() {
   const [hadSession] = useState(hadSessionLastLoad);
 
   // Firebase restores its session asynchronously, so authReady is false for a moment on every
-  // load. Notes are already rehydrated from local storage by this point, so someone who was
-  // signed in last time gets the app immediately instead of a full-screen "checking sign-in"
-  // gate on every refresh. If auth then resolves to no user, the sign-in screen takes over.
+  // load. This hint lets someone who was signed in last time get the app shell immediately
+  // instead of a full-screen "checking sign-in" gate on every refresh — notes themselves still
+  // populate a moment later once auth resolves and the Firestore listener attaches (from
+  // Firestore's own persistent local cache, near-instant on a return visit). If auth then
+  // resolves to no user, the sign-in screen takes over.
   const assumeSignedIn = !authReady && hadSession;
 
   useAuthSync();
@@ -92,7 +94,8 @@ export default function App() {
         {authTimedOut ? (
           <div className="fixed inset-x-0 bottom-16 flex flex-col items-center gap-3 px-6 text-center">
             <p className="max-w-xs text-xs text-brand-muted">
-              This is taking longer than expected. Your notes on this device are safe either way.
+              This is taking longer than expected. It's safe to reload — nothing has been changed
+              yet.
             </p>
             <button
               type="button"

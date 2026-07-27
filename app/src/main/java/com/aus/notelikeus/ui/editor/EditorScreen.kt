@@ -202,10 +202,11 @@ fun EditorScreen(
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         showDateTimePicker = true
                     }) {
+                        val hasReminder = state.reminderTimestamp != null
                         Icon(
-                            if (state.reminderTimestamp != null) Icons.Default.NotificationsActive else Icons.Outlined.Notifications,
+                            if (hasReminder) Icons.Default.NotificationsActive else Icons.Outlined.Notifications,
                             contentDescription = stringResource(R.string.set_reminder),
-                            tint = contentColor
+                            tint = contentColor.copy(alpha = if (hasReminder) 1f else 0.55f)
                         )
                     }
                     IconButton(onClick = {
@@ -223,7 +224,7 @@ fun EditorScreen(
                         Icon(
                             if (state.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
                             contentDescription = stringResource(R.string.cd_pin_note),
-                            tint = contentColor
+                            tint = contentColor.copy(alpha = if (state.isPinned) 1f else 0.55f)
                         )
                     }
                     IconButton(onClick = {
@@ -244,7 +245,7 @@ fun EditorScreen(
                         Icon(
                             if (state.isArchived) Icons.Default.Unarchive else Icons.Default.Archive,
                             contentDescription = stringResource(R.string.cd_archive_note),
-                            tint = contentColor
+                            tint = contentColor.copy(alpha = if (state.isArchived) 1f else 0.55f)
                         )
                     }
                 },

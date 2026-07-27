@@ -25,7 +25,8 @@ object RichTextParser {
       contentColor: Color,
       highlightColor: Color = Color.Transparent,
       searchQuery: String = "",
-      linkColor: Color = contentColor
+      linkColor: Color = contentColor,
+      linksClickable: Boolean = true
   ): AnnotatedString {
     if (text.isEmpty()) return AnnotatedString("")
 
@@ -33,13 +34,18 @@ object RichTextParser {
     return buildAnnotatedString {
       segments.forEach { segment ->
         if (segment.url != null) {
-          withLink(LinkAnnotation.Url(segment.url)) {
-            withStyle(
-                SpanStyle(
-                    color = linkColor,
-                    textDecoration = TextDecoration.Underline
-                )
-            ) {
+          val linkStyle = SpanStyle(
+              color = linkColor,
+              textDecoration = TextDecoration.Underline
+          )
+          if (linksClickable) {
+            withLink(LinkAnnotation.Url(segment.url)) {
+              withStyle(linkStyle) {
+                append(segment.text)
+              }
+            }
+          } else {
+            withStyle(linkStyle) {
               append(segment.text)
             }
           }

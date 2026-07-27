@@ -54,7 +54,7 @@ fun NoteColorSwatch(
             modifier = Modifier
                 .size(swatchSize)
                 .clip(CircleShape)
-                .background(if (isDefault) Color.Transparent else color)
+                .background(if (isDefault) MaterialTheme.colorScheme.surfaceVariant else color)
                 .border(
                     width = if (isSelected) 2.dp else 1.dp,
                     color = if (isSelected) {

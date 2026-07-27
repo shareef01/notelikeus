@@ -74,6 +74,7 @@ fun LabelsScreen(
                 subtitle = stringResource(R.string.empty_labels_subtitle),
                 icon = Icons.Default.Label,
                 showCreateButton = true,
+                createButtonLabel = stringResource(R.string.create_new_label),
                 onCreateClick = { showCreateDialog = true },
                 modifier = Modifier
                     .fillMaxSize()

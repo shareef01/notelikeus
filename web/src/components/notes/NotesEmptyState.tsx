@@ -37,7 +37,7 @@ export function NotesEmptyState({
       </div>
       <p className="text-[18px] font-bold tracking-tight text-brand-primary opacity-80">{message}</p>
       {subtitle ? (
-        <p className="mt-2 text-[14px] font-medium leading-[1.4em] text-brand-muted opacity-65">
+        <p className="mt-2 text-[14px] font-medium leading-[1.4em] text-brand-muted">
           {subtitle}
         </p>
       ) : null}

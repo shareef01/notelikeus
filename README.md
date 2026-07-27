@@ -1,6 +1,6 @@
 # Notelikeus
 
-A Google Keep–style notes app for **Android** and **web** (PWA). Notes are stored locally with SQLCipher encryption on Android (localStorage on web). Google Sign-In is required; auto-sync to your Firebase account can be toggled in settings.
+A Google Keep–style notes app for **Android** and **web** (PWA). Android stores notes locally with SQLCipher encryption and syncs to Firebase when signed in (auto-sync can be toggled in settings). The web app requires Google Sign-In and keeps notes in Firestore only, syncing automatically with no local copy or toggle — Firestore's own offline cache keeps it usable without a connection.
 
 ## 🌟 Technical Highlights
 
@@ -115,7 +115,7 @@ See [`web/README.md`](web/README.md) for full PWA setup and architecture notes.
 - **Architecture**: Functional Components + Custom Hooks for logic reuse
 - **Styling**: Tailwind CSS (Optimized for performance and rapid iteration)
 - **State**: Zustand (Lightweight, atomic state management)
-- **Persistence**: `localStorage` (via Zustand persist) for notes and settings on the web
+- **Persistence**: Notes live in Firestore only, with Firestore's built-in offline cache for continuity without a connection; `localStorage` (via Zustand persist) is used just for UI preferences (theme, layout, settings)
 - **PWA**: Advanced Service Worker implementation for full offline capability, asset caching, and background installation prompts.
 
 ---

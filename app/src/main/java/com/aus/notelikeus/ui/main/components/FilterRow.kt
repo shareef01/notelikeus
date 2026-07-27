@@ -42,7 +42,7 @@ fun FilterRow(
     modifier: Modifier = Modifier
 ) {
     val isDarkTheme = isNoteColorDarkTheme()
-    val colors = noteColorsForTheme(isDarkTheme)
+    val colors = noteColorsForTheme(isDarkTheme).filter { it != Color.Transparent }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -74,6 +74,13 @@ fun FilterRow(
                     selected = selectedColor == null,
                     onClick = { onColorSelect(null) },
                     label = stringResource(R.string.all_colors)
+                )
+            }
+            item {
+                PrecisionFilterChip(
+                    selected = selectedColor == 0,
+                    onClick = { onColorSelect(if (selectedColor == 0) null else 0) },
+                    label = stringResource(R.string.no_color)
                 )
             }
             itemsIndexed(colors, key = { _, color -> color.toArgb() }) { _, color ->

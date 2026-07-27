@@ -132,6 +132,9 @@ class EditorViewModel @Inject constructor(
     }
 
     fun onContentValueChange(value: TextFieldValue) {
+        // The content field is unmounted once the note is in checklist mode; ignore any
+        // trailing IME callback that lands after the switch so it can't resurrect stale text.
+        if (_state.value.checklist.isNotEmpty()) return
         val oldValue = _state.value.contentValue
         val result = SmartTextProcessor.process(value, oldValue)
         
@@ -189,7 +192,8 @@ class EditorViewModel @Inject constructor(
         return Note(
             id = state.id,
             title = state.title,
-            content = state.content,
+            // Content and checklist are mutually exclusive; never persist both.
+            content = if (state.checklist.isEmpty()) state.content else "",
             timestamp = state.timestamp,
             color = state.color,
             isPinned = state.isPinned,

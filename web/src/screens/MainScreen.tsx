@@ -110,8 +110,6 @@ export function MainScreen() {
 
   const selectionMode = selectedNoteIds.length > 0;
 
-  const cloudAutoSyncEnabled = useSettingsStore((s) => s.cloudAutoSyncEnabled);
-  const setCloudAutoSyncEnabled = useSettingsStore((s) => s.setCloudAutoSyncEnabled);
   const appTheme = useSettingsStore((s) => s.appTheme);
   const setAppTheme = useSettingsStore((s) => s.setAppTheme);
 
@@ -687,10 +685,6 @@ export function MainScreen() {
         onSortOrderCycle={cycleSortOrder}
         appTheme={appTheme}
         onAppThemeChange={setAppTheme}
-        cloudAutoSyncEnabled={cloudAutoSyncEnabled}
-
-        onCloudAutoSyncChange={setCloudAutoSyncEnabled}
-
         isGoogleAccount={cloud.isGoogleAccount}
 
         userEmail={cloud.userEmail}
@@ -698,10 +692,6 @@ export function MainScreen() {
         syncStatus={cloud.status}
 
         syncedNoteCount={cloud.syncedCount}
-
-        onSyncNow={() => void cloud.syncNow()}
-
-        onRestore={() => void cloud.restoreFromCloud()}
 
         onExportBackup={handleExportBackup}
 
@@ -714,8 +704,6 @@ export function MainScreen() {
         onSignUp={() => openAuthScreen('signup')}
 
         onSignOut={() => setShowSignOutConfirm(true)}
-
-        isSyncing={cloud.status === 'syncing'}
 
       />
 

@@ -12,7 +12,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
@@ -125,7 +126,7 @@ fun NoteCard(
     val containerColor by animateColorAsState(
         targetValue = when {
             isSelected -> MaterialTheme.colorScheme.secondaryContainer
-            note.color == 0 -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            note.color == 0 -> MaterialTheme.colorScheme.surfaceVariant
             else -> Color(note.color)
         },
         label = "color"
@@ -260,7 +261,8 @@ fun NoteCard(
                             contentColor = contentColor.copy(alpha = 0.8f),
                             highlightColor = highlightColor,
                             searchQuery = searchQuery,
-                            linkColor = MaterialTheme.colorScheme.primary
+                            linkColor = MaterialTheme.colorScheme.primary,
+                            linksClickable = false
                         ),
                         style = NoteCardBodyStyle,
                         maxLines = if (compact) 2 else 10,
@@ -284,7 +286,7 @@ fun NoteCard(
                     note.checklist.take(3).forEach { item ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                Icons.Default.CheckCircle,
+                                if (item.isChecked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
                                 contentDescription = stringResource(
                                     if (item.isChecked) R.string.cd_checked else R.string.cd_unchecked
                                 ),
@@ -297,7 +299,8 @@ fun NoteCard(
                                     text = item.text,
                                     contentColor = contentColor.copy(alpha = 0.6f),
                                     highlightColor = highlightColor,
-                                    searchQuery = searchQuery
+                                    searchQuery = searchQuery,
+                                    linksClickable = false
                                 ),
                                 style = NoteCardBodyStyle.copy(
                                     fontSize = MaterialTheme.typography.labelSmall.fontSize,
@@ -308,6 +311,15 @@ fun NoteCard(
                                 color = contentColor.copy(alpha = 0.6f)
                             )
                         }
+                    }
+                    val remainingChecklistCount = note.checklist.size - 3
+                    if (remainingChecklistCount > 0) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.labels_more, remainingChecklistCount),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.55f)
+                        )
                     }
                 }
 
