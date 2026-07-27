@@ -18,7 +18,7 @@ import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
         AttachmentEntity::class,
         ChecklistItemEntity::class
     ],
-    version = 5,
+    version = 8,
     exportSchema = true
 )
 abstract class NotelikeusDatabase : RoomDatabase() {
