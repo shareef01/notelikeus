@@ -36,7 +36,12 @@ service cloud.firestore {
         && data.checklist is list
         && data.checklist.size() <= 500
         && (!('attachments' in data)
-          || (data.attachments is list && data.attachments.size() <= 50));
+          || (data.attachments is list && data.attachments.size() <= 50))
+        // Optional so clients that predate this field can still write. When present, it must be
+        // exactly the server's own commit time for this write — not a value the client chose —
+        // which is what makes it safe to use for cross-device conflict resolution instead of
+        // the spoofable/skewable client `timestamp` field.
+        && (!('serverUpdatedAt' in data) || data.serverUpdatedAt == request.time);
     }
 
     function isValidSyncMeta() {

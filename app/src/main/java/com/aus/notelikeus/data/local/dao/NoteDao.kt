@@ -60,6 +60,9 @@ interface NoteDao {
     @Query("UPDATE notes SET reminderTimestamp = NULL WHERE id = :noteId")
     suspend fun clearReminderTimestamp(noteId: Long)
 
+    @Query("UPDATE notes SET serverUpdatedAt = :serverUpdatedAt WHERE id = :noteId")
+    suspend fun updateServerTimestamp(noteId: Long, serverUpdatedAt: Long)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNote(note: NoteEntity): Long
 
