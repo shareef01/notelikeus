@@ -9,6 +9,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -298,6 +299,11 @@ fun MainTopAppBar(
                                 modifier = Modifier
                                     .size(40.dp)
                                     .clip(CircleShape)
+                                    .border(
+                                        width = 1.dp,
+                                        color = MaterialTheme.colorScheme.outlineVariant,
+                                        shape = CircleShape
+                                    )
                                     .semantics { contentDescription = settingsContentDescription }
                                     .clickable {
                                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -306,7 +312,7 @@ fun MainTopAppBar(
                                 contentAlignment = Alignment.Center
                             ) {
                                 BrandMarkIcon(
-                                    size = 40.dp,
+                                    size = 36.dp,
                                     backgroundColor = MaterialTheme.colorScheme.onSurface,
                                     stripeColor = MaterialTheme.colorScheme.surface
                                 )
