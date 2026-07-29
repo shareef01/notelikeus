@@ -56,16 +56,16 @@ const config: Config = {
           '11px',
           { lineHeight: '14px', letterSpacing: '0.08em', fontWeight: '600' },
         ],
-        'note-title': ['18px', { lineHeight: '25px', letterSpacing: '-0.02em', fontWeight: '600' }],
-        'note-body': ['14px', { lineHeight: '1.45', letterSpacing: '0.01em', fontWeight: '400' }],
+        'note-title': ['18px', { lineHeight: '26px', letterSpacing: '-0.025em', fontWeight: '600' }],
+        'note-body': ['15px', { lineHeight: '1.5', letterSpacing: '0.01em', fontWeight: '400' }],
         'section-label': [
           '11px',
           { lineHeight: '14px', letterSpacing: '0.06em', fontWeight: '600' },
         ],
       },
       spacing: {
-        'note-gap': '12px',
-        'layout-gap': '16px',
+        'note-gap': '14px',
+        'layout-gap': '20px',
       },
       borderRadius: {
         note: '16px',
