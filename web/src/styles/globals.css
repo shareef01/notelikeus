@@ -91,9 +91,18 @@
   body {
     background-color: rgb(var(--background-rgb));
     color: rgb(var(--primary-rgb));
-    @apply font-sans;
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    @apply font-sans antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
+    letter-spacing: -0.011em;
+    text-rendering: optimizeLegibility;
     transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.02em;
+    text-wrap: balance;
   }
 }
 
@@ -126,7 +135,7 @@
 
 @layer components {
   .filter-chip {
-    @apply inline-flex min-h-11 items-center rounded-full border border-brand-outline/45 px-3.5 text-sm font-medium transition-colors sm:px-4;
+    @apply inline-flex min-h-11 items-center rounded-full border border-brand-outline/45 px-3.5 text-sm font-medium tracking-tight transition-colors sm:px-4;
   }
 
   .filter-chip-active {
@@ -135,5 +144,9 @@
 
   .filter-chip-inactive {
     @apply border-brand-outline/45 bg-true-surface-variant/25 text-brand-muted hover:border-brand-outline/70 hover:text-brand-primary;
+  }
+
+  .text-chrome-label {
+    @apply text-overline uppercase text-brand-muted;
   }
 }

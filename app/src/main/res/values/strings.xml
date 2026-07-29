@@ -71,6 +71,9 @@
 
     <!-- Drawer -->
     <string name="drawer_tagline">Capture everything.</string>
+    <string name="drawer_tagline_short">Capture</string>
+    <string name="nav_section_manage">Manage</string>
+    <string name="clear_filters_short">Clear</string>
     <string name="title_hint">Title</string>
     <string name="note_hint">Note</string>
     <string name="list_item_hint">List item</string>
@@ -91,7 +94,7 @@
     <string name="note_not_found">This note no longer exists</string>
 
     <!-- Settings -->
-    <string name="settings_local_app">Local notes app</string>
+    <string name="settings_local_app">Sync &amp; preferences for your notes</string>
     <string name="true_dark_mode">True Dark Mode</string>
     <string name="true_dark_mode_subtitle">Optimized for OLED displays</string>
     <string name="app_theme">App theme</string>
@@ -230,10 +233,10 @@
     <string name="recent_searches">Recent searches</string>
     <string name="select_note_to_view">Select a note to view</string>
     <string name="select_note_to_view_subtitle">Choose a note from the list to edit it here</string>
-    <string name="theme_auto">System default</string>
+    <string name="theme_auto">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
-    <string name="theme_true_dark">True dark</string>
+    <string name="theme_true_dark">OLED</string>
     <string name="theme_midnight">Midnight</string>
     <string name="theme_forest">Forest</string>
     <string name="nav_edit_labels">Edit labels</string>

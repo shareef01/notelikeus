@@ -5,14 +5,14 @@ interface NotesLoadingGridProps {
 }
 
 const CARD_MIN_PX: Record<2 | 3, number> = {
-  2: 220,
-  3: 156,
+  2: 260,
+  3: 152,
 };
 
 const SKELETON_HEIGHT: Record<ViewColumns, number> = {
-  1: 72,
-  2: 140,
-  3: 108,
+  1: 56,
+  2: 88,
+  3: 72,
 };
 
 export function NotesLoadingGrid({ viewPreference }: NotesLoadingGridProps) {
@@ -20,21 +20,26 @@ export function NotesLoadingGrid({ viewPreference }: NotesLoadingGridProps) {
   const count = isList ? 5 : viewPreference === 2 ? 8 : 12;
   const gapClass =
     viewPreference === 3
-      ? 'gap-2 sm:gap-2.5'
+      ? 'gap-1.5 sm:gap-2'
       : isList
-        ? 'gap-2 sm:gap-2.5'
-        : 'gap-3 sm:gap-3.5';
+        ? 'gap-1.5'
+        : 'gap-2 sm:gap-2.5';
+  const cardMin = isList ? 0 : CARD_MIN_PX[viewPreference as 2 | 3];
+  const columnGapPx = viewPreference === 3 ? 8 : 10;
 
   return (
     <div
-      className={`grid w-full ${gapClass} px-3 pb-24 pt-3 sm:px-4 lg:px-6 ${
-        isList ? 'max-w-3xl grid-cols-1' : 'mx-auto max-w-content items-start'
+      className={`w-full px-3 pb-24 pt-2 sm:px-4 lg:px-6 ${
+        isList
+          ? `mx-auto grid max-w-content grid-cols-1 ${gapClass}`
+          : 'mx-auto max-w-content'
       }`}
       style={
         isList
           ? undefined
           : {
-              gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${CARD_MIN_PX[viewPreference]}px), 1fr))`,
+              columnWidth: cardMin,
+              columnGap: columnGapPx,
             }
       }
       aria-hidden
@@ -42,7 +47,9 @@ export function NotesLoadingGrid({ viewPreference }: NotesLoadingGridProps) {
       {Array.from({ length: count }, (_, index) => (
         <div
           key={index}
-          className="animate-pulse rounded-note bg-true-surface-variant/60"
+          className={`animate-pulse rounded-note bg-true-surface-variant/60 ${
+            isList ? '' : 'mb-2 break-inside-avoid'
+          }`}
           style={{ height: SKELETON_HEIGHT[viewPreference] }}
         />
       ))}

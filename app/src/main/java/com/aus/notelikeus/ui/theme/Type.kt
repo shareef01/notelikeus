@@ -56,17 +56,20 @@ val Typography = Typography(
  * Constraint: Premium Typography
  * Note Titles: SemiBold, 18.sp, -0.5.sp kerning.
  */
-val NoteCardTitleStyle = inter(FontWeight.SemiBold, 18f, 25f, -0.5f)
+val NoteCardTitleStyle = inter(FontWeight.Bold, 15f, 20f, -0.22f)
 
 /**
  * Constraint: Body Text
  * Body: Regular, 14.sp, 1.4em line height (19.6sp).
  */
-val NoteCardBodyStyle = inter(FontWeight.Normal, 14f, 19.6f, 0f)
+val NoteCardBodyStyle = inter(FontWeight.Normal, 14f, 20.3f, 0.14f)
+
+/** Chrome overline — matches web `text-chrome-label` / `overline`. */
+val ChromeLabelStyle = inter(FontWeight.SemiBold, 11f, 14f, 0.88f)
 
 /**
  * Editor typography — aligned with card styles for shared-element continuity.
  */
-val EditorTitleStyle = NoteCardTitleStyle
+val EditorTitleStyle = inter(FontWeight.SemiBold, 22f, 28f, -0.66f)
 
-val EditorBodyStyle = inter(FontWeight.Normal, 16f, 22.4f, 0f)
+val EditorBodyStyle = inter(FontWeight.Normal, 16f, 24.8f, 0.16f)

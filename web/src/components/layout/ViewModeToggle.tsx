@@ -4,11 +4,12 @@ import type { ViewColumns } from '@/store/uiStore';
 const MODES: {
   value: ViewColumns;
   label: string;
+  shortLabel: string;
   icon: typeof ViewListIcon;
 }[] = [
-  { value: 1, label: 'List', icon: ViewListIcon },
-  { value: 2, label: 'Grid', icon: GridViewIcon },
-  { value: 3, label: 'Dense', icon: ViewDenseIcon },
+  { value: 1, label: 'List — one column', shortLabel: 'List', icon: ViewListIcon },
+  { value: 2, label: 'Grid — comfortable cards', shortLabel: 'Grid', icon: GridViewIcon },
+  { value: 3, label: 'Compact — more columns', shortLabel: 'Compact', icon: ViewDenseIcon },
 ];
 
 interface ViewModeToggleProps {
@@ -30,19 +31,20 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
       <button
         type="button"
         onClick={() => onChange(nextMode(value))}
-        className="flex size-11 shrink-0 items-center justify-center rounded-full border border-brand-outline/40 bg-true-surface-variant/40 text-brand-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary md:hidden"
-        aria-label={`View: ${current.label}. Tap to change`}
+        className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-brand-outline/35 bg-true-surface-variant/30 px-2.5 text-brand-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary md:hidden"
+        aria-label={`View: ${current.shortLabel}. Tap to change`}
         title={current.label}
       >
-        <CurrentIcon size={18} />
+        <CurrentIcon size={16} />
+        <span className="text-[11px] font-semibold tracking-wide">{current.shortLabel}</span>
       </button>
 
       <div
-        className="hidden h-11 shrink-0 items-center gap-0.5 rounded-full border border-brand-outline/40 bg-true-surface-variant/40 p-1 md:flex"
+        className="hidden h-9 shrink-0 items-center gap-0.5 rounded-full border border-brand-outline/35 bg-true-surface-variant/25 p-0.5 md:flex"
         role="radiogroup"
-        aria-label="Notes view"
+        aria-label="Notes view size"
       >
-        {MODES.map(({ value: mode, label, icon: Icon }) => {
+        {MODES.map(({ value: mode, label, shortLabel, icon: Icon }) => {
           const selected = value === mode;
           return (
             <button
@@ -53,13 +55,20 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
               aria-label={label}
               title={label}
               onClick={() => onChange(mode)}
-              className={`flex size-9 items-center justify-center rounded-full transition-[background-color,color,opacity] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
+              className={`flex h-8 items-center gap-1 rounded-full px-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
                 selected
-                  ? 'bg-white/12 text-brand-primary opacity-100'
-                  : 'text-brand-muted opacity-70 hover:bg-white/5 hover:opacity-90'
+                  ? 'bg-brand-primary/15 text-brand-primary'
+                  : 'text-brand-muted/65 hover:bg-white/5 hover:text-brand-secondary'
               }`}
             >
-              <Icon size={16} />
+              <Icon size={15} />
+              <span
+                className={`text-[10px] font-semibold tracking-wide ${
+                  selected ? 'inline' : 'sr-only xl:inline'
+                }`}
+              >
+                {shortLabel}
+              </span>
             </button>
           );
         })}

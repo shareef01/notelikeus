@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Stars
@@ -64,12 +63,12 @@ import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.BuildConfig
 import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.AppTheme
-import com.aus.notelikeus.domain.model.appThemeLabelRes
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.ui.main.CloudAccount
 import com.aus.notelikeus.ui.main.CloudSyncStatus
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
+import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 
 private val SettingsIconSize = 24.dp
 private val SettingsSectionTopPadding = 24.dp
@@ -175,13 +174,11 @@ fun ProfileSheet(
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(R.string.section_appearance))
-            SettingsCycleListItem(
-                icon = Icons.Default.Palette,
-                title = stringResource(R.string.app_theme),
-                subtitle = stringResource(appThemeLabelRes(appTheme)),
-                onClick = {
+            ThemePicker(
+                value = appTheme,
+                onChange = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onAppThemeChange(appTheme.next())
+                    onAppThemeChange(it)
                 }
             )
             SettingsToggleListItem(
@@ -430,16 +427,12 @@ fun SettingsSectionHeader(
 ) {
     Text(
         text = title.uppercase(),
-        style = MaterialTheme.typography.labelMedium.copy(
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-            letterSpacing = 1.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        ),
+        style = ChromeLabelStyle,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier.padding(
             start = 16.dp,
             end = 16.dp,
-            top = if (isFirst) 16.dp else 24.dp, // Disciplined 24.dp Top Padding
+            top = if (isFirst) 16.dp else 24.dp,
             bottom = 8.dp
         )
     )
