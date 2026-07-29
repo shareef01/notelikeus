@@ -26,20 +26,20 @@ fun TrashBanner(
     Column(modifier = modifier.fillMaxWidth()) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
+            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.22f),
             tonalElevation = 0.dp
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = stringResource(R.string.empty_trash_subtitle),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f),
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(onClick = onEmptyTrash) {
@@ -52,7 +52,7 @@ fun TrashBanner(
             }
         }
         HorizontalDivider(
-            color = MaterialTheme.colorScheme.error.copy(alpha = 0.18f)
+            color = MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
         )
     }
 }
