@@ -176,7 +176,7 @@ export function TopBar({
               <button
                 type="button"
                 onClick={onNewNote}
-                className={`hidden size-10 shrink-0 items-center justify-center rounded-note bg-brand-primary text-true-surface transition-[transform,opacity] hover:opacity-90 active:scale-[0.98] md:inline-flex ${CHROME_FOCUS}`}
+                className={`hidden size-10 shrink-0 items-center justify-center rounded-note border border-brand-outline/55 bg-brand-primary/[0.08] text-brand-primary transition-[transform,background-color,border-color] hover:border-brand-outline/80 hover:bg-brand-primary/[0.14] active:scale-[0.98] md:inline-flex ${CHROME_FOCUS}`}
                 aria-label="New note"
               >
                 <AddIcon size={20} />
