@@ -117,7 +117,7 @@ fun NoteStaggeredGrid(
                     label = "dragScale"
                 )
                 val dragElevation by animateDpAsState(
-                    targetValue = if (isBeingDragged) 8.dp else 0.dp,
+                    targetValue = if (isBeingDragged) 4.dp else 0.dp,
                     label = "dragElevation"
                 )
                 val itemModifier = Modifier

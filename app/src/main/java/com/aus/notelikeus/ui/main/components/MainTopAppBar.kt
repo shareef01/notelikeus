@@ -2,8 +2,10 @@ package com.aus.notelikeus.ui.main.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.border
@@ -339,8 +341,8 @@ fun MainTopAppBar(
 
             AnimatedVisibility(
                 visible = showRecentSearches,
-                enter = fadeIn(),
-                exit = fadeOut()
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
             ) {
                 RecentSearchRow(
                     searches = recentSearches,
@@ -358,8 +360,8 @@ fun MainTopAppBar(
 
             AnimatedVisibility(
                 visible = selectedCount == 0 && !showRecentSearches,
-                enter = fadeIn(),
-                exit = fadeOut()
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
             ) {
                 FilterRow(
                     selectedColor = selectedColor,
@@ -405,7 +407,7 @@ private fun RecentSearchRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
