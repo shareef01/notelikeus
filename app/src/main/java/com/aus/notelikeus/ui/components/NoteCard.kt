@@ -59,14 +59,14 @@ import com.aus.notelikeus.ui.theme.NoteCardBodyStyle
 import com.aus.notelikeus.ui.theme.NoteCardTitleStyle
 import com.aus.notelikeus.ui.theme.getContentColor
 
-private val NoteCardContentPadding = 16.dp
+private val NoteCardContentPadding = 14.dp
 
 /** Compact uppercase label pill, matching the web card's chip typography. */
 private val NoteCardLabelChipStyle = TextStyle(
     fontWeight = FontWeight.SemiBold,
-    fontSize = 10.sp,
+    fontSize = 11.sp,
     lineHeight = 14.sp,
-    letterSpacing = 0.6.sp
+    letterSpacing = 0.4.sp
 )
 
 /**
@@ -244,14 +244,20 @@ fun NoteCard(
                 )
             ) {
                 if (note.title.isNotEmpty()) {
+                    val trailingChrome = when {
+                        isSelected -> 28.dp
+                        note.isPinned || note.reminderTimestamp != null -> 20.dp
+                        else -> 0.dp
+                    }
                     Text(
                         text = buildHighlightedString(note.title, searchQuery, contentColor, highlightColor),
                         style = NoteCardTitleStyle,
                         maxLines = if (compact) 1 else 2,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(end = trailingChrome)
                     )
                     if (!compact || note.content.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                     }
                 }
                 if (note.content.isNotEmpty()) {
@@ -265,7 +271,7 @@ fun NoteCard(
                             linksClickable = false
                         ),
                         style = NoteCardBodyStyle,
-                        maxLines = if (compact) 2 else 10,
+                        maxLines = if (compact) 3 else 8,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -324,7 +330,7 @@ fun NoteCard(
                 }
 
                 if (!compact && note.labels.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -340,6 +346,7 @@ fun NoteCard(
                                 style = NoteCardLabelChipStyle,
                                 color = contentColor,
                                 maxLines = 1,
+                                softWrap = false,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier
                                     .clip(CircleShape)
@@ -349,7 +356,7 @@ fun NoteCard(
                                             Modifier.clickable { onLabelClick.invoke(labelId) }
                                         } else Modifier
                                     )
-                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
                         val overflowCount = note.labels.size - 2
@@ -365,19 +372,19 @@ fun NoteCard(
 
                 // Bottom meta row: divider + relative timestamp, mirroring the web card anatomy
                 // (border-t border-current/10, then a compact time label).
-                Spacer(modifier = Modifier.height(if (compact) 10.dp else 12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 HorizontalDivider(
                     thickness = 1.dp,
                     color = contentColor.copy(alpha = 0.1f)
                 )
-                Spacer(modifier = Modifier.height(if (compact) 8.dp else 10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = noteTimestampLabel(note.timestamp),
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = FontWeight.Medium,
                         fontFeatureSettings = "tnum",
                         letterSpacing = 0.2.sp,
-                        fontSize = if (compact) 10.sp else 11.sp
+                        fontSize = if (compact) 11.sp else 12.sp
                     ),
                     color = contentColor.copy(alpha = 0.6f)
                 )
