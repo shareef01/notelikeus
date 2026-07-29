@@ -58,6 +58,8 @@ import com.aus.notelikeus.ui.theme.NoteCardBodyStyle
 import com.aus.notelikeus.ui.theme.NoteCardTitleStyle
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.getContentColor
+import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
+import com.aus.notelikeus.ui.theme.noteColorForTheme
 
 private val NoteCardContentPadding = 18.dp
 
@@ -122,12 +124,14 @@ fun NoteCard(
 ) {
     val sharedTransitionScope = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
+    val isDarkPalette = isNoteColorDarkTheme()
+    val displayColorArgb = noteColorForTheme(note.color, isDarkPalette)
 
     val containerColor by animateColorAsState(
         targetValue = when {
             isSelected -> MaterialTheme.colorScheme.secondaryContainer
-            note.color == 0 -> MaterialTheme.colorScheme.surfaceVariant
-            else -> Color(note.color)
+            displayColorArgb == 0 -> MaterialTheme.colorScheme.surface
+            else -> Color(displayColorArgb)
         },
         label = "color"
     )
@@ -149,8 +153,8 @@ fun NoteCard(
 
     val contentColor = when {
         isSelected -> MaterialTheme.colorScheme.onSecondaryContainer
-        note.color == 0 -> MaterialTheme.colorScheme.onSurface
-        else -> Color(note.color).getContentColor(fallback = MaterialTheme.colorScheme.onSurface)
+        displayColorArgb == 0 -> MaterialTheme.colorScheme.onSurface
+        else -> Color(displayColorArgb).getContentColor(fallback = MaterialTheme.colorScheme.onSurface)
     }
 
     val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
@@ -212,7 +216,7 @@ fun NoteCard(
         elevation = CardDefaults.cardElevation(defaultElevation = elevation),
         border = when {
             isSelected -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
-            note.color == 0 -> hairlineBorder
+            displayColorArgb == 0 -> hairlineBorder
             else -> null
         }
     ) {
