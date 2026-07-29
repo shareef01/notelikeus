@@ -153,7 +153,7 @@ To keep the app free-tier friendly (Firebase Spark), the sync engine was optimiz
 
 ### Prerequisites
 - Android Studio Ladybug+
-- JDK 17
+- JDK 17 (Android builds) · JDK 21+ (Firestore rules tests / emulator)
 - Node.js (LTS)
 
 ### Build
@@ -163,6 +163,10 @@ To keep the app free-tier friendly (Firebase Spark), the sync engine was optimiz
 
 # Web
 cd web && npm install && npm run dev
+
+# Firestore security rules (requires JDK 21+)
+npm install
+npm run test:rules
 ```
 
 ---
