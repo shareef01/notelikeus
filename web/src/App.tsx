@@ -32,6 +32,7 @@ export default function App() {
   const labelsOpen = useUiStore((s) => s.labelsOpen);
   const setLabelsOpen = useUiStore((s) => s.setLabelsOpen);
   const openNewNote = useUiStore((s) => s.openNewNote);
+  const openNote = useUiStore((s) => s.openNote);
   const { user, isReady: authReady } = useAuthListener();
   const isTabletUp = useIsTabletUp();
   const [authTimedOut, setAuthTimedOut] = useState(false);
@@ -63,8 +64,26 @@ export default function App() {
     if (params.get('new') === '1') {
       openNewNote();
       window.history.replaceState({}, '', window.location.pathname);
+      return;
     }
-  }, [openNewNote]);
+    const noteId = params.get('note');
+    if (noteId) {
+      openNote(noteId);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [openNewNote, openNote]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as { type?: string; noteId?: string } | null;
+      if (data?.type === 'OPEN_NOTE' && typeof data.noteId === 'string' && data.noteId) {
+        openNote(data.noteId);
+      }
+    };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+  }, [openNote]);
 
   // Mounted above every early return below: it renders nothing and only sets the theme class on
   // <html>. Sitting under the `!user` return meant the loading and sign-in screens — the first

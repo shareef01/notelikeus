@@ -5,7 +5,7 @@ import {
 } from '@/lib/firestore/paths';
 
 /** Keep cloud tombstones long enough for offline devices to observe the delete. */
-export const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const TOMBSTONE_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 
 export async function writeCloudTombstone(
   userId: string,

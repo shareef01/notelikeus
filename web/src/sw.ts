@@ -76,8 +76,12 @@ function fireReminder(reminder: SwReminder): Promise<void> {
     icon: '/icons/icon-192.png',
     // Same tag per note, so a catch-up that races an armed timer replaces rather than stacks.
     tag: `notelikeus-reminder-${reminder.noteId}`,
+    data: { noteId: reminder.noteId },
   });
 }
+
+/** setTimeout delays above ~24.8 days clamp; re-arm until fireAt is actually due. */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 function armTimer(reminder: SwReminder) {
   cancelSwReminder(reminder.noteId);
@@ -87,12 +91,16 @@ function armTimer(reminder: SwReminder) {
   const timerId = setTimeout(() => {
     swTimers.delete(reminder.noteId);
     void (async () => {
+      if (reminder.fireAt > Date.now()) {
+        armTimer(reminder);
+        return;
+      }
       await fireReminder(reminder);
       // Drop it from storage so a later catch-up does not fire it a second time.
       const remaining = (await loadReminders()).filter((r) => r.noteId !== reminder.noteId);
       await saveReminders(remaining);
     })();
-  }, Math.min(delay, 2_147_483_647));
+  }, Math.min(delay, MAX_TIMER_DELAY_MS));
 
   swTimers.set(reminder.noteId, timerId);
 }
@@ -125,13 +133,12 @@ async function syncSwReminders(reminders: SwReminder[]): Promise<void> {
 self.addEventListener('message', (event) => {
   // Only accept control messages from same-origin window clients (not arbitrary workers).
   const source = event.source;
-  if (source && 'url' in source) {
-    try {
-      const clientUrl = new URL((source as Client).url);
-      if (clientUrl.origin !== self.location.origin) return;
-    } catch {
-      return;
-    }
+  if (!source || !('url' in source)) return;
+  try {
+    const clientUrl = new URL((source as Client).url);
+    if (clientUrl.origin !== self.location.origin) return;
+  } catch {
+    return;
   }
 
   const data = event.data as { type?: string; reminders?: SwReminder[] } | null;
@@ -175,14 +182,27 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const noteId = (event.notification.data as { noteId?: string } | null)?.noteId;
+  const targetUrl = noteId
+    ? `/?note=${encodeURIComponent(noteId)}`
+    : '/';
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    (async () => {
+      const clients = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      });
       for (const client of clients) {
         if ('focus' in client) {
-          return client.focus();
+          await client.focus();
+          if ('navigate' in client) {
+            return (client as WindowClient).navigate(targetUrl);
+          }
+          client.postMessage({ type: 'OPEN_NOTE', noteId });
+          return undefined;
         }
       }
-      return self.clients.openWindow('/');
-    }),
+      return self.clients.openWindow(targetUrl);
+    })(),
   );
 });

@@ -154,10 +154,9 @@ export async function uploadAllNotes(userId: string, notes: Note[]): Promise<num
 }
 
 /**
- * Last-write-wins merge, matching Android FirebaseNoteSync. Prefers the server-assigned
- * `serverUpdatedAt` over the client-set `timestamp` — a device's own clock can be wrong or
- * spoofed — falling back to `timestamp` only when one side has no server-timestamp history yet
- * (a brand new note, or one from before this field existed).
+ * Last-write-wins merge, matching Android FirebaseNoteSync and [shouldUploadOverRemote].
+ * Prefers server-assigned `serverUpdatedAt`; a confirmed remote beats an unconfirmed local
+ * (e.g. backup import) regardless of client `timestamp`.
  */
 export async function mergeRemoteNotes(localNotes: Note[], remoteNotes: Note[]): Promise<Note[]> {
   const byId = new Map<string, Note>(localNotes.map((note) => [note.id, note]));
@@ -168,10 +167,7 @@ export async function mergeRemoteNotes(localNotes: Note[], remoteNotes: Note[]):
       byId.set(remote.id, remote);
       continue;
     }
-    const remoteWins = remote.serverUpdatedAt != null && local.serverUpdatedAt != null
-      ? remote.serverUpdatedAt >= local.serverUpdatedAt
-      : remote.timestamp >= local.timestamp;
-    if (remoteWins) {
+    if (!shouldUploadOverRemote(local, remote)) {
       byId.set(remote.id, remote);
     }
   }
@@ -249,12 +245,7 @@ export async function syncNotesWithCloud(
     if (cloudIds.has(localNote.id)) {
       if (!isCloudSyncEligible(localNote)) continue;
       const remote = remoteNotes.find((note) => note.id === localNote.id);
-      const localWins = remote != null && (
-        localNote.serverUpdatedAt != null && remote.serverUpdatedAt != null
-          ? localNote.serverUpdatedAt > remote.serverUpdatedAt
-          : localNote.timestamp > remote.timestamp
-      );
-      if (localWins) {
+      if (shouldUploadOverRemote(localNote, remote)) {
         await upsertNote(userId, localNote);
         merged = merged.map((note) => (note.id === localNote.id ? localNote : note));
         changes++;

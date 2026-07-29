@@ -406,17 +406,15 @@ export function MainScreen() {
     try {
       const json = await readBackupFile(file);
       const { merged, result } = importNotesFromBackup(json, notes);
+      // Web notes live in the Firestore-backed store only — there is no durable local DB.
+      // Always upload when signed in so the realtime listener cannot wipe an "import only"
+      // mirror before the user notices.
       useNotesStore.getState().setNotes(merged);
 
       let uploadedToCloud = false;
       if (user?.uid && result.notesImported > 0) {
-        const shouldUpload = window.confirm(
-          `Imported ${result.notesImported} note${result.notesImported === 1 ? '' : 's'} locally. Upload them to your cloud account now?`,
-        );
-        if (shouldUpload) {
-          await uploadAllNotes(user.uid, merged);
-          uploadedToCloud = true;
-        }
+        await uploadAllNotes(user.uid, merged);
+        uploadedToCloud = true;
       }
 
       const parts: string[] = [];

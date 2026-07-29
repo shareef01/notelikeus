@@ -14,15 +14,19 @@ let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 let initError: Error | null = null;
+/** True when IndexedDB persistence is unavailable (private browsing, strict shields). */
+let firestoreUsesMemoryCache = false;
 
 function createFirestore(instance: FirebaseApp): Firestore {
   const canUseIndexedDb = typeof indexedDB !== 'undefined';
 
   if (!canUseIndexedDb) {
+    firestoreUsesMemoryCache = true;
     return initializeFirestore(instance, { localCache: memoryLocalCache() });
   }
 
   try {
+    firestoreUsesMemoryCache = false;
     return initializeFirestore(instance, {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
@@ -30,6 +34,7 @@ function createFirestore(instance: FirebaseApp): Firestore {
     });
   } catch (error) {
     console.warn('[Firebase] Persistent cache unavailable, using memory cache.', error);
+    firestoreUsesMemoryCache = true;
     return initializeFirestore(instance, { localCache: memoryLocalCache() });
   }
 }
@@ -37,12 +42,21 @@ function createFirestore(instance: FirebaseApp): Firestore {
 /**
  * Optional App Check. Requires a reCAPTCHA site key from Firebase Console → App Check.
  * Without a key, Firebase still works until you turn on enforcement in the console.
+ * Production builds log a warning when the key is missing so enforcement is not flipped on
+ * against an unprotected web client by accident.
  */
 function initAppCheck(instance: FirebaseApp): void {
   const enterpriseKey = import.meta.env.VITE_APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY?.trim();
   const v3Key = import.meta.env.VITE_APPCHECK_RECAPTCHA_SITE_KEY?.trim();
   const siteKey = enterpriseKey || v3Key;
-  if (!siteKey) return;
+  if (!siteKey) {
+    if (import.meta.env.PROD) {
+      console.warn(
+        '[Firebase] App Check site key missing. Do not enable Console enforcement until web sends tokens.',
+      );
+    }
+    return;
+  }
 
   if (import.meta.env.DEV) {
     const debug = import.meta.env.VITE_APPCHECK_DEBUG_TOKEN?.trim();
@@ -109,5 +123,11 @@ export function getFirebaseAuth(): Auth {
 
 export function getFirestoreDb(): Firestore {
   return initFirebase().db;
+}
+
+/** True when offline edits may be lost on tab close (no IndexedDB persistence). */
+export function isFirestoreMemoryCache(): boolean {
+  initFirebase();
+  return firestoreUsesMemoryCache;
 }
 

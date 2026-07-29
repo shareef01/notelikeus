@@ -180,6 +180,21 @@ class FirebaseNoteSync @Inject constructor(
             }
             val note = noteRepository.getNoteById(noteId)
                 ?: return Result.success(Unit)
+            val remote = userNotesCollection(uid).document(noteId.toString()).get().await()
+            // Same conflict guard as uploadAllNotes / reconcileUploads: SyncWorker uses this
+            // path for every per-note push, so skipping the check here let a stale local edit
+            // overwrite a newer cloud copy from another device.
+            if (remote.exists()) {
+                val remoteServerTs = remote.getTimestamp("serverUpdatedAt")?.toEpochMillis()
+                val localServerTs = note.serverUpdatedAt
+                val remoteIsNewerOrEqual = if (remoteServerTs != null && localServerTs != null) {
+                    remoteServerTs >= localServerTs
+                } else {
+                    val remoteTs = remote.getLong("timestamp")
+                    remoteTs != null && remoteTs >= note.timestamp
+                }
+                if (remoteIsNewerOrEqual) return Result.success(Unit)
+            }
             putCloudNote(uid, note)
             Result.success(Unit)
         } catch (error: Throwable) {

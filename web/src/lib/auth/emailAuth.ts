@@ -5,16 +5,15 @@ import {
 } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
 
-/** Dev / QA email-password login. Requires Email/Password enabled in Firebase Auth. */
+/** Dev-only email/password login. Requires Email/Password enabled in Firebase Auth. */
 export function isTestLoginEnabled(): boolean {
-  return (
-    import.meta.env.DEV === true ||
-    import.meta.env.VITE_ENABLE_TEST_LOGIN === 'true' ||
-    import.meta.env.VITE_ENABLE_TEST_LOGIN === '1'
-  );
+  return import.meta.env.DEV === true;
 }
 
 export async function signInWithEmailPassword(email: string, password: string): Promise<void> {
+  if (!isTestLoginEnabled()) {
+    throw new Error('Email/password sign-in is only available in development');
+  }
   initFirebase();
   await signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
 }
@@ -23,6 +22,9 @@ export async function createEmailPasswordAccount(
   email: string,
   password: string,
 ): Promise<void> {
+  if (!isTestLoginEnabled()) {
+    throw new Error('Email/password sign-in is only available in development');
+  }
   initFirebase();
   const auth = getFirebaseAuth();
   const trimmed = email.trim();

@@ -458,11 +458,11 @@ class MainViewModel @Inject constructor(
         settingsRepository.isAppLockEnabled
             // A DataStore read failure would otherwise leave areSettingsLoaded false forever,
             // and the UI holds content back until it flips — i.e. a corrupt prefs file would
-            // brick the app behind a blank screen. Fall back to the same default the repository
-            // uses and carry on.
+            // brick the app behind a blank screen. Fail *closed* (treat as locked) so a read
+            // error cannot silently disable the gate; the overlay still lets the user unlock.
             .catch { error ->
-                Log.w(TAG, "App lock setting unreadable; treating as disabled", error)
-                emit(false)
+                Log.w(TAG, "App lock setting unreadable; treating as enabled", error)
+                emit(true)
             }
             .onEach { enabled ->
                 _state.update { it.copy(isAppLockEnabled = enabled, areSettingsLoaded = true) }

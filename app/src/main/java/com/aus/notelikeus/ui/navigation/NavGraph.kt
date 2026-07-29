@@ -18,7 +18,6 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import androidx.navigation.navDeepLink
 import com.aus.notelikeus.ui.editor.EditorScreen
 import com.aus.notelikeus.ui.editor.EditorViewModel
 import com.aus.notelikeus.ui.labels.LabelsScreen
@@ -107,11 +106,9 @@ fun NavGraph(
                             defaultValue = Int.MIN_VALUE
                         }
                     ),
-                    deepLinks = listOf(
-                        navDeepLink {
-                            uriPattern = "notelikeus://editor/{noteId}"
-                        }
-                    ),
+                    // No navDeepLink: MainActivity is exported, and an unauthenticated
+                    // notelikeus://editor/{id} URI would bypass InternalNavigationToken.
+                    // Widget/reminder opens go through marked intents + extractEditorNoteId.
                     enterTransition = { slideInHorizontally { it / 4 } + fadeIn() },
                     exitTransition = { fadeOut() },
                     popEnterTransition = { fadeIn() },

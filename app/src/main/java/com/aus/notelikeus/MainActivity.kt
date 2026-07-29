@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -77,6 +78,22 @@ class MainActivity : FragmentActivity() {
             var hasInitializedLock by remember { mutableStateOf(false) }
             val lifecycleOwner = LocalLifecycleOwner.current
 
+            // Block screenshots/recents while the lock overlay covers content (including the
+            // brief pre-settings-load cover). Cleared once the user is unlocked.
+            DisposableEffect(!isUnlocked) {
+                if (!isUnlocked) {
+                    window.setFlags(
+                        WindowManager.LayoutParams.FLAG_SECURE,
+                        WindowManager.LayoutParams.FLAG_SECURE
+                    )
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+                onDispose {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
+
             LaunchedEffect(state.areSettingsLoaded, state.isAppLockEnabled) {
                 if (!state.areSettingsLoaded || hasInitializedLock) return@LaunchedEffect
                 hasInitializedLock = true
@@ -134,8 +151,12 @@ class MainActivity : FragmentActivity() {
                 if (!state.cloudAccount.isGoogleAccount) {
                     SignInGate(
                         onIdToken = { viewModel.signInWithGoogleIdToken(it) },
-                        onEmailPassword = { email, password, create ->
-                            viewModel.signInWithEmailPassword(email, password, create)
+                        onEmailPassword = if (BuildConfig.DEBUG) {
+                            { email, password, create ->
+                                viewModel.signInWithEmailPassword(email, password, create)
+                            }
+                        } else {
+                            null
                         },
                         externalError = gateError
                     )

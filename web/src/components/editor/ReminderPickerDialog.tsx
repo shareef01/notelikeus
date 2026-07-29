@@ -48,6 +48,10 @@ export function ReminderPickerDialog({
         className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl animate-in zoom-in-95 duration-200"
       >
         <h4 className="text-lg font-semibold">Set reminder</h4>
+        <p className="mt-2 text-xs text-brand-muted">
+          Web reminders fire when this app is open or recently used. They can be late or miss
+          if the browser is fully closed — unlike the Android app, which uses system alarms.
+        </p>
         <input
           type="datetime-local"
           value={value}

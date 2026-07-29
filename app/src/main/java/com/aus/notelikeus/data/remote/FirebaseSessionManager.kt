@@ -1,6 +1,7 @@
 package com.aus.notelikeus.data.remote
 
 import android.util.Log
+import com.aus.notelikeus.BuildConfig
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
@@ -45,6 +46,9 @@ class FirebaseSessionManager @Inject constructor(
         password: String,
         createAccount: Boolean
     ): Result<Unit> {
+        if (!BuildConfig.DEBUG) {
+            return Result.failure(IllegalStateException("Email/password sign-in is debug-only"))
+        }
         return try {
             if (createAccount) {
                 auth.createUserWithEmailAndPassword(email.trim(), password).await()

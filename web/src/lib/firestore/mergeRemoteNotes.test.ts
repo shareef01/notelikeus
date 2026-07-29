@@ -48,14 +48,16 @@ describe('mergeRemoteNotes', () => {
     expect(merged[0]?.title).toBe('Server-confirmed remote');
   });
 
-  it('falls back to timestamp when either side has no serverUpdatedAt yet', async () => {
+  it('lets confirmed remote beat unconfirmed local regardless of client timestamp', async () => {
+    // Backup imports never carry a real serverUpdatedAt; a hand-edited timestamp must not
+    // clobber a cloud note that already round-tripped through Firestore.
     const local = [
-      note({ id: '1', localId: 1, timestamp: 99, serverUpdatedAt: null, title: 'Local wins' }),
+      note({ id: '1', localId: 1, timestamp: 99, serverUpdatedAt: null, title: 'Imported local' }),
     ];
     const remote = [
-      note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500, title: 'Stale cloud' }),
+      note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500, title: 'Confirmed remote' }),
     ];
     const merged = await mergeRemoteNotes(local, remote);
-    expect(merged[0]?.title).toBe('Local wins');
+    expect(merged[0]?.title).toBe('Confirmed remote');
   });
 });
