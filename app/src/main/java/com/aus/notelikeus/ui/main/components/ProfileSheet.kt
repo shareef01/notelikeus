@@ -119,19 +119,19 @@ fun ProfileSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 32.dp)
+                .padding(bottom = 24.dp)
                 .navigationBarsPadding()
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
             ) {
                 BrandMarkIcon(
-                    size = 56.dp,
+                    size = 48.dp,
                     backgroundColor = MaterialTheme.colorScheme.onSurface,
                     stripeColor = MaterialTheme.colorScheme.surface
                 )
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(14.dp))
                 Column {
                     Text(
                         text = stringResource(R.string.app_name),
@@ -432,7 +432,7 @@ fun SettingsSectionHeader(
         modifier = modifier.padding(
             start = 16.dp,
             end = 16.dp,
-            top = if (isFirst) 16.dp else 24.dp,
+            top = if (isFirst) 16.dp else 20.dp,
             bottom = 8.dp
         )
     )
