@@ -153,8 +153,8 @@ function NoteCardImpl({
         isList
           ? 'flex-row items-stretch gap-0'
           : isDense
-            ? 'flex-col p-2.5'
-            : 'flex-col p-3'
+            ? 'flex-col p-3.5'
+            : 'flex-col p-4'
       } ${showReorderHandle ? (isList ? 'pl-9' : 'pl-11') : ''} ${
         isSelected
           ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-true-surface'
@@ -199,29 +199,29 @@ function NoteCardImpl({
             aria-hidden
           />
 
-          <div className="flex min-w-0 flex-1 items-start gap-3 px-3 py-2.5 sm:gap-3.5 sm:px-3.5 sm:py-2.5">
+          <div className="flex min-w-0 flex-1 items-start gap-3 px-3.5 py-3.5 sm:gap-4 sm:px-4 sm:py-4">
             <div className="min-w-0 flex-1">
-              <h2 className="line-clamp-1 text-[14px] font-bold leading-snug tracking-[-0.015em] sm:text-[15px]">
+              <h2 className="line-clamp-2 text-note-title tracking-[-0.02em] sm:line-clamp-2">
                 {highlight(title)}
               </h2>
               {showBody ? (
-                <p className="mt-1.5 line-clamp-1 text-[12px] leading-snug opacity-70 sm:mt-2 sm:line-clamp-2 sm:text-[13px]">
+                <p className="mt-2 line-clamp-2 text-note-body opacity-70 sm:mt-2.5 sm:line-clamp-3">
                   {highlight(previewBody)}
                 </p>
               ) : null}
               {showChecklist ? (
-                <p className="mt-1 text-[10px] font-medium tracking-wide opacity-60">
+                <p className="mt-1.5 text-[11px] font-medium tracking-wide opacity-60">
                   {checkedCount}/{note.checklist.length} checked
                 </p>
               ) : null}
               {labelChips}
             </div>
 
-            <div className="flex shrink-0 flex-col items-end gap-1 pt-0.5">
-              {statusIcons(14)}
+            <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
+              {statusIcons(15)}
               <time
                 dateTime={new Date(note.timestamp).toISOString()}
-                className="text-[10px] font-medium tabular-nums tracking-wide opacity-55 sm:text-[11px]"
+                className="text-[11px] font-medium tabular-nums tracking-wide opacity-55 sm:text-[12px]"
               >
                 {timeLabel}
               </time>
@@ -230,22 +230,22 @@ function NoteCardImpl({
         </>
       ) : (
         <>
-          <div className="flex items-start gap-1.5">
+          <div className="flex items-start gap-2">
             <h2
-              className={`min-w-0 flex-1 font-bold ${
+              className={`min-w-0 flex-1 font-semibold tracking-[-0.02em] ${
                 isDense
-                  ? 'line-clamp-2 text-[13px] leading-snug tracking-[-0.01em]'
-                  : 'line-clamp-2 text-[14px] leading-snug tracking-[-0.02em]'
+                  ? 'line-clamp-2 text-[15px] leading-snug'
+                  : 'line-clamp-3 text-note-title'
               }`}
             >
               {highlight(title)}
             </h2>
-            <div className="flex shrink-0 flex-col items-end gap-0.5">
-              {statusIcons(isDense ? 12 : 13)}
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              {statusIcons(isDense ? 13 : 14)}
               <time
                 dateTime={new Date(note.timestamp).toISOString()}
                 className={`font-medium tabular-nums tracking-wide opacity-50 ${
-                  isDense ? 'text-[9px]' : 'text-[10px]'
+                  isDense ? 'text-[10px]' : 'text-[11px]'
                 }`}
               >
                 {timeLabel}
@@ -257,8 +257,8 @@ function NoteCardImpl({
             <p
               className={
                 isDense
-                  ? 'mt-1.5 line-clamp-4 text-[11px] leading-snug opacity-70'
-                  : 'mt-1.5 line-clamp-5 text-[12px] leading-snug opacity-70'
+                  ? 'mt-2 line-clamp-5 text-[13px] leading-snug opacity-70'
+                  : 'mt-2.5 line-clamp-7 text-note-body opacity-70'
               }
             >
               {highlight(previewBody)}
@@ -267,19 +267,19 @@ function NoteCardImpl({
 
           {showChecklist ? (
             isDense ? (
-              <p className="mt-1 text-[10px] font-medium tracking-wide opacity-60">
+              <p className="mt-1.5 text-[11px] font-medium tracking-wide opacity-60">
                 {checkedCount}/{note.checklist.length} checked
               </p>
             ) : (
-              <div className="mt-1.5 space-y-1">
+              <div className="mt-2 space-y-1.5">
                 {note.checklist.slice(0, 3).map((item) => (
-                  <div key={item.id} className="flex items-center gap-1.5">
+                  <div key={item.id} className="flex items-center gap-2">
                     {item.isChecked ? (
-                      <CheckCircleIcon size={13} className="shrink-0 opacity-70" />
+                      <CheckCircleIcon size={14} className="shrink-0 opacity-70" />
                     ) : (
-                      <CheckCircleOutlineIcon size={13} className="shrink-0 opacity-70" />
+                      <CheckCircleOutlineIcon size={14} className="shrink-0 opacity-70" />
                     )}
-                    <span className="line-clamp-1 text-[12px] leading-snug opacity-70">
+                    <span className="line-clamp-1 text-note-body opacity-70">
                       {highlight(stripMarkdownForPreview(item.text))}
                     </span>
                   </div>

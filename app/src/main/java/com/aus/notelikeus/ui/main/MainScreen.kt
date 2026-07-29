@@ -994,9 +994,9 @@ private fun MainScaffold(
                         .weight(1f)
                         .fillMaxWidth(),
                     contentPadding = PaddingValues(
-                        top = 12.dp,
-                        start = 16.dp,
-                        end = 16.dp,
+                        top = 14.dp,
+                        start = 14.dp,
+                        end = 14.dp,
                         bottom = gridBottomPadding
                     )
                 )

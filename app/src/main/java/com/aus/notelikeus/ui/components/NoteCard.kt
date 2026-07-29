@@ -59,7 +59,7 @@ import com.aus.notelikeus.ui.theme.NoteCardTitleStyle
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.getContentColor
 
-private val NoteCardContentPadding = 14.dp
+private val NoteCardContentPadding = 18.dp
 
 /** Compact uppercase label pill, matching the web card's chip typography. */
 private val NoteCardLabelChipStyle = TextStyle(
@@ -257,12 +257,12 @@ fun NoteCard(
                     Text(
                         text = buildHighlightedString(note.title, searchQuery, contentColor, highlightColor),
                         style = NoteCardTitleStyle,
-                        maxLines = if (compact) 1 else 2,
+                        maxLines = if (compact) 2 else 3,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(end = trailingChrome)
                     )
                     if (!compact || note.content.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
                 if (note.content.isNotEmpty()) {
@@ -276,7 +276,7 @@ fun NoteCard(
                             linksClickable = false
                         ),
                         style = NoteCardBodyStyle,
-                        maxLines = if (compact) 3 else 8,
+                        maxLines = if (compact) 5 else 12,
                         overflow = TextOverflow.Ellipsis
                     )
                 }

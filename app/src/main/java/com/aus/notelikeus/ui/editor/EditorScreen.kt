@@ -4,6 +4,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -20,11 +22,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -54,8 +60,9 @@ import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import android.text.format.DateFormat
 import java.util.Calendar
 
-private val EditorHorizontalPadding = 16.dp
-private val EditorVerticalPadding = 16.dp
+private val EditorHorizontalPadding = 20.dp
+private val EditorVerticalPadding = 20.dp
+private val EditorBodyMinHeight = 280.dp
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -88,6 +95,18 @@ fun EditorScreen(
     var showDateTimePicker by remember { mutableStateOf(false) }
     var showLinkDialog by remember { mutableStateOf(false) }
     var pendingReminderMillis by remember { mutableStateOf<Long?>(null) }
+    val bodyFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val editorTapInteraction = remember { MutableInteractionSource() }
+
+    LaunchedEffect(state.isNoteLoaded, state.id, state.checklist.isEmpty()) {
+        if (state.isNoteLoaded && state.id == null && state.checklist.isEmpty()) {
+            // Wait a frame so the body FocusRequester is attached.
+            kotlinx.coroutines.delay(48)
+            bodyFocusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
 
     fun scheduleReminderIfAllowed(millis: Long) {
         // The app no longer declares SCHEDULE_EXACT_ALARM, so on API 31+ the alarm is inexact.
@@ -344,6 +363,15 @@ fun EditorScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
+                    .clickable(
+                        interactionSource = editorTapInteraction,
+                        indication = null
+                    ) {
+                        if (state.checklist.isEmpty()) {
+                            bodyFocusRequester.requestFocus()
+                            keyboardController?.show()
+                        }
+                    }
             ) {
                 EditorTextContent(
                     title = state.title,
@@ -353,6 +381,7 @@ fun EditorScreen(
                     labels = state.labels,
                     contentColor = contentColor,
                     showFormattingToolbar = showFormattingToolbar,
+                    bodyFocusRequester = bodyFocusRequester,
                     onTitleChange = viewModel::onTitleChange,
                     onContentValueChange = viewModel::onContentValueChange,
                     onUpdateChecklistItem = viewModel::updateChecklistItem,
@@ -398,6 +427,7 @@ private fun EditorTextContent(
     labels: List<Label>,
     contentColor: Color,
     showFormattingToolbar: Boolean,
+    bodyFocusRequester: FocusRequester,
     onTitleChange: (String) -> Unit,
     onContentValueChange: (TextFieldValue) -> Unit,
     onUpdateChecklistItem: (Long, String, Boolean) -> Unit,
@@ -406,6 +436,9 @@ private fun EditorTextContent(
     onConvertChecklistToContent: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val minBodyHeight = (screenHeight * 0.48f).coerceAtLeast(EditorBodyMinHeight)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -487,16 +520,19 @@ private fun EditorTextContent(
                 cursorBrush = SolidColor(contentColor),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 100.dp),
+                    .heightIn(min = minBodyHeight)
+                    .focusRequester(bodyFocusRequester),
                 decorationBox = { innerTextField ->
-                    if (content.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.note_hint),
-                            style = EditorBodyStyle,
-                            color = contentColor.copy(alpha = 0.5f)
-                        )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (content.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.note_hint),
+                                style = EditorBodyStyle,
+                                color = contentColor.copy(alpha = 0.5f)
+                            )
+                        }
+                        innerTextField()
                     }
-                    innerTextField()
                 }
             )
         }

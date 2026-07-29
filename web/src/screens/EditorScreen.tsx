@@ -60,8 +60,23 @@ export function EditorScreen({ route }: EditorScreenProps) {
     const field = contentRef.current;
     if (!field || !contentFocused || hasChecklist) return;
     field.style.height = '0px';
-    field.style.height = `${Math.max(field.scrollHeight, 160)}px`;
+    field.style.height = `${Math.max(field.scrollHeight, 240)}px`;
   }, [state.content, contentFocused, hasChecklist]);
+
+  useEffect(() => {
+    if (noteId !== 'new' || hasChecklist) return;
+    setContentFocused(true);
+    const id = requestAnimationFrame(() => {
+      contentRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [noteId, hasChecklist]);
+
+  const focusContentField = () => {
+    if (hasChecklist) return;
+    setContentFocused(true);
+    requestAnimationFrame(() => contentRef.current?.focus());
+  };
 
   const rememberSelection = () => {
     const field = contentRef.current;
@@ -271,6 +286,17 @@ export function EditorScreen({ route }: EditorScreenProps) {
       <div
         className="flex-1 overflow-y-auto px-layout-gap pt-5 sm:pt-6"
         style={{ paddingBottom: `calc(7rem + ${effectiveKeyboardInset}px)` }}
+        onClick={(event) => {
+          const target = event.target as HTMLElement;
+          if (
+            target.closest(
+              'input, textarea, button, a, [aria-label="Text formatting"], [role="toolbar"]',
+            )
+          ) {
+            return;
+          }
+          focusContentField();
+        }}
       >
         <div className="flex min-h-full flex-col">
           <input
@@ -372,17 +398,16 @@ export function EditorScreen({ route }: EditorScreenProps) {
                   }}
                   placeholder="Start writing…"
                   rows={1}
-                  className="mt-4 w-full min-h-40 resize-none overflow-hidden bg-transparent text-[16px] leading-[1.55] tracking-[0.01em] outline-none placeholder:opacity-35 sm:min-h-[280px]"
+                  className="mt-4 w-full min-h-52 resize-none overflow-hidden bg-transparent text-[17px] leading-[1.55] tracking-[0.01em] outline-none placeholder:opacity-35 sm:min-h-[320px] sm:text-[18px]"
                   style={{ color: contentColor }}
                 />
               ) : (
                 <button
                   type="button"
                   onClick={() => {
-                    setContentFocused(true);
-                    requestAnimationFrame(() => contentRef.current?.focus());
+                    focusContentField();
                   }}
-                  className="mt-4 w-full min-h-40 rounded-note text-left transition-opacity hover:opacity-95 sm:min-h-[280px]"
+                  className="mt-4 w-full min-h-52 rounded-note text-left transition-opacity hover:opacity-95 sm:min-h-[320px]"
                 >
                   <MarkdownBody text={state.content} contentColor={contentColor} />
                 </button>
