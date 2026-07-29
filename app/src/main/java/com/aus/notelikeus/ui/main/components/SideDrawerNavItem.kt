@@ -44,7 +44,7 @@ fun SideDrawerNavItem(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp)
-            .height(40.dp)
+            .height(44.dp)
             .clip(shape)
             .background(
                 if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
@@ -53,13 +53,13 @@ fun SideDrawerNavItem(
             .clickable(onClick = onClick)
             .padding(start = 12.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (selected) {
             Box(
                 modifier = Modifier
                     .width(2.dp)
-                    .height(24.dp)
+                    .height(28.dp)
                     .clip(RoundedCornerShape(999.dp))
                     .background(accent)
             )
@@ -70,7 +70,7 @@ fun SideDrawerNavItem(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(22.dp),
             tint = accent.copy(alpha = if (selected) 1f else 0.85f)
         )
 
@@ -79,7 +79,7 @@ fun SideDrawerNavItem(
             modifier = Modifier.weight(1f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyMedium.copy(
+            style = MaterialTheme.typography.bodyLarge.copy(
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 letterSpacing = (-0.15).sp
             ),
@@ -93,20 +93,20 @@ fun SideDrawerNavItem(
         if (count != null && count > 0) {
             Box(
                 modifier = Modifier
-                    .height(20.dp)
+                    .height(22.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .background(
                         if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                         else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
                     )
-                    .padding(horizontal = 6.dp),
+                    .padding(horizontal = 7.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = count.toString(),
-                    style = MaterialTheme.typography.labelSmall.copy(
+                    style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 11.sp
+                        fontSize = 12.sp
                     ),
                     color = if (selected) {
                         MaterialTheme.colorScheme.primary
@@ -128,7 +128,7 @@ fun SideDrawerSectionLabel(
         text = text.uppercase(),
         style = ChromeLabelStyle,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(start = 22.dp, end = 12.dp, top = 4.dp, bottom = 8.dp)
+        modifier = modifier.padding(start = 22.dp, end = 12.dp, top = 4.dp, bottom = 6.dp)
     )
 }
 

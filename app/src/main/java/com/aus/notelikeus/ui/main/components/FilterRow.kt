@@ -63,7 +63,7 @@ fun FilterRow(
     ) {
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             item {
@@ -87,7 +87,7 @@ fun FilterRow(
             item {
                 Row(
                     modifier = Modifier
-                        .height(36.dp)
+                        .height(40.dp)
                         .clip(railShape)
                         .border(
                             width = 1.dp,
@@ -129,8 +129,8 @@ fun FilterRow(
                         color = Color.Transparent,
                         isSelected = selectedColor == 0,
                         onClick = { onColorSelect(if (selectedColor == 0) null else 0) },
-                        touchSize = 36.dp,
-                        swatchSize = 26.dp,
+                        touchSize = 40.dp,
+                        swatchSize = 28.dp,
                         contentDescription = stringResource(R.string.no_color)
                     )
                     colors.forEach { color ->
@@ -141,8 +141,8 @@ fun FilterRow(
                             onClick = {
                                 onColorSelect(if (selectedColor == colorArgb) null else colorArgb)
                             },
-                            touchSize = 36.dp,
-                            swatchSize = 26.dp
+                            touchSize = 40.dp,
+                            swatchSize = 28.dp
                         )
                     }
                 }
@@ -151,8 +151,8 @@ fun FilterRow(
 
         if (allLabels.isNotEmpty()) {
             LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 item {
@@ -201,13 +201,13 @@ internal fun PrecisionFilterChip(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium.copy(
-                    fontSize = if (compact) 12.sp else 13.sp,
+                    fontSize = if (compact) 13.sp else 14.sp,
                     letterSpacing = (-0.15).sp
                 ),
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
             )
         },
-        modifier = modifier.heightIn(min = if (compact) 36.dp else 40.dp),
+        modifier = modifier.heightIn(min = if (compact) 40.dp else 44.dp),
         shape = CircleShape,
         border = FilterChipDefaults.filterChipBorder(
             enabled = enabled,

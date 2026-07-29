@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.R
@@ -154,7 +155,7 @@ private fun ThemePickerItem(
 
         Box(
             modifier = Modifier
-                .size(44.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .border(
                     width = if (selected) 2.dp else 1.dp,
@@ -216,10 +217,10 @@ private fun ThemePickerItem(
 
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall.copy(
+            style = MaterialTheme.typography.labelMedium.copy(
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                fontSize = 11.sp,
-                letterSpacing = (-0.15).sp
+                fontSize = 12.sp,
+                letterSpacing = (-0.1).sp
             ),
             color = if (selected) {
                 MaterialTheme.colorScheme.onSurface
@@ -227,7 +228,8 @@ private fun ThemePickerItem(
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
             textAlign = TextAlign.Center,
-            maxLines = 1
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

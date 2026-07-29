@@ -63,7 +63,7 @@ fun NoteStaggeredGrid(
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val canReorder = columns == 1 && selectedNotes.isEmpty() && !compact && allowReorder
     val swipeEnabled = enableSwipe && selectedNotes.isEmpty()
-    val itemSpacing = 12.dp // Fixed Arrangement Space
+    val itemSpacing = 12.dp
 
     fun getDateHeader(timestamp: Long): String {
         return when {

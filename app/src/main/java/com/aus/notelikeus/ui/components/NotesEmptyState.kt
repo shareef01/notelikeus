@@ -70,22 +70,22 @@ fun NotesEmptyState(
             Spacer(modifier = Modifier.height(24.dp))
             Text(
                 text = message,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = FontWeight.Medium, // Medium weight for visibility
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center
                 ),
-                color = mutedTextColor.copy(alpha = 0.8f),
+                color = mutedTextColor.copy(alpha = 0.9f),
                 textAlign = TextAlign.Center
             )
             if (subtitle != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontWeight = FontWeight.Medium, // Medium weight for visibility
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.Normal,
                         textAlign = TextAlign.Center
                     ),
-                    color = mutedTextColor.copy(alpha = 0.65f),
+                    color = mutedTextColor.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center
                 )
             }
