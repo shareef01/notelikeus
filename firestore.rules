@@ -11,7 +11,13 @@ service cloud.firestore {
       // 'isLocked' is deliberately not required: note locking has been removed, but clients
       // that predate the removal still send it, so it stays accepted (and type-checked) rather
       // than having their writes rejected.
-      return data.keys().hasAll([
+      return data.keys().hasOnly([
+          'localId', 'title', 'content', 'timestamp', 'color',
+          'isPinned', 'isArchived', 'isTrashed',
+          'position', 'labels', 'checklist',
+          'isLocked', 'reminderTimestamp', 'attachments', 'serverUpdatedAt'
+        ])
+        && data.keys().hasAll([
           'localId', 'title', 'content', 'timestamp', 'color',
           'isPinned', 'isArchived', 'isTrashed',
           'position', 'labels', 'checklist'
@@ -46,7 +52,8 @@ service cloud.firestore {
 
     function isValidSyncMeta() {
       let data = request.resource.data;
-      return data.keys().hasAll(['lastSyncAt', 'noteCount', 'platform'])
+      return data.keys().hasOnly(['lastSyncAt', 'noteCount', 'platform'])
+        && data.keys().hasAll(['lastSyncAt', 'noteCount', 'platform'])
         && (data.lastSyncAt is number || data.lastSyncAt is timestamp)
         && data.noteCount is int
         && data.noteCount >= 0
@@ -57,7 +64,8 @@ service cloud.firestore {
 
     function isValidConnectionMeta() {
       let data = request.resource.data;
-      return data.keys().hasAll(['connectedAt', 'platform'])
+      return data.keys().hasOnly(['connectedAt', 'platform'])
+        && data.keys().hasAll(['connectedAt', 'platform'])
         && data.connectedAt is number
         && data.platform is string
         && data.platform == 'android';
@@ -75,6 +83,7 @@ service cloud.firestore {
       match /tombstones/{noteId} {
         allow read: if isOwner(userId);
         allow create, update: if isOwner(userId)
+          && request.resource.data.keys().hasOnly(['deletedAt'])
           && request.resource.data.keys().hasAll(['deletedAt'])
           && request.resource.data.deletedAt is number;
         allow delete: if isOwner(userId);

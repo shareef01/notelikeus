@@ -169,6 +169,6 @@ class NoteSyncStateStore @Inject constructor(
         private const val KEY_RESTORED = "restored_ids"
         private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
         private const val KEY_LAST_RECONCILED = "last_reconciled_at"
-        const val TOMBSTONE_TTL_MS = 30L * 24 * 60 * 60 * 1000
+        const val TOMBSTONE_TTL_MS = 180L * 24 * 60 * 60 * 1000
     }
 }

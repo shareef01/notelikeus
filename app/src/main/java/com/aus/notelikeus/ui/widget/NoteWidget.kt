@@ -38,7 +38,8 @@ private data class WidgetStrings(
 class NoteWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val appLocked = runCatching { WidgetNoteLoader.isAppLockEnabled(context) }.getOrDefault(false)
+        // Fail closed: if the lock setting cannot be read, blank the widget rather than leak notes.
+        val appLocked = runCatching { WidgetNoteLoader.isAppLockEnabled(context) }.getOrDefault(true)
         val notes = if (appLocked) {
             emptyList()
         } else {

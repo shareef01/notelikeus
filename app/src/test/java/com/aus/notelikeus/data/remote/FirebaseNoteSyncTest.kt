@@ -126,14 +126,60 @@ class FirebaseNoteSyncTest {
         stubUserCollections(notesCollection, tombstonesCollection = tombstonesCollection)
         every { notesCollection.document("7") } returns noteDoc
         every { noteDoc.set(any<Map<String, Any?>>(), any()) } returns Tasks.forResult(null)
-        every { noteDoc.get() } returns Tasks.forResult(mockk(relaxed = true) {
-            every { getTimestamp("serverUpdatedAt") } returns Timestamp(42L, 0)
-        })
+        // Pre-upload conflict check: no remote (or no newer remote). Post-write readback: 42s.
+        every { noteDoc.get() } returnsMany listOf(
+            Tasks.forResult(mockk(relaxed = true) {
+                every { exists() } returns false
+            }),
+            Tasks.forResult(mockk(relaxed = true) {
+                every { getTimestamp("serverUpdatedAt") } returns Timestamp(42L, 0)
+            }),
+        )
+        every { tombstonesCollection.document("7") } returns mockk(relaxed = true) {
+            every { get() } returns Tasks.forResult(mockk(relaxed = true) {
+                every { exists() } returns false
+            })
+        }
 
         val result = sync.uploadNote(7L)
 
         assertTrue(result.isSuccess)
         coVerify { noteRepository.updateServerTimestamp(7L, 42_000L) }
+    }
+
+    @Test
+    fun `uploadNote skips write when remote serverUpdatedAt is newer or equal`() = runTest {
+        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
+        val note = Note(
+            id = 7L,
+            title = "Stale",
+            content = "",
+            timestamp = 1L,
+            color = 0,
+            serverUpdatedAt = 10_000L,
+        )
+        coEvery { noteRepository.getNoteById(7L) } returns note
+
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
+        val tombstonesCollection = mockk<CollectionReference>(relaxed = true)
+        val noteDoc = mockk<DocumentReference>(relaxed = true)
+        stubUserCollections(notesCollection, tombstonesCollection = tombstonesCollection)
+        every { notesCollection.document("7") } returns noteDoc
+        every { noteDoc.get() } returns Tasks.forResult(mockk(relaxed = true) {
+            every { exists() } returns true
+            every { getTimestamp("serverUpdatedAt") } returns Timestamp(20L, 0)
+        })
+        every { tombstonesCollection.document("7") } returns mockk(relaxed = true) {
+            every { get() } returns Tasks.forResult(mockk(relaxed = true) {
+                every { exists() } returns false
+            })
+        }
+
+        val result = sync.uploadNote(7L)
+
+        assertTrue(result.isSuccess)
+        verify(exactly = 0) { noteDoc.set(any<Map<String, Any?>>(), any()) }
+        coVerify(exactly = 0) { noteRepository.updateServerTimestamp(any(), any()) }
     }
 
     @Test

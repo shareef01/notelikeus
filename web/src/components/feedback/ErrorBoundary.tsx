@@ -40,29 +40,55 @@ export class ErrorBoundary extends Component<Props, State> {
             <p style={{ color: '#b0b0b0', fontSize: 14, marginBottom: 16 }}>
               {this.state.error.message}
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                try {
-                  clearPersistedAppData();
-                  sessionStorage.clear();
-                } catch {
-                  // ignore
-                }
-                window.location.reload();
-              }}
+            <div
               style={{
-                background: '#f2f2f2',
-                color: '#000',
-                border: 'none',
-                borderRadius: 12,
-                padding: '10px 16px',
-                fontWeight: 600,
-                cursor: 'pointer',
+                display: 'flex',
+                gap: 8,
+                justifyContent: 'center',
+                flexWrap: 'wrap',
               }}
             >
-              Clear data & reload
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.reload();
+                }}
+                style={{
+                  background: '#f2f2f2',
+                  color: '#000',
+                  border: 'none',
+                  borderRadius: 12,
+                  padding: '10px 16px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Reload
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    clearPersistedAppData();
+                    sessionStorage.clear();
+                  } catch {
+                    // ignore
+                  }
+                  window.location.reload();
+                }}
+                style={{
+                  background: 'transparent',
+                  color: '#f2f2f2',
+                  border: '1px solid #555',
+                  borderRadius: 12,
+                  padding: '10px 16px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Clear data & reload
+              </button>
+            </div>
           </div>
         </div>
       );

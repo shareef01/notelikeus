@@ -30,7 +30,6 @@ function noteRef(db, userId, noteId) {
 
 function validNote(overrides = {}) {
   return {
-    cloudId: 'aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeeeee',
     localId: 1,
     title: 'Trip',
     content: 'Pack bags',
@@ -138,8 +137,14 @@ describe('firestore.rules', () => {
       setDoc(doc(alice, 'users/alice/_meta/connection'), {
         connectedAt: Date.now(),
         platform: 'android',
-        email: 'test@example.com',
       }),
+    );
+  });
+
+  it('rejects notes with unknown extra fields', async () => {
+    const alice = authed('alice');
+    await assertFails(
+      setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ role: 'admin' })),
     );
   });
 

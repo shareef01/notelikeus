@@ -15,8 +15,6 @@ interface ImportMetaEnv {
   readonly VITE_APPCHECK_RECAPTCHA_ENTERPRISE_SITE_KEY?: string;
   /** Dev-only: `true` to print a debug token, or a registered debug token string. */
   readonly VITE_APPCHECK_DEBUG_TOKEN?: string;
-  /** Show email/password test login (also on when `import.meta.env.DEV`). */
-  readonly VITE_ENABLE_TEST_LOGIN?: string;
   readonly VITE_TEST_LOGIN_EMAIL?: string;
   readonly VITE_TEST_LOGIN_PASSWORD?: string;
 }

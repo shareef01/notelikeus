@@ -51,7 +51,7 @@ See [`web/README.md`](web/README.md) for full PWA setup and architecture notes.
 
 - **Notes** — titles, rich text (bold, italic, links, bullets), checklists, colors, and labels
 - **Organization** — pin, archive, trash, search, color/label filters, list/grid layout, drag-to-reorder (list view)
-- **Security** — SQLCipher-encrypted Room database, optional app-wide biometric lock
+- **Security** — SQLCipher-encrypted Room database, optional app-wide biometric lock. Android auto-backup is off so a device restore cannot leave an empty/quarantined DB when the Keystore key does not travel; use cloud sync or JSON backup to move notes.
 - **Cloud sync** — optional Firestore sync when signed in with Google (Spark/free tier friendly; text only)
 - **Reminders** — date/time notifications that open the note
 - **Backup** — export and import notes as JSON from Settings
@@ -177,7 +177,10 @@ cd web && npm install && npm run dev
 6. (Recommended) Enable **App Check** in Firebase Console:
    - Android: Play Integrity (release) + debug token for debug builds
    - Web: reCAPTCHA v3 or Enterprise — set `VITE_APPCHECK_RECAPTCHA_SITE_KEY` (or `_ENTERPRISE_`) in `web/.env`
-   - Keep enforcement **off** until tokens work; then enforce for Auth/Firestore
+   - Keep enforcement **off** until both Android and web reliably send tokens (check App Check metrics)
+   - Then enforce for Auth + Firestore. Do **not** add `request.appCheck` to `firestore.rules` until
+     enforcement is on and production clients are confirmed healthy — rules that require App Check
+     will reject legitimate traffic that has not yet attached a token.
 7. (Optional) Enable **Email/Password** under Authentication for debug/test login (shown in `npm run dev` and Android debug builds)
 
 Cloud sync uses Firestore only (no Storage) so it fits the **Spark (free)** plan.

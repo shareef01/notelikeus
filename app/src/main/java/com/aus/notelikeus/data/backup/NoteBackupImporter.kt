@@ -67,6 +67,11 @@ class NoteBackupImporter @Inject constructor(
         for (i in 0 until notesArray.length()) {
             val noteJson = notesArray.getJSONObject(i)
             val labelNames = noteJson.optJSONArray("labels") ?: JSONArray()
+            if (labelNames.length() > MAX_NOTE_LABELS) {
+                throw IllegalArgumentException(
+                    "Note has too many labels (max $MAX_NOTE_LABELS)"
+                )
+            }
             val resolvedLabels = buildList {
                 for (j in 0 until labelNames.length()) {
                     val name = labelNames.getString(j)
@@ -75,6 +80,11 @@ class NoteBackupImporter @Inject constructor(
             }
 
             val checklist = noteJson.optJSONArray("checklist")?.let { array ->
+                if (array.length() > MAX_NOTE_CHECKLIST) {
+                    throw IllegalArgumentException(
+                        "Note has too many checklist items (max $MAX_NOTE_CHECKLIST)"
+                    )
+                }
                 buildList {
                     for (j in 0 until array.length()) {
                         val item = array.getJSONObject(j)
@@ -122,6 +132,9 @@ class NoteBackupImporter @Inject constructor(
         const val MAX_BACKUP_CHARS = 10 * 1024 * 1024
         const val MAX_BACKUP_NOTES = 5_000
         const val MAX_BACKUP_LABELS = 2_000
+        /** Matches firestore.rules per-note caps so imports stay sync-eligible. */
+        const val MAX_NOTE_LABELS = 100
+        const val MAX_NOTE_CHECKLIST = 500
         const val MAX_FIELD_CHARS = 2_000
         const val MAX_CONTENT_CHARS = 100_000
     }
