@@ -6,12 +6,15 @@ import { useAuthListener } from '@/hooks/useAuth';
 import { formatAuthError } from '@/lib/auth/authErrors';
 import {
   createEmailPasswordAccount,
+  isTestLoginEnabled,
   signInWithEmailPassword,
 } from '@/lib/auth/emailAuth';
 import { signInWithGoogle } from '@/lib/auth/googleAuth';
 import { useToastStore } from '@/store/toastStore';
 import { useUiStore, type AuthMode } from '@/store/uiStore';
 import { useEffect, useState } from 'react';
+
+const testLoginEnabled = isTestLoginEnabled();
 
 const COPY: Record<
   AuthMode,
@@ -53,14 +56,13 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
   const { user, isReady } = useAuthListener();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Read behind the DEV check, not just rendered behind it: Vite inlines env values at build
-  // time, so an unguarded read would bake these credentials into the production bundle for
-  // anyone who has them set in .env.
+  // Creds are only read when test login is enabled (DEV). Vite inlines env at build time, so
+  // an unguarded read would bake them into the production bundle.
   const [testEmail, setTestEmail] = useState(
-    () => (import.meta.env.DEV ? (import.meta.env.VITE_TEST_LOGIN_EMAIL?.trim() ?? '') : ''),
+    () => (testLoginEnabled ? (import.meta.env.VITE_TEST_LOGIN_EMAIL?.trim() ?? '') : ''),
   );
   const [testPassword, setTestPassword] = useState(
-    () => (import.meta.env.DEV ? (import.meta.env.VITE_TEST_LOGIN_PASSWORD ?? '') : ''),
+    () => (testLoginEnabled ? (import.meta.env.VITE_TEST_LOGIN_PASSWORD ?? '') : ''),
   );
 
   const copy = COPY[mode];
@@ -190,7 +192,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
               loading={loading}
             />
 
-            {import.meta.env.DEV ? (
+            {testLoginEnabled ? (
               <>
                 <div className="relative flex items-center gap-3 py-1">
                   <div className="h-px flex-1 bg-brand-outline/40" />
