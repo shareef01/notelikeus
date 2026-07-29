@@ -45,20 +45,20 @@ export function ColorSwatch({ argb, selected, onClick, label }: ColorSwatchProps
       onClick={onClick}
       aria-label={label ?? (isDefault ? 'No color' : 'Note color')}
       aria-pressed={selected}
-      className={`relative flex size-10 shrink-0 items-center justify-center rounded-full border-2 transition-[transform,box-shadow,border-color] ${
+      className={`relative flex size-[26px] shrink-0 items-center justify-center rounded-full transition-[box-shadow,transform] ${
         selected
-          ? 'scale-110 border-brand-primary shadow-[0_0_0_2px_rgb(var(--primary-rgb)/0.2)]'
-          : 'border-brand-outline/55 hover:scale-105 hover:border-brand-outline'
+          ? 'scale-105 ring-2 ring-brand-primary ring-offset-2 ring-offset-true-surface'
+          : 'hover:scale-105 hover:ring-1 hover:ring-brand-outline/50 hover:ring-offset-1 hover:ring-offset-true-surface'
       }`}
       style={{ backgroundColor: isDefault ? 'rgb(var(--surface-variant-rgb))' : argbToCss(argb) }}
     >
-      {isDefault && !selected ? <BlockIcon size={16} className="text-brand-muted/55" /> : null}
+      {isDefault && !selected ? <BlockIcon size={11} className="text-brand-muted/55" /> : null}
       {selected ? (
         <span
           className={isDefault ? 'text-brand-primary' : undefined}
           style={checkColor ? { color: checkColor } : undefined}
         >
-          <CheckIcon size={16} />
+          <CheckIcon size={11} />
         </span>
       ) : null}
     </button>
@@ -85,28 +85,33 @@ export function ColorSwatchRow({
   return (
     <div className="flex items-center gap-1.5">
       {onSelectAll ? (
-        <button
-          type="button"
-          onClick={onSelectAll}
-          aria-label="All colors"
-          aria-pressed={allSelected}
-          className={`relative flex size-10 shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-bold uppercase tracking-wide transition-[transform,border-color] ${
-            allSelected
-              ? 'scale-110 border-brand-primary bg-brand-primary text-true-surface shadow-[0_0_0_2px_rgb(var(--primary-rgb)/0.2)]'
-              : 'border-brand-outline/60 bg-true-surface text-brand-muted hover:border-brand-outline hover:text-brand-primary'
-          }`}
-        >
-          All
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={onSelectAll}
+            aria-label="All colors"
+            aria-pressed={allSelected}
+            className={`shrink-0 rounded-full px-2.5 py-1 text-overline uppercase transition-colors ${
+              allSelected
+                ? 'bg-brand-primary/15 text-brand-primary'
+                : 'text-brand-muted hover:bg-white/[0.04] hover:text-brand-secondary'
+            }`}
+          >
+            All
+          </button>
+          <span className="mx-0.5 h-4 w-px shrink-0 bg-brand-outline/45" aria-hidden />
+        </>
       ) : null}
-      {colors.map((argb) => (
-        <ColorSwatch
-          key={argb}
-          argb={argb}
-          selected={!allSelected && selectedColor === argb}
-          onClick={() => onSelect(selectedColor === argb ? null : argb)}
-        />
-      ))}
+      <div className="flex items-center gap-1.5 pr-0.5">
+        {colors.map((argb) => (
+          <ColorSwatch
+            key={argb}
+            argb={argb}
+            selected={!allSelected && selectedColor === argb}
+            onClick={() => onSelect(selectedColor === argb ? null : argb)}
+          />
+        ))}
+      </div>
     </div>
   );
 }

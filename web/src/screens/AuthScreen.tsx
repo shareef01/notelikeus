@@ -196,7 +196,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
               <>
                 <div className="relative flex items-center gap-3 py-1">
                   <div className="h-px flex-1 bg-brand-outline/40" />
-                  <span className="text-xs font-medium uppercase tracking-wider text-brand-muted">or</span>
+                  <span className="text-chrome-label">or</span>
                   <div className="h-px flex-1 bg-brand-outline/40" />
                 </div>
 

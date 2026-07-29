@@ -39,12 +39,29 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: [
+          'Inter',
+          'ui-sans-serif',
+          'system-ui',
+          '-apple-system',
+          'Segoe UI',
+          'Roboto',
+          'Helvetica Neue',
+          'Arial',
+          'sans-serif',
+        ],
       },
       fontSize: {
-        'note-title': ['18px', { lineHeight: '25px', letterSpacing: '-0.5px', fontWeight: '600' }],
-        'note-body': ['14px', { lineHeight: '19.6px', letterSpacing: '0.15px', fontWeight: '400' }],
-        'section-label': ['12px', { lineHeight: '16px', letterSpacing: '1px', fontWeight: '700' }],
+        overline: [
+          '11px',
+          { lineHeight: '14px', letterSpacing: '0.08em', fontWeight: '600' },
+        ],
+        'note-title': ['18px', { lineHeight: '25px', letterSpacing: '-0.02em', fontWeight: '600' }],
+        'note-body': ['14px', { lineHeight: '1.45', letterSpacing: '0.01em', fontWeight: '400' }],
+        'section-label': [
+          '11px',
+          { lineHeight: '14px', letterSpacing: '0.06em', fontWeight: '600' },
+        ],
       },
       spacing: {
         'note-gap': '12px',
