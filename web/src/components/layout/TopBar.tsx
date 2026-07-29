@@ -176,10 +176,10 @@ export function TopBar({
               <button
                 type="button"
                 onClick={onNewNote}
-                className={`hidden h-10 shrink-0 items-center gap-1.5 rounded-note bg-brand-primary px-3.5 text-sm font-semibold tracking-tight text-true-surface transition-[transform,opacity] hover:opacity-90 active:scale-[0.98] md:inline-flex ${CHROME_FOCUS}`}
+                className={`hidden size-10 shrink-0 items-center justify-center rounded-note bg-brand-primary text-true-surface transition-[transform,opacity] hover:opacity-90 active:scale-[0.98] md:inline-flex ${CHROME_FOCUS}`}
+                aria-label="New note"
               >
-                <AddIcon size={16} />
-                New note
+                <AddIcon size={20} />
               </button>
             ) : null}
           </div>
