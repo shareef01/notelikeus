@@ -1,1 +1,1 @@
-Offline notes with labels, reminders, and encrypted local storage.
+Private Keep-style notes with sync, labels, and encrypted local storage.
