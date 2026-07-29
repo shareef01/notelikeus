@@ -1,4 +1,4 @@
-import { argbToCss } from './colors';
+import { argbToCss, noteColorForTheme } from './colors';
 
 const LIGHT_TEXT = '#121212';
 const DARK_TEXT = '#FFFFFF';
@@ -25,20 +25,20 @@ export function contentColorForBackground(argb: number): string {
 
 export function noteSurfaceStyle(
   argb: number,
-  options?: { solid?: boolean },
+  options?: { solid?: boolean; isDarkPalette?: boolean },
 ): { backgroundColor: string; color: string } {
-  if (argb === 0) {
+  const resolved =
+    options?.isDarkPalette === undefined ? argb : noteColorForTheme(argb, options.isDarkPalette);
+
+  if (resolved === 0) {
     return {
-      // Cards use a faint wash on the page; dialogs/shells need an opaque fill
-      // so content behind them (notes board, filters) does not bleed through.
-      backgroundColor: options?.solid
-        ? 'rgb(var(--surface-rgb))'
-        : 'rgba(255, 255, 255, 0.05)',
+      // Opaque surface so default cards read cleanly on light and dark chrome.
+      backgroundColor: 'rgb(var(--surface-rgb))',
       color: 'rgb(var(--primary-rgb))',
     };
   }
   return {
-    backgroundColor: argbToCss(argb),
-    color: contentColorForBackground(argb),
+    backgroundColor: argbToCss(resolved),
+    color: contentColorForBackground(resolved),
   };
 }
