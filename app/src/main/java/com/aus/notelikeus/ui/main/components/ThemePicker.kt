@@ -1,5 +1,7 @@
 package com.aus.notelikeus.ui.main.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.appThemeLabelRes
+import com.aus.notelikeus.ui.theme.Chrome
 
 private data class ThemeSwatchMeta(
     val surface: Color,
@@ -123,13 +127,31 @@ private fun ThemePickerItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val wash by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SoftWash)
+        } else {
+            Color.Transparent
+        },
+        label = "theme_wash"
+    )
+    val borderWidth by animateDpAsState(
+        targetValue = if (selected) 2.dp else 1.dp,
+        label = "theme_border_width"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.outline.copy(alpha = Chrome.SelectedBorder)
+        },
+        label = "theme_border_color"
+    )
+
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
-                else Color.Transparent
-            )
+            .background(wash)
             .clickable(role = Role.RadioButton, onClick = onClick)
             .semantics { this.selected = selected }
             .padding(vertical = 6.dp, horizontal = 4.dp),
@@ -158,12 +180,8 @@ private fun ThemePickerItem(
                 .size(48.dp)
                 .clip(CircleShape)
                 .border(
-                    width = if (selected) 2.dp else 1.dp,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-                    },
+                    width = borderWidth,
+                    color = borderColor,
                     shape = CircleShape
                 )
                 .then(fillModifier),

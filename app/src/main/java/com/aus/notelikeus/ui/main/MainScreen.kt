@@ -333,7 +333,7 @@ fun MainScreen(
                     label = stringResource(R.string.nav_settings),
                     icon = Icons.Default.Settings,
                     accent = NavAccentSettings,
-                    selected = false,
+                    selected = showProfileSheet,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         showProfileSheet = true
@@ -345,24 +345,18 @@ fun MainScreen(
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider(
                 modifier = Modifier.padding(horizontal = 16.dp),
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = com.aus.notelikeus.ui.theme.Chrome.Divider)
             )
             Spacer(modifier = Modifier.height(12.dp))
             val email = state.cloudAccount.email
             if (state.cloudAccount.isGoogleAccount && !email.isNullOrBlank()) {
                 SideDrawerAccountRow(email = email)
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = stringResource(R.string.cloud_sign_out),
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = (-0.15).sp
-                    ),
-                    color = SignOutRose,
-                    textAlign = TextAlign.Center,
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
+                        .height(48.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(SignOutRoseContainer)
                         .border(
@@ -375,8 +369,26 @@ fun MainScreen(
                             showCloudSignOutConfirm = true
                             scope.launch { if (!isExpanded) drawerState.close() }
                         }
-                        .padding(vertical = 10.dp)
-                )
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Logout,
+                        contentDescription = null,
+                        tint = SignOutRose,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.cloud_sign_out),
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = (-0.15).sp
+                        ),
+                        color = SignOutRose
+                    )
+                }
                 Spacer(modifier = Modifier.height(12.dp))
             }
             Spacer(modifier = Modifier.height(8.dp).navigationBarsPadding())

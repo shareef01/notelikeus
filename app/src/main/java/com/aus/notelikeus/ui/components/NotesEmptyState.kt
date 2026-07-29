@@ -36,7 +36,7 @@ import com.aus.notelikeus.ui.main.components.PrecisionFilterChip
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 
 private val EmptyStateIconSize = 72.dp
-private const val EmptyStateIconAlpha = 0.2f
+private const val EmptyStateIconAlpha = 0.28f
 
 @Composable
 fun NotesEmptyState(
@@ -92,7 +92,10 @@ fun NotesEmptyState(
             if (showCreateButton) {
                 val buttonLabel = createButtonLabel ?: stringResource(R.string.add_note)
                 Spacer(modifier = Modifier.height(28.dp))
-                FilledTonalButton(onClick = onCreateClick) {
+                FilledTonalButton(
+                    onClick = onCreateClick,
+                    shape = MaterialTheme.shapes.large
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.Add,
@@ -106,7 +109,10 @@ fun NotesEmptyState(
             }
             if (showClearFilters) {
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedButton(onClick = onClearFilters) {
+                OutlinedButton(
+                    onClick = onClearFilters,
+                    shape = MaterialTheme.shapes.large
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.FilterAltOff,
@@ -137,6 +143,7 @@ fun NotesEmptyState(
                             selected = false,
                             onClick = { onRecentSearchClick(query) },
                             label = query,
+                            compact = true,
                             modifier = Modifier.padding(horizontal = 4.dp)
                         )
                     }

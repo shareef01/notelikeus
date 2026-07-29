@@ -30,7 +30,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -57,6 +56,7 @@ import com.aus.notelikeus.ui.navigation.LocalAnimatedVisibilityScope
 import com.aus.notelikeus.ui.navigation.LocalSharedTransitionScope
 import com.aus.notelikeus.ui.theme.NoteCardBodyStyle
 import com.aus.notelikeus.ui.theme.NoteCardTitleStyle
+import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.getContentColor
 
 private val NoteCardContentPadding = 14.dp
@@ -133,13 +133,18 @@ fun NoteCard(
     )
 
     val elevation by animateDpAsState(
-        targetValue = if (isSelected) 4.dp else 1.dp,
+        targetValue = if (isSelected) 2.dp else 0.dp,
         label = "elevation"
     )
 
     val scale by animateFloatAsState(
-        targetValue = if (isSelected) 0.985f else 1f,
+        targetValue = if (isSelected) 0.995f else 1f,
         label = "selection_scale"
+    )
+
+    val hairlineBorder = BorderStroke(
+        1.dp,
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.CardHairline)
     )
 
     val contentColor = when {
@@ -206,8 +211,8 @@ fun NoteCard(
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = elevation),
         border = when {
-            isSelected -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-            note.color == MaterialTheme.colorScheme.background.toArgb() -> CardDefaults.outlinedCardBorder()
+            isSelected -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+            note.color == 0 -> hairlineBorder
             else -> null
         }
     ) {
@@ -398,7 +403,7 @@ fun NoteCard(
                         .size(24.dp),
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.primary,
-                    shadowElevation = 2.dp
+                    shadowElevation = 0.dp
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(

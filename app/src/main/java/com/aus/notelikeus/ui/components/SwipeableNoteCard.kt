@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
@@ -19,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -92,54 +94,64 @@ fun SwipeableNoteCard(
             enableDismissFromEndToStart = canTrashSwipe,
             backgroundContent = {
                 val direction = dismissState.dismissDirection
-                val isActive = dismissState.targetValue != SwipeToDismissBoxValue.Settled
-                val color by animateColorAsState(
-                    when (dismissState.targetValue) {
-                        SwipeToDismissBoxValue.StartToEnd -> archiveColor
-                        SwipeToDismissBoxValue.EndToStart -> deleteColor
-                        else -> Color.Transparent
-                    },
-                    label = "swipe_color"
-                )
-
-                val icon = when (dismissState.targetValue) {
-                    SwipeToDismissBoxValue.StartToEnd -> Icons.Default.Archive
-                    SwipeToDismissBoxValue.EndToStart -> Icons.Default.Delete
+                val target = dismissState.targetValue
+                val progress = dismissState.progress.coerceIn(0f, 1f)
+                val isSettling = target != SwipeToDismissBoxValue.Settled
+                val swipeSide = when {
+                    target == SwipeToDismissBoxValue.StartToEnd ||
+                        direction == SwipeToDismissBoxValue.StartToEnd -> SwipeToDismissBoxValue.StartToEnd
+                    target == SwipeToDismissBoxValue.EndToStart ||
+                        direction == SwipeToDismissBoxValue.EndToStart -> SwipeToDismissBoxValue.EndToStart
                     else -> null
                 }
-
-                val iconTint = when (dismissState.targetValue) {
-                    SwipeToDismissBoxValue.StartToEnd -> archiveIconTint
-                    SwipeToDismissBoxValue.EndToStart -> deleteIconTint
-                    else -> Color.White
+                val baseColor = when (swipeSide) {
+                    SwipeToDismissBoxValue.StartToEnd -> archiveColor
+                    SwipeToDismissBoxValue.EndToStart -> deleteColor
+                    else -> Color.Transparent
                 }
+                val reveal = when {
+                    swipeSide == null -> 0f
+                    isSettling -> 1f
+                    else -> (0.2f + progress * 0.8f).coerceIn(0f, 1f)
+                }
+                val color by animateColorAsState(
+                    targetValue = if (reveal > 0f) baseColor.copy(alpha = reveal) else Color.Transparent,
+                    label = "swipe_color"
+                )
+                val iconScale = 0.82f + (0.18f * reveal)
 
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(
-                            if (isActive) color else Color.Transparent,
-                            MaterialTheme.shapes.large
-                        )
+                        .background(color, MaterialTheme.shapes.large)
                         .padding(horizontal = 16.dp),
-                    contentAlignment = when (direction) {
+                    contentAlignment = when (swipeSide) {
                         SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
                         SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
                         else -> Alignment.Center
                     }
                 ) {
-                    if (isActive) {
-                        icon?.let {
-                            Icon(
-                                it,
-                                contentDescription = if (dismissState.targetValue == SwipeToDismissBoxValue.StartToEnd) {
-                                    archiveLabel
-                                } else {
-                                    deleteLabel
-                                },
-                                tint = iconTint
-                            )
-                        }
+                    if (swipeSide != null && reveal > 0.12f) {
+                        Icon(
+                            imageVector = if (swipeSide == SwipeToDismissBoxValue.StartToEnd) {
+                                Icons.Default.Archive
+                            } else {
+                                Icons.Default.Delete
+                            },
+                            contentDescription = if (swipeSide == SwipeToDismissBoxValue.StartToEnd) {
+                                archiveLabel
+                            } else {
+                                deleteLabel
+                            },
+                            tint = if (swipeSide == SwipeToDismissBoxValue.StartToEnd) {
+                                archiveIconTint.copy(alpha = reveal)
+                            } else {
+                                deleteIconTint.copy(alpha = reveal)
+                            },
+                            modifier = Modifier
+                                .size(24.dp)
+                                .scale(iconScale)
+                        )
                     }
                 }
             }

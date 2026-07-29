@@ -2,13 +2,10 @@ package com.aus.notelikeus.ui.main.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +13,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -69,13 +65,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.ui.main.NoteFilter
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
+import com.aus.notelikeus.ui.theme.Chrome
 
 private val TopBarRowHeight = 56.dp
 
@@ -125,6 +121,23 @@ fun MainTopAppBar(
         NoteFilter.TRASHED -> stringResource(R.string.search_trash)
     }
     val headerColor = MaterialTheme.colorScheme.surface
+    val showRecentSearches = selectedCount == 0 &&
+        isSearchFocused &&
+        recentSearches.isNotEmpty() &&
+        searchQuery.isEmpty()
+    val searchBorderColor by animateColorAsState(
+        targetValue = when {
+            selectedCount > 0 -> MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SelectedBorder)
+            isSearchFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+            else -> MaterialTheme.colorScheme.outline.copy(alpha = Chrome.Hairline)
+        },
+        label = "search_border"
+    )
+    val searchFillAlpha = when {
+        selectedCount > 0 -> 0.55f
+        isSearchFocused -> 0.55f
+        else -> 0.72f
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -136,8 +149,7 @@ fun MainTopAppBar(
             AnimatedContent(
                 targetState = selectedCount > 0,
                 transitionSpec = {
-                    (slideInVertically { height -> height } + fadeIn())
-                        .togetherWith(slideOutVertically { height -> -height } + fadeOut())
+                    fadeIn() togetherWith fadeOut()
                 },
                 label = "topbar"
             ) { isSelectionMode ->
@@ -145,12 +157,13 @@ fun MainTopAppBar(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(TopBarRowHeight)
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .border(1.dp, searchBorderColor, CircleShape),
                     shape = CircleShape,
                     color = if (isSelectionMode) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = searchFillAlpha)
                     } else {
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = searchFillAlpha)
                     },
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp
@@ -297,11 +310,13 @@ fun MainTopAppBar(
 
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(44.dp)
                                     .clip(CircleShape)
                                     .border(
                                         width = 1.dp,
-                                        color = MaterialTheme.colorScheme.outlineVariant,
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(
+                                            alpha = Chrome.Divider
+                                        ),
                                         shape = CircleShape
                                     )
                                     .semantics { contentDescription = settingsContentDescription }
@@ -312,7 +327,7 @@ fun MainTopAppBar(
                                 contentAlignment = Alignment.Center
                             ) {
                                 BrandMarkIcon(
-                                    size = 36.dp,
+                                    size = 30.dp,
                                     backgroundColor = MaterialTheme.colorScheme.onSurface,
                                     stripeColor = MaterialTheme.colorScheme.surface
                                 )
@@ -323,9 +338,9 @@ fun MainTopAppBar(
             }
 
             AnimatedVisibility(
-                visible = selectedCount == 0 && isSearchFocused && recentSearches.isNotEmpty() && searchQuery.isEmpty(),
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
+                visible = showRecentSearches,
+                enter = fadeIn(),
+                exit = fadeOut()
             ) {
                 RecentSearchRow(
                     searches = recentSearches,
@@ -342,9 +357,9 @@ fun MainTopAppBar(
             }
 
             AnimatedVisibility(
-                visible = selectedCount == 0 && (!isSearchFocused || searchQuery.isNotEmpty() || recentSearches.isEmpty()),
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
+                visible = selectedCount == 0 && !showRecentSearches,
+                enter = fadeIn(),
+                exit = fadeOut()
             ) {
                 FilterRow(
                     selectedColor = selectedColor,
@@ -373,7 +388,7 @@ fun MainTopAppBar(
 
             if (listScrolled) {
                 HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider),
                     thickness = 1.dp
                 )
             }
@@ -408,7 +423,8 @@ private fun RecentSearchRow(
                 PrecisionFilterChip(
                     selected = false,
                     onClick = { onSearchClick(query) },
-                    label = query
+                    label = query,
+                    compact = true
                 )
             }
         }
