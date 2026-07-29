@@ -70,7 +70,7 @@ export function EditorOptionsSheet({
     <>
       <ResponsiveSheet open={open} onClose={onClose} ariaLabel="Note options" maxWidthClass="md:max-w-lg">
         <section className="px-4 py-2">
-          <h3 className="text-[12px] font-semibold uppercase tracking-[0.8px] text-brand-muted/65">Color</h3>
+          <h3 className="text-chrome-label">Color</h3>
           <div className="mt-3 flex flex-wrap gap-2">
             <ColorSwatchRow
               selectedColor={selectedColor}
@@ -80,7 +80,7 @@ export function EditorOptionsSheet({
         </section>
 
         <section className="mt-4 border-t border-brand-outline/60 px-4 py-2">
-          <h3 className="mt-4 text-[12px] font-semibold uppercase tracking-[0.8px] text-brand-muted/65">Labels</h3>
+          <h3 className="mt-4 text-chrome-label">Labels</h3>
           <ul className="mt-2">
             {allLabels.map((label) => {
               const checked = selectedLabels.some((entry) => entry.id === label.id);
@@ -123,7 +123,7 @@ export function EditorOptionsSheet({
         </section>
 
         <section className="mt-4 border-t border-brand-outline/60 px-4 py-4">
-          <h3 className="mt-2 text-[12px] font-semibold uppercase tracking-[0.8px] text-brand-muted/65">Reminder</h3>
+          <h3 className="mt-2 text-chrome-label">Reminder</h3>
           <p className="mt-2 text-sm text-brand-muted">{formatReminderLabel(reminderTimestamp)}</p>
 
           <div className="mt-4 flex flex-wrap gap-2">
