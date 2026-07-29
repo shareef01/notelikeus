@@ -57,14 +57,14 @@ val Typography = Typography(
  * Note Titles: SemiBold, 18.sp, -0.5.sp kerning.
  */
 /**
- * Note card title — readable list/grid preview size.
+ * Note card title — larger, more readable list/grid preview.
  */
-val NoteCardTitleStyle = inter(FontWeight.Bold, 16f, 22f, -0.25f)
+val NoteCardTitleStyle = inter(FontWeight.SemiBold, 18f, 24f, -0.35f)
 
 /**
  * Note card body preview.
  */
-val NoteCardBodyStyle = inter(FontWeight.Normal, 14f, 20f, 0.1f)
+val NoteCardBodyStyle = inter(FontWeight.Normal, 15f, 22f, 0.1f)
 
 /** Chrome overline — matches web `text-chrome-label` / `overline`. */
 val ChromeLabelStyle = inter(FontWeight.SemiBold, 11f, 14f, 0.88f)
