@@ -1,0 +1,7 @@
+# Remap AI co-author emails still reachable via old PR refs so GitHub
+# attributes them to the sole human author on the contributors list.
+shareef01 <shareef.q13@gmail.com> Cursor <cursoragent@cursor.com>
+shareef01 <shareef.q13@gmail.com> Claude Opus 4.8 <noreply@anthropic.com>
+shareef01 <shareef.q13@gmail.com> Claude Sonnet 5 <noreply@anthropic.com>
+shareef01 <shareef.q13@gmail.com> <cursoragent@cursor.com>
+shareef01 <shareef.q13@gmail.com> <noreply@anthropic.com>
