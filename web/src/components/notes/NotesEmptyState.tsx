@@ -46,9 +46,7 @@ export function NotesEmptyState({
 
       {!action && recentSearches.length > 0 && (
         <div className="mt-12 flex flex-col items-center animate-in fade-in duration-700">
-          <p className="text-[12px] font-bold uppercase tracking-[1px] text-brand-muted/65">
-            Recent searches
-          </p>
+          <p className="text-chrome-label opacity-80">Recent searches</p>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             {recentSearches.map((query) => (
               <button

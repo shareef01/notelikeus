@@ -32,12 +32,14 @@ interface NoteStaggeredGridProps {
 }
 
 /**
- * Grid/dense pack with auto-fill. List is a single readable column —
- * never multi-column ribbons that fight the “list” metaphor.
+ * Grid/dense pack with CSS columns (masonry-like). List is a single readable column.
+ * Column widths differ enough that List / Grid / Compact feel like real size options.
  */
 const CARD_MIN_PX: Record<2 | 3, number> = {
-  2: 220,
-  3: 156,
+  /** Comfortable Keep-style cards */
+  2: 260,
+  /** Compact multi-column board */
+  3: 152,
 };
 
 const DENSITY: Record<ViewColumns, NoteCardDensity> = {
@@ -192,28 +194,36 @@ export function NoteStaggeredGrid({
 
   const gapClass =
     viewPreference === 3
-      ? 'gap-2 sm:gap-2.5'
+      ? 'gap-1.5'
       : isList
-        ? 'gap-2 sm:gap-2.5'
-        : 'gap-3 sm:gap-3.5';
+        ? 'gap-1.5'
+        : 'gap-2.5 sm:gap-3';
+  const columnGapPx = viewPreference === 3 ? 8 : 12;
 
   return (
     <div
-      className={`grid w-full ${gapClass} px-3 pb-24 pt-3 sm:px-4 lg:px-6 ${
-        isList ? 'max-w-3xl grid-cols-1' : 'mx-auto max-w-content items-start'
+      className={`w-full px-3 pb-24 pt-2 sm:px-4 lg:px-6 ${
+        isList
+          ? `mx-auto grid max-w-content grid-cols-1 ${gapClass}`
+          : 'mx-auto max-w-content'
       }`}
       style={
         isList
           ? undefined
           : {
-              gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${cardMin}px), 1fr))`,
+              columnWidth: cardMin,
+              columnGap: columnGapPx,
             }
       }
     >
       {boardItems.map((item) => {
         if (item.type === 'header') {
           return (
-            <div key={item.key} className="col-span-full">
+            <div
+              key={item.key}
+              className={isList ? 'col-span-full' : 'mb-1.5 w-full break-inside-avoid'}
+              style={isList ? undefined : { columnSpan: 'all' }}
+            >
               <NoteSectionHeader title={item.title} />
             </div>
           );
@@ -235,7 +245,16 @@ export function NoteStaggeredGrid({
         }
 
         return (
-          <div key={note.id} className="min-w-0">
+          <div
+            key={note.id}
+            className={`min-w-0 ${
+              isList
+                ? ''
+                : viewPreference === 3
+                  ? 'mb-1.5 break-inside-avoid'
+                  : 'mb-2.5 break-inside-avoid sm:mb-3'
+            }`}
+          >
             {renderCard(note)}
           </div>
         );

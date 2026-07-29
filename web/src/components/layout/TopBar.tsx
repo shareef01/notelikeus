@@ -176,9 +176,9 @@ export function TopBar({
               <button
                 type="button"
                 onClick={onNewNote}
-                className={`hidden shrink-0 items-center gap-2 rounded-note bg-brand-primary px-4 py-2.5 text-sm font-semibold text-true-surface md:flex ${CHROME_FOCUS}`}
+                className={`hidden h-10 shrink-0 items-center gap-1.5 rounded-note bg-brand-primary px-3.5 text-sm font-semibold tracking-tight text-true-surface transition-[transform,opacity] hover:opacity-90 active:scale-[0.98] md:inline-flex ${CHROME_FOCUS}`}
               >
-                <AddIcon size={18} />
+                <AddIcon size={16} />
                 New note
               </button>
             ) : null}

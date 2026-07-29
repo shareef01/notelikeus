@@ -43,13 +43,28 @@ import com.aus.notelikeus.R
 import com.aus.notelikeus.di.GoogleSignInEntryPoint
 import com.aus.notelikeus.ui.components.NoteStaggeredGrid
 import com.aus.notelikeus.ui.components.NotesEmptyState
-import com.aus.notelikeus.ui.main.components.DrawerNavLabel
 import com.aus.notelikeus.ui.main.components.MainTopAppBar
 import com.aus.notelikeus.ui.main.components.ProfileSheet
+import com.aus.notelikeus.ui.main.components.SideDrawerAccountRow
+import com.aus.notelikeus.ui.main.components.SideDrawerNavItem
+import com.aus.notelikeus.ui.main.components.SideDrawerSectionLabel
 import com.aus.notelikeus.ui.main.components.TrashBanner
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
+import com.aus.notelikeus.ui.theme.NavAccentArchive
+import com.aus.notelikeus.ui.theme.NavAccentLabels
+import com.aus.notelikeus.ui.theme.NavAccentNotes
+import com.aus.notelikeus.ui.theme.NavAccentSettings
+import com.aus.notelikeus.ui.theme.NavAccentTrash
+import com.aus.notelikeus.ui.theme.SignOutRose
+import com.aus.notelikeus.ui.theme.SignOutRoseContainer
 import com.aus.notelikeus.ui.editor.EditorScreen
 import com.aus.notelikeus.ui.editor.EditorViewModel
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.hilt.navigation.compose.hiltViewModel
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CoroutineScope
@@ -221,17 +236,13 @@ fun MainScreen(
     val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
     val navigator = rememberListDetailPaneScaffoldNavigator<Long?>()
 
-    val drawerContent = @Composable {
-        ModalDrawerSheet(
-            drawerContainerColor = MaterialTheme.colorScheme.surface,
-            drawerTonalElevation = 0.dp,
-            modifier = if (isExpanded) Modifier.width(300.dp) else Modifier
-        ) {
+    val drawerInner = @Composable {
+        Column(modifier = Modifier.fillMaxHeight()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 28.dp, vertical = 24.dp)
+                    .padding(horizontal = 20.dp, vertical = 20.dp)
             ) {
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -240,110 +251,145 @@ fun MainScreen(
                             backgroundColor = MaterialTheme.colorScheme.onSurface,
                             stripeColor = MaterialTheme.colorScheme.surface
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = (-0.5).sp
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                stringResource(R.string.app_name),
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = (-0.3).sp,
+                                    fontSize = 15.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                stringResource(R.string.drawer_tagline_short),
+                                style = com.aus.notelikeus.ui.theme.ChromeLabelStyle,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
-                    Text(
-                        stringResource(R.string.drawer_tagline),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
 
-            NavigationDrawerItem(
-                label = { Text(stringResource(R.string.nav_notes), fontWeight = FontWeight.Medium) },
-                selected = state.currentFilter == NoteFilter.ACTIVE,
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    viewModel.setFilter(NoteFilter.ACTIVE)
-                    scope.launch { if (!isExpanded) drawerState.close() }
-                },
-                icon = { Icon(Icons.Default.Lightbulb, contentDescription = stringResource(R.string.nav_notes)) },
-                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
-                colors = NavigationDrawerItemDefaults.colors(
-                    unselectedContainerColor = Color.Transparent,
-                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                SideDrawerNavItem(
+                    label = stringResource(R.string.nav_notes),
+                    icon = Icons.Default.Lightbulb,
+                    accent = NavAccentNotes,
+                    selected = state.currentFilter == NoteFilter.ACTIVE,
+                    count = state.totalNoteCount,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        viewModel.setFilter(NoteFilter.ACTIVE)
+                        scope.launch { if (!isExpanded) drawerState.close() }
+                    }
                 )
-            )
-            NavigationDrawerItem(
-                label = {
-                    DrawerNavLabel(
-                        text = stringResource(R.string.nav_archive),
-                        count = state.archivedNoteCount
-                    )
-                },
-                selected = state.currentFilter == NoteFilter.ARCHIVED,
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    viewModel.setFilter(NoteFilter.ARCHIVED)
-                    scope.launch { if (!isExpanded) drawerState.close() }
-                },
-                icon = { Icon(Icons.Default.Archive, contentDescription = stringResource(R.string.nav_archive)) },
-                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
-                colors = NavigationDrawerItemDefaults.colors(
-                    unselectedContainerColor = Color.Transparent,
-                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                SideDrawerNavItem(
+                    label = stringResource(R.string.nav_archive),
+                    icon = Icons.Default.Archive,
+                    accent = NavAccentArchive,
+                    selected = state.currentFilter == NoteFilter.ARCHIVED,
+                    count = state.archivedNoteCount,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        viewModel.setFilter(NoteFilter.ARCHIVED)
+                        scope.launch { if (!isExpanded) drawerState.close() }
+                    }
                 )
-            )
-            NavigationDrawerItem(
-                label = {
-                    DrawerNavLabel(
-                        text = stringResource(R.string.nav_trash),
-                        count = state.trashedNoteCount
-                    )
-                },
-                selected = state.currentFilter == NoteFilter.TRASHED,
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    viewModel.setFilter(NoteFilter.TRASHED)
-                    scope.launch { if (!isExpanded) drawerState.close() }
-                },
-                icon = { Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.nav_trash)) },
-                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
-                colors = NavigationDrawerItemDefaults.colors(
-                    unselectedContainerColor = Color.Transparent,
-                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                SideDrawerNavItem(
+                    label = stringResource(R.string.nav_trash),
+                    icon = Icons.Default.Delete,
+                    accent = NavAccentTrash,
+                    selected = state.currentFilter == NoteFilter.TRASHED,
+                    count = state.trashedNoteCount,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        viewModel.setFilter(NoteFilter.TRASHED)
+                        scope.launch { if (!isExpanded) drawerState.close() }
+                    }
                 )
+
+                Spacer(modifier = Modifier.height(20.dp))
+                SideDrawerSectionLabel(text = stringResource(R.string.nav_section_manage))
+
+                SideDrawerNavItem(
+                    label = stringResource(R.string.nav_edit_labels),
+                    icon = Icons.Default.Label,
+                    accent = NavAccentLabels,
+                    selected = false,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onEditLabels()
+                        scope.launch { if (!isExpanded) drawerState.close() }
+                    }
+                )
+                SideDrawerNavItem(
+                    label = stringResource(R.string.nav_settings),
+                    icon = Icons.Default.Settings,
+                    accent = NavAccentSettings,
+                    selected = false,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        showProfileSheet = true
+                        scope.launch { if (!isExpanded) drawerState.close() }
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
             )
+            Spacer(modifier = Modifier.height(12.dp))
+            val email = state.cloudAccount.email
+            if (state.cloudAccount.isGoogleAccount && !email.isNullOrBlank()) {
+                SideDrawerAccountRow(email = email)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = stringResource(R.string.cloud_sign_out),
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = (-0.15).sp
+                    ),
+                    color = SignOutRose,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(SignOutRoseContainer)
+                        .border(
+                            width = 1.dp,
+                            color = SignOutRose.copy(alpha = 0.25f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            showCloudSignOutConfirm = true
+                            scope.launch { if (!isExpanded) drawerState.close() }
+                        }
+                        .padding(vertical = 10.dp)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+            Spacer(modifier = Modifier.height(8.dp).navigationBarsPadding())
+        }
+    }
 
-            NavigationDrawerItem(
-                label = { Text(stringResource(R.string.nav_edit_labels), fontWeight = FontWeight.Medium) },
-                selected = false,
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onEditLabels()
-                    scope.launch { if (!isExpanded) drawerState.close() }
-                },
-                icon = { Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.nav_edit_labels)) },
-                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
-                colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 28.dp))
-
-            NavigationDrawerItem(
-                label = { Text(stringResource(R.string.nav_settings), fontWeight = FontWeight.Medium) },
-                selected = false,
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    showProfileSheet = true
-                    scope.launch { if (!isExpanded) drawerState.close() }
-                },
-                icon = { Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.nav_settings)) },
-                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
-                colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent)
-            )
-            Spacer(modifier = Modifier.height(16.dp).navigationBarsPadding())
+    val drawerContent = @Composable {
+        ModalDrawerSheet(
+            drawerContainerColor = MaterialTheme.colorScheme.surface,
+            drawerTonalElevation = 0.dp,
+            modifier = if (isExpanded) Modifier.width(260.dp) else Modifier.widthIn(max = 300.dp)
+        ) {
+            drawerInner()
         }
     }
 
@@ -353,9 +399,9 @@ fun MainScreen(
                 PermanentDrawerSheet(
                     drawerContainerColor = MaterialTheme.colorScheme.surface,
                     drawerTonalElevation = 0.dp,
-                    modifier = Modifier.width(300.dp)
+                    modifier = Modifier.width(260.dp)
                 ) {
-                    drawerContent()
+                    drawerInner()
                 }
             }
         ) {
@@ -791,10 +837,10 @@ private fun MainScaffold(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 6.dp,
-                        pressedElevation = 12.dp,
-                        hoveredElevation = 8.dp,
-                        focusedElevation = 8.dp
+                        defaultElevation = 2.dp,
+                        pressedElevation = 4.dp,
+                        hoveredElevation = 3.dp,
+                        focusedElevation = 3.dp
                     ),
                     shape = MaterialTheme.shapes.large
                 ) {

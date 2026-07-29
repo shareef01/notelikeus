@@ -29,7 +29,7 @@ function SettingsSection({
 }) {
   return (
     <section>
-      <h3 className="px-1 pb-2 text-[11px] font-bold uppercase tracking-[1px] text-brand-muted/70">
+      <h3 className="px-1 pb-2 text-chrome-label">
         {title}
       </h3>
       <div className="overflow-hidden rounded-note border border-brand-outline/40 bg-true-surface-variant/35 divide-y divide-brand-outline/35">
@@ -77,7 +77,7 @@ function SettingsRow({
       {icon ? <SettingsLeadingIcon>{icon}</SettingsLeadingIcon> : null}
       <div className="min-w-0 flex-1">
         <p
-          className={`truncate text-[15px] font-medium leading-snug ${
+          className={`truncate text-[15px] font-medium leading-snug tracking-tight ${
             destructive ? 'text-red-300' : 'text-brand-primary'
           }`}
         >
@@ -104,7 +104,7 @@ const SORT_LABELS = {
 const VIEW_LABELS: Record<ViewColumns, string> = {
   1: 'List',
   2: 'Grid',
-  3: 'Dense grid',
+  3: 'Compact',
 };
 
 interface ProfileSheetProps {
@@ -175,7 +175,9 @@ export function ProfileSheet({
         <BrandMark size={40} />
         <div className="min-w-0 flex-1">
           <p className="text-lg font-semibold tracking-tight text-brand-primary">Settings</p>
-          <p className="truncate text-xs text-brand-muted">Notelikeus · notes backed up to your account</p>
+          <p className="mt-0.5 truncate text-[13px] leading-snug tracking-tight text-brand-secondary">
+            Sync &amp; preferences for your notes
+          </p>
         </div>
         <button
           type="button"
@@ -214,20 +216,18 @@ export function ProfileSheet({
                 <div className="flex flex-col gap-1 bg-true-surface-variant/35 px-4 py-4 sm:py-5">
                   <div className="flex items-center gap-2 text-brand-primary/70">
                     <NotesIcon size={16} />
-                    <span className="text-[11px] font-medium uppercase tracking-wide text-brand-muted">
+                    <span className="text-chrome-label">
                       Notes
                     </span>
                   </div>
-                  <p className="text-2xl font-semibold tabular-nums text-brand-primary sm:text-3xl">
+                  <p className="text-2xl font-semibold tabular-nums tracking-tight text-brand-primary sm:text-3xl">
                     {noteCount}
                   </p>
                 </div>
                 <div className="flex flex-col gap-1 bg-true-surface-variant/35 px-4 py-4 sm:py-5">
                   <div className="flex items-center gap-2 text-brand-primary/70">
                     <CloudIcon size={16} />
-                    <span className="text-[11px] font-medium uppercase tracking-wide text-brand-muted">
-                      Cloud
-                    </span>
+                    <span className="text-chrome-label">Cloud</span>
                   </div>
                   <p className="truncate text-base font-medium text-brand-primary sm:text-lg">
                     {isGoogleAccount ? syncStatus : 'Signed out'}

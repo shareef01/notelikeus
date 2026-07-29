@@ -1,14 +1,14 @@
 package com.aus.notelikeus.ui.theme
 
 import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.aus.notelikeus.domain.model.AppTheme
@@ -18,59 +18,67 @@ private val DarkColorScheme = darkColorScheme(
     secondary = SecondaryDark,
     background = BackgroundDark,
     surface = SurfaceDark,
-    surfaceVariant = Color(0xFF1E1E1E),
-    onPrimary = Color(0xFF0A0A0A),
+    surfaceVariant = SurfaceVariantDark,
+    onPrimary = Color(0xFF121212),
     onSecondary = Color(0xFFE8E8E8),
-    onBackground = Color(0xFFE8E8E8),
-    onSurface = Color(0xFFE8E8E8),
-    onSurfaceVariant = Color(0xFFB0B0B0),
-    outline = Color(0xFF333333),
-    outlineVariant = Color(0xFF2A2A2A)
+    onBackground = PrimaryDark,
+    onSurface = PrimaryDark,
+    onSurfaceVariant = SecondaryDark,
+    outline = OutlineDark,
+    outlineVariant = Color(0xFF2A2A2A),
+    primaryContainer = PrimaryDark.copy(alpha = 0.12f),
+    onPrimaryContainer = PrimaryDark,
 )
 
 private val TrueDarkColorScheme = darkColorScheme(
-    primary = PrimaryDark,
-    secondary = SecondaryDark,
-    background = Color.Black, // OLED Absolute Black
-    surface = Color(0xFF000000), // Enforcing absolute discipline
-    surfaceVariant = Color(0xFF121212),
+    primary = PrimaryTrueDark,
+    secondary = SecondaryTrueDark,
+    background = BackgroundTrueDark,
+    surface = SurfaceTrueDark,
+    surfaceVariant = SurfaceVariantTrueDark,
     onPrimary = Color.Black,
     onSecondary = Color.White,
     onBackground = Color.White,
     onSurface = Color.White,
-    onSurfaceVariant = Color(0xFFAAAAAA),
-    outline = Color(0xFF222222),
-    outlineVariant = Color(0xFF121212)
+    onSurfaceVariant = MutedTrueDark,
+    outline = OutlineTrueDark,
+    outlineVariant = Color(0xFF121212),
+    primaryContainer = PrimaryTrueDark.copy(alpha = 0.12f),
+    onPrimaryContainer = PrimaryTrueDark,
 )
 
 private val MidnightColorScheme = darkColorScheme(
     primary = PrimaryMidnight,
-    secondary = SecondaryDark,
+    secondary = SecondaryMidnight,
     background = BackgroundMidnight,
     surface = SurfaceMidnight,
-    surfaceVariant = Color(0xFF161C29),
-    onPrimary = Color(0xFF080C14),
+    surfaceVariant = SurfaceVariantMidnight,
+    onPrimary = BackgroundMidnight,
     onSecondary = Color.White,
-    onBackground = Color.White,
-    onSurface = Color.White,
-    onSurfaceVariant = Color(0xFFAAB8C9),
-    outline = Color(0xFF232D3B),
-    outlineVariant = Color(0xFF161C29)
+    onBackground = PrimaryMidnight,
+    onSurface = PrimaryMidnight,
+    onSurfaceVariant = MutedMidnight,
+    outline = OutlineMidnight,
+    outlineVariant = SurfaceVariantMidnight,
+    primaryContainer = PrimaryMidnight.copy(alpha = 0.12f),
+    onPrimaryContainer = PrimaryMidnight,
 )
 
 private val ForestColorScheme = darkColorScheme(
     primary = PrimaryForest,
-    secondary = SecondaryDark,
+    secondary = SecondaryForest,
     background = BackgroundForest,
     surface = SurfaceForest,
-    surfaceVariant = Color(0xFF1A211A),
-    onPrimary = Color(0xFF0A0F0A),
+    surfaceVariant = SurfaceVariantForest,
+    onPrimary = BackgroundForest,
     onSecondary = Color.White,
-    onBackground = Color.White,
-    onSurface = Color.White,
-    onSurfaceVariant = Color(0xFFA9B8A9),
-    outline = Color(0xFF263326),
-    outlineVariant = Color(0xFF1A211A)
+    onBackground = PrimaryForest,
+    onSurface = PrimaryForest,
+    onSurfaceVariant = MutedForest,
+    outline = OutlineForest,
+    outlineVariant = SurfaceVariantForest,
+    primaryContainer = PrimaryForest.copy(alpha = 0.12f),
+    onPrimaryContainer = PrimaryForest,
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -78,14 +86,16 @@ private val LightColorScheme = lightColorScheme(
     secondary = SecondaryLight,
     background = BackgroundLight,
     surface = SurfaceLight,
-    surfaceVariant = Color(0xFFEFEFEF),
+    surfaceVariant = SurfaceVariantLight,
     onPrimary = Color.White,
     onSecondary = Color(0xFF1A1A1A),
-    onBackground = Color(0xFF1A1A1A),
-    onSurface = Color(0xFF1A1A1A),
-    onSurfaceVariant = Color(0xFF5C5C5C),
-    outline = Color(0xFFD8D8D8),
-    outlineVariant = Color(0xFFE8E8E8)
+    onBackground = PrimaryLight,
+    onSurface = PrimaryLight,
+    onSurfaceVariant = MutedLight,
+    outline = OutlineLight,
+    outlineVariant = Color(0xFFE8E8E8),
+    primaryContainer = PrimaryLight.copy(alpha = 0.08f),
+    onPrimaryContainer = PrimaryLight,
 )
 
 @Composable
