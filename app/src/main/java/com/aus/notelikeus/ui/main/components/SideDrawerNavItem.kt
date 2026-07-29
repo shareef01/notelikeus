@@ -1,5 +1,6 @@
 package com.aus.notelikeus.ui.main.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 
 @Composable
@@ -40,16 +43,22 @@ fun SideDrawerNavItem(
     count: Int? = null,
 ) {
     val shape = RoundedCornerShape(12.dp)
+    val wash by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SoftWash)
+        } else {
+            Color.Transparent
+        },
+        label = "drawer_nav_wash"
+    )
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp)
             .height(44.dp)
             .clip(shape)
-            .background(
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                else Color.Transparent
-            )
+            .background(wash)
             .clickable(onClick = onClick)
             .padding(start = 12.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -97,7 +106,7 @@ fun SideDrawerNavItem(
                     .clip(RoundedCornerShape(6.dp))
                     .background(
                         if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = Chrome.SoftWash)
                     )
                     .padding(horizontal = 7.dp),
                 contentAlignment = Alignment.Center
@@ -148,7 +157,7 @@ fun SideDrawerAccountRow(
             modifier = Modifier
                 .size(32.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SelectedWash)),
             contentAlignment = Alignment.Center
         ) {
             Text(

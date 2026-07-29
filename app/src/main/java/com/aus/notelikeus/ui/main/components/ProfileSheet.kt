@@ -1,11 +1,11 @@
 package com.aus.notelikeus.ui.main.components
 
 import androidx.compose.foundation.clickable
-import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
@@ -38,8 +37,6 @@ import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
@@ -51,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -59,7 +57,6 @@ import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.BuildConfig
 import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.AppTheme
@@ -68,10 +65,12 @@ import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.ui.main.CloudAccount
 import com.aus.notelikeus.ui.main.CloudSyncStatus
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
+import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 
 private val SettingsIconSize = 24.dp
-private val SettingsSectionTopPadding = 24.dp
+private val SettingsRowHorizontal = 16.dp
+private val SettingsRowVertical = 12.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,9 +100,6 @@ fun ProfileSheet(
     val haptic = LocalHapticFeedback.current
     var showPrivacyPolicy by remember { mutableStateOf(false) }
     val canSync = cloudAccount.isGoogleAccount && cloudSyncStatus != CloudSyncStatus.Syncing
-    val listItemColors = ListItemDefaults.colors(
-        containerColor = MaterialTheme.colorScheme.surface
-    )
 
     if (showPrivacyPolicy) {
         PrivacyPolicyDialog(onDismiss = { showPrivacyPolicy = false })
@@ -146,7 +142,7 @@ fun ProfileSheet(
             }
 
             HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
             )
 
             SettingsSectionHeader(
@@ -194,82 +190,45 @@ fun ProfileSheet(
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(R.string.section_insights))
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.total_notes)) },
-                supportingContent = {
-                    Text(
-                        text = noteCount.toString(),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                },
-                leadingContent = {
-                    SettingsLeadingIcon(
-                        icon = Icons.Default.Description,
-                        contentDescription = stringResource(R.string.total_notes)
-                    )
-                },
-                colors = listItemColors
+            SettingsRow(
+                icon = Icons.Default.Description,
+                title = stringResource(R.string.total_notes),
+                subtitle = noteCount.toString()
             )
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.cloud_sync)) },
-                supportingContent = {
-                    Text(cloudStatusLabel(cloudSyncStatus, cloudSyncedNoteCount, cloudAccount))
+            SettingsRow(
+                icon = when (cloudSyncStatus) {
+                    CloudSyncStatus.Connected, CloudSyncStatus.Synced -> Icons.Default.CloudDone
+                    CloudSyncStatus.Syncing -> Icons.Default.CloudSync
+                    CloudSyncStatus.Error, CloudSyncStatus.Offline -> Icons.Default.CloudOff
+                    CloudSyncStatus.Unknown -> Icons.Default.CloudQueue
                 },
-                leadingContent = {
-                    SettingsLeadingIcon(
-                        icon = when (cloudSyncStatus) {
-                            CloudSyncStatus.Connected, CloudSyncStatus.Synced -> Icons.Default.CloudDone
-                            CloudSyncStatus.Syncing -> Icons.Default.CloudSync
-                            CloudSyncStatus.Error, CloudSyncStatus.Offline -> Icons.Default.CloudOff
-                            CloudSyncStatus.Unknown -> Icons.Default.CloudQueue
-                        },
-                        contentDescription = stringResource(R.string.cloud_sync)
-                    )
-                },
-                colors = listItemColors
+                title = stringResource(R.string.cloud_sync),
+                subtitle = cloudStatusLabel(cloudSyncStatus, cloudSyncedNoteCount, cloudAccount)
             )
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(R.string.section_account))
             if (cloudAccount.isGoogleAccount && !cloudAccount.email.isNullOrBlank()) {
-                ListItem(
-                    headlineContent = { Text(cloudAccount.email) },
-                    supportingContent = { Text(stringResource(R.string.cloud_signed_in_as)) },
-                    leadingContent = {
-                        SettingsLeadingIcon(
-                            icon = Icons.Default.AccountCircle,
-                            contentDescription = stringResource(R.string.cloud_signed_in_as)
-                        )
-                    },
-                    colors = listItemColors
+                SettingsRow(
+                    icon = Icons.Default.AccountCircle,
+                    title = cloudAccount.email,
+                    subtitle = stringResource(R.string.cloud_signed_in_as)
                 )
-                ListItem(
-                    headlineContent = { Text(stringResource(R.string.cloud_sign_out)) },
-                    supportingContent = { Text(stringResource(R.string.cloud_sign_out_subtitle)) },
-                    leadingContent = {
-                        SettingsLeadingIcon(
-                            icon = Icons.Default.Logout,
-                            contentDescription = stringResource(R.string.cloud_sign_out)
-                        )
-                    },
-                    colors = listItemColors,
-                    modifier = Modifier.clickable {
+                SettingsRow(
+                    icon = Icons.Default.Logout,
+                    title = stringResource(R.string.cloud_sign_out),
+                    subtitle = stringResource(R.string.cloud_sign_out_subtitle),
+                    onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         onGoogleSignOutClick()
                     }
                 )
             } else {
-                ListItem(
-                    headlineContent = { Text(stringResource(R.string.cloud_sign_in_google)) },
-                    supportingContent = { Text(stringResource(R.string.cloud_sign_in_subtitle)) },
-                    leadingContent = {
-                        SettingsLeadingIcon(
-                            icon = Icons.Default.Login,
-                            contentDescription = stringResource(R.string.cloud_sign_in_google)
-                        )
-                    },
-                    colors = listItemColors,
-                    modifier = Modifier.clickable {
+                SettingsRow(
+                    icon = Icons.Default.Login,
+                    title = stringResource(R.string.cloud_sign_in_google),
+                    subtitle = stringResource(R.string.cloud_sign_in_subtitle),
+                    onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         onGoogleSignInClick()
                     }
@@ -286,85 +245,49 @@ fun ProfileSheet(
                     onCloudAutoSyncChange(it)
                 }
             )
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.cloud_sync_now)) },
-                supportingContent = {
-                    Text(
-                        when (cloudSyncStatus) {
-                            CloudSyncStatus.Syncing -> stringResource(R.string.cloud_sync_in_progress)
-                            CloudSyncStatus.Synced -> stringResource(
-                                R.string.cloud_sync_last,
-                                cloudSyncedNoteCount
-                            )
-                            CloudSyncStatus.Offline, CloudSyncStatus.Error ->
-                                stringResource(R.string.cloud_sync_offline)
-                            else -> stringResource(R.string.cloud_sync_subtitle)
-                        }
+            SettingsRow(
+                icon = Icons.Default.CloudUpload,
+                title = stringResource(R.string.cloud_sync_now),
+                subtitle = when (cloudSyncStatus) {
+                    CloudSyncStatus.Syncing -> stringResource(R.string.cloud_sync_in_progress)
+                    CloudSyncStatus.Synced -> stringResource(
+                        R.string.cloud_sync_last,
+                        cloudSyncedNoteCount
                     )
+                    CloudSyncStatus.Offline, CloudSyncStatus.Error ->
+                        stringResource(R.string.cloud_sync_offline)
+                    else -> stringResource(R.string.cloud_sync_subtitle)
                 },
-                leadingContent = {
-                    SettingsLeadingIcon(
-                        icon = Icons.Default.CloudUpload,
-                        contentDescription = stringResource(R.string.cloud_sync_now)
-                    )
-                },
-                colors = listItemColors,
-                modifier = Modifier
-                    .alpha(if (canSync) 1f else 0.38f)
-                    .clickable(
-                        enabled = canSync,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            onCloudSyncClick()
-                        }
-                    )
+                enabled = canSync,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onCloudSyncClick()
+                }
             )
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.cloud_restore)) },
-                supportingContent = { Text(stringResource(R.string.cloud_restore_subtitle)) },
-                leadingContent = {
-                    SettingsLeadingIcon(
-                        icon = Icons.Default.CloudDownload,
-                        contentDescription = stringResource(R.string.cloud_restore)
-                    )
-                },
-                colors = listItemColors,
-                modifier = Modifier
-                    .alpha(if (canSync) 1f else 0.38f)
-                    .clickable(
-                        enabled = canSync,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            onCloudRestoreClick()
-                        }
-                    )
+            SettingsRow(
+                icon = Icons.Default.CloudDownload,
+                title = stringResource(R.string.cloud_restore),
+                subtitle = stringResource(R.string.cloud_restore_subtitle),
+                enabled = canSync,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onCloudRestoreClick()
+                }
             )
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.backup_export)) },
-                supportingContent = { Text(stringResource(R.string.export_backup_subtitle)) },
-                leadingContent = {
-                    SettingsLeadingIcon(
-                        icon = Icons.Default.Backup,
-                        contentDescription = stringResource(R.string.backup_export)
-                    )
-                },
-                colors = listItemColors,
-                modifier = Modifier.clickable {
+            SettingsRow(
+                icon = Icons.Default.Backup,
+                title = stringResource(R.string.backup_export),
+                subtitle = stringResource(R.string.export_backup_subtitle),
+                onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     onExportClick()
                 }
             )
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.backup_import)) },
-                supportingContent = { Text(stringResource(R.string.import_backup_subtitle)) },
-                leadingContent = {
-                    SettingsLeadingIcon(
-                        icon = Icons.Default.Upload,
-                        contentDescription = stringResource(R.string.backup_import)
-                    )
-                },
-                colors = listItemColors,
-                modifier = Modifier.clickable {
+            SettingsRow(
+                icon = Icons.Default.Upload,
+                title = stringResource(R.string.backup_import),
+                subtitle = stringResource(R.string.import_backup_subtitle),
+                onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     onImportClick()
                 }
@@ -372,40 +295,22 @@ fun ProfileSheet(
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(R.string.section_about))
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.premium_subscription)) },
-                supportingContent = { Text(stringResource(R.string.coming_soon_detail)) },
-                leadingContent = {
-                    SettingsLeadingIcon(
-                        icon = Icons.Default.Stars,
-                        contentDescription = stringResource(R.string.premium_subscription)
-                    )
-                },
-                colors = listItemColors
+            SettingsRow(
+                icon = Icons.Default.Stars,
+                title = stringResource(R.string.premium_subscription),
+                subtitle = stringResource(R.string.coming_soon_detail)
             )
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.privacy_policy)) },
-                leadingContent = {
-                    SettingsLeadingIcon(
-                        icon = Icons.Default.PrivacyTip,
-                        contentDescription = stringResource(R.string.privacy_policy)
-                    )
-                },
-                colors = listItemColors,
-                modifier = Modifier.clickable {
+            SettingsRow(
+                icon = Icons.Default.PrivacyTip,
+                title = stringResource(R.string.privacy_policy),
+                onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     showPrivacyPolicy = true
                 }
             )
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.app_version, BuildConfig.VERSION_NAME)) },
-                leadingContent = {
-                    SettingsLeadingIcon(
-                        icon = Icons.Default.Info,
-                        contentDescription = stringResource(R.string.section_about)
-                    )
-                },
-                colors = listItemColors
+            SettingsRow(
+                icon = Icons.Default.Info,
+                title = stringResource(R.string.app_version, BuildConfig.VERSION_NAME)
             )
         }
     }
@@ -415,7 +320,7 @@ fun ProfileSheet(
 private fun SettingsSectionDivider() {
     HorizontalDivider(
         modifier = Modifier.padding(top = 8.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
     )
 }
 
@@ -430,10 +335,10 @@ fun SettingsSectionHeader(
         style = ChromeLabelStyle,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier.padding(
-            start = 16.dp,
-            end = 16.dp,
+            start = SettingsRowHorizontal,
+            end = SettingsRowHorizontal,
             top = if (isFirst) 16.dp else 20.dp,
-            bottom = 8.dp
+            bottom = 4.dp
         )
     )
 }
@@ -452,6 +357,55 @@ fun SettingsLeadingIcon(
 }
 
 @Composable
+fun SettingsRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String? = null,
+    onClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
+    trailing: @Composable (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val contentAlpha = if (enabled) 1f else 0.38f
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(enabled = enabled, onClick = onClick)
+                } else {
+                    Modifier
+                }
+            )
+            .padding(horizontal = SettingsRowHorizontal, vertical = SettingsRowVertical)
+            .alpha(contentAlpha),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SettingsLeadingIcon(icon = icon, contentDescription = title)
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (trailing != null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            trailing()
+        }
+    }
+}
+
+@Composable
 fun SettingsCycleListItem(
     icon: ImageVector,
     title: String,
@@ -459,27 +413,20 @@ fun SettingsCycleListItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    ListItem(
-        headlineContent = { Text(title) },
-        supportingContent = {
-            Text(
-                text = subtitle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        },
-        leadingContent = {
-            SettingsLeadingIcon(icon = icon, contentDescription = title)
-        },
-        trailingContent = {
+    SettingsRow(
+        icon = icon,
+        title = title,
+        subtitle = subtitle,
+        onClick = onClick,
+        modifier = modifier,
+        trailing = {
             Icon(
                 Icons.Default.ChevronRight,
                 contentDescription = null,
                 modifier = Modifier.semantics { invisibleToUser() },
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = Chrome.SelectedBorder)
             )
-        },
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = modifier.clickable(onClick = onClick)
+        }
     )
 }
 
@@ -493,38 +440,19 @@ fun SettingsToggleListItem(
     enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    ListItem(
-        headlineContent = {
-            Text(
-                text = title,
-                color = if (enabled) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                }
-            )
-        },
-        supportingContent = {
-            Text(
-                text = subtitle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                    alpha = if (enabled) 1f else 0.38f
-                )
-            )
-        },
-        leadingContent = {
-            SettingsLeadingIcon(icon = icon, contentDescription = title)
-        },
-        trailingContent = {
+    SettingsRow(
+        icon = icon,
+        title = title,
+        subtitle = subtitle,
+        enabled = enabled,
+        onClick = { onCheckedChange(!checked) },
+        modifier = modifier,
+        trailing = {
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
                 enabled = enabled
             )
-        },
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = modifier.clickable(enabled = enabled) {
-            onCheckedChange(!checked)
         }
     )
 }

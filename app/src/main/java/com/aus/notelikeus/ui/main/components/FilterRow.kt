@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -35,6 +36,7 @@ import com.aus.notelikeus.R
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.ui.components.NoteColorSwatch
+import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
@@ -91,7 +93,7 @@ fun FilterRow(
                         .clip(railShape)
                         .border(
                             width = 1.dp,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = Chrome.ChipBorder),
                             shape = railShape
                         )
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
@@ -108,22 +110,24 @@ fun FilterRow(
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
                         modifier = Modifier
+                            .height(32.dp)
                             .clip(RoundedCornerShape(999.dp))
                             .background(
                                 if (allSelected) {
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SelectedWash)
                                 } else {
                                     Color.Transparent
                                 }
                             )
                             .clickable { onColorSelect(null) }
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                            .padding(horizontal = 10.dp)
+                            .wrapContentHeight(Alignment.CenterVertically)
                     )
                     Box(
                         modifier = Modifier
                             .width(1.dp)
                             .height(16.dp)
-                            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
+                            .background(MaterialTheme.colorScheme.outline.copy(alpha = Chrome.SelectedBorder))
                     )
                     NoteColorSwatch(
                         color = Color.Transparent,
@@ -151,7 +155,7 @@ fun FilterRow(
 
         if (allLabels.isNotEmpty()) {
             LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -186,11 +190,11 @@ internal fun PrecisionFilterChip(
     modifier: Modifier = Modifier
 ) {
     val borderColor = if (selected) {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+        MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SelectedBorder)
     } else {
-        MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+        MaterialTheme.colorScheme.outline.copy(alpha = Chrome.ChipBorder)
     }
-    val selectedContainer = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+    val selectedContainer = MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SelectedWash)
     val inactiveContainer = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
 
     FilterChip(
