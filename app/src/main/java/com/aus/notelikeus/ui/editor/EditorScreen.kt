@@ -3,6 +3,7 @@ package com.aus.notelikeus.ui.editor
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -165,6 +166,10 @@ fun EditorScreen(
     }
 
     val imeVisible = WindowInsets.isImeVisible
+    val snackbarBottomPad by animateDpAsState(
+        targetValue = if (imeVisible) 8.dp else 56.dp,
+        label = "snackbar_bottom"
+    )
     LaunchedEffect(state.noteNotFound) {
         if (state.noteNotFound) {
             snackbarHostState.showSnackbar(context.getString(R.string.note_not_found))
@@ -179,7 +184,7 @@ fun EditorScreen(
                 hostState = snackbarHostState,
                 modifier = Modifier
                     .navigationBarsPadding()
-                    .padding(bottom = 56.dp)
+                    .padding(bottom = snackbarBottomPad)
             )
         },
         topBar = {
@@ -259,7 +264,11 @@ fun EditorScreen(
             )
         },
         bottomBar = {
-            AnimatedVisibility(visible = !imeVisible) {
+            AnimatedVisibility(
+                visible = !imeVisible,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
                 EditorBottomBar(
                     timestamp = state.timestamp,
                     reminderTimestamp = state.reminderTimestamp,

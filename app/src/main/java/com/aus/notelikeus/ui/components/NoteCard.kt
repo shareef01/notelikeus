@@ -375,24 +375,39 @@ fun NoteCard(
                     }
                 }
 
-                // Bottom meta row: divider + relative timestamp, mirroring the web card anatomy
-                // (border-t border-current/10, then a compact time label).
-                Spacer(modifier = Modifier.height(10.dp))
-                HorizontalDivider(
-                    thickness = 1.dp,
-                    color = contentColor.copy(alpha = 0.1f)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = noteTimestampLabel(note.timestamp),
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Medium,
-                        fontFeatureSettings = "tnum",
-                        letterSpacing = 0.2.sp,
-                        fontSize = if (compact) 11.sp else 12.sp
-                    ),
-                    color = contentColor.copy(alpha = 0.6f)
-                )
+                // Meta footer: full cards keep a divider; compact stays a quiet timestamp only.
+                if (compact) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = noteTimestampLabel(note.timestamp),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontFeatureSettings = "tnum",
+                            letterSpacing = 0.2.sp,
+                            fontSize = 11.sp
+                        ),
+                        color = contentColor.copy(alpha = 0.5f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(
+                        thickness = 1.dp,
+                        color = contentColor.copy(alpha = 0.1f)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = noteTimestampLabel(note.timestamp),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontFeatureSettings = "tnum",
+                            letterSpacing = 0.2.sp,
+                            fontSize = 12.sp
+                        ),
+                        color = contentColor.copy(alpha = 0.6f)
+                    )
+                }
             }
 
             if (isSelected) {

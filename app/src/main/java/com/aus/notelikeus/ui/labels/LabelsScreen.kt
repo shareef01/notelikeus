@@ -61,7 +61,10 @@ fun LabelsScreen(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     shape = MaterialTheme.shapes.large,
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
+                    elevation = FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 2.dp,
+                        pressedElevation = 4.dp
+                    )
                 ) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.create_new_label))
                 }
