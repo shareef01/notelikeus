@@ -3,6 +3,12 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
+  /** Soft recovery for overlays (editor/auth) — dismiss without wiping storage. */
+  onDismiss?: () => void;
+  /** When false, hide the destructive clear-data action (nested route boundaries). */
+  allowClearData?: boolean;
+  /** Compact overlay style instead of full-viewport takeover. */
+  variant?: 'page' | 'overlay';
 }
 
 interface State {
@@ -20,19 +26,30 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('[Notelikeus] Render error:', error, info);
   }
 
+  private clearError = () => {
+    this.setState({ error: null });
+  };
+
   render() {
     if (this.state.error) {
+      const allowClear = this.props.allowClearData !== false;
+      const isOverlay = this.props.variant === 'overlay';
+
       return (
         <div
           style={{
-            minHeight: '100vh',
+            minHeight: isOverlay ? undefined : '100vh',
+            height: isOverlay ? '100%' : undefined,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             padding: 24,
-            background: '#000',
+            background: isOverlay ? 'rgba(0,0,0,0.92)' : '#000',
             color: '#f2f2f2',
             fontFamily: 'system-ui, sans-serif',
+            position: isOverlay ? 'fixed' : undefined,
+            inset: isOverlay ? 0 : undefined,
+            zIndex: isOverlay ? 80 : undefined,
           }}
         >
           <div style={{ maxWidth: 420, textAlign: 'center' }}>
@@ -48,46 +65,69 @@ export class ErrorBoundary extends Component<Props, State> {
                 flexWrap: 'wrap',
               }}
             >
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.reload();
-                }}
-                style={{
-                  background: '#f2f2f2',
-                  color: '#000',
-                  border: 'none',
-                  borderRadius: 12,
-                  padding: '10px 16px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Reload
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  try {
-                    clearPersistedAppData();
-                    sessionStorage.clear();
-                  } catch {
-                    // ignore
-                  }
-                  window.location.reload();
-                }}
-                style={{
-                  background: 'transparent',
-                  color: '#f2f2f2',
-                  border: '1px solid #555',
-                  borderRadius: 12,
-                  padding: '10px 16px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Clear data & reload
-              </button>
+              {this.props.onDismiss ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    this.clearError();
+                    this.props.onDismiss?.();
+                  }}
+                  style={{
+                    background: '#f2f2f2',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: 12,
+                    padding: '10px 16px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Close
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.reload();
+                  }}
+                  style={{
+                    background: '#f2f2f2',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: 12,
+                    padding: '10px 16px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Reload
+                </button>
+              )}
+              {allowClear ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      clearPersistedAppData();
+                      sessionStorage.clear();
+                    } catch {
+                      // ignore
+                    }
+                    window.location.reload();
+                  }}
+                  style={{
+                    background: 'transparent',
+                    color: '#f2f2f2',
+                    border: '1px solid #555',
+                    borderRadius: 12,
+                    padding: '10px 16px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Clear data & reload
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
