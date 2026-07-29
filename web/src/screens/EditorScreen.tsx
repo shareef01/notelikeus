@@ -24,7 +24,8 @@ import {
   wrapSelection,
   wrapSelectionAsLink,
 } from '@/lib/text/markdown';
-import { contentColorForBackground, noteSurfaceStyle } from '@/theme/contrast';
+import { noteSurfaceStyle } from '@/theme/contrast';
+import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { useUiStore, type EditorLayout, type EditorRoute } from '@/store/uiStore';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
@@ -47,8 +48,10 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const [contentFocused, setContentFocused] = useState(true);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const selectionRef = useRef({ start: 0, end: 0 });
-  const surface = noteSurfaceStyle(state.color, { solid: true });
-  const contentColor = contentColorForBackground(state.color);
+  const isDarkPalette = useNotePaletteDark();
+  const surface = noteSurfaceStyle(state.color, { solid: true, isDarkPalette });
+  const contentColor =
+    state.color === 0 ? 'rgb(var(--primary-rgb))' : surface.color;
   const hasChecklist = state.checklist.length > 0;
   const isFloatLayout = isTabletUp && editorLayout === 'float';
   const isOverlayShell = !isTabletUp || editorLayout === 'fullscreen' || isFloatLayout;

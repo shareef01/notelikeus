@@ -45,6 +45,20 @@ export function noteColorsForTheme(isDark: boolean): number[] {
   return NOTE_COLOR_OPTIONS.map((option) => (isDark ? option.dark : option.light));
 }
 
+/**
+ * Map a stored note color to the light/dark pair for the active palette.
+ * Notes keep one ARGB in storage; display swaps so light themes never show dark swatches.
+ */
+export function noteColorForTheme(argb: number, isDark: boolean): number {
+  if (argb === 0) return 0;
+  for (const option of NOTE_COLOR_OPTIONS) {
+    if (argb === option.light || argb === option.dark) {
+      return isDark ? option.dark : option.light;
+    }
+  }
+  return argb;
+}
+
 export function noteColorCounterpart(argb: number): number | null {
   for (const option of NOTE_COLOR_OPTIONS) {
     if (argb === option.light) return option.dark;
