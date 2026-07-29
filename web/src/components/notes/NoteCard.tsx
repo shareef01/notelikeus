@@ -11,6 +11,7 @@ import { highlightSearchText } from '@/lib/text/highlightSearch';
 import { stripMarkdownForPreview } from '@/lib/text/markdown';
 import type { Note } from '@/types/note';
 import { noteSurfaceStyle } from '@/theme/contrast';
+import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { argbToCssAlpha } from '@/theme/colors';
 import { memo, type PointerEventHandler, type ReactNode } from 'react';
 
@@ -52,8 +53,9 @@ function NoteCardImpl({
   const density: NoteCardDensity = densityProp ?? (compact ? 'grid' : 'list');
   const isList = density === 'list';
   const isDense = density === 'dense';
+  const isDarkPalette = useNotePaletteDark();
 
-  const surface = noteSurfaceStyle(note.color);
+  const surface = noteSurfaceStyle(note.color, { isDarkPalette });
   const contentColor = note.color === 0 ? 'rgb(var(--primary-rgb))' : surface.color;
   const labelChipStyle =
     note.color === 0

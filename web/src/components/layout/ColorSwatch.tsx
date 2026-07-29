@@ -1,32 +1,7 @@
 import { BlockIcon, CheckIcon } from '@/components/icons/Icons';
-import { argbToCss, noteColorsForTheme } from '@/theme/colors';
+import { argbToCss, noteColorsForTheme, noteColorsMatch } from '@/theme/colors';
 import { contentColorForBackground } from '@/theme/contrast';
-import { useSettingsStore, type AppTheme } from '@/store/settingsStore';
-import { useEffect, useState } from 'react';
-
-function isDarkForTheme(appTheme: AppTheme): boolean {
-  if (appTheme === 'light') return false;
-  if (appTheme === 'auto') {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  }
-  return true;
-}
-
-function useNotePaletteDark(): boolean {
-  const appTheme = useSettingsStore((s) => s.appTheme);
-  const [isDark, setIsDark] = useState(() => isDarkForTheme(appTheme));
-
-  useEffect(() => {
-    const sync = () => setIsDark(isDarkForTheme(appTheme));
-    sync();
-    if (appTheme !== 'auto') return;
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    media.addEventListener('change', sync);
-    return () => media.removeEventListener('change', sync);
-  }, [appTheme]);
-
-  return isDark;
-}
+import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 
 interface ColorSwatchProps {
   argb: number;
@@ -107,8 +82,18 @@ export function ColorSwatchRow({
           <ColorSwatch
             key={argb}
             argb={argb}
-            selected={!allSelected && selectedColor === argb}
-            onClick={() => onSelect(selectedColor === argb ? null : argb)}
+            selected={
+              !allSelected &&
+              selectedColor != null &&
+              noteColorsMatch(selectedColor, argb)
+            }
+            onClick={() =>
+              onSelect(
+                selectedColor != null && noteColorsMatch(selectedColor, argb)
+                  ? null
+                  : argb,
+              )
+            }
           />
         ))}
       </div>

@@ -56,6 +56,7 @@ import com.aus.notelikeus.ui.theme.EditorBodyStyle
 import com.aus.notelikeus.ui.theme.EditorTitleStyle
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
+import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import android.text.format.DateFormat
 import java.util.Calendar
@@ -81,12 +82,14 @@ fun EditorScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val undoLabel = stringResource(R.string.action_undo)
-    val noteColor = if (state.color == 0) {
+    val isDarkPalette = isNoteColorDarkTheme()
+    val displayColorArgb = noteColorForTheme(state.color, isDarkPalette)
+    val noteColor = if (displayColorArgb == 0) {
         MaterialTheme.colorScheme.background
     } else {
-        Color(state.color)
+        Color(displayColorArgb)
     }
-    val contentColor = if (state.color == 0) {
+    val contentColor = if (displayColorArgb == 0) {
         MaterialTheme.colorScheme.onBackground
     } else {
         noteColor.getContentColor(fallback = MaterialTheme.colorScheme.onBackground)

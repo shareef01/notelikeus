@@ -108,6 +108,19 @@ val NOTE_COLOR_OPTIONS: List<NoteColorOption> = listOf(
 fun noteColorsForTheme(isDarkTheme: Boolean): List<Color> =
     NOTE_COLOR_OPTIONS.map { if (isDarkTheme) it.dark else it.light }
 
+/** Display palette: map stored ARGB to the light/dark pair for the active theme. */
+fun noteColorForTheme(argb: Int, isDarkTheme: Boolean): Int {
+    if (argb == 0) return 0
+    NOTE_COLOR_OPTIONS.forEach { option ->
+        val lightArgb = option.light.toArgb()
+        val darkArgb = option.dark.toArgb()
+        if (argb == lightArgb || argb == darkArgb) {
+            return if (isDarkTheme) darkArgb else lightArgb
+        }
+    }
+    return argb
+}
+
 fun noteColorCounterpart(argb: Int): Int? {
     if (argb == 0) return 0
     NOTE_COLOR_OPTIONS.forEach { option ->
