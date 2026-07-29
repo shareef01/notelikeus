@@ -4,6 +4,7 @@ import { isFirebaseConfigured } from '@/lib/config';
 import { MainScreen } from '@/screens/MainScreen';
 import { ThemeApplier } from '@/components/theme/ThemeApplier';
 import { AppSplash } from '@/components/boot/AppSplash';
+import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
 import { useUiStore } from '@/store/uiStore';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { hadSessionLastLoad } from '@/lib/auth/sessionHint';
@@ -33,6 +34,8 @@ export default function App() {
   const setLabelsOpen = useUiStore((s) => s.setLabelsOpen);
   const openNewNote = useUiStore((s) => s.openNewNote);
   const openNote = useUiStore((s) => s.openNote);
+  const closeEditor = useUiStore((s) => s.closeEditor);
+  const closeAuthScreen = useUiStore((s) => s.closeAuthScreen);
   const { user, isReady: authReady } = useAuthListener();
   const isTabletUp = useIsTabletUp();
   const [authTimedOut, setAuthTimedOut] = useState(false);
@@ -136,9 +139,11 @@ export default function App() {
         {/* Splash, not null, while the AuthScreen chunk loads — otherwise the shell flashes
             blank on a first visit, and on an expired session flashes blank between the notes
             we optimistically showed and this gate. */}
-        <Suspense fallback={<AppSplash />}>
-          <AuthScreen mode="signin" mandatory />
-        </Suspense>
+        <ErrorBoundary allowClearData={false}>
+          <Suspense fallback={<AppSplash />}>
+            <AuthScreen mode="signin" mandatory />
+          </Suspense>
+        </ErrorBoundary>
       </>
     );
   }
@@ -150,23 +155,41 @@ export default function App() {
       {themeApplier}
       <MainScreen />
       {showMobileEditor ? (
-        <Suspense fallback={null}>
-          {editorMode === 'new' ? (
-            <EditorScreen route={{ mode: 'new' }} />
-          ) : editorNoteId ? (
-            <EditorScreen route={{ mode: 'edit', noteId: editorNoteId }} />
-          ) : null}
-        </Suspense>
+        <ErrorBoundary
+          variant="overlay"
+          allowClearData={false}
+          onDismiss={closeEditor}
+        >
+          <Suspense fallback={null}>
+            {editorMode === 'new' ? (
+              <EditorScreen route={{ mode: 'new' }} />
+            ) : editorNoteId ? (
+              <EditorScreen route={{ mode: 'edit', noteId: editorNoteId }} />
+            ) : null}
+          </Suspense>
+        </ErrorBoundary>
       ) : null}
       {authScreen ? (
-        <Suspense fallback={null}>
-          <AuthScreen mode={authScreen} />
-        </Suspense>
+        <ErrorBoundary
+          variant="overlay"
+          allowClearData={false}
+          onDismiss={closeAuthScreen}
+        >
+          <Suspense fallback={null}>
+            <AuthScreen mode={authScreen} />
+          </Suspense>
+        </ErrorBoundary>
       ) : null}
       {labelsOpen ? (
-        <Suspense fallback={null}>
-          <LabelsScreen onClose={() => setLabelsOpen(false)} />
-        </Suspense>
+        <ErrorBoundary
+          variant="overlay"
+          allowClearData={false}
+          onDismiss={() => setLabelsOpen(false)}
+        >
+          <Suspense fallback={null}>
+            <LabelsScreen onClose={() => setLabelsOpen(false)} />
+          </Suspense>
+        </ErrorBoundary>
       ) : null}
     </>
   );

@@ -1,6 +1,7 @@
 import { AddIcon } from '@/components/icons/Icons';
 
 import { ToastHost } from '@/components/feedback/ToastHost';
+import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
 import { InstallPrompt } from '@/components/layout/InstallPrompt';
 import { OfflineBanner } from '@/components/layout/OfflineBanner';
 import { SideDrawer } from '@/components/layout/SideDrawer';
@@ -660,11 +661,25 @@ export function MainScreen() {
           // which would make this non-fixed wrapper a containing block for those fixed
           // descendants for the animation's duration, mispositioning them if opened mid-animation.
           <div className="relative flex-1 bg-true-surface">
-            <EditorScreen route={dockedEditor} />
+            <ErrorBoundary
+              variant="overlay"
+              allowClearData={false}
+              onDismiss={() => useUiStore.getState().closeEditor()}
+            >
+              <EditorScreen route={dockedEditor} />
+            </ErrorBoundary>
           </div>
         ) : null}
 
-        {overlayEditor ? <EditorScreen route={overlayEditor} /> : null}
+        {overlayEditor ? (
+          <ErrorBoundary
+            variant="overlay"
+            allowClearData={false}
+            onDismiss={() => useUiStore.getState().closeEditor()}
+          >
+            <EditorScreen route={overlayEditor} />
+          </ErrorBoundary>
+        ) : null}
       </div>
 
 
