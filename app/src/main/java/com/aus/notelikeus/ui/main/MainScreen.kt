@@ -903,7 +903,8 @@ private fun MainScaffold(
                 else -> {
                     message = stringResource(R.string.empty_notes_hint)
                     subtitle = stringResource(R.string.empty_notes_subtitle)
-                    showCreate = state.currentFilter == NoteFilter.ACTIVE
+                    // FAB already provides create — avoid a second CTA on empty.
+                    showCreate = false
                     showClear = false
                     emptyIcon = null
                 }
