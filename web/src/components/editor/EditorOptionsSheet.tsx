@@ -125,6 +125,10 @@ export function EditorOptionsSheet({
         <section className="mt-4 border-t border-brand-outline/60 px-4 py-4">
           <h3 className="mt-2 text-chrome-label">Reminder</h3>
           <p className="mt-2 text-sm text-brand-muted">{formatReminderLabel(reminderTimestamp)}</p>
+          <p className="mt-2 text-xs leading-5 text-brand-muted/90">
+            Web reminders are best-effort. They can be delayed or missed if the browser is fully
+            closed or inactive.
+          </p>
 
           <div className="mt-4 flex flex-wrap gap-2">
             <button
