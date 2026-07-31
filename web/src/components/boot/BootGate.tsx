@@ -1,12 +1,51 @@
 import { useEffect, useState } from 'react';
 import App from '@/App';
-import { bootstrapApp, clearPersistedAppData } from '@/lib/bootstrap';
+import { BootFailure, bootstrapApp, clearPersistedAppData } from '@/lib/bootstrap';
 import { AppSplash } from '@/components/boot/AppSplash';
+
+type BootErrorDetails = {
+  message: string;
+  help: string;
+  canClearData: boolean;
+};
 
 type BootState =
   | { status: 'loading' }
   | { status: 'ready' }
-  | { status: 'error'; message: string };
+  | ({ status: 'error' } & BootErrorDetails);
+
+function describeBootError(error: unknown): BootErrorDetails {
+  if (error instanceof BootFailure) {
+    switch (error.code) {
+      case 'storage':
+        return {
+          message: error.message,
+          help: 'Your browser may have blocked or corrupted local app storage. Clearing local data is the best recovery step.',
+          canClearData: true,
+        };
+      case 'firebase-config':
+        return {
+          message: error.message,
+          help: 'Check your web Firebase environment values. This usually means web/.env is missing or incomplete for this build.',
+          canClearData: false,
+        };
+      case 'firebase-init':
+        return {
+          message: error.message,
+          help: 'Firebase failed to start. Retry first; if it keeps failing, verify the Firebase config and authorized domains for this app.',
+          canClearData: false,
+        };
+      default:
+        break;
+    }
+  }
+
+  return {
+    message: error instanceof Error ? error.message : 'Startup failed',
+    help: 'Retry first. If startup keeps failing, clear local data and try again.',
+    canClearData: true,
+  };
+}
 
 export function BootGate() {
   const [boot, setBoot] = useState<BootState>({ status: 'loading' });
@@ -22,7 +61,7 @@ export function BootGate() {
         if (!cancelled) {
           setBoot({
             status: 'error',
-            message: error instanceof Error ? error.message : 'Startup failed',
+            ...describeBootError(error),
           });
         }
       });
@@ -40,6 +79,8 @@ export function BootGate() {
     return (
       <BootError
         message={boot.message}
+        help={boot.help}
+        canClearData={boot.canClearData}
         onRetry={() => {
           setBoot({ status: 'loading' });
           void bootstrapApp()
@@ -47,7 +88,7 @@ export function BootGate() {
             .catch((error) =>
               setBoot({
                 status: 'error',
-                message: error instanceof Error ? error.message : 'Startup failed',
+                ...describeBootError(error),
               }),
             );
         }}
@@ -59,7 +100,7 @@ export function BootGate() {
             .catch((error) =>
               setBoot({
                 status: 'error',
-                message: error instanceof Error ? error.message : 'Startup failed',
+                ...describeBootError(error),
               }),
             );
         }}
@@ -72,10 +113,14 @@ export function BootGate() {
 
 function BootError({
   message,
+  help,
+  canClearData,
   onRetry,
   onReset,
 }: {
   message: string;
+  help: string;
+  canClearData: boolean;
   onRetry: () => void;
   onReset: () => void;
 }) {
@@ -83,6 +128,7 @@ function BootError({
     <div className="flex min-h-screen flex-col items-center justify-center bg-true-surface px-6 text-center">
       <h1 className="text-lg font-semibold text-brand-primary">Could not start Notelikeus</h1>
       <p className="mt-2 max-w-sm text-sm text-brand-muted">{message}</p>
+      <p className="mt-2 max-w-md text-xs leading-5 text-brand-muted/90">{help}</p>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <button
           type="button"
@@ -91,13 +137,15 @@ function BootError({
         >
           Retry
         </button>
-        <button
-          type="button"
-          onClick={onReset}
-          className="rounded-note border border-brand-outline px-5 py-2.5 text-sm font-semibold text-brand-primary"
-        >
-          Clear data &amp; retry
-        </button>
+        {canClearData ? (
+          <button
+            type="button"
+            onClick={onReset}
+            className="rounded-note border border-brand-outline px-5 py-2.5 text-sm font-semibold text-brand-primary"
+          >
+            Clear data &amp; retry
+          </button>
+        ) : null}
       </div>
     </div>
   );
