@@ -12,7 +12,7 @@ Use these answers when completing the **Data safety** form in Play Console for N
 
 ## Sign-in and sync
 
-Google sign-in is **required** to use the app. Note content stays on device in an encrypted database; when auto-sync is enabled, notes are uploaded to Firestore under that Google account.
+Google sign-in is **optional on Android**. Note content stays on device in an encrypted database by default; when the user signs in and enables sync, notes are uploaded to Firestore under that Google account.
 
 Signing out **clears local notes** on the device so the next account cannot inherit them. Cloud copies remain until the user deletes them in-app or via Firebase.
 
@@ -20,8 +20,8 @@ Signing out **clears local notes** on the device so the next account cannot inhe
 
 | Data type | Collected | Shared | Purpose | Optional |
 |-----------|-----------|--------|---------|----------|
-| Personal info (email / Google account id) | Yes | No (Firebase Auth) | Account authentication | No — required to use the app |
-| User-generated content (notes) | Yes | No (stored under the user’s Firebase account) | App functionality — sync across devices | Sync of note bodies can be disabled via auto-sync |
+| Personal info (email / Google account id) | Yes | No (Firebase Auth) | Account authentication | Yes — only when the user chooses Google sign-in |
+| User-generated content (notes) | Yes | No (stored under the user’s Firebase account) | App functionality — sync across devices | Yes — sync of note bodies can be disabled via auto-sync |
 
 **Not collected:** analytics events, advertising IDs, contacts, location, photos (attachment feature removed).
 
