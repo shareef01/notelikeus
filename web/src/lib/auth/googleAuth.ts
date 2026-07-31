@@ -42,10 +42,11 @@ export async function completeGoogleRedirectSignIn(): Promise<void> {
   await getRedirectResult(getFirebaseAuth());
 }
 
-export async function signOutGoogle(deleteCloudData = false): Promise<void> {
+export async function signOutGoogle(options: { deleteCloudData?: boolean } = {}): Promise<void> {
   initFirebase();
   const auth = getFirebaseAuth();
   const userId = auth.currentUser?.uid;
+  const { deleteCloudData = false } = options;
 
   if (deleteCloudData && userId) {
     await deleteAllCloudData(userId);

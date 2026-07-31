@@ -87,7 +87,7 @@ class NoteDaoTest {
     }
 
     @Test
-    fun `getWidgetNotes includes checklist items`() = runBlocking {
+    fun getWidgetNotes_includesChecklistItems() = runBlocking {
         val noteId = dao.insertNote(sampleNote(title = "Groceries"))
         dao.insertChecklistItem(
             com.aus.notelikeus.data.local.entity.ChecklistItemEntity(
