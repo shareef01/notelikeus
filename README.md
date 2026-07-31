@@ -4,6 +4,8 @@ A notes app for **Android** and the **web** (PWA), inspired by the speed and sim
 
 **Live web app:** [https://notelike.web.app](https://notelike.web.app)
 
+> Note: the web app requires Google Sign-In because notes are stored per-user in Firestore.
+
 - **Android** — offline-first: notes live in an SQLCipher-encrypted Room database. Google Sign-In is optional; when signed in, notes sync to Firestore (auto-sync can be toggled in Settings).
 - **Web** — Google Sign-In required. Notes live in Firestore with offline caching and installable PWA support.
 
@@ -42,7 +44,7 @@ Notelikeus is a dual-platform notes app built primarily for **personal use** and
 | JSON backup import / export | ✓ | ✓ |
 | Installable PWA | — | ✓ |
 
-## Tech stack
+## Architecture and stack
 
 | Layer | Android | Web |
 |-------|---------|-----|
@@ -120,6 +122,26 @@ cd web && npm test
 npm run test:rules
 ```
 
+## Validation
+
+Recent hardening and release-readiness work has been validated with:
+
+- Android unit tests
+- Android connected tests
+- Android lint
+- Android debug and release builds
+- Web unit tests
+- Firestore rules tests
+- Firebase Hosting deployment
+- Pixel device sideload and startup verification
+
+## Tradeoffs and constraints
+
+- Built to fit **Firebase Spark**, so sync uses Firestore only
+- Synced notes are **not end-to-end encrypted**
+- Web reminders are **best-effort**, limited by browser and service-worker behavior
+- The project is optimized for **personal use and portfolio demonstration**, not Play Store launch requirements
+
 ## Rich text
 
 Stored as lightweight markdown (WYSIWYG in the editor; cards render formatted previews):
@@ -160,7 +182,6 @@ The in-app **Settings → Privacy policy** matches [`PRIVACY_POLICY.md`](PRIVACY
 app/src/main/java/com/aus/notelikeus/   # Android
 web/src/                                # PWA (React + Vite + Firebase)
 store/                                  # Play Store listing drafts
-
 firebase.json                           # Hosting (web/dist) + Firestore rules
 ```
 
