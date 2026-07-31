@@ -1,11 +1,25 @@
 # Notelikeus
 
-A Keep-style notes app for **Android** and the **web** (PWA).
+A portfolio-ready notes app for **Android** and the **web** (PWA), inspired by the speed and simplicity of Google Keep.
+
+**Live web app:** [https://notelike.web.app](https://notelike.web.app)
 
 - **Android** — offline-first: notes live in an SQLCipher-encrypted Room database. Google Sign-In is optional; when signed in, notes sync to Firestore (auto-sync can be toggled in Settings).
-- **Web** — Google Sign-In required. Notes live in Firestore (with Firestore’s offline cache). Live at [https://notelike.web.app](https://notelike.web.app).
+- **Web** — Google Sign-In required. Notes live in Firestore with offline caching and installable PWA support.
+
+## Portfolio summary
+
+Notelikeus is a dual-platform notes product built to showcase:
+- thoughtful offline-first UX on Android
+- a matching React + Firebase web experience
+- practical Firebase Spark-plan constraints
+- sync, backup, reminders, theming, and privacy-focused UX decisions
+
+This project is maintained primarily for **personal use** and as a **portfolio piece**, rather than for Play Store launch readiness.
 
 ## Screenshots
+
+Current screenshots from the app are shown below.
 
 ### Android
 <p align="center">
@@ -18,6 +32,15 @@ A Keep-style notes app for **Android** and the **web** (PWA).
 <p align="center">
   <img src="screenshots/7.png" width="100%" alt="Web notes dashboard" />
 </p>
+
+## Why this project stands out
+
+- Shared product direction across **native Android** and **web/PWA**
+- Secure local-first Android storage with **Room + SQLCipher**
+- Optional Google sign-in on Android, required auth on web for clean sync boundaries
+- Firestore sync designed to stay within the **Firebase Spark** plan
+- Import/export support using an Android-compatible JSON backup format
+- UX hardening around sign-out, offline recovery, boot failures, and reminder expectations
 
 ## Features
 
@@ -151,7 +174,7 @@ Draft listing copy lives in [`store/listing/en-US/`](store/listing/en-US/). See 
 
 ## Privacy
 
-The in-app **Settings → Privacy policy** matches [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md). On Android, notes stay on-device by default. Cloud sync uploads note text to **your** Firebase project when you sign in with Google. No analytics or advertising SDKs.
+The in-app **Settings → Privacy policy** matches [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md). On Android, notes stay on-device by default in an encrypted local database. Cloud sync and the web app upload note text to **your** Firebase project when you sign in with Google. Synced notes are not end-to-end encrypted by the app. No analytics or advertising SDKs.
 
 ## Project structure
 
