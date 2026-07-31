@@ -38,6 +38,11 @@ function applyNotes(incoming: Note[]) {
 }
 
 let reconcileInFlight: Promise<void> | null = null;
+let lastReconcileStartedAt = 0;
+let lastSnapshotAppliedAt = 0;
+
+const RECONCILE_MIN_INTERVAL_MS = 30_000;
+const SNAPSHOT_FRESHNESS_WINDOW_MS = 15_000;
 
 /**
  * Safety net for the always-on write path in noteActions.ts. A save made while offline is
@@ -49,7 +54,16 @@ let reconcileInFlight: Promise<void> | null = null;
  * it wrong until the note happens to be edited again.
  */
 async function reconcileNow(userId: string): Promise<void> {
+  const now = Date.now();
   if (reconcileInFlight) return reconcileInFlight;
+  if (now - lastReconcileStartedAt < RECONCILE_MIN_INTERVAL_MS) {
+    return Promise.resolve();
+  }
+  if (now - lastSnapshotAppliedAt < SNAPSHOT_FRESHNESS_WINDOW_MS) {
+    return Promise.resolve();
+  }
+
+  lastReconcileStartedAt = now;
   reconcileInFlight = (async () => {
     try {
       const localNotes = useNotesStore.getState().notes;
@@ -121,6 +135,7 @@ export function startNotesRealtimeSync(userId: string): void {
     (remoteNotes) => {
       const { live, staleIds } = partitionTombstoned(remoteNotes);
       purgeStaleCloudDocs(userId, staleIds);
+      lastSnapshotAppliedAt = Date.now();
       applyNotes(live);
     },
     (error) => {
@@ -133,5 +148,7 @@ export function stopNotesRealtimeSync(): void {
   unsubscribeRealtime?.();
   unsubscribeRealtime = null;
   realtimeUserId = null;
+  lastReconcileStartedAt = 0;
+  lastSnapshotAppliedAt = 0;
   detachReconciliationTriggers();
 }

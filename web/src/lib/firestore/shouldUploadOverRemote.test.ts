@@ -43,4 +43,22 @@ describe('shouldUploadOverRemote', () => {
     const legacyRemote = note({ id: '1', localId: 1, timestamp: 999_999, serverUpdatedAt: null });
     expect(shouldUploadOverRemote(local, legacyRemote)).toBe(true);
   });
+
+  it('treats equal serverUpdatedAt values as already safe to upload/keep local', () => {
+    const local = note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500 });
+    const remote = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });
+    expect(shouldUploadOverRemote(local, remote)).toBe(true);
+  });
+
+  it('treats equal legacy timestamps as safe to upload/keep local', () => {
+    const local = note({ id: '1', localId: 1, timestamp: 500, serverUpdatedAt: null });
+    const remote = note({ id: '1', localId: 1, timestamp: 500, serverUpdatedAt: null });
+    expect(shouldUploadOverRemote(local, remote)).toBe(true);
+  });
+
+  it('refuses to let an unconfirmed local note beat a confirmed remote even when timestamps are equal', () => {
+    const local = note({ id: '1', localId: 1, timestamp: 500, serverUpdatedAt: null });
+    const remote = note({ id: '1', localId: 1, timestamp: 500, serverUpdatedAt: 500 });
+    expect(shouldUploadOverRemote(local, remote)).toBe(false);
+  });
 });

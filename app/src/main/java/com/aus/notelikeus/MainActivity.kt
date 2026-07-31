@@ -1,16 +1,11 @@
 package com.aus.notelikeus
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -25,6 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -48,15 +44,6 @@ class MainActivity : FragmentActivity() {
     private var pendingNoteId by mutableStateOf<Long?>(null)
     private var pendingCreateNote by mutableStateOf(false)
     private var navigationRequest by mutableStateOf(0L)
-    private var showNotificationRationale by mutableStateOf(false)
-
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (!granted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            showNotificationRationale = true
-        }
-    }
 
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,7 +51,6 @@ class MainActivity : FragmentActivity() {
         pendingNoteId = extractEditorNoteId(intent)
         pendingCreateNote = intentRequestsNewNote(intent)
         navigationRequest++
-        requestNotificationPermissionIfNeeded()
         enableEdgeToEdge()
         setContent {
             val windowSizeClass = calculateWindowSizeClass(this)
@@ -161,30 +147,6 @@ class MainActivity : FragmentActivity() {
                         externalError = gateError
                     )
                 } else {
-                if (showNotificationRationale) {
-                    AlertDialog(
-                        onDismissRequest = { showNotificationRationale = false },
-                        shape = MaterialTheme.shapes.large,
-                        title = { Text(stringResource(R.string.notification_permission_title)) },
-                        text = { Text(stringResource(R.string.reminder_permission_denied)) },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                showNotificationRationale = false
-                                startActivity(
-                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                        .setData(Uri.fromParts("package", packageName, null))
-                                )
-                            }) {
-                                Text(stringResource(R.string.cd_open_settings))
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showNotificationRationale = false }) {
-                                Text(stringResource(R.string.action_cancel))
-                            }
-                        }
-                    )
-                }
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         val navController = rememberNavController()
@@ -252,15 +214,6 @@ class MainActivity : FragmentActivity() {
         pendingNoteId = extractEditorNoteId(intent)
         pendingCreateNote = intentRequestsNewNote(intent)
         navigationRequest++
-    }
-
-    private fun requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
     }
 
     fun showBiometricPrompt(

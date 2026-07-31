@@ -54,8 +54,12 @@ export class ErrorBoundary extends Component<Props, State> {
         >
           <div style={{ maxWidth: 420, textAlign: 'center' }}>
             <h1 style={{ fontSize: 20, marginBottom: 12 }}>Something went wrong</h1>
-            <p style={{ color: '#b0b0b0', fontSize: 14, marginBottom: 16 }}>
+            <p style={{ color: '#b0b0b0', fontSize: 14, marginBottom: 10 }}>
               {this.state.error.message}
+            </p>
+            <p style={{ color: '#8a8a8a', fontSize: 12, lineHeight: 1.45, marginBottom: 16 }}>
+              Try reloading first. If this keeps happening, clearing local app data can recover
+              from corrupted browser storage, but it will remove unsynced local state.
             </p>
             <div
               style={{
