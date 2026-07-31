@@ -15,6 +15,8 @@ import {
 } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 
+const HOOK_TIMEOUT_MS = 30_000;
+
 const PROJECT_ID = 'notelikeus-rules-test';
 const RULES_PATH = resolve(process.cwd(), 'firestore.rules');
 
@@ -54,15 +56,15 @@ describe('firestore.rules', () => {
         rules: readFileSync(RULES_PATH, 'utf8'),
       },
     });
-  });
+  }, HOOK_TIMEOUT_MS);
 
   beforeEach(async () => {
     await testEnv.clearFirestore();
   });
 
   afterAll(async () => {
-    await testEnv.cleanup();
-  });
+    await testEnv?.cleanup();
+  }, HOOK_TIMEOUT_MS);
 
   it('denies unauthenticated reads', async () => {
     const db = testEnv.unauthenticatedContext().firestore();

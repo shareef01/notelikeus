@@ -213,14 +213,14 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `an unreadable app lock setting still reports loaded so the UI cannot hang locked`() = runTest {
+    fun `an unreadable app lock setting still reports loaded and fails closed`() = runTest {
         every { settingsRepository.isAppLockEnabled } returns
             flow { throw java.io.IOException("corrupt preferences") }
         viewModel = createViewModel()
         advanceUntilIdle()
 
         assertEquals(true, viewModel.state.value.areSettingsLoaded)
-        assertEquals(false, viewModel.state.value.isAppLockEnabled)
+        assertEquals(true, viewModel.state.value.isAppLockEnabled)
     }
 
     @Test

@@ -10,6 +10,20 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { useUiStore } from '@/store/uiStore';
 
+export type BootFailureCode = 'storage' | 'firebase-config' | 'firebase-init' | 'unknown';
+
+export class BootFailure extends Error {
+  readonly code: BootFailureCode;
+  override readonly cause?: unknown;
+
+  constructor(message: string, code: BootFailureCode, cause?: unknown) {
+    super(message);
+    this.name = 'BootFailure';
+    this.code = code;
+    this.cause = cause;
+  }
+}
+
 const STORAGE_KEYS = [
   LEGACY_NOTES_STORAGE_KEY,
   LAST_MERGED_USER_STORAGE_KEY,
@@ -137,16 +151,31 @@ export async function bootstrapApp(): Promise<void> {
     } catch (retryError) {
       console.error('[Notelikeus] Rehydrate retry failed; starting empty:', retryError);
       clearLocalUserData();
+      throw new BootFailure(
+        'Local app data could not be restored. Clear local data and retry.',
+        'storage',
+        retryError,
+      );
     }
   }
 
   ensureReminderSync();
 
-  if (isFirebaseConfigured()) {
-    try {
-      initFirebase();
-    } catch (error) {
-      console.error('[Notelikeus] Firebase init failed:', error);
-    }
+  if (!isFirebaseConfigured()) {
+    throw new BootFailure(
+      'Firebase is not configured for this web build.',
+      'firebase-config',
+    );
+  }
+
+  try {
+    initFirebase();
+  } catch (error) {
+    console.error('[Notelikeus] Firebase init failed:', error);
+    const message = error instanceof Error ? error.message : 'Firebase failed to initialize';
+    const code = message.includes('Missing required environment variable')
+      ? 'firebase-config'
+      : 'firebase-init';
+    throw new BootFailure(message, code, error);
   }
 }
