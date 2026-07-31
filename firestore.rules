@@ -41,6 +41,10 @@ service cloud.firestore {
         && data.labels.size() <= 100
         && data.checklist is list
         && data.checklist.size() <= 500
+        // Legacy compatibility only: attachments were removed from the product, but older clients
+        // and backup/import paths still normalize this field in the shared note model. Keep
+        // accepting it as a bounded list so those writes fail closed rather than punching through
+        // via a broad "unknown fields" rejection that could strand older data.
         && (!('attachments' in data)
           || (data.attachments is list && data.attachments.size() <= 50))
         // Optional so clients that predate this field can still write. When present, it must be

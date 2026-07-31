@@ -338,6 +338,43 @@ class FirebaseNoteSyncTest {
     }
 
     @Test
+    fun `reconcileUploads treats equal serverUpdatedAt values as already up to date`() = runTest {
+        coEvery { sessionManager.ensureGoogleSignedIn() } returns Result.success("uid")
+        every { syncStateStore.lastReconciledAt() } returns 0L
+        val local = Note(
+            id = 5L,
+            title = "Local tie",
+            content = "",
+            timestamp = 100L,
+            color = 0,
+            serverUpdatedAt = 50_000L,
+        )
+        coEvery { noteRepository.getAllNotesForBackup() } returns listOf(local)
+        coEvery { noteRepository.getCloudEligibleNoteCount() } returns 1
+
+        val notesCollection = mockk<CollectionReference>(relaxed = true)
+        val metaCollection = mockk<CollectionReference>(relaxed = true)
+        val doc = mockk<DocumentReference>(relaxed = true)
+        stubUserCollections(notesCollection, metaCollection)
+        every { notesCollection.document("5") } returns doc
+        every { doc.get() } returns Tasks.forResult(mockk(relaxed = true) {
+            every { exists() } returns true
+            every { getTimestamp("serverUpdatedAt") } returns Timestamp(50L, 0)
+        })
+        every { metaCollection.document("sync") } returns mockk(relaxed = true) {
+            every { set(any<Map<String, Any>>(), any()) } returns Tasks.forResult(null)
+        }
+
+        val result = sync.reconcileUploads()
+
+        assertTrue(result.isSuccess)
+        assertEquals(0, result.getOrNull())
+        verify(exactly = 0) { doc.set(any<Map<String, Any?>>(), any()) }
+    }
+
+
+
+    @Test
     fun `reconcileUploads skips when local data has not been confirmed for this uid`() = runTest {
         // ReconciliationSyncWorker runs on its own 12h schedule, independent of sign-in. If it
         // fires in the window where MainViewModel.prepareLocalDataForSignedInUser is still
