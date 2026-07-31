@@ -1,35 +1,40 @@
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEffect } from 'react';
 
-const PRIVACY_POLICY_BODY = `Sign-in with Google is required to use Notelikeus on the web. Your notes are stored in Firestore under your Google account — this browser keeps only a temporary in-memory copy while the app is open, plus a Firestore-managed offline cache for continuity without a connection.
+const PRIVACY_POLICY_BODY = `Sign-in with Google is required to use Notelikeus on the web. Your notes are stored in Firestore under your Google account. This browser may keep a Firestore-managed offline cache for continuity without a connection, and some browsers may fall back to temporary in-memory storage only.
 
 Data stored on device
 • App preferences: theme and layout
-• Note text, titles, colors, labels, checklists, and reminders live in your Firebase account, not in this browser's storage
+• Firestore may keep an offline cache in the browser for continuity while signed in
+• Exported backup files are stored only where you choose to save them
 
 Cloud sync
-• Note text always syncs to Firebase Firestore under your Google account — there's no separate offline-only mode on the web
-• Signing out clears any locally cached labels and preferences tied to this account so the next account cannot inherit them
+• Note text, titles, labels, checklists, colors, and reminders sync to Firebase Firestore under your Google account
+• There is no separate offline-only mode on the web
+• Signing out clears locally cached app data tied to this account so the next account cannot inherit it
 
 Security
-• Notes are not stored on this device — they live in Firestore, protected by your Google account and Firestore's access rules, not by anything in this browser.
+• Web notes are protected by your Google account, browser profile, and Firestore access rules
+• The web app does not provide end-to-end encryption for synced notes
+• If someone can access your signed-in browser profile or exported backup files, they may be able to read your notes
 
 Permissions
 • Notifications: used only for note reminders you set (reminders show a generic message, not note text)
 • Storage: used when you export or import backup files
+• Web reminders are best-effort and may be delayed or missed if the browser is fully closed or inactive
 
 Backups
-• JSON backups are created and restored only when you choose. Backup files are saved where you pick and are your responsibility to protect.
-• Backups contain all your notes in plain text, since a backup is meant to be a complete copy of your data
+• JSON backups are created and restored only when you choose. Backup files are saved where you pick and are your responsibility to protect
+• Backups contain your notes in plain text so they can be restored on Android or web
 
 Links
-• Tapping a link in a note opens it in your browser. Notelikeus does not track link visits.
+• Tapping a link in a note opens it in your browser. Notelikeus does not track link visits
 
 Third parties
-• We do not sell your data. We do not use analytics or advertising SDKs in this app.
+• We do not sell your data. We do not use analytics or advertising SDKs in this app
 
 Contact
-• For privacy questions, contact the app developer through the store listing or project repository.
+• For privacy questions, contact the app developer through the store listing or project repository
 
 Last updated: July 2026`;
 

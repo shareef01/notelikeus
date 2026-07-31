@@ -3,6 +3,7 @@ package com.aus.notelikeus.ui.editor.components
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -54,7 +55,7 @@ fun RichTextToolbar(
                 color = contentColor.copy(alpha = 0.2f)
             )
             IconButton(onClick = onListClick) {
-                Icon(Icons.Default.FormatListBulleted, contentDescription = stringResource(R.string.format_list), tint = contentColor)
+                Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = stringResource(R.string.format_list), tint = contentColor)
             }
             IconButton(onClick = onChecklistClick) {
                 Icon(Icons.Default.Checklist, contentDescription = stringResource(R.string.format_checklist), tint = contentColor)

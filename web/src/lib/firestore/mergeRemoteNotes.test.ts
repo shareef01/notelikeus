@@ -60,4 +60,42 @@ describe('mergeRemoteNotes', () => {
     const merged = await mergeRemoteNotes(local, remote);
     expect(merged[0]?.title).toBe('Confirmed remote');
   });
+
+  it('keeps local when both notes have equal serverUpdatedAt values', async () => {
+    const local = [
+      note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500, title: 'Local same revision' }),
+    ];
+    const remote = [
+      note({ id: '1', localId: 1, timestamp: 999, serverUpdatedAt: 500, title: 'Remote same revision' }),
+    ];
+    const merged = await mergeRemoteNotes(local, remote);
+    expect(merged[0]?.title).toBe('Local same revision');
+  });
+
+  it('keeps local when both legacy notes have equal timestamps', async () => {
+    const local = [
+      note({ id: '1', localId: 1, timestamp: 500, serverUpdatedAt: null, title: 'Local tie' }),
+    ];
+    const remote = [
+      note({ id: '1', localId: 1, timestamp: 500, serverUpdatedAt: null, title: 'Remote tie' }),
+    ];
+    const merged = await mergeRemoteNotes(local, remote);
+    expect(merged[0]?.title).toBe('Local tie');
+  });
+
+  it('handles mixed collections without dropping unique local notes while replacing only stale ones', async () => {
+    const local = [
+      note({ id: '1', localId: 1, timestamp: 100, serverUpdatedAt: null, title: 'Stale local' }),
+      note({ id: '2', localId: 2, timestamp: 300, serverUpdatedAt: 800, title: 'Keep local' }),
+    ];
+    const remote = [
+      note({ id: '1', localId: 1, timestamp: 50, serverUpdatedAt: 900, title: 'Confirmed remote' }),
+      note({ id: '3', localId: 3, timestamp: 10, title: 'Remote only' }),
+    ];
+    const merged = await mergeRemoteNotes(local, remote);
+    expect(merged).toHaveLength(3);
+    expect(merged.find((entry) => entry.id === '1')?.title).toBe('Confirmed remote');
+    expect(merged.find((entry) => entry.id === '2')?.title).toBe('Keep local');
+    expect(merged.find((entry) => entry.id === '3')?.title).toBe('Remote only');
+  });
 });

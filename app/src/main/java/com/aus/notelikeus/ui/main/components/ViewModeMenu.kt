@@ -22,7 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -83,7 +83,7 @@ fun ViewModeMenu(
                         contentDescription = null,
                         modifier = Modifier
                             .size(20.dp)
-                            .semantics { invisibleToUser() },
+                            .semantics { hideFromAccessibility() },
                         tint = if (isSelected) {
                             MaterialTheme.colorScheme.primary
                         } else {
@@ -98,7 +98,7 @@ fun ViewModeMenu(
                             contentDescription = null,
                             modifier = Modifier
                                 .size(18.dp)
-                                .semantics { invisibleToUser() },
+                                .semantics { hideFromAccessibility() },
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }

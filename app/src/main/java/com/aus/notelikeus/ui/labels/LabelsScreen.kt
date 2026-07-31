@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -75,7 +76,7 @@ fun LabelsScreen(
             NotesEmptyState(
                 message = stringResource(R.string.empty_labels_hint),
                 subtitle = stringResource(R.string.empty_labels_subtitle),
-                icon = Icons.Default.Label,
+                icon = Icons.AutoMirrored.Filled.Label,
                 showCreateButton = true,
                 createButtonLabel = stringResource(R.string.create_new_label),
                 onCreateClick = { showCreateDialog = true },
@@ -180,7 +181,7 @@ private fun LabelListItem(
         },
         leadingContent = { 
             Icon(
-                Icons.Default.Label, 
+                Icons.AutoMirrored.Filled.Label, 
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
             ) 
