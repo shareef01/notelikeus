@@ -1,4 +1,5 @@
 import { deleteNote, upsertNote } from '@/lib/firestore/notesRepository';
+import { notesEqual } from '@/lib/notes/noteEquality';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
@@ -21,6 +22,8 @@ function withTimestamp(note: Note, patch: Partial<Note>): Note {
 
 /** Save locally and optionally push to Firestore — no React hooks. */
 export async function saveNote(note: Note): Promise<void> {
+  const existing = getNote(note.id);
+  if (existing && notesEqual(existing, note)) return;
   await pushNote(note);
 }
 
