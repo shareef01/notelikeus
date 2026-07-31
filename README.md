@@ -4,18 +4,28 @@ A portfolio-ready notes app for **Android** and the **web** (PWA), inspired by t
 
 **Live web app:** [https://notelike.web.app](https://notelike.web.app)
 
+> Note: the web app requires Google Sign-In because notes are stored per-user in Firestore.
+
 - **Android** — offline-first: notes live in an SQLCipher-encrypted Room database. Google Sign-In is optional; when signed in, notes sync to Firestore (auto-sync can be toggled in Settings).
 - **Web** — Google Sign-In required. Notes live in Firestore with offline caching and installable PWA support.
 
-## Portfolio summary
+## What I built
 
-Notelikeus is a dual-platform notes product built to showcase:
-- thoughtful offline-first UX on Android
-- a matching React + Firebase web experience
-- practical Firebase Spark-plan constraints
-- sync, backup, reminders, theming, and privacy-focused UX decisions
+- A dual-platform notes app for **Android** and **web/PWA**
+- An offline-first Android experience with encrypted local storage
+- A Firebase-backed sync flow designed to stay within the **Spark** plan
+- Shared core product features across clients: labels, reminders, backup, theming, and sync
+- Production-style UX hardening around auth, offline recovery, and destructive actions
 
-This project is maintained primarily for **personal use** and as a **portfolio piece**, rather than for Play Store launch readiness.
+## Engineering highlights
+
+- **Offline-first Android architecture** using Room + SQLCipher, with sync layered on top rather than required for basic use
+- **Spark-plan-conscious Firebase design** using Auth + Firestore only, with legacy attachment support removed from active product flow
+- **Cross-platform product parity** across Android and React PWA for core note workflows
+- **Safer destructive actions** with stronger sign-out and cloud-delete confirmations
+- **Recovery-aware startup** on web with clearer handling for storage and Firebase boot failures
+
+Notelikeus is maintained primarily for **personal use** and as a **portfolio piece**, rather than for Play Store launch readiness.
 
 ## Screenshots
 
@@ -32,15 +42,6 @@ Current screenshots from the app are shown below.
 <p align="center">
   <img src="screenshots/7.png" width="100%" alt="Web notes dashboard" />
 </p>
-
-## Why this project stands out
-
-- Shared product direction across **native Android** and **web/PWA**
-- Secure local-first Android storage with **Room + SQLCipher**
-- Optional Google sign-in on Android, required auth on web for clean sync boundaries
-- Firestore sync designed to stay within the **Firebase Spark** plan
-- Import/export support using an Android-compatible JSON backup format
-- UX hardening around sign-out, offline recovery, boot failures, and reminder expectations
 
 ## Features
 
@@ -64,7 +65,7 @@ Current screenshots from the app are shown below.
 | JSON backup import / export | ✓ | ✓ |
 | Installable PWA | — | ✓ |
 
-## Tech stack
+## Architecture and stack
 
 | Layer | Android | Web |
 |-------|---------|-----|
@@ -141,6 +142,26 @@ Cloud sync uses Firestore only (no Storage) so it fits the **Spark (free)** plan
 cd web && npm test
 npm run test:rules
 ```
+
+## Validation
+
+Recent hardening and release-readiness work has been validated with:
+
+- Android unit tests
+- Android connected tests
+- Android lint
+- Android debug and release builds
+- Web unit tests
+- Firestore rules tests
+- Firebase Hosting deployment
+- Pixel device sideload and startup verification
+
+## Tradeoffs and constraints
+
+- Built to fit **Firebase Spark**, so sync uses Firestore only
+- Synced notes are **not end-to-end encrypted**
+- Web reminders are **best-effort**, limited by browser and service-worker behavior
+- The project is optimized for **personal use and portfolio demonstration**, not Play Store launch requirements
 
 ## Rich text
 
