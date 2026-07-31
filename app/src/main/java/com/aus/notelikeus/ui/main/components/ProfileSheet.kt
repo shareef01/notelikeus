@@ -25,10 +25,10 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Login
-import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.PrivacyTip
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Stars
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Upload
@@ -53,7 +53,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -159,7 +159,7 @@ fun ProfileSheet(
                 }
             )
             SettingsCycleListItem(
-                icon = Icons.Default.Sort,
+                icon = Icons.AutoMirrored.Filled.Sort,
                 title = stringResource(R.string.sort_order),
                 subtitle = stringResource(sortOrderLabelRes(sortOrder)),
                 onClick = {
@@ -215,7 +215,7 @@ fun ProfileSheet(
                     subtitle = stringResource(R.string.cloud_signed_in_as)
                 )
                 SettingsRow(
-                    icon = Icons.Default.Logout,
+                    icon = Icons.AutoMirrored.Filled.Logout,
                     title = stringResource(R.string.cloud_sign_out),
                     subtitle = stringResource(R.string.cloud_sign_out_subtitle),
                     onClick = {
@@ -225,7 +225,7 @@ fun ProfileSheet(
                 )
             } else {
                 SettingsRow(
-                    icon = Icons.Default.Login,
+                    icon = Icons.AutoMirrored.Filled.Login,
                     title = stringResource(R.string.cloud_sign_in_google),
                     subtitle = stringResource(R.string.cloud_sign_in_subtitle),
                     onClick = {
@@ -423,7 +423,7 @@ fun SettingsCycleListItem(
             Icon(
                 Icons.Default.ChevronRight,
                 contentDescription = null,
-                modifier = Modifier.semantics { invisibleToUser() },
+                modifier = Modifier.semantics { hideFromAccessibility() },
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = Chrome.SelectedBorder)
             )
         }
