@@ -360,33 +360,20 @@ export function MainScreen() {
 
 
   const handleSignOut = async (deleteCloudData: boolean) => {
-
     setShowSignOutConfirm(false);
-
     setShowProfile(false);
 
     try {
-
-      await signOutGoogle(deleteCloudData);
-
+      await signOutGoogle({ deleteCloudData });
       useToastStore.getState().show(
-
         deleteCloudData ? 'Signed out and cloud data deleted' : 'Signed out',
-
       );
-
     } catch (error) {
-
       useToastStore.getState().show(
-
         error instanceof Error ? error.message : 'Sign out failed',
-
         'error',
-
       );
-
     }
-
   };
 
 
