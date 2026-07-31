@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -320,7 +322,7 @@ fun MainScreen(
 
                 SideDrawerNavItem(
                     label = stringResource(R.string.nav_edit_labels),
-                    icon = Icons.Default.Label,
+                    icon = Icons.AutoMirrored.Filled.Label,
                     accent = NavAccentLabels,
                     selected = false,
                     onClick = {
@@ -374,7 +376,7 @@ fun MainScreen(
                     horizontalArrangement = Arrangement.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Logout,
+                        imageVector = Icons.AutoMirrored.Filled.Logout,
                         contentDescription = null,
                         tint = SignOutRose,
                         modifier = Modifier.size(18.dp)

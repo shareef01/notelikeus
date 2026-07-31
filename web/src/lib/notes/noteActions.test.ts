@@ -34,4 +34,14 @@ describe('saveNote', () => {
     expect(upsertNote).not.toHaveBeenCalled();
     expect(useNotesStore.getState().notes.some((note) => note.id === '1')).toBe(true);
   });
+
+  it('skips no-op saves for an unchanged note', async () => {
+    useAuthStore.getState().setUser({ uid: 'user-1' } as User);
+    const note = createEmptyNote({ id: '1', localId: 1, timestamp: 1, title: 'Same note' });
+
+    await saveNote(note);
+    await saveNote(note);
+
+    expect(upsertNote).toHaveBeenCalledTimes(1);
+  });
 });

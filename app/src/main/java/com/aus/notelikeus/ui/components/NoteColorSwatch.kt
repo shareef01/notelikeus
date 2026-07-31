@@ -18,7 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -71,7 +71,7 @@ fun NoteColorSwatch(
                 Icon(
                     Icons.Default.Block,
                     contentDescription = null,
-                    modifier = Modifier.size(16.dp).semantics { invisibleToUser() },
+                    modifier = Modifier.size(16.dp).semantics { hideFromAccessibility() },
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
             }
@@ -81,7 +81,7 @@ fun NoteColorSwatch(
                     contentDescription = null,
                     modifier = Modifier
                         .size(16.dp)
-                        .semantics { invisibleToUser() },
+                        .semantics { hideFromAccessibility() },
                     tint = if (isDefault) MaterialTheme.colorScheme.primary else color.getContentColor()
                 )
             }
