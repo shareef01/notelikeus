@@ -112,6 +112,7 @@
     <string name="cd_reminder_set">Reminder set</string>
     <string name="sort_newest">Newest first</string>
     <string name="sort_oldest">Oldest first</string>
+    <string name="sorted_by">Sorted: %1$s</string>
     <string name="view_mode_grid_2">2-column grid</string>
     <string name="view_mode_grid_3">3-column grid</string>
     <string name="view_mode_list">List</string>
