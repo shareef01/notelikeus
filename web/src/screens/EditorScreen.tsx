@@ -27,6 +27,7 @@ import {
 import { noteSurfaceStyle } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { useUiStore, type EditorLayout, type EditorRoute } from '@/store/uiStore';
+import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 interface EditorScreenProps {
@@ -307,6 +308,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             value={state.title}
             onChange={(event) => editor.setTitle(event.target.value)}
             placeholder="Title"
+            maxLength={MAX_NOTE_TITLE_CHARS}
             className="w-full bg-transparent text-[22px] font-semibold leading-snug tracking-[-0.03em] outline-none placeholder:opacity-35"
             style={{ color: contentColor }}
           />
@@ -401,6 +403,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
                   }}
                   placeholder="Start writing…"
                   rows={1}
+                  maxLength={MAX_NOTE_CONTENT_CHARS}
                   className="mt-4 w-full min-h-52 resize-none overflow-hidden bg-transparent text-[17px] leading-[1.55] tracking-[0.01em] outline-none placeholder:opacity-35 sm:min-h-[320px] sm:text-[18px]"
                   style={{ color: contentColor }}
                 />

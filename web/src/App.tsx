@@ -70,7 +70,9 @@ export default function App() {
       return;
     }
     const noteId = params.get('note');
-    if (noteId) {
+    // Note ids are the string form of the numeric localId (Firestore doc ids). Anything else
+    // (e.g. a hand-edited URL) is not a note and opening it would silently mint a phantom note.
+    if (noteId && /^\d+$/.test(noteId)) {
       openNote(noteId);
       window.history.replaceState({}, '', window.location.pathname);
     }

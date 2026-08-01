@@ -33,7 +33,11 @@ class DatabaseKeyManager @Inject constructor(
     private val lock = Any()
 
     fun getPassphrase(): ByteArray = synchronized(lock) {
-        readFromKeystoreFile()?.let { return it }
+        when (val existing = readFromKeystoreFile()) {
+            is PassphraseReadResult.Decrypted -> return existing.passphrase
+            PassphraseReadResult.Absent -> Unit // First run: nothing to preserve.
+            PassphraseReadResult.Corrupt -> preserveUnreadablePassphraseFile()
+        }
 
         val legacy = readFromLegacyEsp()
         if (legacy != null) {
@@ -54,15 +58,42 @@ class DatabaseKeyManager @Inject constructor(
 
     private fun passphraseFile(): File = File(context.filesDir, PASSPHRASE_FILE)
 
-    private fun readFromKeystoreFile(): ByteArray? {
+    private sealed interface PassphraseReadResult {
+        object Absent : PassphraseReadResult
+        data class Decrypted(val passphrase: ByteArray) : PassphraseReadResult
+        object Corrupt : PassphraseReadResult
+    }
+
+    private fun readFromKeystoreFile(): PassphraseReadResult {
         val file = passphraseFile()
-        if (!file.exists()) return null
+        if (!file.exists()) return PassphraseReadResult.Absent
         return try {
             val hex = PassphraseFileCodec.decrypt(getOrCreateSecretKey(), file.readBytes())
-            hex.hexToByteArray()
+            PassphraseReadResult.Decrypted(hex.hexToByteArray())
         } catch (error: Exception) {
-            Log.w(TAG, "Failed to read Keystore passphrase file", error)
-            null
+            Log.e(
+                TAG,
+                "Passphrase file present but undecryptable; AndroidKeyStore key was invalidated " +
+                    "and the existing DB passphrase cannot be recovered from it",
+                error
+            )
+            PassphraseReadResult.Corrupt
+        }
+    }
+
+    /**
+     * The passphrase file exists but its AndroidKeyStore key is gone (e.g. after a device restore
+     * that invalidated keystore keys). Move the unreadable blob aside instead of deleting it, so
+     * the original key material survives in case the keystore key becomes readable again. The app
+     * continues with a fresh key; [PlaintextDatabaseMigrator] quarantines (never deletes) any
+     * existing database it cannot open with that key.
+     */
+    private fun preserveUnreadablePassphraseFile() {
+        val file = passphraseFile()
+        if (!file.exists()) return
+        val preserved = File(file.parent, "$PASSPHRASE_FILE.unrecoverable-${System.currentTimeMillis()}")
+        if (!file.renameTo(preserved)) {
+            Log.w(TAG, "Failed to preserve unreadable passphrase file")
         }
     }
 
@@ -191,61 +222,133 @@ internal object PassphraseFileCodec {
 
 object PlaintextDatabaseMigrator {
 
+    private const val TAG = "PlaintextDatabaseMigrator"
+
     fun migrateToEncryptedIfNeeded(
         context: Context,
         databaseName: String,
         passphrase: ByteArray
     ) {
         val databaseFile = context.getDatabasePath(databaseName)
-        if (!databaseFile.exists()) return
-
         val encryptedTemp = context.getDatabasePath("$databaseName-encrypted-temp")
+        val backup = context.getDatabasePath("$databaseName.pre-encrypt")
+
+        if (!databaseFile.exists()) {
+            // A previous run may have been interrupted mid-swap (original moved aside but the
+            // encrypted copy not yet moved into place). Recover instead of starting fresh: prefer
+            // the encrypted copy when it opens with our key, otherwise restore the original source.
+            if (encryptedTemp.exists() && canOpenEncrypted(encryptedTemp, passphrase)) {
+                if (encryptedTemp.renameTo(databaseFile)) {
+                    backup.delete()
+                    return
+                }
+            }
+            if (backup.exists() && backup.renameTo(databaseFile)) {
+                return
+            }
+            return
+        }
+
+        // A stale export from an earlier interrupted run is safe to remove now: the source database
+        // is intact at this point, so no data is destroyed.
         if (encryptedTemp.exists()) encryptedTemp.delete()
 
-        // Room opens the DB with the raw passphrase bytes — not a hex string.
+        // Room opens the DB with the raw passphrase bytes via SupportOpenHelperFactory(byte[]),
+        // which SQLCipher keys through sqlite3_key() and derives with PBKDF2. If the file already
+        // opens with that derivation there is nothing to migrate.
         if (canOpenEncrypted(databaseFile, passphrase)) return
 
-        val plainDb = try {
+        val isPlaintext = try {
             SQLiteDatabase.openDatabase(
                 databaseFile.absolutePath,
                 "",
                 null,
                 SQLiteDatabase.OPEN_READWRITE,
                 null
-            )
+            ).close()
+            true
         } catch (_: Exception) {
-            when {
-                canOpenEncrypted(databaseFile, passphrase) -> return
-                else -> {
-                    // Can't open it plaintext, and not with our current passphrase either. This is
-                    // reachable after an android:allowBackup restore to a new device: the DB file
-                    // comes along, but the Keystore-bound key in DatabaseKeyManager does not, so an
-                    // otherwise-valid encrypted database looks unopenable. Never delete outright —
-                    // quarantine (rename) it so Room can create a fresh DB while the original bytes
-                    // stay recoverable on disk instead of being destroyed.
-                    quarantineDatabaseFiles(context, databaseName)
-                    return
-                }
-            }
+            false
+        }
+        if (!isPlaintext) {
+            // Can't open it plaintext, and not with our current passphrase either. This is
+            // reachable after an android:allowBackup restore to a new device: the DB file comes
+            // along, but the Keystore-bound key does not, so an otherwise-valid encrypted database
+            // looks unopenable. Never delete outright — quarantine (rename) it so Room can create a
+            // fresh DB while the original bytes stay recoverable on disk.
+            quarantineDatabaseFiles(context, databaseName)
+            return
         }
 
         try {
-            val escapedPath = encryptedTemp.absolutePath.replace("'", "''")
-            plainDb.execSQL(
-                "ATTACH DATABASE '$escapedPath' AS encrypted KEY \"x'${passphrase.toHex()}'\""
+            // Create the encrypted copy with the SAME key derivation Room will use: raw passphrase
+            // bytes through the byte[] open API (identical code path to SupportOpenHelperFactory).
+            // The previous approach — ATTACH ... KEY "x'<hex>'" — was a key-format mismatch: SQLCipher
+            // parses that double-quoted text literal as a *raw* key (the x'...' prefix), which
+            // bypasses PBKDF2 and produces a file Room cannot open.
+            val encryptedDb = SQLiteDatabase.openDatabase(
+                encryptedTemp.absolutePath,
+                passphrase,
+                null,
+                SQLiteDatabase.CREATE_IF_NECESSARY,
+                null,
+                null
             )
-            plainDb.rawExecSQL("SELECT sqlcipher_export('encrypted')")
-            plainDb.execSQL("DETACH DATABASE encrypted")
-        } finally {
-            plainDb.close()
+            try {
+                // Attach the plaintext source (empty key -> plaintext attachment, per SQLCipher)
+                // and copy its schema and data into the encrypted 'main' database.
+                val escapedSource = databaseFile.absolutePath.replace("'", "''")
+                encryptedDb.execSQL("ATTACH DATABASE '$escapedSource' AS plain KEY ''")
+                encryptedDb.rawExecSQL("SELECT sqlcipher_export('main', 'plain')")
+                encryptedDb.execSQL("DETACH DATABASE plain")
+            } finally {
+                encryptedDb.close()
+            }
+        } catch (error: Exception) {
+            // The source is untouched; only the partial export is discarded.
+            encryptedTemp.delete()
+            Log.e(TAG, "Failed to migrate database to encrypted", error)
+            quarantineDatabaseFiles(context, databaseName)
+            return
         }
 
-        databaseFile.delete()
-        if (!encryptedTemp.renameTo(databaseFile)) {
-            // The encrypted export still exists at encryptedTemp — only clean up leftover
-            // -shm/-wal files here rather than touching the export itself.
+        if (!swapEncryptedIntoPlace(databaseFile, encryptedTemp)) {
             quarantineDatabaseFiles(context, databaseName)
+            return
         }
+        if (!canOpenEncrypted(databaseFile, passphrase)) {
+            // The swapped-in file must open with our key; if it does not, do not trust it.
+            quarantineDatabaseFiles(context, databaseName)
+            return
+        }
+        // Auxiliary files belonged to the old plaintext database; the fresh encrypted copy starts
+        // without them.
+        for (name in listOf("$databaseName-journal", "$databaseName-shm", "$databaseName-wal")) {
+            context.getDatabasePath(name).delete()
+        }
+    }
+
+    /**
+     * Swaps the encrypted copy into the canonical database path without ever deleting the original
+     * before the replacement is in place: the original is first moved to a sidecar backup, the
+     * encrypted copy is moved into the canonical path, and only then is the backup removed. A crash
+     * or failed rename at any step leaves at least one complete copy on disk.
+     */
+    internal fun swapEncryptedIntoPlace(databaseFile: File, encryptedTemp: File): Boolean {
+        val backup = File(databaseFile.parent, "${databaseFile.name}.pre-encrypt")
+        if (backup.exists()) backup.delete()
+
+        val sourceMoved = databaseFile.renameTo(backup)
+        val encryptedMoved = sourceMoved && encryptedTemp.renameTo(databaseFile)
+        if (!sourceMoved || !encryptedMoved) {
+            // Restore the original when the canonical path is empty.
+            if (!databaseFile.exists() && backup.exists()) {
+                backup.renameTo(databaseFile)
+            }
+            return false
+        }
+        backup.delete()
+        return true
     }
 
     private fun canOpenEncrypted(databaseFile: File, passphrase: ByteArray): Boolean {
@@ -277,9 +380,5 @@ object PlaintextDatabaseMigrator {
                 file.renameTo(File(file.parent, "$name.quarantined-$suffix"))
             }
         }
-    }
-
-    private fun ByteArray.toHex(): String = joinToString(separator = "") { byte ->
-        "%02x".format(byte)
     }
 }
