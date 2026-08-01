@@ -742,7 +742,7 @@ export function MainScreen() {
         appTheme={appTheme}
         onAppThemeChange={setAppTheme}
         isGoogleAccount={cloud.isGoogleAccount}
-
+        isGuest={cloud.isGuest}
         userEmail={cloud.userEmail}
 
         syncStatus={cloud.status}
