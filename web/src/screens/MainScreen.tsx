@@ -55,6 +55,7 @@ import { useUiStore } from '@/store/uiStore';
 import type { Note, NoteFilter } from '@/types/note';
 
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
+import { useShortcuts } from '@/hooks/useShortcuts';
 import { EditorScreen } from '@/screens/EditorScreen';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -63,11 +64,19 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 const SORT_ORDERS = ['manual', 'newest', 'oldest'] as const;
 
+const SORT_ORDER_LABELS: Record<(typeof SORT_ORDERS)[number], string> = {
+  manual: 'Manual order',
+  newest: 'Newest first',
+  oldest: 'Oldest first',
+};
+
 
 
 export function MainScreen() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -238,6 +247,8 @@ export function MainScreen() {
     const next = SORT_ORDERS[(index + 1) % SORT_ORDERS.length];
 
     setSortOrder(next);
+
+    useToastStore.getState().show(`Sorted: ${SORT_ORDER_LABELS[next]}`);
 
   };
 
@@ -460,6 +471,32 @@ export function MainScreen() {
   const overlayEditor =
     desktopEditor && editorLayout !== 'dock' ? desktopEditor : null;
 
+  useShortcuts([
+    {
+      key: '/',
+      action: () => {
+        if (editorRoute.mode === 'closed') searchInputRef.current?.focus();
+      },
+    },
+    {
+      key: 'n',
+      action: () => {
+        if (editorRoute.mode === 'closed' && filters.filter === 'active') openNewNote();
+      },
+    },
+    {
+      key: 'Escape',
+      action: () => {
+        if (editorRoute.mode !== 'closed') {
+          useUiStore.getState().closeEditor();
+          return;
+        }
+        if (selectionMode) clearSelection();
+        else setDrawerOpen(false);
+      },
+    },
+  ]);
+
   return (
     <div className="flex min-h-screen w-full bg-true-surface lg:mx-auto lg:max-w-shell">
 
@@ -542,6 +579,7 @@ export function MainScreen() {
             addRecentSearch(query);
           }}
           onClearRecentSearches={clearRecentSearches}
+          searchInputRef={searchInputRef}
         />
 
 

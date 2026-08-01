@@ -51,6 +51,7 @@ import com.aus.notelikeus.ui.main.components.SideDrawerAccountRow
 import com.aus.notelikeus.ui.main.components.SideDrawerNavItem
 import com.aus.notelikeus.ui.main.components.SideDrawerSectionLabel
 import com.aus.notelikeus.ui.main.components.TrashBanner
+import com.aus.notelikeus.ui.main.components.sortOrderLabelRes
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.NavAccentArchive
 import com.aus.notelikeus.ui.theme.NavAccentLabels
@@ -825,7 +826,19 @@ private fun MainScaffold(
                 selectedLabelId = state.selectedLabelId,
                 onLabelSelect = viewModel::selectLabelFilter,
                 sortOrder = state.sortOrder,
-                onSortOrderCycle = { viewModel.setSortOrder(state.sortOrder.next()) },
+                onSortOrderCycle = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    val next = state.sortOrder.next()
+                    viewModel.setSortOrder(next)
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            context.getString(
+                                R.string.sorted_by,
+                                context.getString(sortOrderLabelRes(next))
+                            )
+                        )
+                    }
+                },
                 recentSearches = state.recentSearches,
                 onRecentSearchClick = {
                     viewModel.onSearchQueryChange(it)

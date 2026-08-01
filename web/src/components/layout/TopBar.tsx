@@ -5,7 +5,7 @@ import { AddIcon, CloseIcon, MenuIcon, SettingsIcon } from '@/components/icons/I
 import type { ViewColumns } from '@/store/uiStore';
 import type { Label } from '@/types/label';
 import type { NoteFilter } from '@/types/note';
-import { useState, useRef } from 'react';
+import { useState, useRef, type RefObject } from 'react';
 
 const CHROME_FOCUS =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary';
@@ -50,6 +50,8 @@ interface TopBarProps {
   recentSearches?: string[];
   onRecentSearchClick?: (query: string) => void;
   onClearRecentSearches?: () => void;
+  /** Optional external ref for the search input (e.g. for keyboard shortcuts). */
+  searchInputRef?: RefObject<HTMLInputElement | null>;
 }
 
 export function TopBar({
@@ -86,9 +88,11 @@ export function TopBar({
   recentSearches = [],
   onRecentSearchClick,
   onClearRecentSearches,
+  searchInputRef: searchInputRefProp,
 }: TopBarProps) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const internalSearchRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = searchInputRefProp ?? internalSearchRef;
 
   const showRecent =
     !selectionMode && isSearchFocused && recentSearches.length > 0 && !searchQuery;
