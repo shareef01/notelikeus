@@ -18,6 +18,7 @@ import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
 import { useNoteEditor } from '@/hooks/useNoteEditor';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
+import { useShortcuts } from '@/hooks/useShortcuts';
 import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset';
 import {
   prefixLinesWithBullet,
@@ -27,6 +28,7 @@ import {
 import { noteSurfaceStyle } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { useUiStore, type EditorLayout, type EditorRoute } from '@/store/uiStore';
+import { useToastStore } from '@/store/toastStore';
 import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
@@ -43,6 +45,21 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const keyboardInset = useVisualViewportBottomInset();
   const editor = useNoteEditor(noteId);
   const { state } = editor;
+
+  useShortcuts([
+    {
+      key: 'Enter',
+      ctrlOrMeta: true,
+      allowInInputs: true,
+      action: () => {
+        const isEmpty =
+          !state.title.trim() && !state.content.trim() && state.checklist.length === 0;
+        if (isEmpty) return;
+        void editor.flushSave();
+        useToastStore.getState().show('Note saved');
+      },
+    },
+  ]);
   const [showOptions, setShowOptions] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showReminderPicker, setShowReminderPicker] = useState(false);
