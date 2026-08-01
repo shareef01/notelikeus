@@ -240,6 +240,10 @@ class EditorViewModel @Inject constructor(
     suspend fun undoArchive(snapshot: Note) {
         _state.update { it.copy(isArchived = false) }
         repository.updateNote(snapshot)
+        // The archive above uploaded with a fresh server timestamp, so a plain upload here would
+        // lose the conflict and the note would flip back to archived on the next download. Force
+        // the unarchived copy up through the restore path instead.
+        snapshot.id?.let { cloudNoteSyncCoordinator.scheduleRestore(it) }
     }
 
     fun setReminder(timestamp: Long?) {
