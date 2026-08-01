@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
+import { version } from '../../../package.json';
 import { BrandMark } from '@/components/brand/BrandMark';
 import { ThemePicker } from '@/components/settings/ThemePicker';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -246,7 +247,7 @@ export function ProfileSheet({
                 onClick={onPrivacyPolicy}
                 icon={<PrivacyIcon size={18} />}
               />
-              <SettingsRow title="Version" subtitle="1.0.0 (web)" icon={<InfoIcon size={18} />} />
+              <SettingsRow title="Version" subtitle={`${version} (web)`} icon={<InfoIcon size={18} />} />
             </SettingsSection>
           </div>
 
@@ -261,7 +262,7 @@ export function ProfileSheet({
                   />
                   <SettingsRow
                     title="Sign out"
-                    subtitle="Clear local data for this account"
+                    subtitle="Stop syncing notes on this browser"
                     onClick={onSignOut}
                     icon={<LogoutIcon size={18} />}
                     destructive
