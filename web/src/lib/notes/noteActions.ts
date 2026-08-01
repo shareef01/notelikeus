@@ -1,4 +1,5 @@
 import { deleteNote, upsertNote } from '@/lib/firestore/notesRepository';
+import { deleteCloudTombstone } from '@/lib/firestore/tombstones';
 import { notesEqual } from '@/lib/notes/noteEquality';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
@@ -74,4 +75,20 @@ export async function emptyTrash(): Promise<number> {
   const trashed = useNotesStore.getState().notes.filter((note) => note.isTrashed);
   await Promise.all(trashed.map((note) => removeNote(note.id)));
   return trashed.length;
+}
+
+/** Reverse a permanent delete within the undo window. Clears both tombstones so the
+ * realtime listener and future merges (which suppress tombstoned ids) keep the note live. */
+export async function restorePermanentlyDeletedNote(note: Note): Promise<void> {
+  const userId = useAuthStore.getState().user?.uid;
+  if (userId) {
+    // Must go before upsertNote: upsertNote re-reads the cloud tombstone and would
+    // otherwise merge it back and delete the doc again.
+    await deleteCloudTombstone(userId, note.id);
+  }
+  useTombstoneStore.getState().clearIds([note.id]);
+  useNotesStore.getState().upsertLocalNote(note);
+  if (userId) {
+    await upsertNote(userId, note);
+  }
 }
