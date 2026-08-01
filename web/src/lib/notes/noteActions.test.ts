@@ -104,3 +104,25 @@ describe('restorePermanentlyDeletedNote', () => {
     expect(tombstoneCallOrder).toBeLessThan(upsertCallOrder);
   });
 });
+
+describe('removeNote', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useNotesStore.getState().reset();
+    useAuthStore.getState().reset();
+    useTombstoneStore.getState().reset();
+  });
+
+  it('skips the tombstone in guest mode so a guest delete can never suppress a real cloud note', async () => {
+    useAuthStore.getState().enterGuestMode();
+    const note = makeNote();
+    await saveNote(note);
+    expect(useNotesStore.getState().notes.some((entry) => entry.id === note.id)).toBe(true);
+
+    await removeNote(note.id);
+
+    expect(useNotesStore.getState().notes.some((entry) => entry.id === note.id)).toBe(false);
+    expect(useTombstoneStore.getState().isDeleted(note.id)).toBe(false);
+    expect(deleteNote).not.toHaveBeenCalled();
+  });
+});
