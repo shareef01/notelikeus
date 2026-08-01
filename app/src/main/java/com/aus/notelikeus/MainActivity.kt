@@ -100,6 +100,7 @@ class MainActivity : FragmentActivity() {
                             if (state.isAppLockEnabled && !isUnlocked) {
                                 needsUnlock = true
                             }
+                            viewModel.autoSyncOnForeground()
                         }
                         else -> Unit
                     }
