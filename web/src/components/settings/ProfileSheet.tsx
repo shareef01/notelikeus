@@ -119,6 +119,7 @@ interface ProfileSheetProps {
   appTheme: AppTheme;
   onAppThemeChange: (theme: AppTheme) => void;
   isGoogleAccount: boolean;
+  isGuest: boolean;
   userEmail: string | null;
   syncStatus: string;
   syncedNoteCount: number;
@@ -141,6 +142,7 @@ export function ProfileSheet({
   appTheme,
   onAppThemeChange,
   isGoogleAccount,
+  isGuest,
   userEmail,
   syncStatus,
   syncedNoteCount,
@@ -231,10 +233,18 @@ export function ProfileSheet({
                     <span className="text-chrome-label">Cloud</span>
                   </div>
                   <p className="truncate text-base font-medium text-brand-primary sm:text-lg">
-                    {isGoogleAccount ? syncStatus : 'Signed out'}
+                    {isGoogleAccount
+                      ? syncStatus
+                      : isGuest
+                        ? 'Guest session'
+                        : 'Signed out'}
                   </p>
                   <p className="text-sm text-brand-muted">
-                    {isGoogleAccount ? `${syncedNoteCount} synced` : 'Sign in to sync'}
+                    {isGoogleAccount
+                      ? `${syncedNoteCount} synced`
+                      : isGuest
+                        ? 'Notes stay on this device'
+                        : 'Sign in to sync'}
                   </p>
                 </div>
               </div>
@@ -253,6 +263,13 @@ export function ProfileSheet({
 
           <div className="flex flex-col gap-5">
             <SettingsSection title="Account">
+              {isGuest ? (
+                <SettingsRow
+                  title="Browsing as a guest"
+                  subtitle="Notes aren't synced or backed up. Sign in to keep them across devices."
+                  icon={<AccountIcon size={18} />}
+                />
+              ) : null}
               {isGoogleAccount && userEmail ? (
                 <>
                   <SettingsRow
