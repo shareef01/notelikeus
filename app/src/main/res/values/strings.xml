@@ -203,6 +203,7 @@
     <string name="cd_remove_item">Remove item</string>
     <string name="cd_create_label">Create label</string>
     <string name="cd_pin_note">Pin note</string>
+    <string name="cd_unpin_note">Unpin note</string>
     <string name="notes_pinned">Notes pinned</string>
     <string name="notes_unpinned">Notes unpinned</string>
     <string name="note_pinned">Note pinned</string>
@@ -219,6 +220,7 @@
     <string name="cd_filter_by_label">Filter by %1$s</string>
     <string name="cd_back">Back</string>
     <string name="cd_archive_note">Archive note</string>
+    <string name="cd_unarchive_note">Unarchive note</string>
     <string name="cd_more_options">More options</string>
     <string name="edited_at">Edited %1$s</string>
     <string name="section_color">Color</string>
