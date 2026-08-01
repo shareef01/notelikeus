@@ -69,8 +69,8 @@ interface NoteDao {
     @Update
     suspend fun updateNote(note: NoteEntity)
 
-    @Query("UPDATE notes SET position = :position WHERE id = :id")
-    suspend fun updateNotePosition(id: Long, position: Int)
+    @Query("UPDATE notes SET position = :position, timestamp = :timestamp WHERE id = :id")
+    suspend fun updateNotePosition(id: Long, position: Int, timestamp: Long)
 
     @Delete
     suspend fun deleteNote(note: NoteEntity)

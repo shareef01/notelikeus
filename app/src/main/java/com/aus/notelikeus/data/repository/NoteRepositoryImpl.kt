@@ -135,7 +135,9 @@ class NoteRepositoryImpl @Inject constructor(
             notes.forEachIndexed { index, note ->
                 val noteId = note.id ?: return@forEachIndexed
                 if (note.position != index) {
-                    noteDao.updateNotePosition(noteId, index)
+                    // Bump the client timestamp so uploadNote's conflict guard lets the
+                    // new position through to the cloud (matches web commitNotePositions).
+                    noteDao.updateNotePosition(noteId, index, System.currentTimeMillis())
                 }
             }
         }
