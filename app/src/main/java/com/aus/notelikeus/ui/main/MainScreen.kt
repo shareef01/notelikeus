@@ -878,7 +878,7 @@ private fun MainScaffold(
                     message = stringResource(R.string.no_matching_notes)
                     subtitle = stringResource(R.string.empty_search_subtitle)
                     showCreate = false
-                    showClear = hasActiveFilters
+                    showClear = true
                     emptyIcon = Icons.Outlined.SearchOff
                 }
                 hasActiveFilters -> {
