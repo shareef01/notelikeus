@@ -30,9 +30,14 @@ export async function saveNote(note: Note): Promise<void> {
 
 /** Remove locally and from Firestore when signed in. Tombstoned so a later cloud
  * merge can never resurrect it, even if the remote delete below fails or a stale
- * copy exists from before this device last synced. */
+ * copy exists from before this device last synced. Guest-mode deletes skip the
+ * tombstone: guest notes are in-memory only, so a persisted tombstone could later
+ * suppress an unrelated real cloud note that happens to reuse the same id. */
 export async function removeNote(noteId: string): Promise<void> {
-  useTombstoneStore.getState().markDeleted(noteId);
+  const isGuest = useAuthStore.getState().guestMode;
+  if (!isGuest) {
+    useTombstoneStore.getState().markDeleted(noteId);
+  }
   useNotesStore.getState().removeLocalNote(noteId);
   const userId = useAuthStore.getState().user?.uid;
   if (!userId) return;

@@ -36,7 +36,7 @@ export default function App() {
   const openNote = useUiStore((s) => s.openNote);
   const closeEditor = useUiStore((s) => s.closeEditor);
   const closeAuthScreen = useUiStore((s) => s.closeAuthScreen);
-  const { user, isReady: authReady } = useAuthListener();
+  const { user, isReady: authReady, isGuest } = useAuthListener();
   const isTabletUp = useIsTabletUp();
   const [authTimedOut, setAuthTimedOut] = useState(false);
   // Read once, so it cannot flip mid-render as auth resolves.
@@ -107,7 +107,7 @@ export default function App() {
     );
   }
 
-  if (!authReady && !hadSession) {
+  if (!isGuest && !authReady && !hadSession) {
     // Same splash the boot screen shows, so a first visit reads as one continuous "Loading…"
     // rather than a third differently-styled screen. The timeout affordance only appears if
     // auth genuinely stalls.
@@ -134,7 +134,7 @@ export default function App() {
     );
   }
 
-  if (!user && !assumeSignedIn) {
+  if (!user && !isGuest && !assumeSignedIn) {
     return (
       <>
         {themeApplier}
