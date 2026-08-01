@@ -2,6 +2,7 @@ package com.aus.notelikeus.ui.main
 
 import android.content.ContentResolver
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -85,6 +86,11 @@ data class MainState(
 
 private const val TAG = "MainViewModel"
 
+/** Minimum gap between automatic foreground pulls, so returning to the app in quick
+ * succession (e.g. after a Google sign-in flow or a file picker) doesn't re-fetch the whole
+ * cloud collection each time. */
+private const val AUTO_PULL_MIN_INTERVAL_MS = 60_000L
+
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val repository: NoteRepository,
@@ -106,6 +112,7 @@ class MainViewModel @Inject constructor(
     private var pendingUndo: PendingUndo? = null
     private val pendingHiddenIds = mutableSetOf<Long>()
     private val filterGeneration = AtomicInteger(0)
+    private var lastAutoPullElapsedMs = 0L
 
     init {
         setFilter(NoteFilter.ACTIVE)
@@ -372,6 +379,36 @@ class MainViewModel @Inject constructor(
                             pendingCloudSyncEvent = CloudSyncEvent.Failure(message)
                         )
                     }
+                }
+        }
+    }
+
+    /**
+     * Best-effort pull when the app returns to the foreground, so notes created or edited on
+     * another device (e.g. the web app) show up here without requiring a manual
+     * "Restore from cloud". Deliberately silent: it never flips the UI to a "Syncing" state or
+     * raises a failure event — uploads are still handled by the per-edit debounced coordinator.
+     */
+    fun autoSyncOnForeground() {
+        if (_state.value.cloudSyncStatus == CloudSyncStatus.Syncing) return
+        if (!_state.value.cloudAccount.isGoogleAccount) return
+        if (!_state.value.isCloudAutoSyncEnabled) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastAutoPullElapsedMs < AUTO_PULL_MIN_INTERVAL_MS) return
+        lastAutoPullElapsedMs = now
+        viewModelScope.launch {
+            prepareLocalDataForSignedInUser()
+            firebaseNoteSync.downloadAllNotes()
+                .onSuccess { count ->
+                    _state.update {
+                        it.copy(
+                            cloudSyncedNoteCount = count,
+                            listRevision = it.listRevision + 1
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    Log.w(TAG, firebaseSessionManager.diagnose(error), error)
                 }
         }
     }
@@ -729,7 +766,13 @@ class MainViewModel @Inject constructor(
         pendingUndo = PendingUndo(listOf(note), UndoAction.ARCHIVE)
         hideNoteTemporarily(noteId)
         viewModelScope.launch {
-            repository.updateNote(note.copy(isArchived = true, isTrashed = false))
+            repository.updateNote(
+                note.copy(
+                    isArchived = true,
+                    isTrashed = false,
+                    timestamp = System.currentTimeMillis()
+                )
+            )
             syncNoteToCloud(noteId)
         }
     }
@@ -745,7 +788,13 @@ class MainViewModel @Inject constructor(
             } else {
                 pendingUndo = PendingUndo(listOf(note), UndoAction.TRASH)
                 hideNoteTemporarily(noteId)
-                repository.updateNote(note.copy(isTrashed = true, isArchived = false))
+                repository.updateNote(
+                    note.copy(
+                        isTrashed = true,
+                        isArchived = false,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
                 syncNoteToCloud(noteId)
             }
         }
@@ -797,7 +846,13 @@ class MainViewModel @Inject constructor(
                     repository.deleteNote(note)
                     noteId?.let { deleteNoteFromCloud(it) }
                 } else {
-                    repository.updateNote(note.copy(isTrashed = true, isArchived = false))
+                    repository.updateNote(
+                        note.copy(
+                            isTrashed = true,
+                            isArchived = false,
+                            timestamp = System.currentTimeMillis()
+                        )
+                    )
                     noteId?.let { syncNoteToCloud(it) }
                 }
             }
@@ -811,7 +866,13 @@ class MainViewModel @Inject constructor(
             pendingUndo = PendingUndo(notesToArchive, UndoAction.ARCHIVE)
             hideNotesTemporarily(notesToArchive.mapNotNull { it.id })
             notesToArchive.forEach { note ->
-                repository.updateNote(note.copy(isArchived = true, isTrashed = false))
+                repository.updateNote(
+                    note.copy(
+                        isArchived = true,
+                        isTrashed = false,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
                 note.id?.let { syncNoteToCloud(it) }
             }
             clearSelection()
@@ -823,7 +884,7 @@ class MainViewModel @Inject constructor(
             val notesToRestore = _state.value.notes.filter { it.id in _state.value.selectedNotes }
             notesToRestore.forEach { note ->
                 repository.updateNote(note.copy(isArchived = false, isTrashed = false))
-                note.id?.let { syncNoteToCloud(it) }
+                note.id?.let { restoreNoteToCloud(it) }
             }
             clearSelection()
         }
@@ -833,7 +894,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             val notesToUpdate = _state.value.notes.filter { it.id in _state.value.selectedNotes }
             notesToUpdate.forEach { note ->
-                repository.updateNote(note.copy(isPinned = pin))
+                repository.updateNote(note.copy(isPinned = pin, timestamp = System.currentTimeMillis()))
                 note.id?.let { syncNoteToCloud(it) }
             }
             clearSelection()
@@ -849,7 +910,7 @@ class MainViewModel @Inject constructor(
                 UndoAction.ARCHIVE, UndoAction.TRASH -> {
                     undo.notes.forEach { note ->
                         repository.updateNote(note)
-                        note.id?.let { syncNoteToCloud(it) }
+                        note.id?.let { restoreNoteToCloud(it) }
                     }
                 }
                 UndoAction.PERMANENT_DELETE -> {

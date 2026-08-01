@@ -250,7 +250,9 @@ fun EditorScreen(
                     }) {
                         Icon(
                             if (state.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
-                            contentDescription = stringResource(R.string.cd_pin_note),
+                            contentDescription = stringResource(
+                                if (state.isPinned) R.string.cd_unpin_note else R.string.cd_pin_note
+                            ),
                             tint = contentColor.copy(alpha = if (state.isPinned) 1f else 0.55f)
                         )
                     }
@@ -271,7 +273,9 @@ fun EditorScreen(
                     }) {
                         Icon(
                             if (state.isArchived) Icons.Default.Unarchive else Icons.Default.Archive,
-                            contentDescription = stringResource(R.string.cd_archive_note),
+                            contentDescription = stringResource(
+                                if (state.isArchived) R.string.cd_unarchive_note else R.string.cd_archive_note
+                            ),
                             tint = contentColor.copy(alpha = if (state.isArchived) 1f else 0.55f)
                         )
                     }
