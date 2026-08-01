@@ -6,6 +6,7 @@ import {
   type EditorState,
 } from '@/store/editorTypes';
 import { useNoteLabels } from '@/hooks/useNoteLabels';
+import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { saveNote, removeNote } from '@/lib/notes/noteActions';
 import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
 import { useNotesStore } from '@/store/notesStore';
@@ -39,6 +40,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef(state);
   const loadedRouteRef = useRef<string | null>(null);
+  const routeRef = useRef(noteId);
   const lastContentEditRef = useRef<TextEdit>({ text: '', selectionStart: 0, selectionEnd: 0 });
   stateRef.current = state;
 
@@ -56,6 +58,17 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     const current = stateRef.current;
     if (isNoteEmpty(current)) return;
 
+    // An edit route whose note never loaded (see the noteId effect) must never be saved: it has
+    // no id, so the allocate-new-id path below would mint a phantom note. Only a 'new' route or
+    // a route that actually loaded may persist.
+    if (
+      routeRef.current &&
+      routeRef.current !== 'new' &&
+      loadedRouteRef.current !== routeRef.current
+    ) {
+      return;
+    }
+
     setState((prev) => (isCurrentRoute() ? { ...prev, isSaving: true } : prev));
 
     let working = { ...current };
@@ -72,7 +85,16 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       };
     }
 
-    working = { ...working, timestamp: updatedTimestamp };
+    // Clamp to the same caps firestore.rules enforces, so an oversized paste can never wedge
+    // the editor in a permanently-failing autosave. The input maxLength attributes are the
+    // primary guard; this is defense-in-depth for programmatic state changes (smart text,
+    // link wrapping, backup import) that bypass the inputs.
+    working = {
+      ...working,
+      title: working.title.slice(0, MAX_NOTE_TITLE_CHARS),
+      content: working.content.slice(0, MAX_NOTE_CONTENT_CHARS),
+      timestamp: updatedTimestamp,
+    };
 
     const note = buildNoteFromEditor(working);
     if (!note) {
@@ -80,9 +102,18 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       return;
     }
 
-    await saveNote(note);
-    if (isCurrentRoute()) {
-      setState({ ...working, isSaving: false, lastSavedAt: updatedTimestamp });
+    try {
+      await saveNote(note);
+      if (isCurrentRoute()) {
+        setState({ ...working, isSaving: false, lastSavedAt: updatedTimestamp });
+      }
+    } catch {
+      // Never wedge the editor on a failed write (e.g. a rejected Firestore write): reset the
+      // saving flag and surface the failure so the user can retry. Navigation must still work.
+      useToastStore.getState().show('Could not save changes. Check your connection and try again.', 'error');
+      if (isCurrentRoute()) {
+        setState((prev) => ({ ...prev, isSaving: false }));
+      }
     }
   }, []);
 
@@ -92,6 +123,8 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       void persistNow();
     }, AUTOSAVE_MS);
   }, [persistNow]);
+
+  routeRef.current = noteId;
 
   useEffect(() => {
     if (!noteId) {
@@ -127,6 +160,10 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         selectionEnd: existing.content.length,
       };
     }
+    // else: the route points at a note that isn't in the store (e.g. a stale ?note= link or a
+    // note deleted on another device). loadedRouteRef stays null, so persistNow sees an edit
+    // route that never loaded and refuses to allocate a fresh id — no phantom note is minted,
+    // and the editor stays inert until the effect re-runs once the note (if ever) arrives.
   }, [noteId, sourceTimestamp, persistNow]);
 
   // Flush on tab close/refresh and on backgrounding (mobile browsers don't
