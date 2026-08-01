@@ -65,13 +65,13 @@ class FirebaseNoteSync @Inject constructor(
                     val noteId = note.id ?: return@forEach
                     val remoteServerTs = remoteServerTimestamps[noteId]
                     val localServerTs = note.serverUpdatedAt
-                    val remoteIsNewer = if (remoteServerTs != null && localServerTs != null) {
-                        remoteServerTs > localServerTs
-                    } else {
-                        val remoteTs = remoteTimestamps[noteId]
-                        remoteTs != null && remoteTs > note.timestamp
-                    }
-                    if (remoteIsNewer) return@forEach
+                    val remoteWins = cloudWinsConflict(
+                        remoteServerTs,
+                        localServerTs,
+                        remoteTimestamps[noteId],
+                        note.timestamp,
+                    )
+                    if (remoteWins) return@forEach
                     batch.set(
                         notesCollection.document(noteId.toString()),
                         note.toCloudMap(),
@@ -148,17 +148,13 @@ class FirebaseNoteSync @Inject constructor(
                     null
                 }
                 val localServerTs = note.serverUpdatedAt
-                // Only push when the cloud copy is absent or strictly older — never clobber a
-                // newer remote, and skip an already-synced note (no redundant write). Prefers
-                // the server-assigned timestamp over the client one for the same reason as
-                // uploadAllNotes: it can't be skewed or spoofed by either device's clock.
-                val remoteIsNewerOrEqual = if (remoteServerTs != null && localServerTs != null) {
-                    remoteServerTs >= localServerTs
-                } else {
-                    val remoteTs = if (remote.exists()) remote.getLong("timestamp") else null
-                    remoteTs != null && remoteTs >= note.timestamp
+                val remoteTs = if (remote.exists()) remote.getLong("timestamp") else null
+                // Only push when the local copy wins the conflict — never clobber a newer
+                // remote, and skip an already-synced note (no redundant write). Uses the same
+                // cloudWinsConflict tie-break as every other sync path (see its doc).
+                if (cloudWinsConflict(remoteServerTs, localServerTs, remoteTs, note.timestamp)) {
+                    continue
                 }
-                if (remoteIsNewerOrEqual) continue
                 putCloudNote(uid, note)
                 uploaded++
             }
@@ -186,14 +182,10 @@ class FirebaseNoteSync @Inject constructor(
             // overwrite a newer cloud copy from another device.
             if (remote.exists()) {
                 val remoteServerTs = remote.getTimestamp("serverUpdatedAt")?.toEpochMillis()
-                val localServerTs = note.serverUpdatedAt
-                val remoteIsNewerOrEqual = if (remoteServerTs != null && localServerTs != null) {
-                    remoteServerTs >= localServerTs
-                } else {
-                    val remoteTs = remote.getLong("timestamp")
-                    remoteTs != null && remoteTs >= note.timestamp
+                val remoteTs = remote.getLong("timestamp")
+                if (cloudWinsConflict(remoteServerTs, note.serverUpdatedAt, remoteTs, note.timestamp)) {
+                    return Result.success(Unit)
                 }
-                if (remoteIsNewerOrEqual) return Result.success(Unit)
             }
             putCloudNote(uid, note)
             Result.success(Unit)
@@ -293,18 +285,17 @@ class FirebaseNoteSync @Inject constructor(
                 val cloudWins = if (localNote == null) {
                     true
                 } else {
-                    val remoteServerTs = cloudNote.serverUpdatedAt
-                    val localServerTs = localNote.serverUpdatedAt
-                    // Prefer the server-assigned timestamp on both sides — a device's own clock
-                    // can be wrong or spoofed, so comparing two devices' `timestamp` fields
-                    // against each other is not trustworthy. Falls back to the client timestamp
-                    // only for a note that hasn't round-tripped through sync since this field
-                    // was introduced (both clients still populate it identically either way).
-                    if (remoteServerTs != null && localServerTs != null) {
-                        remoteServerTs >= localServerTs
-                    } else {
-                        cloudNote.timestamp >= localNote.timestamp
-                    }
+                    // Same cloudWinsConflict tie-break as the upload paths: the server-assigned
+                    // timestamp is the primary clock, and on a server-timestamp tie the side
+                    // edited most recently (newer client timestamp) wins — so a local edit that
+                    // hasn't round-tripped through sync yet is never overwritten by a stale
+                    // cloud copy just because both sides carry the same serverUpdatedAt.
+                    cloudWinsConflict(
+                        cloudNote.serverUpdatedAt,
+                        localNote.serverUpdatedAt,
+                        cloudNote.timestamp,
+                        localNote.timestamp,
+                    )
                 }
 
                 when {
@@ -492,6 +483,39 @@ class FirebaseNoteSync @Inject constructor(
             batch.commit().await()
         }
         syncStateStore.clearDeleted(expiredRemote.map { it.first })
+    }
+
+    /**
+     * Single source of truth for "which copy wins this conflict" across every upload and
+     * download path, so the tie-break can't drift between them.
+     *
+     * The server-assigned [serverUpdatedAt] is the primary clock: a strictly newer server
+     * timestamp wins, and it can't be spoofed or skewed by either device. When the two sides
+     * carry the *same* server timestamp, that is not necessarily "identical content" — one
+     * device may have edited the note locally since its last round-trip, keeping its
+     * [serverUpdatedAt] at the old value. In that case the side edited most recently (newer
+     * client [timestamp]) wins, so a pending local edit is never overwritten by a stale cloud
+     * copy. A full tie (same server timestamp and same client timestamp) means the content is
+     * the same, and the cloud copy wins only to avoid a redundant write.
+     *
+     * @param remoteClientTimestamp null when the remote document is absent or predates the
+     *   client `timestamp` field; never treated as "newer", so an absent remote always loses
+     *   and the local copy is written.
+     * @return true when the cloud copy should win, false when the local copy should win.
+     */
+    private fun cloudWinsConflict(
+        remoteServerUpdatedAt: Long?,
+        localServerUpdatedAt: Long?,
+        remoteClientTimestamp: Long?,
+        localClientTimestamp: Long,
+    ): Boolean {
+        if (remoteServerUpdatedAt != null && localServerUpdatedAt != null) {
+            if (remoteServerUpdatedAt != localServerUpdatedAt) {
+                return remoteServerUpdatedAt > localServerUpdatedAt
+            }
+            return remoteClientTimestamp != null && remoteClientTimestamp >= localClientTimestamp
+        }
+        return remoteClientTimestamp != null && remoteClientTimestamp > localClientTimestamp
     }
 
     private fun userNotesCollection(uid: String) = firestore.collection("users")
