@@ -124,7 +124,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="rounded-note border border-brand-outline/50 px-4 py-2 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5"
+              className="rounded-note border border-brand-outline/50 px-4 py-2 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5"
             >
               Reload
             </button>

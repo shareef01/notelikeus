@@ -46,7 +46,7 @@ export function EditorBottomBar({
         <button
           type="button"
           onClick={onMoreClick}
-          className="flex size-10 items-center justify-center rounded-full hover:bg-black/10"
+          className="flex size-10 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
           aria-label="More options"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>

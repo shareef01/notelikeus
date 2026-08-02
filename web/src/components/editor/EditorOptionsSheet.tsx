@@ -134,7 +134,7 @@ export function EditorOptionsSheet({
             <button
               type="button"
               onClick={() => onReminderChange(Date.now() + 3600000)}
-              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
+              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-brand-primary/5"
             >
               In 1 hour
             </button>
@@ -146,14 +146,14 @@ export function EditorOptionsSheet({
                 date.setHours(9, 0, 0, 0);
                 onReminderChange(date.getTime());
               }}
-              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
+              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-brand-primary/5"
             >
               Tomorrow morning
             </button>
             <button
               type="button"
               onClick={() => onReminderChange(Date.now() + 7 * 86400000)}
-              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
+              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-brand-primary/5"
             >
               Next week
             </button>
@@ -180,7 +180,7 @@ export function EditorOptionsSheet({
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-red-400 transition-colors hover:bg-white/5"
+            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-red-400 transition-colors hover:bg-brand-primary/5"
           >
             <TrashIcon size={24} className="text-red-400/70" />
             Delete note

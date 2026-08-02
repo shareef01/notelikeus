@@ -141,7 +141,7 @@ export function ThemePicker({ value, onChange }: ThemePickerProps) {
             aria-label={meta.label}
             onClick={() => onChange(theme)}
             className={`flex flex-col items-center gap-2 rounded-xl px-1 py-1.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary/50 ${
-              selected ? 'bg-brand-primary/[0.06]' : 'hover:bg-white/[0.03]'
+              selected ? 'bg-brand-primary/[0.06]' : 'hover:bg-brand-primary/[0.03]'
             }`}
           >
             <ThemeSwatch meta={meta} selected={selected} />

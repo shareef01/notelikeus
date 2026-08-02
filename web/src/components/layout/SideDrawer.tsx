@@ -68,7 +68,7 @@ function NavButton({
       className={`group relative flex min-h-10 w-full items-center gap-2.5 rounded-xl py-2.5 pl-3 pr-2.5 text-left text-sm leading-none tracking-tight transition-colors ${
         active
           ? 'bg-brand-primary/[0.08] font-semibold text-brand-primary'
-          : 'font-medium text-brand-secondary hover:bg-white/[0.06] hover:text-brand-primary'
+          : 'font-medium text-brand-secondary hover:bg-brand-primary/[0.06] hover:text-brand-primary'
       }`}
     >
       {active ? (
@@ -109,7 +109,7 @@ function CountBadge({ count, active }: { count: number; active: boolean }) {
       className={`inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1.5 text-[11px] font-semibold tabular-nums ${
         active
           ? 'bg-brand-primary/20 text-brand-primary'
-          : 'bg-white/[0.08] text-brand-secondary'
+          : 'bg-brand-primary/[0.08] text-brand-secondary'
       }`}
     >
       {count}
@@ -163,7 +163,7 @@ export function SideDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-white/5 md:hidden"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 md:hidden"
             aria-label="Close menu"
           >
             <CloseIcon size={20} />
