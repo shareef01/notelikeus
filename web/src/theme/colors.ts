@@ -41,6 +41,18 @@ export function argbToCssAlpha(argb: number, alpha: number): string {
   return `rgb(${r} ${g} ${b} / ${alpha})`;
 }
 
+export const NOTE_COLOR_NAMES = [
+  'Default',
+  'Coral',
+  'Orange',
+  'Amber',
+  'Green',
+  'Teal',
+  'Blue',
+  'Purple',
+  'Pink',
+];
+
 export function noteColorsForTheme(isDark: boolean): number[] {
   return NOTE_COLOR_OPTIONS.map((option) => (isDark ? option.dark : option.light));
 }

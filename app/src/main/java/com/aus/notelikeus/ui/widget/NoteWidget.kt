@@ -19,7 +19,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.aus.notelikeus.MainActivity
-import com.aus.notelikeus.ui.navigation.markInternalNavigation
+import com.aus.notelikeus.util.markInternalNavigation
 import com.aus.notelikeus.R
 
 private data class WidgetStrings(

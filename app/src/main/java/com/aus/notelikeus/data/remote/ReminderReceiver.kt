@@ -9,7 +9,7 @@ import android.net.Uri
 import androidx.core.app.NotificationCompat
 import com.aus.notelikeus.MainActivity
 import com.aus.notelikeus.R
-import com.aus.notelikeus.ui.navigation.markInternalNavigation
+import com.aus.notelikeus.util.markInternalNavigation
 
 class ReminderReceiver : BroadcastReceiver() {
 
