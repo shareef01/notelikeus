@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -76,7 +77,7 @@ fun EditorScreen(
     onBack: () -> Unit,
     onStageUndo: (Note, UndoAction, String) -> Unit
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -214,8 +215,10 @@ fun EditorScreen(
                 title = {},
                 navigationIcon = {
                     IconButton(onClick = { 
-                        viewModel.saveNote()
-                        onBack() 
+                        scope.launch {
+                            viewModel.saveNoteAndAwait()
+                            onBack()
+                        }
                     }) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,

@@ -186,6 +186,17 @@ object DatabaseMigrations {
         }
     }
 
+    /**
+     * The attachments feature was removed; this migration drops the now-unused table
+     * and its index. The entity, DAO methods, and mapper functions are removed in the
+     * same version bump.
+     */
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("DROP TABLE IF EXISTS attachments")
+        }
+    }
+
     private fun hasColumn(db: SupportSQLiteDatabase, table: String, column: String): Boolean {
         db.query("PRAGMA table_info($table)").use { cursor ->
             val nameIndex = cursor.getColumnIndex("name")
@@ -210,6 +221,7 @@ object DatabaseMigrations {
         MIGRATION_4_5,
         MIGRATION_5_6,
         MIGRATION_6_7,
-        MIGRATION_7_8
+        MIGRATION_7_8,
+        MIGRATION_8_9
     )
 }

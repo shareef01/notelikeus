@@ -95,8 +95,6 @@
 
     <!-- Settings -->
     <string name="settings_local_app">Sync &amp; preferences for your notes</string>
-    <string name="true_dark_mode">True Dark Mode</string>
-    <string name="true_dark_mode_subtitle">Optimized for OLED displays</string>
     <string name="app_theme">App theme</string>
     <string name="monochrome_theme">Brand theme</string>
     <string name="monochrome_theme_subtitle">Minimal black &amp; white interface</string>
@@ -152,7 +150,8 @@
     <string name="cloud_sign_out_delete_data">Sign out and delete cloud data</string>
     <string name="cloud_signed_in_as">Signed in</string>
     <string name="sign_in_gate_title">Sign in to continue</string>
-    <string name="sign_in_gate_subtitle">Notelikeus requires a Google account to back up and sync your notes. Your existing notes on this device are safe and will appear once you sign in.</string>
+    <string name="sign_in_gate_subtitle">Sign in with Google to back up and sync your notes across devices, or continue offline with local-only notes.</string>
+    <string name="sign_in_skip_offline">Continue offline</string>
     <string name="test_login_title">Test login (debug)</string>
     <string name="test_login_email">Email</string>
     <string name="test_login_password">Password</string>
