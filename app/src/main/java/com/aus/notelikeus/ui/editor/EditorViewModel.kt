@@ -68,8 +68,7 @@ class EditorViewModel @Inject constructor(
         viewModelScope.launch {
             // First, load the initial color based on theme to prevent blinking
             val theme = settingsRepository.appTheme.first()
-            val isTrueDark = theme == AppTheme.TRUE_DARK ||
-                (theme == AppTheme.AUTO && settingsRepository.isTrueDarkMode.first())
+            val isTrueDark = theme == AppTheme.TRUE_DARK
 
             val themeDefaultColor = if (isTrueDark) {
                 Color.Black.toArgb()
@@ -414,6 +413,16 @@ class EditorViewModel @Inject constructor(
         viewModelScope.launch {
             persistNote()
         }
+    }
+
+    /**
+     * Suspending variant that completes only after the note has been persisted.
+     * Use in navigation callbacks where the caller must not proceed until the save finishes.
+     */
+    suspend fun saveNoteAndAwait() {
+        val currentState = _state.value
+        if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) return
+        persistNote()
     }
 
     private fun syncReminder(noteId: Long, state: EditorState) {

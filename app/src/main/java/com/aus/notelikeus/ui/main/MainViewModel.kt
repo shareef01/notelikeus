@@ -50,6 +50,7 @@ private data class PendingUndo(
 )
 
 data class MainState(
+    val isLoading: Boolean = true,
     val notes: List<Note> = emptyList(),
     val filteredNotes: List<Note> = emptyList(),
     val recentSearches: List<String> = emptyList(),
@@ -60,7 +61,6 @@ data class MainState(
     val viewMode: NoteViewMode = NoteViewMode.GRID_2,
     val sortOrder: NoteSortOrder = NoteSortOrder.MANUAL,
     val useMonochromeTheme: Boolean = true,
-    val isTrueDarkMode: Boolean = false,
     val isAppLockEnabled: Boolean = false,
     /**
      * False until the persisted app-lock setting has actually been read. [isAppLockEnabled]
@@ -140,6 +140,19 @@ class MainViewModel @Inject constructor(
                     email = account.email,
                     isGoogleAccount = account.isGoogleAccount,
                     isAnonymous = account.isAnonymous
+                )
+            )
+        }
+    }
+
+    fun enterOfflineMode() {
+        _state.update {
+            it.copy(
+                cloudAccount = CloudAccount(
+                    email = null,
+                    isGoogleAccount = false,
+                    isAnonymous = false,
+                    isOfflineMode = true
                 )
             )
         }
@@ -486,12 +499,6 @@ class MainViewModel @Inject constructor(
             }
             .launchIn(viewModelScope)
 
-        settingsRepository.isTrueDarkMode
-            .onEach { enabled ->
-                _state.update { it.copy(isTrueDarkMode = enabled) }
-            }
-            .launchIn(viewModelScope)
-
         settingsRepository.isAppLockEnabled
             // A DataStore read failure would otherwise leave areSettingsLoaded false forever,
             // and the UI holds content back until it flips — i.e. a corrupt prefs file would
@@ -628,7 +635,7 @@ class MainViewModel @Inject constructor(
             .onEach { notes ->
                 val emittedIds = notes.mapNotNull { it.id }.toSet()
                 pendingHiddenIds.removeIf { it !in emittedIds }
-                _state.update { it.copy(notes = notes) }
+                _state.update { it.copy(notes = notes, isLoading = false) }
                 applyFilters()
             }
             .launchIn(viewModelScope)
@@ -726,12 +733,6 @@ class MainViewModel @Inject constructor(
     fun setUseMonochromeTheme(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setUseMonochromeTheme(enabled)
-        }
-    }
-
-    fun setTrueDarkMode(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.setTrueDarkMode(enabled)
         }
     }
 
