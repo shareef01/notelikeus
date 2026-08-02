@@ -196,7 +196,7 @@ function NoteCardImpl({
         <>
           <span
             className={`my-2 ml-2.5 w-0.5 shrink-0 rounded-full ${
-              note.color !== 0 ? 'bg-current/30' : 'bg-brand-outline/70'
+              note.color !== 0 ? 'bg-[color-mix(in_srgb,currentColor_30%,transparent)]' : 'bg-brand-outline/70'
             }`}
             aria-hidden
           />
