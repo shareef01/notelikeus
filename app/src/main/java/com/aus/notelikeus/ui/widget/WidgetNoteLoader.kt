@@ -5,11 +5,12 @@ import android.content.res.Configuration
 import androidx.glance.appwidget.updateAll
 import com.aus.notelikeus.R
 import com.aus.notelikeus.data.local.APP_LOCK_ENABLED_KEY
-import com.aus.notelikeus.data.local.TRUE_DARK_MODE_KEY
+import com.aus.notelikeus.data.local.APP_THEME_KEY
 import com.aus.notelikeus.data.local.USE_MONOCHROME_THEME_KEY
-import com.aus.notelikeus.data.local.model.NoteWithLabelsAndAttachments
+import com.aus.notelikeus.data.local.model.NoteWithLabels
 import com.aus.notelikeus.data.local.settingsDataStore
 import com.aus.notelikeus.di.WidgetEntryPoint
+import com.aus.notelikeus.domain.model.AppTheme
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.first
 
@@ -43,7 +44,7 @@ object WidgetNoteLoader {
         }
     }
 
-    private fun buildPreview(context: Context, item: NoteWithLabelsAndAttachments): String {
+    private fun buildPreview(context: Context, item: NoteWithLabels): String {
         val contentPreview = item.note.content.lineSequence().firstOrNull().orEmpty().trim()
         if (contentPreview.isNotEmpty()) return contentPreview
         if (item.checklist.isNotEmpty()) {
@@ -55,23 +56,17 @@ object WidgetNoteLoader {
 
     suspend fun loadTheme(context: Context): WidgetThemeColors {
         val preferences = context.settingsDataStore.data.first()
-        val isTrueDark = preferences[TRUE_DARK_MODE_KEY] ?: false
+        val appTheme = AppTheme.fromName(preferences[APP_THEME_KEY])
         val isMonochrome = preferences[USE_MONOCHROME_THEME_KEY] ?: true
         val isSystemDark =
             (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
                 Configuration.UI_MODE_NIGHT_YES
         return when {
-            isTrueDark -> WidgetThemes.TrueDark
+            appTheme == AppTheme.TRUE_DARK -> WidgetThemes.TrueDark
             isMonochrome && isSystemDark -> WidgetThemes.MonochromeDark
             isMonochrome -> WidgetThemes.MonochromeLight
             isSystemDark -> WidgetThemes.Dark
             else -> WidgetThemes.Light
         }
-    }
-}
-
-object WidgetUpdater {
-    suspend fun refresh(context: Context) {
-        NoteWidget().updateAll(context)
     }
 }

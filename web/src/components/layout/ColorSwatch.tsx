@@ -1,5 +1,5 @@
 import { BlockIcon, CheckIcon } from '@/components/icons/Icons';
-import { argbToCss, noteColorsForTheme, noteColorsMatch } from '@/theme/colors';
+import { argbToCss, NOTE_COLOR_NAMES, noteColorsForTheme, noteColorsMatch } from '@/theme/colors';
 import { contentColorForBackground } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 
@@ -78,10 +78,13 @@ export function ColorSwatchRow({
         </>
       ) : null}
       <div className="flex items-center gap-1.5 pr-0.5">
-        {colors.map((argb) => (
+        {colors.map((argb, index) => {
+          const nameIndex = onSelectAll ? index + 1 : index;
+          return (
           <ColorSwatch
             key={argb}
             argb={argb}
+            label={NOTE_COLOR_NAMES[nameIndex] ?? undefined}
             selected={
               !allSelected &&
               selectedColor != null &&
@@ -95,7 +98,8 @@ export function ColorSwatchRow({
               )
             }
           />
-        ))}
+          );
+        })}
       </div>
     </div>
   );

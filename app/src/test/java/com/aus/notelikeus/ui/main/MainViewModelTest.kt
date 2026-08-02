@@ -63,7 +63,6 @@ class MainViewModelTest {
         cloudNoteSyncCoordinator = mockk(relaxed = true)
         noteSyncStateStore = mockk(relaxed = true)
         every { repository.getActiveNotes() } returns flowOf(emptyList())
-        every { settingsRepository.isTrueDarkMode } returns flowOf(false)
         every { settingsRepository.isAppLockEnabled } returns flowOf(false)
         every { settingsRepository.noteViewMode } returns flowOf(NoteViewMode.GRID_2)
         every { settingsRepository.noteSortOrder } returns flowOf(NoteSortOrder.MANUAL)

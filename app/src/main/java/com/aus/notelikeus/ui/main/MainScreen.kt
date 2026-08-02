@@ -21,6 +21,7 @@ import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaf
 import androidx.compose.material3.adaptive.layout.AnimatedPane
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -84,7 +85,7 @@ fun MainScreen(
     onRequestAppUnlock: (onSuccess: () -> Unit) -> Unit = {},
     onAppLockEnabled: () -> Unit = {}
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val gridState = rememberLazyStaggeredGridState()
     val listScrolled by remember {
         derivedStateOf {
@@ -378,7 +379,7 @@ fun MainScreen(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Logout,
-                        contentDescription = null,
+                        contentDescription = stringResource(R.string.cloud_sign_out),
                         tint = SignOutRose,
                         modifier = Modifier.size(18.dp)
                     )
@@ -879,7 +880,14 @@ private fun MainScaffold(
         val filteredNotes = state.filteredNotes
         val gridBottomPadding = paddingValues.calculateBottomPadding() + if (showFab) 80.dp else 16.dp
 
-        if (filteredNotes.isEmpty()) {
+        if (state.isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else if (filteredNotes.isEmpty()) {
             val hasActiveFilters = state.selectedColor != null || state.selectedLabelId != null
             val message: String
             val subtitle: String?
