@@ -27,6 +27,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.aus.notelikeus.ui.auth.SignInGate
 import com.aus.notelikeus.ui.main.CloudSyncEvent
@@ -55,7 +56,7 @@ class MainActivity : FragmentActivity() {
         setContent {
             val windowSizeClass = calculateWindowSizeClass(this)
             val viewModel: MainViewModel = hiltViewModel()
-            val state by viewModel.state.collectAsState()
+            val state by viewModel.state.collectAsStateWithLifecycle()
             // Starts locked and opens only once the persisted setting says it may. The previous
             // default of `true` plus a one-shot init keyed on isAppLockEnabled meant the guard
             // was spent on the pre-load default of `false`, so a cold start never prompted.
@@ -122,7 +123,6 @@ class MainActivity : FragmentActivity() {
 
             NotelikeusTheme(
                 appTheme = state.appTheme,
-                isTrueDarkMode = state.isTrueDarkMode, // Fallback/Legacy
                 useMonochromeTheme = state.useMonochromeTheme
             ) {
                 var gateError by remember { mutableStateOf<String?>(null) }
@@ -135,7 +135,7 @@ class MainActivity : FragmentActivity() {
                         else -> Unit
                     }
                 }
-                if (!state.cloudAccount.isGoogleAccount) {
+                if (!state.cloudAccount.isGoogleAccount && !state.cloudAccount.isOfflineMode) {
                     SignInGate(
                         onIdToken = { viewModel.signInWithGoogleIdToken(it) },
                         onEmailPassword = if (BuildConfig.DEBUG) {
@@ -145,6 +145,7 @@ class MainActivity : FragmentActivity() {
                         } else {
                             null
                         },
+                        onSkip = { viewModel.enterOfflineMode() },
                         externalError = gateError
                     )
                 } else {

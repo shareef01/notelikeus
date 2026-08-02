@@ -102,7 +102,6 @@ private val LightColorScheme = lightColorScheme(
 fun NotelikeusTheme(
     appTheme: AppTheme = AppTheme.AUTO,
     darkTheme: Boolean = isSystemInDarkTheme(),
-    isTrueDarkMode: Boolean = false,
     useMonochromeTheme: Boolean = true,
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
@@ -114,11 +113,8 @@ fun NotelikeusTheme(
         AppTheme.MIDNIGHT -> MidnightColorScheme
         AppTheme.FOREST -> ForestColorScheme
         AppTheme.AUTO -> {
-            if (darkTheme) {
-                if (isTrueDarkMode) TrueDarkColorScheme else DarkColorScheme
-            } else {
-                LightColorScheme
-            }
+            if (darkTheme) DarkColorScheme
+            else LightColorScheme
         }
     }
 
