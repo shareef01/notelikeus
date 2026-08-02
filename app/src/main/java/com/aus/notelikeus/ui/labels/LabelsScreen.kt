@@ -10,6 +10,7 @@ import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,7 +31,7 @@ fun LabelsScreen(
     viewModel: LabelsViewModel,
     onBack: () -> Unit
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     var showCreateDialog by remember { mutableStateOf(false) }
     var labelToEdit by remember { mutableStateOf<Label?>(null) }
     var labelToDelete by remember { mutableStateOf<Label?>(null) }
@@ -72,7 +73,32 @@ fun LabelsScreen(
             }
         }
     ) { paddingValues ->
-        if (state.labels.isEmpty()) {
+        if (state.isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else if (state.error != null) {
+            val errorMessage = state.error!!
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = errorMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(onClick = { viewModel.loadLabels() }) {
+                    Text(stringResource(R.string.action_retry))
+                }
+            }
+        } else if (state.labels.isEmpty()) {
             NotesEmptyState(
                 message = stringResource(R.string.empty_labels_hint),
                 subtitle = stringResource(R.string.empty_labels_subtitle),
@@ -182,7 +208,7 @@ private fun LabelListItem(
         leadingContent = { 
             Icon(
                 Icons.AutoMirrored.Filled.Label, 
-                contentDescription = null,
+                contentDescription = label.name,
                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
             ) 
         },

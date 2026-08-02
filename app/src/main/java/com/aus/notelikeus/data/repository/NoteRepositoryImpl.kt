@@ -11,7 +11,7 @@ import com.aus.notelikeus.data.remote.ReminderScheduler
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
-import com.aus.notelikeus.ui.widget.WidgetUpdater
+import com.aus.notelikeus.util.WidgetUpdater
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -96,8 +96,6 @@ class NoteRepositoryImpl @Inject constructor(
                 noteDao.insertChecklistItem(item.toChecklistItemEntity(insertedId))
             }
 
-            // Drop legacy attachment rows; feature archived.
-            noteDao.deleteAttachments(insertedId)
             insertedId
         }
         syncReminderForNote(note.copy(id = noteId))
@@ -123,8 +121,6 @@ class NoteRepositoryImpl @Inject constructor(
             note.checklist.forEach { item ->
                 noteDao.insertChecklistItem(item.toChecklistItemEntity(noteId))
             }
-
-            noteDao.deleteAttachments(noteId)
         }
         syncReminderForNote(note)
         refreshWidget()
@@ -148,7 +144,6 @@ class NoteRepositoryImpl @Inject constructor(
         note.id?.let { reminderScheduler.cancelReminder(it) }
         database.withTransaction {
             note.id?.let {
-                noteDao.deleteAttachments(it)
                 noteDao.deleteNoteLabelCrossRefs(it)
             }
             noteDao.deleteNote(note.toNoteEntity())
@@ -164,7 +159,6 @@ class NoteRepositoryImpl @Inject constructor(
         database.withTransaction {
             noteDao.deleteAllChecklistItems()
             noteDao.deleteAllNoteLabelCrossRefs()
-            noteDao.deleteAllAttachments()
             noteDao.deleteAllNotes()
             labelDao.deleteAllLabels()
         }

@@ -607,7 +607,16 @@ export function MainScreen() {
           <div className="mx-auto w-full max-w-content">
 
             {error ? (
-              <div className="px-4 py-6 text-center text-sm text-red-300">{error}</div>
+              <div className="px-4 py-6 text-center">
+                <p className="text-sm text-red-300 mb-3">{error}</p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="rounded-full bg-white/10 px-4 py-2 text-sm text-white/80 hover:bg-white/20 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
             ) : null}
 
             {isLoading ? (
