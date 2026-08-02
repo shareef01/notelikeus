@@ -19,7 +19,7 @@ export function RichTextToolbar({
   onLink,
 }: RichTextToolbarProps) {
   const buttonClass =
-    'flex size-9 items-center justify-center rounded-full transition-colors hover:bg-black/12 active:bg-black/18 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current';
+    'flex size-9 items-center justify-center rounded-full transition-colors hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)] active:bg-[color-mix(in_srgb,currentColor_18%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current';
 
   // Keep the textarea focused so selection isn't lost before formatting runs.
   const keepEditorFocus: MouseEventHandler<HTMLButtonElement> = (event) => {
@@ -28,7 +28,7 @@ export function RichTextToolbar({
 
   return (
     <div
-      className="sticky top-0 z-10 mt-4 inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-full border border-black/10 bg-black/10 p-1 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-black/[0.07]"
+      className="sticky top-0 z-10 mt-4 inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-full border border-[color-mix(in_srgb,currentColor_10%,transparent)] bg-[color-mix(in_srgb,currentColor_8%,transparent)] p-1 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-[color-mix(in_srgb,currentColor_6%,transparent)]"
       style={{ color: contentColor }}
       role="toolbar"
       aria-label="Text formatting"
