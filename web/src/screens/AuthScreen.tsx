@@ -128,7 +128,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
           <button
             type="button"
             onClick={closeAuthScreen}
-            className="rounded-full p-2 text-brand-muted transition-colors hover:bg-white/5 hover:text-brand-primary"
+            className="rounded-full p-2 text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary"
             aria-label="Close"
           >
             <CloseIcon size={20} />
@@ -205,7 +205,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
                     type="button"
                     onClick={() => useAuthStore.getState().enterGuestMode()}
                     disabled={loading}
-                    className="w-full rounded-note border border-brand-outline/50 px-4 py-3 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5 disabled:opacity-50"
+                    className="w-full rounded-note border border-brand-outline/50 px-4 py-3 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5 disabled:opacity-50"
                   >
                     Continue without an account
                   </button>
@@ -310,7 +310,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
               <button
                 type="button"
                 onClick={closeAuthScreen}
-                className="w-full rounded-note border border-brand-outline/50 px-4 py-3 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5"
+                className="w-full rounded-note border border-brand-outline/50 px-4 py-3 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5"
               >
                 Continue without an account
               </button>

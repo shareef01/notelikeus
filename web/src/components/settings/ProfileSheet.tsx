@@ -72,7 +72,7 @@ function SettingsRow({
       onClick={disabled ? undefined : onClick}
       disabled={onClick ? disabled : undefined}
       className={`flex w-full min-h-[3.5rem] items-center gap-3.5 px-4 py-3.5 text-left transition-colors sm:min-h-16 sm:px-5 sm:py-4 ${
-        onClick && !disabled ? 'hover:bg-white/[0.04] active:bg-white/[0.07]' : ''
+        onClick && !disabled ? 'hover:bg-brand-primary/[0.04] active:bg-brand-primary/[0.07]' : ''
       } ${disabled ? 'opacity-40' : ''}`}
     >
       {icon ? <SettingsLeadingIcon>{icon}</SettingsLeadingIcon> : null}
@@ -185,7 +185,7 @@ export function ProfileSheet({
         <button
           type="button"
           onClick={onClose}
-          className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-white/5 hover:text-brand-primary"
+          className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary"
           aria-label="Close settings"
         >
           <CloseIcon size={22} />

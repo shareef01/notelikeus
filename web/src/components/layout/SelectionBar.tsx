@@ -39,7 +39,7 @@ export function SelectionBar({
       <button
         type="button"
         onClick={onClearSelection}
-        className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 ${CHROME_FOCUS}`}
+        className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
         aria-label="Clear selection"
       >
         <CloseIcon size={22} />
@@ -111,7 +111,7 @@ function IconAction({
       className={`flex size-10 items-center justify-center rounded-full transition-colors ${CHROME_FOCUS} ${
         danger
           ? 'text-red-400 hover:bg-red-500/10'
-          : 'text-brand-muted hover:bg-white/5 hover:text-brand-primary'
+          : 'text-brand-muted hover:bg-brand-primary/5 hover:text-brand-primary'
       }`}
     >
       {children}
