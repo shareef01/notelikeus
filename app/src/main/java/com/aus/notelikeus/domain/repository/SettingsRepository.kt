@@ -9,8 +9,6 @@ interface SettingsRepository {
     val appTheme: Flow<AppTheme>
     suspend fun setAppTheme(theme: AppTheme)
 
-    val isTrueDarkMode: Flow<Boolean>
-    suspend fun setTrueDarkMode(enabled: Boolean)
     val isAppLockEnabled: Flow<Boolean>
     suspend fun setAppLockEnabled(enabled: Boolean)
     val noteViewMode: Flow<NoteViewMode>

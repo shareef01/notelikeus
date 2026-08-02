@@ -4,7 +4,6 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.aus.notelikeus.data.local.dao.LabelDao
 import com.aus.notelikeus.data.local.dao.NoteDao
-import com.aus.notelikeus.data.local.entity.AttachmentEntity
 import com.aus.notelikeus.data.local.entity.ChecklistItemEntity
 import com.aus.notelikeus.data.local.entity.LabelEntity
 import com.aus.notelikeus.data.local.entity.NoteEntity
@@ -15,10 +14,9 @@ import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
         NoteEntity::class,
         LabelEntity::class,
         NoteLabelCrossRef::class,
-        AttachmentEntity::class,
         ChecklistItemEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 abstract class NotelikeusDatabase : RoomDatabase() {
