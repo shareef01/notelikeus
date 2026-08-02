@@ -69,7 +69,7 @@ export function ColorSwatchRow({
             className={`shrink-0 rounded-full px-2.5 py-1 text-overline uppercase transition-colors ${
               allSelected
                 ? 'bg-brand-primary/15 text-brand-primary'
-                : 'text-brand-muted hover:bg-white/[0.04] hover:text-brand-secondary'
+                : 'text-brand-muted hover:bg-brand-primary/[0.04] hover:text-brand-secondary'
             }`}
           >
             All

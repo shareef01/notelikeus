@@ -628,7 +628,7 @@ export function MainScreen() {
                     <button
                       type="button"
                       onClick={clearFilters}
-                      className="min-h-11 rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5"
+                      className="min-h-11 rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5"
                     >
                       Clear filters
                     </button>

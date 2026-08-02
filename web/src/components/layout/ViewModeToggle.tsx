@@ -58,7 +58,7 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
               className={`flex h-8 items-center gap-1 rounded-full px-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
                 selected
                   ? 'bg-brand-primary/15 text-brand-primary'
-                  : 'text-brand-muted/65 hover:bg-white/5 hover:text-brand-secondary'
+                  : 'text-brand-muted/65 hover:bg-brand-primary/5 hover:text-brand-secondary'
               }`}
             >
               <Icon size={15} />
