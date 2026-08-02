@@ -228,7 +228,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
   const layoutControls = isTabletUp ? (
     <div
-      className="mr-1 flex h-9 items-center gap-0.5 rounded-full border border-current/15 bg-current/[0.07] p-1"
+      className="mr-1 flex h-9 items-center gap-0.5 rounded-full border border-[color-mix(in_srgb,currentColor_15%,transparent)] bg-[color-mix(in_srgb,currentColor_7%,transparent)] p-1"
       role="group"
       aria-label="Editor layout"
     >
@@ -241,8 +241,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
             onClick={() => setEditorLayout(button.id)}
             className={`flex size-9 items-center justify-center rounded-full transition-[background-color,opacity] ${
               active
-                ? 'bg-current/20 opacity-100'
-                : 'opacity-45 hover:bg-current/10 hover:opacity-85'
+                ? 'bg-[color-mix(in_srgb,currentColor_20%,transparent)] opacity-100'
+                : 'opacity-45 hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] hover:opacity-85'
             }`}
             aria-label={button.label}
             aria-pressed={active}
@@ -265,7 +265,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
         <button
           type="button"
           onClick={() => void handleBack()}
-          className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
+          className="flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
           aria-label="Back"
         >
           <ArrowBackIcon size={22} />
@@ -276,7 +276,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           <button
             type="button"
             onClick={() => setShowReminderPicker(true)}
-            className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
+            className="flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
             aria-label="Set reminder"
           >
             {state.reminderTimestamp != null ? (
@@ -288,7 +288,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           <button
             type="button"
             onClick={editor.togglePin}
-            className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
+            className="flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
             aria-label={state.isPinned ? 'Unpin' : 'Pin'}
           >
             <PinIcon size={20} className={state.isPinned ? 'opacity-100' : 'opacity-55'} />
@@ -296,7 +296,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           <button
             type="button"
             onClick={editor.toggleArchive}
-            className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
+            className="flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
             aria-label={state.isArchived ? 'Unarchive' : 'Archive'}
           >
             <ArchiveIcon size={20} className={state.isArchived ? 'opacity-100' : 'opacity-55'} />
