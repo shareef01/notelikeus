@@ -11,6 +11,9 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
+
+enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
@@ -23,4 +26,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Notelikeus"
-include(":app")
+include(":composeApp")
+include(":androidApp")
