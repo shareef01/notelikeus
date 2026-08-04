@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AppFunctionAppMetadata xmlns:appfn="http://schemas.android.com/apk/androidx.appfunctions"
+    appfn:description="This app manages personal notes and reminders.
+    Operational Patterns:
+    - Use 'searchNotes' to resolve search queries to internal 'noteId's before calling 'addReminder' or 'archiveNote'.
+    Constraints:
+    - Note titles are limited to 2000 characters and content to 100,000 characters.
+    - Reminders must be set to a future timestamp."
+    appfn:displayDescription="@string/app_functions_description" />
