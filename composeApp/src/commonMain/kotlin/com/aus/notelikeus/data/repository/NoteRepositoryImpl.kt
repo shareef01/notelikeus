@@ -36,8 +36,6 @@ class NoteRepositoryImpl(
     private var widgetRefreshJob: Job? = null
 
     private fun refreshWidget() {
-        // Double-check lock mechanism for KMP (Native might need something else, but JVM/Android is fine with Any())
-        // For now, keeping it as is since we target JVM and Android.
         synchronized(widgetRefreshLock) {
             widgetRefreshJob?.cancel()
             widgetRefreshJob = widgetScope.launch {
@@ -91,8 +89,6 @@ class NoteRepositoryImpl(
                 noteDao.insertChecklistItem(item.toChecklistItemEntity(insertedId))
             }
 
-            // Drop legacy attachment rows; feature archived.
-            noteDao.deleteAttachments(insertedId)
             insertedId
         }
         syncReminderForNote(note.copy(id = noteId))
@@ -118,8 +114,6 @@ class NoteRepositoryImpl(
             note.checklist.forEach { item ->
                 noteDao.insertChecklistItem(item.toChecklistItemEntity(noteId))
             }
-
-            noteDao.deleteAttachments(noteId)
         }
         syncReminderForNote(note)
         refreshWidget()
@@ -130,7 +124,9 @@ class NoteRepositoryImpl(
             notes.forEachIndexed { index, note ->
                 val noteId = note.id ?: return@forEachIndexed
                 if (note.position != index) {
-                    noteDao.updateNotePosition(noteId, index)
+                    // Bump the client timestamp so uploadNote's conflict guard lets the
+                    // new position through to the cloud (matches web commitNotePositions).
+                    noteDao.updateNotePosition(noteId, index, System.currentTimeMillis())
                 }
             }
         }
@@ -141,7 +137,6 @@ class NoteRepositoryImpl(
         note.id?.let { reminderManager.cancelReminder(it) }
         database.withTransaction {
             note.id?.let {
-                noteDao.deleteAttachments(it)
                 noteDao.deleteNoteLabelCrossRefs(it)
             }
             noteDao.deleteNote(note.toNoteEntity())
@@ -157,7 +152,6 @@ class NoteRepositoryImpl(
         database.withTransaction {
             noteDao.deleteAllChecklistItems()
             noteDao.deleteAllNoteLabelCrossRefs()
-            noteDao.deleteAllAttachments()
             noteDao.deleteAllNotes()
             labelDao.deleteAllLabels()
         }

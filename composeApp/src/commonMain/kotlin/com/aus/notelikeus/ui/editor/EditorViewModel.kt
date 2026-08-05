@@ -62,8 +62,7 @@ class EditorViewModel(
     private fun loadSettingsAndNote() {
         viewModelScope.launch {
             val theme = settingsRepository.appTheme.first()
-            val isTrueDark = theme == AppTheme.TRUE_DARK ||
-                (theme == AppTheme.AUTO && settingsRepository.isTrueDarkMode.first())
+            val isTrueDark = theme == AppTheme.TRUE_DARK
 
             val themeDefaultColor = if (isTrueDark) {
                 Color.Black.toArgb()
@@ -230,6 +229,10 @@ class EditorViewModel(
     suspend fun undoArchive(snapshot: Note) {
         _state.update { it.copy(isArchived = false) }
         repository.updateNote(snapshot)
+        // The archive above uploaded with a fresh server timestamp, so a plain upload here would
+        // lose the conflict and the note would flip back to archived on the next download. Force
+        // the unarchived copy up through the restore path instead.
+        snapshot.id?.let { cloudNoteSyncCoordinator.scheduleRestore(it) }
     }
 
     fun setReminder(timestamp: Long?) {
@@ -400,6 +403,16 @@ class EditorViewModel(
         viewModelScope.launch {
             persistNote()
         }
+    }
+
+    /**
+     * Suspending variant that completes only after the note has been persisted.
+     * Use in navigation callbacks where the caller must not proceed until the save finishes.
+     */
+    suspend fun saveNoteAndAwait() {
+        val currentState = _state.value
+        if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) return
+        persistNote()
     }
 
     private fun syncReminder(noteId: Long, state: EditorState) {
