@@ -18,6 +18,7 @@ import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
 import { useNoteEditor } from '@/hooks/useNoteEditor';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
+import { useShortcuts } from '@/hooks/useShortcuts';
 import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset';
 import {
   prefixLinesWithBullet,
@@ -27,6 +28,8 @@ import {
 import { noteSurfaceStyle } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { useUiStore, type EditorLayout, type EditorRoute } from '@/store/uiStore';
+import { useToastStore } from '@/store/toastStore';
+import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 interface EditorScreenProps {
@@ -42,6 +45,21 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const keyboardInset = useVisualViewportBottomInset();
   const editor = useNoteEditor(noteId);
   const { state } = editor;
+
+  useShortcuts([
+    {
+      key: 'Enter',
+      ctrlOrMeta: true,
+      allowInInputs: true,
+      action: () => {
+        const isEmpty =
+          !state.title.trim() && !state.content.trim() && state.checklist.length === 0;
+        if (isEmpty) return;
+        void editor.flushSave();
+        useToastStore.getState().show('Note saved');
+      },
+    },
+  ]);
   const [showOptions, setShowOptions] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showReminderPicker, setShowReminderPicker] = useState(false);
@@ -210,7 +228,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
   const layoutControls = isTabletUp ? (
     <div
-      className="mr-1 flex h-9 items-center gap-0.5 rounded-full border border-current/15 bg-current/[0.07] p-1"
+      className="mr-1 flex h-9 items-center gap-0.5 rounded-full border border-[color-mix(in_srgb,currentColor_15%,transparent)] bg-[color-mix(in_srgb,currentColor_7%,transparent)] p-1"
       role="group"
       aria-label="Editor layout"
     >
@@ -223,8 +241,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
             onClick={() => setEditorLayout(button.id)}
             className={`flex size-9 items-center justify-center rounded-full transition-[background-color,opacity] ${
               active
-                ? 'bg-current/20 opacity-100'
-                : 'opacity-45 hover:bg-current/10 hover:opacity-85'
+                ? 'bg-[color-mix(in_srgb,currentColor_20%,transparent)] opacity-100'
+                : 'opacity-45 hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] hover:opacity-85'
             }`}
             aria-label={button.label}
             aria-pressed={active}
@@ -247,7 +265,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
         <button
           type="button"
           onClick={() => void handleBack()}
-          className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
+          className="flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
           aria-label="Back"
         >
           <ArrowBackIcon size={22} />
@@ -258,7 +276,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           <button
             type="button"
             onClick={() => setShowReminderPicker(true)}
-            className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
+            className="flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
             aria-label="Set reminder"
           >
             {state.reminderTimestamp != null ? (
@@ -270,7 +288,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           <button
             type="button"
             onClick={editor.togglePin}
-            className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
+            className="flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
             aria-label={state.isPinned ? 'Unpin' : 'Pin'}
           >
             <PinIcon size={20} className={state.isPinned ? 'opacity-100' : 'opacity-55'} />
@@ -278,7 +296,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           <button
             type="button"
             onClick={editor.toggleArchive}
-            className="flex size-11 items-center justify-center rounded-full hover:bg-black/10"
+            className="flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
             aria-label={state.isArchived ? 'Unarchive' : 'Archive'}
           >
             <ArchiveIcon size={20} className={state.isArchived ? 'opacity-100' : 'opacity-55'} />
@@ -307,6 +325,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             value={state.title}
             onChange={(event) => editor.setTitle(event.target.value)}
             placeholder="Title"
+            maxLength={MAX_NOTE_TITLE_CHARS}
             className="w-full bg-transparent text-[22px] font-semibold leading-snug tracking-[-0.03em] outline-none placeholder:opacity-35"
             style={{ color: contentColor }}
           />
@@ -401,6 +420,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
                   }}
                   placeholder="Start writing…"
                   rows={1}
+                  maxLength={MAX_NOTE_CONTENT_CHARS}
                   className="mt-4 w-full min-h-52 resize-none overflow-hidden bg-transparent text-[17px] leading-[1.55] tracking-[0.01em] outline-none placeholder:opacity-35 sm:min-h-[320px] sm:text-[18px]"
                   style={{ color: contentColor }}
                 />

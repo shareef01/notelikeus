@@ -5,7 +5,7 @@ import { AddIcon, CloseIcon, MenuIcon, SettingsIcon } from '@/components/icons/I
 import type { ViewColumns } from '@/store/uiStore';
 import type { Label } from '@/types/label';
 import type { NoteFilter } from '@/types/note';
-import { useState, useRef } from 'react';
+import { useState, useRef, type RefObject } from 'react';
 
 const CHROME_FOCUS =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary';
@@ -50,6 +50,8 @@ interface TopBarProps {
   recentSearches?: string[];
   onRecentSearchClick?: (query: string) => void;
   onClearRecentSearches?: () => void;
+  /** Optional external ref for the search input (e.g. for keyboard shortcuts). */
+  searchInputRef?: RefObject<HTMLInputElement | null>;
 }
 
 export function TopBar({
@@ -86,9 +88,11 @@ export function TopBar({
   recentSearches = [],
   onRecentSearchClick,
   onClearRecentSearches,
+  searchInputRef: searchInputRefProp,
 }: TopBarProps) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const internalSearchRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = searchInputRefProp ?? internalSearchRef;
 
   const showRecent =
     !selectionMode && isSearchFocused && recentSearches.length > 0 && !searchQuery;
@@ -127,7 +131,7 @@ export function TopBar({
             <button
               type="button"
               onClick={onMenuClick}
-              className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 md:hidden ${CHROME_FOCUS}`}
+              className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 md:hidden ${CHROME_FOCUS}`}
               aria-label="Open menu"
             >
               <MenuIcon size={22} />
@@ -153,7 +157,7 @@ export function TopBar({
                 <button
                   type="button"
                   onClick={() => onSearchQueryChange('')}
-                  className={`mr-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-white/5 ${CHROME_FOCUS}`}
+                  className={`mr-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
                   aria-label="Clear search"
                 >
                   <CloseIcon size={18} />
@@ -166,7 +170,7 @@ export function TopBar({
             <button
               type="button"
               onClick={onProfileClick}
-              className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-white/5 hover:text-brand-primary ${CHROME_FOCUS}`}
+              className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary ${CHROME_FOCUS}`}
               aria-label="Open settings"
             >
               <SettingsIcon size={22} />
@@ -196,7 +200,7 @@ export function TopBar({
                   key={query}
                   type="button"
                   onClick={() => onRecentSearchClick?.(query)}
-                  className="whitespace-nowrap rounded-full border border-brand-outline/50 px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-white/5"
+                  className="whitespace-nowrap rounded-full border border-brand-outline/50 px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-brand-primary/5"
                 >
                   {query}
                 </button>
