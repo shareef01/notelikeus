@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
+import { version } from '../../../package.json';
 import { BrandMark } from '@/components/brand/BrandMark';
 import { ThemePicker } from '@/components/settings/ThemePicker';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -71,7 +72,7 @@ function SettingsRow({
       onClick={disabled ? undefined : onClick}
       disabled={onClick ? disabled : undefined}
       className={`flex w-full min-h-[3.5rem] items-center gap-3.5 px-4 py-3.5 text-left transition-colors sm:min-h-16 sm:px-5 sm:py-4 ${
-        onClick && !disabled ? 'hover:bg-white/[0.04] active:bg-white/[0.07]' : ''
+        onClick && !disabled ? 'hover:bg-brand-primary/[0.04] active:bg-brand-primary/[0.07]' : ''
       } ${disabled ? 'opacity-40' : ''}`}
     >
       {icon ? <SettingsLeadingIcon>{icon}</SettingsLeadingIcon> : null}
@@ -118,6 +119,7 @@ interface ProfileSheetProps {
   appTheme: AppTheme;
   onAppThemeChange: (theme: AppTheme) => void;
   isGoogleAccount: boolean;
+  isGuest: boolean;
   userEmail: string | null;
   syncStatus: string;
   syncedNoteCount: number;
@@ -140,6 +142,7 @@ export function ProfileSheet({
   appTheme,
   onAppThemeChange,
   isGoogleAccount,
+  isGuest,
   userEmail,
   syncStatus,
   syncedNoteCount,
@@ -182,7 +185,7 @@ export function ProfileSheet({
         <button
           type="button"
           onClick={onClose}
-          className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-white/5 hover:text-brand-primary"
+          className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary"
           aria-label="Close settings"
         >
           <CloseIcon size={22} />
@@ -230,10 +233,18 @@ export function ProfileSheet({
                     <span className="text-chrome-label">Cloud</span>
                   </div>
                   <p className="truncate text-base font-medium text-brand-primary sm:text-lg">
-                    {isGoogleAccount ? syncStatus : 'Signed out'}
+                    {isGoogleAccount
+                      ? syncStatus
+                      : isGuest
+                        ? 'Guest session'
+                        : 'Signed out'}
                   </p>
                   <p className="text-sm text-brand-muted">
-                    {isGoogleAccount ? `${syncedNoteCount} synced` : 'Sign in to sync'}
+                    {isGoogleAccount
+                      ? `${syncedNoteCount} synced`
+                      : isGuest
+                        ? 'Notes stay on this device'
+                        : 'Sign in to sync'}
                   </p>
                 </div>
               </div>
@@ -246,12 +257,19 @@ export function ProfileSheet({
                 onClick={onPrivacyPolicy}
                 icon={<PrivacyIcon size={18} />}
               />
-              <SettingsRow title="Version" subtitle="1.0.0 (web)" icon={<InfoIcon size={18} />} />
+              <SettingsRow title="Version" subtitle={`${version} (web)`} icon={<InfoIcon size={18} />} />
             </SettingsSection>
           </div>
 
           <div className="flex flex-col gap-5">
             <SettingsSection title="Account">
+              {isGuest ? (
+                <SettingsRow
+                  title="Browsing as a guest"
+                  subtitle="Notes aren't synced or backed up. Sign in to keep them across devices."
+                  icon={<AccountIcon size={18} />}
+                />
+              ) : null}
               {isGoogleAccount && userEmail ? (
                 <>
                   <SettingsRow
@@ -261,7 +279,7 @@ export function ProfileSheet({
                   />
                   <SettingsRow
                     title="Sign out"
-                    subtitle="Clear local data for this account"
+                    subtitle="Stop syncing notes on this browser"
                     onClick={onSignOut}
                     icon={<LogoutIcon size={18} />}
                     destructive
