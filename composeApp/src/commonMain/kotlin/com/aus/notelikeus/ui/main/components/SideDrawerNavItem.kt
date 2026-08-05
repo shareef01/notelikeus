@@ -78,7 +78,7 @@ fun SideDrawerNavItem(
 
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = label,
             modifier = Modifier.size(22.dp),
             tint = accent.copy(alpha = if (selected) 1f else 0.85f)
         )

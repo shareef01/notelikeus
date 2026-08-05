@@ -21,9 +21,9 @@ import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaf
 import androidx.compose.material3.adaptive.layout.AnimatedPane
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import org.jetbrains.compose.resources.stringResource
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
@@ -33,15 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import com.aus.notelikeus.data.backup.NoteBackupExporter
-import com.aus.notelikeus.data.backup.BackupExportResult
-import com.aus.notelikeus.data.backup.BackupImportResult
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.Locale
+import org.jetbrains.compose.resources.getString
 import com.aus.notelikeus.ui.components.NoteStaggeredGrid
 import com.aus.notelikeus.ui.components.NotesEmptyState
 import com.aus.notelikeus.ui.main.components.MainTopAppBar
@@ -50,6 +42,7 @@ import com.aus.notelikeus.ui.main.components.SideDrawerAccountRow
 import com.aus.notelikeus.ui.main.components.SideDrawerNavItem
 import com.aus.notelikeus.ui.main.components.SideDrawerSectionLabel
 import com.aus.notelikeus.ui.main.components.TrashBanner
+import com.aus.notelikeus.ui.main.components.sortOrderLabelRes
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.NavAccentArchive
 import com.aus.notelikeus.ui.theme.NavAccentLabels
@@ -81,9 +74,12 @@ fun MainScreen(
     windowSizeClass: WindowSizeClass,
     isAppLockEnabled: Boolean = false,
     onRequestAppUnlock: (onSuccess: () -> Unit) -> Unit = {},
-    onAppLockEnabled: () -> Unit = {}
+    onAppLockEnabled: () -> Unit = {},
+    onExportBackup: () -> Unit = {},
+    onImportBackup: () -> Unit = {},
+    onGoogleSignIn: () -> Unit = {}
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val gridState = rememberLazyStaggeredGridState()
     val listScrolled by remember {
         derivedStateOf {
@@ -98,77 +94,7 @@ fun MainScreen(
     var showCloudSignOutConfirm by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val haptic = LocalHapticFeedback.current
-    val context = LocalContext.current
     val undoLabel = stringResource(Res.string.action_undo)
-    val googleSignInHelper: GoogleSignInHelper = org.koin.compose.koinInject()
-
-    val signInFailedMessage = stringResource(Res.string.cloud_sign_in_failed)
-    val googleSignInLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        googleSignInHelper.parseIdToken(result.data)
-            .onSuccess { viewModel.signInWithGoogleIdToken(it) }
-            .onFailure {
-                scope.launch {
-                    snackbarHostState.showSnackbar(signInFailedMessage)
-                }
-            }
-    }
-
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument(NoteBackupExporter.BACKUP_MIME_TYPE)
-    ) { uri ->
-        uri?.let {
-            scope.launch {
-                when (viewModel.exportBackup(context.contentResolver, it)) {
-                    BackupExportResult.Success -> snackbarHostState.showSnackbar(
-                        context.getString(Res.string.export_success)
-                    )
-                    BackupExportResult.WriteFailed,
-                    is BackupExportResult.Error -> snackbarHostState.showSnackbar(
-                        context.getString(Res.string.export_failed)
-                    )
-                }
-            }
-        }
-    }
-
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let {
-            scope.launch {
-                val message = when (val result = viewModel.importBackup(context.contentResolver, it)) {
-                    is BackupImportResult.Success -> {
-                        val successMessage = context.getString(
-                            Res.string.import_success,
-                            result.notesImported
-                        )
-                        if (result.notesImported > 0 && state.cloudAccount.isGoogleAccount) {
-                            val snackResult = snackbarHostState.showSnackbar(
-                                message = successMessage,
-                                actionLabel = context.getString(Res.string.cloud_sync_now),
-                                duration = SnackbarDuration.Long
-                            )
-                            if (snackResult == SnackbarResult.ActionPerformed) {
-                                viewModel.syncNotesToCloud()
-                            }
-                            null
-                        } else {
-                            successMessage
-                        }
-                    }
-                    is BackupImportResult.InvalidFormat -> context.getString(
-                        Res.string.import_invalid_format,
-                        result.message
-                    )
-                    BackupImportResult.ReadFailed,
-                    is BackupImportResult.Error -> context.getString(Res.string.import_failed)
-                }
-                message?.let { snackbarHostState.showSnackbar(it) }
-            }
-        }
-    }
 
     suspend fun showUndoSnackbar(message: String) {
         val result = snackbarHostState.showSnackbar(
@@ -192,25 +118,25 @@ fun MainScreen(
         when (val event = state.pendingCloudSyncEvent) {
             is CloudSyncEvent.Uploaded -> {
                 snackbarHostState.showSnackbar(
-                    context.getString(Res.string.cloud_sync_success, event.noteCount)
+                    getString(Res.string.cloud_sync_success, event.noteCount)
                 )
             }
             is CloudSyncEvent.Downloaded -> {
                 snackbarHostState.showSnackbar(
-                    context.getString(Res.string.cloud_download_success, event.noteCount)
+                    getString(Res.string.cloud_download_success, event.noteCount)
                 )
             }
             is CloudSyncEvent.Failure -> {
                 snackbarHostState.showSnackbar(
-                    event.message.ifBlank { context.getString(Res.string.cloud_sync_failed) }
+                    event.message.ifBlank { getString(Res.string.cloud_sync_failed) }
                 )
             }
             CloudSyncEvent.SignedIn -> {
-                snackbarHostState.showSnackbar(context.getString(Res.string.cloud_sign_in_success))
+                snackbarHostState.showSnackbar(getString(Res.string.cloud_sign_in_success))
             }
             is CloudSyncEvent.SignedOut -> {
                 snackbarHostState.showSnackbar(
-                    context.getString(
+                    getString(
                         if (event.cloudDataDeleted) {
                             Res.string.cloud_sign_out_deleted_success
                         } else {
@@ -220,7 +146,7 @@ fun MainScreen(
                 )
             }
             CloudSyncEvent.SignInRequired -> {
-                snackbarHostState.showSnackbar(context.getString(Res.string.cloud_sign_in_required))
+                snackbarHostState.showSnackbar(getString(Res.string.cloud_sign_in_required))
             }
             null -> Unit
         }
@@ -371,7 +297,7 @@ fun MainScreen(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Logout,
-                        contentDescription = null,
+                        contentDescription = stringResource(Res.string.cloud_sign_out),
                         tint = SignOutRose,
                         modifier = Modifier.size(18.dp)
                     )
@@ -552,14 +478,11 @@ fun MainScreen(
             },
             onExportClick = {
                 showProfileSheet = false
-                val fileName = "${NoteBackupExporter.BACKUP_FILE_PREFIX}_${
-                    SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
-                }.json"
-                exportLauncher.launch(fileName)
+                onExportBackup()
             },
             onImportClick = {
                 showProfileSheet = false
-                importLauncher.launch(arrayOf(NoteBackupExporter.BACKUP_MIME_TYPE))
+                onImportBackup()
             },
             onCloudSyncClick = {
                 viewModel.syncNotesToCloud()
@@ -568,7 +491,7 @@ fun MainScreen(
                 viewModel.downloadNotesFromCloud()
             },
             onGoogleSignInClick = {
-                googleSignInLauncher.launch(googleSignInHelper.getSignInIntent())
+                onGoogleSignIn()
             },
             onGoogleSignOutClick = {
                 showCloudSignOutConfirm = true
@@ -633,9 +556,9 @@ fun MainScreen(
                     viewModel.emptyTrash()
                     scope.launch {
                         val message = if (trashedCount == 1) {
-                            context.getString(Res.string.note_deleted)
+                            getString(Res.string.note_deleted)
                         } else {
-                            context.getString(Res.string.notes_deleted_count, trashedCount)
+                            getString(Res.string.notes_deleted_count, trashedCount)
                         }
                         showUndoSnackbar(message)
                     }
@@ -682,20 +605,22 @@ fun MainScreen(
                 TextButton(onClick = {
                     showDeleteConfirm = false
                     viewModel.deleteSelectedNotes()
-                    val message = if (state.currentFilter == NoteFilter.TRASHED) {
-                        if (count == 1) {
-                            context.getString(Res.string.note_deleted)
+                    scope.launch {
+                        val message = if (state.currentFilter == NoteFilter.TRASHED) {
+                            if (count == 1) {
+                                getString(Res.string.note_deleted)
+                            } else {
+                                getString(Res.string.notes_deleted_count, count)
+                            }
                         } else {
-                            context.getString(Res.string.notes_deleted_count, count)
+                            if (count == 1) {
+                                getString(Res.string.note_trashed)
+                            } else {
+                                getString(Res.string.notes_trashed_count, count)
+                            }
                         }
-                    } else {
-                        if (count == 1) {
-                            context.getString(Res.string.note_trashed)
-                        } else {
-                            context.getString(Res.string.notes_trashed_count, count)
-                        }
+                        showUndoSnackbar(message)
                     }
-                    scope.launch { showUndoSnackbar(message) }
                 }) {
                     Text(
                         stringResource(Res.string.action_delete),
@@ -730,7 +655,6 @@ private fun MainScaffold(
     scope: CoroutineScope,
     showUndoSnackbar: (String) -> Unit
 ) {
-    val context = LocalContext.current
     val showFab = state.currentFilter == NoteFilter.ACTIVE && state.selectedNotes.isEmpty()
     val selectedNoteModels = state.notes.filter { it.id in state.selectedNotes }
     val selectionAllPinned = selectedNoteModels.isNotEmpty() && selectedNoteModels.all { it.isPinned }
@@ -784,13 +708,15 @@ private fun MainScaffold(
                 onArchiveSelected = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     viewModel.archiveSelectedNotes()
-                    showUndoSnackbar(context.getString(Res.string.note_archived))
+                    scope.launch {
+                        showUndoSnackbar(getString(Res.string.note_archived))
+                    }
                 },
                 onRestoreSelected = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     viewModel.restoreSelectedNotes()
                     scope.launch {
-                        snackbarHostState.showSnackbar(context.getString(Res.string.notes_restored))
+                        snackbarHostState.showSnackbar(getString(Res.string.notes_restored))
                     }
                 },
                 selectionAllPinned = selectionAllPinned,
@@ -800,7 +726,7 @@ private fun MainScaffold(
                     viewModel.setSelectedNotesPinned(pin)
                     scope.launch {
                         snackbarHostState.showSnackbar(
-                            context.getString(if (pin) Res.string.notes_pinned else Res.string.notes_unpinned)
+                            getString(if (pin) Res.string.notes_pinned else Res.string.notes_unpinned)
                         )
                     }
                 },
@@ -819,7 +745,19 @@ private fun MainScaffold(
                 selectedLabelId = state.selectedLabelId,
                 onLabelSelect = viewModel::selectLabelFilter,
                 sortOrder = state.sortOrder,
-                onSortOrderCycle = { viewModel.setSortOrder(state.sortOrder.next()) },
+                onSortOrderCycle = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    val next = state.sortOrder.next()
+                    viewModel.setSortOrder(next)
+                    scope.launch {
+                        snackbarHostState.showSnackbar(
+                            getString(
+                                Res.string.sorted_by,
+                                getString(sortOrderLabelRes(next))
+                            )
+                        )
+                    }
+                },
                 recentSearches = state.recentSearches,
                 onRecentSearchClick = {
                     viewModel.onSearchQueryChange(it)
@@ -860,7 +798,14 @@ private fun MainScaffold(
         val filteredNotes = state.filteredNotes
         val gridBottomPadding = paddingValues.calculateBottomPadding() + if (showFab) 80.dp else 16.dp
 
-        if (filteredNotes.isEmpty()) {
+        if (state.isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else if (filteredNotes.isEmpty()) {
             val hasActiveFilters = state.selectedColor != null || state.selectedLabelId != null
             val message: String
             val subtitle: String?
@@ -872,7 +817,7 @@ private fun MainScaffold(
                     message = stringResource(Res.string.no_matching_notes)
                     subtitle = stringResource(Res.string.empty_search_subtitle)
                     showCreate = false
-                    showClear = hasActiveFilters
+                    showClear = true
                     emptyIcon = Icons.Outlined.SearchOff
                 }
                 hasActiveFilters -> {
@@ -967,17 +912,21 @@ private fun MainScaffold(
                     onSwipeToArchive = { note ->
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.archiveNote(note)
-                        showUndoSnackbar(context.getString(Res.string.note_archived))
+                        scope.launch {
+                            showUndoSnackbar(getString(Res.string.note_archived))
+                        }
                     },
                     onSwipeToTrash = { note ->
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.trashNote(note)
-                        val message = if (state.currentFilter == NoteFilter.TRASHED) {
-                            context.getString(Res.string.note_deleted)
-                        } else {
-                            context.getString(Res.string.note_trashed)
+                        scope.launch {
+                            val message = if (state.currentFilter == NoteFilter.TRASHED) {
+                                getString(Res.string.note_deleted)
+                            } else {
+                                getString(Res.string.note_trashed)
+                            }
+                            showUndoSnackbar(message)
                         }
-                        showUndoSnackbar(message)
                     },
                     onLabelClick = { labelId ->
                         viewModel.selectLabelFilter(labelId)

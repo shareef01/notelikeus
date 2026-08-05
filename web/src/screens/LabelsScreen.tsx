@@ -43,7 +43,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
           <button
             type="button"
             onClick={onClose}
-            className="flex size-11 items-center justify-center rounded-full hover:bg-white/5 transition-colors"
+            className="flex size-11 items-center justify-center rounded-full hover:bg-brand-primary/5 transition-colors"
             aria-label="Close"
           >
             <CloseIcon size={24} />
@@ -67,7 +67,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
             {newLabelName.trim() ? (
               <button
                 type="submit"
-                className="rounded-note px-4 py-2 text-sm font-bold text-brand-primary transition-colors hover:bg-white/5"
+                className="rounded-note px-4 py-2 text-sm font-bold text-brand-primary transition-colors hover:bg-brand-primary/5"
               >
                 Create
               </button>
@@ -87,7 +87,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
             <div className="space-y-0">
               {labels.map((label, index) => (
                 <div key={label.id}>
-                  <div className="flex min-h-[56px] items-center gap-4 rounded-note px-4 transition-colors hover:bg-white/5">
+                  <div className="flex min-h-[56px] items-center gap-4 rounded-note px-4 transition-colors hover:bg-brand-primary/5">
                     <span className="flex size-8 shrink-0 items-center justify-center text-brand-primary/40">
                       <LabelIcon size={20} />
                     </span>

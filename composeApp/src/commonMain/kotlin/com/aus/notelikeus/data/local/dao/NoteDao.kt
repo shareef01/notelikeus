@@ -1,11 +1,10 @@
 package com.aus.notelikeus.data.local.dao
 
 import androidx.room.*
-import com.aus.notelikeus.data.local.entity.AttachmentEntity
 import com.aus.notelikeus.data.local.entity.ChecklistItemEntity
 import com.aus.notelikeus.data.local.entity.NoteEntity
 import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
-import com.aus.notelikeus.data.local.model.NoteWithLabelsAndAttachments
+import com.aus.notelikeus.data.local.model.NoteWithLabels
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -13,19 +12,19 @@ interface NoteDao {
 
     @Transaction
     @Query("SELECT * FROM notes WHERE isTrashed = 0 AND isArchived = 0 ORDER BY isPinned DESC, position ASC, timestamp DESC")
-    fun getActiveNotes(): Flow<List<NoteWithLabelsAndAttachments>>
+    fun getActiveNotes(): Flow<List<NoteWithLabels>>
 
     @Transaction
     @Query("SELECT * FROM notes WHERE isArchived = 1 AND isTrashed = 0 ORDER BY timestamp DESC")
-    fun getArchivedNotes(): Flow<List<NoteWithLabelsAndAttachments>>
+    fun getArchivedNotes(): Flow<List<NoteWithLabels>>
 
     @Transaction
     @Query("SELECT * FROM notes WHERE isTrashed = 1 ORDER BY timestamp DESC")
-    fun getTrashedNotes(): Flow<List<NoteWithLabelsAndAttachments>>
+    fun getTrashedNotes(): Flow<List<NoteWithLabels>>
 
     @Transaction
     @Query("SELECT * FROM notes WHERE id = :id")
-    suspend fun getNoteById(id: Long): NoteWithLabelsAndAttachments?
+    suspend fun getNoteById(id: Long): NoteWithLabels?
 
     @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM notes WHERE isTrashed = 0 AND isArchived = 0")
     suspend fun getNextNotePosition(): Int
@@ -43,7 +42,7 @@ interface NoteDao {
         AND isArchived = 0
         """
     )
-    suspend fun getNotesWithActiveReminders(now: Long): List<NoteWithLabelsAndAttachments>
+    suspend fun getNotesWithActiveReminders(now: Long): List<NoteWithLabels>
 
     @Transaction
     @Query(
@@ -55,7 +54,7 @@ interface NoteDao {
         AND isArchived = 0
         """
     )
-    suspend fun getNotesWithMissedReminders(now: Long): List<NoteWithLabelsAndAttachments>
+    suspend fun getNotesWithMissedReminders(now: Long): List<NoteWithLabels>
 
     @Query("UPDATE notes SET reminderTimestamp = NULL WHERE id = :noteId")
     suspend fun clearReminderTimestamp(noteId: Long)
@@ -69,8 +68,8 @@ interface NoteDao {
     @Update
     suspend fun updateNote(note: NoteEntity)
 
-    @Query("UPDATE notes SET position = :position WHERE id = :id")
-    suspend fun updateNotePosition(id: Long, position: Int)
+    @Query("UPDATE notes SET position = :position, timestamp = :timestamp WHERE id = :id")
+    suspend fun updateNotePosition(id: Long, position: Int, timestamp: Long)
 
     @Delete
     suspend fun deleteNote(note: NoteEntity)
@@ -87,15 +86,6 @@ interface NoteDao {
     @Query("DELETE FROM checklist_items WHERE noteId = :noteId")
     suspend fun deleteChecklistItems(noteId: Long)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAttachment(attachment: AttachmentEntity)
-
-    @Query("DELETE FROM attachments WHERE noteId = :noteId")
-    suspend fun deleteAttachments(noteId: Long)
-
-    @Query("DELETE FROM attachments")
-    suspend fun deleteAllAttachments()
-
     @Query("DELETE FROM checklist_items")
     suspend fun deleteAllChecklistItems()
 
@@ -107,11 +97,11 @@ interface NoteDao {
 
     @Transaction
     @Query("SELECT * FROM notes WHERE isTrashed = 0 AND isArchived = 0 ORDER BY isPinned DESC, position ASC, timestamp DESC LIMIT 5")
-    suspend fun getWidgetNotes(): List<NoteWithLabelsAndAttachments>
+    suspend fun getWidgetNotes(): List<NoteWithLabels>
 
     @Transaction
     @Query("SELECT * FROM notes ORDER BY timestamp DESC")
-    suspend fun getAllNotesForBackup(): List<NoteWithLabelsAndAttachments>
+    suspend fun getAllNotesForBackup(): List<NoteWithLabels>
 
     /** Every note is cloud-eligible now that locking is gone. */
     @Query("SELECT COUNT(*) FROM notes")

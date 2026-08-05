@@ -1,5 +1,5 @@
 import { BlockIcon, CheckIcon } from '@/components/icons/Icons';
-import { argbToCss, noteColorsForTheme, noteColorsMatch } from '@/theme/colors';
+import { argbToCss, NOTE_COLOR_NAMES, noteColorsForTheme, noteColorsMatch } from '@/theme/colors';
 import { contentColorForBackground } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 
@@ -69,7 +69,7 @@ export function ColorSwatchRow({
             className={`shrink-0 rounded-full px-2.5 py-1 text-overline uppercase transition-colors ${
               allSelected
                 ? 'bg-brand-primary/15 text-brand-primary'
-                : 'text-brand-muted hover:bg-white/[0.04] hover:text-brand-secondary'
+                : 'text-brand-muted hover:bg-brand-primary/[0.04] hover:text-brand-secondary'
             }`}
           >
             All
@@ -78,10 +78,13 @@ export function ColorSwatchRow({
         </>
       ) : null}
       <div className="flex items-center gap-1.5 pr-0.5">
-        {colors.map((argb) => (
+        {colors.map((argb, index) => {
+          const nameIndex = onSelectAll ? index + 1 : index;
+          return (
           <ColorSwatch
             key={argb}
             argb={argb}
+            label={NOTE_COLOR_NAMES[nameIndex] ?? undefined}
             selected={
               !allSelected &&
               selectedColor != null &&
@@ -95,7 +98,8 @@ export function ColorSwatchRow({
               )
             }
           />
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ import org.junit.Test
 class DatabaseMigrationsTest {
 
     @Test
-    fun migrations_chainFromVersion1To8() {
+    fun migrations_chainFromVersion1To9() {
         assertEquals(1, DatabaseMigrations.MIGRATION_1_2.startVersion)
         assertEquals(2, DatabaseMigrations.MIGRATION_1_2.endVersion)
         assertEquals(2, DatabaseMigrations.MIGRATION_2_3.startVersion)
@@ -21,6 +21,8 @@ class DatabaseMigrationsTest {
         assertEquals(7, DatabaseMigrations.MIGRATION_6_7.endVersion)
         assertEquals(7, DatabaseMigrations.MIGRATION_7_8.startVersion)
         assertEquals(8, DatabaseMigrations.MIGRATION_7_8.endVersion)
-        assertEquals(7, DatabaseMigrations.ALL.size)
+        assertEquals(8, DatabaseMigrations.MIGRATION_8_9.startVersion)
+        assertEquals(9, DatabaseMigrations.MIGRATION_8_9.endVersion)
+        assertEquals(8, DatabaseMigrations.ALL.size)
     }
 }

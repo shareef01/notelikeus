@@ -1,6 +1,9 @@
 package com.aus.notelikeus.ui.navigation
 
 import android.content.Intent
+import com.aus.notelikeus.util.EXTRA_INTERNAL_NAV
+import com.aus.notelikeus.util.EXTRA_INTERNAL_NAV_TOKEN
+import com.aus.notelikeus.util.markInternalNavigation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

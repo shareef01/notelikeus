@@ -63,7 +63,6 @@ class MainViewModelTest {
         cloudNoteSyncCoordinator = mockk(relaxed = true)
         noteSyncStateStore = mockk(relaxed = true)
         every { repository.getActiveNotes() } returns flowOf(emptyList())
-        every { settingsRepository.isTrueDarkMode } returns flowOf(false)
         every { settingsRepository.isAppLockEnabled } returns flowOf(false)
         every { settingsRepository.noteViewMode } returns flowOf(NoteViewMode.GRID_2)
         every { settingsRepository.noteSortOrder } returns flowOf(NoteSortOrder.MANUAL)
@@ -258,10 +257,14 @@ class MainViewModelTest {
         viewModel.previewMoveNote(0, 1)
         advanceUntilIdle()
         viewModel.commitNoteOrder()
+        advanceUntilIdle()
 
         coVerify { repository.updateNotePositions(match { ordered ->
             ordered.size == 2 && ordered[0].id == 2L && ordered[1].id == 1L
         }) }
+        coVerify(exactly = 2) { cloudNoteSyncCoordinator.scheduleUpload(any<Long>()) }
+        coVerify { cloudNoteSyncCoordinator.scheduleUpload(1L) }
+        coVerify { cloudNoteSyncCoordinator.scheduleUpload(2L) }
     }
 
     @Test

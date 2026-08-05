@@ -10,6 +10,7 @@ import {
   signInWithEmailPassword,
 } from '@/lib/auth/emailAuth';
 import { signInWithGoogle } from '@/lib/auth/googleAuth';
+import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
 import { useUiStore, type AuthMode } from '@/store/uiStore';
 import { useEffect, useState } from 'react';
@@ -127,7 +128,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
           <button
             type="button"
             onClick={closeAuthScreen}
-            className="rounded-full p-2 text-brand-muted transition-colors hover:bg-white/5 hover:text-brand-primary"
+            className="rounded-full p-2 text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary"
             aria-label="Close"
           >
             <CloseIcon size={20} />
@@ -191,6 +192,30 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
               onClick={() => void handleGoogle()}
               loading={loading}
             />
+
+            {mandatory ? (
+              <>
+                <div className="relative flex items-center gap-3 py-1">
+                  <div className="h-px flex-1 bg-brand-outline/40" />
+                  <span className="text-chrome-label">or</span>
+                  <div className="h-px flex-1 bg-brand-outline/40" />
+                </div>
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => useAuthStore.getState().enterGuestMode()}
+                    disabled={loading}
+                    className="w-full rounded-note border border-brand-outline/50 px-4 py-3 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5 disabled:opacity-50"
+                  >
+                    Continue without an account
+                  </button>
+                  <p className="text-center text-xs leading-relaxed text-brand-muted">
+                    Try Notelikeus on this device for now. Notes stay here for this session and
+                    aren't synced or backed up.
+                  </p>
+                </div>
+              </>
+            ) : null}
 
             {testLoginEnabled ? (
               <>
@@ -285,7 +310,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
               <button
                 type="button"
                 onClick={closeAuthScreen}
-                className="w-full rounded-note border border-brand-outline/50 px-4 py-3 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5"
+                className="w-full rounded-note border border-brand-outline/50 px-4 py-3 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5"
               >
                 Continue without an account
               </button>

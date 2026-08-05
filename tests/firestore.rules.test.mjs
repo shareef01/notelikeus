@@ -12,6 +12,7 @@ import {
   serverTimestamp,
   setDoc,
   Timestamp,
+  updateDoc,
 } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 
@@ -204,6 +205,112 @@ describe('firestore.rules', () => {
     const alice = authed('alice');
     await assertFails(
       setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ serverUpdatedAt: Date.now() })),
+    );
+  });
+
+  // --- Cross-user and metadata write denials ---
+
+  it('denies cross-user note writes and deletes', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(setDoc(noteRef(alice, 'alice', 'note-1'), validNote()));
+    const bob = authed('bob');
+    await assertFails(setDoc(noteRef(bob, 'alice', 'note-1'), validNote()));
+    await assertFails(setDoc(noteRef(bob, 'alice', 'note-2'), validNote()));
+    await assertFails(deleteDoc(noteRef(bob, 'alice', 'note-1')));
+  });
+
+  it('allows owners to write valid tombstones', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(
+      setDoc(doc(alice, 'users/alice/tombstones/note-1'), { deletedAt: Date.now() }),
+    );
+    await assertSucceeds(getDoc(doc(alice, 'users/alice/tombstones/note-1')));
+  });
+
+  it('rejects tombstones with unknown, missing, or mistyped fields', async () => {
+    const alice = authed('alice');
+    await assertFails(
+      setDoc(doc(alice, 'users/alice/tombstones/note-1'), { deletedAt: Date.now(), cause: 'x' }),
+    );
+    await assertFails(setDoc(doc(alice, 'users/alice/tombstones/note-1'), {}));
+    await assertFails(
+      setDoc(doc(alice, 'users/alice/tombstones/note-1'), { deletedAt: 'yesterday' }),
+    );
+  });
+
+  it('denies cross-user tombstone writes', async () => {
+    const bob = authed('bob');
+    await assertFails(
+      setDoc(doc(bob, 'users/alice/tombstones/note-1'), { deletedAt: Date.now() }),
+    );
+  });
+
+  it('denies cross-user meta writes', async () => {
+    const bob = authed('bob');
+    await assertFails(
+      setDoc(doc(bob, 'users/alice/_meta/sync'), {
+        lastSyncAt: Date.now(),
+        noteCount: 0,
+        platform: 'web',
+      }),
+    );
+  });
+
+  it('rejects invalid sync meta', async () => {
+    const alice = authed('alice');
+    await assertFails(
+      setDoc(doc(alice, 'users/alice/_meta/sync'), {
+        lastSyncAt: Date.now(),
+        noteCount: 1,
+        platform: 'ios',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(alice, 'users/alice/_meta/sync'), {
+        lastSyncAt: Date.now(),
+        noteCount: -1,
+        platform: 'web',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(alice, 'users/alice/_meta/sync'), {
+        lastSyncAt: Date.now(),
+        noteCount: 1,
+        platform: 'web',
+        role: 'admin',
+      }),
+    );
+  });
+
+  it('rejects non-android connection meta', async () => {
+    const alice = authed('alice');
+    await assertFails(
+      setDoc(doc(alice, 'users/alice/_meta/connection'), {
+        connectedAt: Date.now(),
+        platform: 'web',
+      }),
+    );
+  });
+
+  // --- Update paths ---
+
+  it('allows owners to update partial note fields', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(setDoc(noteRef(alice, 'alice', 'note-1'), validNote()));
+    await assertSucceeds(updateDoc(noteRef(alice, 'alice', 'note-1'), { title: 'Renamed' }));
+  });
+
+  it('rejects an update that introduces a forbidden field', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(setDoc(noteRef(alice, 'alice', 'note-1'), validNote()));
+    await assertFails(updateDoc(noteRef(alice, 'alice', 'note-1'), { role: 'admin' }));
+  });
+
+  it('rejects an update that makes content oversized', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(setDoc(noteRef(alice, 'alice', 'note-1'), validNote()));
+    await assertFails(
+      updateDoc(noteRef(alice, 'alice', 'note-1'), { content: 'x'.repeat(100001) }),
     );
   });
 });
