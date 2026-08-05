@@ -9,7 +9,8 @@ import kotlinx.coroutines.launch
 
 data class LabelsState(
     val labels: List<Label> = emptyList(),
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val error: String? = null
 )
 
 class LabelsViewModel(
@@ -23,10 +24,14 @@ class LabelsViewModel(
         loadLabels()
     }
 
-    private fun loadLabels() {
+    fun loadLabels() {
         repository.getLabels()
             .onEach { labels ->
-                _state.update { it.copy(labels = labels, isLoading = false) }
+                _state.update { it.copy(labels = labels, isLoading = false, error = null) }
+            }
+            .catch { e ->
+                android.util.Log.e("LabelsViewModel", "Failed to load labels", e)
+                _state.update { it.copy(isLoading = false, error = "Failed to load labels") }
             }
             .launchIn(viewModelScope)
     }

@@ -21,8 +21,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.Duration.Companion.milliseconds
+
+private const val TAG = "MainViewModel"
+private const val AUTO_PULL_MIN_INTERVAL_MS = 30_000L
 
 enum class NoteFilter {
     ACTIVE, ARCHIVED, TRASHED
@@ -38,6 +40,7 @@ private data class PendingUndo(
 )
 
 data class MainState(
+    val isLoading: Boolean = true,
     val notes: List<Note> = emptyList(),
     val filteredNotes: List<Note> = emptyList(),
     val recentSearches: List<String> = emptyList(),
@@ -47,7 +50,6 @@ data class MainState(
     val appTheme: AppTheme = AppTheme.AUTO,
     val viewMode: NoteViewMode = NoteViewMode.GRID_2,
     val sortOrder: NoteSortOrder = NoteSortOrder.MANUAL,
-    val isTrueDarkMode: Boolean = false,
     val isAppLockEnabled: Boolean = false,
     val areSettingsLoaded: Boolean = false,
     val pendingUndoMessage: String? = null,
@@ -81,7 +83,8 @@ class MainViewModel(
     private var currentNotesJob: Job? = null
     private var pendingUndo: PendingUndo? = null
     private val pendingHiddenIds = mutableSetOf<Long>()
-    private val filterGeneration = AtomicInteger(0)
+    private var filterGeneration = 0
+    private var lastAutoPullElapsedMs = 0L
 
     init {
         setFilter(NoteFilter.ACTIVE)
@@ -99,6 +102,19 @@ class MainViewModel(
         syncManager.syncStatus.onEach { status ->
             _state.update { it.copy(cloudSyncStatus = status) }
         }.launchIn(viewModelScope)
+    }
+
+    fun enterOfflineMode() {
+        _state.update {
+            it.copy(
+                cloudAccount = CloudAccount(
+                    email = null,
+                    isGoogleAccount = false,
+                    isAnonymous = false,
+                    isOfflineMode = true
+                )
+            )
+        }
     }
 
     fun signInWithGoogleIdToken(idToken: String) {
@@ -126,6 +142,21 @@ class MainViewModel(
     }
 
     fun downloadNotesFromCloud() {
+        viewModelScope.launch {
+            syncManager.downloadNotes()
+        }
+    }
+
+    /**
+     * Best-effort pull when the app returns to the foreground.
+     */
+    fun autoSyncOnForeground() {
+        if (_state.value.cloudSyncStatus == CloudSyncStatus.Syncing) return
+        if (!_state.value.cloudAccount.isGoogleAccount) return
+        if (!_state.value.isCloudAutoSyncEnabled) return
+        val now = System.currentTimeMillis()
+        if (now - lastAutoPullElapsedMs < AUTO_PULL_MIN_INTERVAL_MS) return
+        lastAutoPullElapsedMs = now
         viewModelScope.launch {
             syncManager.downloadNotes()
         }
@@ -184,12 +215,6 @@ class MainViewModel(
         settingsRepository.appTheme
             .onEach { theme ->
                 _state.update { it.copy(appTheme = theme) }
-            }
-            .launchIn(viewModelScope)
-
-        settingsRepository.isTrueDarkMode
-            .onEach { enabled ->
-                _state.update { it.copy(isTrueDarkMode = enabled) }
             }
             .launchIn(viewModelScope)
 
@@ -253,12 +278,12 @@ class MainViewModel(
     }
 
     private fun applyFilters() {
-        val generation = filterGeneration.incrementAndGet()
+        val generation = ++filterGeneration
         val snapshot = _state.value
         val hiddenIds = pendingHiddenIds.toSet()
         viewModelScope.launch {
             val sorted = withContext(defaultDispatcher) { filterAndSort(snapshot, hiddenIds) }
-            if (generation != filterGeneration.get()) return@launch
+            if (generation != filterGeneration) return@launch
             _state.update { it.copy(filteredNotes = sorted) }
         }
     }
@@ -310,7 +335,7 @@ class MainViewModel(
             .onEach { notes ->
                 val emittedIds = notes.mapNotNull { it.id }.toSet()
                 pendingHiddenIds.removeIf { it !in emittedIds }
-                _state.update { it.copy(notes = notes) }
+                _state.update { it.copy(notes = notes, isLoading = false) }
                 applyFilters()
             }
             .launchIn(viewModelScope)
@@ -383,12 +408,6 @@ class MainViewModel(
         }
     }
 
-    fun setTrueDarkMode(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.setTrueDarkMode(enabled)
-        }
-    }
-
     fun setAppLockEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setAppLockEnabled(enabled)
@@ -420,7 +439,13 @@ class MainViewModel(
         pendingUndo = PendingUndo(listOf(note), UndoAction.ARCHIVE)
         hideNoteTemporarily(noteId)
         viewModelScope.launch {
-            repository.updateNote(note.copy(isArchived = true, isTrashed = false))
+            repository.updateNote(
+                note.copy(
+                    isArchived = true,
+                    isTrashed = false,
+                    timestamp = System.currentTimeMillis()
+                )
+            )
         }
     }
 
@@ -434,7 +459,13 @@ class MainViewModel(
             } else {
                 pendingUndo = PendingUndo(listOf(note), UndoAction.TRASH)
                 hideNoteTemporarily(noteId)
-                repository.updateNote(note.copy(isTrashed = true, isArchived = false))
+                repository.updateNote(
+                    note.copy(
+                        isTrashed = true,
+                        isArchived = false,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
             }
         }
     }
@@ -458,7 +489,7 @@ class MainViewModel(
             pendingUndo = PendingUndo(notesToDelete, UndoAction.PERMANENT_DELETE)
             hideNotesTemporarily(notesToDelete.mapNotNull { it.id })
             notesToDelete.forEach { note ->
-                repository.deleteNote(note)
+                repository.deleteNote(note.copy(timestamp = System.currentTimeMillis()))
             }
             clearSelection()
         }
@@ -480,9 +511,15 @@ class MainViewModel(
             hideNotesTemporarily(notesToDelete.mapNotNull { it.id })
             notesToDelete.forEach { note ->
                 if (_state.value.currentFilter == NoteFilter.TRASHED) {
-                    repository.deleteNote(note)
+                    repository.deleteNote(note.copy(timestamp = System.currentTimeMillis()))
                 } else {
-                    repository.updateNote(note.copy(isTrashed = true, isArchived = false))
+                    repository.updateNote(
+                        note.copy(
+                            isTrashed = true,
+                            isArchived = false,
+                            timestamp = System.currentTimeMillis()
+                        )
+                    )
                 }
             }
             clearSelection()
@@ -495,7 +532,13 @@ class MainViewModel(
             pendingUndo = PendingUndo(notesToArchive, UndoAction.ARCHIVE)
             hideNotesTemporarily(notesToArchive.mapNotNull { it.id })
             notesToArchive.forEach { note ->
-                repository.updateNote(note.copy(isArchived = true, isTrashed = false))
+                repository.updateNote(
+                    note.copy(
+                        isArchived = true,
+                        isTrashed = false,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
             }
             clearSelection()
         }
@@ -529,12 +572,12 @@ class MainViewModel(
             when (undo.type) {
                 UndoAction.ARCHIVE, UndoAction.TRASH -> {
                     undo.notes.forEach { note ->
-                        repository.updateNote(note)
+                        repository.updateNote(note.copy(timestamp = System.currentTimeMillis()))
                     }
                 }
                 UndoAction.PERMANENT_DELETE -> {
                     undo.notes.forEach { note ->
-                        repository.insertNoteWithResult(note)
+                        repository.insertNoteWithResult(note.copy(timestamp = System.currentTimeMillis()))
                     }
                     _state.update { it.copy(listRevision = it.listRevision + 1) }
                 }
@@ -569,11 +612,11 @@ class MainViewModel(
         }
     }
 
-    suspend fun exportBackup(resolver: Any, uri: Any): BackupExportResult {
+    suspend fun exportBackup(): BackupExportResult {
         return backupExporter.createJson().let { BackupExportResult.Success }
     }
 
-    suspend fun importBackup(resolver: Any, uri: Any): BackupImportResult {
+    suspend fun importBackup(): BackupImportResult {
         return BackupImportResult.ReadFailed
     }
 }

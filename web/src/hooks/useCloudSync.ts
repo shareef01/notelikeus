@@ -11,7 +11,7 @@ export type CloudSyncStatus = 'unknown' | 'synced' | 'offline';
  * "synced count" because, once signed in, `notes` IS the Firestore collection.
  */
 export function useCloudSync() {
-  const { userId, user } = useAuthListener();
+  const { userId, user, isGuest } = useAuthListener();
   const online = useOnlineStatus();
   const notes = useNotesStore((s) => s.notes);
 
@@ -21,6 +21,7 @@ export function useCloudSync() {
     userId,
     userEmail: user?.email ?? null,
     isGoogleAccount: Boolean(userId),
+    isGuest,
     status,
     syncedCount: notes.length,
   };
