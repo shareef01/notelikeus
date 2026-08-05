@@ -8,18 +8,14 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.aus.notelikeus.data.remote.AppCheckInitializer
-import com.aus.notelikeus.data.local.LegacyAttachmentCleanup
 import com.aus.notelikeus.data.remote.NotificationChannels
 import com.aus.notelikeus.data.remote.ReconciliationSyncWorker
 import com.aus.notelikeus.ui.navigation.InternalNavigationToken
 import com.aus.notelikeus.di.initKoin
-import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
 import java.util.concurrent.TimeUnit
 
 class NotelikeusApp : Application(), Configuration.Provider {
-
-    private val legacyAttachmentCleanup: LegacyAttachmentCleanup by inject()
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -34,7 +30,6 @@ class NotelikeusApp : Application(), Configuration.Provider {
         InternalNavigationToken.init(this)
         AppCheckInitializer.install(this)
         NotificationChannels.createReminderChannel(this)
-        legacyAttachmentCleanup.scheduleIfNeeded()
         scheduleReconciliationSync()
         try {
             System.loadLibrary("sqlcipher")

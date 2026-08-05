@@ -36,7 +36,7 @@ export default function App() {
   const openNote = useUiStore((s) => s.openNote);
   const closeEditor = useUiStore((s) => s.closeEditor);
   const closeAuthScreen = useUiStore((s) => s.closeAuthScreen);
-  const { user, isReady: authReady } = useAuthListener();
+  const { user, isReady: authReady, isGuest } = useAuthListener();
   const isTabletUp = useIsTabletUp();
   const [authTimedOut, setAuthTimedOut] = useState(false);
   // Read once, so it cannot flip mid-render as auth resolves.
@@ -70,7 +70,9 @@ export default function App() {
       return;
     }
     const noteId = params.get('note');
-    if (noteId) {
+    // Note ids are the string form of the numeric localId (Firestore doc ids). Anything else
+    // (e.g. a hand-edited URL) is not a note and opening it would silently mint a phantom note.
+    if (noteId && /^\d+$/.test(noteId)) {
       openNote(noteId);
       window.history.replaceState({}, '', window.location.pathname);
     }
@@ -105,7 +107,7 @@ export default function App() {
     );
   }
 
-  if (!authReady && !hadSession) {
+  if (!isGuest && !authReady && !hadSession) {
     // Same splash the boot screen shows, so a first visit reads as one continuous "Loading…"
     // rather than a third differently-styled screen. The timeout affordance only appears if
     // auth genuinely stalls.
@@ -122,7 +124,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="rounded-note border border-brand-outline/50 px-4 py-2 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5"
+              className="rounded-note border border-brand-outline/50 px-4 py-2 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5"
             >
               Reload
             </button>
@@ -132,7 +134,7 @@ export default function App() {
     );
   }
 
-  if (!user && !assumeSignedIn) {
+  if (!user && !isGuest && !assumeSignedIn) {
     return (
       <>
         {themeApplier}

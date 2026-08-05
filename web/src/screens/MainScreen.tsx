@@ -35,6 +35,7 @@ import {
   emptyTrash,
   removeNote,
   restoreNoteById,
+  restorePermanentlyDeletedNote,
   saveNote,
   trashNoteById,
 } from '@/lib/notes/noteActions';
@@ -54,6 +55,7 @@ import { useUiStore } from '@/store/uiStore';
 import type { Note, NoteFilter } from '@/types/note';
 
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
+import { useShortcuts } from '@/hooks/useShortcuts';
 import { EditorScreen } from '@/screens/EditorScreen';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -62,11 +64,19 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 const SORT_ORDERS = ['manual', 'newest', 'oldest'] as const;
 
+const SORT_ORDER_LABELS: Record<(typeof SORT_ORDERS)[number], string> = {
+  manual: 'Manual order',
+  newest: 'Newest first',
+  oldest: 'Oldest first',
+};
+
 
 
 export function MainScreen() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -238,6 +248,8 @@ export function MainScreen() {
 
     setSortOrder(next);
 
+    useToastStore.getState().show(`Sorted: ${SORT_ORDER_LABELS[next]}`);
+
   };
 
 
@@ -272,18 +284,32 @@ export function MainScreen() {
 
 
   const handlePermanentDelete = async (note: Note) => {
+    const previous = { ...note };
     await removeNote(note.id);
-    useToastStore.getState().show('Note deleted permanently');
+    showUndoToast({
+      message: 'Note deleted permanently',
+      revert: () => restorePermanentlyDeletedNote(previous),
+    });
   };
 
 
 
   const handleEmptyTrash = async () => {
     setShowEmptyTrashConfirm(false);
+    const trashedSnapshots = notes
+      .filter((note) => note.isTrashed)
+      .map((note) => ({ ...note }));
     const count = await emptyTrash();
-    useToastStore.getState().show(
-      count > 0 ? `Deleted ${count} note${count === 1 ? '' : 's'} permanently` : 'Trash is already empty',
-    );
+    if (count === 0) {
+      useToastStore.getState().show('Trash is already empty');
+      return;
+    }
+    showUndoToast({
+      message: `Deleted ${count} note${count === 1 ? '' : 's'} permanently`,
+      revert: async () => {
+        await Promise.all(trashedSnapshots.map((note) => restorePermanentlyDeletedNote(note)));
+      },
+    });
   };
 
   const handleBulkPinToggle = async () => {
@@ -352,9 +378,12 @@ export function MainScreen() {
     if (snapshots.length === 0) return;
     await Promise.all(snapshots.map((note) => removeNote(note.id)));
     clearSelection();
-    useToastStore.getState().show(
-      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} deleted permanently`,
-    );
+    showUndoToast({
+      message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} deleted permanently`,
+      revert: async () => {
+        await Promise.all(snapshots.map((note) => restorePermanentlyDeletedNote(note)));
+      },
+    });
   };
 
 
@@ -442,6 +471,32 @@ export function MainScreen() {
   const overlayEditor =
     desktopEditor && editorLayout !== 'dock' ? desktopEditor : null;
 
+  useShortcuts([
+    {
+      key: '/',
+      action: () => {
+        if (editorRoute.mode === 'closed') searchInputRef.current?.focus();
+      },
+    },
+    {
+      key: 'n',
+      action: () => {
+        if (editorRoute.mode === 'closed' && filters.filter === 'active') openNewNote();
+      },
+    },
+    {
+      key: 'Escape',
+      action: () => {
+        if (editorRoute.mode !== 'closed') {
+          useUiStore.getState().closeEditor();
+          return;
+        }
+        if (selectionMode) clearSelection();
+        else setDrawerOpen(false);
+      },
+    },
+  ]);
+
   return (
     <div className="flex min-h-screen w-full bg-true-surface lg:mx-auto lg:max-w-shell">
 
@@ -524,6 +579,7 @@ export function MainScreen() {
             addRecentSearch(query);
           }}
           onClearRecentSearches={clearRecentSearches}
+          searchInputRef={searchInputRef}
         />
 
 
@@ -551,7 +607,16 @@ export function MainScreen() {
           <div className="mx-auto w-full max-w-content">
 
             {error ? (
-              <div className="px-4 py-6 text-center text-sm text-red-300">{error}</div>
+              <div className="px-4 py-6 text-center">
+                <p className="text-sm text-red-300 mb-3">{error}</p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="rounded-full bg-white/10 px-4 py-2 text-sm text-white/80 hover:bg-white/20 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
             ) : null}
 
             {isLoading ? (
@@ -572,7 +637,7 @@ export function MainScreen() {
                     <button
                       type="button"
                       onClick={clearFilters}
-                      className="min-h-11 rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-white/5"
+                      className="min-h-11 rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5"
                     >
                       Clear filters
                     </button>
@@ -686,7 +751,7 @@ export function MainScreen() {
         appTheme={appTheme}
         onAppThemeChange={setAppTheme}
         isGoogleAccount={cloud.isGoogleAccount}
-
+        isGuest={cloud.isGuest}
         userEmail={cloud.userEmail}
 
         syncStatus={cloud.status}

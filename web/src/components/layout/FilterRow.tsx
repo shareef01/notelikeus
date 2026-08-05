@@ -79,7 +79,7 @@ export function FilterRow({
         ) : null}
 
         <div
-          className="flex h-9 min-w-0 items-center rounded-full border border-brand-outline/35 bg-true-surface-variant/25 px-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+          className="flex h-9 min-w-0 items-center rounded-full border border-brand-outline/35 bg-true-surface-variant/25 px-1.5 shadow-[inset_0_1px_0_rgb(var(--outline-rgb)/0.3)]"
           role="group"
           aria-label="Color filter"
         >
