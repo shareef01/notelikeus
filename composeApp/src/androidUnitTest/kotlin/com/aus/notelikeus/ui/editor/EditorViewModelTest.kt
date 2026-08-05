@@ -40,7 +40,6 @@ class EditorViewModelTest {
         cloudNoteSyncCoordinator = mockk(relaxed = true)
         every { repository.getLabels() } returns flowOf(emptyList())
         every { settingsRepository.appTheme } returns flowOf(AppTheme.AUTO)
-        every { settingsRepository.isTrueDarkMode } returns flowOf(false)
     }
 
     private fun createViewModel(savedStateHandle: SavedStateHandle): EditorViewModel {

@@ -5,6 +5,7 @@ import type { User } from 'firebase/auth';
 import { useAuthStore } from '@/store/authStore';
 import { completeGoogleRedirectSignIn } from '@/lib/auth/googleAuth';
 import { formatAuthError } from '@/lib/auth/authErrors';
+import { clearLocalUserData } from '@/lib/bootstrap';
 import { useToastStore } from '@/store/toastStore';
 import { forgetSignedIn, rememberSignedIn } from '@/lib/auth/sessionHint';
 
@@ -27,8 +28,18 @@ export function useAuthSync() {
 
     const auth = getFirebaseAuth();
     return onAuthStateChanged(auth, (nextUser) => {
-      if (nextUser) rememberSignedIn();
-      else forgetSignedIn();
+      if (nextUser) {
+        // Leaving guest mode: guest notes and tombstones are in-session throwaways, so they must
+        // not leak into the account — a guest tombstone could suppress a real cloud note (or the
+        // in-memory guest mirror could get mixed into the account's first merge).
+        if (useAuthStore.getState().guestMode) {
+          clearLocalUserData();
+          useAuthStore.getState().exitGuestMode();
+        }
+        rememberSignedIn();
+      } else {
+        forgetSignedIn();
+      }
       useAuthStore.setState((state) => {
         if (state.user?.uid === nextUser?.uid && state.isReady) {
           return state;
@@ -44,13 +55,16 @@ export function useAuthListener(): {
   user: User | null;
   userId: string | null;
   isReady: boolean;
+  isGuest: boolean;
 } {
   const user = useAuthStore((state) => state.user);
   const isReady = useAuthStore((state) => state.isReady);
+  const isGuest = useAuthStore((state) => state.guestMode);
 
   return {
     user,
     userId: user?.uid ?? null,
     isReady,
+    isGuest,
   };
 }

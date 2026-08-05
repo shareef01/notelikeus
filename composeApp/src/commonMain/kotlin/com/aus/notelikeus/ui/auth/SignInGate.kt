@@ -47,6 +47,7 @@ private fun describeSignInError(error: Throwable): StringResource {
 fun SignInGate(
     onIdToken: (String) -> Unit,
     onEmailPassword: ((email: String, password: String, createAccount: Boolean) -> Unit)? = null,
+    onSkip: (() -> Unit)? = null,
     externalError: String? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -129,6 +130,15 @@ fun SignInGate(
                         onClick = { playServicesAvailable = googleSignInHelper.isPlayServicesAvailable() }
                     ) {
                         Text(stringResource(Res.string.action_retry), fontWeight = FontWeight.SemiBold)
+                    }
+                    if (onSkip != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        TextButton(onClick = onSkip) {
+                            Text(
+                                stringResource(R.string.sign_in_skip_offline),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
