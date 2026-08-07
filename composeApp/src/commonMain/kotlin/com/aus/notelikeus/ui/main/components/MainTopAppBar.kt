@@ -58,13 +58,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.stringResource
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -114,12 +116,17 @@ fun MainTopAppBar(
     hasActiveFilters: Boolean = false,
     onClearFilters: () -> Unit = {},
     listScrolled: Boolean = false,
+    searchFocusRequester: androidx.compose.ui.focus.FocusRequester? = null,
+    showMenuIcon: Boolean = true, // Added to hide on Desktop
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var isSearchFocused by remember { mutableStateOf(false) }
+    
+    val internalFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val focusRequester = searchFocusRequester ?: internalFocusRequester
 
     val settingsContentDescription = stringResource(Res.string.cd_open_settings)
     val searchPlaceholder = when (currentFilter) {
@@ -247,15 +254,19 @@ fun MainTopAppBar(
                                 .padding(horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                onMenuClick()
-                            }) {
-                                Icon(
-                                    Icons.Default.Menu,
-                                    contentDescription = stringResource(Res.string.cd_menu),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            if (showMenuIcon) {
+                                IconButton(onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                    onMenuClick()
+                                }) {
+                                    Icon(
+                                        Icons.Default.Menu,
+                                        contentDescription = stringResource(Res.string.cd_menu),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else {
+                                Spacer(modifier = Modifier.width(12.dp))
                             }
 
                             BasicTextField(
@@ -267,6 +278,7 @@ fun MainTopAppBar(
                                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                 modifier = Modifier
                                     .weight(1f)
+                                    .focusRequester(focusRequester)
                                     .onFocusChanged { isSearchFocused = it.isFocused }
                                     .semantics { contentDescription = searchPlaceholder },
                                 singleLine = true,

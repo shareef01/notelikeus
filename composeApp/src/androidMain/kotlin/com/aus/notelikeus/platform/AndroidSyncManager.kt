@@ -1,7 +1,7 @@
 package com.aus.notelikeus.platform
 
-import com.aus.notelikeus.data.remote.FirebaseNoteSync
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
+import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.ui.main.CloudAccount
 import com.aus.notelikeus.ui.main.CloudSyncStatus
@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.update
 
 class AndroidSyncManager(
     private val sessionManager: FirebaseSessionManager,
-    private val firebaseNoteSync: FirebaseNoteSync
+    private val syncEngine: NoteSyncEngine
 ) : SyncManager {
     private val _syncStatus = MutableStateFlow<CloudSyncStatus>(CloudSyncStatus.Unknown)
     override val syncStatus: StateFlow<CloudSyncStatus> = _syncStatus.asStateFlow()
@@ -56,7 +56,7 @@ class AndroidSyncManager(
 
     override suspend fun signOut(deleteCloudData: Boolean): Result<Unit> {
         if (deleteCloudData) {
-            firebaseNoteSync.deleteAllCloudData()
+            syncEngine.deleteAllCloudData()
         }
         return sessionManager.signOut().onSuccess {
             refreshAccount()
@@ -64,11 +64,11 @@ class AndroidSyncManager(
     }
 
     override suspend fun syncNotes() {
-        firebaseNoteSync.uploadAllNotes()
+        syncEngine.uploadAllNotes()
     }
 
     override suspend fun downloadNotes() {
-        firebaseNoteSync.downloadAllNotes()
+        syncEngine.downloadAllNotes()
     }
 
     override fun clearPendingEvent() {
