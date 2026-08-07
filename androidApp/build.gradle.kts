@@ -54,12 +54,14 @@ dependencies {
     implementation(libs.androidx.appfunctions.service)
     ksp(libs.androidx.appfunctions.compiler)
     
-    // Also need these for compiled AppFunctions to work
+    // UI dependencies for MainActivity
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.biometric)
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.fragment:fragment-ktx:1.8.2")
     implementation(libs.androidx.work.runtime.ktx)
+    
+    // Explicitly add Compose Material3 and WindowSizeClass for Android
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.windowSizeClass)
 }

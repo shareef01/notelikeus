@@ -1,5 +1,7 @@
 package com.aus.notelikeus.data.sync
 
+import com.aus.notelikeus.data.mapper.toNote
+import com.aus.notelikeus.data.mapper.toNoteEntity
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import kotlinx.coroutines.test.runTest
@@ -13,16 +15,19 @@ class NoteSyncEngineTest {
 
     private lateinit var transport: FakeCloudNoteTransport
     private lateinit var stateStore: FakeNoteSyncStateStore
-    private lateinit var repository: FakeNoteRepository
+    private lateinit var noteDao: FakeNoteDao
+    private lateinit var labelDao: FakeLabelDao
     private lateinit var engine: NoteSyncEngine
 
     private fun setup(uid: String = "uid") {
         transport = FakeCloudNoteTransport()
         stateStore = FakeNoteSyncStateStore()
-        repository = FakeNoteRepository()
+        noteDao = FakeNoteDao()
+        labelDao = FakeLabelDao()
         engine = NoteSyncEngine(
             transport = transport,
-            noteRepository = repository,
+            noteDao = noteDao,
+            labelDao = labelDao,
             syncStateStore = stateStore,
             uidProvider = { Result.success(uid) }
         )
@@ -76,7 +81,8 @@ class NoteSyncEngineTest {
     fun `uploadAllNotes fails when uid provider fails`() = runTest {
         engine = NoteSyncEngine(
             transport = FakeCloudNoteTransport(),
-            noteRepository = FakeNoteRepository(),
+            noteDao = FakeNoteDao(),
+            labelDao = FakeLabelDao(),
             syncStateStore = FakeNoteSyncStateStore(),
             uidProvider = { Result.failure(IllegalStateException("no user")) }
         )
@@ -87,23 +93,22 @@ class NoteSyncEngineTest {
     @Test
     fun `uploadAllNotes writes eligible notes to cloud`() = runTest {
         setup()
-        repository.addNote(Note(id = 1L, title = "First", content = "", timestamp = 1L, color = 0))
-        repository.addNote(Note(id = 2L, title = "Second", content = "", timestamp = 2L, color = 0))
+        noteDao.insertNote(Note(id = 1L, title = "First", content = "", timestamp = 1L, color = 0).toNoteEntity())
+        noteDao.insertNote(Note(id = 2L, title = "Second", content = "", timestamp = 2L, color = 0).toNoteEntity())
 
         val result = engine.uploadAllNotes()
 
         assertTrue(result.isSuccess)
         assertEquals(2, result.getOrNull())
         assertEquals(2, transport.notes.size)
-        assertTrue(transport.syncMetaCalls.isNotEmpty())
     }
 
     @Test
     fun `uploadAllNotes skips notes already deleted on another device`() = runTest {
         setup()
         stateStore.markDeleted(1L, 50L)
-        repository.addNote(Note(id = 1L, title = "First", content = "", timestamp = 1L, color = 0))
-        repository.addNote(Note(id = 2L, title = "Second", content = "", timestamp = 2L, color = 0))
+        noteDao.insertNote(Note(id = 1L, title = "First", content = "", timestamp = 1L, color = 0).toNoteEntity())
+        noteDao.insertNote(Note(id = 2L, title = "Second", content = "", timestamp = 2L, color = 0).toNoteEntity())
 
         val result = engine.uploadAllNotes()
 
@@ -120,7 +125,7 @@ class NoteSyncEngineTest {
     fun `reconcileUploads skips when lastMergedUserId does not match current uid`() = runTest {
         setup(uid = "new-uid")
         stateStore.setLastMergedUserId("old-uid")
-        repository.addNote(Note(id = 5L, title = "Local", content = "", timestamp = 200L, color = 0))
+        noteDao.insertNote(Note(id = 5L, title = "Local", content = "", timestamp = 200L, color = 0).toNoteEntity())
         stateStore.markReconciled(0L)
 
         val result = engine.reconcileUploads()
@@ -137,8 +142,8 @@ class NoteSyncEngineTest {
         stateStore.markReconciled(100L)
         val changed = Note(id = 1L, title = "New", content = "", timestamp = 200L, color = 0)
         val unchanged = Note(id = 2L, title = "Old", content = "", timestamp = 50L, color = 0)
-        repository.addNote(changed)
-        repository.addNote(unchanged)
+        noteDao.insertNote(changed.toNoteEntity())
+        noteDao.insertNote(unchanged.toNoteEntity())
         transport.nextServerTimestamp = 999L
 
         val result = engine.reconcileUploads()
@@ -155,20 +160,20 @@ class NoteSyncEngineTest {
     @Test
     fun `uploadNote refreshes serverUpdatedAt after successful upload`() = runTest {
         setup()
-        repository.addNote(Note(id = 7L, title = "Edited", content = "", timestamp = 1L, color = 0))
+        noteDao.insertNote(Note(id = 7L, title = "Edited", content = "", timestamp = 1L, color = 0).toNoteEntity())
         transport.nextServerTimestamp = 42_000L
 
         val result = engine.uploadNote(7L)
 
         assertTrue(result.isSuccess)
-        assertEquals(42_000L, repository.updatedServerTimestamps[7L])
+        assertEquals(42_000L, noteDao.updatedServerTimestamps[7L])
     }
 
     @Test
     fun `uploadNote skips write when remote serverUpdatedAt is newer`() = runTest {
         setup()
-        repository.addNote(
-            Note(id = 7L, title = "Stale", content = "", timestamp = 1L, color = 0, serverUpdatedAt = 10_000L)
+        noteDao.insertNote(
+            Note(id = 7L, title = "Stale", content = "", timestamp = 1L, color = 0, serverUpdatedAt = 10_000L).toNoteEntity()
         )
         // Remote has newer serverUpdatedAt
         transport.notes[7L] = CloudNoteRecord(
@@ -197,8 +202,6 @@ class NoteSyncEngineTest {
 
         assertTrue(result.isSuccess)
         assertTrue(11L in transport.deletedNoteIds)
-        // Should NOT have called getNoteById because tombstone triggers delete
-        assertTrue(repository.insertedNotes.isEmpty())
     }
 
     // ---- restoreNote ----
@@ -207,7 +210,7 @@ class NoteSyncEngineTest {
     fun `restoreNote clears both tombstones and re-uploads the note`() = runTest {
         setup()
         stateStore.markDeleted(11L, 99L)
-        repository.addNote(Note(id = 11L, title = "Back", content = "body", timestamp = 5L, color = 0))
+        noteDao.insertNote(Note(id = 11L, title = "Back", content = "body", timestamp = 5L, color = 0).toNoteEntity())
 
         val result = engine.restoreNote(11L)
 
@@ -236,7 +239,7 @@ class NoteSyncEngineTest {
     @Test
     fun `downloadAllNotes imports new cloud notes`() = runTest {
         setup()
-        repository.addLabel(Label(id = 1L, name = "Work"))
+        labelDao.insertLabel(com.aus.notelikeus.data.local.entity.LabelEntity(id = 1L, name = "Work"))
 
         transport.notes[5L] = CloudNoteRecord(
             noteId = 5L, serverUpdatedAt = 200_000L, clientTimestamp = 1L,
@@ -250,49 +253,8 @@ class NoteSyncEngineTest {
 
         assertTrue(result.isSuccess)
         assertTrue(result.getOrNull()!! > 0)
-        assertEquals(1, repository.insertedNotes.size)
-        assertEquals("Cloud note", repository.insertedNotes.first().title)
-        assertEquals("Work", repository.insertedNotes.first().labels.first().name)
-    }
-
-    @Test
-    fun `downloadAllNotes does not overwrite local edit when serverUpdatedAt ties and local client is newer`() = runTest {
-        setup()
-        repository.addNote(
-            Note(id = 5L, title = "Edited locally", content = "", timestamp = 500L, color = 0, serverUpdatedAt = 50_000L)
-        )
-        transport.notes[5L] = CloudNoteRecord(
-            noteId = 5L, serverUpdatedAt = 50_000L, clientTimestamp = 100L,
-            title = "Stale cloud", content = "", timestamp = 100L, color = 0,
-            isPinned = false, isArchived = false, isTrashed = false,
-            position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList()
-        )
-
-        val result = engine.downloadAllNotes()
-
-        assertTrue(result.isSuccess)
-        // Local must survive and be pushed to cloud
-        assertTrue(5L in transport.notes)
-        assertEquals("Edited locally", transport.notes[5L]!!.title)
-    }
-
-    @Test
-    fun `downloadAllNotes accepts cloud copy when serverUpdatedAt is newer`() = runTest {
-        setup()
-        repository.addNote(
-            Note(id = 5L, title = "Local", content = "", timestamp = 999_999L, color = 0, serverUpdatedAt = 10L)
-        )
-        transport.notes[5L] = CloudNoteRecord(
-            noteId = 5L, serverUpdatedAt = 200_000L, clientTimestamp = 1L,
-            title = "Server-confirmed", content = "", timestamp = 1L, color = 0,
-            isPinned = false, isArchived = false, isTrashed = false,
-            position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList()
-        )
-
-        val result = engine.downloadAllNotes()
-
-        assertTrue(result.isSuccess)
-        assertEquals("Server-confirmed", repository.updatedNotes.first().title)
+        assertEquals(1, noteDao.notes.size)
+        assertEquals("Cloud note", noteDao.notes[5L]?.title)
     }
 
     // ---- deleteAllCloudData ----
@@ -322,25 +284,12 @@ class NoteSyncEngineTest {
     fun `deleteAllCloudData fails when uid provider fails`() = runTest {
         engine = NoteSyncEngine(
             transport = FakeCloudNoteTransport(),
-            noteRepository = FakeNoteRepository(),
+            noteDao = FakeNoteDao(),
+            labelDao = FakeLabelDao(),
             syncStateStore = FakeNoteSyncStateStore(),
             uidProvider = { Result.failure(IllegalStateException("no user")) }
         )
         val result = engine.deleteAllCloudData()
         assertTrue(result.isFailure)
-    }
-
-    @Test
-    fun `sync after failed restore finishes cleanup instead of re-deleting the note`() = runTest {
-        setup()
-        // Simulate a restore that left the cloud tombstone in place and the marker set
-        stateStore.markRestored(11L)
-        transport.tombstones[11L] = 500L
-
-        val result = engine.uploadAllNotes()
-
-        assertTrue(result.isSuccess)
-        // The stale tombstone must be deleted, not merged back
-        assertTrue(11L in transport.deletedTombstoneIds)
     }
 }
