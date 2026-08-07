@@ -64,6 +64,7 @@ import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.ui.main.CloudAccount
 import com.aus.notelikeus.ui.main.CloudSyncStatus
+import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.ChromeLabelStyle
@@ -85,6 +86,7 @@ fun ProfileSheet(
     cloudSyncedNoteCount: Int = 0,
     cloudAccount: CloudAccount = CloudAccount(),
     isCloudAutoSyncEnabled: Boolean = true,
+    signInError: String? = null,
     onViewModeChange: (NoteViewMode) -> Unit,
     onSortOrderChange: (NoteSortOrder) -> Unit,
     onAppThemeChange: (AppTheme) -> Unit,
@@ -177,16 +179,20 @@ fun ProfileSheet(
                     onAppThemeChange(it)
                 }
             )
-            SettingsToggleListItem(
-                icon = Icons.Default.Lock,
-                title = stringResource(Res.string.app_lock_title),
-                subtitle = stringResource(Res.string.app_lock_subtitle),
-                checked = isAppLockEnabled,
-                onCheckedChange = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onAppLockChange(it)
-                }
-            )
+            // Hidden where the platform can't verify the user — offering the toggle would imply a
+            // protection the lock screen cannot actually provide.
+            if (AppConfig.supportsAppLock) {
+                SettingsToggleListItem(
+                    icon = Icons.Default.Lock,
+                    title = stringResource(Res.string.app_lock_title),
+                    subtitle = stringResource(Res.string.app_lock_subtitle),
+                    checked = isAppLockEnabled,
+                    onCheckedChange = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onAppLockChange(it)
+                    }
+                )
+            }
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(Res.string.section_insights))
@@ -232,6 +238,14 @@ fun ProfileSheet(
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         onGoogleSignInClick()
                     }
+                )
+            }
+            if (!signInError.isNullOrBlank()) {
+                Text(
+                    text = signInError,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 68.dp)
                 )
             }
             SettingsToggleListItem(
