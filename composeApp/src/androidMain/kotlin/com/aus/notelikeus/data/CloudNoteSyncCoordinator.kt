@@ -1,6 +1,8 @@
 package com.aus.notelikeus.data.remote
 
+import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.domain.repository.SettingsRepository
+import com.aus.notelikeus.domain.platform.SyncCoordinator
 import androidx.work.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,12 +17,12 @@ import java.util.concurrent.TimeUnit
 private const val DEBOUNCE_MS = 2_000L
 
 class CloudNoteSyncCoordinator(
-    private val firebaseNoteSync: FirebaseNoteSync,
+    private val syncEngine: NoteSyncEngine,
     private val firebaseSessionManager: FirebaseSessionManager,
     private val settingsRepository: SettingsRepository,
     private val workManager: WorkManager,
     private val pendingStore: PendingCloudSyncStore
-) {
+) : SyncCoordinator {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingUploads = ConcurrentHashMap.newKeySet<Long>()
     private val pendingDeletes = ConcurrentHashMap.newKeySet<Long>()
@@ -36,7 +38,7 @@ class CloudNoteSyncCoordinator(
         }
     }
 
-    fun scheduleUpload(noteId: Long) {
+    override fun scheduleUpload(noteId: Long) {
         pendingDeletes.remove(noteId)
         pendingRestores.remove(noteId)
         pendingUploads.add(noteId)
@@ -44,7 +46,7 @@ class CloudNoteSyncCoordinator(
         scheduleFlush()
     }
 
-    fun scheduleDelete(noteId: Long) {
+    override fun scheduleDelete(noteId: Long) {
         pendingUploads.remove(noteId)
         pendingRestores.remove(noteId)
         pendingDeletes.add(noteId)
@@ -52,11 +54,7 @@ class CloudNoteSyncCoordinator(
         scheduleFlush()
     }
 
-    /**
-     * Undo of a permanent delete. Distinct from [scheduleUpload] because a plain upload is
-     * vetoed by the note's own tombstone — the restore has to drop the tombstone first.
-     */
-    fun scheduleRestore(noteId: Long) {
+    override fun scheduleRestore(noteId: Long) {
         pendingUploads.remove(noteId)
         pendingDeletes.remove(noteId)
         pendingRestores.add(noteId)
@@ -64,9 +62,8 @@ class CloudNoteSyncCoordinator(
         scheduleFlush()
     }
 
-    fun clearPending() {
+    override fun clearPending() {
         flushJob?.cancel()
-        // Drop already-enqueued WorkManager jobs so they cannot run under a new Firebase user.
         workManager.cancelAllWorkByTag(SyncWorker.WORK_TAG)
         for (noteId in pendingUploads + pendingDeletes + pendingRestores) {
             workManager.cancelUniqueWork(uniqueWorkName(noteId))

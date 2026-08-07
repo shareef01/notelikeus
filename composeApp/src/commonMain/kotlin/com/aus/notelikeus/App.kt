@@ -30,6 +30,9 @@ import org.koin.core.annotation.KoinExperimentalAPI
 fun App(
     windowSizeClass: WindowSizeClass,
     onShowBiometricPrompt: (title: String, onSuccess: () -> Unit, onError: () -> Unit) -> Unit,
+    onGoogleSignInClick: (MainViewModel) -> Unit,
+    onExportBackup: (MainViewModel) -> Unit = {},
+    onImportBackup: (MainViewModel) -> Unit = {},
     pendingNoteId: Long? = null,
     pendingCreateNote: Boolean = false,
     navigationRequest: Long = 0L
@@ -65,8 +68,7 @@ fun App(
     }
 
     NotelikeusTheme(
-        appTheme = state.appTheme,
-        isTrueDarkMode = state.isTrueDarkMode
+        appTheme = state.appTheme
     ) {
         var gateError by remember { mutableStateOf<String?>(null) }
         LaunchedEffect(state.pendingCloudSyncEvent) {
@@ -81,7 +83,8 @@ fun App(
         
         if (!state.cloudAccount.isGoogleAccount) {
             SignInGate(
-                onIdToken = { viewModel.signInWithGoogleIdToken(it) },
+                onGoogleSignInClick = { onGoogleSignInClick(viewModel) },
+                isSigningIn = state.isSigningIn,
                 onEmailPassword = { email, password, create ->
                     viewModel.signInWithEmailPassword(email, password, create)
                 },
@@ -92,8 +95,11 @@ fun App(
                 Box(modifier = Modifier.fillMaxSize()) {
                     val navController = rememberNavController()
                     
-                    var internalPendingCreateNote by remember { mutableStateOf(pendingCreateNote) }
-                    var internalPendingNoteId by remember { mutableStateOf(pendingNoteId) }
+                    var internalPendingCreateNote by remember { mutableStateOf(false) }
+                    var internalPendingNoteId by remember { mutableStateOf<Long?>(null) }
+                    // Sync with external triggers on each composition
+                    if (pendingCreateNote) internalPendingCreateNote = true
+                    pendingNoteId?.let { internalPendingNoteId = it }
 
                     LaunchedEffect(navigationRequest, isUnlocked, state.isAppLockEnabled) {
                         if (navigationRequest == 0L) return@LaunchedEffect
@@ -130,7 +136,9 @@ fun App(
                                 { }
                             )
                         },
-                        onAppLockEnabled = { isUnlocked = true }
+                        onAppLockEnabled = { isUnlocked = true },
+                        onExportBackup = { onExportBackup(viewModel) },
+                        onImportBackup = { onImportBackup(viewModel) }
                     )
 
                     if (!isUnlocked) {

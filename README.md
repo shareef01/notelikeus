@@ -6,14 +6,14 @@ A portfolio-ready notes app for **Android**, **Windows (Desktop)**, and the **we
 
 > Note: the web app requires Google Sign-In because notes are stored per-user in Firestore.
 
-- **KMP (Android & Windows)** — offline-first: notes live in an SQLCipher-encrypted Room database. Google Sign-In is optional; when signed in, notes sync to Firestore (auto-sync can be toggled in Settings).
+- **KMP (Android & Windows)** — offline-first: notes live in a Room database, encrypted with SQLCipher on Android. On Android, Google Sign-In is optional; when signed in, notes sync to Firestore (auto-sync can be toggled in Settings). The Windows build is currently local-only — cloud sync, app lock and at-rest encryption are not implemented there yet.
 - **Web** — Google Sign-In required. Notes live in Firestore with offline caching and installable PWA support.
 
 ## What I built
 
 - A multiplatform notes app for **Android**, **Windows**, and **web/PWA**
 - Refactored from native Android to **Kotlin Multiplatform (KMP)** and **Compose Multiplatform**
-- An offline-first experience with encrypted local storage (SQLCipher on Android/Desktop)
+- An offline-first experience with encrypted local storage (SQLCipher on Android)
 - A Firebase-backed sync flow designed to stay within the **Spark** plan
 - Shared core product features across clients: labels, reminders, backup, theming, and sync
 - Production-style UX hardening around auth, offline recovery, and destructive actions
@@ -21,7 +21,7 @@ A portfolio-ready notes app for **Android**, **Windows (Desktop)**, and the **we
 ## Engineering highlights
 
 - **Kotlin Multiplatform migration**: Shared business logic, database, and UI across Android and Desktop using CMP and Koin.
-- **Offline-first architecture** using Room + SQLCipher, with sync layered on top rather than required for basic use.
+- **Offline-first architecture** using Room (SQLCipher on Android), with sync layered on top rather than required for basic use.
 - **Spark-plan-conscious Firebase design** using Auth + Firestore only, with legacy attachment support removed from active product flow.
 - **Cross-platform product parity** across Android, Desktop, and React PWA for core note workflows.
 - **Safer destructive actions** with stronger sign-out and cloud-delete confirmations.
@@ -42,8 +42,8 @@ Current screenshots from the app are shown below.
 ## Highlights
 
 - Shared product direction across **native Android**, **Windows**, and **web/PWA**
-- Secure local-first storage with **Room + SQLCipher**
-- Optional Google sign-in on Android/Desktop, required auth on web for clean sync boundaries
+- Local-first storage with **Room**, encrypted with **SQLCipher** on Android
+- Optional Google sign-in on Android, required auth on web for clean sync boundaries
 - Firestore sync designed to stay within the **Firebase Spark** plan
 - Import/export support using an Android-compatible JSON backup format
 - UX hardening around sign-out, offline recovery, boot failures, and reminder expectations
@@ -62,11 +62,11 @@ Current screenshots from the app are shown below.
 | Themes (light, dark, OLED, midnight, forest, auto) | ✓ | ✓ | ✓ |
 | Theme-aware note color palette | ✓ | ✓ | ✓ |
 | Rich text (bold, italic, links, bullets) | ✓ | ✓ | ✓ |
-| Reminders | System notifications | System notifications | Browser / service worker |
-| Encrypted local database (SQLCipher) | ✓ | ✓ | — |
-| Optional biometric app lock | ✓ | ✓ (Hello) | — |
+| Reminders | System notifications | Tray notifications (while running; missed ones surface at next launch) | Browser / service worker |
+| Encrypted local database (SQLCipher) | ✓ | — (plain SQLite) | — |
+| Optional biometric app lock | ✓ | — (planned: Hello) | — |
 | Home-screen widget | ✓ | — | — |
-| Google Sign-In + Firestore sync | Optional | Optional | Required |
+| Google Sign-In + Firestore sync | Optional | — (not implemented) | Required |
 | JSON backup import / export | ✓ | ✓ | ✓ |
 | Installable PWA | — | — | ✓ |
 
@@ -76,7 +76,7 @@ Current screenshots from the app are shown below.
 |-------|---------|-----|
 | UI | Compose Multiplatform | React 19, TypeScript, Tailwind |
 | Architecture | MVVM + Repositories (Shared) | Hooks + Zustand stores |
-| Local data | Room + SQLCipher (Shared) | Firestore offline cache |
+| Local data | Room (+ SQLCipher on Android) | Firestore offline cache |
 | Cloud | Firebase Auth + Firestore | Firebase Auth + Firestore |
 | DI / tooling | Koin, Coroutines, Flow | Vite, Vitest |
 | Widget | Glance (Android only) | — |
