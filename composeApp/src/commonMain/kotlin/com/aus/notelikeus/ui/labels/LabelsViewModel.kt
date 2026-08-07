@@ -30,7 +30,6 @@ class LabelsViewModel(
                 _state.update { it.copy(labels = labels, isLoading = false, error = null) }
             }
             .catch { e ->
-                android.util.Log.e("LabelsViewModel", "Failed to load labels", e)
                 _state.update { it.copy(isLoading = false, error = "Failed to load labels") }
             }
             .launchIn(viewModelScope)

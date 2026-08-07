@@ -4,7 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
-import com.aus.notelikeus.R
+import com.aus.notelikeus.shared.R
 
 object NotificationChannels {
     const val REMINDERS_ID = "note_reminders"

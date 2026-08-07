@@ -46,4 +46,7 @@ object WidgetThemes {
 
     val MonochromeLight = Light
     val MonochromeDark = Dark
+
+    /** Factory for dynamic colors to bypass strange Glance internal restrictions. */
+    fun dynamicColor(color: Color): ColorProvider = ColorProvider(color)
 }

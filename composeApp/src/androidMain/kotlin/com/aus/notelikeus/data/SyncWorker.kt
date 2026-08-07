@@ -1,42 +1,47 @@
 package com.aus.notelikeus.data.remote
 
 import android.content.Context
+import androidx.work.CoroutineWorker
+import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
+import com.aus.notelikeus.data.sync.NoteSyncEngine
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 
 class SyncWorker(
     appContext: Context,
-    workerParams: WorkerParameters,
-    private val firebaseNoteSync: FirebaseNoteSync,
-    private val firebaseSessionManager: FirebaseSessionManager
-) : CoroutineWorker(appContext, workerParams) {
+    workerParams: WorkerParameters
+) : CoroutineWorker(appContext, workerParams), KoinComponent {
+    private val syncEngine: NoteSyncEngine by inject()
+    private val firebaseSessionManager: FirebaseSessionManager by inject()
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): ListenableWorker.Result {
         val noteId = inputData.getLong(KEY_NOTE_ID, -1L)
         val isDelete = inputData.getBoolean(KEY_IS_DELETE, false)
         val isRestore = inputData.getBoolean(KEY_IS_RESTORE, false)
         val expectedUid = inputData.getString(KEY_EXPECTED_UID)
 
-        if (noteId == -1L) return Result.failure()
+        if (noteId == -1L) return ListenableWorker.Result.failure()
 
         // Stale work from a prior Firebase session — do not touch the current user's cloud.
         val currentUid = firebaseSessionManager.getCurrentAccount().userId
         if (expectedUid.isNullOrBlank() || expectedUid != currentUid) {
-            return Result.success()
+            return ListenableWorker.Result.success()
         }
 
-        val result = when {
-            isDelete -> firebaseNoteSync.deleteNote(noteId)
-            isRestore -> firebaseNoteSync.restoreNote(noteId)
-            else -> firebaseNoteSync.uploadNote(noteId)
+        val syncResult: kotlin.Result<*> = when {
+            isDelete -> syncEngine.deleteNote(noteId)
+            isRestore -> syncEngine.restoreNote(noteId)
+            else -> syncEngine.uploadNote(noteId)
         }
 
-        return if (result.isSuccess) {
-            Result.success()
+        return if (syncResult.isSuccess) {
+            ListenableWorker.Result.success()
         } else {
             if (runAttemptCount < MAX_RETRIES) {
-                Result.retry()
+                ListenableWorker.Result.retry()
             } else {
-                Result.failure()
+                ListenableWorker.Result.failure()
             }
         }
     }

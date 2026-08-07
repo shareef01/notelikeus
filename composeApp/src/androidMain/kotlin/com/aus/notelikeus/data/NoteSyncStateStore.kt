@@ -2,23 +2,21 @@ package com.aus.notelikeus.data.remote
 
 import android.content.Context
 import android.content.SharedPreferences
-import dagger.hilt.android.qualifiers.ApplicationContext
+import com.aus.notelikeus.data.sync.NoteSyncStateStore
 import org.json.JSONObject
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
- * Device-local delete tombstones + known cloud note IDs for sync.
+ * Android SharedPreferences implementation of [NoteSyncStateStore].
+ *
  * Tombstone timestamps align with cloud `users/{uid}/tombstones/{id}.deletedAt`.
  */
-@Singleton
-class NoteSyncStateStore @Inject constructor(
-    @ApplicationContext context: Context
-) {
+class SharedPrefsNoteSyncStateStore(
+    context: Context
+) : NoteSyncStateStore {
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun markDeleted(noteId: Long, deletedAt: Long = System.currentTimeMillis()) {
+    override fun markDeleted(noteId: Long, deletedAt: Long) {
         val map = deletedAtById().toMutableMap()
         if (noteId !in map) {
             map[noteId] = deletedAt
@@ -26,7 +24,7 @@ class NoteSyncStateStore @Inject constructor(
         }
     }
 
-    fun mergeDeleted(entries: Map<Long, Long>) {
+    override fun mergeDeleted(entries: Map<Long, Long>) {
         val map = deletedAtById().toMutableMap()
         var changed = false
         for ((id, deletedAt) in entries) {
@@ -39,11 +37,11 @@ class NoteSyncStateStore @Inject constructor(
         if (changed) writeDeletedMap(map)
     }
 
-    fun isDeleted(noteId: Long): Boolean = noteId in deletedAtById()
+    override fun isDeleted(noteId: Long): Boolean = noteId in deletedAtById()
 
-    fun deletedIds(): Set<Long> = deletedAtById().keys
+    override fun deletedIds(): Set<Long> = deletedAtById().keys
 
-    fun deletedAtById(): Map<Long, Long> {
+    override fun deletedAtById(): Map<Long, Long> {
         val json = prefs.getString(KEY_DELETED_JSON, null)
         if (json.isNullOrBlank()) {
             // Migrate legacy string-set tombstones (no timestamps).
@@ -69,7 +67,7 @@ class NoteSyncStateStore @Inject constructor(
     }
 
     /** Removes local tombstones older than [maxAgeMs]; returns pruned ids. */
-    fun pruneExpired(maxAgeMs: Long, now: Long = System.currentTimeMillis()): Set<Long> {
+    override fun pruneExpired(maxAgeMs: Long, now: Long): Set<Long> {
         val map = deletedAtById().toMutableMap()
         val pruned = mutableSetOf<Long>()
         val iterator = map.entries.iterator()
@@ -84,7 +82,7 @@ class NoteSyncStateStore @Inject constructor(
         return pruned
     }
 
-    fun clearDeleted(ids: Collection<Long>) {
+    override fun clearDeleted(ids: Collection<Long>) {
         if (ids.isEmpty()) return
         val map = deletedAtById().toMutableMap()
         var changed = false
@@ -100,18 +98,18 @@ class NoteSyncStateStore @Inject constructor(
      * cloud tombstone in place, and the next [mergeDeleted] re-imports it and the note is purged
      * again — so the marker survives process death and every sync re-attempts the cleanup.
      */
-    fun markRestored(noteId: Long) {
+    override fun markRestored(noteId: Long) {
         val ids = restoredIds().toMutableSet()
         if (ids.add(noteId)) writeRestored(ids)
     }
 
-    fun restoredIds(): Set<Long> =
+    override fun restoredIds(): Set<Long> =
         prefs.getStringSet(KEY_RESTORED, emptySet())
             .orEmpty()
             .mapNotNull { it.toLongOrNull() }
             .toSet()
 
-    fun clearRestored(ids: Collection<Long>) {
+    override fun clearRestored(ids: Collection<Long>) {
         if (ids.isEmpty()) return
         val current = restoredIds().toMutableSet()
         if (current.removeAll(ids.toSet())) writeRestored(current)
@@ -126,32 +124,34 @@ class NoteSyncStateStore @Inject constructor(
      * pushed local changes. It lets that worker re-check only notes changed since, instead of
      * reading the whole cloud collection every cycle.
      */
-    fun lastReconciledAt(): Long = prefs.getLong(KEY_LAST_RECONCILED, 0L)
+    override fun lastReconciledAt(): Long = prefs.getLong(KEY_LAST_RECONCILED, 0L)
 
-    fun markReconciled(at: Long) {
+    override fun markReconciled(at: Long) {
         prefs.edit().putLong(KEY_LAST_RECONCILED, at).apply()
     }
 
-    fun knownCloudIds(): Set<Long> =
+    override fun knownCloudIds(): Set<Long> =
         prefs.getStringSet(KEY_KNOWN_CLOUD, emptySet())
             .orEmpty()
             .mapNotNull { it.toLongOrNull() }
             .toSet()
 
-    fun setKnownCloudIds(ids: Set<Long>) {
+    override fun setKnownCloudIds(ids: Set<Long>) {
         prefs.edit().putStringSet(KEY_KNOWN_CLOUD, ids.map { it.toString() }.toSet()).apply()
     }
 
-    fun lastMergedUserId(): String? =
+    override fun lastMergedUserId(): String? =
         prefs.getString(KEY_LAST_MERGED_USER_ID, null)?.takeIf { it.isNotBlank() }
 
-    fun setLastMergedUserId(userId: String) {
+    override fun setLastMergedUserId(userId: String) {
         prefs.edit().putString(KEY_LAST_MERGED_USER_ID, userId).apply()
     }
 
-    fun clear() {
+    override fun clear() {
         prefs.edit().clear().apply()
     }
+
+    override fun currentTimeMillis(): Long = System.currentTimeMillis()
 
     private fun writeDeletedMap(map: Map<Long, Long>) {
         val obj = JSONObject()
@@ -169,6 +169,5 @@ class NoteSyncStateStore @Inject constructor(
         private const val KEY_RESTORED = "restored_ids"
         private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
         private const val KEY_LAST_RECONCILED = "last_reconciled_at"
-        const val TOMBSTONE_TTL_MS = 180L * 24 * 60 * 60 * 1000
     }
 }
