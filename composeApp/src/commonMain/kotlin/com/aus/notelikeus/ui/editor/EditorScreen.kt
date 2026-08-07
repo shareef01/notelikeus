@@ -1,9 +1,7 @@
 package com.aus.notelikeus.ui.editor
 
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import com.aus.notelikeus.util.PlatformBackHandler
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -47,15 +45,13 @@ import com.aus.notelikeus.ui.editor.components.ChecklistUI
 import com.aus.notelikeus.ui.editor.components.EditorBottomBar
 import com.aus.notelikeus.ui.editor.components.EditorBottomSheet
 import com.aus.notelikeus.ui.editor.components.RichTextToolbar
-import com.aus.notelikeus.ui.navigation.LocalAnimatedVisibilityScope
-import com.aus.notelikeus.ui.navigation.LocalSharedTransitionScope
 import com.aus.notelikeus.ui.theme.EditorBodyStyle
 import com.aus.notelikeus.ui.theme.EditorTitleStyle
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
-import java.util.Calendar
+import com.aus.notelikeus.util.DateUtils
 
 private val EditorHorizontalPadding = 20.dp
 private val EditorVerticalPadding = 20.dp
@@ -73,7 +69,8 @@ private val EditorContentMaxWidth = 720.dp
 fun EditorScreen(
     viewModel: EditorViewModel,
     onBack: () -> Unit,
-    onStageUndo: (Note, UndoAction, String) -> Unit
+    onStageUndo: (Note, UndoAction, String) -> Unit,
+    isExpanded: Boolean = false
 ) {
     val state by viewModel.state.collectAsState()
     val haptic = LocalHapticFeedback.current
@@ -83,24 +80,23 @@ fun EditorScreen(
     val isDarkPalette = isNoteColorDarkTheme()
     val displayColorArgb = noteColorForTheme(state.color, isDarkPalette)
     val noteColor = if (displayColorArgb == 0) {
-        MaterialTheme.colorScheme.background
+        MaterialTheme.colorScheme.surface
     } else {
-        Color(displayColorArgb)
+        Color(displayColorArgb.toLong() and 0xffffffffL)
     }
     val contentColor = if (displayColorArgb == 0) {
-        MaterialTheme.colorScheme.onBackground
+        MaterialTheme.colorScheme.onSurface
     } else {
-        noteColor.getContentColor(fallback = MaterialTheme.colorScheme.onBackground)
+        noteColor.getContentColor(fallback = MaterialTheme.colorScheme.onSurface)
     }
     var showBottomSheet by remember { mutableStateOf(false) }
     var showDateTimePicker by remember { mutableStateOf(false) }
     var showLinkDialog by remember { mutableStateOf(false) }
-    var pendingReminderMillis by remember { mutableStateOf<Long?>(null) }
     val bodyFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val editorTapInteraction = remember { MutableInteractionSource() }
 
-    BackHandler {
+    PlatformBackHandler {
         viewModel.saveNote()
         onBack()
     }
@@ -130,33 +126,18 @@ fun EditorScreen(
         }
     }
 
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        val millis = pendingReminderMillis
-        pendingReminderMillis = null
-        if (granted && millis != null) {
-            scheduleReminderIfAllowed(millis)
-        } else if (!granted) {
-            scope.launch {
-                snackbarHostState.showSnackbar(reminderPermissionDeniedMsg)
-            }
-        }
-    }
-
     fun confirmReminder(millis: Long) {
-        if (millis <= System.currentTimeMillis()) {
+        if (millis <= DateUtils.currentTimeMillis()) {
             scope.launch {
                 snackbarHostState.showSnackbar(reminderMustBeFutureMsg)
             }
             return
         }
-        // Permission handling removed for KMP cleanup; assuming granted or handled elsewhere
         scheduleReminderIfAllowed(millis)
     }
 
-    val sharedTransitionScope = LocalSharedTransitionScope.current
-    val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
+    val notePinnedMsg = stringResource(Res.string.note_pinned)
+    val noteUnpinnedMsg = stringResource(Res.string.note_unpinned)
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -167,17 +148,7 @@ fun EditorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding()
-                .then(
-                    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
-                        with(sharedTransitionScope) {
-                            Modifier.sharedElement(
-                                rememberSharedContentState(key = "note-${state.id}"),
-                                animatedVisibilityScope = animatedVisibilityScope
-                            )
-                        }
-                    } else Modifier
-                ),
+                .navigationBarsPadding(),
             containerColor = Color.Transparent,
             contentColor = contentColor,
             snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -191,15 +162,17 @@ fun EditorScreen(
                     ),
                     title = {},
                     navigationIcon = {
-                        IconButton(onClick = {
-                            viewModel.saveNote()
-                            onBack()
-                        }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(Res.string.cd_back),
-                                modifier = Modifier.size(24.dp)
-                            )
+                        if (!isExpanded) {
+                            IconButton(onClick = {
+                                viewModel.saveNote()
+                                onBack()
+                            }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(Res.string.cd_back),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
                         }
                     },
                     actions = {
@@ -215,7 +188,7 @@ fun EditorScreen(
                             viewModel.togglePin()
                             scope.launch {
                                 snackbarHostState.showSnackbar(
-                                    if (willPin) stringResource(Res.string.note_pinned) else stringResource(Res.string.note_unpinned)
+                                    if (willPin) notePinnedMsg else noteUnpinnedMsg
                                 )
                             }
                         }) {
@@ -255,24 +228,12 @@ fun EditorScreen(
                 )
             },
             bottomBar = {
-                Column {
-                    if (state.checklist.isEmpty()) {
-                        RichTextToolbar(
-                            onBoldClick = { viewModel.applyBoldToSelection() },
-                            onItalicClick = { viewModel.applyItalicToSelection() },
-                            onListClick = { viewModel.applyBulletListToSelection() },
-                            onChecklistClick = { viewModel.convertContentToChecklist() },
-                            onLinkClick = { showLinkDialog = true },
-                            contentColor = contentColor
-                        )
-                    }
-                    EditorBottomBar(
-                        timestamp = state.timestamp,
-                        reminderTimestamp = state.reminderTimestamp,
-                        onMoreClick = { showBottomSheet = true },
-                        contentColor = contentColor
-                    )
-                }
+                EditorBottomBar(
+                    timestamp = state.timestamp,
+                    reminderTimestamp = state.reminderTimestamp,
+                    onMoreClick = { showBottomSheet = true },
+                    contentColor = contentColor
+                )
             }
         ) { padding ->
             Box(
@@ -298,6 +259,21 @@ fun EditorScreen(
                         .widthIn(max = EditorContentMaxWidth)
                         .align(Alignment.TopCenter)
                 ) {
+                    if (state.checklist.isEmpty()) {
+                        RichTextToolbar(
+                            onBoldClick = { viewModel.applyBoldToSelection() },
+                            onItalicClick = { viewModel.applyItalicToSelection() },
+                            onListClick = { viewModel.applyBulletListToSelection() },
+                            onChecklistClick = { viewModel.convertContentToChecklist() },
+                            onLinkClick = { showLinkDialog = true },
+                            contentColor = contentColor,
+                            surfaceColor = Color.Transparent,
+                            modifier = Modifier
+                                .padding(bottom = 12.dp)
+                                .align(Alignment.Start)
+                        )
+                    }
+
                     BasicTextField(
                         value = state.title,
                         onValueChange = { viewModel.onTitleChange(it) },
@@ -386,7 +362,7 @@ fun EditorScreen(
 
         if (showDateTimePicker) {
             ReminderDialog(
-                initialTimestamp = state.reminderTimestamp ?: (System.currentTimeMillis() + 3600000),
+                initialTimestamp = state.reminderTimestamp ?: (DateUtils.currentTimeMillis() + 3600000),
                 onConfirm = { confirmReminder(it) },
                 onRemove = if (state.reminderTimestamp != null) {
                     {
@@ -428,25 +404,15 @@ fun ReminderDialog(
             Column {
                 ListItem(
                     headlineContent = { Text(stringResource(Res.string.reminder_in_one_hour)) },
-                    modifier = Modifier.clickable { onConfirm(System.currentTimeMillis() + 3600000) }
+                    modifier = Modifier.clickable { onConfirm(DateUtils.currentTimeMillis() + 3600000) }
                 )
                 ListItem(
                     headlineContent = { Text(stringResource(Res.string.reminder_tomorrow_morning)) },
-                    modifier = Modifier.clickable {
-                        val cal = Calendar.getInstance().apply {
-                            add(Calendar.DAY_OF_YEAR, 1)
-                            set(Calendar.HOUR_OF_DAY, 9)
-                            set(Calendar.MINUTE, 0)
-                        }
-                        onConfirm(cal.timeInMillis)
-                    }
+                    modifier = Modifier.clickable { onConfirm(DateUtils.getTomorrowMorning()) }
                 )
                 ListItem(
                     headlineContent = { Text(stringResource(Res.string.reminder_next_week)) },
-                    modifier = Modifier.clickable {
-                        val cal = Calendar.getInstance().apply { add(Calendar.WEEK_OF_YEAR, 1) }
-                        onConfirm(cal.timeInMillis)
-                    }
+                    modifier = Modifier.clickable { onConfirm(DateUtils.getNextWeek()) }
                 )
             }
         },

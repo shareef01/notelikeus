@@ -63,7 +63,7 @@ service cloud.firestore {
         && data.noteCount >= 0
         && data.noteCount <= 100000
         && data.platform is string
-        && data.platform in ['android', 'web'];
+        && data.platform in ['android', 'web', 'desktop'];
     }
 
     function isValidConnectionMeta() {
@@ -72,7 +72,7 @@ service cloud.firestore {
         && data.keys().hasAll(['connectedAt', 'platform'])
         && data.connectedAt is number
         && data.platform is string
-        && data.platform == 'android';
+        && data.platform in ['android', 'web', 'desktop'];
     }
 
     match /users/{userId} {

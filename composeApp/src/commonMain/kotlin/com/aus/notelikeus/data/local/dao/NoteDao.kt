@@ -2,6 +2,7 @@ package com.aus.notelikeus.data.local.dao
 
 import androidx.room.*
 import com.aus.notelikeus.data.local.entity.ChecklistItemEntity
+import com.aus.notelikeus.data.local.entity.LabelEntity
 import com.aus.notelikeus.data.local.entity.NoteEntity
 import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
 import com.aus.notelikeus.data.local.model.NoteWithLabels
@@ -22,9 +23,17 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE isTrashed = 1 ORDER BY timestamp DESC")
     fun getTrashedNotes(): Flow<List<NoteWithLabels>>
 
-    @Transaction
     @Query("SELECT * FROM notes WHERE id = :id")
     suspend fun getNoteById(id: Long): NoteWithLabels?
+
+    @Query("SELECT * FROM notes WHERE id = :id")
+    suspend fun getNoteEntityById(id: Long): NoteEntity?
+
+    @Query("SELECT labels.* FROM labels INNER JOIN note_label_cross_ref ON labels.id = note_label_cross_ref.labelId WHERE note_label_cross_ref.noteId = :noteId")
+    suspend fun getLabelsForNote(noteId: Long): List<LabelEntity>
+
+    @Query("SELECT * FROM checklist_items WHERE noteId = :noteId ORDER BY position ASC")
+    suspend fun getChecklistItemsForNote(noteId: Long): List<ChecklistItemEntity>
 
     @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM notes WHERE isTrashed = 0 AND isArchived = 0")
     suspend fun getNextNotePosition(): Int

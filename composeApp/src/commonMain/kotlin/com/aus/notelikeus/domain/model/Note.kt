@@ -1,6 +1,7 @@
 package com.aus.notelikeus.domain.model
 
 import androidx.compose.runtime.Immutable
+import kotlinx.serialization.Serializable
 
 /**
  * Marked @Immutable so Compose can skip recomposing NoteCard/SwipeableNoteCard when an
@@ -10,6 +11,7 @@ import androidx.compose.runtime.Immutable
  * in place, always replaced via .copy().
  */
 @Immutable
+@Serializable
 data class Note(
     val id: Long? = null,
     val title: String,
@@ -26,7 +28,7 @@ data class Note(
      * observed a write to this note in the cloud — either its own upload or a download. Null
      * until the note has synced at least once under this scheme. Used instead of [timestamp]
      * (a client clock, spoofable and skew-prone across devices) to decide which copy wins a
-     * sync conflict; see FirebaseNoteSync.kt.
+     * sync conflict; see NoteSyncEngine.kt.
      */
     val serverUpdatedAt: Long? = null,
     val labels: List<Label> = emptyList(),

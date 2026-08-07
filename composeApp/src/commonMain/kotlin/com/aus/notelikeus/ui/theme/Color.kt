@@ -9,22 +9,22 @@ import androidx.compose.ui.graphics.toArgb
  */
 
 // Light
-val PrimaryLight = Color(0xFF111111)
-val SecondaryLight = Color(0xFF525252)
-val MutedLight = Color(0xFF6B6B6B)
-val BackgroundLight = Color(0xFFF7F7F7)
-val SurfaceLight = Color(0xFFFFFFFF)
-val SurfaceVariantLight = Color(0xFFEFEFEF)
-val OutlineLight = Color(0xFFD8D8D8)
+val PrimaryLight = Color(0xFF1A1A1A)
+val SecondaryLight = Color(0xFF4A4A4A)
+val MutedLight = Color(0xFF717171)
+val BackgroundLight = Color(0xFFF0F0F0) // Slightly darker base
+val SurfaceLight = Color(0xFFFFFFFF)    // Pure white for cards/editor
+val SurfaceVariantLight = Color(0xFFE5E5E5)
+val OutlineLight = Color(0xFFD1D1D1)
 
-// Dark (Material-ish charcoal)
-val PrimaryDark = Color(0xFFF5F5F5)
+// Dark (Deep Charcoal)
+val PrimaryDark = Color(0xFFE8E8E8)
 val SecondaryDark = Color(0xFFB0B0B0)
-val MutedDark = Color(0xFF9C9C9C)
-val BackgroundDark = Color(0xFF121212)
-val SurfaceDark = Color(0xFF1C1C1C)
-val SurfaceVariantDark = Color(0xFF282828)
-val OutlineDark = Color(0xFF373737)
+val MutedDark = Color(0xFF888888)
+val BackgroundDark = Color(0xFF0F0F0F) // Deep base
+val SurfaceDark = Color(0xFF1A1A1A)    // Elevated surface
+val SurfaceVariantDark = Color(0xFF262626)
+val OutlineDark = Color(0xFF333333)
 
 // True dark / OLED
 val PrimaryTrueDark = Color(0xFFFFFFFF)
