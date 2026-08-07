@@ -38,7 +38,7 @@
         android:theme="@style/Theme.Notelikeus">
 
         <property
-            android:name="android.app.appfunctions.app_metadata"
+            android:name="androidx.appfunctions"
             android:resource="@xml/app_metadata" />
 
         <activity

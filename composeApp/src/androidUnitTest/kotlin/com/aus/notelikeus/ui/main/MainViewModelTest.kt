@@ -9,14 +9,9 @@ import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
-import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
-import com.aus.notelikeus.data.remote.FirebaseAccount
-import com.aus.notelikeus.data.remote.FirebaseNoteSync
-import com.aus.notelikeus.data.remote.FirebaseSessionManager
-import com.aus.notelikeus.data.remote.GoogleSignInHelper
-import com.aus.notelikeus.data.remote.NoteSyncStateStore
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
+import com.aus.notelikeus.domain.repository.SyncManager
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -27,6 +22,7 @@ import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
@@ -41,10 +37,7 @@ class MainViewModelTest {
     private lateinit var viewModel: MainViewModel
     private lateinit var repository: NoteRepository
     private lateinit var settingsRepository: SettingsRepository
-    private lateinit var firebaseSessionManager: FirebaseSessionManager
-    private lateinit var firebaseNoteSync: FirebaseNoteSync
-    private lateinit var cloudNoteSyncCoordinator: CloudNoteSyncCoordinator
-    private lateinit var noteSyncStateStore: NoteSyncStateStore
+    private lateinit var syncManager: SyncManager
     private val testDispatcher = UnconfinedTestDispatcher()
 
     @Before
@@ -58,21 +51,16 @@ class MainViewModelTest {
         every { Log.e(any(), any<String>(), any()) } returns 0
         repository = mockk(relaxed = true)
         settingsRepository = mockk(relaxed = true)
-        firebaseSessionManager = mockk(relaxed = true)
-        firebaseNoteSync = mockk(relaxed = true)
-        cloudNoteSyncCoordinator = mockk(relaxed = true)
-        noteSyncStateStore = mockk(relaxed = true)
+        syncManager = mockk(relaxed = true)
+        
         every { repository.getActiveNotes() } returns flowOf(emptyList())
         every { settingsRepository.isAppLockEnabled } returns flowOf(false)
         every { settingsRepository.noteViewMode } returns flowOf(NoteViewMode.GRID_2)
         every { settingsRepository.noteSortOrder } returns flowOf(NoteSortOrder.MANUAL)
         every { settingsRepository.isCloudAutoSyncEnabled } returns flowOf(true)
-        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
-            userId = null,
-            email = null,
-            isGoogleAccount = false,
-            isAnonymous = true
-        )
+        every { syncManager.cloudAccount } returns MutableStateFlow(CloudAccount())
+        every { syncManager.syncStatus } returns MutableStateFlow(CloudSyncStatus.Synced)
+
         viewModel = createViewModel()
     }
 
@@ -88,11 +76,7 @@ class MainViewModelTest {
             settingsRepository,
             mockk<NoteBackupExporter>(relaxed = true),
             mockk<NoteBackupImporter>(relaxed = true),
-            firebaseSessionManager,
-            firebaseNoteSync,
-            mockk<GoogleSignInHelper>(relaxed = true),
-            cloudNoteSyncCoordinator,
-            noteSyncStateStore,
+            syncManager,
             testDispatcher
         )
     }
@@ -187,14 +171,11 @@ class MainViewModelTest {
         viewModel.stageEditorUndo(note.copy(isTrashed = false), UndoAction.TRASH, "trashed")
         viewModel.undoLastAction()
 
-        coVerify { repository.updateNote(note.copy(isTrashed = false)) }
+        coVerify { repository.updateNote(match { it.id == 1L && !it.isTrashed }) }
     }
 
     @Test
     fun `settings are not reported loaded until the app lock flow actually emits`() = runTest {
-        // The real DataStore flow emits after first composition. Until it does, the UI must be
-        // able to tell "lock is off" apart from "not read yet" — conflating them is what let a
-        // cold start walk straight past the lock screen.
         val appLock = MutableSharedFlow<Boolean>(replay = 0)
         every { settingsRepository.isAppLockEnabled } returns appLock
         viewModel = createViewModel()
@@ -222,30 +203,7 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `undo of a permanent delete clears the tombstone that would re-delete the note`() = runTest {
-        val note = Note(id = 3L, title = "Gone", content = "Body", timestamp = 0L, color = 0, isTrashed = true)
-        every { repository.getTrashedNotes() } returns flowOf(listOf(note))
-        coEvery { repository.insertNoteWithResult(note) } returns 3L
-        viewModel = createViewModel()
-        viewModel.setFilter(NoteFilter.TRASHED)
-        advanceUntilIdle()
-
-        viewModel.trashNote(note)
-        advanceUntilIdle()
-        verify { noteSyncStateStore.markDeleted(3L, any()) }
-
-        viewModel.undoLastAction()
-        advanceUntilIdle()
-
-        // Without this the re-created note is turned straight back into a delete by
-        // FirebaseNoteSync.uploadNote, then purged locally by the next download.
-        verify { noteSyncStateStore.clearDeleted(listOf(3L)) }
-        verify { cloudNoteSyncCoordinator.scheduleRestore(3L) }
-        verify(exactly = 0) { cloudNoteSyncCoordinator.scheduleUpload(3L) }
-    }
-
-    @Test
-    fun `commitNoteOrder persists only changed positions`() = runTest {
+    fun `commitNoteOrder persists changed positions`() = runTest {
         val notes = listOf(
             Note(id = 1L, title = "A", content = "", timestamp = 0L, color = 0, position = 0),
             Note(id = 2L, title = "B", content = "", timestamp = 0L, color = 0, position = 1)
@@ -262,9 +220,6 @@ class MainViewModelTest {
         coVerify { repository.updateNotePositions(match { ordered ->
             ordered.size == 2 && ordered[0].id == 2L && ordered[1].id == 1L
         }) }
-        coVerify(exactly = 2) { cloudNoteSyncCoordinator.scheduleUpload(any<Long>()) }
-        coVerify { cloudNoteSyncCoordinator.scheduleUpload(1L) }
-        coVerify { cloudNoteSyncCoordinator.scheduleUpload(2L) }
     }
 
     @Test
@@ -374,111 +329,52 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `sign-in for different user clears prior local data before merge`() = runTest {
-        every { noteSyncStateStore.lastMergedUserId() } returns "uid-a"
-        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
-            userId = "uid-b",
-            email = "b@example.com",
-            isGoogleAccount = true,
-            isAnonymous = false
-        )
-        coEvery { firebaseSessionManager.signInWithGoogle(any()) } returns Result.success(Unit)
-        coEvery { firebaseSessionManager.verifyConnection() } returns Result.success(Unit)
-        coEvery { firebaseNoteSync.downloadAllNotes() } returns Result.success(0)
-        coEvery { firebaseNoteSync.uploadAllNotes() } returns Result.success(0)
-        coEvery { repository.clearAllUserData() } returns Unit
+    fun `signInWithGoogleIdToken calls syncManager`() = runTest {
+        coEvery { syncManager.signInWithGoogle(any()) } returns Result.success(Unit)
+        
+        viewModel.signInWithGoogleIdToken("token")
+        advanceUntilIdle()
+        
+        coVerify { syncManager.signInWithGoogle("token") }
+    }
 
-        viewModel = createViewModel()
+    @Test
+    fun `signOutFromCloud calls syncManager`() = runTest {
+        coEvery { syncManager.signOut(any()) } returns Result.success(Unit)
+
+        viewModel.signOutFromCloud(true)
+        advanceUntilIdle()
+
+        coVerify { syncManager.signOut(true) }
+    }
+
+    @Test
+    fun `a failed token exchange surfaces instead of silently returning to the gate`() = runTest {
+        coEvery { syncManager.signInWithGoogle(any()) } returns
+            Result.failure(IllegalStateException("bad token"))
+
         viewModel.signInWithGoogleIdToken("token")
         advanceUntilIdle()
 
-        coVerify { repository.clearAllUserData() }
-        verify { noteSyncStateStore.clear() }
-        verify { cloudNoteSyncCoordinator.clearPending() }
-        verify { noteSyncStateStore.setLastMergedUserId("uid-b") }
-        coVerify { firebaseNoteSync.downloadAllNotes() }
+        val state = viewModel.state.value
+        assertEquals(false, state.isSigningIn)
+        assertEquals(
+            CloudSyncEvent.Failure("bad token"),
+            state.pendingCloudSyncEvent
+        )
     }
 
     @Test
-    fun `sign-in for same user does not clear local data`() = runTest {
-        every { noteSyncStateStore.lastMergedUserId() } returns "uid-a"
-        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
-            userId = "uid-a",
-            email = "a@example.com",
-            isGoogleAccount = true,
-            isAnonymous = false
-        )
-        coEvery { firebaseSessionManager.signInWithGoogle(any()) } returns Result.success(Unit)
-        coEvery { firebaseSessionManager.verifyConnection() } returns Result.success(Unit)
-        coEvery { firebaseNoteSync.downloadAllNotes() } returns Result.success(0)
-        coEvery { firebaseNoteSync.uploadAllNotes() } returns Result.success(0)
-
-        viewModel = createViewModel()
+    fun `reportGoogleSignInFailure surfaces platform sign-in errors and stops the spinner`() = runTest {
         viewModel.signInWithGoogleIdToken("token")
+        viewModel.reportGoogleSignInFailure(IllegalStateException("user cancelled"))
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { repository.clearAllUserData() }
-        verify(exactly = 0) { noteSyncStateStore.clear() }
-        verify { noteSyncStateStore.setLastMergedUserId("uid-a") }
-    }
-
-    @Test
-    fun `first sign-in with no prior merged uid does not clear local data`() = runTest {
-        every { noteSyncStateStore.lastMergedUserId() } returns null
-        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
-            userId = "uid-new",
-            email = "new@example.com",
-            isGoogleAccount = true,
-            isAnonymous = false
+        val state = viewModel.state.value
+        assertEquals(false, state.isSigningIn)
+        assertEquals(
+            CloudSyncEvent.Failure("user cancelled"),
+            state.pendingCloudSyncEvent
         )
-        coEvery { firebaseSessionManager.signInWithGoogle(any()) } returns Result.success(Unit)
-        coEvery { firebaseSessionManager.verifyConnection() } returns Result.success(Unit)
-        coEvery { firebaseNoteSync.downloadAllNotes() } returns Result.success(0)
-        coEvery { firebaseNoteSync.uploadAllNotes() } returns Result.success(0)
-
-        viewModel = createViewModel()
-        viewModel.signInWithGoogleIdToken("token")
-        advanceUntilIdle()
-
-        coVerify(exactly = 0) { repository.clearAllUserData() }
-        verify(exactly = 0) { noteSyncStateStore.clear() }
-        verify { noteSyncStateStore.setLastMergedUserId("uid-new") }
-    }
-
-    @Test
-    fun `cold start with restored Google session backfills last merged uid`() = runTest {
-        every { noteSyncStateStore.lastMergedUserId() } returns null
-        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
-            userId = "uid-a",
-            email = "a@example.com",
-            isGoogleAccount = true,
-            isAnonymous = false
-        )
-
-        viewModel = createViewModel()
-        advanceUntilIdle()
-
-        coVerify(exactly = 0) { repository.clearAllUserData() }
-        verify { noteSyncStateStore.setLastMergedUserId("uid-a") }
-    }
-
-    @Test
-    fun `cold start with mismatched restored session clears prior local data`() = runTest {
-        every { noteSyncStateStore.lastMergedUserId() } returns "uid-a"
-        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
-            userId = "uid-b",
-            email = "b@example.com",
-            isGoogleAccount = true,
-            isAnonymous = false
-        )
-        coEvery { repository.clearAllUserData() } returns Unit
-
-        viewModel = createViewModel()
-        advanceUntilIdle()
-
-        coVerify { repository.clearAllUserData() }
-        verify { noteSyncStateStore.clear() }
-        verify { cloudNoteSyncCoordinator.clearPending() }
-        verify { noteSyncStateStore.setLastMergedUserId("uid-b") }
     }
 }

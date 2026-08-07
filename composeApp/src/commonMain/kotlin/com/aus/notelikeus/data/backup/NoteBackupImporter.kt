@@ -1,0 +1,131 @@
+package com.aus.notelikeus.data.backup
+
+import com.aus.notelikeus.domain.model.ChecklistItem
+import com.aus.notelikeus.domain.model.Label
+import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.util.DateUtils
+import kotlinx.serialization.json.Json
+
+class NoteBackupImporter(
+    private val repository: NoteRepository
+) {
+    private val json = Json {
+        ignoreUnknownKeys = true
+    }
+
+    suspend fun importFromJson(jsonStr: String): BackupImportResult {
+        return try {
+            if (jsonStr.length > MAX_BACKUP_CHARS) {
+                return BackupImportResult.InvalidFormat("Backup file is too large")
+            }
+
+            val backupData = json.decodeFromString<BackupData>(jsonStr)
+            
+            if (backupData.version > NoteBackupExporter.BACKUP_VERSION) {
+                return BackupImportResult.InvalidFormat("Unsupported backup version: ${backupData.version}")
+            }
+
+            // Validate the whole payload up front. These checks used to run inside the insert
+            // loop, so a backup that tripped a limit half-way through reported InvalidFormat
+            // while leaving the notes and labels it had already written committed.
+            validate(backupData)?.let { return it }
+
+            val labelMap = repository.getAllLabelsSnapshot()
+                .associateBy { it.name.lowercase() }
+                .toMutableMap()
+            var labelsCreated = 0
+
+            suspend fun ensureLabel(name: String): Label {
+                val key = name.trim().lowercase()
+                labelMap[key]?.let { return it }
+                val id = repository.insertLabel(Label(name = name.trim()))
+                val label = Label(id = id, name = name.trim())
+                labelMap[key] = label
+                labelsCreated++
+                return label
+            }
+
+            // Import labels from the root labels array
+            backupData.labels.forEach { label ->
+                if (label.name.isNotBlank()) {
+                    ensureLabel(label.name)
+                }
+            }
+
+            val basePosition = repository.getNextNotePosition()
+            var notesImported = 0
+
+            backupData.notes.forEach { noteDto ->
+                val resolvedLabels = noteDto.labels.map { name ->
+                    ensureLabel(name)
+                }
+
+                val checklist = noteDto.checklist.map { item ->
+                    ChecklistItem(
+                        text = item.text.take(MAX_FIELD_CHARS),
+                        isChecked = item.isChecked,
+                        position = item.position
+                    )
+                }
+
+                val reminderTimestamp = noteDto.reminderTimestamp
+                    ?.takeIf { it > DateUtils.currentTimeMillis() }
+
+                val note = Note(
+                    title = noteDto.title.take(MAX_FIELD_CHARS),
+                    content = noteDto.content.take(MAX_CONTENT_CHARS),
+                    timestamp = noteDto.timestamp,
+                    color = noteDto.color,
+                    isPinned = noteDto.isPinned,
+                    isArchived = noteDto.isArchived,
+                    isTrashed = noteDto.isTrashed,
+                    position = basePosition + notesImported,
+                    reminderTimestamp = reminderTimestamp,
+                    labels = resolvedLabels,
+                    attachments = emptyList(),
+                    checklist = checklist
+                )
+
+                repository.insertNoteWithResult(note)
+                notesImported++
+            }
+
+            BackupImportResult.Success(notesImported = notesImported, labelsCreated = labelsCreated)
+        } catch (e: Exception) {
+            BackupImportResult.Error(e)
+        }
+    }
+
+    /**
+     * Returns the failure to report, or null when [backupData] is safe to import.
+     * Purely a read of the payload — it must not touch the repository.
+     */
+    private fun validate(backupData: BackupData): BackupImportResult.InvalidFormat? {
+        if (backupData.notes.size > MAX_BACKUP_NOTES) {
+            return BackupImportResult.InvalidFormat("Backup has too many notes (max $MAX_BACKUP_NOTES)")
+        }
+        if (backupData.labels.size > MAX_BACKUP_LABELS) {
+            return BackupImportResult.InvalidFormat("Backup has too many labels (max $MAX_BACKUP_LABELS)")
+        }
+        backupData.notes.forEach { noteDto ->
+            if (noteDto.labels.size > MAX_NOTE_LABELS) {
+                return BackupImportResult.InvalidFormat("Note has too many labels (max $MAX_NOTE_LABELS)")
+            }
+            if (noteDto.checklist.size > MAX_NOTE_CHECKLIST) {
+                return BackupImportResult.InvalidFormat("Note has too many checklist items (max $MAX_NOTE_CHECKLIST)")
+            }
+        }
+        return null
+    }
+
+    companion object {
+        const val MAX_BACKUP_CHARS = 10 * 1024 * 1024
+        const val MAX_BACKUP_NOTES = 5_000
+        const val MAX_BACKUP_LABELS = 2_000
+        const val MAX_NOTE_LABELS = 100
+        const val MAX_NOTE_CHECKLIST = 500
+        const val MAX_FIELD_CHARS = 2_000
+        const val MAX_CONTENT_CHARS = 100_000
+    }
+}

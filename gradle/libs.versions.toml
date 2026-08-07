@@ -6,11 +6,12 @@ junitVersion = "1.3.0"
 espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
-kotlin = "2.4.10"
-composeBom = "2026.06.01"
-hilt = "2.60.1"
-room = "2.8.4"
-ksp = "2.3.10"
+kotlin = "2.1.21"
+serialization = "1.7.3"
+composeBom = "2024.12.01"
+hilt = "2.54"
+room = "2.7.0-alpha13"
+ksp = "2.1.21-2.0.2"
 navigation = "2.9.8"
 turbine = "1.2.1"
 mockk = "1.14.11"
@@ -27,10 +28,23 @@ sqlite = "2.5.0"
 googleServices = "4.4.4"
 firebaseBom = "34.17.0"
 playServicesAuth = "21.3.0"
+credentials = "1.5.0"
+googleid = "1.1.1"
 windowSize = "1.3.1"
 adaptive = "1.2.0"
-compose-multiplatform = "1.11.1"
-koin = "4.2.2"
+compose-multiplatform = "1.8.2"
+# The four versions below must stay on the same Compose Multiplatform line (currently 1.8.x).
+# Anything that resolves org.jetbrains.compose.* ABOVE compose-multiplatform wins conflict
+# resolution and upgrades every Compose library, while compose.desktop.currentOs stays pinned to
+# the CMP plugin's version — the mismatched skiko native binary then kills the desktop app at
+# startup with UnsatisfiedLinkError(RenderNodeContext_nMake). koin-compose 4.2.x pulls Compose
+# 1.10 and does exactly that, so bump these together or not at all.
+# JetBrains adaptive tracks androidx-adaptive versions separately; 1.1.x is the CMP 1.8 line.
+composeAdaptive = "1.1.2"
+composeNavigation = "2.9.0-beta03"
+koin = "4.1.1"
+# Matches the version koin-compose-viewmodel resolves, so the two don't fight.
+composeLifecycle = "2.9.3"
 work = "2.11.2"
 hiltWork = "1.4.0"
 
@@ -39,7 +53,9 @@ androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = 
 androidx-compose-ui-text-google-fonts = { group = "androidx.compose.ui", name = "ui-text-google-fonts", version.ref = "googleFonts" }
 androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
-androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+androidx-datastore-preferences-android = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+androidx-datastore-preferences-core = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastore" }
+androidx-datastore-core = { group = "androidx.datastore", name = "datastore-core", version.ref = "datastore" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
@@ -50,6 +66,7 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutinesTest" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutinesTest" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutinesTest" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
 hilt-android-testing = { group = "com.google.dagger", name = "hilt-android-testing", version.ref = "hilt" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
 androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycleRuntimeKtx" }
@@ -67,6 +84,20 @@ androidx-compose-material3-windowSizeClass = { group = "androidx.compose.materia
 androidx-compose-adaptive = { group = "androidx.compose.material3.adaptive", name = "adaptive", version.ref = "adaptive" }
 androidx-compose-adaptive-layout = { group = "androidx.compose.material3.adaptive", name = "adaptive-layout", version.ref = "adaptive" }
 androidx-compose-adaptive-navigation = { group = "androidx.compose.material3.adaptive", name = "adaptive-navigation", version.ref = "adaptive" }
+
+# Compose Multiplatform (JetBrains) variants — these are the ones commonMain must use.
+# The androidx equivalents above are Android-first and drag androidx.compose.ui:ui-text-jvmstubs
+# onto the desktop classpath, where it shadows org.jetbrains.compose.ui:ui-text and makes the app
+# die at startup with NotImplementedError("Implemented only in JetBrains fork").
+compose-navigation = { group = "org.jetbrains.androidx.navigation", name = "navigation-compose", version.ref = "composeNavigation" }
+# Provides collectAsStateWithLifecycle in commonMain. It used to arrive transitively, which meant a
+# dependency bump elsewhere could silently remove it.
+compose-lifecycle-runtime = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "composeLifecycle" }
+compose-lifecycle-viewmodel = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "composeLifecycle" }
+compose-material3-windowSizeClass = { group = "org.jetbrains.compose.material3", name = "material3-window-size-class", version.ref = "compose-multiplatform" }
+compose-adaptive = { group = "org.jetbrains.compose.material3.adaptive", name = "adaptive", version.ref = "composeAdaptive" }
+compose-adaptive-layout = { group = "org.jetbrains.compose.material3.adaptive", name = "adaptive-layout", version.ref = "composeAdaptive" }
+compose-adaptive-navigation = { group = "org.jetbrains.compose.material3.adaptive", name = "adaptive-navigation", version.ref = "composeAdaptive" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version = "1.7.8" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
@@ -102,6 +133,10 @@ firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore
 firebase-appcheck-playintegrity = { group = "com.google.firebase", name = "firebase-appcheck-playintegrity" }
 firebase-appcheck-debug = { group = "com.google.firebase", name = "firebase-appcheck-debug" }
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+# Credential Manager — the supported replacement for the deprecated GoogleSignIn API.
+androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
+androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
+google-identity-googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -114,5 +149,6 @@ room = { id = "androidx.room", version.ref = "room" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
 

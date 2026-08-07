@@ -15,6 +15,8 @@ import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.ui.theme.noteColorsMatch
+import com.aus.notelikeus.util.AppConfig
+import com.aus.notelikeus.util.DateUtils
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -48,6 +50,7 @@ data class MainState(
     val selectedColor: Int? = null,
     val selectedLabelId: Long? = null,
     val appTheme: AppTheme = AppTheme.AUTO,
+    val isTrueDarkMode: Boolean = false,
     val viewMode: NoteViewMode = NoteViewMode.GRID_2,
     val sortOrder: NoteSortOrder = NoteSortOrder.MANUAL,
     val isAppLockEnabled: Boolean = false,
@@ -62,10 +65,10 @@ data class MainState(
     val listRevision: Int = 0,
     val cloudSyncStatus: CloudSyncStatus = CloudSyncStatus.Unknown,
     val cloudSyncedNoteCount: Int = 0,
-    val cloudSyncError: String? = null,
     val pendingCloudSyncEvent: CloudSyncEvent? = null,
     val cloudAccount: CloudAccount = CloudAccount(),
-    val isCloudAutoSyncEnabled: Boolean = true
+    val isCloudAutoSyncEnabled: Boolean = true,
+    val isSigningIn: Boolean = false
 )
 
 class MainViewModel(
@@ -119,13 +122,47 @@ class MainViewModel(
 
     fun signInWithGoogleIdToken(idToken: String) {
         viewModelScope.launch {
-            syncManager.signInWithGoogle(idToken)
+            _state.update { it.copy(isSigningIn = true) }
+            val result = syncManager.signInWithGoogle(idToken)
+            if (result.isSuccess) {
+                // Immediately pull cloud notes after successful sign-in
+                downloadNotesFromCloud()
+            }
+            _state.update { state ->
+                state.copy(
+                    isSigningIn = false,
+                    // Surfaced through pendingCloudSyncEvent, which SignInGate already renders as
+                    // externalError. This used to drop the Result on the floor, so a failed
+                    // sign-in just silently returned the user to the gate.
+                    pendingCloudSyncEvent = result.exceptionOrNull()
+                        ?.let { CloudSyncEvent.Failure(signInFailureMessage(it)) }
+                        ?: state.pendingCloudSyncEvent
+                )
+            }
         }
     }
 
+    /**
+     * Reports a failure from the platform sign-in UI itself (before any token exists) — user
+     * cancellation, no Google account on the device, no Play Services, and so on.
+     */
+    fun reportGoogleSignInFailure(error: Throwable) {
+        _state.update {
+            it.copy(
+                isSigningIn = false,
+                pendingCloudSyncEvent = CloudSyncEvent.Failure(signInFailureMessage(error))
+            )
+        }
+    }
+
+    private fun signInFailureMessage(error: Throwable): String =
+        error.message?.takeIf { it.isNotBlank() } ?: "Google sign-in failed"
+
     fun signInWithEmailPassword(email: String, password: String, createAccount: Boolean) {
         viewModelScope.launch {
+            _state.update { it.copy(isSigningIn = true) }
             syncManager.signInWithEmail(email, password, createAccount)
+            _state.update { it.copy(isSigningIn = false) }
         }
     }
 
@@ -154,7 +191,7 @@ class MainViewModel(
         if (_state.value.cloudSyncStatus == CloudSyncStatus.Syncing) return
         if (!_state.value.cloudAccount.isGoogleAccount) return
         if (!_state.value.isCloudAutoSyncEnabled) return
-        val now = System.currentTimeMillis()
+        val now = DateUtils.currentTimeMillis()
         if (now - lastAutoPullElapsedMs < AUTO_PULL_MIN_INTERVAL_MS) return
         lastAutoPullElapsedMs = now
         viewModelScope.launch {
@@ -218,12 +255,21 @@ class MainViewModel(
             }
             .launchIn(viewModelScope)
 
+        settingsRepository.isTrueDarkMode
+            .onEach { enabled ->
+                _state.update { it.copy(isTrueDarkMode = enabled) }
+            }
+            .launchIn(viewModelScope)
+
         settingsRepository.isAppLockEnabled
             .catch { error ->
                 emit(true)
             }
             .onEach { enabled ->
-                _state.update { it.copy(isAppLockEnabled = enabled, areSettingsLoaded = true) }
+                // Gated on platform support so a persisted `true` (or the fail-closed `true`
+                // above) can't put the UI behind a lock screen the platform cannot verify.
+                val locked = enabled && AppConfig.supportsAppLock
+                _state.update { it.copy(isAppLockEnabled = locked, areSettingsLoaded = true) }
             }
             .launchIn(viewModelScope)
 
@@ -402,6 +448,12 @@ class MainViewModel(
         }
     }
 
+    fun setTrueDarkMode(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setTrueDarkMode(enabled)
+        }
+    }
+
     fun setCloudAutoSyncEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setCloudAutoSyncEnabled(enabled)
@@ -443,7 +495,7 @@ class MainViewModel(
                 note.copy(
                     isArchived = true,
                     isTrashed = false,
-                    timestamp = System.currentTimeMillis()
+                    timestamp = DateUtils.currentTimeMillis()
                 )
             )
         }
@@ -463,7 +515,7 @@ class MainViewModel(
                     note.copy(
                         isTrashed = true,
                         isArchived = false,
-                        timestamp = System.currentTimeMillis()
+                        timestamp = DateUtils.currentTimeMillis()
                     )
                 )
             }
@@ -489,7 +541,7 @@ class MainViewModel(
             pendingUndo = PendingUndo(notesToDelete, UndoAction.PERMANENT_DELETE)
             hideNotesTemporarily(notesToDelete.mapNotNull { it.id })
             notesToDelete.forEach { note ->
-                repository.deleteNote(note.copy(timestamp = System.currentTimeMillis()))
+                repository.deleteNote(note.copy(timestamp = DateUtils.currentTimeMillis()))
             }
             clearSelection()
         }
@@ -511,13 +563,13 @@ class MainViewModel(
             hideNotesTemporarily(notesToDelete.mapNotNull { it.id })
             notesToDelete.forEach { note ->
                 if (_state.value.currentFilter == NoteFilter.TRASHED) {
-                    repository.deleteNote(note.copy(timestamp = System.currentTimeMillis()))
+                    repository.deleteNote(note.copy(timestamp = DateUtils.currentTimeMillis()))
                 } else {
                     repository.updateNote(
                         note.copy(
                             isTrashed = true,
                             isArchived = false,
-                            timestamp = System.currentTimeMillis()
+                            timestamp = DateUtils.currentTimeMillis()
                         )
                     )
                 }
@@ -536,7 +588,7 @@ class MainViewModel(
                     note.copy(
                         isArchived = true,
                         isTrashed = false,
-                        timestamp = System.currentTimeMillis()
+                        timestamp = DateUtils.currentTimeMillis()
                     )
                 )
             }
@@ -572,12 +624,12 @@ class MainViewModel(
             when (undo.type) {
                 UndoAction.ARCHIVE, UndoAction.TRASH -> {
                     undo.notes.forEach { note ->
-                        repository.updateNote(note.copy(timestamp = System.currentTimeMillis()))
+                        repository.updateNote(note.copy(timestamp = DateUtils.currentTimeMillis()))
                     }
                 }
                 UndoAction.PERMANENT_DELETE -> {
                     undo.notes.forEach { note ->
-                        repository.insertNoteWithResult(note.copy(timestamp = System.currentTimeMillis()))
+                        repository.restoreNote(note.copy(timestamp = DateUtils.currentTimeMillis()))
                     }
                     _state.update { it.copy(listRevision = it.listRevision + 1) }
                 }
@@ -613,10 +665,19 @@ class MainViewModel(
     }
 
     suspend fun exportBackup(): BackupExportResult {
-        return backupExporter.createJson().let { BackupExportResult.Success }
+        return try {
+            val json = backupExporter.createJson()
+            BackupExportResult.Success(json)
+        } catch (e: Exception) {
+            BackupExportResult.Error(e)
+        }
     }
 
-    suspend fun importBackup(): BackupImportResult {
-        return BackupImportResult.ReadFailed
+    suspend fun importBackup(json: String): BackupImportResult {
+        return try {
+            backupImporter.importFromJson(json)
+        } catch (e: Exception) {
+            BackupImportResult.Error(e)
+        }
     }
 }

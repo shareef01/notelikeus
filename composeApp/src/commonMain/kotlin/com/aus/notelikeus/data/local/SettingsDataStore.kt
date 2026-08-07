@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 
 val APP_LOCK_ENABLED_KEY = booleanPreferencesKey("app_lock_enabled")
 val APP_THEME_KEY = stringPreferencesKey("app_theme")
+val TRUE_DARK_MODE_KEY = booleanPreferencesKey("true_dark_mode")
 val NOTE_VIEW_MODE_KEY = stringPreferencesKey("note_view_mode")
 val NOTE_SORT_ORDER_KEY = stringPreferencesKey("note_sort_order")
 /** Used by the home-screen widget theme selection (kept even though the in-app theme is fixed). */
