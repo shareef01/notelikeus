@@ -134,6 +134,27 @@ describe('firestore.rules', () => {
     );
   });
 
+  it('allows desktop platform in sync metadata', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(
+      setDoc(doc(alice, 'users/alice/_meta/sync'), {
+        lastSyncAt: Date.now(),
+        noteCount: 1,
+        platform: 'desktop',
+      }),
+    );
+  });
+
+  it('allows desktop platform in connection meta', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(
+      setDoc(doc(alice, 'users/alice/_meta/connection'), {
+        connectedAt: Date.now(),
+        platform: 'desktop',
+      }),
+    );
+  });
+
   it('allows owners to write connection ping', async () => {
     const alice = authed('alice');
     await assertSucceeds(
@@ -282,12 +303,12 @@ describe('firestore.rules', () => {
     );
   });
 
-  it('rejects non-android connection meta', async () => {
+  it('rejects non-android/web/desktop connection meta', async () => {
     const alice = authed('alice');
     await assertFails(
       setDoc(doc(alice, 'users/alice/_meta/connection'), {
         connectedAt: Date.now(),
-        platform: 'web',
+        platform: 'ios',
       }),
     );
   });
