@@ -4,7 +4,7 @@
 #   keytool -genkey -v -keystore release.keystore -alias notelikeus -keyalg RSA -keysize 2048 -validity 10000
 #
 # GitHub Actions (optional): store base64-encoded keystore + passwords as repo secrets
-# and decode to signing.properties in CI before `./gradlew :app:bundleRelease`.
+# and decode to signing.properties in CI before `./gradlew :androidApp:bundleRelease`.
 #
 storeFile=release.keystore
 storePassword=your-store-password
