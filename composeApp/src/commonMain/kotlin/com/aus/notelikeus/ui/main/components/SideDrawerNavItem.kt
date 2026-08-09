@@ -32,24 +32,40 @@ import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 
+/**
+ * A destination row in the side drawer.
+ *
+ * Colour here encodes *state*, not identity. Each destination used to carry its own saturated
+ * hue — sky, amber, rose, violet, teal — which read as five unrelated icon sets stacked in one
+ * column and left selection with nothing of its own to say. Now the row is quiet until selected,
+ * at which point the accent, the fill, and the rail all move together.
+ *
+ * @param icon shown when the row is not selected; prefer the outlined variant.
+ * @param selectedIcon shown when it is; prefer the filled variant of the same glyph.
+ */
 @Composable
 fun SideDrawerNavItem(
     label: String,
     icon: ImageVector,
-    accent: Color,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    selectedIcon: ImageVector = icon,
     count: Int? = null,
 ) {
     val shape = RoundedCornerShape(12.dp)
+    val accent = MaterialTheme.colorScheme.primary
     val wash by animateColorAsState(
         targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SoftWash)
+            accent.copy(alpha = Chrome.SoftWash)
         } else {
             Color.Transparent
         },
         label = "drawer_nav_wash"
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+        label = "drawer_nav_icon"
     )
 
     Row(
@@ -77,10 +93,10 @@ fun SideDrawerNavItem(
         }
 
         Icon(
-            imageVector = icon,
+            imageVector = if (selected) selectedIcon else icon,
             contentDescription = label,
             modifier = Modifier.size(22.dp),
-            tint = accent.copy(alpha = if (selected) 1f else 0.85f)
+            tint = iconTint
         )
 
         Text(
