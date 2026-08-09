@@ -1,7 +1,7 @@
 package com.aus.notelikeus.platform
 
 import com.aus.notelikeus.data.sync.NoteSyncEngine
-import com.aus.notelikeus.di.DesktopPendingSyncStore
+import com.aus.notelikeus.di.PendingSyncStore
 import com.aus.notelikeus.domain.platform.SyncCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,7 +25,7 @@ import kotlin.math.min
  */
 class DesktopSyncCoordinator(
     private val syncEngine: NoteSyncEngine,
-    private val pendingStore: DesktopPendingSyncStore,
+    private val pendingStore: PendingSyncStore,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) : SyncCoordinator {
 
