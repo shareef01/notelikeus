@@ -7,7 +7,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
@@ -46,7 +48,11 @@ fun main() {
 private fun launchApp() = application {
     val windowState = rememberWindowState(
         width = 1000.dp,
-        height = 800.dp
+        height = 800.dp,
+        // Centred rather than left to the platform's cascade. With undecorated chrome the drag
+        // area is part of the window, so a cascade that puts the top edge above y=0 clips the
+        // title bar off-screen and leaves no way to drag the window back with the mouse.
+        position = WindowPosition(Alignment.Center)
     )
     val trayState = rememberTrayState()
     
