@@ -35,11 +35,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
 }
 
 dependencies {
@@ -64,6 +59,12 @@ dependencies {
     // Explicitly add Compose Material3 and WindowSizeClass for Android
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.windowSizeClass)
+
+    // This module has its own unit tests (NoteAppFunctionsTest); without these they do not
+    // compile, and CI ran only :composeApp:testDebugUnitTest so the breakage stayed invisible.
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {

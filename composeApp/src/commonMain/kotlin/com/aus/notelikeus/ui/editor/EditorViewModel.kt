@@ -19,6 +19,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class EditorState(
     val id: Long? = null,
@@ -50,6 +52,7 @@ class EditorViewModel(
     val state: StateFlow<EditorState> = _state.asStateFlow()
 
     private var autosaveJob: Job? = null
+    private val saveMutex = Mutex()
     private var noteId: Long? = savedStateHandle.get<Long>("noteId")?.takeIf { it != -1L }
     private val routedInitialColor: Int? =
         savedStateHandle.get<Int>("initialColor")?.takeIf { it != Int.MIN_VALUE }
@@ -211,10 +214,18 @@ class EditorViewModel(
         )
     }
 
-    private suspend fun persistNote(): Long? {
+    /**
+     * Persists the current state, one save at a time.
+     *
+     * The mutex is what stops a new note being inserted twice. [triggerAutosave] only cancels its
+     * own delay wrapper, not a [persistNote] already running inside the coroutine it launched, so
+     * a direct save (pin, reminder, trash) firing alongside a due autosave could put two calls in
+     * flight — both reading `state.id == null` and both inserting.
+     */
+    private suspend fun persistNote(): Long? = saveMutex.withLock {
         val currentState = _state.value
         if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) {
-            return null
+            return@withLock null
         }
 
         val position = if (currentState.id == null) {
@@ -402,7 +413,9 @@ class EditorViewModel(
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
             delay(1000)
-            saveNote()
+            // persistNote, not saveNote: saveNote cancels autosaveJob, which from in here would
+            // mean cancelling the very coroutine about to do the work.
+            persistNote()
         }
     }
 
@@ -410,6 +423,8 @@ class EditorViewModel(
         val currentState = _state.value
         if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) return
 
+        // Supersede any autosave still counting down, so this save is the only one in flight.
+        autosaveJob?.cancel()
         viewModelScope.launch {
             persistNote()
         }
@@ -422,6 +437,7 @@ class EditorViewModel(
     suspend fun saveNoteAndAwait() {
         val currentState = _state.value
         if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) return
+        autosaveJob?.cancel()
         persistNote()
     }
 
