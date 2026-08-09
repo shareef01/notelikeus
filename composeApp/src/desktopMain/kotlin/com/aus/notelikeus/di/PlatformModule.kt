@@ -52,7 +52,8 @@ actual val platformModule = module {
     single { DesktopReminderManager(get()) }
     single<ReminderManager> { get<DesktopReminderManager>() }
     single<PlatformWidgetManager> { DesktopWidgetManager() }
-    single<SyncCoordinator> { DesktopSyncCoordinator(get()) }
+    single { DesktopPendingSyncStore(get()) }
+    single<SyncCoordinator> { DesktopSyncCoordinator(get(), get()) }
 
     single { NoteBackupExporter(get<NoteRepository>(), "Notelikeus", AppConfig.versionName) }
     single { NoteBackupImporter(get<NoteRepository>()) }
