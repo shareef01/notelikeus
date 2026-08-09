@@ -10,18 +10,31 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 /**
- * Desktop counterpart to Android's `PendingCloudSyncStore`: the note ids whose cloud writes have
- * not landed yet, surviving process exit.
+ * The note ids whose cloud writes have not landed yet.
+ *
+ * An interface so [com.aus.notelikeus.platform.DesktopSyncCoordinator] can be tested against an
+ * in-memory double without standing up a DataStore on disk.
+ */
+interface PendingSyncStore {
+    suspend fun load(): DesktopPendingSyncStore.Pending
+    suspend fun save(uploads: Set<Long>, deletes: Set<Long>, restores: Set<Long>)
+    suspend fun clear()
+}
+
+/**
+ * Desktop counterpart to Android's `PendingCloudSyncStore`: the pending set, surviving process
+ * exit.
  *
  * Desktop previously had no queue at all — every mutation fired an immediate upload and a failed
  * one was simply gone, with `clearPending()` a no-op.
  */
 class DesktopPendingSyncStore(
     private val dataStore: DataStore<Preferences>
-) {
+) : PendingSyncStore {
+
     private val json = Json { encodeDefaults = true }
 
-    suspend fun load(): Pending {
+    override suspend fun load(): Pending {
         val prefs = dataStore.data.firstOrNull()
         return Pending(
             uploads = read(prefs, KEY_UPLOADS),
@@ -30,7 +43,7 @@ class DesktopPendingSyncStore(
         )
     }
 
-    suspend fun save(uploads: Set<Long>, deletes: Set<Long>, restores: Set<Long>) {
+    override suspend fun save(uploads: Set<Long>, deletes: Set<Long>, restores: Set<Long>) {
         dataStore.edit { prefs ->
             prefs[KEY_UPLOADS] = encode(uploads)
             prefs[KEY_DELETES] = encode(deletes)
@@ -38,7 +51,7 @@ class DesktopPendingSyncStore(
         }
     }
 
-    suspend fun clear() {
+    override suspend fun clear() {
         save(emptySet(), emptySet(), emptySet())
     }
 
