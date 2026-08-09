@@ -26,15 +26,19 @@ fun RichTextToolbar(
     surfaceColor: Color = MaterialTheme.colorScheme.surfaceVariant,
     modifier: Modifier = Modifier
 ) {
+    // The surface is used exactly as given. It used to be `surfaceColor.copy(alpha = 0.95f)`,
+    // which quietly turned the editor's Color.Transparent — RGB(0,0,0) with alpha 0 — into 95%
+    // opaque black, so a slab sat over every coloured note instead of the intended tint.
+    val isTransparent = surfaceColor.alpha == 0f
     Surface(
         modifier = modifier,
         shape = CircleShape,
-        color = surfaceColor.copy(alpha = 0.95f),
-        tonalElevation = 1.dp,
-        shadowElevation = 2.dp,
+        color = surfaceColor,
+        tonalElevation = if (isTransparent) 0.dp else 1.dp,
+        shadowElevation = if (isTransparent) 0.dp else 2.dp,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            contentColor.copy(alpha = 0.1f)
+            contentColor.copy(alpha = 0.14f)
         )
     ) {
         Row(
