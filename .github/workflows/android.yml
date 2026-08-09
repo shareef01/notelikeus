@@ -30,6 +30,11 @@ jobs:
       - name: Run unit tests
         run: ./gradlew :composeApp:testDebugUnitTest --stacktrace
 
+      # :androidApp has its own unit tests. Leaving them out of CI let them drift until they
+      # stopped compiling entirely — the same failure mode as the instrumented suite below.
+      - name: Run androidApp unit tests
+        run: ./gradlew :androidApp:testDebugUnitTest --stacktrace
+
       # No task below compiles androidTest, so the instrumented suite silently
       # drifted out of sync with the composables it tests and stopped compiling.
       # Compiling it here catches that without needing an emulator.

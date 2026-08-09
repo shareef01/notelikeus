@@ -13,8 +13,6 @@ import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyShortcut
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.key
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import androidx.compose.ui.window.Notification
@@ -30,9 +28,16 @@ import org.koin.core.context.GlobalContext
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
-fun main() = application {
+fun main() {
+    // Not inside application { }: that block is composable and re-runs whenever the state
+    // remembered in it changes (Ctrl+N, the tray item, the About dialog), and startKoin throws
+    // KoinApplicationAlreadyStartedException the second time.
     initKoin()
-    
+    launchApp()
+}
+
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
+private fun launchApp() = application {
     val windowState = rememberWindowState(
         width = 1000.dp,
         height = 800.dp
@@ -101,12 +106,7 @@ fun main() = application {
         onCloseRequest = ::exitApplication,
         state = windowState,
         title = "Notelikeus",
-        icon = appIcon,
-        onPreviewKeyEvent = {
-            if (it.isCtrlPressed && it.key == Key.F) {
-                false
-            } else false
-        }
+        icon = appIcon
     ) {
         MenuBar {
             Menu("File") {

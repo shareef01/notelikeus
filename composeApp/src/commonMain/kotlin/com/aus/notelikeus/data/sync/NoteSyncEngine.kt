@@ -13,6 +13,21 @@ import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.util.DateUtils
 
 /**
+ * The cloud returned no notes for an account that is known to have them.
+ *
+ * [NoteSyncEngine.downloadAllNotes] otherwise treats an absent note as deleted-elsewhere and
+ * removes the local copy, so a fetch that failed open (an expired token, a truncated page, an
+ * offline transport returning a default) would delete the user's notes. Failing the sync is the
+ * safe answer; the next successful download reconciles normally.
+ */
+class SuspectEmptyCloudException(
+    val knownCloudNoteCount: Int
+) : Exception(
+    "Cloud returned no notes but $knownCloudNoteCount were expected — refusing to delete local " +
+        "copies. Check the connection or sign in again."
+)
+
+/**
  * Policy-only cloud-sync engine.
  *
  * Broken cycle: NoteSyncEngine now depends on DAOs instead of the high-level Repository,
@@ -180,7 +195,23 @@ class NoteSyncEngine(
             val cloudNoteIds = mutableSetOf<Long>()
             val allLocalNotes = localNotesBeforePurge.filter { note -> note.id !in purgedIds }
             val localNotesById = allLocalNotes.mapNotNull { note -> note.id?.let { it to note } }.toMap()
-            val previouslyKnownCloudIds = syncStateStore.knownCloudIds()
+
+            // knownCloudIds belongs to whichever account last completed a download. Carrying it
+            // across an account switch would read the new account's (legitimately empty) cloud as
+            // "the previous account's notes were deleted" and remove them from this device.
+            val isSameAccountAsLastMerge = syncStateStore.lastMergedUserId() == uid
+            val previouslyKnownCloudIds =
+                if (isSameAccountAsLastMerge) syncStateStore.knownCloudIds() else emptySet()
+
+            // A whole collection vanishing is far more often a failed fetch than a real deletion:
+            // a genuine remote delete leaves tombstones, which mergeCloudTombstones has already
+            // applied above. Refuse to reconcile rather than delete notes on a bad read.
+            if (isSameAccountAsLastMerge &&
+                remoteRecords.isEmpty() &&
+                previouslyKnownCloudIds.isNotEmpty()
+            ) {
+                throw SuspectEmptyCloudException(previouslyKnownCloudIds.size)
+            }
 
             for (record in remoteRecords) {
                 val noteId = record.noteId
