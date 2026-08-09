@@ -105,6 +105,15 @@ class MainViewModel(
         syncManager.syncStatus.onEach { status ->
             _state.update { it.copy(cloudSyncStatus = status) }
         }.launchIn(viewModelScope)
+
+        // Only non-null events are adopted: the flow resets to null on acknowledgement, and
+        // mirroring that would wipe a failure this ViewModel set itself (see
+        // signInWithGoogleIdToken, which reports before any SyncManager call happens).
+        syncManager.pendingEvent.onEach { event ->
+            if (event != null) {
+                _state.update { it.copy(pendingCloudSyncEvent = event) }
+            }
+        }.launchIn(viewModelScope)
     }
 
     fun enterOfflineMode() {
