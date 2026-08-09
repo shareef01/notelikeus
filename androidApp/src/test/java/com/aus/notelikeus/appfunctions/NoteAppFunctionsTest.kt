@@ -1,8 +1,9 @@
 package com.aus.notelikeus.appfunctions
 
+import androidx.appfunctions.AppFunctionContext
 import com.aus.notelikeus.domain.model.Note
-import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.platform.ReminderManager
+import com.aus.notelikeus.domain.repository.NoteRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -25,26 +26,26 @@ class NoteAppFunctionsTest {
     private lateinit var repository: NoteRepository
     private lateinit var reminderManager: ReminderManager
 
-    private class TestNoteAppFunctions : NoteAppFunctions() {
-        override suspend fun executeFunction(
-            request: androidx.appfunctions.ExecuteAppFunctionRequest
-        ): androidx.appfunctions.ExecuteAppFunctionResponse {
-            throw NotImplementedError()
-        }
-    }
+    /**
+     * Every @AppFunction takes the caller's context as its first parameter. Nothing in
+     * [NoteAppFunctions] reads it, so a relaxed mock is enough to exercise the bodies.
+     */
+    private val context: AppFunctionContext = mockk(relaxed = true)
 
     @Before
     fun setup() {
         repository = mockk(relaxed = true)
         reminderManager = mockk(relaxed = true)
-        
+
         startKoin {
-            modules(module {
-                single<NoteRepository> { repository }
-                single<ReminderManager> { reminderManager }
-            })
+            modules(
+                module {
+                    single<NoteRepository> { repository }
+                    single<ReminderManager> { reminderManager }
+                }
+            )
         }
-        noteAppFunctions = TestNoteAppFunctions()
+        noteAppFunctions = NoteAppFunctions()
     }
 
     @After
@@ -56,12 +57,16 @@ class NoteAppFunctionsTest {
     fun `createNote inserts note and returns AppFunctionNote`() = runTest {
         coEvery { repository.insertNoteWithResult(any()) } returns 123L
 
-        val result = noteAppFunctions.createNote("New Note", "Content")
+        val result = noteAppFunctions.createNote(context, "New Note", "Content")
 
         assertEquals(123L, result.id)
         assertEquals("New Note", result.title)
         assertEquals("Content", result.content)
-        coVerify { repository.insertNoteWithResult(match { it.title == "New Note" && it.content == "Content" }) }
+        coVerify {
+            repository.insertNoteWithResult(
+                match { it.title == "New Note" && it.content == "Content" }
+            )
+        }
     }
 
     @Test
@@ -72,7 +77,7 @@ class NoteAppFunctionsTest {
         )
         every { repository.getActiveNotes() } returns flowOf(notes)
 
-        val result = noteAppFunctions.listNotes()
+        val result = noteAppFunctions.listNotes(context)
 
         assertEquals(2, result.size)
         assertEquals("A", result[0].title)
@@ -87,7 +92,7 @@ class NoteAppFunctionsTest {
         )
         every { repository.getActiveNotes() } returns flowOf(notes)
 
-        val result = noteAppFunctions.searchNotes("milk")
+        val result = noteAppFunctions.searchNotes(context, "milk")
 
         assertEquals(1, result.size)
         assertEquals("Shopping", result.first().title)
@@ -97,9 +102,9 @@ class NoteAppFunctionsTest {
     fun `addReminder updates note and schedules reminder`() = runTest {
         val note = Note(id = 1L, title = "A", content = "B", timestamp = 0L, color = 0)
         coEvery { repository.getNoteById(1L) } returns note
-        val futureTime = System.currentTimeMillis() + 10000
+        val futureTime = System.currentTimeMillis() + 10_000
 
-        val result = noteAppFunctions.addReminder(1L, futureTime)
+        val result = noteAppFunctions.addReminder(context, 1L, futureTime)
 
         assertNotNull(result)
         assertEquals(futureTime, result?.reminderTimestamp)
@@ -111,20 +116,37 @@ class NoteAppFunctionsTest {
     fun `addReminder returns null if note not found`() = runTest {
         coEvery { repository.getNoteById(any()) } returns null
 
-        val result = noteAppFunctions.addReminder(999L, 0L)
+        val result = noteAppFunctions.addReminder(context, 999L, 0L)
 
         assertNull(result)
     }
 
     @Test
     fun `archiveNote marks note as archived`() = runTest {
-        val note = Note(id = 1L, title = "A", content = "B", timestamp = 0L, color = 0, isArchived = false)
+        val note = Note(
+            id = 1L,
+            title = "A",
+            content = "B",
+            timestamp = 0L,
+            color = 0,
+            isArchived = false
+        )
         coEvery { repository.getNoteById(1L) } returns note
 
-        val result = noteAppFunctions.archiveNote(1L)
+        val result = noteAppFunctions.archiveNote(context, 1L)
 
         assertNotNull(result)
         assertEquals(true, result?.isArchived)
         coVerify { repository.updateNote(match { it.isArchived }) }
+    }
+
+    @Test
+    fun `archiveNote returns null if note not found`() = runTest {
+        coEvery { repository.getNoteById(any()) } returns null
+
+        val result = noteAppFunctions.archiveNote(context, 999L)
+
+        assertNull(result)
+        coVerify(exactly = 0) { repository.updateNote(any()) }
     }
 }

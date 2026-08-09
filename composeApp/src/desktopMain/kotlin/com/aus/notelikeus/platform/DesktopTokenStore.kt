@@ -7,50 +7,182 @@ import com.sun.jna.Pointer
 import com.sun.jna.Structure
 import com.sun.jna.WString
 import com.sun.jna.platform.win32.Kernel32
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import java.io.File
+import java.net.URI
+import java.net.URLEncoder
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.time.Duration
 import java.util.Base64
 
-class DesktopTokenStore(private val dataDir: File) {
+/**
+ * Persists the desktop Firebase session and keeps its ID token usable.
+ *
+ * Firebase ID tokens expire after one hour. Storing only the ID token meant that after that hour
+ * every Firestore call came back 401 while [hasSession] still reported a signed-in user — and
+ * because the transport swallowed the 401 and returned an empty list, the sync engine concluded
+ * the cloud had been emptied and deleted the local notes. The refresh token below is what stops
+ * that clock from running out.
+ */
+class DesktopTokenStore(
+    private val dataDir: File,
+    private val firebaseApiKey: String
+) {
 
     private val tokenFile = File(dataDir, ".session")
     private val json = Json { ignoreUnknownKeys = true }
+    private val httpClient = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(15))
+        .build()
+    private val refreshMutex = Mutex()
 
     private var cachedIdToken: String? = null
+    private var cachedRefreshToken: String? = null
+    private var cachedExpiresAt: Long = 0L
     private var cachedUid: String? = null
     private var cachedEmail: String? = null
 
     init {
         dataDir.mkdirs()
-        cachedIdToken = loadToken()
-        cachedIdToken?.let { decodeJwt(it) }
+        load()
     }
 
     fun hasSession(): Boolean = cachedIdToken != null
-    fun idToken(): String? = cachedIdToken
     fun uid(): String? = cachedUid
     fun email(): String? = cachedEmail
 
-    fun save(idToken: String) {
+    /** The raw cached token, expired or not. Prefer [validIdToken] for anything network-facing. */
+    fun idToken(): String? = cachedIdToken
+
+    /**
+     * Returns an ID token that is good for at least [EXPIRY_SKEW_MS], refreshing it first if
+     * needed. Returns null when there is no session or the refresh was rejected — callers must
+     * treat that as "signed out", never as "the cloud is empty".
+     */
+    suspend fun validIdToken(): String? {
+        val current = cachedIdToken ?: return null
+        if (System.currentTimeMillis() < cachedExpiresAt - EXPIRY_SKEW_MS) return current
+        return refresh()
+    }
+
+    /** Persists a freshly exchanged session. Expiry comes from the token's own `exp` claim. */
+    fun save(idToken: String, refreshToken: String?) {
         cachedIdToken = idToken
+        if (refreshToken != null) cachedRefreshToken = refreshToken
         decodeJwt(idToken)
-        tokenFile.writeBytes(dpapiProtect(idToken.encodeToByteArray()))
+        persist()
     }
 
     fun clear() {
         cachedIdToken = null
+        cachedRefreshToken = null
+        cachedExpiresAt = 0L
         cachedUid = null
         cachedEmail = null
         tokenFile.delete()
     }
 
-    private fun loadToken(): String? {
-        if (!tokenFile.exists()) return null
-        return try { String(dpapiUnprotect(tokenFile.readBytes())) }
-        catch (_: Exception) { tokenFile.delete(); null }
+    /**
+     * Exchanges the refresh token for a new ID token.
+     *
+     * Serialized behind a mutex so a burst of concurrent syncs performs one refresh instead of
+     * racing several. A rejected refresh token means the session is genuinely over, so the
+     * session is cleared rather than left in a half-valid state.
+     */
+    private suspend fun refresh(): String? = refreshMutex.withLock {
+        // Another caller may have refreshed while this one waited for the lock.
+        val current = cachedIdToken
+        if (current != null && System.currentTimeMillis() < cachedExpiresAt - EXPIRY_SKEW_MS) {
+            return@withLock current
+        }
+        val refreshToken = cachedRefreshToken ?: return@withLock null
+
+        val body = listOf(
+            "grant_type" to "refresh_token",
+            "refresh_token" to refreshToken
+        ).joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, "UTF-8")}" }
+
+        val request = HttpRequest.newBuilder()
+            .uri(URI("https://securetoken.googleapis.com/v1/token?key=$firebaseApiKey"))
+            .timeout(Duration.ofSeconds(30))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build()
+
+        val response = try {
+            withContext(Dispatchers.IO) {
+                httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            }
+        } catch (_: Exception) {
+            // Offline or a transient network fault — keep the session so a later sync can retry.
+            return@withLock null
+        }
+
+        if (response.statusCode() !in 200..299) {
+            // The refresh token itself was rejected (revoked, password change, account deleted).
+            clear()
+            return@withLock null
+        }
+
+        val payload = json.decodeFromString<JsonObject>(response.body())
+        val newIdToken = payload["id_token"]?.jsonPrimitive?.content ?: return@withLock null
+        save(newIdToken, payload["refresh_token"]?.jsonPrimitive?.content)
+        newIdToken
     }
+
+    // ---- persistence ----
+
+    private fun persist() {
+        val payload = buildJsonObject {
+            put("idToken", cachedIdToken)
+            put("refreshToken", cachedRefreshToken)
+        }
+        try {
+            tokenFile.writeBytes(dpapiProtect(payload.toString().encodeToByteArray()))
+        } catch (_: Exception) {
+            // Session persistence is best-effort; the in-memory session still works this run.
+        }
+    }
+
+    private fun load() {
+        if (!tokenFile.exists()) return
+        val decrypted = try {
+            String(dpapiUnprotect(tokenFile.readBytes()))
+        } catch (_: Exception) {
+            tokenFile.delete()
+            return
+        }
+
+        val parsed = try {
+            json.parseToJsonElement(decrypted).jsonObject
+        } catch (_: Exception) {
+            // Sessions written before refresh support held a bare JWT. Honour it until it
+            // expires; with no refresh token the user simply signs in again after that.
+            cachedIdToken = decrypted
+            decodeJwt(decrypted)
+            return
+        }
+
+        cachedIdToken = parsed.stringOrNull("idToken")
+        cachedRefreshToken = parsed.stringOrNull("refreshToken")
+        cachedIdToken?.let { decodeJwt(it) }
+    }
+
+    /** `jsonPrimitive.content` on a JSON null yields the string "null", so filter it out first. */
+    private fun JsonObject.stringOrNull(key: String): String? =
+        this[key]?.takeIf { it !is JsonNull }?.jsonPrimitive?.content
 
     private fun decodeJwt(idToken: String) {
         try {
@@ -58,10 +190,20 @@ class DesktopTokenStore(private val dataDir: File) {
             if (parts.size < 2) return
             val padded = parts[1].padEnd(((parts[1].length + 3) / 4) * 4, '=')
             val payload = String(Base64.getUrlDecoder().decode(padded))
-            val obj = json.decodeFromString<kotlinx.serialization.json.JsonObject>(payload)
+            val obj = json.decodeFromString<JsonObject>(payload)
             cachedUid = obj["sub"]?.jsonPrimitive?.content ?: obj["user_id"]?.jsonPrimitive?.content
             cachedEmail = obj["email"]?.jsonPrimitive?.content
-        } catch (_: Exception) { /* JWT decode best-effort */ }
+            // `exp` is seconds since epoch. Deriving expiry from the token beats trusting a
+            // separately reported expires_in that may not match what was actually issued.
+            cachedExpiresAt = obj["exp"]?.jsonPrimitive?.content?.toLongOrNull()?.times(1000) ?: 0L
+        } catch (_: Exception) {
+            /* JWT decode best-effort */
+        }
+    }
+
+    private companion object {
+        /** Refresh this far ahead of the real expiry so an in-flight request cannot age out. */
+        const val EXPIRY_SKEW_MS = 5 * 60 * 1000L
     }
 }
 

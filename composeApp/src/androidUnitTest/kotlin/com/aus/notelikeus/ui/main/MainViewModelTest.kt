@@ -60,6 +60,7 @@ class MainViewModelTest {
         every { settingsRepository.isCloudAutoSyncEnabled } returns flowOf(true)
         every { syncManager.cloudAccount } returns MutableStateFlow(CloudAccount())
         every { syncManager.syncStatus } returns MutableStateFlow(CloudSyncStatus.Synced)
+        every { syncManager.pendingEvent } returns MutableStateFlow<CloudSyncEvent?>(null)
 
         viewModel = createViewModel()
     }
