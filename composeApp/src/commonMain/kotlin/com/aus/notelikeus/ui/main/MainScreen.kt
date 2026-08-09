@@ -803,6 +803,7 @@ private fun MainScaffold(
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     onShowProfileSheet(true)
                 },
+                accountEmail = state.cloudAccount.email,
                 selectedColor = state.selectedColor,
                 onColorSelect = viewModel::selectColorFilter,
                 allLabels = state.allLabels,
