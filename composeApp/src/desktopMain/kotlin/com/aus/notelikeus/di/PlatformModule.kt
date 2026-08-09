@@ -132,6 +132,10 @@ actual val platformModule = module {
  *  2. `notelikeus.oauthClientSecret` in the repo's gitignored `local.properties`, which is the
  *     ergonomic path for day-to-day development — same pattern the project already uses for
  *     `signing.properties`.
+ *  3. [DesktopSecrets], generated at build time from the same two sources. An installed app has
+ *     neither an env var nor a checked-out `local.properties`, so without this a packaged build
+ *     could never sign in. Runtime sources come first so a build can still be overridden without
+ *     recompiling.
  *
  * Empty means desktop sign-in is simply not configured, and
  * [com.aus.notelikeus.platform.DesktopGoogleSignInHelper] says so up front rather than letting
@@ -148,7 +152,8 @@ private object DesktopOAuthConfig {
 
     fun clientSecret(): String {
         System.getenv(SECRET_ENV_VAR)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        return localPropertiesSecret().orEmpty()
+        localPropertiesSecret()?.let { return it }
+        return DesktopSecrets.OAUTH_CLIENT_SECRET
     }
 
     /**
