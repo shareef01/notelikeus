@@ -257,6 +257,87 @@ class NoteSyncEngineTest {
         assertEquals("Cloud note", noteDao.notes[5L]?.title)
     }
 
+    // ---- downloadAllNotes: guarding against a fetch that failed open ----
+
+    @Test
+    fun `downloadAllNotes refuses to delete locals when the cloud comes back unexpectedly empty`() = runTest {
+        setup()
+        // The device has completed a download for this account before, and knows note 1 was there.
+        noteDao.insertNote(
+            Note(id = 1L, title = "Keep me", content = "", timestamp = 1L, color = 0).toNoteEntity()
+        )
+        stateStore.setLastMergedUserId("uid")
+        stateStore.setKnownCloudIds(setOf(1L))
+        // ...and now the cloud reports nothing at all, with no tombstone to explain it.
+
+        val result = engine.downloadAllNotes()
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is SuspectEmptyCloudException)
+        assertEquals(1, noteDao.notes.size, "local note must survive a suspect empty fetch")
+        assertFalse(stateStore.isDeleted(1L))
+        assertTrue(transport.tombstones.isEmpty(), "no tombstone should be published")
+    }
+
+    @Test
+    fun `downloadAllNotes still deletes a local note the cloud genuinely dropped`() = runTest {
+        setup()
+        noteDao.insertNote(
+            Note(id = 1L, title = "Gone", content = "", timestamp = 1L, color = 0).toNoteEntity()
+        )
+        noteDao.insertNote(
+            Note(id = 2L, title = "Still here", content = "", timestamp = 1L, color = 0).toNoteEntity()
+        )
+        stateStore.setLastMergedUserId("uid")
+        stateStore.setKnownCloudIds(setOf(1L, 2L))
+        // The cloud kept 2 but dropped 1 — a partial result, not a failed fetch.
+        transport.notes[2L] = CloudNoteRecord(
+            noteId = 2L, serverUpdatedAt = 200_000L, clientTimestamp = 1L,
+            title = "Still here", content = "", timestamp = 1L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null,
+            labels = emptyList(), checklistItems = emptyList()
+        )
+
+        val result = engine.downloadAllNotes()
+
+        assertTrue(result.isSuccess)
+        assertFalse(1L in noteDao.notes)
+        assertTrue(2L in noteDao.notes)
+    }
+
+    @Test
+    fun `downloadAllNotes treats an empty cloud as legitimate on a first sync`() = runTest {
+        setup()
+        noteDao.insertNote(
+            Note(id = 1L, title = "Local only", content = "", timestamp = 1L, color = 0).toNoteEntity()
+        )
+        // No prior download: nothing is "known" to have been in the cloud.
+
+        val result = engine.downloadAllNotes()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, noteDao.notes.size)
+        assertTrue(1L in transport.notes, "the local note should be pushed up instead")
+    }
+
+    @Test
+    fun `downloadAllNotes ignores known cloud ids left over from another account`() = runTest {
+        setup(uid = "second-account")
+        noteDao.insertNote(
+            Note(id = 1L, title = "Mine", content = "", timestamp = 1L, color = 0).toNoteEntity()
+        )
+        // State left behind by the previously signed-in account.
+        stateStore.setLastMergedUserId("first-account")
+        stateStore.setKnownCloudIds(setOf(1L))
+
+        val result = engine.downloadAllNotes()
+
+        assertTrue(result.isSuccess, "an account switch is not a failed fetch")
+        assertEquals(1, noteDao.notes.size, "the other account's ids must not delete these notes")
+        assertTrue(1L in transport.notes)
+    }
+
     // ---- deleteAllCloudData ----
 
     @Test
