@@ -51,6 +51,7 @@ import com.aus.notelikeus.ui.editor.EditorScreen
 import com.aus.notelikeus.ui.editor.EditorViewModel
 import com.aus.notelikeus.ui.main.components.*
 import com.aus.notelikeus.ui.theme.*
+import com.aus.notelikeus.util.AppConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import notelikeus.composeapp.generated.resources.Res
@@ -162,7 +163,10 @@ fun MainScreen(
         }
     }
 
-    val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
+    // A Medium-width desktop window is a resized app window, not a phone, so it still gets the
+    // two-pane layout. On Android, Medium is a large phone or a folded foldable and must not.
+    val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded ||
+            (windowSizeClass.widthSizeClass == WindowWidthSizeClass.Medium && AppConfig.isDesktop)
     val navigator = rememberListDetailPaneScaffoldNavigator<Long?>()
 
     val drawerInner = @Composable {
@@ -1019,7 +1023,9 @@ private fun MainScaffold(
                     },
                     onMoveNote = viewModel::previewMoveNote,
                     onReorderComplete = viewModel::commitNoteOrder,
-                    columns = state.viewMode.columns,
+                    // In two-pane mode the list shares the window with the editor, so the wider
+                    // grid choices leave cards too narrow to read. Cap the list pane at 2.
+                    columns = if (isExpanded && state.viewMode.columns > 2) 2 else state.viewMode.columns,
                     compact = state.viewMode.compact,
                     modifier = Modifier
                         .weight(1f)
