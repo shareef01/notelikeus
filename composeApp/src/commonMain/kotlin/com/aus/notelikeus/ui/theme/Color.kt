@@ -54,11 +54,9 @@ val SurfaceVariantForest = Color(0xFF182119)
 val OutlineForest = Color(0xFF2A382C)
 
 // Nav accents (match web SideDrawer: sky / amber / rose / violet / teal)
-val NavAccentNotes = Color(0xFF38BDF8)
-val NavAccentArchive = Color(0xFFFBBF24)
-val NavAccentTrash = Color(0xFFFB7185)
-val NavAccentLabels = Color(0xFFA78BFA)
-val NavAccentSettings = Color(0xFF2DD4BF)
+// The per-destination drawer accents (sky/amber/rose/violet/teal) were removed: five saturated
+// hues in one column read as unrelated icon sets and left selection with no colour of its own.
+// SideDrawerNavItem now derives its tint from selection state against the theme's primary.
 val SignOutRose = Color(0xFFFB7185)
 val SignOutRoseContainer = Color(0x26FB7185) // ~15%
 
