@@ -11,11 +11,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.FilterAltOff
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.SearchOff
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.material3.adaptive.layout.AnimatedPane
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
@@ -196,8 +200,8 @@ fun MainScreen(
             ) {
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_notes),
-                    icon = Icons.Default.Lightbulb,
-                    accent = NavAccentNotes,
+                    icon = Icons.Outlined.Lightbulb,
+                    selectedIcon = Icons.Filled.Lightbulb,
                     selected = state.currentFilter == NoteFilter.ACTIVE,
                     count = state.totalNoteCount,
                     onClick = {
@@ -208,8 +212,8 @@ fun MainScreen(
                 )
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_archive),
-                    icon = Icons.Default.Archive,
-                    accent = NavAccentArchive,
+                    icon = Icons.Outlined.Archive,
+                    selectedIcon = Icons.Filled.Archive,
                     selected = state.currentFilter == NoteFilter.ARCHIVED,
                     count = state.archivedNoteCount,
                     onClick = {
@@ -220,8 +224,8 @@ fun MainScreen(
                 )
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_trash),
-                    icon = Icons.Default.Delete,
-                    accent = NavAccentTrash,
+                    icon = Icons.Outlined.Delete,
+                    selectedIcon = Icons.Filled.Delete,
                     selected = state.currentFilter == NoteFilter.TRASHED,
                     count = state.trashedNoteCount,
                     onClick = {
@@ -236,8 +240,8 @@ fun MainScreen(
 
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_edit_labels),
-                    icon = Icons.AutoMirrored.Filled.Label,
-                    accent = NavAccentLabels,
+                    icon = Icons.AutoMirrored.Outlined.Label,
+                    selectedIcon = Icons.AutoMirrored.Filled.Label,
                     selected = false,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -247,8 +251,8 @@ fun MainScreen(
                 )
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_settings),
-                    icon = Icons.Default.Settings,
-                    accent = NavAccentSettings,
+                    icon = Icons.Outlined.Settings,
+                    selectedIcon = Icons.Filled.Settings,
                     selected = showProfileSheet,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
