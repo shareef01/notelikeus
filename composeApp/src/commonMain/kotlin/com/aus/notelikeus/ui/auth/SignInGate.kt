@@ -21,6 +21,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.ui.theme.BrandMark
+import com.aus.notelikeus.util.AppConfig
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -55,7 +56,11 @@ fun SignInGate(
     var playServicesAvailable by remember { mutableStateOf(googleSignInHelper.isAvailable()) }
     var testEmail by remember { mutableStateOf("") }
     var testPassword by remember { mutableStateOf("") }
-    val showTestLogin = onEmailPassword != null 
+    // Matches the rule the backend already enforces: FirebaseSessionManager rejects email/password
+    // outright unless AppConfig.isDebug. Gating only on the callback meant desktop rendered a
+    // "Test login (debug)" form in release builds that could never succeed — DesktopSyncManager
+    // answers every email sign-in with UnsupportedOperationException.
+    val showTestLogin = onEmailPassword != null && AppConfig.isDebug
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(
