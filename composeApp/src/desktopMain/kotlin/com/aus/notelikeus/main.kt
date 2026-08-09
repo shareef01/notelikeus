@@ -5,14 +5,19 @@ import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
-import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyShortcut
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import com.aus.notelikeus.ui.window.NotelikeusTitleBar
+import com.aus.notelikeus.ui.window.toggledMaximize
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import androidx.compose.ui.window.Notification
@@ -103,26 +108,30 @@ private fun launchApp() = application {
         }
     )
 
+    val newNote: () -> Unit = {
+        pendingCreateNote = true
+        navigationRequest++
+    }
+
     Window(
         onCloseRequest = ::exitApplication,
         state = windowState,
         title = "Notelikeus",
-        icon = appIcon
-    ) {
-        MenuBar {
-            Menu("File") {
-                Item("New Note", shortcut = KeyShortcut(Key.N, ctrl = true), onClick = {
-                    pendingCreateNote = true
-                    navigationRequest++
-                })
-                Separator()
-                Item("Exit", onClick = ::exitApplication)
-            }
-            Menu("Help") {
-                Item("About", onClick = { showAboutDialog = true })
+        icon = appIcon,
+        // The OS caption bar is a fixed light strip that cannot follow the app's theme, so the
+        // window draws its own (see NotelikeusTitleBar) and keeps one continuous surface.
+        undecorated = true,
+        resizable = true,
+        // Replaces the MenuBar's Ctrl+N accelerator, which went away with the native chrome.
+        onPreviewKeyEvent = { event ->
+            if (event.type == KeyEventType.KeyDown && event.isCtrlPressed && event.key == Key.N) {
+                newNote()
+                true
+            } else {
+                false
             }
         }
-
+    ) {
         // Reactively recalculate on every resize
         val windowSizeClass by remember {
             derivedStateOf {
@@ -177,9 +186,22 @@ private fun launchApp() = application {
                 }
             },
             pendingCreateNote = pendingCreateNote,
-            navigationRequest = navigationRequest
+            navigationRequest = navigationRequest,
+            titleBar = {
+                NotelikeusTitleBar(
+                    title = "Notelikeus",
+                    isMaximized = windowState.placement == WindowPlacement.Maximized,
+                    onMinimize = { windowState.isMinimized = true },
+                    onToggleMaximize = {
+                        windowState.placement = windowState.placement.toggledMaximize()
+                    },
+                    onClose = ::exitApplication,
+                    onNewNote = newNote,
+                    onAbout = { showAboutDialog = true }
+                )
+            }
         )
-        
+
         LaunchedEffect(navigationRequest) {
             if (navigationRequest > 0) {
                 kotlinx.coroutines.delay(100.milliseconds)

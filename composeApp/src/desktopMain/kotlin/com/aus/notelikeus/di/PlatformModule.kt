@@ -30,6 +30,7 @@ import com.aus.notelikeus.util.DesktopPathProvider
 import org.koin.dsl.module
 import java.io.File
 
+
 actual val platformModule = module {
     single {
         createDataStore {
@@ -121,9 +122,18 @@ actual val platformModule = module {
  *
  * The OAuth client secret is different. Google classes installed-app secrets as non-confidential
  * (RFC 8252: PKCE is what actually secures this flow, and it is enabled above), but a secret
- * pasted into a source file lands in git history and stays there, so it comes from the
- * environment instead. Set `NOTELIKEUS_OAUTH_CLIENT_SECRET` for a build that needs sign-in; the
- * Cloud Console requires it for desktop-type clients.
+ * pasted into a source file lands in git history and stays there. So it is resolved at runtime,
+ * in order:
+ *
+ *  1. the `NOTELIKEUS_OAUTH_CLIENT_SECRET` environment variable, for CI and one-off runs;
+ *  2. `notelikeus.oauthClientSecret` in the repo's gitignored `local.properties`, which is the
+ *     ergonomic path for day-to-day development — same pattern the project already uses for
+ *     `signing.properties`.
+ *
+ * Empty means desktop sign-in is simply not configured, and
+ * [com.aus.notelikeus.platform.DesktopGoogleSignInHelper] says so up front rather than letting
+ * Google answer with an opaque `client_secret is missing` 400 after the user has already picked
+ * an account.
  */
 private object DesktopOAuthConfig {
     const val CLIENT_ID =
@@ -131,6 +141,35 @@ private object DesktopOAuthConfig {
     const val FIREBASE_API_KEY = "AIzaSyBDF6ff82bZ-nSI5sW4MhtGiHomifciAQo"
 
     private const val SECRET_ENV_VAR = "NOTELIKEUS_OAUTH_CLIENT_SECRET"
+    private const val SECRET_PROPERTY = "notelikeus.oauthClientSecret"
 
-    fun clientSecret(): String = System.getenv(SECRET_ENV_VAR).orEmpty()
+    fun clientSecret(): String {
+        System.getenv(SECRET_ENV_VAR)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        return localPropertiesSecret().orEmpty()
+    }
+
+    /**
+     * Walks up from the working directory to find `local.properties`. Gradle's `run` task starts
+     * in `composeApp/`, a packaged app starts wherever the launcher puts it, so a fixed relative
+     * path would only work in one of them.
+     */
+    private fun localPropertiesSecret(): String? {
+        var dir: File? = File(".").absoluteFile
+        repeat(MAX_PARENT_LOOKUPS) {
+            val candidate = File(dir, "local.properties")
+            if (candidate.isFile) {
+                return runCatching {
+                    java.util.Properties()
+                        .apply { candidate.inputStream().use { load(it) } }
+                        .getProperty(SECRET_PROPERTY)
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                }.getOrNull()
+            }
+            dir = dir?.parentFile ?: return null
+        }
+        return null
+    }
+
+    private const val MAX_PARENT_LOOKUPS = 6
 }
