@@ -60,6 +60,15 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.annotation.KoinExperimentalAPI
 
+/**
+ * Detail-pane key standing in for "compose a new note".
+ *
+ * The two-pane scaffold treats a null content key as "nothing selected", so a new note — which the
+ * editor represents as a null id — cannot be passed through directly. Matches the -1L the Editor
+ * nav route already uses for the same purpose.
+ */
+private const val NewNoteContentKey = -1L
+
 @OptIn(androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi::class, KoinExperimentalAPI::class)
 @Composable
 fun MainScreen(
@@ -375,7 +384,14 @@ fun MainScreen(
                                     viewModel = viewModel,
                                     onNoteClick = { noteId ->
                                         scope.launch {
-                                            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, noteId)
+                                            // A new note arrives as null, which is also the
+                                            // scaffold's "nothing selected" key — passing it
+                                            // straight through sent the detail pane to its empty
+                                            // placeholder, so the + button appeared to do nothing.
+                                            navigator.navigateTo(
+                                                ListDetailPaneScaffoldRole.Detail,
+                                                noteId ?: NewNoteContentKey
+                                            )
                                         }
                                     },
                                     gridState = gridState,
@@ -398,9 +414,12 @@ fun MainScreen(
                             AnimatedPane {
                                 val destination = navigator.currentDestination
                                 if (destination != null && destination.contentKey != null) {
-                                    val noteId = destination.contentKey
+                                    val contentKey = destination.contentKey
+                                    // Unwrap the sentinel: the editor takes null to mean "compose
+                                    // a new note".
+                                    val noteId = contentKey?.takeIf { it != NewNoteContentKey }
                                     Box(modifier = Modifier.fillMaxSize()) {
-                                        key(noteId) {
+                                        key(contentKey) {
                                             val editorViewModel: EditorViewModel = koinViewModel()
                                             LaunchedEffect(noteId) {
                                                 editorViewModel.setNoteId(noteId)
