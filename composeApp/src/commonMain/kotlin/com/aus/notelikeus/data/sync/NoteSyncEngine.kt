@@ -50,7 +50,7 @@ class NoteSyncEngine(
             purgeLocalTombstonedNotes(localNotes)
             val notes = localNotes.filter { note ->
                 val id = note.id ?: return@filter false
-                note.isCloudSyncEligible() && !syncStateStore.isDeleted(id)
+                !syncStateStore.isDeleted(id)
             }
 
             if (notes.isEmpty()) {
@@ -104,7 +104,7 @@ class NoteSyncEngine(
             val highWater = DateUtils.currentTimeMillis()
             val changed = localNotes.filter { note ->
                 val id = note.id ?: return@filter false
-                note.timestamp > since && note.isCloudSyncEligible() && !syncStateStore.isDeleted(id)
+                note.timestamp > since && !syncStateStore.isDeleted(id)
             }
 
             var uploaded = 0
@@ -173,7 +173,7 @@ class NoteSyncEngine(
     suspend fun downloadAllNotes(): Result<Int> {
         return runCatching {
             val uid = uidProvider().getOrThrow()
-            mergeCloudTombstones(uid)
+            val cloudTombstones = mergeCloudTombstones(uid)
             val localNotesBeforePurge = noteDao.getAllNotesForBackup().map { it.toNote() }
             val purgedIds = purgeLocalTombstonedNotes(localNotesBeforePurge)
             var changes = purgedIds.size
@@ -193,6 +193,10 @@ class NoteSyncEngine(
             }
 
             val cloudNoteIds = mutableSetOf<Long>()
+            // Locally-winning notes are collected and sent in one batch at the end. Pushing each
+            // one as its own single-note commit inside the loop cost a round trip per note, while
+            // uploadAllNotes batched the identical work.
+            val toPushBack = mutableListOf<Note>()
             val allLocalNotes = localNotesBeforePurge.filter { note -> note.id !in purgedIds }
             val localNotesById = allLocalNotes.mapNotNull { note -> note.id?.let { it to note } }.toMap()
 
@@ -249,7 +253,7 @@ class NoteSyncEngine(
                         changes++
                     }
                     else -> {
-                        putNote(uid, localNote)
+                        toPushBack += localNote
                         changes++
                     }
                 }
@@ -269,14 +273,14 @@ class NoteSyncEngine(
                     continue
                 }
 
-                if (localNote.isCloudSyncEligible()) {
-                    putNote(uid, localNote)
-                    changes++
-                }
+                toPushBack += localNote
+                changes++
             }
 
+            putNotes(uid, toPushBack)
+
             syncStateStore.setKnownCloudIds(cloudNoteIds)
-            pruneExpiredTombstones(uid, cloudNoteIds)
+            pruneExpiredTombstones(uid, cloudNoteIds, cloudTombstones)
             transport.writeSyncMeta(uid, noteDao.getCloudEligibleNoteCount(), platform)
             syncStateStore.setLastMergedUserId(uid)
 
@@ -314,15 +318,22 @@ class NoteSyncEngine(
     }
 
     private suspend fun putNote(uid: String, note: Note) {
-        val noteId = note.id ?: return
-        val timestamps = transport.putNotes(uid, listOf(note))
-        val resolved = timestamps[noteId]
-        if (resolved != null) {
-            noteDao.updateServerTimestamp(noteId, resolved)
+        putNotes(uid, listOf(note))
+    }
+
+    /** Uploads [notes] in one transport call and records the server timestamps it returns. */
+    private suspend fun putNotes(uid: String, notes: List<Note>) {
+        if (notes.isEmpty()) return
+        val timestamps = transport.putNotes(uid, notes)
+        for ((noteId, resolved) in timestamps) {
+            if (resolved != null) {
+                noteDao.updateServerTimestamp(noteId, resolved)
+            }
         }
     }
 
-    private suspend fun mergeCloudTombstones(uid: String) {
+    /** Returns the cloud tombstones that survived the merge, so callers need not re-fetch them. */
+    private suspend fun mergeCloudTombstones(uid: String): Map<Long, Long> {
         val remote = transport.fetchTombstones(uid)
         val restored = syncStateStore.restoredIds()
         val stale = remote.keys.filter { it in restored }
@@ -330,7 +341,9 @@ class NoteSyncEngine(
             transport.deleteTombstones(uid, stale)
             syncStateStore.clearRestored(stale)
         }
-        syncStateStore.mergeDeleted(remote.filterKeys { it !in restored })
+        val live = remote.filterKeys { it !in restored }
+        syncStateStore.mergeDeleted(live)
+        return live
     }
 
     private suspend fun refreshCloudTombstone(uid: String, noteId: Long) {
@@ -351,13 +364,21 @@ class NoteSyncEngine(
         return purged
     }
 
-    private suspend fun pruneExpiredTombstones(uid: String, liveNoteIds: Set<Long>) {
+    /**
+     * @param cloud tombstones already fetched by [mergeCloudTombstones] earlier in this sync.
+     *   Any tombstone written since is dated now and cannot be expired, so re-reading the
+     *   collection here only bought a second round trip.
+     */
+    private suspend fun pruneExpiredTombstones(
+        uid: String,
+        liveNoteIds: Set<Long>,
+        cloud: Map<Long, Long>
+    ) {
         val pruned = syncStateStore.pruneExpired(NoteSyncStateStore.TOMBSTONE_TTL_MS)
             .filter { it !in liveNoteIds }
         if (pruned.isNotEmpty()) {
             transport.deleteTombstones(uid, pruned.toList())
         }
-        val cloud = transport.fetchTombstones(uid)
         val now = DateUtils.currentTimeMillis()
         val expiredRemote = cloud.mapNotNull { (noteId, deletedAt) ->
             if (noteId in liveNoteIds) return@mapNotNull null
@@ -398,8 +419,6 @@ class NoteSyncEngine(
         }
     }
 }
-
-internal fun Note.isCloudSyncEligible(): Boolean = true
 
 internal suspend fun CloudNoteRecord.toNote(
     resolveLabel: suspend (String) -> Label

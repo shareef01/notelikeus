@@ -47,6 +47,9 @@ class FakeNoteDao : NoteDao {
 
     override suspend fun getChecklistItemsForNote(noteId: Long): List<ChecklistItemEntity> = checklistItems[noteId] ?: emptyList()
 
+    override suspend fun getNoteIdsForLabel(labelId: Long): List<Long> =
+        crossRefs.filter { it.labelId == labelId }.map { it.noteId }
+
     override suspend fun getAllNotesForBackup(): List<NoteWithLabels> {
         return notes.values.map { note ->
             NoteWithLabels(note, emptyList(), checklistItems[note.id] ?: emptyList())
