@@ -58,14 +58,19 @@ actual val platformModule = module {
 
     // Cloud sync — real implementations
     single {
-        DesktopTokenStore(DesktopPathProvider.getDataDirectory())
+        DesktopTokenStore(
+            dataDir = DesktopPathProvider.getDataDirectory(),
+            firebaseApiKey = DesktopOAuthConfig.FIREBASE_API_KEY
+        )
     }
 
     single<CloudNoteTransport> {
         val tokenStore = get<DesktopTokenStore>()
         DesktopFirestoreTransport(
             firebaseProject = "notelikeus",
-            idTokenProvider = { tokenStore.idToken() }
+            // validIdToken(), not idToken(): refreshes a token that is about to expire instead of
+            // letting every request 401 an hour after sign-in.
+            idTokenProvider = { tokenStore.validIdToken() }
         )
     }
 
@@ -95,17 +100,33 @@ actual val platformModule = module {
     }
 
     single<GoogleSignInHelper> {
-        // OAuth 2.0 client ID for desktop — this is the same web client ID used by Android.
-        // For production, a dedicated Desktop OAuth client should be created in Google Cloud Console
-        // with http://127.0.0.1 added as an authorised redirect URI.
-        // WARNING: This is a live OAuth client secret. Do not commit this to a public repo.
-        // For production, use a proper secrets management solution (env vars, vault, etc.).
-        // PKCE alone is sufficient per RFC 8252, but Google requires the secret for
-        // non-Android desktop clients created through the Cloud Console.
         DesktopGoogleSignInHelper(
-            oauthClientId = "404285880902-9d7de03t81j8lpp4jd0vqicu5mme2jc2.apps.googleusercontent.com",
-            oauthClientSecret = "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",
-            firebaseApiKey = "AIzaSyBDF6ff82bZ-nSI5sW4MhtGiHomifciAQo"
+            oauthClientId = DesktopOAuthConfig.CLIENT_ID,
+            oauthClientSecret = DesktopOAuthConfig.clientSecret(),
+            firebaseApiKey = DesktopOAuthConfig.FIREBASE_API_KEY,
+            tokenStore = get()
         )
     }
+}
+
+/**
+ * Google/Firebase client configuration for the desktop build.
+ *
+ * The client ID and Firebase API key identify the project and are public by design — they ship in
+ * every client and are visible in `google-services.json` and the web bundle.
+ *
+ * The OAuth client secret is different. Google classes installed-app secrets as non-confidential
+ * (RFC 8252: PKCE is what actually secures this flow, and it is enabled above), but a secret
+ * pasted into a source file lands in git history and stays there, so it comes from the
+ * environment instead. Set `NOTELIKEUS_OAUTH_CLIENT_SECRET` for a build that needs sign-in; the
+ * Cloud Console requires it for desktop-type clients.
+ */
+private object DesktopOAuthConfig {
+    const val CLIENT_ID =
+        "404285880902-9d7de03t81j8lpp4jd0vqicu5mme2jc2.apps.googleusercontent.com"
+    const val FIREBASE_API_KEY = "AIzaSyBDF6ff82bZ-nSI5sW4MhtGiHomifciAQo"
+
+    private const val SECRET_ENV_VAR = "NOTELIKEUS_OAUTH_CLIENT_SECRET"
+
+    fun clientSecret(): String = System.getenv(SECRET_ENV_VAR).orEmpty()
 }

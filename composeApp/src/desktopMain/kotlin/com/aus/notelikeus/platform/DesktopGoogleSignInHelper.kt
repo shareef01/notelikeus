@@ -2,7 +2,6 @@ package com.aus.notelikeus.platform
 
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.sun.net.httpserver.HttpServer
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -14,6 +13,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.awt.Desktop
 import java.net.InetSocketAddress
 import java.net.URI
+import java.net.URLDecoder
 import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -22,7 +22,6 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 /**
  * Google sign-in for desktop via OAuth 2.0 loopback (RFC 8252).
@@ -40,9 +39,9 @@ import kotlin.coroutines.resumeWithException
  */
 class DesktopGoogleSignInHelper(
     private val oauthClientId: String,
-    // WARNING: client_secret in source — use env vars for production
     private val oauthClientSecret: String,
-    private val firebaseApiKey: String
+    private val firebaseApiKey: String,
+    private val tokenStore: DesktopTokenStore
 ) : GoogleSignInHelper {
 
     private val httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build()
@@ -54,36 +53,36 @@ class DesktopGoogleSignInHelper(
         try {
             val codeVerifier = generateCodeVerifier()
             val codeChallenge = generateCodeChallenge(codeVerifier)
+            val state = generateState()
 
             // Step 1: open browser and capture the auth code via loopback
-            val (authCode, redirectUri) = captureAuthCode(codeChallenge)
+            val (authCode, redirectUri) = captureAuthCode(codeChallenge, state)
                 ?: return@withContext Result.failure(
                     IllegalStateException("Sign-in was cancelled or timed out")
                 )
-            println("[Notelikeus] Got auth code, exchanging for tokens...")
 
             // Step 2: exchange auth code for Google tokens (must use exact same redirect_uri)
             val googleTokens = exchangeCodeForTokens(authCode, codeVerifier, redirectUri)
-            println("[Notelikeus] Google token response: ${googleTokens.keys}")
             val googleIdToken = googleTokens["id_token"]?.jsonPrimitive?.content
                 ?: return@withContext Result.failure(
-                    IllegalStateException("No id_token in Google token response. Keys: ${googleTokens.keys}")
+                    IllegalStateException("Google did not return an ID token")
                 )
 
-            // Step 3: exchange Google ID token for Firebase custom token
-            println("[Notelikeus] Exchanging Google token for Firebase session...")
+            // Step 3: exchange the Google ID token for a Firebase session
             val firebaseResponse = exchangeGoogleTokenForFirebase(googleIdToken)
-            println("[Notelikeus] Firebase response: ${firebaseResponse.keys}")
             val firebaseIdToken = firebaseResponse["idToken"]?.jsonPrimitive?.content
                 ?: return@withContext Result.failure(
-                    IllegalStateException("No idToken in Firebase response. Keys: ${firebaseResponse.keys}")
+                    IllegalStateException("Firebase did not return an ID token")
                 )
 
-            println("[Notelikeus] Sign-in successful!")
+            // The refresh token is the durable half of the session — without it the sign-in
+            // silently stops working an hour from now. Persist both together.
+            tokenStore.save(
+                idToken = firebaseIdToken,
+                refreshToken = firebaseResponse["refreshToken"]?.jsonPrimitive?.content
+            )
             Result.success(firebaseIdToken)
         } catch (e: Exception) {
-            println("[Notelikeus] SIGN-IN ERROR: ${e.javaClass.simpleName}: ${e.message}")
-            e.printStackTrace()
             Result.failure(e)
         }
     }
@@ -101,9 +100,26 @@ class DesktopGoogleSignInHelper(
         return Base64.getUrlEncoder().withoutPadding().encodeToString(digest)
     }
 
+    /**
+     * CSRF token for the loopback redirect (RFC 6749 §10.12).
+     *
+     * The loopback server answers any process on this machine, so without a `state` to match,
+     * a local attacker could race the browser and hand us *their* authorization code — binding
+     * the user's app to the attacker's account. PKCE does not cover this: it prevents an
+     * intercepted code from being redeemed, not an injected one from being accepted.
+     */
+    private fun generateState(): String {
+        val bytes = ByteArray(32)
+        SecureRandom().nextBytes(bytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    }
+
     // ---- Loopback server to capture the OAuth redirect ----
 
-    private suspend fun captureAuthCode(codeChallenge: String): Pair<String, String>? {
+    private suspend fun captureAuthCode(
+        codeChallenge: String,
+        expectedState: String
+    ): Pair<String, String>? {
         return withTimeoutOrNull(120_000L) {
             suspendCancellableCoroutine { cont ->
                 val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
@@ -112,33 +128,30 @@ class DesktopGoogleSignInHelper(
                 var codeHandled = false
 
                 server.createContext("/") { exchange ->
-                    val query = exchange.requestURI.query ?: ""
-                    val params = query.split("&").associate {
-                        val (k, v) = it.split("=", limit = 2)
-                        k to v
-                    }
+                    val params = parseQuery(exchange.requestURI.query)
 
                     if (!codeHandled) {
                         codeHandled = true
                         val code = params["code"]
                         val error = params["error"]
+                        val stateMatches = params["state"] == expectedState
 
-                        val responseText = if (code != null) {
-                            "<html><body><h3>Signed in — you can close this window.</h3></body></html>"
-                        } else {
-                            "<html><body><h3>Sign-in failed: ${error ?: "no authorisation code received"}</h3></body></html>"
+                        val message = when {
+                            !stateMatches -> "Sign-in failed: the response did not match this request."
+                            code != null -> "Signed in — you can close this window."
+                            else -> "Sign-in failed: ${error ?: "no authorisation code received"}"
                         }
-                        val responseBytes = responseText.toByteArray()
+                        val responseBytes =
+                            "<html><body><h3>$message</h3></body></html>".toByteArray()
                         exchange.sendResponseHeaders(200, responseBytes.size.toLong())
                         exchange.responseBody.use { it.write(responseBytes) }
                         exchange.close()
 
-                        if (code != null && cont.isActive) {
+                        if (cont.isActive) {
                             server.stop(0)
-                            cont.resume(Pair(code, redirectUri))
-                        } else if (cont.isActive) {
-                            server.stop(0)
-                            cont.resume(null)
+                            cont.resume(
+                                if (code != null && stateMatches) Pair(code, redirectUri) else null
+                            )
                         }
                     } else {
                         exchange.sendResponseHeaders(200, 0)
@@ -148,27 +161,50 @@ class DesktopGoogleSignInHelper(
                 server.start()
 
                 // Open the browser
-                val authUrl = buildOAuthUrl(redirectUri, codeChallenge)
+                val authUrl = buildOAuthUrl(redirectUri, codeChallenge, expectedState)
                 try {
                     if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                         Desktop.getDesktop().browse(URI(authUrl))
                     } else {
                         cont.resume(null)
                     }
-                } catch (e: Exception) {
-                    println("[Notelikeus] Failed to open browser: ${e.message}")
+                } catch (_: Exception) {
                     cont.resume(null)
                 }
             }
         }
     }
 
-    private fun buildOAuthUrl(redirectUri: String, codeChallenge: String): String {
+    /**
+     * Percent-decodes the callback query.
+     *
+     * Both halves matter: a parameter without `=` used to blow up the handler mid-request, and
+     * the authorization code arrives percent-encoded (`4%2F0Ae…`), so handing the raw value to
+     * [URLEncoder] at the token endpoint double-encoded it.
+     */
+    private fun parseQuery(query: String?): Map<String, String> {
+        if (query.isNullOrEmpty()) return emptyMap()
+        return query.split("&").mapNotNull { pair ->
+            if (pair.isEmpty()) return@mapNotNull null
+            val separator = pair.indexOf('=')
+            if (separator < 0) return@mapNotNull null
+            val key = URLDecoder.decode(pair.substring(0, separator), "UTF-8")
+            val value = URLDecoder.decode(pair.substring(separator + 1), "UTF-8")
+            key to value
+        }.toMap()
+    }
+
+    private fun buildOAuthUrl(
+        redirectUri: String,
+        codeChallenge: String,
+        state: String
+    ): String {
         val params = mapOf(
             "client_id" to oauthClientId,
             "redirect_uri" to redirectUri,
             "response_type" to "code",
             "scope" to "openid email profile",
+            "state" to state,
             "code_challenge" to codeChallenge,
             "code_challenge_method" to "S256",
             "access_type" to "offline",
