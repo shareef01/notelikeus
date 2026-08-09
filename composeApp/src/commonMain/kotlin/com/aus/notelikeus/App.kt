@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.navigation.compose.rememberNavController
 import com.aus.notelikeus.ui.auth.SignInGate
 import com.aus.notelikeus.ui.main.CloudSyncEvent
@@ -43,6 +44,14 @@ fun App(
     var isUnlocked by remember { mutableStateOf(false) }
     var needsUnlock by remember { mutableStateOf(false) }
     var hasInitializedLock by remember { mutableStateOf(false) }
+
+    // autoSyncOnForeground documented a foreground pull and carried all its guards — a 30s
+    // throttle, signed-in and auto-sync-enabled checks — but nothing ever called it. This is the
+    // observer it was written for.
+    LifecycleResumeEffect(Unit) {
+        viewModel.autoSyncOnForeground()
+        onPauseOrDispose { }
+    }
 
     val unlockAppLabel = stringResource(Res.string.unlock_app)
 

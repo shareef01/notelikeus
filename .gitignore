@@ -37,3 +37,4 @@ database-debug.log
 
 # Agent tool metadata (contains prompt/topic text)
 .reasonix/
+.artifacts/

@@ -243,15 +243,25 @@ class NoteRepositoryImpl(
 
     override suspend fun updateLabel(label: Label) {
         labelDao.updateLabel(label.toLabelEntity())
+        // Labels are denormalized into each cloud note as {name}, so renaming one leaves every
+        // remote copy showing the old name until that note is next edited. Re-upload them.
+        label.id?.let { scheduleUploadOfNotesLabelled(it) }
         refreshWidget()
     }
 
     override suspend fun deleteLabel(label: Label) {
+        val affectedNoteIds = label.id?.let { noteDao.getNoteIdsForLabel(it) }.orEmpty()
         writeTransaction {
             label.id?.let { labelDao.deleteCrossRefsForLabel(it) }
             labelDao.deleteLabel(label.toLabelEntity())
         }
+        // Captured before the cross-refs were removed, since afterwards the link is gone.
+        affectedNoteIds.forEach { syncCoordinator.scheduleUpload(it) }
         refreshWidget()
+    }
+
+    private suspend fun scheduleUploadOfNotesLabelled(labelId: Long) {
+        noteDao.getNoteIdsForLabel(labelId).forEach { syncCoordinator.scheduleUpload(it) }
     }
 
     private fun syncReminderForNote(note: Note) {

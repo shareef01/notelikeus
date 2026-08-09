@@ -35,6 +35,10 @@ interface NoteDao {
     @Query("SELECT * FROM checklist_items WHERE noteId = :noteId ORDER BY position ASC")
     suspend fun getChecklistItemsForNote(noteId: Long): List<ChecklistItemEntity>
 
+    /** Notes carrying [labelId] — the set whose cloud copies go stale when a label is renamed. */
+    @Query("SELECT noteId FROM note_label_cross_ref WHERE labelId = :labelId")
+    suspend fun getNoteIdsForLabel(labelId: Long): List<Long>
+
     @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM notes WHERE isTrashed = 0 AND isArchived = 0")
     suspend fun getNextNotePosition(): Int
 
