@@ -258,7 +258,9 @@ fun NoteCard(
                     Text(
                         text = buildHighlightedString(note.title, searchQuery, contentColor, highlightColor),
                         style = NoteCardTitleStyle,
-                        maxLines = if (compact) 2 else 3,
+                        // Two lines in both densities: a third only ever appeared on the rare
+                        // long title and pushed that one card out of step with its neighbours.
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(end = trailingChrome)
                     )
@@ -277,7 +279,10 @@ fun NoteCard(
                             linksClickable = false
                         ),
                         style = NoteCardBodyStyle,
-                        maxLines = if (compact) 5 else 12,
+                        // Was 12. In a staggered grid a long note grew to several times the
+                        // height of a short one and dominated the column; a preview only needs
+                        // enough to identify the note, and the ellipsis says there is more.
+                        maxLines = if (compact) 5 else 8,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
