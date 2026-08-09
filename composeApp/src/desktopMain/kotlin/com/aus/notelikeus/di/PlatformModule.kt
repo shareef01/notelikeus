@@ -27,6 +27,7 @@ import com.aus.notelikeus.platform.DesktopWidgetManager
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.DesktopPathProvider
+import com.aus.notelikeus.util.WindowMetricsStore
 import org.koin.dsl.module
 import java.io.File
 
@@ -37,6 +38,8 @@ actual val platformModule = module {
             File(DesktopPathProvider.getDataDirectory(), SETTINGS_DATASTORE_FILENAME).absolutePath
         }
     }
+
+    single { WindowMetricsStore(get()) }
 
     single<NotelikeusDatabase> {
         getDatabaseBuilder()
