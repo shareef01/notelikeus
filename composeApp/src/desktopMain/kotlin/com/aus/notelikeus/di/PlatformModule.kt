@@ -52,7 +52,9 @@ actual val platformModule = module {
     single { DesktopReminderManager(get()) }
     single<ReminderManager> { get<DesktopReminderManager>() }
     single<PlatformWidgetManager> { DesktopWidgetManager() }
-    single { DesktopPendingSyncStore(get()) }
+    // Bound to the interface, not the concrete class: DesktopSyncCoordinator asks for
+    // PendingSyncStore, and registering only the implementation type leaves that unresolvable.
+    single<PendingSyncStore> { DesktopPendingSyncStore(get()) }
     single<SyncCoordinator> { DesktopSyncCoordinator(get(), get()) }
 
     single { NoteBackupExporter(get<NoteRepository>(), "Notelikeus", AppConfig.versionName) }
