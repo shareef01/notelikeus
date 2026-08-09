@@ -46,7 +46,7 @@ kotlin {
                 implementation(libs.androidx.sqlite)
                 implementation(libs.androidx.datastore.preferences.core)
                 implementation(libs.kotlinx.serialization.json)
-                implementation("com.squareup.okio:okio:3.9.1")
+                implementation(libs.okio)
                 
                 implementation(libs.compose.navigation)
                 
@@ -104,10 +104,10 @@ kotlin {
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.kotlinx.coroutines.core)
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
-                implementation("androidx.sqlite:sqlite-bundled:2.5.0-alpha13")
-                implementation("net.java.dev.jna:jna:5.14.0")
-                implementation("net.java.dev.jna:jna-platform:5.14.0")
+                implementation(libs.kotlinx.coroutines.swing)
+                implementation(libs.androidx.sqlite.bundled)
+                implementation(libs.jna)
+                implementation(libs.jna.platform)
             }
         }
     }
@@ -129,7 +129,11 @@ compose.desktop {
         mainClass = "com.aus.notelikeus.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            // Windows only. DesktopTokenStore encrypts the session with DPAPI through JNA
+            // (Crypt32), which compiles everywhere but throws UnsatisfiedLinkError on first use
+            // on macOS/Linux — so shipping Dmg and Deb produced installers whose sign-in could
+            // not work. Restore those formats alongside a Keychain/libsecret backend.
+            targetFormats(TargetFormat.Msi)
             packageName = "Notelikeus"
             packageVersion = "1.0.0"
             description = "Elite Cross-Platform Note Taking"
