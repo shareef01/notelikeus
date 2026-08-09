@@ -324,7 +324,7 @@ fun ProfileSheet(
             )
             SettingsRow(
                 icon = Icons.Default.Info,
-                title = stringResource(Res.string.app_version, "1.0.0")
+                title = stringResource(Res.string.app_version, AppConfig.versionName)
             )
         }
     }

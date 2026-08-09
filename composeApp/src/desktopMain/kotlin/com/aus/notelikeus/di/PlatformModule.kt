@@ -25,6 +25,7 @@ import com.aus.notelikeus.platform.DesktopSyncManager
 import com.aus.notelikeus.platform.DesktopTokenStore
 import com.aus.notelikeus.platform.DesktopWidgetManager
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
+import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.DesktopPathProvider
 import org.koin.dsl.module
 import java.io.File
@@ -53,7 +54,7 @@ actual val platformModule = module {
     single<PlatformWidgetManager> { DesktopWidgetManager() }
     single<SyncCoordinator> { DesktopSyncCoordinator(get()) }
 
-    single { NoteBackupExporter(get<NoteRepository>(), "Notelikeus", "1.0.0") }
+    single { NoteBackupExporter(get<NoteRepository>(), "Notelikeus", AppConfig.versionName) }
     single { NoteBackupImporter(get<NoteRepository>()) }
 
     // Cloud sync — real implementations
