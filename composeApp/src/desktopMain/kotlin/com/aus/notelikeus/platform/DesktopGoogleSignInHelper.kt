@@ -50,6 +50,18 @@ class DesktopGoogleSignInHelper(
     override fun isAvailable(): Boolean = Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)
 
     override suspend fun requestIdToken(): Result<String> = withContext(Dispatchers.IO) {
+        // Checked before the browser opens. Without it, the user picks an account, grants
+        // consent, and only then gets Google's "client_secret is missing" 400 — a failure that
+        // reads like the app is broken rather than unconfigured.
+        if (oauthClientSecret.isBlank()) {
+            return@withContext Result.failure(
+                IllegalStateException(
+                    "Desktop sign-in isn't configured on this build. Add " +
+                        "notelikeus.oauthClientSecret to local.properties, or set " +
+                        "NOTELIKEUS_OAUTH_CLIENT_SECRET, then restart."
+                )
+            )
+        }
         try {
             val codeVerifier = generateCodeVerifier()
             val codeChallenge = generateCodeChallenge(codeVerifier)
