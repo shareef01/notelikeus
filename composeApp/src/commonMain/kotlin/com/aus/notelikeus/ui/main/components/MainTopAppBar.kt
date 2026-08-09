@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -79,7 +81,6 @@ import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.ui.main.NoteFilter
-import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.Chrome
 
 private val TopBarRowHeight = 56.dp
@@ -103,6 +104,13 @@ fun MainTopAppBar(
     currentFilter: NoteFilter,
     onMenuClick: () -> Unit,
     onProfileClick: () -> Unit,
+    /**
+     * Signed-in address, used for the account button's initial. Null falls back to a generic
+     * account glyph. The button used to show the app's brand mark, which already appears in the
+     * title bar and the drawer header — three logos, and none of them told you whose notes these
+     * were or hinted that the control opens your account.
+     */
+    accountEmail: String? = null,
     selectedColor: Int?,
     onColorSelect: (Int?) -> Unit,
     allLabels: List<Label>,
@@ -359,11 +367,7 @@ fun MainTopAppBar(
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                BrandMarkIcon(
-                                    size = 30.dp,
-                                    backgroundColor = MaterialTheme.colorScheme.onSurface,
-                                    stripeColor = MaterialTheme.colorScheme.surface
-                                )
+                                AccountAvatar(email = accountEmail)
                             }
                         }
                     }
@@ -469,6 +473,37 @@ private fun RecentSearchRow(
                 stringResource(Res.string.clear_recent_searches),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+/**
+ * The account button's face: the signed-in initial, matching the drawer's account row, or a
+ * generic person glyph when there is no address to draw from.
+ */
+@Composable
+private fun AccountAvatar(email: String?) {
+    val initial = email?.trim()?.firstOrNull()?.uppercaseChar()
+    Box(
+        modifier = Modifier
+            .size(30.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (initial != null) {
+            Text(
+                text = initial.toString(),
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Outlined.Person,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.primary
             )
         }
     }
