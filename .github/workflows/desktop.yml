@@ -41,3 +41,47 @@ jobs:
 
       - name: Run desktop tests
         run: ./gradlew :composeApp:desktopTest --stacktrace
+
+  # The jobs above run against the full JDK, where every module is on hand. The MSI does not:
+  # jlink builds its runtime from the `modules` list in composeApp/build.gradle.kts, and anything
+  # missing there fails only once the app is installed. That is how the packaged build lost
+  # java.net.http — no HttpClient, so sign-in and every Firestore call died — while CI stayed
+  # green. Windows because the MSI is the only desktop format shipped.
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@d7793b545071e98d581d3bf084a51c3213318a07 # v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Cache Gradle
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Build the packaged app image
+        run: ./gradlew.bat :composeApp:createDistributable --stacktrace
+
+      # Building is not the check: jlink succeeds either way and just emits a smaller runtime.
+      # Assert the modules are actually in the image.
+      - name: Verify the jlink runtime carries the modules cloud sync needs
+        shell: pwsh
+        run: |
+          $release = "composeApp/build/compose/binaries/main/app/Notelikeus/runtime/release"
+          if (-not (Test-Path $release)) { throw "No runtime image at $release" }
+          $modules = (Get-Content $release | Select-String '^MODULES=').ToString()
+          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec') |
+            Where-Object { $modules -notmatch [regex]::Escape($_) }
+          if ($missing) { throw "jlink runtime is missing: $($missing -join ', ')" }
+          Write-Host "All required modules present."
