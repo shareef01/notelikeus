@@ -21,6 +21,7 @@ import com.aus.notelikeus.platform.DesktopBiometricPrompt
 import com.aus.notelikeus.platform.DesktopReminderManager
 import com.aus.notelikeus.data.backup.BackupExportResult
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
+import com.aus.notelikeus.util.AppConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -70,7 +71,7 @@ private fun launchApp() = application {
     if (showAboutDialog) {
         com.aus.notelikeus.platform.DesktopAboutDialog(
             onDismiss = { showAboutDialog = false },
-            version = "1.0.0"
+            version = AppConfig.versionName
         )
     }
 
