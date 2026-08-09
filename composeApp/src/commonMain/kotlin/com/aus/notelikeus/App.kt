@@ -36,7 +36,13 @@ fun App(
     onImportBackup: (MainViewModel) -> Unit = {},
     pendingNoteId: Long? = null,
     pendingCreateNote: Boolean = false,
-    navigationRequest: Long = 0L
+    navigationRequest: Long = 0L,
+    /**
+     * Window chrome drawn above the app content. Desktop passes its custom title bar here rather
+     * than rendering it in `main.kt`, so it sits inside [NotelikeusTheme] and tracks the user's
+     * theme — including true-dark — instead of being a light strip above a dark app.
+     */
+    titleBar: @Composable () -> Unit = {}
 ) {
     val viewModel: MainViewModel = koinViewModel()
     val state by viewModel.state.collectAsState()
@@ -79,7 +85,49 @@ fun App(
     NotelikeusTheme(
         appTheme = state.appTheme
     ) {
-        var gateError by remember { mutableStateOf<String?>(null) }
+        Surface(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                titleBar()
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    AppContent(
+                        viewModel = viewModel,
+                        state = state,
+                        windowSizeClass = windowSizeClass,
+                        onShowBiometricPrompt = onShowBiometricPrompt,
+                        onGoogleSignInClick = onGoogleSignInClick,
+                        onExportBackup = onExportBackup,
+                        onImportBackup = onImportBackup,
+                        pendingNoteId = pendingNoteId,
+                        pendingCreateNote = pendingCreateNote,
+                        navigationRequest = navigationRequest,
+                        isUnlocked = isUnlocked,
+                        onUnlocked = { isUnlocked = true },
+                        unlockAppLabel = unlockAppLabel
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class, KoinExperimentalAPI::class)
+@Composable
+private fun AppContent(
+    viewModel: MainViewModel,
+    state: com.aus.notelikeus.ui.main.MainState,
+    windowSizeClass: WindowSizeClass,
+    onShowBiometricPrompt: (title: String, onSuccess: () -> Unit, onError: () -> Unit) -> Unit,
+    onGoogleSignInClick: (MainViewModel) -> Unit,
+    onExportBackup: (MainViewModel) -> Unit,
+    onImportBackup: (MainViewModel) -> Unit,
+    pendingNoteId: Long?,
+    pendingCreateNote: Boolean,
+    navigationRequest: Long,
+    isUnlocked: Boolean,
+    onUnlocked: () -> Unit,
+    unlockAppLabel: String
+) {
+    var gateError by remember { mutableStateOf<String?>(null) }
         LaunchedEffect(state.pendingCloudSyncEvent) {
             when (val event = state.pendingCloudSyncEvent) {
                 is CloudSyncEvent.Failure -> {
@@ -139,13 +187,13 @@ fun App(
                             onShowBiometricPrompt(
                                 unlockAppLabel,
                                 {
-                                    isUnlocked = true
+                                    onUnlocked()
                                     onSuccess()
                                 },
                                 { }
                             )
                         },
-                        onAppLockEnabled = { isUnlocked = true },
+                        onAppLockEnabled = onUnlocked,
                         onExportBackup = { onExportBackup(viewModel) },
                         onImportBackup = { onImportBackup(viewModel) }
                     )
@@ -154,17 +202,12 @@ fun App(
                         AppLockOverlay(
                             showLockPrompt = state.areSettingsLoaded && state.isAppLockEnabled,
                             onUnlock = {
-                                onShowBiometricPrompt(
-                                    unlockAppLabel,
-                                    { isUnlocked = true },
-                                    { }
-                                )
+                                onShowBiometricPrompt(unlockAppLabel, onUnlocked, { })
                             }
                         )
                     }
                 }
             }
-        }
     }
 }
 
