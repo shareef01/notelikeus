@@ -1,3 +1,7 @@
+// Imported rather than fully qualified: inside a Kotlin DSL script `java.` resolves to Gradle's
+// `java` extension, not the JDK package.
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,6 +10,15 @@ plugins {
     alias(libs.plugins.google.services)
     alias(libs.plugins.ksp)
 }
+
+/**
+ * Release signing credentials from a gitignored `signing.properties` at the repo root
+ * (see signing.properties.example). Absent, release builds stay unsigned, which is fine
+ * locally and in CI but cannot be uploaded to Play.
+ */
+val signingProps: Properties? = rootProject.file("signing.properties")
+    .takeIf { it.exists() }
+    ?.let { file -> Properties().apply { file.inputStream().use { load(it) } } }
 
 android {
     namespace = "com.aus.notelikeus"
@@ -25,9 +38,24 @@ android {
         }
     }
 
+    signingConfigs {
+        if (signingProps != null) {
+            create("release") {
+                storeFile = rootProject.file(signingProps.getProperty("storeFile"))
+                storePassword = signingProps.getProperty("storePassword")
+                keyAlias = signingProps.getProperty("keyAlias")
+                keyPassword = signingProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         getByName("release") {
+            // Left off deliberately. Turning R8 on is a one-line change plus a proguard-rules.pro,
+            // but it needs an on-device smoke test of sync, widgets and AppFunctions before it can
+            // be trusted — a release build that merely compiles proves nothing about R8.
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     
@@ -52,8 +80,8 @@ dependencies {
     // UI dependencies for MainActivity
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.biometric)
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.fragment:fragment-ktx:1.8.2")
+    implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.work.runtime.ktx)
     
     // Explicitly add Compose Material3 and WindowSizeClass for Android
