@@ -6,7 +6,7 @@ A portfolio-ready notes app for **Android**, **Windows (Desktop)**, and the **we
 
 > Note: the web app requires Google Sign-In because notes are stored per-user in Firestore.
 
-- **KMP (Android & Windows)** — offline-first: notes live in a Room database, encrypted with SQLCipher on Android. On Android, Google Sign-In is optional; when signed in, notes sync to Firestore (auto-sync can be toggled in Settings). The Windows build is currently local-only — cloud sync, app lock and at-rest encryption are not implemented there yet.
+- **KMP (Android & Windows)** — offline-first: notes live in a Room database, encrypted with SQLCipher on Android. On Android, Google Sign-In is optional; when signed in, notes sync to Firestore (auto-sync can be toggled in Settings). The Windows build now supports Google Sign-In and Firestore sync too, over an OAuth loopback flow and the Firestore REST API, with the session encrypted at rest via Windows DPAPI. App lock and at-rest database encryption are still Android-only on Windows.
 - **Web** — Google Sign-In required. Notes live in Firestore with offline caching and installable PWA support.
 
 ## What I built
@@ -66,7 +66,7 @@ Current screenshots from the app are shown below.
 | Encrypted local database (SQLCipher) | ✓ | — (plain SQLite) | — |
 | Optional biometric app lock | ✓ | — (planned: Hello) | — |
 | Home-screen widget | ✓ | — | — |
-| Google Sign-In + Firestore sync | Optional | — (not implemented) | Required |
+| Google Sign-In + Firestore sync | Optional | Optional | Required |
 | JSON backup import / export | ✓ | ✓ | ✓ |
 | Installable PWA | — | — | ✓ |
 
