@@ -267,7 +267,9 @@ fun EditorScreen(
                             onChecklistClick = { viewModel.convertContentToChecklist() },
                             onLinkClick = { showLinkDialog = true },
                             contentColor = contentColor,
-                            surfaceColor = Color.Transparent,
+                            // A wash of the note's own content colour, so the toolbar reads as
+                            // part of the note rather than a panel floating over it.
+                            surfaceColor = contentColor.copy(alpha = 0.07f),
                             modifier = Modifier
                                 .padding(bottom = 12.dp)
                                 .align(Alignment.Start)
