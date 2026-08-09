@@ -18,4 +18,6 @@ actual object AppConfig {
 
     // Cloud sync is implemented via OAuth 2.0 loopback flow + Firestore REST.
     actual val supportsCloudSync: Boolean = true
+
+    actual val isDesktop: Boolean = true
 }
