@@ -143,8 +143,18 @@ actual val platformModule = module {
  * an account.
  */
 private object DesktopOAuthConfig {
+    /**
+     * A dedicated **Desktop app** client, not the web client Android uses — those are
+     * `…-hgpicaqc…` (Android native) and `…-cpiu3nj2…` (Android ID tokens and web GIS), and
+     * neither ever sees a client secret. Only this client has one, so its secret can be rotated
+     * without touching the other platforms.
+     *
+     * Desktop-app clients are what RFC 8252 expects for the loopback flow: Google accepts a
+     * `http://127.0.0.1:<port>` redirect on whatever ephemeral port the local server binds, which
+     * is why no fixed port is registered.
+     */
     const val CLIENT_ID =
-        "404285880902-9d7de03t81j8lpp4jd0vqicu5mme2jc2.apps.googleusercontent.com"
+        "404285880902-o8gn7j5v211m7rvldo19v0eb93im8b7e.apps.googleusercontent.com"
     const val FIREBASE_API_KEY = "AIzaSyBDF6ff82bZ-nSI5sW4MhtGiHomifciAQo"
 
     private const val SECRET_ENV_VAR = "NOTELIKEUS_OAUTH_CLIENT_SECRET"
