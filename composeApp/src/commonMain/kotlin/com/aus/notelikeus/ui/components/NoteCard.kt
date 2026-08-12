@@ -58,28 +58,25 @@ import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.util.DateUtils
 
-private val NoteCardContentPadding = 18.dp
+private val NoteCardContentPadding = 20.dp
 
 /** Compact uppercase label pill, matching the web card's chip typography. */
 private val NoteCardLabelChipStyle = TextStyle(
     fontWeight = FontWeight.SemiBold,
-    fontSize = 11.sp,
+    fontSize = 10.sp,
     lineHeight = 14.sp,
-    letterSpacing = 0.4.sp
+    letterSpacing = 0.5.sp
 )
 
 /**
- * Relative time label mirroring web's formatListTimestamp: today shows the clock time,
- * yesterday shows "Yesterday", anything older shows "MMM d".
+ * Relative time label matching web's formatListTimestamp:
+ * today shows the clock time, yesterday shows "Yesterday", anything older shows "MMM d".
  */
 @Composable
 private fun noteTimestampLabel(timestamp: Long): String {
     val yesterdayLabel = stringResource(Res.string.section_yesterday)
     return when {
-        DateUtils.isToday(timestamp) -> {
-            // Should actually format with time, but keeping it simple for now
-            DateUtils.formatDateTime(timestamp)
-        }
+        DateUtils.isToday(timestamp) -> DateUtils.formatTime(timestamp)
         DateUtils.isToday(timestamp + DateUtils.DAY_IN_MILLIS) -> yesterdayLabel
         else -> DateUtils.formatDateTime(timestamp, showYear = false)
     }
@@ -265,14 +262,14 @@ fun NoteCard(
                         modifier = Modifier.padding(end = trailingChrome)
                     )
                     if (!compact || note.content.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
                 }
                 if (note.content.isNotEmpty()) {
                     Text(
                         text = RichTextParser.parse(
                             text = note.content,
-                            contentColor = contentColor.copy(alpha = 0.8f),
+                            contentColor = contentColor.copy(alpha = 0.82f),
                             highlightColor = highlightColor,
                             searchQuery = searchQuery,
                             linkColor = MaterialTheme.colorScheme.primary,
@@ -389,10 +386,10 @@ fun NoteCard(
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Medium,
                             fontFeatureSettings = "tnum",
-                            letterSpacing = 0.2.sp,
+                            letterSpacing = 0.3.sp,
                             fontSize = 11.sp
                         ),
-                        color = contentColor.copy(alpha = 0.5f),
+                        color = contentColor.copy(alpha = 0.6f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -408,7 +405,7 @@ fun NoteCard(
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Medium,
                             fontFeatureSettings = "tnum",
-                            letterSpacing = 0.2.sp,
+                            letterSpacing = 0.3.sp,
                             fontSize = 12.sp
                         ),
                         color = contentColor.copy(alpha = 0.6f)
