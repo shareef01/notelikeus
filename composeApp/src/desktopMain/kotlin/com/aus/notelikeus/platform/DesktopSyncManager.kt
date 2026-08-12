@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Desktop [SyncManager] backed by [NoteSyncEngine] with the Firestore REST transport.
@@ -40,13 +43,19 @@ class DesktopSyncManager(
 
     /**
      * The session itself is persisted by [com.aus.notelikeus.platform.DesktopGoogleSignInHelper],
-     * which is the only place that sees the refresh token. This just confirms it landed and
-     * reflects it in the UI state.
+     * which is the only place that sees the refresh token. The idToken is validated here by
+     * extracting the subject claim and checking it against the stored uid — rejecting a stale or
+     * mismatched token rather than silently ignoring it.
      */
     override suspend fun signInWithGoogle(idToken: String): Result<Unit> {
         if (!tokenStore.hasSession() || tokenStore.uid() == null) {
             _syncStatus.value = CloudSyncStatus.Offline
             return Result.failure(IllegalStateException("Sign-in did not produce a usable session"))
+        }
+        // Validate the token matches the stored session — a stale or mismatched token is a bug.
+        val tokenUid = extractJwtSubject(idToken)
+        if (tokenUid != null && tokenUid != tokenStore.uid()) {
+            return Result.failure(IllegalStateException("Token uid ($tokenUid) does not match stored session"))
         }
         refreshAccount()
         return Result.success(Unit)
@@ -120,5 +129,23 @@ class DesktopSyncManager(
                 isAnonymous = false
             )
         }
+    }
+}
+
+/**
+ * Extracts the "sub" claim from a Firebase ID token (JWT) without verifying the signature.
+ * This is only used for a consistency check against the already-trusted stored session;
+ * real token verification happens inside [com.aus.notelikeus.platform.DesktopGoogleSignInHelper].
+ */
+private fun extractJwtSubject(idToken: String): String? {
+    return try {
+        val parts = idToken.split('.')
+        if (parts.size < 2) return null
+        val payload = String(java.util.Base64.getUrlDecoder().decode(parts[1]))
+        val json = Json.parseToJsonElement(payload).jsonObject
+        // Match DesktopTokenStore.decodeJwt claim precedence: sub first, then user_id.
+        json["sub"]?.jsonPrimitive?.content ?: json["user_id"]?.jsonPrimitive?.content
+    } catch (_: Exception) {
+        null
     }
 }
