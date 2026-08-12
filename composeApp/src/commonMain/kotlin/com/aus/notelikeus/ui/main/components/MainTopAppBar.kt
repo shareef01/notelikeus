@@ -341,7 +341,7 @@ fun MainTopAppBar(
                                 }
                             }
 
-                            ViewModeMenu(
+                            ViewModeToggle(
                                 viewMode = viewMode,
                                 onViewModeChange = {
                                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
