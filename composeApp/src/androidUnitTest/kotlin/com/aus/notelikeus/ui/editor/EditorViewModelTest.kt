@@ -2,8 +2,7 @@ package com.aus.notelikeus.ui.editor
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
-import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
-import com.aus.notelikeus.data.remote.ReminderScheduler
+import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
@@ -27,8 +26,7 @@ class EditorViewModelTest {
     private lateinit var viewModel: EditorViewModel
     private lateinit var repository: NoteRepository
     private lateinit var settingsRepository: SettingsRepository
-    private lateinit var reminderScheduler: ReminderScheduler
-    private lateinit var cloudNoteSyncCoordinator: CloudNoteSyncCoordinator
+    private lateinit var reminderManager: ReminderManager
     private val testDispatcher = UnconfinedTestDispatcher()
 
     @Before
@@ -36,8 +34,7 @@ class EditorViewModelTest {
         Dispatchers.setMain(testDispatcher)
         repository = mockk(relaxed = true)
         settingsRepository = mockk(relaxed = true)
-        reminderScheduler = mockk(relaxed = true)
-        cloudNoteSyncCoordinator = mockk(relaxed = true)
+        reminderManager = mockk(relaxed = true)
         every { repository.getLabels() } returns flowOf(emptyList())
         every { settingsRepository.appTheme } returns flowOf(AppTheme.AUTO)
     }
@@ -46,8 +43,7 @@ class EditorViewModelTest {
         return EditorViewModel(
             repository,
             settingsRepository,
-            reminderScheduler,
-            cloudNoteSyncCoordinator,
+            reminderManager,
             savedStateHandle
         )
     }

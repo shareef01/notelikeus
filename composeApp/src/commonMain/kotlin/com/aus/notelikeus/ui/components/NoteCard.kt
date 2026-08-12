@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -24,16 +25,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.hoverable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
@@ -49,20 +48,15 @@ import androidx.compose.ui.unit.sp
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.editor.RichTextParser
-import com.aus.notelikeus.ui.navigation.LocalAnimatedVisibilityScope
-import com.aus.notelikeus.ui.navigation.LocalSharedTransitionScope
 import com.aus.notelikeus.ui.theme.NoteCardBodyStyle
 import com.aus.notelikeus.ui.theme.NoteCardTitleStyle
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
+import com.aus.notelikeus.util.DateUtils
 
 private val NoteCardContentPadding = 18.dp
 
@@ -76,41 +70,22 @@ private val NoteCardLabelChipStyle = TextStyle(
 
 /**
  * Relative time label mirroring web's formatListTimestamp: today shows the clock time,
- * yesterday shows "Yesterday", anything older shows "MMM d". The locale is read from
- * LocalConfiguration so the label recomposes if the device locale changes.
+ * yesterday shows "Yesterday", anything older shows "MMM d".
  */
 @Composable
 private fun noteTimestampLabel(timestamp: Long): String {
-    val locale = LocalConfiguration.current.locales[0]
-    val is24Hour = false // Defaulting to false for KMP cleanup
     val yesterdayLabel = stringResource(Res.string.section_yesterday)
-    return remember(timestamp, locale, is24Hour, yesterdayLabel) {
-        formatNoteTimestamp(timestamp, locale, is24Hour, yesterdayLabel)
+    return when {
+        DateUtils.isToday(timestamp) -> {
+            // Should actually format with time, but keeping it simple for now
+            DateUtils.formatDateTime(timestamp)
+        }
+        DateUtils.isToday(timestamp + DateUtils.DAY_IN_MILLIS) -> yesterdayLabel
+        else -> DateUtils.formatDateTime(timestamp, showYear = false)
     }
 }
 
-private fun formatNoteTimestamp(
-    timestamp: Long,
-    locale: Locale,
-    is24Hour: Boolean,
-    yesterdayLabel: String
-): String {
-    val now = Calendar.getInstance()
-    val then = Calendar.getInstance().apply { timeInMillis = timestamp }
-    fun sameDay(a: Calendar, b: Calendar) =
-        a.get(Calendar.YEAR) == b.get(Calendar.YEAR) &&
-            a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
-
-    if (sameDay(now, then)) {
-        val pattern = if (is24Hour) "H:mm" else "h:mm a"
-        return SimpleDateFormat(pattern, locale).format(Date(timestamp))
-    }
-    val yesterday = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
-    if (sameDay(yesterday, then)) return yesterdayLabel
-    return SimpleDateFormat("MMM d", locale).format(Date(timestamp))
-}
-
-@OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NoteCard(
     note: Note,
@@ -124,8 +99,10 @@ fun NoteCard(
     reorderDragModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
+    /*
     val sharedTransitionScope = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
+    */
     val isDarkPalette = isNoteColorDarkTheme()
     val displayColorArgb = noteColorForTheme(note.color, isDarkPalette)
 
@@ -133,22 +110,28 @@ fun NoteCard(
         targetValue = when {
             isSelected -> MaterialTheme.colorScheme.secondaryContainer
             displayColorArgb == 0 -> MaterialTheme.colorScheme.surface
-            else -> Color(displayColorArgb)
+            else -> Color(displayColorArgb.toLong() and 0xffffffffL)
         },
         label = "color"
     )
 
-    val elevation by animateDpAsState(
-        targetValue = if (isSelected) 2.dp else 0.dp,
-        label = "elevation"
-    )
-
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val elevation by animateDpAsState(
+        targetValue = when {
+            isSelected -> 2.dp
+            isHovered -> 6.dp
+            else -> 0.dp
+        },
+        label = "elevation"
+    )
 
     val scale by animateFloatAsState(
         targetValue = when {
             isPressed -> 0.98f
+            isHovered -> 1.01f
             isSelected -> 0.995f
             else -> 1f
         },
@@ -202,6 +185,7 @@ fun NoteCard(
         modifier = modifier
             .fillMaxWidth()
             .scale(scale)
+            /*
             .then(
                 if (sharedTransitionScope != null && animatedVisibilityScope != null) {
                     with(sharedTransitionScope) {
@@ -212,12 +196,15 @@ fun NoteCard(
                     }
                 } else Modifier
             )
+            */
             .clip(MaterialTheme.shapes.large) // Enforcing 16.dp corner radius
             .combinedClickable(
                 interactionSource = interactionSource,
+                indication = null,
                 onClick = onClick,
                 onLongClick = onLongClick
-            ),
+            )
+            .hoverable(interactionSource),
         shape = MaterialTheme.shapes.large, // Enforcing 16.dp corner radius
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
@@ -271,7 +258,9 @@ fun NoteCard(
                     Text(
                         text = buildHighlightedString(note.title, searchQuery, contentColor, highlightColor),
                         style = NoteCardTitleStyle,
-                        maxLines = if (compact) 2 else 3,
+                        // Two lines in both densities: a third only ever appeared on the rare
+                        // long title and pushed that one card out of step with its neighbours.
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(end = trailingChrome)
                     )
@@ -290,7 +279,10 @@ fun NoteCard(
                             linksClickable = false
                         ),
                         style = NoteCardBodyStyle,
-                        maxLines = if (compact) 5 else 12,
+                        // Was 12. In a staggered grid a long note grew to several times the
+                        // height of a short one and dominated the column; a preview only needs
+                        // enough to identify the note, and the ellipsis says there is more.
+                        maxLines = if (compact) 5 else 8,
                         overflow = TextOverflow.Ellipsis
                     )
                 }

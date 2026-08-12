@@ -1,6 +1,5 @@
 package com.aus.notelikeus.data.backup
 
-import android.content.Context
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
@@ -22,8 +21,7 @@ import org.robolectric.annotation.Config
 class NoteBackupExporterTest {
 
     private val repository = mockk<NoteRepository>()
-    private val context = mockk<Context>()
-    private val exporter = NoteBackupExporter(repository, context)
+    private val exporter = NoteBackupExporter(repository, "Notelikeus", "1.0.0")
 
     @Test
     fun `createJson includes notes and labels`() = runTest {
@@ -37,7 +35,6 @@ class NoteBackupExporterTest {
         )
         coEvery { repository.getAllNotesForBackup() } returns listOf(note)
         coEvery { repository.getAllLabelsSnapshot() } returns listOf(Label(id = 2L, name = "Work"))
-        every { context.getString(any()) } returns "Notelikeus"
 
         val json = JSONObject(exporter.createJson())
 
@@ -60,7 +57,6 @@ class NoteBackupExporterTest {
         )
         coEvery { repository.getAllNotesForBackup() } returns listOf(note)
         coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
-        every { context.getString(any()) } returns "Notelikeus"
 
         val noteJson = JSONObject(exporter.createJson())
             .getJSONArray("notes")

@@ -1,9 +1,10 @@
 package com.aus.notelikeus.platform
 
-import com.aus.notelikeus.data.remote.FirebaseNoteSync
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
+import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.ui.main.CloudAccount
+import com.aus.notelikeus.ui.main.CloudSyncEvent
 import com.aus.notelikeus.ui.main.CloudSyncStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,13 +13,16 @@ import kotlinx.coroutines.flow.update
 
 class AndroidSyncManager(
     private val sessionManager: FirebaseSessionManager,
-    private val firebaseNoteSync: FirebaseNoteSync
+    private val syncEngine: NoteSyncEngine
 ) : SyncManager {
     private val _syncStatus = MutableStateFlow<CloudSyncStatus>(CloudSyncStatus.Unknown)
     override val syncStatus: StateFlow<CloudSyncStatus> = _syncStatus.asStateFlow()
 
     private val _cloudAccount = MutableStateFlow(CloudAccount())
     override val cloudAccount: StateFlow<CloudAccount> = _cloudAccount.asStateFlow()
+
+    private val _pendingEvent = MutableStateFlow<CloudSyncEvent?>(null)
+    override val pendingEvent: StateFlow<CloudSyncEvent?> = _pendingEvent.asStateFlow()
 
     init {
         val account = sessionManager.getCurrentAccount()
@@ -56,7 +60,7 @@ class AndroidSyncManager(
 
     override suspend fun signOut(deleteCloudData: Boolean): Result<Unit> {
         if (deleteCloudData) {
-            firebaseNoteSync.deleteAllCloudData()
+            syncEngine.deleteAllCloudData()
         }
         return sessionManager.signOut().onSuccess {
             refreshAccount()
@@ -64,13 +68,32 @@ class AndroidSyncManager(
     }
 
     override suspend fun syncNotes() {
-        firebaseNoteSync.uploadAllNotes()
+        runSync({ CloudSyncEvent.Uploaded(it) }) { syncEngine.uploadAllNotes() }
     }
 
     override suspend fun downloadNotes() {
-        firebaseNoteSync.downloadAllNotes()
+        runSync({ CloudSyncEvent.Downloaded(it) }) { syncEngine.downloadAllNotes() }
+    }
+
+    private suspend fun runSync(
+        onSuccess: (Int) -> CloudSyncEvent,
+        block: suspend () -> Result<Int>
+    ) {
+        _syncStatus.value = CloudSyncStatus.Syncing
+        block()
+            .onSuccess { count ->
+                _syncStatus.value = CloudSyncStatus.Synced
+                _pendingEvent.value = onSuccess(count)
+            }
+            .onFailure { error ->
+                _syncStatus.value = CloudSyncStatus.Error
+                _pendingEvent.value = CloudSyncEvent.Failure(
+                    sessionManager.diagnose(error)
+                )
+            }
     }
 
     override fun clearPendingEvent() {
+        _pendingEvent.value = null
     }
 }
