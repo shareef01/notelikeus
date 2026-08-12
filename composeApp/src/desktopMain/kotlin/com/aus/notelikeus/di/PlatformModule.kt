@@ -27,9 +27,12 @@ import com.aus.notelikeus.platform.DesktopWidgetManager
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.DesktopPathProvider
+import com.aus.notelikeus.util.SidebarCollapsedStore
 import com.aus.notelikeus.util.WindowMetricsStore
 import org.koin.dsl.module
 import java.io.File
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 
 
 actual val platformModule = module {
@@ -40,6 +43,7 @@ actual val platformModule = module {
     }
 
     single { WindowMetricsStore(get()) }
+    single { SidebarCollapsedStore(get()) }
 
     single<NotelikeusDatabase> {
         getDatabaseBuilder()
@@ -89,6 +93,7 @@ actual val platformModule = module {
 
     single {
         val tokenStore = get<DesktopTokenStore>()
+        val database = get<NotelikeusDatabase>()
         NoteSyncEngine(
             transport = get<CloudNoteTransport>(),
             noteDao = get(),
@@ -99,7 +104,12 @@ actual val platformModule = module {
                 if (uid != null) Result.success(uid)
                 else Result.failure(IllegalStateException("Not signed in"))
             },
-            platform = "desktop"
+            platform = "desktop",
+            runInTransaction = { block ->
+                database.useWriterConnection { transactor ->
+                    transactor.immediateTransaction { block() }
+                }
+            }
         )
     }
 
