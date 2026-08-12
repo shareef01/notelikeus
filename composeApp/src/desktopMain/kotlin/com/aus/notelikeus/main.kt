@@ -29,6 +29,7 @@ import com.aus.notelikeus.platform.DesktopReminderManager
 import com.aus.notelikeus.data.backup.BackupExportResult
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
+import com.aus.notelikeus.util.SidebarCollapsedStore
 import com.aus.notelikeus.util.WindowMetrics
 import com.aus.notelikeus.util.WindowMetricsStore
 import kotlinx.coroutines.Dispatchers
@@ -52,13 +53,21 @@ fun main() {
     // Read before the window exists, so the first frame is already the right size rather than
     // resizing itself once a flow emits.
     val metricsStore = GlobalContext.get().get<WindowMetricsStore>()
-    launchApp(metricsStore, runBlocking { metricsStore.metrics.first() })
+    val sidebarStore = GlobalContext.get().get<SidebarCollapsedStore>()
+    launchApp(
+        metricsStore,
+        runBlocking { metricsStore.metrics.first() },
+        sidebarStore,
+        runBlocking { sidebarStore.collapsed.first() }
+    )
 }
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 private fun launchApp(
     metricsStore: WindowMetricsStore,
-    initialMetrics: WindowMetrics
+    initialMetrics: WindowMetrics,
+    sidebarStore: SidebarCollapsedStore,
+    initialSidebarCollapsed: Boolean
 ) = application {
     val windowState = rememberWindowState(
         width = initialMetrics.width,
@@ -115,6 +124,11 @@ private fun launchApp(
     val reminderManager = remember { GlobalContext.get().get<DesktopReminderManager>() }
     val googleSignInHelper = remember { GlobalContext.get().get<GoogleSignInHelper>() }
     val coroutineScope = rememberCoroutineScope()
+    // Side drawer collapse is a manual preference, so persist it the moment the user toggles it
+    // (mirrors the web app's persisted `sidebarCollapsed`) rather than on some later settle.
+    val onSidebarCollapsedChange: (Boolean) -> Unit = { collapsed ->
+        coroutineScope.launch { sidebarStore.save(collapsed) }
+    }
     LaunchedEffect(Unit) {
         reminderManager.notify = { title, message ->
             trayState.sendNotification(Notification(title, message, Notification.Type.Info))
@@ -194,6 +208,8 @@ private fun launchApp(
         
         App(
             windowSizeClass = windowSizeClass,
+            initialSidebarCollapsed = initialSidebarCollapsed,
+            onSidebarCollapsedChange = onSidebarCollapsedChange,
             onShowBiometricPrompt = { title, onSuccess, onCancel ->
                 biometricTitle = title
                 biometricOnSuccess = onSuccess
