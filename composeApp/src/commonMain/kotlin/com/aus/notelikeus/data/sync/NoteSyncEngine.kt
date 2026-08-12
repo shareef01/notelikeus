@@ -40,7 +40,8 @@ class NoteSyncEngine(
     private val labelDao: LabelDao,
     private val syncStateStore: NoteSyncStateStore,
     private val uidProvider: suspend () -> Result<String>,
-    private val platform: String = "android"
+    private val platform: String = "android",
+    private val transactionRunner: suspend (suspend () -> Unit) -> Unit = { block -> block() }
 ) {
 
     suspend fun uploadAllNotes(): Result<Int> {
@@ -420,31 +421,35 @@ class NoteSyncEngine(
     }
 
     private suspend fun innerInsert(note: Note) {
-        val insertedId = noteDao.insertNote(note.toNoteEntity())
-        note.labels.forEach { label ->
-            label.id?.let { labelId ->
-                noteDao.insertNoteLabelCrossRef(NoteLabelCrossRef(insertedId, labelId))
+        transactionRunner {
+            val insertedId = noteDao.insertNote(note.toNoteEntity())
+            note.labels.forEach { label ->
+                label.id?.let { labelId ->
+                    noteDao.insertNoteLabelCrossRef(NoteLabelCrossRef(insertedId, labelId))
+                }
             }
-        }
-        note.checklist.forEach { item ->
-            noteDao.insertChecklistItem(item.toChecklistItemEntity(insertedId))
+            note.checklist.forEach { item ->
+                noteDao.insertChecklistItem(item.toChecklistItemEntity(insertedId))
+            }
         }
     }
 
     private suspend fun innerUpdate(note: Note) {
         val noteId = note.id ?: return
-        noteDao.updateNote(note.toNoteEntity())
-        
-        noteDao.deleteNoteLabelCrossRefs(noteId)
-        note.labels.forEach { label ->
-            label.id?.let { labelId ->
-                noteDao.insertNoteLabelCrossRef(NoteLabelCrossRef(noteId, labelId))
-            }
-        }
+        transactionRunner {
+            noteDao.updateNote(note.toNoteEntity())
 
-        noteDao.deleteChecklistItems(noteId)
-        note.checklist.forEach { item ->
-            noteDao.insertChecklistItem(item.toChecklistItemEntity(noteId))
+            noteDao.deleteNoteLabelCrossRefs(noteId)
+            note.labels.forEach { label ->
+                label.id?.let { labelId ->
+                    noteDao.insertNoteLabelCrossRef(NoteLabelCrossRef(noteId, labelId))
+                }
+            }
+
+            noteDao.deleteChecklistItems(noteId)
+            note.checklist.forEach { item ->
+                noteDao.insertChecklistItem(item.toChecklistItemEntity(noteId))
+            }
         }
     }
 }
