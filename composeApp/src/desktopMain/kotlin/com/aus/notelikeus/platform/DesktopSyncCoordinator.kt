@@ -35,7 +35,11 @@ class DesktopSyncCoordinator(
 
     private val flushMutex = Mutex()
     private var flushJob: Job? = null
-    private var consecutiveFailures = 0
+    @Volatile private var consecutiveFailures = 0
+    private val enqueueLock = Any()
+
+    /** Incremented by [clearPending] so an in-flight [flush] can detect it was signed out. */
+    @Volatile private var queueGeneration = 0
 
     init {
         scope.launch {
@@ -54,12 +58,15 @@ class DesktopSyncCoordinator(
 
     override fun scheduleRestore(noteId: Long) = enqueue(noteId, pendingRestores)
 
-    /** A note is only ever in one queue; the newest intent for it wins. */
+    /** A note is only ever in one queue; the newest intent for it wins.
+     * Synchronized so concurrent enqueues for the same noteId cannot leave it in two queues. */
     private fun enqueue(noteId: Long, target: MutableSet<Long>) {
-        for (queue in listOf(pendingUploads, pendingDeletes, pendingRestores)) {
-            if (queue !== target) queue.remove(noteId)
+        synchronized(enqueueLock) {
+            for (queue in listOf(pendingUploads, pendingDeletes, pendingRestores)) {
+                if (queue !== target) queue.remove(noteId)
+            }
+            target.add(noteId)
         }
-        target.add(noteId)
         consecutiveFailures = 0
         persist()
         scheduleFlush()
@@ -67,9 +74,14 @@ class DesktopSyncCoordinator(
 
     override fun clearPending() {
         flushJob?.cancel()
-        pendingUploads.clear()
-        pendingDeletes.clear()
-        pendingRestores.clear()
+        synchronized(enqueueLock) {
+            // Bumped so a flush already in flight can tell its work belongs to a previous
+            // session and drop it, rather than re-queueing a signed-out account's notes.
+            queueGeneration++
+            pendingUploads.clear()
+            pendingDeletes.clear()
+            pendingRestores.clear()
+        }
         consecutiveFailures = 0
         scope.launch { pendingStore.clear() }
     }
@@ -95,30 +107,55 @@ class DesktopSyncCoordinator(
     /**
      * Drains each queue and runs its operations, returning failures to the queue so the next
      * attempt picks them up. Serialized so a retry cannot overlap the flush that scheduled it.
+     *
+     * Draining takes a note out of every queue, so [enqueue]'s "newest intent wins" rule cannot
+     * see it while the operation is running. Each loop therefore re-checks the other queues
+     * before acting: without that, draining an upload and then deleting the note mid-flush would
+     * upload it *after* the delete had already been processed, resurrecting it in the cloud.
      */
     private suspend fun flush() = flushMutex.withLock {
-        val uploads = drain(pendingUploads)
-        val deletes = drain(pendingDeletes)
-        val restores = drain(pendingRestores)
-        var anyFailed = false
+        val generation = queueGeneration
+        val uploads: List<Long>
+        val deletes: List<Long>
+        val restores: List<Long>
+        synchronized(enqueueLock) {
+            uploads = drain(pendingUploads)
+            deletes = drain(pendingDeletes)
+            restores = drain(pendingRestores)
+        }
+
+        val failedUploads = mutableListOf<Long>()
+        val failedDeletes = mutableListOf<Long>()
+        val failedRestores = mutableListOf<Long>()
 
         for (noteId in deletes) {
-            if (syncEngine.deleteNote(noteId).isFailure) {
-                pendingDeletes.add(noteId)
-                anyFailed = true
-            }
+            if (noteId in pendingUploads || noteId in pendingRestores) continue
+            if (syncEngine.deleteNote(noteId).isFailure) failedDeletes += noteId
         }
         for (noteId in restores) {
-            if (syncEngine.restoreNote(noteId).isFailure) {
-                pendingRestores.add(noteId)
-                anyFailed = true
-            }
+            if (noteId in pendingUploads || noteId in pendingDeletes) continue
+            if (syncEngine.restoreNote(noteId).isFailure) failedRestores += noteId
         }
         for (noteId in uploads) {
-            if (syncEngine.uploadNote(noteId).isFailure) {
-                pendingUploads.add(noteId)
-                anyFailed = true
+            if (noteId in pendingDeletes || noteId in pendingRestores) continue
+            if (syncEngine.uploadNote(noteId).isFailure) failedUploads += noteId
+        }
+
+        // Signed out while this flush ran: the queues clearPending() emptied must stay empty.
+        if (queueGeneration != generation) return@withLock
+
+        val anyFailed = synchronized(enqueueLock) {
+            // Skip anything a newer intent has since claimed — that queue entry supersedes ours.
+            failedDeletes.forEach {
+                if (it !in pendingUploads && it !in pendingRestores) pendingDeletes.add(it)
             }
+            failedRestores.forEach {
+                if (it !in pendingUploads && it !in pendingDeletes) pendingRestores.add(it)
+            }
+            failedUploads.forEach {
+                if (it !in pendingDeletes && it !in pendingRestores) pendingUploads.add(it)
+            }
+            failedDeletes.isNotEmpty() || failedRestores.isNotEmpty() || failedUploads.isNotEmpty()
         }
 
         persist()
