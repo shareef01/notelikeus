@@ -15,10 +15,11 @@ import com.aus.notelikeus.util.DateUtils
 /**
  * The cloud returned no notes for an account that is known to have them.
  *
- * [NoteSyncEngine.downloadAllNotes] otherwise treats an absent note as deleted-elsewhere and
- * removes the local copy, so a fetch that failed open (an expired token, a truncated page, an
- * offline transport returning a default) would delete the user's notes. Failing the sync is the
- * safe answer; the next successful download reconciles normally.
+ * A fetch that fails open — an expired token, a truncated page, an offline transport returning a
+ * default — loses data in both directions. [NoteSyncEngine.downloadAllNotes] treats an absent note
+ * as deleted-elsewhere and removes the local copy; [NoteSyncEngine.uploadAllNotes] reads the same
+ * empty result as "no remote is newer" and pushes every local note over the cloud copy. Failing the
+ * sync is the safe answer in both; the next successful one reconciles normally.
  */
 class SuspectEmptyCloudException(
     val knownCloudNoteCount: Int
@@ -59,6 +60,21 @@ class NoteSyncEngine(
             }
 
             val remoteRecords = transport.fetchNotes(uid)
+
+            // The same hazard downloadAllNotes guards against, pointing the other way. Here an
+            // empty fetch does not delete anything directly — it empties the timestamp maps below,
+            // and cloudWinsConflict reads a null remote timestamp as "local wins". Every local note
+            // would then be pushed over whatever the cloud actually holds, discarding newer edits
+            // made on another device. A transport that fails open (Android's Firestore get() falls
+            // back to an empty cached snapshot rather than throwing) makes that reachable, so refuse
+            // the sync instead; the next successful one reconciles normally.
+            if (syncStateStore.lastMergedUserId() == uid) {
+                val knownCloudIds = syncStateStore.knownCloudIds()
+                if (remoteRecords.isEmpty() && knownCloudIds.isNotEmpty()) {
+                    throw SuspectEmptyCloudException(knownCloudIds.size)
+                }
+            }
+
             val remoteTimestamps = remoteRecords.associate { it.noteId to (it.clientTimestamp ?: 0L) }
             val remoteServerTimestamps = remoteRecords.associate { it.noteId to it.serverUpdatedAt }
 
@@ -107,10 +123,23 @@ class NoteSyncEngine(
                 note.timestamp > since && !syncStateStore.isDeleted(id)
             }
 
+            // Belongs to this account: the lastMergedUserId check above already returned otherwise.
+            val knownCloudIds = syncStateStore.knownCloudIds()
+
             var uploaded = 0
             for (note in changed) {
                 val noteId = note.id ?: continue
                 val remote = transport.fetchNote(uid, noteId)
+                // A null remote usually means "never synced", the legitimate answer for a new note,
+                // so this cannot key off null alone the way the collection-level guards do. But when
+                // the last full download recorded this id as present in the cloud and no tombstone
+                // has since explained its absence — mergeCloudTombstones ran above, and a genuine
+                // remote delete leaves one — a failed-open fetch is likelier than the document
+                // vanishing. Pushing on that null would resolve the conflict in local's favour and
+                // overwrite whatever is actually there.
+                if (remote == null && noteId in knownCloudIds) {
+                    throw SuspectEmptyCloudException(knownCloudIds.size)
+                }
                 val remoteServerTs = remote?.serverUpdatedAt
                 val localServerTs = note.serverUpdatedAt
                 val remoteTs = remote?.clientTimestamp
