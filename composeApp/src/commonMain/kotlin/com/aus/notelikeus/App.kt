@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.navigation.compose.rememberNavController
 import com.aus.notelikeus.ui.auth.SignInGate
 import com.aus.notelikeus.ui.main.CloudSyncEvent
@@ -30,9 +31,18 @@ import org.koin.core.annotation.KoinExperimentalAPI
 fun App(
     windowSizeClass: WindowSizeClass,
     onShowBiometricPrompt: (title: String, onSuccess: () -> Unit, onError: () -> Unit) -> Unit,
+    onGoogleSignInClick: (MainViewModel) -> Unit,
+    onExportBackup: (MainViewModel) -> Unit = {},
+    onImportBackup: (MainViewModel) -> Unit = {},
     pendingNoteId: Long? = null,
     pendingCreateNote: Boolean = false,
-    navigationRequest: Long = 0L
+    navigationRequest: Long = 0L,
+    /**
+     * Window chrome drawn above the app content. Desktop passes its custom title bar here rather
+     * than rendering it in `main.kt`, so it sits inside [NotelikeusTheme] and tracks the user's
+     * theme — including true-dark — instead of being a light strip above a dark app.
+     */
+    titleBar: @Composable () -> Unit = {}
 ) {
     val viewModel: MainViewModel = koinViewModel()
     val state by viewModel.state.collectAsState()
@@ -40,6 +50,14 @@ fun App(
     var isUnlocked by remember { mutableStateOf(false) }
     var needsUnlock by remember { mutableStateOf(false) }
     var hasInitializedLock by remember { mutableStateOf(false) }
+
+    // autoSyncOnForeground documented a foreground pull and carried all its guards — a 30s
+    // throttle, signed-in and auto-sync-enabled checks — but nothing ever called it. This is the
+    // observer it was written for.
+    LifecycleResumeEffect(Unit) {
+        viewModel.autoSyncOnForeground()
+        onPauseOrDispose { }
+    }
 
     val unlockAppLabel = stringResource(Res.string.unlock_app)
 
@@ -65,10 +83,51 @@ fun App(
     }
 
     NotelikeusTheme(
-        appTheme = state.appTheme,
-        isTrueDarkMode = state.isTrueDarkMode
+        appTheme = state.appTheme
     ) {
-        var gateError by remember { mutableStateOf<String?>(null) }
+        Surface(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                titleBar()
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    AppContent(
+                        viewModel = viewModel,
+                        state = state,
+                        windowSizeClass = windowSizeClass,
+                        onShowBiometricPrompt = onShowBiometricPrompt,
+                        onGoogleSignInClick = onGoogleSignInClick,
+                        onExportBackup = onExportBackup,
+                        onImportBackup = onImportBackup,
+                        pendingNoteId = pendingNoteId,
+                        pendingCreateNote = pendingCreateNote,
+                        navigationRequest = navigationRequest,
+                        isUnlocked = isUnlocked,
+                        onUnlocked = { isUnlocked = true },
+                        unlockAppLabel = unlockAppLabel
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class, KoinExperimentalAPI::class)
+@Composable
+private fun AppContent(
+    viewModel: MainViewModel,
+    state: com.aus.notelikeus.ui.main.MainState,
+    windowSizeClass: WindowSizeClass,
+    onShowBiometricPrompt: (title: String, onSuccess: () -> Unit, onError: () -> Unit) -> Unit,
+    onGoogleSignInClick: (MainViewModel) -> Unit,
+    onExportBackup: (MainViewModel) -> Unit,
+    onImportBackup: (MainViewModel) -> Unit,
+    pendingNoteId: Long?,
+    pendingCreateNote: Boolean,
+    navigationRequest: Long,
+    isUnlocked: Boolean,
+    onUnlocked: () -> Unit,
+    unlockAppLabel: String
+) {
+    var gateError by remember { mutableStateOf<String?>(null) }
         LaunchedEffect(state.pendingCloudSyncEvent) {
             when (val event = state.pendingCloudSyncEvent) {
                 is CloudSyncEvent.Failure -> {
@@ -81,7 +140,8 @@ fun App(
         
         if (!state.cloudAccount.isGoogleAccount) {
             SignInGate(
-                onIdToken = { viewModel.signInWithGoogleIdToken(it) },
+                onGoogleSignInClick = { onGoogleSignInClick(viewModel) },
+                isSigningIn = state.isSigningIn,
                 onEmailPassword = { email, password, create ->
                     viewModel.signInWithEmailPassword(email, password, create)
                 },
@@ -92,8 +152,11 @@ fun App(
                 Box(modifier = Modifier.fillMaxSize()) {
                     val navController = rememberNavController()
                     
-                    var internalPendingCreateNote by remember { mutableStateOf(pendingCreateNote) }
-                    var internalPendingNoteId by remember { mutableStateOf(pendingNoteId) }
+                    var internalPendingCreateNote by remember { mutableStateOf(false) }
+                    var internalPendingNoteId by remember { mutableStateOf<Long?>(null) }
+                    // Sync with external triggers on each composition
+                    if (pendingCreateNote) internalPendingCreateNote = true
+                    pendingNoteId?.let { internalPendingNoteId = it }
 
                     LaunchedEffect(navigationRequest, isUnlocked, state.isAppLockEnabled) {
                         if (navigationRequest == 0L) return@LaunchedEffect
@@ -124,30 +187,27 @@ fun App(
                             onShowBiometricPrompt(
                                 unlockAppLabel,
                                 {
-                                    isUnlocked = true
+                                    onUnlocked()
                                     onSuccess()
                                 },
                                 { }
                             )
                         },
-                        onAppLockEnabled = { isUnlocked = true }
+                        onAppLockEnabled = onUnlocked,
+                        onExportBackup = { onExportBackup(viewModel) },
+                        onImportBackup = { onImportBackup(viewModel) }
                     )
 
                     if (!isUnlocked) {
                         AppLockOverlay(
                             showLockPrompt = state.areSettingsLoaded && state.isAppLockEnabled,
                             onUnlock = {
-                                onShowBiometricPrompt(
-                                    unlockAppLabel,
-                                    { isUnlocked = true },
-                                    { }
-                                )
+                                onShowBiometricPrompt(unlockAppLabel, onUnlocked, { })
                             }
                         )
                     }
                 }
             }
-        }
     }
 }
 

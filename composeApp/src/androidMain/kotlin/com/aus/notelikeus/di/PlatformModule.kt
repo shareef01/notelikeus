@@ -10,8 +10,28 @@ import com.aus.notelikeus.data.local.createDataStore
 import com.aus.notelikeus.data.local.SETTINGS_DATASTORE_FILENAME
 import com.aus.notelikeus.domain.platform.PlatformWidgetManager
 import com.aus.notelikeus.domain.platform.ReminderManager
+import com.aus.notelikeus.domain.platform.SyncCoordinator
 import com.aus.notelikeus.platform.AndroidWidgetManager
+import com.aus.notelikeus.platform.ForegroundActivityTracker
+import com.aus.notelikeus.data.backup.NoteBackupExporter
+import com.aus.notelikeus.data.backup.NoteBackupImporter
+import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.data.remote.SharedPrefsNoteSyncStateStore
+import com.aus.notelikeus.data.remote.FirebaseSessionManager
+import com.aus.notelikeus.data.remote.FirestoreNoteTransport
+import com.aus.notelikeus.data.sync.NoteSyncEngine
+import com.aus.notelikeus.data.sync.NoteSyncStateStore
+import com.aus.notelikeus.data.sync.CloudNoteTransport
+import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
+import com.aus.notelikeus.data.remote.PendingCloudSyncStore
+import com.aus.notelikeus.data.remote.AndroidGoogleSignInHelper
+import com.aus.notelikeus.platform.AndroidSyncManager
+import com.aus.notelikeus.domain.repository.SyncManager
+import com.aus.notelikeus.ui.auth.GoogleSignInHelper
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import java.io.File
 
@@ -34,7 +54,7 @@ actual val platformModule = module {
             passphrase
         )
 
-        getDatabaseBuilder(context)
+        getDatabaseBuilder()
             .openHelperFactory(SupportOpenHelperFactory(passphrase))
             .addMigrations(*DatabaseMigrations.ALL)
             .build()
@@ -47,4 +67,45 @@ actual val platformModule = module {
     single<PlatformWidgetManager> { AndroidWidgetManager(get()) }
     
     single { DatabaseKeyManager(get()) }
+    
+    single { 
+        val context = get<android.content.Context>()
+        NoteBackupExporter(
+            repository = get<NoteRepository>(),
+            appName = context.getString(com.aus.notelikeus.shared.R.string.app_name),
+            appVersion = com.aus.notelikeus.util.AppConfig.versionName
+        )
+    }
+    single { NoteBackupImporter(get<NoteRepository>()) }
+    single { SharedPrefsNoteSyncStateStore(get()) }
+    single { androidx.work.WorkManager.getInstance(get<android.content.Context>()) }
+
+    // Firebase Core
+    single { FirebaseAuth.getInstance() }
+    single { FirebaseFirestore.getInstance() }
+    single { FirebaseSessionManager(get(), get()) }
+    single<CloudNoteTransport> { FirestoreNoteTransport(get()) }
+    single {
+        val sessionManager = get<FirebaseSessionManager>()
+        NoteSyncEngine(
+            transport = get<CloudNoteTransport>(),
+            noteDao = get(),
+            labelDao = get(),
+            syncStateStore = get<SharedPrefsNoteSyncStateStore>(),
+            uidProvider = { sessionManager.ensureGoogleSignedIn() }
+        )
+    }
+    
+    // Sync
+    single { PendingCloudSyncStore(get()) }
+    single<SyncCoordinator> { CloudNoteSyncCoordinator(get(), get(), get(), get(), get()) }
+    single<SyncManager> { AndroidSyncManager(get(), get()) }
+
+    single<GoogleSignInHelper> {
+        AndroidGoogleSignInHelper(
+            context = get(),
+            webClientId = get(named("webClientId")),
+            activityProvider = { ForegroundActivityTracker.current() }
+        )
+    }
 }

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -58,13 +60,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.stringResource
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -77,7 +81,6 @@ import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.ui.main.NoteFilter
-import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.Chrome
 
 private val TopBarRowHeight = 56.dp
@@ -101,6 +104,13 @@ fun MainTopAppBar(
     currentFilter: NoteFilter,
     onMenuClick: () -> Unit,
     onProfileClick: () -> Unit,
+    /**
+     * Signed-in address, used for the account button's initial. Null falls back to a generic
+     * account glyph. The button used to show the app's brand mark, which already appears in the
+     * title bar and the drawer header — three logos, and none of them told you whose notes these
+     * were or hinted that the control opens your account.
+     */
+    accountEmail: String? = null,
     selectedColor: Int?,
     onColorSelect: (Int?) -> Unit,
     allLabels: List<Label>,
@@ -114,12 +124,17 @@ fun MainTopAppBar(
     hasActiveFilters: Boolean = false,
     onClearFilters: () -> Unit = {},
     listScrolled: Boolean = false,
+    searchFocusRequester: androidx.compose.ui.focus.FocusRequester? = null,
+    showMenuIcon: Boolean = true, // Added to hide on Desktop
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var isSearchFocused by remember { mutableStateOf(false) }
+    
+    val internalFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val focusRequester = searchFocusRequester ?: internalFocusRequester
 
     val settingsContentDescription = stringResource(Res.string.cd_open_settings)
     val searchPlaceholder = when (currentFilter) {
@@ -247,15 +262,19 @@ fun MainTopAppBar(
                                 .padding(horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                onMenuClick()
-                            }) {
-                                Icon(
-                                    Icons.Default.Menu,
-                                    contentDescription = stringResource(Res.string.cd_menu),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            if (showMenuIcon) {
+                                IconButton(onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                    onMenuClick()
+                                }) {
+                                    Icon(
+                                        Icons.Default.Menu,
+                                        contentDescription = stringResource(Res.string.cd_menu),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else {
+                                Spacer(modifier = Modifier.width(12.dp))
                             }
 
                             BasicTextField(
@@ -267,6 +286,7 @@ fun MainTopAppBar(
                                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                 modifier = Modifier
                                     .weight(1f)
+                                    .focusRequester(focusRequester)
                                     .onFocusChanged { isSearchFocused = it.isFocused }
                                     .semantics { contentDescription = searchPlaceholder },
                                 singleLine = true,
@@ -347,11 +367,7 @@ fun MainTopAppBar(
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                BrandMarkIcon(
-                                    size = 30.dp,
-                                    backgroundColor = MaterialTheme.colorScheme.onSurface,
-                                    stripeColor = MaterialTheme.colorScheme.surface
-                                )
+                                AccountAvatar(email = accountEmail)
                             }
                         }
                     }
@@ -457,6 +473,37 @@ private fun RecentSearchRow(
                 stringResource(Res.string.clear_recent_searches),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+/**
+ * The account button's face: the signed-in initial, matching the drawer's account row, or a
+ * generic person glyph when there is no address to draw from.
+ */
+@Composable
+private fun AccountAvatar(email: String?) {
+    val initial = email?.trim()?.firstOrNull()?.uppercaseChar()
+    Box(
+        modifier = Modifier
+            .size(30.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (initial != null) {
+            Text(
+                text = initial.toString(),
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Outlined.Person,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.primary
             )
         }
     }
