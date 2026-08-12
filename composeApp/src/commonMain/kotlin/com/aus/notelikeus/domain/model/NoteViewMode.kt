@@ -3,6 +3,8 @@ package com.aus.notelikeus.domain.model
 enum class NoteViewMode(val columns: Int, val compact: Boolean) {
     GRID_2(columns = 2, compact = false),
     GRID_3(columns = 3, compact = false),
+    GRID_4(columns = 4, compact = false),
+    GRID_5(columns = 5, compact = false),
     LIST(columns = 1, compact = false),
     COMPACT(columns = 1, compact = true);
 
