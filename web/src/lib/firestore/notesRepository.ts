@@ -232,6 +232,18 @@ export async function syncNotesWithCloud(
 
   const remoteNotes = await fetchRemoteNotes(userId);
   const cloudIds = new Set(remoteNotes.map((note) => note.id));
+
+  // Same guard Android NoteSyncEngine uses in every sync direction: an empty fetch when we
+  // previously knew cloud note IDs is far more likely a failed-open fetch than a genuine mass
+  // deletion (which leaves tombstones). Refuse the sync instead of deleting local notes or
+  // pushing over the real cloud copies.
+  if (remoteNotes.length === 0 && previouslyKnownCloudIds.size > 0) {
+    throw new Error(
+      `Cloud returned no notes but ${previouslyKnownCloudIds.size} were expected — refusing to ` +
+        `delete local copies. Check the connection or sign in again.`,
+    );
+  }
+
   const isDeleted = (id: string) => useTombstoneStore.getState().isDeleted(id);
   let changes = 0;
   const droppedLocalIds = new Set<string>();
