@@ -1,6 +1,5 @@
 package com.aus.notelikeus.data.backup
 
-import com.aus.notelikeus.data.remote.ReminderScheduler
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
@@ -23,9 +22,8 @@ import org.robolectric.annotation.Config
 class NoteBackupRoundtripTest {
 
     private val repository = mockk<NoteRepository>()
-    private val reminderScheduler = mockk<ReminderScheduler>(relaxed = true)
-    private val exporter = NoteBackupExporter(repository, mockk(relaxed = true))
-    private val importer = NoteBackupImporter(repository, reminderScheduler)
+    private val exporter = NoteBackupExporter(repository, "Notelikeus", "1.0.0")
+    private val importer = NoteBackupImporter(repository)
 
     @Test
     fun `exported json can be imported again`() = runTest {
@@ -44,7 +42,7 @@ class NoteBackupRoundtripTest {
         coEvery { repository.insertNoteWithResult(any()) } returns 42L
 
         val json = exporter.createJson()
-        val result = importer.importFromJson(json)
+        val result = importer.importFromJson(json) as BackupImportResult.Success
 
         assertEquals(1, result.notesImported)
         val captured = slot<Note>()
@@ -107,7 +105,7 @@ class NoteBackupRoundtripTest {
         coEvery { repository.insertNoteWithResult(any()) } returns 42L
 
         val json = exporter.createJson()
-        val result = importer.importFromJson(json)
+        val result = importer.importFromJson(json) as BackupImportResult.Success
 
         assertEquals(1, result.notesImported)
         val captured = slot<Note>()
@@ -125,11 +123,8 @@ class NoteBackupRoundtripTest {
             put("notes", org.json.JSONArray())
         }.toString()
 
-        try {
-            importer.importFromJson(json)
-            error("Expected failure")
-        } catch (error: IllegalArgumentException) {
-            assertTrue(error.message!!.contains("Unsupported backup version"))
-        }
+        val result = importer.importFromJson(json)
+        assertTrue(result is BackupImportResult.InvalidFormat)
+        assertTrue((result as BackupImportResult.InvalidFormat).message.contains("Unsupported backup version"))
     }
 }

@@ -14,11 +14,11 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], application = android.app.Application::class)
 class NoteSyncStateStoreTest {
 
-    private lateinit var store: NoteSyncStateStore
+    private lateinit var store: SharedPrefsNoteSyncStateStore
 
     @Before
     fun setup() {
-        store = NoteSyncStateStore(RuntimeEnvironment.getApplication())
+        store = SharedPrefsNoteSyncStateStore(RuntimeEnvironment.getApplication())
         store.clear()
     }
 
@@ -80,7 +80,7 @@ class NoteSyncStateStoreTest {
             .putStringSet("deleted_ids", setOf("42", "bad"))
             .commit()
 
-        val migrated = NoteSyncStateStore(RuntimeEnvironment.getApplication())
+        val migrated = SharedPrefsNoteSyncStateStore(RuntimeEnvironment.getApplication())
         assertTrue(migrated.isDeleted(42L))
         assertFalse(migrated.isDeleted(0L))
         assertTrue(prefs.getString("deleted_at_by_id", null)!!.isNotBlank())
