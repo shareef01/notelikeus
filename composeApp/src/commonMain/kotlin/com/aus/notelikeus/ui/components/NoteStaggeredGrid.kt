@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -26,11 +27,11 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.util.DateUtils
 
 @Composable
 fun NoteStaggeredGrid(
@@ -55,7 +56,6 @@ fun NoteStaggeredGrid(
     contentPadding: PaddingValues = PaddingValues(8.dp)
 ) {
     val haptic = LocalHapticFeedback.current
-    val context = androidx.compose.ui.platform.LocalContext.current
     val pinnedSectionLabel = stringResource(Res.string.section_pinned)
     val todaySectionLabel = stringResource(Res.string.section_today)
     val yesterdaySectionLabel = stringResource(Res.string.section_yesterday)
@@ -68,13 +68,9 @@ fun NoteStaggeredGrid(
 
     fun getDateHeader(timestamp: Long): String {
         return when {
-            DateUtils.isToday(timestamp) -> todaySectionLabel
-            DateUtils.isToday(timestamp + DateUtils.DAY_IN_MILLIS) -> yesterdaySectionLabel
-            else -> DateUtils.formatDateTime(
-                context,
-                timestamp,
-                DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_YEAR or DateUtils.FORMAT_ABBREV_MONTH
-            )
+            com.aus.notelikeus.util.DateUtils.isToday(timestamp) -> todaySectionLabel
+            com.aus.notelikeus.util.DateUtils.isToday(timestamp + com.aus.notelikeus.util.DateUtils.DAY_IN_MILLIS) -> yesterdaySectionLabel
+            else -> com.aus.notelikeus.util.DateUtils.formatDateTime(timestamp)
         }
     }
 
