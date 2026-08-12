@@ -170,8 +170,15 @@ class MainViewModel(
     fun signInWithEmailPassword(email: String, password: String, createAccount: Boolean) {
         viewModelScope.launch {
             _state.update { it.copy(isSigningIn = true) }
-            syncManager.signInWithEmail(email, password, createAccount)
-            _state.update { it.copy(isSigningIn = false) }
+            val result = syncManager.signInWithEmail(email, password, createAccount)
+            _state.update { state ->
+                state.copy(
+                    isSigningIn = false,
+                    pendingCloudSyncEvent = result.exceptionOrNull()
+                        ?.let { CloudSyncEvent.Failure(signInFailureMessage(it)) }
+                        ?: state.pendingCloudSyncEvent
+                )
+            }
         }
     }
 
