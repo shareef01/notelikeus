@@ -20,6 +20,6 @@ fun NoteSectionHeader(
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 10.dp, bottom = 6.dp)
+            .padding(top = 12.dp, bottom = 8.dp)
     )
 }

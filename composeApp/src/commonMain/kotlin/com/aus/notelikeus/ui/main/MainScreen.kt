@@ -1,6 +1,7 @@
 package com.aus.notelikeus.ui.main
 
-import androidx.compose.animation.*
+    import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -77,6 +79,8 @@ fun MainScreen(
     onNoteClick: (Long?) -> Unit,
     onEditLabels: () -> Unit,
     windowSizeClass: WindowSizeClass,
+    initialSidebarCollapsed: Boolean = false,
+    onSidebarCollapsedChange: (Boolean) -> Unit = {},
     isAppLockEnabled: Boolean = false,
     onRequestAppUnlock: (onSuccess: () -> Unit) -> Unit = {},
     onAppLockEnabled: () -> Unit = {},
@@ -167,17 +171,30 @@ fun MainScreen(
     // two-pane layout. On Android, Medium is a large phone or a folded foldable and must not.
     val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded ||
             (windowSizeClass.widthSizeClass == WindowWidthSizeClass.Medium && AppConfig.isDesktop)
+    var sidebarManuallyCollapsed by remember { mutableStateOf(initialSidebarCollapsed) }
+    val effectiveSidebarCollapsed = sidebarManuallyCollapsed && isExpanded
     val navigator = rememberListDetailPaneScaffoldNavigator<Long?>()
 
-    val drawerInner = @Composable {
+    val drawerInner: @Composable (collapsed: Boolean) -> Unit = { collapsed ->
         Column(modifier = Modifier.fillMaxHeight()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 20.dp)
+                    .padding(
+                        horizontal = if (collapsed) 8.dp else 20.dp,
+                        vertical = if (collapsed) 16.dp else 20.dp
+                    )
             ) {
-                Column {
+                if (collapsed) {
+                    BrandMarkIcon(
+                        size = 28.dp,
+                        backgroundColor = MaterialTheme.colorScheme.onSurface,
+                        stripeColor = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                } else {
+                    Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         BrandMarkIcon(
                             size = 36.dp,
@@ -203,13 +220,14 @@ fun MainScreen(
                         }
                     }
                 }
+                }
             }
 
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .padding(top = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(if (collapsed) 2.dp else 4.dp)
             ) {
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_notes),
@@ -217,6 +235,8 @@ fun MainScreen(
                     selectedIcon = Icons.Filled.Lightbulb,
                     selected = state.currentFilter == NoteFilter.ACTIVE,
                     count = state.totalNoteCount,
+                    identityColor = Color(0xFF38BDF8), // sky-400
+                    collapsed = collapsed,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.setFilter(NoteFilter.ACTIVE)
@@ -229,6 +249,8 @@ fun MainScreen(
                     selectedIcon = Icons.Filled.Archive,
                     selected = state.currentFilter == NoteFilter.ARCHIVED,
                     count = state.archivedNoteCount,
+                    identityColor = Color(0xFFFBBF24), // amber-400
+                    collapsed = collapsed,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.setFilter(NoteFilter.ARCHIVED)
@@ -241,6 +263,8 @@ fun MainScreen(
                     selectedIcon = Icons.Filled.Delete,
                     selected = state.currentFilter == NoteFilter.TRASHED,
                     count = state.trashedNoteCount,
+                    identityColor = Color(0xFFFB7185), // rose-400
+                    collapsed = collapsed,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.setFilter(NoteFilter.TRASHED)
@@ -249,13 +273,17 @@ fun MainScreen(
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
+                if (!collapsed) {
                 SideDrawerSectionLabel(text = stringResource(Res.string.nav_section_manage))
+                }
 
+                if (!collapsed) {
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_edit_labels),
                     icon = Icons.AutoMirrored.Outlined.Label,
                     selectedIcon = Icons.AutoMirrored.Filled.Label,
                     selected = false,
+                    identityColor = Color(0xFFA78BFA), // violet-400
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         onEditLabels()
@@ -267,14 +295,60 @@ fun MainScreen(
                     icon = Icons.Outlined.Settings,
                     selectedIcon = Icons.Filled.Settings,
                     selected = showProfileSheet,
+                    identityColor = Color(0xFF2DD4BF), // teal-400
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         showProfileSheet = true
                         scope.launch { if (!isExpanded) drawerState.close() }
                     }
                 )
+                }
             }
 
+            // Collapse toggle — only in permanent (expanded) mode
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(4.dp))
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = if (collapsed) 8.dp else 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = if (collapsed) 8.dp else 16.dp)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            val next = !sidebarManuallyCollapsed
+                            sidebarManuallyCollapsed = next
+                            onSidebarCollapsedChange(next)
+                        }
+                        .padding(horizontal = if (collapsed) 0.dp else 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.Start
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowLeft,
+                        contentDescription = if (collapsed) "Expand sidebar" else "Collapse sidebar",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .rotate(if (collapsed) 180f else 0f)
+                    )
+                    if (!collapsed) {
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Collapse",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            if (!collapsed) {
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider(
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -324,6 +398,7 @@ fun MainScreen(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
             }
+            }
             Spacer(modifier = Modifier.height(8.dp).navigationBarsPadding())
         }
     }
@@ -334,7 +409,7 @@ fun MainScreen(
             drawerTonalElevation = 0.dp,
             modifier = if (isExpanded) Modifier.width(260.dp) else Modifier.widthIn(max = 300.dp)
         ) {
-            drawerInner()
+            drawerInner(false)
         }
     }
 
@@ -366,14 +441,18 @@ fun MainScreen(
             }
     ) {
         if (isExpanded) {
+            val drawerWidth by animateDpAsState(
+                targetValue = if (effectiveSidebarCollapsed) 64.dp else 260.dp,
+                label = "drawerWidth"
+            )
             PermanentNavigationDrawer(
                 drawerContent = { 
                     PermanentDrawerSheet(
                         drawerContainerColor = MaterialTheme.colorScheme.surface,
                         drawerTonalElevation = 0.dp,
-                        modifier = Modifier.width(260.dp)
+                        modifier = Modifier.width(drawerWidth)
                     ) {
-                        drawerInner()
+                        drawerInner(effectiveSidebarCollapsed)
                     }
                 }
             ) {
@@ -1031,9 +1110,9 @@ private fun MainScaffold(
                         .weight(1f)
                         .fillMaxWidth(),
                     contentPadding = PaddingValues(
-                        top = 14.dp,
-                        start = 14.dp,
-                        end = 14.dp,
+                        top = 12.dp,
+                        start = 12.dp,
+                        end = 12.dp,
                         bottom = gridBottomPadding
                     )
                 )

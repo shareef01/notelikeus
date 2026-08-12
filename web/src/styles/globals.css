@@ -135,15 +135,15 @@
 
 @layer components {
   .filter-chip {
-    @apply inline-flex min-h-11 items-center rounded-full border border-brand-outline/45 px-3.5 text-sm font-medium tracking-tight transition-colors sm:px-4;
+    @apply inline-flex min-h-11 items-center rounded-full border px-3.5 text-sm font-medium tracking-tight transition-all duration-150 sm:px-4;
   }
 
   .filter-chip-active {
-    @apply border-brand-primary/40 bg-brand-primary/10 text-brand-primary;
+    @apply border-brand-primary/35 bg-brand-primary/15 text-brand-primary shadow-sm;
   }
 
   .filter-chip-inactive {
-    @apply border-brand-outline/45 bg-true-surface-variant/25 text-brand-muted hover:border-brand-outline/70 hover:text-brand-primary;
+    @apply border-brand-outline/35 bg-true-surface-variant/20 text-brand-muted shadow-sm hover:border-brand-outline/60 hover:bg-true-surface-variant/35 hover:text-brand-primary;
   }
 
   .text-chrome-label {
