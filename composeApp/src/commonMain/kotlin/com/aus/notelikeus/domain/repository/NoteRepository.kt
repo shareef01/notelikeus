@@ -11,6 +11,8 @@ interface NoteRepository {
     suspend fun getNoteById(id: Long): Note?
     suspend fun insertNote(note: Note)
     suspend fun insertNoteWithResult(note: Note): Long
+    /** Re-inserts a previously deleted note and ensures cloud tombstones are cleared. */
+    suspend fun restoreNote(note: Note): Long
     suspend fun updateNote(note: Note)
     suspend fun updateNotePositions(notes: List<Note>)
     suspend fun deleteNote(note: Note)
