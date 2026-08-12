@@ -1,5 +1,7 @@
 package com.aus.notelikeus.di
 
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
@@ -86,6 +88,7 @@ actual val platformModule = module {
 
     single {
         val tokenStore = get<DesktopTokenStore>()
+        val database = get<NotelikeusDatabase>()
         NoteSyncEngine(
             transport = get<CloudNoteTransport>(),
             noteDao = get(),
@@ -96,7 +99,10 @@ actual val platformModule = module {
                 if (uid != null) Result.success(uid)
                 else Result.failure(IllegalStateException("Not signed in"))
             },
-            platform = "desktop"
+            platform = "desktop",
+            transactionRunner = { block ->
+                database.useWriterConnection { tx -> tx.immediateTransaction { block() } }
+            }
         )
     }
 
