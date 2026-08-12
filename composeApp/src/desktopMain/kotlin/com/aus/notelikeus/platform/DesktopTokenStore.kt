@@ -48,11 +48,15 @@ class DesktopTokenStore(
         .build()
     private val refreshMutex = Mutex()
 
-    private var cachedIdToken: String? = null
-    private var cachedRefreshToken: String? = null
-    private var cachedExpiresAt: Long = 0L
-    private var cachedUid: String? = null
-    private var cachedEmail: String? = null
+    // Written under refreshMutex but read outside it — validIdToken() checks the token and expiry
+    // before taking the lock, and hasSession()/uid()/email() never take it at all. @Volatile is what
+    // makes those reads see the last write; without it a stale read can hand out an already-expired
+    // token or report a signed-out user as still signed in.
+    @Volatile private var cachedIdToken: String? = null
+    @Volatile private var cachedRefreshToken: String? = null
+    @Volatile private var cachedExpiresAt: Long = 0L
+    @Volatile private var cachedUid: String? = null
+    @Volatile private var cachedEmail: String? = null
 
     init {
         dataDir.mkdirs()
@@ -136,7 +140,14 @@ class DesktopTokenStore(
             return@withLock null
         }
 
-        val payload = json.decodeFromString<JsonObject>(response.body())
+        // A 2xx is not a guarantee of JSON: a captive portal or intercepting proxy answers 200 with
+        // HTML. Treat an unreadable body like the network faults above — keep the session and let a
+        // later sync retry — rather than throwing out of validIdToken() into the sync engine.
+        val payload = try {
+            json.decodeFromString<JsonObject>(response.body())
+        } catch (_: Exception) {
+            return@withLock null
+        }
         val newIdToken = payload["id_token"]?.jsonPrimitive?.content ?: return@withLock null
         save(newIdToken, payload["refresh_token"]?.jsonPrimitive?.content)
         newIdToken

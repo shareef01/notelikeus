@@ -119,6 +119,58 @@ class NoteSyncEngineTest {
         assertTrue(2L in transport.notes)
     }
 
+    // ---- uploadAllNotes: guarding against a fetch that failed open ----
+
+    @Test
+    fun `uploadAllNotes refuses to overwrite the cloud when it comes back unexpectedly empty`() = runTest {
+        setup()
+        // A previous sync established that note 1 lives in the cloud for this account.
+        stateStore.setLastMergedUserId("uid")
+        stateStore.setKnownCloudIds(setOf(1L))
+        noteDao.insertNote(
+            Note(id = 1L, title = "Stale local copy", content = "", timestamp = 1L, color = 0).toNoteEntity()
+        )
+        // The fetch now returns nothing. Without a guard every remote timestamp reads as null,
+        // cloudWinsConflict answers "local wins", and this stale copy is pushed over a cloud note
+        // that may well be newer.
+
+        val result = engine.uploadAllNotes()
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is SuspectEmptyCloudException)
+        assertTrue(transport.notes.isEmpty(), "nothing may be pushed on a suspect empty fetch")
+    }
+
+    @Test
+    fun `uploadAllNotes treats an empty cloud as legitimate on a first sync`() = runTest {
+        setup()
+        noteDao.insertNote(
+            Note(id = 1L, title = "Local only", content = "", timestamp = 1L, color = 0).toNoteEntity()
+        )
+        // No prior sync, so an empty cloud is exactly what a first upload should expect.
+
+        val result = engine.uploadAllNotes()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, result.getOrNull())
+        assertTrue(1L in transport.notes)
+    }
+
+    @Test
+    fun `uploadAllNotes ignores known cloud ids left over from another account`() = runTest {
+        setup(uid = "second-account")
+        stateStore.setLastMergedUserId("first-account")
+        stateStore.setKnownCloudIds(setOf(1L))
+        noteDao.insertNote(
+            Note(id = 1L, title = "Mine", content = "", timestamp = 1L, color = 0).toNoteEntity()
+        )
+
+        val result = engine.uploadAllNotes()
+
+        assertTrue(result.isSuccess, "an account switch is not a failed fetch")
+        assertTrue(1L in transport.notes)
+    }
+
     // ---- reconcileUploads account-switch guard ----
 
     @Test
