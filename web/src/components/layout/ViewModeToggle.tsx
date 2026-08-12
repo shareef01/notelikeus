@@ -31,20 +31,19 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
       <button
         type="button"
         onClick={() => onChange(nextMode(value))}
-        className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-brand-outline/35 bg-true-surface-variant/30 px-2.5 text-brand-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary md:hidden"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-brand-outline/35 bg-true-surface-variant/30 text-brand-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary md:hidden"
         aria-label={`View: ${current.shortLabel}. Tap to change`}
         title={current.label}
       >
         <CurrentIcon size={16} />
-        <span className="text-[11px] font-semibold tracking-wide">{current.shortLabel}</span>
       </button>
 
       <div
-        className="hidden h-9 shrink-0 items-center gap-0.5 rounded-full border border-brand-outline/35 bg-true-surface-variant/25 p-0.5 md:flex"
+        className="hidden h-10 shrink-0 items-center gap-1 rounded-full border border-brand-outline/35 bg-true-surface-variant/25 p-1 md:flex"
         role="radiogroup"
         aria-label="Notes view size"
       >
-        {MODES.map(({ value: mode, label, shortLabel, icon: Icon }) => {
+        {MODES.map(({ value: mode, label, icon: Icon }) => {
           const selected = value === mode;
           return (
             <button
@@ -55,20 +54,13 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
               aria-label={label}
               title={label}
               onClick={() => onChange(mode)}
-              className={`flex h-8 items-center gap-1 rounded-full px-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
+              className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
                 selected
                   ? 'bg-brand-primary/15 text-brand-primary'
                   : 'text-brand-muted/65 hover:bg-brand-primary/5 hover:text-brand-secondary'
               }`}
             >
-              <Icon size={15} />
-              <span
-                className={`text-[10px] font-semibold tracking-wide ${
-                  selected ? 'inline' : 'sr-only xl:inline'
-                }`}
-              >
-                {shortLabel}
-              </span>
+              <Icon size={16} />
             </button>
           );
         })}
