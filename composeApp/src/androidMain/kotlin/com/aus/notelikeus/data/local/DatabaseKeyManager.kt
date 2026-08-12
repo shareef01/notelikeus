@@ -194,9 +194,17 @@ internal object PassphraseFileCodec {
     private const val GCM_TAG_BITS = 128
 
     fun encrypt(key: SecretKey, utf8Plaintext: String): ByteArray {
-        val iv = ByteArray(IV_SIZE).also { SecureRandom().nextBytes(it) }
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
+        // Deliberately no caller-supplied IV. AndroidKeyStore keys are generated with
+        // setRandomizedEncryptionRequired defaulting to true, and such a key rejects a
+        // caller-provided IV on encrypt with InvalidAlgorithmParameterException — which used to
+        // throw on every call here, so writeToKeystoreFile always failed and the passphrase fell
+        // back to the legacy ESP this class exists to replace. Letting the provider generate the IV
+        // keeps randomized encryption required (a stronger policy than turning it off) and behaves
+        // the same for the software keys used in tests.
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
+        require(iv.size == IV_SIZE) { "Unexpected GCM IV size: ${iv.size}" }
         val ciphertext = cipher.doFinal(utf8Plaintext.toByteArray(Charsets.UTF_8))
         val out = ByteArray(MAGIC.size + iv.size + ciphertext.size)
         System.arraycopy(MAGIC, 0, out, 0, MAGIC.size)
