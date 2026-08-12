@@ -93,6 +93,8 @@ export function MainScreen() {
 
 
   const drawerOpen = useUiStore((s) => s.drawerOpen);
+  const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
+  const toggleSidebarCollapsed = useUiStore((s) => s.toggleSidebarCollapsed);
 
   const viewColumns = useUiStore((s) => s.viewColumns);
 
@@ -503,12 +505,15 @@ export function MainScreen() {
       <SideDrawer
 
         open={drawerOpen}
+        collapsed={sidebarCollapsed}
 
         currentFilter={filters.filter}
 
         onClose={() => setDrawerOpen(false)}
 
         onNavigate={handleNavigateFilter}
+
+        onToggleCollapse={toggleSidebarCollapsed}
 
         userEmail={user?.email ?? null}
 
