@@ -78,8 +78,9 @@ class DatabaseKeyManager(
     }
 
     /**
-     * The passphrase file exists but its AndroidKeyStore key is gone (e.g. after a device restore
-     * that invalidated keystore keys). Move the unreadable blob aside instead of deleting it, so
+     * The passphrase file exists but its AndroidKeyStore key can no longer decrypt it — the key was
+     * invalidated (a device-to-device transfer, a lock-screen credential reset, or the key simply
+     * not surviving to the new install). Move the unreadable blob aside instead of deleting it, so
      * the original key material survives in case the keystore key becomes readable again. The app
      * continues with a fresh key; [PlaintextDatabaseMigrator] quarantines (never deletes) any
      * existing database it cannot open with that key.
@@ -275,11 +276,12 @@ object PlaintextDatabaseMigrator {
             false
         }
         if (!isPlaintext) {
-            // Can't open it plaintext, and not with our current passphrase either. This is
-            // reachable after an android:allowBackup restore to a new device: the DB file comes
-            // along, but the Keystore-bound key does not, so an otherwise-valid encrypted database
-            // looks unopenable. Never delete outright — quarantine (rename) it so Room can create a
-            // fresh DB while the original bytes stay recoverable on disk.
+            // Can't open it plaintext, and not with our current passphrase either. The app sets
+            // android:allowBackup="false", so this is not a backup-restore artefact; it is reachable
+            // whenever the database file outlives the Keystore key that encrypted it — a
+            // device-to-device transfer, or a key invalidated on this device. An otherwise-valid
+            // encrypted database then looks unopenable. Never delete outright — quarantine (rename)
+            // it so Room can create a fresh DB while the original bytes stay recoverable on disk.
             quarantineDatabaseFiles(context, databaseName)
             return
         }
