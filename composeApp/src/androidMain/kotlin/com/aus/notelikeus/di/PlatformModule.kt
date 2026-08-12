@@ -1,5 +1,7 @@
 package com.aus.notelikeus.di
 
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 import com.aus.notelikeus.data.ReminderScheduler
 import com.aus.notelikeus.data.local.DatabaseKeyManager
 import com.aus.notelikeus.data.local.DatabaseMigrations
@@ -87,12 +89,16 @@ actual val platformModule = module {
     single<CloudNoteTransport> { FirestoreNoteTransport(get()) }
     single {
         val sessionManager = get<FirebaseSessionManager>()
+        val database = get<NotelikeusDatabase>()
         NoteSyncEngine(
             transport = get<CloudNoteTransport>(),
             noteDao = get(),
             labelDao = get(),
             syncStateStore = get<SharedPrefsNoteSyncStateStore>(),
-            uidProvider = { sessionManager.ensureGoogleSignedIn() }
+            uidProvider = { sessionManager.ensureGoogleSignedIn() },
+            transactionRunner = { block ->
+                database.useWriterConnection { tx -> tx.immediateTransaction { block() } }
+            }
         )
     }
     
