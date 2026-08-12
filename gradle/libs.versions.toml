@@ -21,7 +21,7 @@ securityCrypto = "1.1.0"
 # Covers androidx.sqlite:sqlite and the desktop's sqlite-bundled driver, which ship together on
 # one version train. The bundled driver used to sit on 2.5.0-alpha13 while this said 2.5.0, so
 # conflict resolution quietly dragged the whole group onto the alpha.
-sqlite = "2.5.0"
+sqlite = "2.7.0"
 okio = "3.9.1"
 jna = "5.14.0"
 appcompat = "1.7.0"
