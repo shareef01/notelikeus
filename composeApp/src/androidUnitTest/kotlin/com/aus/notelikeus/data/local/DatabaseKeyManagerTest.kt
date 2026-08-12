@@ -35,6 +35,21 @@ class DatabaseKeyManagerTest {
     }
 
     @Test
+    fun `PassphraseFileCodec derives a fresh IV for every encryption`() {
+        val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+        val first = PassphraseFileCodec.encrypt(key, "abcd")
+        val second = PassphraseFileCodec.encrypt(key, "abcd")
+
+        // Same key, same plaintext, different payload. The IV now comes from the provider rather
+        // than the caller (AndroidKeyStore rejects a caller-supplied IV on encrypt), and this is
+        // what proves that change did not cost us randomized encryption.
+        assertFalse(first.contentEquals(second))
+        // Both must still round trip.
+        assertEquals("abcd", PassphraseFileCodec.decrypt(key, first))
+        assertEquals("abcd", PassphraseFileCodec.decrypt(key, second))
+    }
+
+    @Test
     fun `PassphraseFileCodec rejects tampered ciphertext`() {
         val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
         val payload = PassphraseFileCodec.encrypt(key, "abcd").clone()
