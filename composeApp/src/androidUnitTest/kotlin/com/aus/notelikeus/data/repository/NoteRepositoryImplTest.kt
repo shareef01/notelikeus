@@ -1,14 +1,18 @@
 package com.aus.notelikeus.data.repository
 
 import android.content.Context
-import androidx.room.withTransaction
 import com.aus.notelikeus.data.local.NotelikeusDatabase
 import com.aus.notelikeus.data.local.dao.LabelDao
 import com.aus.notelikeus.data.local.dao.NoteDao
-import com.aus.notelikeus.data.remote.ReminderScheduler
+import com.aus.notelikeus.domain.platform.ReminderManager
+import com.aus.notelikeus.domain.platform.PlatformWidgetManager
+import com.aus.notelikeus.domain.platform.SyncCoordinator
 import com.aus.notelikeus.domain.model.Note
-import com.aus.notelikeus.ui.widget.WidgetUpdater
+import kotlinx.coroutines.Dispatchers
 import io.mockk.*
+import androidx.room.Transactor
+import androidx.room.TransactionScope
+import androidx.room.useWriterConnection
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -20,33 +24,40 @@ class NoteRepositoryImplTest {
     private lateinit var database: NotelikeusDatabase
     private lateinit var noteDao: NoteDao
     private lateinit var labelDao: LabelDao
-    private lateinit var reminderScheduler: ReminderScheduler
-    private lateinit var context: Context
+    private lateinit var reminderManager: ReminderManager
+    private lateinit var widgetManager: PlatformWidgetManager
+    private lateinit var syncCoordinator: SyncCoordinator
 
     @Before
     fun setup() {
         database = mockk()
         noteDao = mockk(relaxed = true)
         labelDao = mockk(relaxed = true)
-        reminderScheduler = mockk(relaxed = true)
-        context = mockk(relaxed = true)
+        reminderManager = mockk(relaxed = true)
+        widgetManager = mockk(relaxed = true)
+        syncCoordinator = mockk(relaxed = true)
 
-        // Mock withTransaction to just execute the block
+        // Stand in for the real writer connection: hand the repository a Transactor whose
+        // immediateTransaction actually runs its block, so the production code path under test
+        // is the transactional one rather than a relaxed no-op.
+        // immediateTransaction is an inline extension over Transactor.withTransaction, so the
+        // interface method is what actually gets called and therefore what has to be stubbed.
+        val transactor = mockk<Transactor>()
+        coEvery { transactor.withTransaction<Any?>(any(), any()) } coAnswers {
+            val txBlock = it.invocation.args[1] as suspend TransactionScope<Any?>.() -> Any?
+            txBlock(mockk(relaxed = true))
+        }
         mockkStatic("androidx.room.RoomDatabaseKt")
-        coEvery { database.withTransaction<Any>(any()) } coAnswers {
-            val block = secondArg<suspend () -> Any>()
-            block()
+        coEvery { database.useWriterConnection<Any?>(any()) } coAnswers {
+            val block = it.invocation.args[1] as suspend (Transactor) -> Any?
+            block(transactor)
         }
 
-        // Widget refresh touches Glance/AppWidgetManager, which is not available in unit tests.
-        mockkObject(WidgetUpdater)
-        coEvery { WidgetUpdater.refresh(any()) } returns Unit
-
-        repository = NoteRepositoryImpl(database, noteDao, labelDao, reminderScheduler, context)
+        repository = NoteRepositoryImpl(database, noteDao, labelDao, reminderManager, widgetManager, syncCoordinator, Dispatchers.Unconfined)
     }
 
     @Test
-    fun `insertNoteWithResult inserts note and schedules reminder`() = runTest {
+    fun `insertNoteWithResult inserts note and schedules upload`() = runTest {
         val note = Note(title = "Test", content = "Content", timestamp = 0L, color = 0)
         coEvery { noteDao.insertNote(any()) } returns 1L
 
@@ -54,7 +65,19 @@ class NoteRepositoryImplTest {
 
         assertEquals(1L, result)
         coVerify { noteDao.insertNote(match { it.title == "Test" }) }
-        coVerify { reminderScheduler.cancelReminder(1L) } // No reminder timestamp, so should cancel
+        coVerify { syncCoordinator.scheduleUpload(1L) }
+    }
+
+    @Test
+    fun `restoreNote inserts note and schedules restore`() = runTest {
+        val note = Note(title = "Restored", content = "Content", timestamp = 0L, color = 0)
+        coEvery { noteDao.insertNote(any()) } returns 2L
+
+        val result = repository.restoreNote(note)
+
+        assertEquals(2L, result)
+        coVerify { noteDao.insertNote(match { it.title == "Restored" }) }
+        coVerify { syncCoordinator.scheduleRestore(2L) }
     }
 
     @Test
@@ -65,7 +88,7 @@ class NoteRepositoryImplTest {
         repository.updateNote(note)
 
         coVerify { noteDao.updateNote(match { it.id == 1L }) }
-        coVerify { reminderScheduler.scheduleReminder(1L, reminderTime) }
+        coVerify { reminderManager.scheduleReminder(1L, reminderTime) }
     }
 
     @Test
@@ -74,7 +97,7 @@ class NoteRepositoryImplTest {
 
         repository.deleteNote(note)
 
-        coVerify { reminderScheduler.cancelReminder(1L) }
+        coVerify { reminderManager.cancelReminder(1L) }
         coVerify { noteDao.deleteNote(any()) }
     }
 }

@@ -1,6 +1,5 @@
 package com.aus.notelikeus.data.backup
 
-import com.aus.notelikeus.data.remote.ReminderScheduler
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.repository.NoteRepository
 import io.mockk.coEvery
@@ -18,8 +17,7 @@ import org.robolectric.annotation.Config
 class NoteBackupImporterTest {
 
     private val repository = mockk<NoteRepository>()
-    private val reminderScheduler = mockk<ReminderScheduler>(relaxed = true)
-    private val importer = NoteBackupImporter(repository, reminderScheduler)
+    private val importer = NoteBackupImporter(repository)
 
     @Test
     fun `importFromJson creates labels and notes`() = runTest {
@@ -43,7 +41,7 @@ class NoteBackupImporterTest {
             }
         """.trimIndent()
 
-        val result = importer.importFromJson(json)
+        val result = importer.importFromJson(json) as BackupImportResult.Success
 
         assertEquals(1, result.notesImported)
         assertEquals(1, result.labelsCreated)
@@ -69,10 +67,56 @@ class NoteBackupImporterTest {
             }
         """.trimIndent()
 
-        val result = importer.importFromJson(json)
+        val result = importer.importFromJson(json) as BackupImportResult.Success
 
         assertEquals(1, result.notesImported)
         assertEquals(0, result.labelsCreated)
+        coVerify(exactly = 0) { repository.insertLabel(any()) }
+    }
+
+    @Test
+    fun `a note that trips a limit rejects the whole backup without writing anything`() = runTest {
+        coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
+        coEvery { repository.getNextNotePosition() } returns 0
+        coEvery { repository.insertLabel(any()) } returns 1L
+        coEvery { repository.insertNoteWithResult(any()) } returns 10L
+
+        // The first note is fine; the second exceeds MAX_NOTE_CHECKLIST. Validation runs over the
+        // whole payload first, so the good note must not be committed before the bad one is seen.
+        val overSizedChecklist = (0 until NoteBackupImporter.MAX_NOTE_CHECKLIST + 1)
+            .joinToString(",") { """{"text":"i$it","isChecked":false,"position":$it}""" }
+        val json = """
+            {
+              "version": 1,
+              "labels": [{"id": 1, "name": "Work"}],
+              "notes": [
+                {"title": "Good", "content": "", "timestamp": 1, "color": -1},
+                {"title": "Bad", "content": "", "timestamp": 2, "color": -1,
+                 "checklist": [$overSizedChecklist]}
+              ]
+            }
+        """.trimIndent()
+
+        val result = importer.importFromJson(json)
+
+        assert(result is BackupImportResult.InvalidFormat) { "expected InvalidFormat, got $result" }
+        coVerify(exactly = 0) { repository.insertNoteWithResult(any()) }
+        coVerify(exactly = 0) { repository.insertLabel(any()) }
+    }
+
+    @Test
+    fun `too many root labels is rejected`() = runTest {
+        coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
+        coEvery { repository.getNextNotePosition() } returns 0
+        coEvery { repository.insertLabel(any()) } returns 1L
+
+        val labels = (0 until NoteBackupImporter.MAX_BACKUP_LABELS + 1)
+            .joinToString(",") { """{"id":$it,"name":"l$it"}""" }
+        val json = """{"version": 1, "labels": [$labels], "notes": []}"""
+
+        val result = importer.importFromJson(json)
+
+        assert(result is BackupImportResult.InvalidFormat) { "expected InvalidFormat, got $result" }
         coVerify(exactly = 0) { repository.insertLabel(any()) }
     }
 }

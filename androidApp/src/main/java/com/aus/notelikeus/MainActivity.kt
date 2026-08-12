@@ -2,20 +2,24 @@ package com.aus.notelikeus
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.WindowManager
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.fragment.app.FragmentActivity
 import androidx.biometric.BiometricPrompt
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
+import com.aus.notelikeus.platform.ForegroundActivityTracker
+import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.ui.navigation.extractEditorNoteId
 import com.aus.notelikeus.ui.navigation.intentRequestsNewNote
+import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
+    private val googleSignInHelper: GoogleSignInHelper by inject()
     private var pendingNoteId by mutableStateOf<Long?>(null)
     private var pendingCreateNote by mutableStateOf(false)
     private var navigationRequest by mutableStateOf(0L)
@@ -27,14 +31,29 @@ class MainActivity : ComponentActivity() {
         pendingCreateNote = intentRequestsNewNote(intent)
         navigationRequest++
         enableEdgeToEdge()
+        // Credential Manager needs an Activity to host its sign-in sheet; the helper is a
+        // process-scoped singleton, so it looks the Activity up through this tracker.
+        ForegroundActivityTracker.register(this)
         
         setContent {
             val windowSizeClass = calculateWindowSizeClass(this)
-            
+            val scope = rememberCoroutineScope()
+
             App(
                 windowSizeClass = windowSizeClass,
                 onShowBiometricPrompt = { title, onSuccess, onError ->
                     showBiometricPrompt(title, onSuccess, onError)
+                },
+                onGoogleSignInClick = { viewModel ->
+                    // Credential Manager presents its own UI from a coroutine, so there is no
+                    // Intent to launch and no ActivityResult to parse.
+                    scope.launch {
+                        googleSignInHelper.requestIdToken()
+                            .onSuccess { idToken -> viewModel.signInWithGoogleIdToken(idToken) }
+                            .onFailure { error ->
+                                viewModel.reportGoogleSignInFailure(error)
+                            }
+                    }
                 },
                 pendingNoteId = pendingNoteId,
                 pendingCreateNote = pendingCreateNote,
@@ -49,6 +68,11 @@ class MainActivity : ComponentActivity() {
         pendingNoteId = extractEditorNoteId(intent)
         pendingCreateNote = intentRequestsNewNote(intent)
         navigationRequest++
+    }
+
+    override fun onDestroy() {
+        ForegroundActivityTracker.unregister(this)
+        super.onDestroy()
     }
 
     private fun showBiometricPrompt(
