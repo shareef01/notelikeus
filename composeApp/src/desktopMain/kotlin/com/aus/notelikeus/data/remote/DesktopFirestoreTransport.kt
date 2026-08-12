@@ -136,6 +136,16 @@ class DesktopFirestoreTransport(
         val resolved = mutableMapOf<Long, Long?>()
         for (chunk in withIds.chunked(COMMIT_LIMIT)) {
             val results = commit(chunk.map { (noteId, note) -> codec.noteWrite(uid, noteId, note) })
+            // Firestore returns one writeResult per write, in order. A zip would quietly truncate to
+            // the shorter list on a mismatch, leaving the tail without a serverUpdatedAt — those
+            // notes then look locally-newer and re-upload on every subsequent sync. Fail loudly
+            // instead so a protocol-level anomaly cannot hide as a silent re-upload loop.
+            if (results.size != chunk.size) {
+                throw FirestoreTransportException(
+                    200,
+                    "commit returned ${results.size} writeResults for ${chunk.size} writes"
+                )
+            }
             chunk.map { it.first }.zip(results).forEach { (noteId, writeResult) ->
                 resolved[noteId] = writeResult["updateTime"]?.jsonPrimitive?.content
                     ?.let { codec.parseTimestamp(it) }
