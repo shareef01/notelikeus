@@ -207,6 +207,43 @@ class NoteSyncEngineTest {
         assertTrue(2L !in transport.notes)
     }
 
+    @Test
+    fun `reconcileUploads refuses to push when a known cloud note fetches back missing`() = runTest {
+        setup()
+        stateStore.setLastMergedUserId("uid")
+        stateStore.markReconciled(100L)
+        // The last full download saw note 1 in the cloud...
+        stateStore.setKnownCloudIds(setOf(1L))
+        noteDao.insertNote(
+            Note(id = 1L, title = "Stale local copy", content = "", timestamp = 200L, color = 0).toNoteEntity()
+        )
+        // ...but the per-note fetch now answers "missing", with no tombstone to explain it.
+
+        val result = engine.reconcileUploads()
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is SuspectEmptyCloudException)
+        assertTrue(transport.notes.isEmpty(), "nothing may be pushed over a note that failed to fetch")
+    }
+
+    @Test
+    fun `reconcileUploads still pushes a note that was never in the cloud`() = runTest {
+        setup()
+        stateStore.setLastMergedUserId("uid")
+        stateStore.markReconciled(100L)
+        // Nothing known to be in the cloud, so a missing remote is simply a note that has not
+        // synced yet — the ordinary case, and it must not trip the guard above.
+        noteDao.insertNote(
+            Note(id = 1L, title = "Brand new", content = "", timestamp = 200L, color = 0).toNoteEntity()
+        )
+
+        val result = engine.reconcileUploads()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, result.getOrNull())
+        assertTrue(1L in transport.notes)
+    }
+
     // ---- uploadNote ----
 
     @Test
