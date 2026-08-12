@@ -52,6 +52,8 @@ fun NavGraph(
     navController: NavHostController,
     mainViewModel: MainViewModel,
     windowSizeClass: WindowSizeClass,
+    initialSidebarCollapsed: Boolean = false,
+    onSidebarCollapsedChange: (Boolean) -> Unit = {},
     isAppLockEnabled: Boolean = false,
     onRequestAppUnlock: (onSuccess: () -> Unit) -> Unit = {},
     onAppLockEnabled: () -> Unit = {},
@@ -69,6 +71,8 @@ fun NavGraph(
         ) {
             MainScreen(
                 viewModel = mainViewModel,
+                initialSidebarCollapsed = initialSidebarCollapsed,
+                onSidebarCollapsedChange = onSidebarCollapsedChange,
                 onNoteClick = { noteId ->
                     val initialColor =
                         if (noteId == null) mainViewModel.state.value.selectedColor else null
