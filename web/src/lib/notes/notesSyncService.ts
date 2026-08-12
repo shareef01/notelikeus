@@ -44,6 +44,14 @@ let lastSnapshotAppliedAt = 0;
 const RECONCILE_MIN_INTERVAL_MS = 30_000;
 const SNAPSHOT_FRESHNESS_WINDOW_MS = 15_000;
 
+/** Cloud note IDs known from the last successful sync — drives delete-on-absence detection. */
+let knownRemoteIds = new Set<string>();
+
+/** Replaces the known-remote-id set with the complete cloud ID set from the latest sync result. */
+function trackRemoteIds(ids: string[]) {
+  knownRemoteIds = new Set(ids);
+}
+
 /**
  * Safety net for the always-on write path in noteActions.ts. A save made while offline is
  * queued by Firestore's own offline persistence (lib/firebase.ts) and flushed unconditionally
@@ -67,14 +75,16 @@ async function reconcileNow(userId: string): Promise<void> {
   reconcileInFlight = (async () => {
     try {
       const localNotes = useNotesStore.getState().notes;
-      const { merged } = await syncNotesWithCloud(userId, localNotes);
+      const result = await syncNotesWithCloud(userId, localNotes, knownRemoteIds);
       // Signed out, or switched to a different account, while this was in flight — applying a
       // stale result now would repopulate a store that clearLocalUserData() already cleared.
       if (reconcileUserId !== userId) return;
+      trackRemoteIds(result.remoteIds);
       const isDeleted = useTombstoneStore.getState().isDeleted;
-      applyNotes(merged.filter((note) => !isDeleted(note.id)));
+      applyNotes(result.merged.filter((note) => !isDeleted(note.id)));
     } catch (error) {
       if (reconcileUserId !== userId) return;
+      lastReconcileStartedAt = 0; // allow immediate retry on the next trigger
       useNotesStore.getState().setError(
         error instanceof Error ? error.message : 'Reconcile failed',
       );
@@ -135,6 +145,25 @@ export function startNotesRealtimeSync(userId: string): void {
     (remoteNotes) => {
       const { live, staleIds } = partitionTombstoned(remoteNotes);
       purgeStaleCloudDocs(userId, staleIds);
+
+      // Detect notes deleted on another device: any ID we previously knew about that is absent
+      // from the current snapshot (and not already tombstoned) was deleted elsewhere.
+      // Guard against an empty snapshot from a transient condition — a legitimate empty set
+      // after a known-populated set would mass-delete everything. The id set is only updated
+      // inside the guard: an unexplained empty snapshot is not evidence of anything, and
+      // clearing the set here would leave the *next* snapshot with nothing to compare against,
+      // so notes deleted elsewhere would go undetected for the rest of the session.
+      if (remoteNotes.length > 0 || knownRemoteIds.size === 0) {
+        const currentIds = new Set(remoteNotes.map((note) => note.id));
+        const isDeleted = useTombstoneStore.getState().isDeleted;
+        for (const id of knownRemoteIds) {
+          if (!currentIds.has(id) && !isDeleted(id)) {
+            useTombstoneStore.getState().markDeleted(id);
+          }
+        }
+        trackRemoteIds(remoteNotes.map((note) => note.id));
+      }
+
       lastSnapshotAppliedAt = Date.now();
       applyNotes(live);
     },
@@ -150,5 +179,6 @@ export function stopNotesRealtimeSync(): void {
   realtimeUserId = null;
   lastReconcileStartedAt = 0;
   lastSnapshotAppliedAt = 0;
+  knownRemoteIds = new Set();
   detachReconciliationTriggers();
 }
