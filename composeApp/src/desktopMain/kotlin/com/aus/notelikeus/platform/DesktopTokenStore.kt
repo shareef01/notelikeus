@@ -48,11 +48,15 @@ class DesktopTokenStore(
         .build()
     private val refreshMutex = Mutex()
 
-    private var cachedIdToken: String? = null
-    private var cachedRefreshToken: String? = null
-    private var cachedExpiresAt: Long = 0L
-    private var cachedUid: String? = null
-    private var cachedEmail: String? = null
+    // Written under refreshMutex but read outside it — validIdToken() checks the token and expiry
+    // before taking the lock, and hasSession()/uid()/email() never take it at all. @Volatile is what
+    // makes those reads see the last write; without it a stale read can hand out an already-expired
+    // token or report a signed-out user as still signed in.
+    @Volatile private var cachedIdToken: String? = null
+    @Volatile private var cachedRefreshToken: String? = null
+    @Volatile private var cachedExpiresAt: Long = 0L
+    @Volatile private var cachedUid: String? = null
+    @Volatile private var cachedEmail: String? = null
 
     init {
         dataDir.mkdirs()
@@ -136,7 +140,14 @@ class DesktopTokenStore(
             return@withLock null
         }
 
-        val payload = json.decodeFromString<JsonObject>(response.body())
+        // A 2xx is not a guarantee of JSON: a captive portal or intercepting proxy answers 200 with
+        // HTML. Treat an unreadable body like the network faults above — keep the session and let a
+        // later sync retry — rather than throwing out of validIdToken() into the sync engine.
+        val payload = try {
+            json.decodeFromString<JsonObject>(response.body())
+        } catch (_: Exception) {
+            return@withLock null
+        }
         val newIdToken = payload["id_token"]?.jsonPrimitive?.content ?: return@withLock null
         save(newIdToken, payload["refresh_token"]?.jsonPrimitive?.content)
         newIdToken
@@ -150,7 +161,7 @@ class DesktopTokenStore(
             put("refreshToken", cachedRefreshToken)
         }
         try {
-            tokenFile.writeBytes(dpapiProtect(payload.toString().encodeToByteArray()))
+            tokenFile.writeBytes(dpapiProtect(payload.toString().encodeToByteArray(), SESSION_ENTROPY))
         } catch (_: Exception) {
             // Session persistence is best-effort; the in-memory session still works this run.
         }
@@ -158,11 +169,21 @@ class DesktopTokenStore(
 
     private fun load() {
         if (!tokenFile.exists()) return
+        val raw = tokenFile.readBytes()
+
+        // Sessions written before this app-specific entropy was introduced were protected without
+        // it, and DPAPI will not open them with it. Read those once through the legacy path and
+        // re-persist below, so an upgrade does not silently sign the user out.
+        var wasLegacyBlob = false
         val decrypted = try {
-            String(dpapiUnprotect(tokenFile.readBytes()))
+            String(dpapiUnprotect(raw, SESSION_ENTROPY))
         } catch (_: Exception) {
-            tokenFile.delete()
-            return
+            try {
+                String(dpapiUnprotect(raw, null)).also { wasLegacyBlob = true }
+            } catch (_: Exception) {
+                tokenFile.delete()
+                return
+            }
         }
 
         val parsed = try {
@@ -172,12 +193,14 @@ class DesktopTokenStore(
             // expires; with no refresh token the user simply signs in again after that.
             cachedIdToken = decrypted
             decodeJwt(decrypted)
+            if (wasLegacyBlob) persist()
             return
         }
 
         cachedIdToken = parsed.stringOrNull("idToken")
         cachedRefreshToken = parsed.stringOrNull("refreshToken")
         cachedIdToken?.let { decodeJwt(it) }
+        if (wasLegacyBlob) persist()
     }
 
     /** `jsonPrimitive.content` on a JSON null yields the string "null", so filter it out first. */
@@ -209,25 +232,33 @@ class DesktopTokenStore(
 
 // ---- DPAPI via JNA ----
 
-private fun dpapiProtect(data: ByteArray): ByteArray {
-    val inData = makeDataBlob(data)
+/**
+ * Secondary entropy mixed into the session blob.
+ *
+ * DPAPI at user scope alone means any process running as the same Windows user can decrypt
+ * `.session` simply by calling CryptUnprotectData on it. Requiring this constant as well means a
+ * caller has to know it, which is a low bar but a higher one than none.
+ */
+private val SESSION_ENTROPY: ByteArray = "com.aus.notelikeus/session/v1".encodeToByteArray()
+
+private fun dpapiProtect(data: ByteArray, entropy: ByteArray?): ByteArray {
     val outData = DataBlob()
     val result = Crypt32.INSTANCE.CryptProtectData(
-        inData, WString("Notelikeus session"),
-        null, null, null, 1, outData
+        makeDataBlob(data), WString("Notelikeus session"),
+        entropy?.let { makeDataBlob(it) }, null, null, 1, outData
     )
     if (result == 0) throw RuntimeException("CryptProtectData failed: ${Kernel32.INSTANCE.GetLastError()}")
-    return readDataBlob(outData)
+    return readAndFreeDataBlob(outData)
 }
 
-private fun dpapiUnprotect(data: ByteArray): ByteArray {
-    val inData = makeDataBlob(data)
+private fun dpapiUnprotect(data: ByteArray, entropy: ByteArray?): ByteArray {
     val outData = DataBlob()
     val result = Crypt32.INSTANCE.CryptUnprotectData(
-        inData, null, null, null, null, 1, outData
+        makeDataBlob(data), null,
+        entropy?.let { makeDataBlob(it) }, null, null, 1, outData
     )
     if (result == 0) throw RuntimeException("CryptUnprotectData failed: ${Kernel32.INSTANCE.GetLastError()}")
-    return readDataBlob(outData)
+    return readAndFreeDataBlob(outData)
 }
 
 private fun makeDataBlob(data: ByteArray): DataBlob {
@@ -239,11 +270,21 @@ private fun makeDataBlob(data: ByteArray): DataBlob {
     return blob
 }
 
-private fun readDataBlob(blob: DataBlob): ByteArray {
-    if (blob.cbData == 0 || blob.pbData == null) return ByteArray(0)
-    val out = ByteArray(blob.cbData)
-    blob.pbData!!.read(0, out, 0, blob.cbData)
-    return out
+/**
+ * Copies the blob out and releases it.
+ *
+ * DPAPI allocates the output buffer with LocalAlloc and hands ownership to the caller, so skipping
+ * LocalFree leaks a native allocation on every protect and unprotect.
+ */
+private fun readAndFreeDataBlob(blob: DataBlob): ByteArray {
+    val pointer = blob.pbData ?: return ByteArray(0)
+    return try {
+        if (blob.cbData == 0) ByteArray(0) else ByteArray(blob.cbData).also {
+            pointer.read(0, it, 0, blob.cbData)
+        }
+    } finally {
+        Kernel32.INSTANCE.LocalFree(pointer)
+    }
 }
 
 @Structure.FieldOrder("cbData", "pbData")
