@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
@@ -28,6 +29,7 @@ import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaf
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -163,6 +165,7 @@ fun MainScreen(
     }
 
     val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
+    var isSidebarCollapsed by rememberSaveable { mutableStateOf(false) }
     val navigator = rememberListDetailPaneScaffoldNavigator<Long?>()
 
     val drawerInner = @Composable {
@@ -334,6 +337,128 @@ fun MainScreen(
         }
     }
 
+    /**
+     * The two-pane content for expanded windows. Both the collapsed-rail and the permanent-drawer
+     * layouts show exactly this; only the surrounding chrome differs, so they share one definition
+     * rather than two copies that drift. The caller supplies the modifier because the rail places
+     * it in a [Row] (needing `weight`) while the drawer does not.
+     */
+    val expandedPanes: @Composable (Modifier) -> Unit = { paneModifier ->
+        Surface(color = MaterialTheme.colorScheme.background, modifier = paneModifier) {
+            ListDetailPaneScaffold(
+                directive = navigator.scaffoldDirective,
+                value = navigator.scaffoldValue,
+                listPane = {
+                    AnimatedPane {
+                        MainScaffold(
+                            state = state,
+                            viewModel = viewModel,
+                            onNoteClick = { noteId ->
+                                scope.launch {
+                                    navigator.navigateTo(
+                                        ListDetailPaneScaffoldRole.Detail,
+                                        noteId ?: NewNoteContentKey
+                                    )
+                                }
+                            },
+                            gridState = gridState,
+                            snackbarHostState = snackbarHostState,
+                            showProfileSheet = showProfileSheet,
+                            onShowProfileSheet = { showProfileSheet = it },
+                            onShowDeleteConfirm = { showDeleteConfirm = it },
+                            onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
+                            onShowDrawer = { scope.launch { drawerState.open() } },
+                            listScrolled = listScrolled,
+                            haptic = haptic,
+                            scope = scope,
+                            showUndoSnackbar = { scope.launch { showUndoSnackbar(it) } },
+                            searchFocusRequester = searchFocusRequester,
+                            isExpanded = isExpanded
+                        )
+                    }
+                },
+                detailPane = {
+                    AnimatedPane {
+                        val destination = navigator.currentDestination
+                        if (destination != null && destination.contentKey != null) {
+                            val contentKey = destination.contentKey
+                            // Unwrap the sentinel: the editor takes null to mean "compose a new note".
+                            val noteId = contentKey?.takeIf { it != NewNoteContentKey }
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                key(contentKey) {
+                                    val editorViewModel: EditorViewModel = koinViewModel()
+                                    LaunchedEffect(noteId) {
+                                        editorViewModel.setNoteId(noteId)
+                                    }
+                                    EditorScreen(
+                                        viewModel = editorViewModel,
+                                        onBack = {
+                                            scope.launch { navigator.navigateBack() }
+                                        },
+                                        onStageUndo = { note, action, message ->
+                                            viewModel.stageEditorUndo(note, action, message)
+                                        },
+                                        isExpanded = true
+                                    )
+                                }
+                                // Natural separation: subtle left-side gradient into the list pane.
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .width(24.dp)
+                                        .align(Alignment.CenterStart)
+                                        .background(
+                                            androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                                colors = listOf(
+                                                    Color.Black.copy(alpha = 0.05f),
+                                                    Color.Transparent
+                                                )
+                                            )
+                                        )
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier.fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(horizontal = 40.dp)
+                                ) {
+                                    BrandMarkIcon(
+                                        size = 80.dp,
+                                        backgroundColor = MaterialTheme.colorScheme.onSurface,
+                                        stripeColor = MaterialTheme.colorScheme.surface,
+                                        modifier = Modifier.alpha(0.08f)
+                                    )
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    Text(
+                                        text = stringResource(Res.string.select_note_to_view),
+                                        style = MaterialTheme.typography.titleLarge.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            letterSpacing = (-0.5).sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = stringResource(Res.string.select_note_to_view_subtitle),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            )
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -362,136 +487,67 @@ fun MainScreen(
             }
     ) {
         if (isExpanded) {
-            PermanentNavigationDrawer(
-                drawerContent = { 
-                    PermanentDrawerSheet(
-                        drawerContainerColor = MaterialTheme.colorScheme.surface,
-                        drawerTonalElevation = 0.dp,
-                        modifier = Modifier.width(260.dp)
-                    ) {
-                        drawerInner()
-                    }
+            if (isSidebarCollapsed) {
+                // Collapsed rail layout — matches web app's icon-only sidebar
+                Row(modifier = Modifier.fillMaxSize()) {
+                    CollapsedRailColumn(
+                        currentFilter = state.currentFilter,
+                        totalNoteCount = state.totalNoteCount,
+                        archivedNoteCount = state.archivedNoteCount,
+                        trashedNoteCount = state.trashedNoteCount,
+                        cloudEmail = state.cloudAccount.email,
+                        isCloudAccount = state.cloudAccount.isGoogleAccount,
+                        showProfileSheet = showProfileSheet,
+                        onFilterSelect = { viewModel.setFilter(it) },
+                        onEditLabels = onEditLabels,
+                        onSettingsClick = { showProfileSheet = true },
+                        onExpand = { isSidebarCollapsed = false }
+                    )
+                    // Trailing edge only, matching the expanded drawer's single right border.
+                    VerticalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
+                    )
+                    expandedPanes(Modifier.weight(1f).fillMaxHeight())
                 }
-            ) {
-                Surface(color = MaterialTheme.colorScheme.background) {
-                    ListDetailPaneScaffold(
-                        directive = navigator.scaffoldDirective,
-                        value = navigator.scaffoldValue,
-                        listPane = {
-                            AnimatedPane {
-                                MainScaffold(
-                                    state = state,
-                                    viewModel = viewModel,
-                                    onNoteClick = { noteId ->
-                                        scope.launch {
-                                            // A new note arrives as null, which is also the
-                                            // scaffold's "nothing selected" key — passing it
-                                            // straight through sent the detail pane to its empty
-                                            // placeholder, so the + button appeared to do nothing.
-                                            navigator.navigateTo(
-                                                ListDetailPaneScaffoldRole.Detail,
-                                                noteId ?: NewNoteContentKey
-                                            )
-                                        }
-                                    },
-                                    gridState = gridState,
-                                    snackbarHostState = snackbarHostState,
-                                    showProfileSheet = showProfileSheet,
-                                    onShowProfileSheet = { showProfileSheet = it },
-                                    onShowDeleteConfirm = { showDeleteConfirm = it },
-                                    onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
-                                    onShowDrawer = { scope.launch { drawerState.open() } },
-                                    listScrolled = listScrolled,
-                                    haptic = haptic,
-                                    scope = scope,
-                                    showUndoSnackbar = { scope.launch { showUndoSnackbar(it) } },
-                                searchFocusRequester = searchFocusRequester,
-                                isExpanded = isExpanded
+            } else {
+                PermanentNavigationDrawer(
+                    drawerContent = {
+                        PermanentDrawerSheet(
+                            drawerContainerColor = MaterialTheme.colorScheme.surface,
+                            drawerTonalElevation = 0.dp,
+                            modifier = Modifier.width(260.dp)
+                        ) {
+                            drawerInner()
+                            // Collapse toggle — matches web app
+                            Spacer(modifier = Modifier.height(4.dp))
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
                             )
-                            }
-                        },
-                        detailPane = {
-                            AnimatedPane {
-                                val destination = navigator.currentDestination
-                                if (destination != null && destination.contentKey != null) {
-                                    val contentKey = destination.contentKey
-                                    // Unwrap the sentinel: the editor takes null to mean "compose
-                                    // a new note".
-                                    val noteId = contentKey?.takeIf { it != NewNoteContentKey }
-                                    Box(modifier = Modifier.fillMaxSize()) {
-                                        key(contentKey) {
-                                            val editorViewModel: EditorViewModel = koinViewModel()
-                                            LaunchedEffect(noteId) {
-                                                editorViewModel.setNoteId(noteId)
-                                            }
-                                            EditorScreen(
-                                                viewModel = editorViewModel,
-                                                onBack = {
-                                                    scope.launch {
-                                                        navigator.navigateBack()
-                                                    }
-                                                },
-                                                onStageUndo = { note, action, message ->
-                                                    viewModel.stageEditorUndo(note, action, message)
-                                                },
-                                                isExpanded = true
-                                            )
-                                        }
-
-                                        // Natural separation: subtle left-side inner shadow and gradient
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxHeight()
-                                                .width(24.dp) // Wider for a smoother fade
-                                                .align(Alignment.CenterStart)
-                                                .background(
-                                                    androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                                        colors = listOf(
-                                                            Color.Black.copy(alpha = 0.05f),
-                                                            Color.Transparent
-                                                        )
-                                                    )
-                                                )
-                                        )
-                                    }
-                                } else {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier.padding(horizontal = 40.dp)
-                                        ) {
-                                            BrandMarkIcon(
-                                                size = 80.dp,
-                                                backgroundColor = MaterialTheme.colorScheme.onSurface,
-                                                stripeColor = MaterialTheme.colorScheme.surface,
-                                                modifier = Modifier.alpha(0.08f)
-                                            )
-                                            Spacer(modifier = Modifier.height(24.dp))
-                                            Text(
-                                                text = stringResource(Res.string.select_note_to_view),
-                                                style = MaterialTheme.typography.titleLarge.copy(
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    letterSpacing = (-0.5).sp
-                                                ),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                                textAlign = TextAlign.Center
-                                            )
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Text(
-                                                text = stringResource(Res.string.select_note_to_view_subtitle),
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                                                textAlign = TextAlign.Center
-                                            )
-                                        }
-                                    }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                IconButton(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                        isSidebarCollapsed = true
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ChevronRight,
+                                        contentDescription = "Collapse sidebar",
+                                        modifier = Modifier.size(15.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                                    )
                                 }
                             }
                         }
-                    )
+                    }
+                ) {
+                    expandedPanes(Modifier)
                 }
             }
         } else {
@@ -1030,6 +1086,224 @@ private fun MainScaffold(
                         end = 14.dp,
                         bottom = gridBottomPadding
                     )
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Narrow icon-only rail matching the web app's collapsed sidebar design.
+ * 56dp wide with pill-shaped nav buttons, active dot indicators, and an expand toggle.
+ */
+@Composable
+private fun CollapsedRailColumn(
+    currentFilter: NoteFilter,
+    totalNoteCount: Int,
+    archivedNoteCount: Int,
+    trashedNoteCount: Int,
+    cloudEmail: String?,
+    isCloudAccount: Boolean,
+    showProfileSheet: Boolean,
+    onFilterSelect: (NoteFilter) -> Unit,
+    onEditLabels: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onExpand: () -> Unit
+) {
+    val haptic = LocalHapticFeedback.current
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(56.dp)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.statusBarsPadding())
+        Spacer(modifier = Modifier.height(24.dp))
+
+        BrandMarkIcon(
+            size = 28.dp,
+            backgroundColor = MaterialTheme.colorScheme.onSurface,
+            stripeColor = MaterialTheme.colorScheme.surface
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        CollapsedRailItem(
+            icon = Icons.Filled.Lightbulb,
+            selected = currentFilter == NoteFilter.ACTIVE,
+            label = "Notes",
+            count = totalNoteCount,
+            accentColor = Sky,
+            onClick = { onFilterSelect(NoteFilter.ACTIVE) }
+        )
+        CollapsedRailItem(
+            icon = Icons.Filled.Archive,
+            selected = currentFilter == NoteFilter.ARCHIVED,
+            label = "Archive",
+            count = archivedNoteCount,
+            accentColor = Amber,
+            onClick = { onFilterSelect(NoteFilter.ARCHIVED) }
+        )
+        CollapsedRailItem(
+            icon = Icons.Filled.Delete,
+            selected = currentFilter == NoteFilter.TRASHED,
+            label = "Trash",
+            count = trashedNoteCount,
+            accentColor = Rose,
+            onClick = { onFilterSelect(NoteFilter.TRASHED) }
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .width(20.dp)
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f))
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        CollapsedRailItem(
+            icon = Icons.AutoMirrored.Filled.Label,
+            selected = false,
+            label = "Edit labels",
+            accentColor = Violet,
+            onClick = onEditLabels
+        )
+        CollapsedRailItem(
+            icon = Icons.Filled.Settings,
+            selected = showProfileSheet,
+            label = "Settings",
+            accentColor = Teal,
+            onClick = onSettingsClick
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        if (isCloudAccount && !cloudEmail.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = cloudEmail.first().uppercase(),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 10.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onExpand()
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = "Expand sidebar",
+                modifier = Modifier.size(15.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp).navigationBarsPadding())
+    }
+}
+
+/**
+ * Single icon-button in the collapsed rail. Shows a coloured dot when active and a
+ * count badge overlay when there are items.
+ */
+@Composable
+private fun CollapsedRailItem(
+    icon: ImageVector,
+    selected: Boolean,
+    label: String,
+    onClick: () -> Unit,
+    count: Int = 0,
+    accentColor: Color = MaterialTheme.colorScheme.primary
+) {
+    val haptic = LocalHapticFeedback.current
+    val bgColor by animateColorAsState(
+        targetValue = if (selected) accentColor.copy(alpha = 0.14f) else Color.Transparent,
+        label = "rail_bg"
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (selected) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
+        label = "rail_icon"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(bgColor)
+            .then(
+                if (selected) {
+                    Modifier.border(
+                        width = 1.dp,
+                        color = accentColor.copy(alpha = 0.08f),
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                } else Modifier
+            )
+            .clickable {
+                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                onClick()
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            modifier = Modifier.size(20.dp),
+            tint = iconTint
+        )
+
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 8.dp, top = 8.dp)
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(accentColor)
+                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+            )
+        }
+
+        if (count > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 2.dp, y = (-2).dp)
+                    .height(18.dp)
+                    .widthIn(min = 18.dp)
+                    .clip(CircleShape)
+                    .background(accentColor.copy(alpha = 0.25f))
+                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                    .padding(horizontal = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp
+                    ),
+                    color = accentColor
                 )
             }
         }

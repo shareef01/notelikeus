@@ -15,6 +15,7 @@ export type EditorRoute =
 
 interface UiState {
   drawerOpen: boolean;
+  sidebarCollapsed: boolean;
   viewColumns: ViewColumns;
   listScrolled: boolean;
   editorRoute: EditorRoute;
@@ -25,6 +26,8 @@ interface UiState {
   recentSearches: string[];
   setDrawerOpen: (open: boolean) => void;
   toggleDrawer: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebarCollapsed: () => void;
   setViewColumns: (columns: ViewColumns) => void;
   cycleViewColumns: () => void;
   setListScrolled: (scrolled: boolean) => void;
@@ -46,6 +49,7 @@ export const useUiStore = create<UiState>()(
   persist(
     (set, get) => ({
       drawerOpen: false,
+      sidebarCollapsed: false,
       viewColumns: 2,
       listScrolled: false,
       editorRoute: { mode: 'closed' },
@@ -57,6 +61,9 @@ export const useUiStore = create<UiState>()(
       setDrawerOpen: (drawerOpen) =>
         set((state) => (state.drawerOpen === drawerOpen ? state : { drawerOpen })),
       toggleDrawer: () => set({ drawerOpen: !get().drawerOpen }),
+      setSidebarCollapsed: (sidebarCollapsed) =>
+        set((state) => (state.sidebarCollapsed === sidebarCollapsed ? state : { sidebarCollapsed })),
+      toggleSidebarCollapsed: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),
       setViewColumns: (viewColumns) =>
         set((state) => (state.viewColumns === viewColumns ? state : { viewColumns })),
       cycleViewColumns: () => {
@@ -105,6 +112,7 @@ export const useUiStore = create<UiState>()(
     {
       name: 'notelikeus-ui',
       partialize: (state) => ({
+        sidebarCollapsed: state.sidebarCollapsed,
         viewColumns: state.viewColumns,
         recentSearches: state.recentSearches,
         editorLayout: state.editorLayout,
