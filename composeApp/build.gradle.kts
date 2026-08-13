@@ -180,6 +180,15 @@ android {
     buildFeatures {
         buildConfig = true
     }
+
+    testOptions {
+        unitTests {
+            // Robolectric otherwise runs against a stub manifest, so Firebase's component discovery
+            // finds no registrars and FirebaseFirestore.getInstance() fails with "Firestore
+            // component is not present" — which is what FirestoreNoteTransportEmulatorTest needs.
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 compose.desktop {
