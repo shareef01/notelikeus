@@ -85,7 +85,7 @@ Current screenshots from the app are shown below.
 | Cloud | Firebase Auth + Firestore | Firebase Auth + Firestore |
 | DI / tooling | Koin, Coroutines, Flow | Vite, Vitest |
 | Widget | Glance (Android only) | — |
-| Tests | JUnit, Turbine, MockK, Compose UI tests | Vitest, Playwright smoke |
+| Tests | JUnit, Turbine, MockK, Compose UI tests | Vitest |
 
 ## Requirements
 
