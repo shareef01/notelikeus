@@ -2,9 +2,9 @@ name: Firebase CI
 
 on:
   push:
-    branches: [main, master, weiter]
+    branches: [main, master]
   pull_request:
-    branches: [main, master, weiter]
+    branches: [main, master]
 
 permissions:
   contents: read

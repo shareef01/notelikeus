@@ -54,7 +54,7 @@ class EditorViewModel(
     private var autosaveJob: Job? = null
     private val saveMutex = Mutex()
     private var noteId: Long? = savedStateHandle.get<Long>("noteId")?.takeIf { it != -1L }
-    private val routedInitialColor: Int? =
+    private var routedInitialColor: Int? =
         savedStateHandle.get<Int>("initialColor")?.takeIf { it != Int.MIN_VALUE }
     private var hasAppliedInitialColor = false
 
@@ -62,9 +62,19 @@ class EditorViewModel(
         loadNote()
     }
 
-    fun setNoteId(id: Long?) {
-        if (noteId == id) return
+    fun setNoteId(id: Long?) = setRouteArgs(id, routedInitialColor)
+
+    /**
+     * Applies the route's arguments.
+     *
+     * Compose Navigation does not populate [SavedStateHandle] on desktop, so NavGraph parses the
+     * arguments itself and pushes them in here. Colour was previously read from the handle only,
+     * which meant the colour picked before creating a note was silently dropped on desktop.
+     */
+    fun setRouteArgs(id: Long?, initialColor: Int?) {
+        if (noteId == id && routedInitialColor == initialColor) return
         noteId = id
+        routedInitialColor = initialColor
         loadNote()
     }
 

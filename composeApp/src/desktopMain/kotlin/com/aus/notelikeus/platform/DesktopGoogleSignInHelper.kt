@@ -151,7 +151,9 @@ class DesktopGoogleSignInHelper(
                         val message = when {
                             !stateMatches -> "Sign-in failed: the response did not match this request."
                             code != null -> "Signed in — you can close this window."
-                            else -> "Sign-in failed: ${error ?: "no authorisation code received"}"
+                            // `error` comes from the browser's query string; escape it so a
+                            // same-machine attacker cannot inject HTML/script into this page.
+                            else -> "Sign-in failed: ${escapeHtml(error ?: "no authorisation code received")}"
                         }
                         val responseBytes =
                             "<html><body><h3>$message</h3></body></html>".toByteArray()
@@ -205,6 +207,19 @@ class DesktopGoogleSignInHelper(
             key to value
         }.toMap()
     }
+
+    /**
+     * Escapes a string for safe interpolation into the loopback result page's HTML.
+     *
+     * The `error` query parameter arrives from the browser and is attacker-influenced, so it
+     * must not be able to inject markup or script into the page we serve back.
+     */
+    private fun escapeHtml(value: String): String = value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;")
 
     private fun buildOAuthUrl(
         redirectUri: String,
