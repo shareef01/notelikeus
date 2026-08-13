@@ -1,27 +1,26 @@
 package com.aus.notelikeus.appfunctions
 
-import androidx.appfunctions.service.AppFunction
 import androidx.appfunctions.AppFunctionContext
+import androidx.appfunctions.service.AppFunction
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
-import com.aus.notelikeus.data.remote.ReminderScheduler
+import com.aus.notelikeus.domain.platform.ReminderManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import javax.inject.Inject
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 
 /**
  * Exposes note management capabilities to system agents.
  */
-class NoteAppFunctions @Inject constructor(
-    private val repository: NoteRepository,
-    private val reminderScheduler: ReminderScheduler
-) {
+class NoteAppFunctions : KoinComponent {
+    private val repository: NoteRepository by inject()
+    private val reminderManager: ReminderManager by inject()
 
     /**
      * Create a new note with a title and content.
      *
-     * @param context The execution context.
      * @param title The title for the new note.
      * @param content The body text of the note.
      * @return The newly created [AppFunctionNote] including its system-assigned ID.
@@ -103,7 +102,7 @@ class NoteAppFunctions @Inject constructor(
         val note = repository.getNoteById(noteId) ?: return@withContext null
         val updatedNote = note.copy(reminderTimestamp = timestamp)
         repository.updateNote(updatedNote)
-        reminderScheduler.scheduleReminder(noteId, timestamp)
+        reminderManager.scheduleReminder(noteId, timestamp)
         updatedNote.toAppFunctionNote()
     }
 
