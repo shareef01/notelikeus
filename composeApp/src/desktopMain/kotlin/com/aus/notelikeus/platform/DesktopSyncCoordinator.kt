@@ -3,6 +3,7 @@ package com.aus.notelikeus.platform
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.di.PendingSyncStore
 import com.aus.notelikeus.domain.platform.SyncCoordinator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,8 +36,12 @@ class DesktopSyncCoordinator(
     private val pendingRestores = ConcurrentHashMap.newKeySet<Long>()
 
     private val flushMutex = Mutex()
-    private var flushJob: Job? = null
-    private var consecutiveFailures = 0
+
+    // Both are written from the flush coroutine and read/written from whatever thread calls
+    // scheduleUpload/Delete/Restore, so neither read is safe without @Volatile: a stale flushJob
+    // leaks a coroutine instead of replacing it, and a stale failure count picks the wrong backoff.
+    @Volatile private var flushJob: Job? = null
+    @Volatile private var consecutiveFailures = 0
 
     /** Completed once [init] has restored the pending-state snapshot from disk. */
     private val initLatch = CompletableDeferred<Unit>()
@@ -68,9 +73,13 @@ class DesktopSyncCoordinator(
             if (queue !== target) queue.remove(noteId)
         }
         target.add(noteId)
-        consecutiveFailures = 0
         persist()
-        scheduleFlush()
+        // While backing off, leave the pending retry where it is. Resetting the counter and
+        // rescheduling at the 2s debounce here meant that a user editing notes offline — every
+        // save lands in this method — retried every two seconds forever, which is precisely the
+        // hammering the backoff exists to prevent. The id just added is picked up by the retry
+        // that is already scheduled; only a successful flush clears the counter.
+        if (consecutiveFailures == 0) scheduleFlush()
     }
 
     override fun clearPending() {
@@ -106,31 +115,19 @@ class DesktopSyncCoordinator(
      * attempt picks them up. Serialized so a retry cannot overlap the flush that scheduled it.
      */
     private suspend fun flush() = flushMutex.withLock {
-        val uploads = drain(pendingUploads)
-        val deletes = drain(pendingDeletes)
-        val restores = drain(pendingRestores)
         var anyFailed = false
-
-        for (noteId in deletes) {
-            if (syncEngine.deleteNote(noteId).isFailure) {
-                pendingDeletes.add(noteId)
-                anyFailed = true
-            }
+        try {
+            // Each queue is drained inside runQueue, immediately before its own work, rather than
+            // all three up front — so there is never a window where restores and uploads sit
+            // drained but unattempted while the deletes are still running.
+            if (runQueue(pendingDeletes) { syncEngine.deleteNote(it) }) anyFailed = true
+            if (runQueue(pendingRestores) { syncEngine.restoreNote(it) }) anyFailed = true
+            if (runQueue(pendingUploads) { syncEngine.uploadNote(it) }) anyFailed = true
+        } finally {
+            // Reached on cancellation too. persist() hands the write to `scope`, which outlives
+            // this job, so the restored queues still reach disk.
+            persist()
         }
-        for (noteId in restores) {
-            if (syncEngine.restoreNote(noteId).isFailure) {
-                pendingRestores.add(noteId)
-                anyFailed = true
-            }
-        }
-        for (noteId in uploads) {
-            if (syncEngine.uploadNote(noteId).isFailure) {
-                pendingUploads.add(noteId)
-                anyFailed = true
-            }
-        }
-
-        persist()
 
         if (anyFailed) {
             consecutiveFailures++
@@ -138,6 +135,44 @@ class DesktopSyncCoordinator(
         } else {
             consecutiveFailures = 0
         }
+    }
+
+    /**
+     * Drains [queue] and runs [operation] over it, putting anything that did not succeed back.
+     * Returns true if at least one operation failed *for a reason worth backing off over*.
+     *
+     * That distinction is the point. [scheduleFlush] cancels the running flush job, so an edit
+     * landing mid-sync cancels whatever is in flight — and [NoteSyncEngine] wraps every operation
+     * in `runCatching`, which swallows `CancellationException` along with everything else. The
+     * cancelled operations therefore come back as ordinary failed Results, indistinguishable from
+     * a real cloud error. Counting them as one meant a user who simply kept typing pushed the
+     * coordinator into its 30-second backoff, delaying the very edit they had just made. The work
+     * is re-queued either way; only the backoff decision changes.
+     *
+     * The `finally` covers the other direction — a cancellation that propagates out rather than
+     * being absorbed — so the drained-but-unattempted tail goes back on the queue instead of being
+     * lost.
+     */
+    private suspend fun runQueue(
+        queue: MutableSet<Long>,
+        operation: suspend (Long) -> Result<Unit>
+    ): Boolean {
+        val ids = drain(queue)
+        var failed = false
+        var index = 0
+        try {
+            while (index < ids.size) {
+                val error = operation(ids[index]).exceptionOrNull()
+                if (error != null) {
+                    queue.add(ids[index])
+                    if (error !is CancellationException) failed = true
+                }
+                index++
+            }
+        } finally {
+            if (index < ids.size) queue.addAll(ids.subList(index, ids.size))
+        }
+        return failed
     }
 
     private fun drain(queue: MutableSet<Long>): List<Long> {
