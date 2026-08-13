@@ -13,4 +13,11 @@ expect object AppConfig {
 
     /** True only where cloud sign-in and Firestore sync are actually implemented. */
     val supportsCloudSync: Boolean
+
+    /**
+     * True on the desktop target. Use this for form-factor decisions rather than inferring one
+     * from a capability flag: `supportsCloudSync` is true on Android too, so reading it as
+     * "not a phone" made every Android device at Medium width take the two-pane layout.
+     */
+    val isDesktop: Boolean
 }
