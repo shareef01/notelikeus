@@ -1,7 +1,5 @@
 package com.aus.notelikeus.ui.auth
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -11,32 +9,25 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.ui.theme.BrandMark
+import com.aus.notelikeus.util.AppConfig
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.koinInject
-
-interface GoogleSignInHelper {
-    fun isPlayServicesAvailable(): Boolean
-    fun getSignInIntent(): Any?
-    fun parseIdToken(data: Any?): Result<String>
-}
-
-private fun describeSignInError(error: Throwable): StringResource {
-    return Res.string.cloud_sign_in_failed
-}
 
 /**
  * Mandatory sign-in screen shown whenever there is no Google account signed in.
@@ -45,43 +36,31 @@ private fun describeSignInError(error: Throwable): StringResource {
  */
 @Composable
 fun SignInGate(
-    onIdToken: (String) -> Unit,
+    onGoogleSignInClick: () -> Unit,
     onEmailPassword: ((email: String, password: String, createAccount: Boolean) -> Unit)? = null,
     onSkip: (() -> Unit)? = null,
+    isSigningIn: Boolean = false,
     externalError: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val googleSignInHelper: GoogleSignInHelper = koinInject()
 
-    var isSigningIn by remember { mutableStateOf(false) }
     var errorResource by remember { mutableStateOf<StringResource?>(null) }
     var externalErrorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(externalError) {
         if (externalError != null) {
             externalErrorMessage = externalError
-            isSigningIn = false
         }
     }
-    var playServicesAvailable by remember { mutableStateOf(googleSignInHelper.isPlayServicesAvailable()) }
+    var playServicesAvailable by remember { mutableStateOf(googleSignInHelper.isAvailable()) }
     var testEmail by remember { mutableStateOf("") }
     var testPassword by remember { mutableStateOf("") }
-    val showTestLogin = onEmailPassword != null // Simplified for KMP cleanup
-
-    val signInLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        googleSignInHelper.parseIdToken(result.data)
-            .onSuccess {
-                errorResource = null
-                externalErrorMessage = null
-                onIdToken(it)
-            }
-            .onFailure {
-                isSigningIn = false
-                errorResource = describeSignInError(it)
-            }
-    }
+    // Matches the rule the backend already enforces: FirebaseSessionManager rejects email/password
+    // outright unless AppConfig.isDebug. Gating only on the callback meant desktop rendered a
+    // "Test login (debug)" form in release builds that could never succeed — DesktopSyncManager
+    // answers every email sign-in with UnsupportedOperationException.
+    val showTestLogin = onEmailPassword != null && AppConfig.isDebug
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(
@@ -127,18 +106,16 @@ fun SignInGate(
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
                     OutlinedButton(
-                        onClick = { playServicesAvailable = googleSignInHelper.isPlayServicesAvailable() }
+                        onClick = { playServicesAvailable = googleSignInHelper.isAvailable() }
                     ) {
                         Text(stringResource(Res.string.action_retry), fontWeight = FontWeight.SemiBold)
                     }
                     if (onSkip != null) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        TextButton(onClick = onSkip) {
                             Text(
-                                stringResource(R.string.sign_in_skip_offline),
+                                stringResource(Res.string.sign_in_skip_offline),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        }
                     }
                 }
             }
@@ -166,11 +143,7 @@ fun SignInGate(
                         onClick = {
                             errorResource = null
                             externalErrorMessage = null
-                            isSigningIn = true
-                            val intent = googleSignInHelper.getSignInIntent()
-                            if (intent != null) {
-                                signInLauncher.launch(intent)
-                            }
+                            onGoogleSignInClick()
                         },
                         enabled = !isSigningIn,
                         shape = MaterialTheme.shapes.large
@@ -184,9 +157,10 @@ fun SignInGate(
                             Spacer(modifier = Modifier.width(8.dp))
                         } else {
                             Icon(
-                                painter = painterResource(Res.drawable.ic_google_g),
+                                imageVector = Icons.Default.Lock, // More stable
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onPrimary
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                         }

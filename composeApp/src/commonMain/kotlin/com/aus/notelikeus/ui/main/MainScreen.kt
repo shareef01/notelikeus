@@ -1,69 +1,76 @@
 package com.aus.notelikeus.ui.main
 
-import androidx.compose.animation.*
+    import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.FilterAltOff
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.SearchOff
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
-import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
-import androidx.compose.material3.windowsizeclass.WindowSizeClass
-import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
-import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.material3.adaptive.layout.AnimatedPane
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
+import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
+import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.*
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import org.jetbrains.compose.resources.stringResource
-import notelikeus.composeapp.generated.resources.Res
-import notelikeus.composeapp.generated.resources.*
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.jetbrains.compose.resources.getString
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.domain.model.NoteSortOrder
+import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.ui.components.NoteStaggeredGrid
 import com.aus.notelikeus.ui.components.NotesEmptyState
-import com.aus.notelikeus.ui.main.components.MainTopAppBar
-import com.aus.notelikeus.ui.main.components.ProfileSheet
-import com.aus.notelikeus.ui.main.components.SideDrawerAccountRow
-import com.aus.notelikeus.ui.main.components.SideDrawerNavItem
-import com.aus.notelikeus.ui.main.components.SideDrawerSectionLabel
-import com.aus.notelikeus.ui.main.components.TrashBanner
-import com.aus.notelikeus.ui.main.components.sortOrderLabelRes
-import com.aus.notelikeus.ui.theme.BrandMarkIcon
-import com.aus.notelikeus.ui.theme.NavAccentArchive
-import com.aus.notelikeus.ui.theme.NavAccentLabels
-import com.aus.notelikeus.ui.theme.NavAccentNotes
-import com.aus.notelikeus.ui.theme.NavAccentSettings
-import com.aus.notelikeus.ui.theme.NavAccentTrash
-import com.aus.notelikeus.ui.theme.SignOutRose
-import com.aus.notelikeus.ui.theme.SignOutRoseContainer
 import com.aus.notelikeus.ui.editor.EditorScreen
 import com.aus.notelikeus.ui.editor.EditorViewModel
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import org.koin.compose.viewmodel.koinViewModel
-import org.koin.core.annotation.KoinExperimentalAPI
+import com.aus.notelikeus.ui.main.components.*
+import com.aus.notelikeus.ui.theme.*
+import com.aus.notelikeus.util.AppConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import notelikeus.composeapp.generated.resources.Res
+import notelikeus.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.annotation.KoinExperimentalAPI
+
+/**
+ * Detail-pane key standing in for "compose a new note".
+ *
+ * The two-pane scaffold treats a null content key as "nothing selected", so a new note — which the
+ * editor represents as a null id — cannot be passed through directly. Matches the -1L the Editor
+ * nav route already uses for the same purpose.
+ */
+private const val NewNoteContentKey = -1L
 
 @OptIn(androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi::class, KoinExperimentalAPI::class)
 @Composable
@@ -72,6 +79,8 @@ fun MainScreen(
     onNoteClick: (Long?) -> Unit,
     onEditLabels: () -> Unit,
     windowSizeClass: WindowSizeClass,
+    initialSidebarCollapsed: Boolean = false,
+    onSidebarCollapsedChange: (Boolean) -> Unit = {},
     isAppLockEnabled: Boolean = false,
     onRequestAppUnlock: (onSuccess: () -> Unit) -> Unit = {},
     onAppLockEnabled: () -> Unit = {},
@@ -92,9 +101,11 @@ fun MainScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showEmptyTrashConfirm by remember { mutableStateOf(false) }
     var showCloudSignOutConfirm by remember { mutableStateOf(false) }
+    var profileSignInError by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val haptic = LocalHapticFeedback.current
     val undoLabel = stringResource(Res.string.action_undo)
+    val searchFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
 
     suspend fun showUndoSnackbar(message: String) {
         val result = snackbarHostState.showSnackbar(
@@ -130,6 +141,7 @@ fun MainScreen(
                 snackbarHostState.showSnackbar(
                     event.message.ifBlank { getString(Res.string.cloud_sync_failed) }
                 )
+                profileSignInError = event.message
             }
             CloudSyncEvent.SignedIn -> {
                 snackbarHostState.showSnackbar(getString(Res.string.cloud_sign_in_success))
@@ -155,18 +167,34 @@ fun MainScreen(
         }
     }
 
-    val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
+    // A Medium-width desktop window is a resized app window, not a phone, so it still gets the
+    // two-pane layout. On Android, Medium is a large phone or a folded foldable and must not.
+    val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded ||
+            (windowSizeClass.widthSizeClass == WindowWidthSizeClass.Medium && AppConfig.isDesktop)
+    var sidebarManuallyCollapsed by remember { mutableStateOf(initialSidebarCollapsed) }
+    val effectiveSidebarCollapsed = sidebarManuallyCollapsed && isExpanded
     val navigator = rememberListDetailPaneScaffoldNavigator<Long?>()
 
-    val drawerInner = @Composable {
+    val drawerInner: @Composable (collapsed: Boolean) -> Unit = { collapsed ->
         Column(modifier = Modifier.fillMaxHeight()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 20.dp)
+                    .padding(
+                        horizontal = if (collapsed) 8.dp else 20.dp,
+                        vertical = if (collapsed) 16.dp else 20.dp
+                    )
             ) {
-                Column {
+                if (collapsed) {
+                    BrandMarkIcon(
+                        size = 28.dp,
+                        backgroundColor = MaterialTheme.colorScheme.onSurface,
+                        stripeColor = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                } else {
+                    Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         BrandMarkIcon(
                             size = 36.dp,
@@ -186,11 +214,12 @@ fun MainScreen(
                             )
                             Text(
                                 stringResource(Res.string.drawer_tagline_short),
-                                style = com.aus.notelikeus.ui.theme.ChromeLabelStyle,
+                                style = ChromeLabelStyle,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
+                }
                 }
             }
 
@@ -198,14 +227,16 @@ fun MainScreen(
                 modifier = Modifier
                     .weight(1f)
                     .padding(top = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(if (collapsed) 2.dp else 4.dp)
             ) {
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_notes),
-                    icon = Icons.Default.Lightbulb,
-                    accent = NavAccentNotes,
+                    icon = Icons.Outlined.Lightbulb,
+                    selectedIcon = Icons.Filled.Lightbulb,
                     selected = state.currentFilter == NoteFilter.ACTIVE,
                     count = state.totalNoteCount,
+                    identityColor = Color(0xFF38BDF8), // sky-400
+                    collapsed = collapsed,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.setFilter(NoteFilter.ACTIVE)
@@ -214,10 +245,12 @@ fun MainScreen(
                 )
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_archive),
-                    icon = Icons.Default.Archive,
-                    accent = NavAccentArchive,
+                    icon = Icons.Outlined.Archive,
+                    selectedIcon = Icons.Filled.Archive,
                     selected = state.currentFilter == NoteFilter.ARCHIVED,
                     count = state.archivedNoteCount,
+                    identityColor = Color(0xFFFBBF24), // amber-400
+                    collapsed = collapsed,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.setFilter(NoteFilter.ARCHIVED)
@@ -226,10 +259,12 @@ fun MainScreen(
                 )
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_trash),
-                    icon = Icons.Default.Delete,
-                    accent = NavAccentTrash,
+                    icon = Icons.Outlined.Delete,
+                    selectedIcon = Icons.Filled.Delete,
                     selected = state.currentFilter == NoteFilter.TRASHED,
                     count = state.trashedNoteCount,
+                    identityColor = Color(0xFFFB7185), // rose-400
+                    collapsed = collapsed,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.setFilter(NoteFilter.TRASHED)
@@ -238,13 +273,17 @@ fun MainScreen(
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
+                if (!collapsed) {
                 SideDrawerSectionLabel(text = stringResource(Res.string.nav_section_manage))
+                }
 
+                if (!collapsed) {
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_edit_labels),
-                    icon = Icons.AutoMirrored.Filled.Label,
-                    accent = NavAccentLabels,
+                    icon = Icons.AutoMirrored.Outlined.Label,
+                    selectedIcon = Icons.AutoMirrored.Filled.Label,
                     selected = false,
+                    identityColor = Color(0xFFA78BFA), // violet-400
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         onEditLabels()
@@ -253,21 +292,67 @@ fun MainScreen(
                 )
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_settings),
-                    icon = Icons.Default.Settings,
-                    accent = NavAccentSettings,
+                    icon = Icons.Outlined.Settings,
+                    selectedIcon = Icons.Filled.Settings,
                     selected = showProfileSheet,
+                    identityColor = Color(0xFF2DD4BF), // teal-400
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         showProfileSheet = true
                         scope.launch { if (!isExpanded) drawerState.close() }
                     }
                 )
+                }
             }
 
+            // Collapse toggle — only in permanent (expanded) mode
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(4.dp))
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = if (collapsed) 8.dp else 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = if (collapsed) 8.dp else 16.dp)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            val next = !sidebarManuallyCollapsed
+                            sidebarManuallyCollapsed = next
+                            onSidebarCollapsedChange(next)
+                        }
+                        .padding(horizontal = if (collapsed) 0.dp else 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.Start
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowLeft,
+                        contentDescription = if (collapsed) "Expand sidebar" else "Collapse sidebar",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .rotate(if (collapsed) 180f else 0f)
+                    )
+                    if (!collapsed) {
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Collapse",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            if (!collapsed) {
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider(
                 modifier = Modifier.padding(horizontal = 16.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = com.aus.notelikeus.ui.theme.Chrome.Divider)
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
             )
             Spacer(modifier = Modifier.height(12.dp))
             val email = state.cloudAccount.email
@@ -313,6 +398,7 @@ fun MainScreen(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
             }
+            }
             Spacer(modifier = Modifier.height(8.dp).navigationBarsPadding())
         }
     }
@@ -323,130 +409,198 @@ fun MainScreen(
             drawerTonalElevation = 0.dp,
             modifier = if (isExpanded) Modifier.width(260.dp) else Modifier.widthIn(max = 300.dp)
         ) {
-            drawerInner()
+            drawerInner(false)
         }
     }
 
-    if (isExpanded) {
-        PermanentNavigationDrawer(
-            drawerContent = { 
-                PermanentDrawerSheet(
-                    drawerContainerColor = MaterialTheme.colorScheme.surface,
-                    drawerTonalElevation = 0.dp,
-                    modifier = Modifier.width(260.dp)
-                ) {
-                    drawerInner()
-                }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onKeyEvent {
+                if (it.isCtrlPressed && it.key == Key.F) {
+                    searchFocusRequester.requestFocus()
+                    true
+                } else if (it.isCtrlPressed && it.key == Key.N) {
+                    onNoteClick(null)
+                    true
+                } else if (it.isCtrlPressed && it.key == Key.Comma) {
+                    showProfileSheet = true
+                    true
+                } else if (it.key == Key.Delete && state.selectedNotes.isNotEmpty()) {
+                    showDeleteConfirm = true
+                    true
+                } else if (it.key == Key.Escape) {
+                    if (state.selectedNotes.isNotEmpty()) {
+                        viewModel.clearSelection()
+                        true
+                    } else if (state.searchQuery.isNotEmpty()) {
+                        viewModel.onSearchQueryChange("")
+                        true
+                    } else false
+                } else false
             }
-        ) {
-            ListDetailPaneScaffold(
-                directive = navigator.scaffoldDirective,
-                value = navigator.scaffoldValue,
-                listPane = {
-                    AnimatedPane {
-                        MainScaffold(
-                            state = state,
-                            viewModel = viewModel,
-                            onNoteClick = { noteId ->
-                                scope.launch {
-                                    navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, noteId)
-                                }
-                            },
-                            gridState = gridState,
-                            snackbarHostState = snackbarHostState,
-                            showProfileSheet = showProfileSheet,
-                            onShowProfileSheet = { showProfileSheet = it },
-                            onShowDeleteConfirm = { showDeleteConfirm = it },
-                            onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
-                            onShowDrawer = { scope.launch { drawerState.open() } },
-                            listScrolled = listScrolled,
-                            haptic = haptic,
-                            scope = scope,
-                            showUndoSnackbar = { scope.launch { showUndoSnackbar(it) } }
-                        )
+    ) {
+        if (isExpanded) {
+            val drawerWidth by animateDpAsState(
+                targetValue = if (effectiveSidebarCollapsed) 64.dp else 260.dp,
+                label = "drawerWidth"
+            )
+            PermanentNavigationDrawer(
+                drawerContent = { 
+                    PermanentDrawerSheet(
+                        drawerContainerColor = MaterialTheme.colorScheme.surface,
+                        drawerTonalElevation = 0.dp,
+                        modifier = Modifier.width(drawerWidth)
+                    ) {
+                        drawerInner(effectiveSidebarCollapsed)
                     }
-                },
-                detailPane = {
-                    AnimatedPane {
-                        val destination = navigator.currentDestination
-                        if (destination != null && destination.contentKey != null) {
-                            val noteId = destination.contentKey
-                            // Elite Detail Integration
-                            // This ensures the editor is visible side-by-side with the list on tablets
-                            // We provide a dedicated back handler that navigates back in the scaffold
-                            key(noteId) {
-                                val editorViewModel: EditorViewModel = koinViewModel()
-                                EditorScreen(
-                                    viewModel = editorViewModel,
-                                    onBack = {
+                }
+            ) {
+                Surface(color = MaterialTheme.colorScheme.background) {
+                    ListDetailPaneScaffold(
+                        directive = navigator.scaffoldDirective,
+                        value = navigator.scaffoldValue,
+                        listPane = {
+                            AnimatedPane {
+                                MainScaffold(
+                                    state = state,
+                                    viewModel = viewModel,
+                                    onNoteClick = { noteId ->
                                         scope.launch {
-                                            navigator.navigateBack()
+                                            // A new note arrives as null, which is also the
+                                            // scaffold's "nothing selected" key — passing it
+                                            // straight through sent the detail pane to its empty
+                                            // placeholder, so the + button appeared to do nothing.
+                                            navigator.navigateTo(
+                                                ListDetailPaneScaffoldRole.Detail,
+                                                noteId ?: NewNoteContentKey
+                                            )
                                         }
                                     },
-                                    onStageUndo = { note, action, message ->
-                                        viewModel.stageEditorUndo(note, action, message)
-                                    }
-                                )
+                                    gridState = gridState,
+                                    snackbarHostState = snackbarHostState,
+                                    showProfileSheet = showProfileSheet,
+                                    onShowProfileSheet = { showProfileSheet = it },
+                                    onShowDeleteConfirm = { showDeleteConfirm = it },
+                                    onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
+                                    onShowDrawer = { scope.launch { drawerState.open() } },
+                                    listScrolled = listScrolled,
+                                    haptic = haptic,
+                                    scope = scope,
+                                    showUndoSnackbar = { scope.launch { showUndoSnackbar(it) } },
+                                searchFocusRequester = searchFocusRequester,
+                                isExpanded = isExpanded
+                            )
                             }
-                        } else {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.padding(horizontal = 40.dp)
-                                ) {
-                                    BrandMarkIcon(
-                                        size = 72.dp,
-                                        backgroundColor = MaterialTheme.colorScheme.onSurface,
-                                        stripeColor = MaterialTheme.colorScheme.surface,
-                                        modifier = Modifier.alpha(0.35f)
-                                    )
-                                    Spacer(modifier = Modifier.height(20.dp))
-                                    Text(
-                                        text = stringResource(Res.string.select_note_to_view),
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.SemiBold
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = stringResource(Res.string.select_note_to_view_subtitle),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                        textAlign = TextAlign.Center
-                                    )
+                        },
+                        detailPane = {
+                            AnimatedPane {
+                                val destination = navigator.currentDestination
+                                if (destination != null && destination.contentKey != null) {
+                                    val contentKey = destination.contentKey
+                                    // Unwrap the sentinel: the editor takes null to mean "compose
+                                    // a new note".
+                                    val noteId = contentKey?.takeIf { it != NewNoteContentKey }
+                                    Box(modifier = Modifier.fillMaxSize()) {
+                                        key(contentKey) {
+                                            val editorViewModel: EditorViewModel = koinViewModel()
+                                            LaunchedEffect(noteId) {
+                                                editorViewModel.setNoteId(noteId)
+                                            }
+                                            EditorScreen(
+                                                viewModel = editorViewModel,
+                                                onBack = {
+                                                    scope.launch {
+                                                        navigator.navigateBack()
+                                                    }
+                                                },
+                                                onStageUndo = { note, action, message ->
+                                                    viewModel.stageEditorUndo(note, action, message)
+                                                },
+                                                isExpanded = true
+                                            )
+                                        }
+
+                                        // Natural separation: subtle left-side inner shadow and gradient
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .width(24.dp) // Wider for a smoother fade
+                                                .align(Alignment.CenterStart)
+                                                .background(
+                                                    androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                                        colors = listOf(
+                                                            Color.Black.copy(alpha = 0.05f),
+                                                            Color.Transparent
+                                                        )
+                                                    )
+                                                )
+                                        )
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier.padding(horizontal = 40.dp)
+                                        ) {
+                                            BrandMarkIcon(
+                                                size = 80.dp,
+                                                backgroundColor = MaterialTheme.colorScheme.onSurface,
+                                                stripeColor = MaterialTheme.colorScheme.surface,
+                                                modifier = Modifier.alpha(0.08f)
+                                            )
+                                            Spacer(modifier = Modifier.height(24.dp))
+                                            Text(
+                                                text = stringResource(Res.string.select_note_to_view),
+                                                style = MaterialTheme.typography.titleLarge.copy(
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    letterSpacing = (-0.5).sp
+                                                ),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = stringResource(Res.string.select_note_to_view_subtitle),
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
+                    )
                 }
-            )
-        }
-    } else {
-        ModalNavigationDrawer(
-            drawerState = drawerState,
-            drawerContent = drawerContent
-        ) {
-            MainScaffold(
-                state = state,
-                viewModel = viewModel,
-                onNoteClick = { noteId -> onNoteClick(noteId) },
-                gridState = gridState,
-                snackbarHostState = snackbarHostState,
-                showProfileSheet = showProfileSheet,
-                onShowProfileSheet = { showProfileSheet = it },
-                onShowDeleteConfirm = { showDeleteConfirm = it },
-                onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
-                onShowDrawer = { scope.launch { drawerState.open() } },
-                listScrolled = listScrolled,
-                haptic = haptic,
-                scope = scope,
-                showUndoSnackbar = { scope.launch { showUndoSnackbar(it) } }
-            )
+            }
+        } else {
+            ModalNavigationDrawer(
+                drawerState = drawerState,
+                drawerContent = drawerContent
+            ) {
+                MainScaffold(
+                    state = state,
+                    viewModel = viewModel,
+                    onNoteClick = { noteId -> onNoteClick(noteId) },
+                    gridState = gridState,
+                    snackbarHostState = snackbarHostState,
+                    showProfileSheet = showProfileSheet,
+                    onShowProfileSheet = { showProfileSheet = it },
+                    onShowDeleteConfirm = { showDeleteConfirm = it },
+                    onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
+                    onShowDrawer = { scope.launch { drawerState.open() } },
+                    listScrolled = listScrolled,
+                    haptic = haptic,
+                    scope = scope,
+                    showUndoSnackbar = { scope.launch { showUndoSnackbar(it) } },
+                    searchFocusRequester = searchFocusRequester,
+                    isExpanded = isExpanded
+                )
+            }
         }
     }
 
@@ -463,6 +617,7 @@ fun MainScreen(
             cloudSyncedNoteCount = state.cloudSyncedNoteCount,
             cloudAccount = state.cloudAccount,
             isCloudAutoSyncEnabled = state.isCloudAutoSyncEnabled,
+            signInError = profileSignInError,
             onViewModeChange = { viewModel.setViewMode(it) },
             onSortOrderChange = { viewModel.setSortOrder(it) },
             onAppThemeChange = { viewModel.setAppTheme(it) },
@@ -491,6 +646,7 @@ fun MainScreen(
                 viewModel.downloadNotesFromCloud()
             },
             onGoogleSignInClick = {
+                profileSignInError = null
                 onGoogleSignIn()
             },
             onGoogleSignOutClick = {
@@ -653,19 +809,29 @@ private fun MainScaffold(
     listScrolled: Boolean,
     haptic: androidx.compose.ui.hapticfeedback.HapticFeedback,
     scope: CoroutineScope,
-    showUndoSnackbar: (String) -> Unit
+    showUndoSnackbar: (String) -> Unit,
+    searchFocusRequester: androidx.compose.ui.focus.FocusRequester,
+    isExpanded: Boolean
 ) {
     val showFab = state.currentFilter == NoteFilter.ACTIVE && state.selectedNotes.isEmpty()
-    val selectedNoteModels = state.notes.filter { it.id in state.selectedNotes }
-    val selectionAllPinned = selectedNoteModels.isNotEmpty() && selectedNoteModels.all { it.isPinned }
-    val visibleNoteIds = state.filteredNotes.mapNotNull { it.id }.toSet()
-    val allFilteredSelected = visibleNoteIds.isNotEmpty() &&
-        visibleNoteIds.all { it in state.selectedNotes }
-    val allowReorder = state.searchQuery.isEmpty() &&
-        state.selectedColor == null &&
-        state.selectedLabelId == null
+    val selectedNoteModels = remember(state.notes, state.selectedNotes) {
+        state.notes.filter { it.id in state.selectedNotes }
+    }
+    val selectionAllPinned = remember(selectedNoteModels) {
+        selectedNoteModels.isNotEmpty() && selectedNoteModels.all { it.isPinned }
+    }
+    val visibleNoteIds = remember(state.filteredNotes) {
+        state.filteredNotes.mapNotNull { it.id }.toSet()
+    }
+    val allFilteredSelected = remember(visibleNoteIds, state.selectedNotes) {
+        visibleNoteIds.isNotEmpty() && visibleNoteIds.all { it in state.selectedNotes }
+    }
+    val allowReorder = remember(state.searchQuery, state.selectedColor, state.selectedLabelId) {
+        state.searchQuery.isEmpty() && state.selectedColor == null && state.selectedLabelId == null
+    }
 
     Scaffold(
+        containerColor = Color.Transparent, // Parent handles background
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
@@ -739,6 +905,7 @@ private fun MainScaffold(
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     onShowProfileSheet(true)
                 },
+                accountEmail = state.cloudAccount.email,
                 selectedColor = state.selectedColor,
                 onColorSelect = viewModel::selectColorFilter,
                 allLabels = state.allLabels,
@@ -766,7 +933,9 @@ private fun MainScaffold(
                 onClearRecentSearches = viewModel::clearRecentSearches,
                 hasActiveFilters = state.selectedColor != null || state.selectedLabelId != null,
                 onClearFilters = viewModel::clearFilters,
-                listScrolled = listScrolled
+                listScrolled = listScrolled,
+                searchFocusRequester = searchFocusRequester,
+                showMenuIcon = !isExpanded
             )
         },
         floatingActionButton = {
@@ -933,15 +1102,17 @@ private fun MainScaffold(
                     },
                     onMoveNote = viewModel::previewMoveNote,
                     onReorderComplete = viewModel::commitNoteOrder,
-                    columns = state.viewMode.columns,
+                    // In two-pane mode the list shares the window with the editor, so the wider
+                    // grid choices leave cards too narrow to read. Cap the list pane at 2.
+                    columns = if (isExpanded && state.viewMode.columns > 2) 2 else state.viewMode.columns,
                     compact = state.viewMode.compact,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
                     contentPadding = PaddingValues(
-                        top = 14.dp,
-                        start = 14.dp,
-                        end = 14.dp,
+                        top = 12.dp,
+                        start = 12.dp,
+                        end = 12.dp,
                         bottom = gridBottomPadding
                     )
                 )

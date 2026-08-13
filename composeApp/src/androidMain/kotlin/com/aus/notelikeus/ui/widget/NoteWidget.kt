@@ -3,6 +3,8 @@ package com.aus.notelikeus.ui.widget
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
@@ -18,9 +20,12 @@ import androidx.glance.layout.*
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
-import com.aus.notelikeus.MainActivity
-import com.aus.notelikeus.util.markInternalNavigation
-import com.aus.notelikeus.R
+import androidx.glance.unit.ColorProvider
+import com.aus.notelikeus.ui.navigation.markInternalNavigation
+import com.aus.notelikeus.shared.R
+import com.aus.notelikeus.ui.theme.noteColorForTheme
+import com.aus.notelikeus.ui.theme.getContentColor
+import android.content.res.Configuration
 
 private data class WidgetStrings(
     val appName: String,
@@ -46,6 +51,7 @@ class NoteWidget : GlanceAppWidget() {
             runCatching { WidgetNoteLoader.loadNotes(context) }.getOrDefault(emptyList())
         }
         val theme = runCatching { WidgetNoteLoader.loadTheme(context) }.getOrDefault(WidgetThemes.Light)
+        val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         val strings = WidgetStrings(
             appName = context.getString(R.string.app_name),
             newNote = context.getString(R.string.widget_new),
@@ -55,7 +61,7 @@ class NoteWidget : GlanceAppWidget() {
             appLocked = context.getString(R.string.app_lock_title)
         )
         provideContent {
-            WidgetContent(context, notes, theme, strings, appLocked)
+            WidgetContent(context, notes, theme, strings, appLocked, isDark)
         }
     }
 
@@ -65,7 +71,8 @@ class NoteWidget : GlanceAppWidget() {
         notes: List<WidgetNote>,
         theme: WidgetThemeColors,
         strings: WidgetStrings,
-        appLocked: Boolean
+        appLocked: Boolean,
+        isDark: Boolean
     ) {
         Column(
             modifier = GlanceModifier
@@ -101,7 +108,8 @@ class NoteWidget : GlanceAppWidget() {
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                             .clickable(
                                 actionStartActivity(
-                                    Intent(context, MainActivity::class.java).apply {
+                                    Intent().apply {
+                                        setClassName(context, "com.aus.notelikeus.MainActivity")
                                         markInternalNavigation()
                                         putExtra("createNote", true)
                                     }
@@ -139,7 +147,8 @@ class NoteWidget : GlanceAppWidget() {
                         context = context,
                         note = note,
                         theme = theme,
-                        strings = strings
+                        strings = strings,
+                        isDark = isDark
                     )
                     Spacer(modifier = GlanceModifier.height(8.dp)) // Disciplined 8.dp Grid
                 }
@@ -152,17 +161,42 @@ class NoteWidget : GlanceAppWidget() {
         context: Context,
         note: WidgetNote,
         theme: WidgetThemeColors,
-        strings: WidgetStrings
+        strings: WidgetStrings,
+        isDark: Boolean
     ) {
+        val noteColorArgb = noteColorForTheme(note.color, isDark)
+        val bgColor = Color(noteColorArgb.toLong() and 0xffffffffL)
+        
+        val rowBackground = if (noteColorArgb == 0) {
+            theme.surfaceVariant
+        } else {
+            WidgetThemes.dynamicColor(bgColor)
+        }
+        
+        val onRowColor = if (noteColorArgb == 0) {
+            theme.onSurface
+        } else {
+            val textColor = bgColor.getContentColor(theme.onSurface.getColor(context))
+            WidgetThemes.dynamicColor(textColor)
+        }
+        
+        val onRowMutedColor = if (noteColorArgb == 0) {
+            theme.onSurfaceVariant
+        } else {
+            val textColor = bgColor.getContentColor(theme.onSurfaceVariant.getColor(context)).copy(alpha = 0.7f)
+            WidgetThemes.dynamicColor(textColor)
+        }
+
         Column(
             modifier = GlanceModifier
                 .fillMaxWidth()
                 .cornerRadius(16.dp) // Strict 16.dp Geometry
-                .background(theme.surfaceVariant)
+                .background(rowBackground)
                 .padding(12.dp)
                 .clickable(
                     actionStartActivity(
-                        Intent(context, MainActivity::class.java).apply {
+                        Intent().apply {
+                            setClassName(context, "com.aus.notelikeus.MainActivity")
                             markInternalNavigation()
                             putExtra("noteId", note.id)
                         }
@@ -179,7 +213,7 @@ class NoteWidget : GlanceAppWidget() {
                         style = TextStyle(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = theme.onSurfaceVariant
+                            color = onRowMutedColor
                         ),
                         modifier = GlanceModifier.padding(end = 6.dp)
                     )
@@ -188,7 +222,7 @@ class NoteWidget : GlanceAppWidget() {
                     text = if (note.title.isNotBlank()) note.title else strings.untitled,
                     style = TextStyle(
                         fontWeight = FontWeight.Medium,
-                        color = theme.onSurface,
+                        color = onRowColor,
                         fontSize = 14.sp
                     ),
                     maxLines = 1,
@@ -200,7 +234,7 @@ class NoteWidget : GlanceAppWidget() {
                 Text(
                     text = note.preview,
                     style = TextStyle(
-                        color = theme.onSurfaceVariant,
+                        color = onRowMutedColor,
                         fontSize = 12.sp
                     ),
                     maxLines = 1
