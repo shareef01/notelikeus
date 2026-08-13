@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy — Notelikeus</title>
+    <meta name="description" content="How Notelikeus handles information on your device and when you use cloud sync." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      Standalone and self-contained on purpose. This is the URL given to the Play Console
+      (scripts/bundle-release.ps1), so it has to resolve without the app booting, and the hosting
+      CSP has no 'unsafe-inline' in script-src — hence no scripts at all and inline styles only.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #16181d;
+        --muted: #5a5f6e;
+        --rule: #e2e4ea;
+        --accent: #3b4bb0;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #000000;
+          --fg: #e8eaf0;
+          --muted: #9aa0b0;
+          --rule: #262a33;
+          --accent: #97a3ff;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+      }
+      main { max-width: 44rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
+      h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 0.4rem; letter-spacing: -0.02em; }
+      h2 {
+        font-size: 1.15rem;
+        margin: 2.5rem 0 0.6rem;
+        padding-top: 1.4rem;
+        border-top: 1px solid var(--rule);
+        letter-spacing: -0.01em;
+      }
+      .updated { color: var(--muted); font-size: 0.9rem; margin: 0 0 2rem; }
+      p, li { margin: 0 0 0.85rem; }
+      ul { padding-left: 1.2rem; }
+      a { color: var(--accent); }
+      a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .table-wrap { overflow-x: auto; }
+      table { border-collapse: collapse; width: 100%; min-width: 22rem; margin-bottom: 0.85rem; }
+      th, td { text-align: left; padding: 0.55rem 0.75rem 0.55rem 0; border-bottom: 1px solid var(--rule); }
+      th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+      footer { margin-top: 3rem; padding-top: 1.4rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Privacy Policy — Notelikeus</h1>
+      <p class="updated">Last updated: July 2026</p>
+
+      <p>
+        Notelikeus is offline-first on Android; the web app requires a Google account and keeps
+        notes in the cloud. This policy describes how the app handles information on your device
+        and when you use cloud sync with Google sign-in.
+      </p>
+
+      <h2>Summary</h2>
+      <ul>
+        <li><strong>Android:</strong> Notes are stored <strong>locally on your device</strong> in an encrypted database. Cloud sync uploads note text to <strong>your Firebase project / Firestore account data</strong> when auto-sync is enabled.</li>
+        <li><strong>Web:</strong> Google sign-in is required to use the app. Notes sync to <strong>Firebase Firestore</strong> under your Google account. The browser may keep an offline cache, and some browsers may fall back to temporary in-memory storage only.</li>
+        <li>Synced notes are <strong>not end-to-end encrypted</strong> by the app.</li>
+        <li>The app does <strong>not</strong> include analytics or advertising SDKs.</li>
+      </ul>
+
+      <h2>Information stored on your device</h2>
+      <p><strong>Android</strong> may store:</p>
+      <ul>
+        <li>Note titles, body text, colors, and positions</li>
+        <li>Labels, checklists, and reminder times</li>
+        <li>Settings (for example dark mode, app lock, and auto-sync preferences)</li>
+      </ul>
+      <p>
+        <strong>Web</strong> stores app preferences on your device (theme, layout, reminder
+        scheduling). Firestore may also keep an offline browser cache for continuity; in some
+        browsers, storage may be temporary and cleared when the tab or browser closes.
+      </p>
+
+      <h2>Cloud sync</h2>
+      <p>When you sign in with Google and use sync:</p>
+      <ul>
+        <li>Note content is stored in <strong>Google Firebase Firestore</strong> under your Google account</li>
+        <li>Data is governed by <a href="https://policies.google.com/privacy" rel="noopener noreferrer">Google’s privacy policy</a> and your Firebase project settings</li>
+        <li>Signing out <strong>clears locally cached app data on this device</strong> so the next account cannot inherit it; cloud data remains until you delete it (in-app “Sign out and delete cloud data” or Firebase console)</li>
+      </ul>
+
+      <h2>Security</h2>
+      <ul>
+        <li><strong>Android:</strong> Notes are stored in a <strong>SQLCipher-encrypted</strong> Room database. An optional app-wide lock uses the device’s biometric APIs to gate opening the app.</li>
+        <li><strong>Web:</strong> Synced notes are protected by your Google account, browser profile, and Firestore access rules. The browser may keep a Firestore-managed offline cache for continuity, and some browsers may fall back to temporary in-memory storage only.</li>
+        <li>Notelikeus does <strong>not</strong> provide end-to-end encryption for synced notes. If someone can access your signed-in browser profile, Firebase project data, or exported backup files, they may be able to read your notes.</li>
+      </ul>
+
+      <h2>Permissions</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th scope="col">Permission</th><th scope="col">Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Internet</td><td>Firebase auth and cloud sync</td></tr>
+            <tr><td>Notifications</td><td>Deliver reminders you schedule for notes</td></tr>
+            <tr><td>Biometric</td><td>Unlock the app when app lock is enabled</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        When you export or import backups, the system file picker is used; the app only accesses
+        files you select. On the web, reminder notifications are best-effort and may be delayed or
+        missed if the browser is fully closed or inactive.
+      </p>
+
+      <h2>Backups</h2>
+      <p>
+        JSON backup export/import is <strong>manual</strong>. Backup files are written to a location
+        you choose. You are responsible for securing copied files.
+      </p>
+
+      <h2>Links in notes</h2>
+      <p>
+        If you add links to notes, tapping them opens your default browser. Notelikeus does not
+        track link usage.
+      </p>
+
+      <h2>Third parties</h2>
+      <ul>
+        <li><strong>Google Firebase</strong> — only when you enable cloud sync (Authentication + Firestore)</li>
+        <li>We do not sell your personal data or use analytics or advertising SDKs</li>
+      </ul>
+
+      <h2>Children</h2>
+      <p>
+        Notelikeus is not directed at children under 13. We do not knowingly collect personal
+        information from children.
+      </p>
+
+      <h2>Changes</h2>
+      <p>
+        We may update this policy as the app evolves. Material changes will be reflected in the
+        app’s privacy text and this document.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        For privacy questions, reach out via the app’s store listing or the project repository.
+      </p>
+
+      <footer>
+        <a href="/">← Back to Notelikeus</a>
+      </footer>
+    </main>
+  </body>
+</html>
