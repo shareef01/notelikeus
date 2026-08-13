@@ -4,6 +4,7 @@ import androidx.appfunctions.AppFunctionContext
 import androidx.appfunctions.service.AppFunction
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.domain.platform.ReminderManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -17,6 +18,25 @@ import org.koin.core.component.inject
 class NoteAppFunctions : KoinComponent {
     private val repository: NoteRepository by inject()
     private val reminderManager: ReminderManager by inject()
+    private val settingsRepository: SettingsRepository by inject()
+
+    /**
+     * Refuses the call while the biometric app lock is on.
+     *
+     * App Functions is the third surface onto the same notes, and the other two already close
+     * behind the lock: the UI sits under `AppLockOverlay`, and `WidgetNoteLoader.loadNotes`
+     * returns an empty list. Without this, enabling the lock still left every note title and body
+     * readable by any agent that could invoke `listNotes` — and `archiveNote`/`addReminder`
+     * writable on a guessed id, since note ids are sequential.
+     *
+     * Throwing rather than returning empty: an agent can relay an error to the user, and "you
+     * have no notes" would be a lie the caller cannot tell apart from an empty account.
+     */
+    private suspend fun requireUnlocked() {
+        if (settingsRepository.isAppLockEnabled.first()) {
+            throw IllegalStateException("Notelikeus is locked. Unlock the app to use this action.")
+        }
+    }
 
     /**
      * Create a new note with a title and content.
@@ -31,6 +51,7 @@ class NoteAppFunctions : KoinComponent {
         title: String,
         content: String
     ): AppFunctionNote = withContext(Dispatchers.IO) {
+        requireUnlocked()
         val note = Note(
             title = title,
             content = content,
@@ -59,6 +80,7 @@ class NoteAppFunctions : KoinComponent {
     suspend fun listNotes(
         context: AppFunctionContext
     ): List<AppFunctionNote> = withContext(Dispatchers.IO) {
+        requireUnlocked()
         repository.getActiveNotes().first()
             .map { it.toAppFunctionNote() }
     }
@@ -76,6 +98,7 @@ class NoteAppFunctions : KoinComponent {
         context: AppFunctionContext,
         query: String
     ): List<AppFunctionNote> = withContext(Dispatchers.IO) {
+        requireUnlocked()
         repository.getActiveNotes().first()
             .filter {
                 it.title.contains(query, ignoreCase = true) ||
@@ -99,6 +122,7 @@ class NoteAppFunctions : KoinComponent {
         noteId: Long,
         timestamp: Long
     ): AppFunctionNote? = withContext(Dispatchers.IO) {
+        requireUnlocked()
         val note = repository.getNoteById(noteId) ?: return@withContext null
         val updatedNote = note.copy(reminderTimestamp = timestamp)
         repository.updateNote(updatedNote)
@@ -119,6 +143,7 @@ class NoteAppFunctions : KoinComponent {
         context: AppFunctionContext,
         noteId: Long
     ): AppFunctionNote? = withContext(Dispatchers.IO) {
+        requireUnlocked()
         val note = repository.getNoteById(noteId) ?: return@withContext null
         val updatedNote = note.copy(isArchived = true)
         repository.updateNote(updatedNote)
