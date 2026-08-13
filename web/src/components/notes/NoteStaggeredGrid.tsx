@@ -37,9 +37,9 @@ interface NoteStaggeredGridProps {
  */
 const CARD_MIN_PX: Record<2 | 3, number> = {
   /** Comfortable Keep-style cards */
-  2: 288,
+  2: 300,
   /** Compact multi-column board */
-  3: 180,
+  3: 200,
 };
 
 const DENSITY: Record<ViewColumns, NoteCardDensity> = {
@@ -196,9 +196,9 @@ export function NoteStaggeredGrid({
     viewPreference === 3
       ? 'gap-2'
       : isList
-        ? 'gap-2 sm:gap-2.5'
-        : 'gap-3 sm:gap-3.5';
-  const columnGapPx = viewPreference === 3 ? 10 : 14;
+        ? 'gap-2.5 sm:gap-3'
+        : 'gap-3.5 sm:gap-4';
+  const columnGapPx = viewPreference === 3 ? 12 : 16;
 
   return (
     <div
@@ -251,8 +251,8 @@ export function NoteStaggeredGrid({
               isList
                 ? ''
                 : viewPreference === 3
-                  ? 'mb-1.5 break-inside-avoid'
-                  : 'mb-2.5 break-inside-avoid sm:mb-3'
+                  ? 'mb-2 break-inside-avoid'
+                  : 'mb-3 break-inside-avoid sm:mb-3.5'
             }`}
           >
             {renderCard(note)}

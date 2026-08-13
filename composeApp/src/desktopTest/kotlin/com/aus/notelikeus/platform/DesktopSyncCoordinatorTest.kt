@@ -9,6 +9,7 @@ import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.di.DesktopPendingSyncStore
 import com.aus.notelikeus.di.PendingSyncStore
 import com.aus.notelikeus.domain.model.Note
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
@@ -46,6 +47,36 @@ class DesktopSyncCoordinatorTest {
         override suspend fun clear() {
             clearCount++
             saved = DesktopPendingSyncStore.Pending(emptySet(), emptySet(), emptySet())
+        }
+    }
+
+    /**
+     * A store whose `load()` blocks until [releaseLoad] — modelling the slow disk read the
+     * coordinator must not race: a mutation landing while the restore is in flight must not
+     * persist a snapshot that drops the pending work the restore was about to bring back.
+     */
+    private class GatedPendingSyncStore(
+        val initial: DesktopPendingSyncStore.Pending
+    ) : PendingSyncStore {
+        private val loadGate = CompletableDeferred<Unit>()
+        var saved: DesktopPendingSyncStore.Pending =
+            DesktopPendingSyncStore.Pending(emptySet(), emptySet(), emptySet())
+
+        override suspend fun load(): DesktopPendingSyncStore.Pending {
+            loadGate.await()
+            return initial
+        }
+
+        override suspend fun save(uploads: Set<Long>, deletes: Set<Long>, restores: Set<Long>) {
+            saved = DesktopPendingSyncStore.Pending(uploads, deletes, restores)
+        }
+
+        override suspend fun clear() {
+            saved = DesktopPendingSyncStore.Pending(emptySet(), emptySet(), emptySet())
+        }
+
+        fun releaseLoad() {
+            loadGate.complete(Unit)
         }
     }
 
@@ -130,6 +161,42 @@ class DesktopSyncCoordinatorTest {
         advanceTimeBy(pastDebounce)
 
         assertTrue(2L in transport.notes, "a queue restored from disk should flush itself")
+    }
+
+    @Test
+    fun `a mutation during startup does not persist before the restore completes`() = runTest {
+        signedIn = true
+        val syncEngine = engine()
+        val gatedStore = GatedPendingSyncStore(
+            DesktopPendingSyncStore.Pending(uploads = setOf(2L), deletes = emptySet(), restores = emptySet())
+        )
+        val coordinator = DesktopSyncCoordinator(syncEngine, gatedStore, backgroundScope)
+        seedNote(1L)
+        seedNote(2L)
+
+        // The user edits note 1 while the disk restore (note 2, from a previous run) is still
+        // in flight. The persist triggered by the edit must wait for the restore to finish —
+        // otherwise it snapshots an empty queue and the restored upload is lost forever.
+        coordinator.scheduleUpload(1L)
+        advanceTimeBy(1_000)
+        assertEquals(
+            emptySet(), gatedStore.saved.uploads,
+            "persist must wait for the restored snapshot before writing"
+        )
+
+        gatedStore.releaseLoad()
+        advanceTimeBy(1)
+
+        assertEquals(
+            setOf(2L, 1L), gatedStore.saved.uploads,
+            "the restored note must survive alongside the new mutation"
+        )
+
+        // Both notes then flush normally.
+        advanceTimeBy(pastDebounce)
+        assertTrue(1L in transport.notes)
+        assertTrue(2L in transport.notes)
+        assertTrue(gatedStore.saved.uploads.isEmpty(), "queue should drain on success")
     }
 
     @Test

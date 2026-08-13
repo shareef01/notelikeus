@@ -151,12 +151,12 @@ function NoteCardImpl({
 
   return (
     <article
-      className={`relative flex h-auto w-full overflow-hidden rounded-note text-left transition-[transform,box-shadow,background-color] duration-200 ${
+      className={`relative flex h-auto w-full overflow-hidden rounded-note text-left transition-all duration-200 hover:shadow-lg ${
         isList
           ? 'flex-row items-stretch gap-0'
           : isDense
-            ? 'flex-col p-3.5'
-            : 'flex-col p-4'
+            ? 'flex-col p-4'
+            : 'flex-col p-5'
       } ${showReorderHandle ? (isList ? 'pl-9' : 'pl-11') : ''} ${
         isSelected
           ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-true-surface'
@@ -246,7 +246,7 @@ function NoteCardImpl({
               {statusIcons(isDense ? 13 : 14)}
               <time
                 dateTime={new Date(note.timestamp).toISOString()}
-                className={`font-medium tabular-nums tracking-wide opacity-50 ${
+                className={`font-medium tabular-nums tracking-wide opacity-60 ${
                   isDense ? 'text-[10px]' : 'text-[11px]'
                 }`}
               >
@@ -259,8 +259,8 @@ function NoteCardImpl({
             <p
               className={
                 isDense
-                  ? 'mt-2 line-clamp-5 text-[13px] leading-snug opacity-70'
-                  : 'mt-2.5 line-clamp-7 text-note-body opacity-70'
+                  ? 'mt-2 line-clamp-5 text-[13px] leading-relaxed opacity-80'
+                  : 'mt-3 line-clamp-7 text-note-body leading-relaxed opacity-80'
               }
             >
               {highlight(previewBody)}
