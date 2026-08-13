@@ -174,15 +174,24 @@ class DesktopGoogleSignInHelper(
                 }
                 server.start()
 
+                // The 120s withTimeoutOrNull above cancels this coroutine when the user closes the
+                // browser or never finishes consent. Without this the handler's `cont.isActive`
+                // guard is false, server.stop() never runs, and the loopback server keeps its port
+                // bound and its threads alive for the rest of the process — still willing to accept
+                // an authorization code nothing is waiting for.
+                cont.invokeOnCancellation { runCatching { server.stop(0) } }
+
                 // Open the browser
                 val authUrl = buildOAuthUrl(redirectUri, codeChallenge, expectedState)
                 try {
                     if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                         Desktop.getDesktop().browse(URI(authUrl))
                     } else {
+                        server.stop(0)
                         cont.resume(null)
                     }
                 } catch (_: Exception) {
+                    server.stop(0)
                     cont.resume(null)
                 }
             }
