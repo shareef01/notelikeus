@@ -9,6 +9,8 @@ A portfolio-ready notes app for **Android**, **Windows (Desktop)**, and the **we
 - **KMP (Android & Windows)** — offline-first: notes live in a Room database, encrypted with SQLCipher on Android. On Android, Google Sign-In is optional; when signed in, notes sync to Firestore (auto-sync can be toggled in Settings). The Windows build now supports Google Sign-In and Firestore sync too, over an OAuth loopback flow and the Firestore REST API, with the session encrypted at rest via Windows DPAPI. App lock and at-rest database encryption are still Android-only on Windows.
 - **Web** — Google Sign-In required. Notes live in Firestore with offline caching and installable PWA support.
 
+Windows desktop extras: a collapsible side rail whose state survives restarts (like the web sidebar), an undecorated window with a custom title bar that restores its size, position, and maximized state, and a debounced, restart-surviving sync queue that retries failed writes with exponential backoff.
+
 ## What I built
 
 - A multiplatform notes app for **Android**, **Windows**, and **web/PWA**
@@ -25,6 +27,8 @@ A portfolio-ready notes app for **Android**, **Windows (Desktop)**, and the **we
 - **Spark-plan-conscious Firebase design** using Auth + Firestore only, with legacy attachment support removed from active product flow.
 - **Cross-platform product parity** across Android, Desktop, and React PWA for core note workflows.
 - **Safer destructive actions** with stronger sign-out and cloud-delete confirmations.
+- **Desktop resilience**: undecorated window with custom title bar, window-state and sidebar-collapse persistence across launches, and a debounced sync queue that survives restarts and backs off on failure.
+- **Security review pass**: OAuth loopback hardening (PKCE + state, HTML-escaped error surfaces), DPAPI-entropy token encryption, a Room GCM IV fix, and Firestore rules that fail closed against malformed or spoofed writes.
 
 Notelikeus is maintained primarily for **personal use** and as a **portfolio piece**, rather than for Play Store launch readiness.
 
@@ -58,6 +62,7 @@ Current screenshots from the app are shown below.
 | Multi-select + bulk actions | ✓ | ✓ | ✓ |
 | Swipe actions + undo | ✓ | ✓ | ✓ |
 | Manual reorder (list view) | ✓ | ✓ | ✓ |
+| Collapsible side rail (persisted) | — (drawer) | ✓ | ✓ |
 | Date-grouped sections | ✓ | ✓ | ✓ |
 | Themes (light, dark, OLED, midnight, forest, auto) | ✓ | ✓ | ✓ |
 | Theme-aware note color palette | ✓ | ✓ | ✓ |
@@ -80,7 +85,7 @@ Current screenshots from the app are shown below.
 | Cloud | Firebase Auth + Firestore | Firebase Auth + Firestore |
 | DI / tooling | Koin, Coroutines, Flow | Vite, Vitest |
 | Widget | Glance (Android only) | — |
-| Tests | JUnit, Turbine, MockK | Vitest, Playwright smoke |
+| Tests | JUnit, Turbine, MockK, Compose UI tests | Vitest, Playwright smoke |
 
 ## Requirements
 
@@ -96,7 +101,7 @@ Current screenshots from the app are shown below.
 
 ```bash
 ./gradlew :androidApp:assembleDebug
-./gradlew :composeApp:desktopRun
+./gradlew :composeApp:run
 ```
 
 ### Web
