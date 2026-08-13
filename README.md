@@ -93,7 +93,7 @@ Current screenshots from the app are shown below.
 - Android Studio Ladybug or newer
 - **JDK 17+** to build the mobile/desktop app
 - **JDK 21+** for Firestore rules unit tests (`npm run test:rules`)
-- Node.js 20 LTS (web + rules tests)
+- Node.js 24 LTS (web + rules tests)
 
 ## Getting started
 
