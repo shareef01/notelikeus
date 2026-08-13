@@ -8,7 +8,7 @@ $AndroidAppId = "1:404285880902:android:22326adaf6fca4e1996847"
 Write-Host "Local signing fingerprints (debug/release):" -ForegroundColor Cyan
 Push-Location $ProjectRoot
 try {
-    .\gradlew.bat :app:signingReport
+    .\gradlew.bat :androidApp:signingReport
 } finally {
     Pop-Location
 }
@@ -18,6 +18,6 @@ firebase apps:android:sha:list $AndroidAppId --project notelikeus
 
 Write-Host "`nIf Google Sign-In fails with code 10, add the debug SHA-1 above to Firebase:" -ForegroundColor Yellow
 Write-Host "  firebase apps:android:sha:create $AndroidAppId <sha1-without-colons> --project notelikeus"
-Write-Host "Then refresh app\google-services.json:"
-Write-Host "  firebase apps:sdkconfig ANDROID $AndroidAppId --project notelikeus --out app\google-services.json.new"
-Write-Host "  Move-Item -Force app\google-services.json.new app\google-services.json"
+Write-Host "Then refresh androidApp\google-services.json:"
+Write-Host "  firebase apps:sdkconfig ANDROID $AndroidAppId --project notelikeus --out androidApp\google-services.json.new"
+Write-Host "  Move-Item -Force androidApp\google-services.json.new androidApp\google-services.json"
