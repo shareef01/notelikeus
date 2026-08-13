@@ -1,6 +1,7 @@
 package com.aus.notelikeus.platform
 
 import com.aus.notelikeus.data.mapper.toNoteEntity
+import com.aus.notelikeus.data.sync.CloudNoteTransport
 import com.aus.notelikeus.data.sync.FakeCloudNoteTransport
 import com.aus.notelikeus.data.sync.FakeLabelDao
 import com.aus.notelikeus.data.sync.FakeNoteDao
@@ -11,6 +12,7 @@ import com.aus.notelikeus.di.PendingSyncStore
 import com.aus.notelikeus.domain.model.Note
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -239,5 +241,84 @@ class DesktopSyncCoordinatorTest {
         signedIn = true
         advanceTimeBy(120_000)
         assertTrue(transport.notes.isEmpty())
+    }
+
+    /**
+     * [FakeCloudNoteTransport] with one suspension point.
+     *
+     * Every method on the fake returns without ever yielding, so a flush over it runs start to
+     * finish in a single shot and cancellation can never land mid-queue — which is precisely the
+     * window the test below needs to open.
+     */
+    private class SlowTransport(
+        private val delegate: FakeCloudNoteTransport,
+        private val delayMs: Long
+    ) : CloudNoteTransport by delegate {
+        override suspend fun fetchTombstones(uid: String): Map<Long, Long> {
+            delay(delayMs)
+            return delegate.fetchTombstones(uid)
+        }
+    }
+
+    @Test
+    fun `an edit cancelling a flush is not treated as a cloud failure`() = runTest {
+        signedIn = true
+        val backing = FakeCloudNoteTransport()
+        noteDao = FakeNoteDao()
+        val syncEngine = NoteSyncEngine(
+            transport = SlowTransport(backing, delayMs = 1_000),
+            noteDao = noteDao,
+            labelDao = FakeLabelDao(),
+            syncStateStore = FakeNoteSyncStateStore(),
+            uidProvider = { Result.success("uid") },
+            platform = "desktop"
+        )
+        pendingStore = FakePendingSyncStore()
+        val coordinator = DesktopSyncCoordinator(syncEngine, pendingStore, backgroundScope)
+        for (id in 1L..4L) seedNote(id)
+
+        for (id in 1L..4L) coordinator.scheduleUpload(id)
+        // Past the debounce and into the flush, but only far enough to finish the first note.
+        advanceTimeBy(3_500)
+
+        // A save landing mid-sync cancels the running flush. NoteSyncEngine's runCatching turns
+        // that cancellation into a failed Result, so the interrupted notes used to be counted as
+        // cloud failures and pushed the coordinator into its 30s backoff — the user's own typing
+        // delaying the sync of what they just typed. The remaining notes should go out on the
+        // ordinary debounce instead.
+        seedNote(5L)
+        coordinator.scheduleUpload(5L)
+        advanceTimeBy(15_000)
+
+        for (id in 1L..5L) {
+            assertTrue(id in backing.notes, "note $id should have synced without waiting on backoff")
+        }
+    }
+
+    @Test
+    fun `an edit during backoff does not pull the retry forward`() = runTest {
+        signedIn = false
+        val syncEngine = engine()
+        pendingStore = FakePendingSyncStore()
+        val coordinator = DesktopSyncCoordinator(syncEngine, pendingStore, backgroundScope)
+        seedNote(1L)
+        seedNote(2L)
+
+        coordinator.scheduleUpload(1L)
+        advanceTimeBy(pastDebounce)
+        assertEquals(setOf(1L), pendingStore.saved.uploads)
+
+        // The session is back, but the coordinator is inside its 30s backoff. A save landing now
+        // used to reset the failure count and reschedule at the 2s debounce, so a user editing
+        // while the cloud was unreachable retried every two seconds indefinitely.
+        signedIn = true
+        coordinator.scheduleUpload(2L)
+        advanceTimeBy(10_000)
+        assertTrue(transport.notes.isEmpty(), "the retry must not be pulled forward to the debounce")
+
+        // It still fires once the backoff actually elapses, and picks up the id queued during it.
+        advanceTimeBy(25_000)
+        assertTrue(1L in transport.notes)
+        assertTrue(2L in transport.notes, "the note queued during backoff should ride the retry")
     }
 }
