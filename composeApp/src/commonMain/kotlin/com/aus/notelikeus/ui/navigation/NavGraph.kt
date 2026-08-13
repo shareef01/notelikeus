@@ -52,6 +52,8 @@ fun NavGraph(
     navController: NavHostController,
     mainViewModel: MainViewModel,
     windowSizeClass: WindowSizeClass,
+    initialSidebarCollapsed: Boolean = false,
+    onSidebarCollapsedChange: (Boolean) -> Unit = {},
     isAppLockEnabled: Boolean = false,
     onRequestAppUnlock: (onSuccess: () -> Unit) -> Unit = {},
     onAppLockEnabled: () -> Unit = {},
@@ -69,6 +71,8 @@ fun NavGraph(
         ) {
             MainScreen(
                 viewModel = mainViewModel,
+                initialSidebarCollapsed = initialSidebarCollapsed,
+                onSidebarCollapsedChange = onSidebarCollapsedChange,
                 onNoteClick = { noteId ->
                     val initialColor =
                         if (noteId == null) mainViewModel.state.value.selectedColor else null
@@ -115,15 +119,22 @@ fun NavGraph(
             popEnterTransition = { fadeIn() },
             popExitTransition = { slideOutHorizontally { it / 4 } + fadeOut() }
         ) { backStackEntry ->
-            // On Compose Desktop, SavedStateHandle doesn't get nav args.
-            // Fallback: extract noteId from the entry's arguments string.
-            val noteId = backStackEntry.arguments
-                ?.toString()
-                ?.let { Regex("noteId=(-?\\d+)").find(it)?.groupValues?.get(1) }
-                ?.toLongOrNull()
-                ?.takeIf { it != -1L }
+            // Compose Navigation on Desktop/JVM targets does not populate the Bundle via
+            // SavedStateHandle, so standard argument accessors are unavailable. The argument
+            // values are present in toString() output, so we parse them with a regex as a
+            // stable workaround. If this ever breaks (e.g. after a Navigation library update),
+            // the editor opens as a blank new note rather than the one that was tapped.
+            val arguments = backStackEntry.arguments?.toString()
+            fun argument(name: String): String? =
+                arguments?.let { Regex("$name=(-?\\d+)").find(it)?.groupValues?.get(1) }
+
+            val noteId = argument("noteId")?.toLongOrNull()?.takeIf { it != -1L }
+            // Parsed alongside noteId: reading it from SavedStateHandle alone meant a new note
+            // always opened in the theme default colour on desktop.
+            val initialColor = argument("initialColor")?.toIntOrNull()?.takeIf { it != Int.MIN_VALUE }
+
             val viewModel: EditorViewModel = koinViewModel()
-            LaunchedEffect(noteId) { viewModel.setNoteId(noteId) }
+            LaunchedEffect(noteId, initialColor) { viewModel.setRouteArgs(noteId, initialColor) }
             EditorScreen(
                 viewModel = viewModel,
                 onBack = {
