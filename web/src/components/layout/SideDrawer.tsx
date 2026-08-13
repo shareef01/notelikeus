@@ -1,6 +1,7 @@
 import { BrandMark } from '@/components/brand/BrandMark';
 import {
   ArchiveIcon,
+  ChevronRightIcon,
   CloseIcon,
   LabelIcon,
   NotesIcon,
@@ -13,8 +14,10 @@ import type { ReactNode } from 'react';
 
 interface SideDrawerProps {
   open: boolean;
+  collapsed: boolean;
   currentFilter: NoteFilter;
   onClose: () => void;
+  onToggleCollapse: () => void;
   onNavigate: (filter: NoteFilter) => void;
   userEmail: string | null;
   onSignIn: () => void;
@@ -50,6 +53,7 @@ function NavButton({
   ariaCurrent,
   iconClass,
   barClass,
+  collapsed = false,
 }: {
   active?: boolean;
   onClick: () => void;
@@ -59,33 +63,44 @@ function NavButton({
   ariaCurrent?: 'page';
   iconClass: string;
   barClass: string;
+  collapsed?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-current={ariaCurrent}
-      className={`group relative flex min-h-10 w-full items-center gap-2.5 rounded-xl py-2.5 pl-3 pr-2.5 text-left text-sm leading-none tracking-tight transition-colors ${
+      aria-label={collapsed ? label : undefined}
+      title={collapsed ? label : undefined}
+      className={`group relative flex w-full items-center gap-2.5 rounded-xl text-left text-sm leading-none tracking-tight transition-colors ${
+        collapsed
+          ? 'min-h-10 justify-center px-0 py-2.5'
+          : 'min-h-10 py-2.5 pl-3 pr-2.5'
+      } ${
         active
           ? 'bg-brand-primary/[0.08] font-semibold text-brand-primary'
           : 'font-medium text-brand-secondary hover:bg-brand-primary/[0.06] hover:text-brand-primary'
       }`}
     >
-      {active ? (
+      {!collapsed && active ? (
         <span
           className={`absolute inset-y-2 left-0 w-0.5 rounded-full ${barClass}`}
           aria-hidden
         />
       ) : null}
       <span
-        className={`flex size-5 shrink-0 items-center justify-center transition-opacity ${iconClass} ${
+        className={`flex shrink-0 items-center justify-center transition-opacity ${iconClass} ${
           active ? 'opacity-100' : 'opacity-85 group-hover:opacity-100'
-        }`}
+        } ${collapsed ? 'size-5' : 'size-5'}`}
       >
         {icon}
       </span>
-      <span className="min-w-0 flex-1 truncate tracking-tight">{label}</span>
-      {trailing}
+      {!collapsed && (
+        <>
+          <span className="min-w-0 flex-1 truncate tracking-tight">{label}</span>
+          {trailing}
+        </>
+      )}
     </button>
   );
 }
@@ -119,8 +134,10 @@ function CountBadge({ count, active }: { count: number; active: boolean }) {
 
 export function SideDrawer({
   open,
+  collapsed,
   currentFilter,
   onClose,
+  onToggleCollapse,
   onNavigate,
   userEmail,
   onSignIn,
@@ -130,6 +147,7 @@ export function SideDrawer({
   onOpenSettings,
 }: SideDrawerProps) {
   const isTabletUp = useIsTabletUp();
+  const showCollapsed = collapsed && isTabletUp;
 
   return (
     <>
@@ -142,35 +160,51 @@ export function SideDrawer({
       />
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[min(300px,88vw)] flex-col bg-true-surface transition-transform duration-300 ease-out md:static md:z-auto md:w-56 md:shrink-0 md:translate-x-0 md:border-r md:border-brand-outline/50 lg:w-60 xl:w-64 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-true-surface transition-all duration-300 ease-out md:static md:z-auto md:shrink-0 md:translate-x-0 md:border-r md:border-brand-outline/50 ${
+          showCollapsed
+            ? 'w-[min(300px,88vw)] md:w-16'
+            : 'w-[min(300px,88vw)] md:w-56 lg:w-60 xl:w-64'
+        } ${
           open ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0 md:shadow-none'
         }`}
         aria-hidden={!open && !isTabletUp}
         aria-label="Navigation"
       >
-        <div className="flex items-center justify-between gap-3 px-4 pb-5 pt-safe md:px-5 md:pt-7">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <BrandMark size={36} />
-            <div className="min-w-0">
-              <p className="truncate text-[15px] font-bold tracking-tight text-brand-primary">
-                Notelikeus
-              </p>
-              <p className="text-chrome-label">
-                Capture
-              </p>
+        {/* Header */}
+        <div className={`flex items-center gap-3 px-4 pb-5 pt-safe md:px-5 md:pt-7 ${
+          showCollapsed ? 'justify-center md:px-0' : 'justify-between'
+        }`}>
+          {showCollapsed ? (
+            <BrandMark size={28} />
+          ) : (
+            <div className="flex min-w-0 items-center gap-2.5">
+              <BrandMark size={36} />
+              <div className="min-w-0">
+                <p className="truncate text-[15px] font-bold tracking-tight text-brand-primary">
+                  Notelikeus
+                </p>
+                <p className="text-chrome-label">
+                  Capture
+                </p>
+              </div>
             </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 md:hidden"
-            aria-label="Close menu"
-          >
-            <CloseIcon size={20} />
-          </button>
+          )}
+          {!showCollapsed && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 md:hidden"
+              aria-label="Close menu"
+            >
+              <CloseIcon size={20} />
+            </button>
+          )}
         </div>
 
-        <nav className="flex flex-1 flex-col gap-7 overflow-y-auto px-2.5 pb-5 md:px-3">
+        {/* Nav */}
+        <nav className={`flex flex-1 flex-col overflow-y-auto px-2.5 pb-5 ${
+          showCollapsed ? 'gap-4 md:px-1.5' : 'gap-7 md:px-3'
+        }`}>
           <NavSection>
             {NAV_ITEMS.map(({ filter, label, Icon, iconClass, barClass }) => {
               const active = currentFilter === filter;
@@ -179,6 +213,7 @@ export function SideDrawer({
                 <NavButton
                   key={filter}
                   active={active}
+                  collapsed={showCollapsed}
                   iconClass={iconClass}
                   barClass={barClass}
                   ariaCurrent={active ? 'page' : undefined}
@@ -186,10 +221,10 @@ export function SideDrawer({
                     onNavigate(filter);
                     onClose();
                   }}
-                  icon={<Icon size={20} />}
+                  icon={<Icon size={showCollapsed ? 20 : 20} />}
                   label={label}
                   trailing={
-                    count != null && count > 0 ? (
+                    !showCollapsed && count != null && count > 0 ? (
                       <CountBadge count={count} active={active} />
                     ) : null
                   }
@@ -199,9 +234,10 @@ export function SideDrawer({
           </NavSection>
 
           {(onEditLabels || onOpenSettings) ? (
-            <NavSection title="Manage">
+            <NavSection title={showCollapsed ? undefined : 'Manage'}>
               {onEditLabels ? (
                 <NavButton
+                  collapsed={showCollapsed}
                   iconClass={MANAGE_ITEMS.labels.iconClass}
                   barClass={MANAGE_ITEMS.labels.barClass}
                   onClick={() => {
@@ -214,6 +250,7 @@ export function SideDrawer({
               ) : null}
               {onOpenSettings ? (
                 <NavButton
+                  collapsed={showCollapsed}
                   iconClass={MANAGE_ITEMS.settings.iconClass}
                   barClass={MANAGE_ITEMS.settings.barClass}
                   onClick={() => {
@@ -228,46 +265,101 @@ export function SideDrawer({
           ) : null}
         </nav>
 
-        <div className="mt-auto border-t border-brand-outline/40 px-4 py-4 pb-safe md:px-5 md:pb-6">
-          {userEmail ? (
-            <div className="space-y-3">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <span
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-[12px] font-bold uppercase text-brand-primary"
-                  aria-hidden
-                >
-                  {userEmail.charAt(0)}
+        {/* Collapse toggle — desktop only */}
+        {isTabletUp ? (
+          <div className={`border-t border-brand-outline/40 ${showCollapsed ? 'px-1 py-3' : 'px-4 py-2 md:px-5'}`}>
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className={`group flex w-full items-center rounded-xl text-brand-muted transition-colors hover:bg-brand-primary/[0.06] hover:text-brand-primary ${
+                showCollapsed
+                  ? 'justify-center py-2.5'
+                  : 'gap-2.5 py-2.5 pl-3 pr-2.5'
+              }`}
+              aria-label={showCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={showCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              <span className={`flex size-5 shrink-0 items-center justify-center transition-transform duration-300 ${
+                showCollapsed ? '' : 'rotate-180'
+              }`}>
+                <ChevronRightIcon size={18} />
+              </span>
+              {!showCollapsed && (
+                <span className="min-w-0 flex-1 truncate text-left text-sm tracking-tight">
+                  Collapse
                 </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-chrome-label">
-                    Signed in
-                  </p>
-                  <p
-                    className="truncate text-[13px] font-medium leading-snug tracking-tight text-brand-primary"
-                    title={userEmail}
+              )}
+            </button>
+          </div>
+        ) : null}
+
+        {/* Bottom — user section */}
+        {!showCollapsed && (
+          <div className="mt-auto border-t border-brand-outline/40 px-4 py-4 pb-safe md:px-5 md:pb-6">
+            {userEmail ? (
+              <div className="space-y-3">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-[12px] font-bold uppercase text-brand-primary"
+                    aria-hidden
                   >
-                    {userEmail}
-                  </p>
+                    {userEmail.charAt(0)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-chrome-label">
+                      Signed in
+                    </p>
+                    <p
+                      className="truncate text-[13px] font-medium leading-snug tracking-tight text-brand-primary"
+                      title={userEmail}
+                    >
+                      {userEmail}
+                    </p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={onSignOut}
+                  className="w-full rounded-xl bg-rose-500/15 px-3 py-2.5 text-center text-sm font-semibold text-rose-400 ring-1 ring-inset ring-rose-500/25 transition-colors hover:bg-rose-500/25 hover:text-rose-300"
+                >
+                  Sign out
+                </button>
               </div>
+            ) : (
               <button
                 type="button"
-                onClick={onSignOut}
-                className="w-full rounded-xl bg-rose-500/15 px-3 py-2.5 text-center text-sm font-semibold text-rose-400 ring-1 ring-inset ring-rose-500/25 transition-colors hover:bg-rose-500/25 hover:text-rose-300"
+                onClick={onSignIn}
+                className="w-full rounded-xl bg-brand-primary px-3 py-2.5 text-sm font-semibold text-true-surface transition-opacity hover:opacity-90"
               >
-                Sign out
+                Sign in with Google
               </button>
-            </div>
-          ) : (
+            )}
+          </div>
+        )}
+        {showCollapsed && userEmail ? (
+          <div className="mt-auto border-t border-brand-outline/40 px-1 py-4">
+            <span
+              className="mx-auto flex size-8 items-center justify-center rounded-full bg-brand-primary/10 text-[12px] font-bold uppercase text-brand-primary"
+              aria-hidden
+              title={userEmail}
+            >
+              {userEmail.charAt(0)}
+            </span>
+          </div>
+        ) : null}
+        {showCollapsed && !userEmail ? (
+          <div className="mt-auto border-t border-brand-outline/40 px-1 py-4">
             <button
               type="button"
               onClick={onSignIn}
-              className="w-full rounded-xl bg-brand-primary px-3 py-2.5 text-sm font-semibold text-true-surface transition-opacity hover:opacity-90"
+              className="mx-auto flex size-8 items-center justify-center rounded-full bg-brand-primary/10 text-brand-primary transition-opacity hover:opacity-80"
+              aria-label="Sign in"
+              title="Sign in with Google"
             >
-              Sign in with Google
+              <span className="text-[14px] font-bold">G</span>
             </button>
-          )}
-        </div>
+          </div>
+        ) : null}
       </aside>
     </>
   );

@@ -32,97 +32,125 @@ import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 
+/**
+ * A destination row in the side drawer.
+ *
+ * Each nav item carries its own colour identity (sky, amber, rose, violet, teal) matching
+ * the web sidebar, so the icons read as distinct destinations even when none is selected.
+ *
+ * @param collapsed when true, renders as a rail item: icon only, centered, no label, count,
+ *   or active bar (mirrors the web sidebar's collapsed mode).
+ * @param icon shown when the row is not selected; prefer the outlined variant.
+ * @param selectedIcon shown when it is; prefer the filled variant of the same glyph.
+ * @param identityColor the item's signature hue — used for the icon tint, active bar, and badge.
+ */
 @Composable
 fun SideDrawerNavItem(
     label: String,
     icon: ImageVector,
-    accent: Color,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    selectedIcon: ImageVector = icon,
     count: Int? = null,
+    identityColor: Color = MaterialTheme.colorScheme.primary,
+    collapsed: Boolean = false,
 ) {
     val shape = RoundedCornerShape(12.dp)
+    val accent = identityColor
     val wash by animateColorAsState(
         targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SoftWash)
+            accent.copy(alpha = Chrome.SoftWash)
         } else {
             Color.Transparent
         },
         label = "drawer_nav_wash"
     )
+    val iconTint by animateColorAsState(
+        targetValue = if (selected) accent else identityColor.copy(alpha = 0.85f),
+        label = "drawer_nav_icon"
+    )
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp)
+            .padding(horizontal = if (collapsed) 0.dp else 10.dp)
             .height(44.dp)
             .clip(shape)
             .background(wash)
             .clickable(onClick = onClick)
-            .padding(start = 12.dp, end = 10.dp),
+            .padding(start = if (collapsed) 0.dp else 12.dp, end = if (collapsed) 0.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.spacedBy(12.dp)
     ) {
-        if (selected) {
-            Box(
-                modifier = Modifier
-                    .width(2.dp)
-                    .height(28.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(accent)
+        if (collapsed) {
+            Icon(
+                imageVector = if (selected) selectedIcon else icon,
+                contentDescription = label,
+                modifier = Modifier.size(22.dp),
+                tint = iconTint
             )
         } else {
-            Spacer(modifier = Modifier.width(2.dp))
-        }
-
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            modifier = Modifier.size(22.dp),
-            tint = accent.copy(alpha = if (selected) 1f else 0.85f)
-        )
-
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyLarge.copy(
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                letterSpacing = (-0.15).sp
-            ),
-            color = if (selected) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
-        )
-
-        if (count != null && count > 0) {
-            Box(
-                modifier = Modifier
-                    .height(22.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(
-                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                        else MaterialTheme.colorScheme.onSurface.copy(alpha = Chrome.SoftWash)
-                    )
-                    .padding(horizontal = 7.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = count.toString(),
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp
-                    ),
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .width(2.dp)
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(accent)
                 )
+            } else {
+                Spacer(modifier = Modifier.width(2.dp))
+            }
+
+            Icon(
+                imageVector = if (selected) selectedIcon else icon,
+                contentDescription = label,
+                modifier = Modifier.size(22.dp),
+                tint = iconTint
+            )
+
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    letterSpacing = (-0.15).sp
+                ),
+                color = if (selected) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
+
+            if (count != null && count > 0) {
+                Box(
+                    modifier = Modifier
+                        .height(22.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(
+                            if (selected) accent.copy(alpha = 0.2f)
+                            else accent.copy(alpha = 0.08f)
+                        )
+                        .padding(horizontal = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = count.toString(),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp
+                        ),
+                        color = if (selected) {
+                            accent
+                        } else {
+                            accent.copy(alpha = 0.85f)
+                        }
+                    )
+                }
             }
         }
     }

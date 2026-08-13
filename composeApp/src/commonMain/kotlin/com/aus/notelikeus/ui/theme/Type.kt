@@ -4,18 +4,8 @@ import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.googlefonts.Font
-import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.sp
-val provider = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    // Certificates removed for KMP cleanup
-)
-
-val InterFontFamily = FontFamily(
-    Font(googleFont = GoogleFont("Inter"), fontProvider = provider)
-)
+val InterFontFamily = FontFamily.Default
 
 private fun inter(
     weight: FontWeight,
@@ -47,21 +37,17 @@ val Typography = Typography(
 )
 
 /**
- * Constraint: Premium Typography
- * Note Titles: SemiBold, 18.sp, -0.5.sp kerning.
+ * Note card title — matches web note-title: 18px / 28px line-height / -0.02em / SemiBold.
  */
-/**
- * Note card title — larger, more readable list/grid preview.
- */
-val NoteCardTitleStyle = inter(FontWeight.SemiBold, 18f, 24f, -0.35f)
+val NoteCardTitleStyle = inter(FontWeight.SemiBold, 18f, 28f, -0.36f)
 
 /**
- * Note card body preview.
+ * Note card body preview — matches web note-body: 15px / 1.6 line-height / 0.005em.
  */
-val NoteCardBodyStyle = inter(FontWeight.Normal, 15f, 22f, 0.1f)
+val NoteCardBodyStyle = inter(FontWeight.Normal, 15f, 24f, 0.075f)
 
-/** Chrome overline — matches web `text-chrome-label` / `overline`. */
-val ChromeLabelStyle = inter(FontWeight.SemiBold, 11f, 14f, 0.88f)
+/** Chrome overline — matches web `section-label`: 11px / 16px / 0.08em / SemiBold. */
+val ChromeLabelStyle = inter(FontWeight.SemiBold, 11f, 16f, 0.88f)
 
 /**
  * Editor typography — aligned with card styles for shared-element continuity.
