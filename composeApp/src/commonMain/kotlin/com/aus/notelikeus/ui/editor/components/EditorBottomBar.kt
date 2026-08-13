@@ -16,8 +16,7 @@ import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import java.util.Date
-import java.text.SimpleDateFormat
+import com.aus.notelikeus.util.DateUtils
 
 @Composable
 fun EditorBottomBar(
@@ -28,18 +27,16 @@ fun EditorBottomBar(
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
-    val timeFormat = remember { SimpleDateFormat("h:mm a") }
-    val dateFormat = remember { SimpleDateFormat("MMM d, yyyy") }
     val editedLabel = stringResource(
         Res.string.edited_at,
-        timeFormat.format(Date(timestamp)),
+        DateUtils.formatTime(timestamp),
         "" // Placeholder for second arg if any
     )
     val reminderLabel = reminderTimestamp?.let {
         stringResource(
             Res.string.reminder_at,
-            dateFormat.format(Date(it)),
-            timeFormat.format(Date(it))
+            DateUtils.formatDateTime(it),
+            DateUtils.formatTime(it)
         )
     }
 

@@ -12,14 +12,14 @@ if (-not (Test-Path $SigningFile)) {
 }
 
 Write-Host "Running unit tests..."
-& .\gradlew.bat :app:testDebugUnitTest --quiet
+& .\gradlew.bat :androidApp:testDebugUnitTest --quiet
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "Building release bundle..."
-& .\gradlew.bat :app:bundleRelease --quiet
+& .\gradlew.bat :androidApp:bundleRelease --quiet
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$Aab = Join-Path $Root "app\build\outputs\bundle\release\app-release.aab"
+$Aab = Join-Path $Root "androidApp\build\outputs\bundle\release\androidApp-release.aab"
 if (Test-Path $Aab) {
     Write-Host ""
     Write-Host "Release bundle ready:"
