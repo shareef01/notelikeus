@@ -2,9 +2,9 @@ name: Android CI
 
 on:
   push:
-    branches: [main, master, weiter]
+    branches: [main, master]
   pull_request:
-    branches: [main, master, weiter]
+    branches: [main, master]
 
 permissions:
   contents: read
@@ -16,34 +16,48 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK 17
-        uses: actions/setup-java@d7793b545071e98d581d3bf084a51c3213318a07 # v4
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v4
         with:
           distribution: temurin
           java-version: 17
+
+      - name: Cache Gradle
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Run unit tests
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
+        run: ./gradlew :composeApp:testDebugUnitTest --stacktrace
 
-      # No task below compiles androidTest, so the instrumented suite silently drifted out of
-      # sync with the composables it tests and stopped compiling. Compiling it here catches that
-      # without needing an emulator.
+      # :androidApp has its own unit tests. Leaving them out of CI let them drift until they
+      # stopped compiling entirely — the same failure mode as the instrumented suite below.
+      - name: Run androidApp unit tests
+        run: ./gradlew :androidApp:testDebugUnitTest --stacktrace
+
+      # No task below compiles androidTest, so the instrumented suite silently
+      # drifted out of sync with the composables it tests and stopped compiling.
+      # Compiling it here catches that without needing an emulator.
       - name: Compile instrumented tests
-        run: ./gradlew :app:compileDebugAndroidTestKotlin --stacktrace
+        run: ./gradlew :composeApp:compileDebugAndroidTestSources --stacktrace
 
       - name: Run Android lint
-        run: ./gradlew :app:lintDebug --stacktrace
+        run: ./gradlew :androidApp:lintDebug --stacktrace
 
       - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: ./gradlew :androidApp:assembleDebug --stacktrace
 
       - name: Build release APK
-        run: ./gradlew :app:assembleRelease --stacktrace
+        run: ./gradlew :androidApp:assembleRelease --stacktrace
 
       - name: Build release AAB
-        run: ./gradlew :app:bundleRelease --stacktrace
+        run: ./gradlew :androidApp:bundleRelease --stacktrace
