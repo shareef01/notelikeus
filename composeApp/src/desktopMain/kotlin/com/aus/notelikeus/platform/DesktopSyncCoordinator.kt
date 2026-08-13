@@ -3,6 +3,7 @@ package com.aus.notelikeus.platform
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.di.PendingSyncStore
 import com.aus.notelikeus.domain.platform.SyncCoordinator
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,14 +38,21 @@ class DesktopSyncCoordinator(
     private var flushJob: Job? = null
     private var consecutiveFailures = 0
 
+    /** Completed once [init] has restored the pending-state snapshot from disk. */
+    private val initLatch = CompletableDeferred<Unit>()
+
     init {
         scope.launch {
-            val restored = pendingStore.load()
-            pendingUploads.addAll(restored.uploads)
-            pendingDeletes.addAll(restored.deletes)
-            pendingRestores.addAll(restored.restores)
-            // Anything left over from a previous run is retried on the next launch.
-            if (!restored.isEmpty) scheduleFlush()
+            try {
+                val restored = pendingStore.load()
+                pendingUploads.addAll(restored.uploads)
+                pendingDeletes.addAll(restored.deletes)
+                pendingRestores.addAll(restored.restores)
+                // Anything left over from a previous run is retried on the next launch.
+                if (!restored.isEmpty) scheduleFlush()
+            } finally {
+                initLatch.complete(Unit)
+            }
         }
     }
 
@@ -76,6 +84,7 @@ class DesktopSyncCoordinator(
 
     private fun persist() {
         scope.launch {
+            initLatch.await()
             pendingStore.save(
                 pendingUploads.toSet(),
                 pendingDeletes.toSet(),
