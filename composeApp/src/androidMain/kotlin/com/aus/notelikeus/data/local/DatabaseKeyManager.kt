@@ -78,8 +78,9 @@ class DatabaseKeyManager(
     }
 
     /**
-     * The passphrase file exists but its AndroidKeyStore key is gone (e.g. after a device restore
-     * that invalidated keystore keys). Move the unreadable blob aside instead of deleting it, so
+     * The passphrase file exists but its AndroidKeyStore key can no longer decrypt it — the key was
+     * invalidated (a device-to-device transfer, a lock-screen credential reset, or the key simply
+     * not surviving to the new install). Move the unreadable blob aside instead of deleting it, so
      * the original key material survives in case the keystore key becomes readable again. The app
      * continues with a fresh key; [PlaintextDatabaseMigrator] quarantines (never deletes) any
      * existing database it cannot open with that key.
@@ -194,9 +195,17 @@ internal object PassphraseFileCodec {
     private const val GCM_TAG_BITS = 128
 
     fun encrypt(key: SecretKey, utf8Plaintext: String): ByteArray {
-        val iv = ByteArray(IV_SIZE).also { SecureRandom().nextBytes(it) }
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
+        // Deliberately no caller-supplied IV. AndroidKeyStore keys are generated with
+        // setRandomizedEncryptionRequired defaulting to true, and such a key rejects a
+        // caller-provided IV on encrypt with InvalidAlgorithmParameterException — which used to
+        // throw on every call here, so writeToKeystoreFile always failed and the passphrase fell
+        // back to the legacy ESP this class exists to replace. Letting the provider generate the IV
+        // keeps randomized encryption required (a stronger policy than turning it off) and behaves
+        // the same for the software keys used in tests.
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
+        require(iv.size == IV_SIZE) { "Unexpected GCM IV size: ${iv.size}" }
         val ciphertext = cipher.doFinal(utf8Plaintext.toByteArray(Charsets.UTF_8))
         val out = ByteArray(MAGIC.size + iv.size + ciphertext.size)
         System.arraycopy(MAGIC, 0, out, 0, MAGIC.size)
@@ -267,11 +276,12 @@ object PlaintextDatabaseMigrator {
             false
         }
         if (!isPlaintext) {
-            // Can't open it plaintext, and not with our current passphrase either. This is
-            // reachable after an android:allowBackup restore to a new device: the DB file comes
-            // along, but the Keystore-bound key does not, so an otherwise-valid encrypted database
-            // looks unopenable. Never delete outright — quarantine (rename) it so Room can create a
-            // fresh DB while the original bytes stay recoverable on disk.
+            // Can't open it plaintext, and not with our current passphrase either. The app sets
+            // android:allowBackup="false", so this is not a backup-restore artefact; it is reachable
+            // whenever the database file outlives the Keystore key that encrypted it — a
+            // device-to-device transfer, or a key invalidated on this device. An otherwise-valid
+            // encrypted database then looks unopenable. Never delete outright — quarantine (rename)
+            // it so Room can create a fresh DB while the original bytes stay recoverable on disk.
             quarantineDatabaseFiles(context, databaseName)
             return
         }

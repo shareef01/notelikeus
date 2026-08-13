@@ -15,7 +15,8 @@ data class WidgetNote(
     val id: Long,
     val title: String,
     val preview: String,
-    val isPinned: Boolean
+    val isPinned: Boolean,
+    val color: Int
 )
 
 object WidgetNoteLoader {
@@ -33,7 +34,8 @@ object WidgetNoteLoader {
                 id = note.id,
                 title = note.title,
                 preview = buildPreview(context, noteWithRelations),
-                isPinned = note.isPinned
+                isPinned = note.isPinned,
+                color = note.color
             )
         }
     }
@@ -45,7 +47,7 @@ object WidgetNoteLoader {
             val checked = item.checklist.count { it.isChecked }
             // Using Res in androidMain might need access to shared resources or standard R
             // Since this is androidMain and it's a widget, using the app's R is safer.
-            return context.getString(com.aus.notelikeus.R.string.checklist_progress, checked, item.checklist.size)
+            return context.getString(com.aus.notelikeus.shared.R.string.checklist_progress, checked, item.checklist.size)
         }
         return ""
     }
