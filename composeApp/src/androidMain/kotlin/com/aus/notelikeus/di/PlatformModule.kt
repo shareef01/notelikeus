@@ -34,6 +34,8 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import java.io.File
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 
 actual val platformModule = module {
     single {
@@ -87,12 +89,18 @@ actual val platformModule = module {
     single<CloudNoteTransport> { FirestoreNoteTransport(get()) }
     single {
         val sessionManager = get<FirebaseSessionManager>()
+        val database = get<NotelikeusDatabase>()
         NoteSyncEngine(
             transport = get<CloudNoteTransport>(),
             noteDao = get(),
             labelDao = get(),
             syncStateStore = get<SharedPrefsNoteSyncStateStore>(),
-            uidProvider = { sessionManager.ensureGoogleSignedIn() }
+            uidProvider = { sessionManager.ensureGoogleSignedIn() },
+            runInTransaction = { block ->
+                database.useWriterConnection { transactor ->
+                    transactor.immediateTransaction { block() }
+                }
+            }
         )
     }
     

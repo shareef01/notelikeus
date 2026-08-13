@@ -1,5 +1,10 @@
 package com.aus.notelikeus.data.sync
 
+import com.aus.notelikeus.data.local.dao.NoteDao
+import com.aus.notelikeus.data.local.entity.ChecklistItemEntity
+import com.aus.notelikeus.data.local.entity.LabelEntity
+import com.aus.notelikeus.data.local.entity.NoteEntity
+import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
 import com.aus.notelikeus.data.mapper.toNote
 import com.aus.notelikeus.data.mapper.toNoteEntity
 import com.aus.notelikeus.domain.model.Label
@@ -346,8 +351,83 @@ class NoteSyncEngineTest {
         assertEquals("Cloud note", noteDao.notes[5L]?.title)
     }
 
-    // ---- downloadAllNotes: guarding against a fetch that failed open ----
+    // ---- runInTransaction: production DI wraps multi-statement writes atomically ----
 
+    @Test
+    fun `runInTransaction wraps each multi-statement write as one unit`() = runTest {
+        transport = FakeCloudNoteTransport()
+        stateStore = FakeNoteSyncStateStore()
+        noteDao = FakeNoteDao()
+        labelDao = FakeLabelDao()
+
+        var transactions = 0
+        var daoCallsTotal = 0
+        var daoCallsInside = 0
+        val baseDao = FakeNoteDao()
+        val countingDao = object : NoteDao by baseDao {
+            override suspend fun insertNote(note: NoteEntity): Long {
+                daoCallsTotal++
+                return baseDao.insertNote(note)
+            }
+
+            override suspend fun insertNoteLabelCrossRef(crossRef: NoteLabelCrossRef) {
+                daoCallsTotal++
+                baseDao.insertNoteLabelCrossRef(crossRef)
+            }
+
+            override suspend fun insertChecklistItem(item: ChecklistItemEntity) {
+                daoCallsTotal++
+                baseDao.insertChecklistItem(item)
+            }
+        }
+        engine = NoteSyncEngine(
+            transport = transport,
+            noteDao = countingDao,
+            labelDao = labelDao,
+            syncStateStore = stateStore,
+            uidProvider = { Result.success("uid") },
+            runInTransaction = { block ->
+                transactions++
+                val before = daoCallsTotal
+                block()
+                daoCallsInside += daoCallsTotal - before
+            }
+        )
+
+        // Two cloud notes, each carrying a label and a checklist item, so every import is
+        // genuinely multi-statement — the shape a partial write would corrupt.
+        labelDao.insertLabel(LabelEntity(id = 1L, name = "Work"))
+        labelDao.insertLabel(LabelEntity(id = 2L, name = "Home"))
+        transport.notes[1L] = CloudNoteRecord(
+            noteId = 1L, serverUpdatedAt = 200_000L, clientTimestamp = 1L,
+            title = "One", content = "Hello", timestamp = 1L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null,
+            labels = listOf("Work"),
+            checklistItems = listOf(ChecklistItemData(text = "a", isChecked = false, position = 0))
+        )
+        transport.notes[2L] = CloudNoteRecord(
+            noteId = 2L, serverUpdatedAt = 201_000L, clientTimestamp = 1L,
+            title = "Two", content = "World", timestamp = 1L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null,
+            labels = listOf("Home"),
+            checklistItems = listOf(ChecklistItemData(text = "b", isChecked = true, position = 0))
+        )
+
+        val result = engine.downloadAllNotes()
+
+        assertTrue(result.isSuccess)
+        assertEquals(2, baseDao.notes.size)
+        assertEquals(2, transactions, "one transaction per imported note")
+        assertTrue(daoCallsInside > 0, "the transaction wrapper must actually run its block")
+        assertEquals(
+            daoCallsInside, daoCallsTotal,
+            "no note, label, or checklist write may escape the transaction wrapper"
+        )
+    }
+
+    // ---- downloadAllNotes: guarding against a fetch that failed open ----
     @Test
     fun `downloadAllNotes refuses to delete locals when the cloud comes back unexpectedly empty`() = runTest {
         setup()
