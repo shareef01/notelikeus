@@ -169,7 +169,15 @@ class DesktopTokenStore(
 
     private fun load() {
         if (!tokenFile.exists()) return
-        val raw = tokenFile.readBytes()
+        // load() runs from init, so an unreadable-but-present .session (locked by another process,
+        // permissions changed) would otherwise throw out of the constructor and fail the whole Koin
+        // graph — the app would not start at all. Every other failure below is already handled by
+        // falling back to "no session"; this one belongs with them.
+        val raw = try {
+            tokenFile.readBytes()
+        } catch (_: Exception) {
+            return
+        }
 
         // Sessions written before this app-specific entropy was introduced were protected without
         // it, and DPAPI will not open them with it. Read those once through the legacy path and
