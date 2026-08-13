@@ -17,7 +17,7 @@ class SettingsRepositoryImpl(
     private val widgetManager: PlatformWidgetManager
 ) : SettingsRepository {
 
-    private fun refreshWidget() {
+    private suspend fun refreshWidget() {
         widgetManager.refreshWidgets()
     }
 
