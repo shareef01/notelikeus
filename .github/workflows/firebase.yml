@@ -46,3 +46,14 @@ jobs:
       - name: Test the web sync layer against the emulator
         run: npm run test:sync
         working-directory: web
+
+      # These skip themselves when no emulator is reachable, which is how they went from written
+      # to never-executed while failing. Running them here is what makes the skip safe.
+      # firebase.transport-test.json runs the emulator without rules on purpose — see the test's
+      # KDoc; this client has no auth token, and the rules are covered by the two steps above.
+      - name: Test the Android Firestore transport against the emulator
+        run: >
+          npx firebase emulators:exec --only firestore
+          --config firebase.transport-test.json
+          --project notelikeus-c4-test
+          "./gradlew :composeApp:testDebugUnitTest --tests '*FirestoreNoteTransportEmulatorTest*'"
