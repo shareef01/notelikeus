@@ -22,9 +22,9 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Covers the `transactionRunner` wiring against a **real** Room database.
+ * Covers the `runInTransaction` wiring against a **real** Room database.
  *
- * [NoteSyncEngineTest] leaves `transactionRunner` at its pass-through default, so it proves
+ * [NoteSyncEngineTest] leaves `runInTransaction` at its pass-through default, so it proves
  * nothing about the production wiring in either `PlatformModule`. That wiring runs suspend DAO
  * calls *inside* a held writer connection, which has two failure modes neither a compile nor the
  * existing tests would catch: the DAO calls could fail to join the held connection and deadlock
@@ -42,7 +42,7 @@ class NoteSyncEngineTransactionTest {
     private lateinit var engine: NoteSyncEngine
 
     /**
-     * Mirrors the `transactionRunner` in both `androidMain` and `desktopMain` PlatformModule.
+     * Mirrors the `runInTransaction` in both `androidMain` and `desktopMain` PlatformModule.
      * If those change, this must change with them — that equivalence is the point of the test.
      */
     private fun productionTransactionRunner(
@@ -69,7 +69,7 @@ class NoteSyncEngineTransactionTest {
             syncStateStore = stateStore,
             uidProvider = { Result.success(UID) },
             platform = "desktop",
-            transactionRunner = productionTransactionRunner(database)
+            runInTransaction = productionTransactionRunner(database)
         )
     }
 
