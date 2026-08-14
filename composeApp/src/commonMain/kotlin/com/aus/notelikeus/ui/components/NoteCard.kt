@@ -13,6 +13,7 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
@@ -58,28 +59,25 @@ import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.util.DateUtils
 
-private val NoteCardContentPadding = 18.dp
+private val NoteCardContentPadding = 20.dp
 
 /** Compact uppercase label pill, matching the web card's chip typography. */
 private val NoteCardLabelChipStyle = TextStyle(
     fontWeight = FontWeight.SemiBold,
-    fontSize = 11.sp,
+    fontSize = 10.sp,
     lineHeight = 14.sp,
-    letterSpacing = 0.4.sp
+    letterSpacing = 0.5.sp
 )
 
 /**
- * Relative time label mirroring web's formatListTimestamp: today shows the clock time,
- * yesterday shows "Yesterday", anything older shows "MMM d".
+ * Relative time label matching web's formatListTimestamp:
+ * today shows the clock time, yesterday shows "Yesterday", anything older shows "MMM d".
  */
 @Composable
 private fun noteTimestampLabel(timestamp: Long): String {
     val yesterdayLabel = stringResource(Res.string.section_yesterday)
     return when {
-        DateUtils.isToday(timestamp) -> {
-            // Should actually format with time, but keeping it simple for now
-            DateUtils.formatDateTime(timestamp)
-        }
+        DateUtils.isToday(timestamp) -> DateUtils.formatTime(timestamp)
         DateUtils.isToday(timestamp + DateUtils.DAY_IN_MILLIS) -> yesterdayLabel
         else -> DateUtils.formatDateTime(timestamp, showYear = false)
     }
@@ -92,6 +90,7 @@ fun NoteCard(
     isSelected: Boolean,
     searchQuery: String = "",
     compact: Boolean = false,
+    listStyle: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onLabelClick: ((Long) -> Unit)? = null,
@@ -140,7 +139,8 @@ fun NoteCard(
 
     val hairlineBorder = BorderStroke(
         1.dp,
-        MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.CardHairline)
+        // Web default-color cards use border-brand-outline/40.
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
     )
 
     val contentColor = when {
@@ -197,7 +197,7 @@ fun NoteCard(
                 } else Modifier
             )
             */
-            .clip(MaterialTheme.shapes.large) // Enforcing 16.dp corner radius
+            .clip(RoundedCornerShape(18.dp)) // Web cards use rounded-note = 18px corners
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -205,14 +205,14 @@ fun NoteCard(
                 onLongClick = onLongClick
             )
             .hoverable(interactionSource),
-        shape = MaterialTheme.shapes.large, // Enforcing 16.dp corner radius
+        shape = RoundedCornerShape(18.dp), // Web cards use rounded-note = 18px corners
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
             contentColor = contentColor
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = elevation),
         border = when {
-            isSelected -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+            isSelected -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
             displayColorArgb == 0 -> hairlineBorder
             else -> null
         }
@@ -236,6 +236,164 @@ fun NoteCard(
                 }
             }
 
+            if (listStyle) {
+                // Horizontal one-column row, matching the web List view: accent strip,
+                // 2-line title, 3-line preview, checklist count, up to 3 label chips, and a
+                // right-aligned status/timestamp column.
+                Row(
+                    modifier = Modifier
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = accessibilityDescription
+                            selected = isSelected
+                        }
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min)
+                        .padding(
+                            start = contentStartPadding,
+                            top = 14.dp,
+                            end = 14.dp,
+                            bottom = 14.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(2.dp)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(
+                                if (note.color != 0) contentColor.copy(alpha = 0.3f)
+                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        if (note.title.isNotEmpty()) {
+                            Text(
+                                text = buildHighlightedString(note.title, searchQuery, contentColor, highlightColor),
+                                style = NoteCardTitleStyle,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (note.content.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = RichTextParser.parse(
+                                    text = note.content,
+                                    contentColor = contentColor.copy(alpha = 0.7f),
+                                    highlightColor = highlightColor,
+                                    searchQuery = searchQuery,
+                                    linkColor = MaterialTheme.colorScheme.primary,
+                                    linksClickable = false
+                                ),
+                                style = NoteCardBodyStyle,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (note.checklist.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = stringResource(Res.string.checklist_progress, note.checklist.count { it.isChecked }, note.checklist.size),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = contentColor.copy(alpha = 0.6f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (note.labels.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                note.labels.take(3).forEach { label ->
+                                    val labelId = label.id
+                                    val clickable = labelId != null && onLabelClick != null
+                                    Text(
+                                        text = label.name.uppercase(),
+                                        style = NoteCardLabelChipStyle.copy(fontSize = 9.sp),
+                                        color = contentColor,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .background(contentColor.copy(alpha = 0.1f))
+                                            .then(
+                                                if (clickable) {
+                                                    Modifier.clickable { onLabelClick.invoke(labelId) }
+                                                } else Modifier
+                                            )
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                                val overflowCount = note.labels.size - 3
+                                if (overflowCount > 0) {
+                                    Text(
+                                        text = stringResource(Res.string.labels_more, overflowCount),
+                                        style = NoteCardLabelChipStyle.copy(fontSize = 9.sp),
+                                        color = contentColor.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (isSelected) {
+                            Surface(
+                                modifier = Modifier.size(24.dp),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                                shadowElevation = 0.dp
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = selectedLabel,
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        } else {
+                            if (note.isPinned) {
+                                Icon(
+                                    Icons.Default.PushPin,
+                                    contentDescription = null,
+                                    tint = contentColor.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                            if (note.reminderTimestamp != null) {
+                                Icon(
+                                    Icons.Default.Notifications,
+                                    contentDescription = null,
+                                    tint = contentColor.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = noteTimestampLabel(note.timestamp),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Medium,
+                                fontFeatureSettings = "tnum",
+                                fontSize = 11.sp
+                            ),
+                            color = contentColor.copy(alpha = 0.55f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            } else {
             Column(
                 modifier = Modifier
                     .semantics(mergeDescendants = true) {
@@ -244,31 +402,87 @@ fun NoteCard(
                     }
                     .padding(
                     start = contentStartPadding,
-                    top = NoteCardContentPadding,
-                    end = NoteCardContentPadding,
-                    bottom = NoteCardContentPadding
+                    top = if (compact) 16.dp else NoteCardContentPadding,
+                    end = if (compact) 16.dp else NoteCardContentPadding,
+                    bottom = if (compact) 16.dp else NoteCardContentPadding
                 )
             ) {
-                if (note.title.isNotEmpty()) {
-                    val trailingChrome = when {
-                        isSelected -> 28.dp
-                        note.isPinned || note.reminderTimestamp != null -> 20.dp
-                        else -> 0.dp
-                    }
+                // Title row: title on the left, status/selection + timestamp on the right,
+                // matching the web card's header block.
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text(
-                        text = buildHighlightedString(note.title, searchQuery, contentColor, highlightColor),
-                        style = NoteCardTitleStyle,
-                        // Two lines in both densities: a third only ever appeared on the rare
-                        // long title and pushed that one card out of step with its neighbours.
-                        maxLines = 2,
+                        text = buildHighlightedString(
+                            if (note.title.isNotEmpty()) note.title else untitledLabel,
+                            searchQuery,
+                            contentColor,
+                            highlightColor
+                        ),
+                        style = if (compact) {
+                            NoteCardTitleStyle.copy(fontSize = 15.sp, lineHeight = 20.sp)
+                        } else {
+                            NoteCardTitleStyle
+                        },
+                        maxLines = if (compact) 2 else 3,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(end = trailingChrome)
+                        modifier = Modifier.weight(1f)
                     )
-                    if (!compact || note.content.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (isSelected) {
+                            Surface(
+                                modifier = Modifier.size(24.dp),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                                shadowElevation = 0.dp
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = selectedLabel,
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        } else if (note.isPinned || note.reminderTimestamp != null) {
+                            val statusSize = if (compact) 13.dp else 14.dp
+                            if (note.isPinned) {
+                                Icon(
+                                    Icons.Default.PushPin,
+                                    contentDescription = null,
+                                    tint = contentColor.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(statusSize)
+                                )
+                            }
+                            if (note.reminderTimestamp != null) {
+                                Icon(
+                                    Icons.Default.Notifications,
+                                    contentDescription = null,
+                                    tint = contentColor.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(statusSize)
+                                )
+                            }
+                        }
+                        Text(
+                            text = noteTimestampLabel(note.timestamp),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Medium,
+                                fontFeatureSettings = "tnum",
+                                fontSize = if (compact) 10.sp else 11.sp
+                            ),
+                            color = contentColor.copy(alpha = 0.6f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
                 if (note.content.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(if (compact) 8.dp else 12.dp))
                     Text(
                         text = RichTextParser.parse(
                             text = note.content,
@@ -279,10 +493,8 @@ fun NoteCard(
                             linksClickable = false
                         ),
                         style = NoteCardBodyStyle,
-                        // Was 12. In a staggered grid a long note grew to several times the
-                        // height of a short one and dominated the column; a preview only needs
-                        // enough to identify the note, and the ellipsis says there is more.
-                        maxLines = if (compact) 5 else 8,
+                        // Web grid preview clamps at 7 lines; the ellipsis says there is more.
+                        maxLines = if (compact) 5 else 7,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -292,7 +504,7 @@ fun NoteCard(
                     Text(
                         text = stringResource(Res.string.checklist_progress, note.checklist.count { it.isChecked }, note.checklist.size),
                         style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.7f),
+                        color = contentColor.copy(alpha = 0.6f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -300,38 +512,40 @@ fun NoteCard(
 
                 if (!compact && note.checklist.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    note.checklist.take(3).forEach { item ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                if (item.isChecked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
-                                contentDescription = stringResource(
-                                    if (item.isChecked) Res.string.cd_checked else Res.string.cd_unchecked
-                                ),
-                                modifier = Modifier.size(16.dp),
-                                tint = contentColor.copy(alpha = 0.6f)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = RichTextParser.parse(
-                                    text = item.text,
-                                    contentColor = contentColor.copy(alpha = 0.6f),
-                                    highlightColor = highlightColor,
-                                    searchQuery = searchQuery,
-                                    linksClickable = false
-                                ),
-                                style = NoteCardBodyStyle.copy(
-                                    fontSize = MaterialTheme.typography.labelSmall.fontSize,
-                                    lineHeight = MaterialTheme.typography.labelSmall.lineHeight
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = contentColor.copy(alpha = 0.6f)
-                            )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        note.checklist.take(3).forEach { item ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    if (item.isChecked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
+                                    contentDescription = stringResource(
+                                        if (item.isChecked) Res.string.cd_checked else Res.string.cd_unchecked
+                                    ),
+                                    modifier = Modifier.size(14.dp),
+                                    tint = contentColor.copy(alpha = 0.7f)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = RichTextParser.parse(
+                                        text = item.text,
+                                        contentColor = contentColor.copy(alpha = 0.7f),
+                                        highlightColor = highlightColor,
+                                        searchQuery = searchQuery,
+                                        linksClickable = false
+                                    ),
+                                    style = NoteCardBodyStyle.copy(
+                                        fontSize = MaterialTheme.typography.labelSmall.fontSize,
+                                        lineHeight = MaterialTheme.typography.labelSmall.lineHeight
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = contentColor.copy(alpha = 0.7f)
+                                )
+                            }
                         }
                     }
                     val remainingChecklistCount = note.checklist.size - 3
                     if (remainingChecklistCount > 0) {
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = stringResource(Res.string.labels_more, remainingChecklistCount),
                             style = MaterialTheme.typography.labelSmall,
@@ -341,7 +555,7 @@ fun NoteCard(
                 }
 
                 if (!compact && note.labels.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -380,85 +594,7 @@ fun NoteCard(
                         }
                     }
                 }
-
-                // Meta footer: full cards keep a divider; compact stays a quiet timestamp only.
-                if (compact) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = noteTimestampLabel(note.timestamp),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Medium,
-                            fontFeatureSettings = "tnum",
-                            letterSpacing = 0.2.sp,
-                            fontSize = 11.sp
-                        ),
-                        color = contentColor.copy(alpha = 0.5f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                } else {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    HorizontalDivider(
-                        thickness = 1.dp,
-                        color = contentColor.copy(alpha = 0.1f)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = noteTimestampLabel(note.timestamp),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Medium,
-                            fontFeatureSettings = "tnum",
-                            letterSpacing = 0.2.sp,
-                            fontSize = 12.sp
-                        ),
-                        color = contentColor.copy(alpha = 0.6f)
-                    )
-                }
             }
-
-            if (isSelected) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(NoteCardContentPadding)
-                        .size(24.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
-                    shadowElevation = 0.dp
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = selectedLabel,
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                }
-            } else {
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(NoteCardContentPadding),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (note.isPinned) {
-                        Icon(
-                            Icons.Default.PushPin,
-                            contentDescription = null,
-                            tint = contentColor.copy(alpha = 0.55f),
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                    if (note.reminderTimestamp != null) {
-                        Icon(
-                            Icons.Default.Notifications,
-                            contentDescription = null,
-                            tint = contentColor.copy(alpha = 0.55f),
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                }
             }
         }
     }

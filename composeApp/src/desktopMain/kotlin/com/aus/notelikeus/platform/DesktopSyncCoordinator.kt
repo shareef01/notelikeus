@@ -3,6 +3,8 @@ package com.aus.notelikeus.platform
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.di.PendingSyncStore
 import com.aus.notelikeus.domain.platform.SyncCoordinator
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,8 +36,16 @@ class DesktopSyncCoordinator(
     private val pendingRestores = ConcurrentHashMap.newKeySet<Long>()
 
     private val flushMutex = Mutex()
-    private var flushJob: Job? = null
+
+    // Both are written from the flush coroutine and read/written from whatever thread calls
+    // scheduleUpload/Delete/Restore, so neither read is safe without @Volatile: a stale flushJob
+    // leaks a coroutine instead of replacing it, and a stale failure count picks the wrong backoff.
+    @Volatile private var flushJob: Job? = null
     @Volatile private var consecutiveFailures = 0
+
+    /** Completed once [init] has restored the pending-state snapshot from disk. */
+    private val initLatch = CompletableDeferred<Unit>()
+
     private val enqueueLock = Any()
 
     /** Incremented by [clearPending] so an in-flight [flush] can detect it was signed out. */
@@ -43,12 +53,16 @@ class DesktopSyncCoordinator(
 
     init {
         scope.launch {
-            val restored = pendingStore.load()
-            pendingUploads.addAll(restored.uploads)
-            pendingDeletes.addAll(restored.deletes)
-            pendingRestores.addAll(restored.restores)
-            // Anything left over from a previous run is retried on the next launch.
-            if (!restored.isEmpty) scheduleFlush()
+            try {
+                val restored = pendingStore.load()
+                pendingUploads.addAll(restored.uploads)
+                pendingDeletes.addAll(restored.deletes)
+                pendingRestores.addAll(restored.restores)
+                // Anything left over from a previous run is retried on the next launch.
+                if (!restored.isEmpty) scheduleFlush()
+            } finally {
+                initLatch.complete(Unit)
+            }
         }
     }
 
@@ -67,9 +81,13 @@ class DesktopSyncCoordinator(
             }
             target.add(noteId)
         }
-        consecutiveFailures = 0
         persist()
-        scheduleFlush()
+        // While backing off, leave the pending retry where it is. Resetting the counter and
+        // rescheduling at the 2s debounce here meant that a user editing notes offline — every
+        // save lands in this method — retried every two seconds forever, which is precisely the
+        // hammering the backoff exists to prevent. The id just added is picked up by the retry
+        // that is already scheduled; only a successful flush clears the counter.
+        if (consecutiveFailures == 0) scheduleFlush()
     }
 
     override fun clearPending() {
@@ -88,6 +106,7 @@ class DesktopSyncCoordinator(
 
     private fun persist() {
         scope.launch {
+            initLatch.await()
             pendingStore.save(
                 pendingUploads.toSet(),
                 pendingDeletes.toSet(),
@@ -115,50 +134,29 @@ class DesktopSyncCoordinator(
      */
     private suspend fun flush() = flushMutex.withLock {
         val generation = queueGeneration
-        val uploads: List<Long>
-        val deletes: List<Long>
-        val restores: List<Long>
-        synchronized(enqueueLock) {
-            uploads = drain(pendingUploads)
-            deletes = drain(pendingDeletes)
-            restores = drain(pendingRestores)
-        }
-
-        val failedUploads = mutableListOf<Long>()
-        val failedDeletes = mutableListOf<Long>()
-        val failedRestores = mutableListOf<Long>()
-
-        for (noteId in deletes) {
-            if (noteId in pendingUploads || noteId in pendingRestores) continue
-            if (syncEngine.deleteNote(noteId).isFailure) failedDeletes += noteId
-        }
-        for (noteId in restores) {
-            if (noteId in pendingUploads || noteId in pendingDeletes) continue
-            if (syncEngine.restoreNote(noteId).isFailure) failedRestores += noteId
-        }
-        for (noteId in uploads) {
-            if (noteId in pendingDeletes || noteId in pendingRestores) continue
-            if (syncEngine.uploadNote(noteId).isFailure) failedUploads += noteId
-        }
-
-        // Signed out while this flush ran: the queues clearPending() emptied must stay empty.
-        if (queueGeneration != generation) return@withLock
-
-        val anyFailed = synchronized(enqueueLock) {
-            // Skip anything a newer intent has since claimed — that queue entry supersedes ours.
-            failedDeletes.forEach {
-                if (it !in pendingUploads && it !in pendingRestores) pendingDeletes.add(it)
+        var anyFailed = false
+        try {
+            // Each queue is drained inside runQueue, immediately before its own work, rather than
+            // all three up front — so there is never a window where restores and uploads sit
+            // drained but unattempted while the deletes are still running.
+            if (runQueue(pendingDeletes) { syncEngine.deleteNote(it) }) anyFailed = true
+            if (runQueue(pendingRestores) { syncEngine.restoreNote(it) }) anyFailed = true
+            if (runQueue(pendingUploads) { syncEngine.uploadNote(it) }) anyFailed = true
+        } finally {
+            // clearPending() ran while this flush was in flight (sign-out). runQueue puts failed
+            // and unattempted ids back, which would resurrect a signed-out account's queue and
+            // persist it to disk, so drop them again before the write below.
+            if (queueGeneration != generation) {
+                synchronized(enqueueLock) {
+                    pendingUploads.clear()
+                    pendingDeletes.clear()
+                    pendingRestores.clear()
+                }
             }
-            failedRestores.forEach {
-                if (it !in pendingUploads && it !in pendingDeletes) pendingRestores.add(it)
-            }
-            failedUploads.forEach {
-                if (it !in pendingDeletes && it !in pendingRestores) pendingUploads.add(it)
-            }
-            failedDeletes.isNotEmpty() || failedRestores.isNotEmpty() || failedUploads.isNotEmpty()
+            // Reached on cancellation too. persist() hands the write to `scope`, which outlives
+            // this job, so the restored queues still reach disk.
+            persist()
         }
-
-        persist()
 
         if (anyFailed) {
             consecutiveFailures++
@@ -166,6 +164,44 @@ class DesktopSyncCoordinator(
         } else {
             consecutiveFailures = 0
         }
+    }
+
+    /**
+     * Drains [queue] and runs [operation] over it, putting anything that did not succeed back.
+     * Returns true if at least one operation failed *for a reason worth backing off over*.
+     *
+     * That distinction is the point. [scheduleFlush] cancels the running flush job, so an edit
+     * landing mid-sync cancels whatever is in flight — and [NoteSyncEngine] wraps every operation
+     * in `runCatching`, which swallows `CancellationException` along with everything else. The
+     * cancelled operations therefore come back as ordinary failed Results, indistinguishable from
+     * a real cloud error. Counting them as one meant a user who simply kept typing pushed the
+     * coordinator into its 30-second backoff, delaying the very edit they had just made. The work
+     * is re-queued either way; only the backoff decision changes.
+     *
+     * The `finally` covers the other direction — a cancellation that propagates out rather than
+     * being absorbed — so the drained-but-unattempted tail goes back on the queue instead of being
+     * lost.
+     */
+    private suspend fun runQueue(
+        queue: MutableSet<Long>,
+        operation: suspend (Long) -> Result<Unit>
+    ): Boolean {
+        val ids = drain(queue)
+        var failed = false
+        var index = 0
+        try {
+            while (index < ids.size) {
+                val error = operation(ids[index]).exceptionOrNull()
+                if (error != null) {
+                    queue.add(ids[index])
+                    if (error !is CancellationException) failed = true
+                }
+                index++
+            }
+        } finally {
+            if (index < ids.size) queue.addAll(ids.subList(index, ids.size))
+        }
+        return failed
     }
 
     private fun drain(queue: MutableSet<Long>): List<Long> {

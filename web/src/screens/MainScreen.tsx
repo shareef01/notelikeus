@@ -94,13 +94,13 @@ export function MainScreen() {
 
   const drawerOpen = useUiStore((s) => s.drawerOpen);
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
-  const toggleSidebarCollapsed = useUiStore((s) => s.toggleSidebarCollapsed);
 
   const viewColumns = useUiStore((s) => s.viewColumns);
 
   const listScrolled = useUiStore((s) => s.listScrolled);
 
   const setDrawerOpen = useUiStore((s) => s.setDrawerOpen);
+  const toggleSidebarCollapsed = useUiStore((s) => s.toggleSidebarCollapsed);
 
   const setViewColumns = useUiStore((s) => s.setViewColumns);
   const cycleViewColumns = useUiStore((s) => s.cycleViewColumns);
@@ -503,17 +503,12 @@ export function MainScreen() {
     <div className="flex min-h-screen w-full bg-true-surface lg:mx-auto lg:max-w-shell">
 
       <SideDrawer
-
         open={drawerOpen}
         collapsed={sidebarCollapsed}
-
         currentFilter={filters.filter}
-
         onClose={() => setDrawerOpen(false)}
-
-        onNavigate={handleNavigateFilter}
-
         onToggleCollapse={toggleSidebarCollapsed}
+        onNavigate={handleNavigateFilter}
 
         userEmail={user?.email ?? null}
 
