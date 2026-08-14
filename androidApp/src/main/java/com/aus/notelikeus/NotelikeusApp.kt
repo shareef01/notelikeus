@@ -1,6 +1,7 @@
 package com.aus.notelikeus
 
 import android.app.Application
+import android.util.Log
 import androidx.work.Configuration
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -44,6 +45,23 @@ class NotelikeusApp : Application(), Configuration.Provider, AppFunctionConfigur
 
     override fun onCreate() {
         super.onCreate()
+
+        // Loaded before Koin, so nothing can reach the database before the native library exists.
+        // Room opens the encrypted database through SQLCipher's JNI; without it there is no usable
+        // database at all, and PlaintextDatabaseMigrator will later fail with UnsatisfiedLinkError
+        // — an Error, not an Exception, so that class's own `catch (_: Exception)` guards do not
+        // contain it. Swallowing this silently does not prevent that crash, it only removes the
+        // one log line that would explain it.
+        try {
+            System.loadLibrary("sqlcipher")
+        } catch (error: UnsatisfiedLinkError) {
+            Log.e(
+                "NotelikeusApp",
+                "SQLCipher native library failed to load; the encrypted database cannot be opened",
+                error
+            )
+        }
+
         initKoin {
             androidContext(this@NotelikeusApp)
             modules(androidAppModule)
@@ -57,10 +75,6 @@ class NotelikeusApp : Application(), Configuration.Provider, AppFunctionConfigur
         // to verify against — see audit finding 12.
         NotificationChannels.createReminderChannel(this)
         scheduleReconciliationSync()
-        try {
-            System.loadLibrary("sqlcipher")
-        } catch (_: UnsatisfiedLinkError) {
-        }
     }
 
     private fun scheduleReconciliationSync() {
