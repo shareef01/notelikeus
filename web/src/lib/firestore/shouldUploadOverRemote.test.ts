@@ -44,8 +44,17 @@ describe('shouldUploadOverRemote', () => {
     expect(shouldUploadOverRemote(local, legacyRemote)).toBe(true);
   });
 
-  it('treats equal serverUpdatedAt values as already safe to upload/keep local', () => {
+  it('does not re-upload when both sides are the same confirmed revision', () => {
+    // The steady state after any successful sync: local notes come from the same cloud mapper
+    // fetchRemoteNotes uses, so the stamps match exactly. Returning true here made
+    // syncNotesWithCloud rewrite every note in the library on every reconcile.
     const local = note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500 });
+    const remote = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });
+    expect(shouldUploadOverRemote(local, remote)).toBe(false);
+  });
+
+  it('uploads when the local copy is a strictly newer confirmed revision', () => {
+    const local = note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 501 });
     const remote = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });
     expect(shouldUploadOverRemote(local, remote)).toBe(true);
   });

@@ -165,6 +165,21 @@ class DesktopFirestoreTransport(
         }.toMap()
     }
 
+    /**
+     * A 404 is the only answer that means "not tombstoned". A document that exists but whose
+     * `deletedAt` will not parse still means the note was deleted, so it falls back to now exactly
+     * as [fetchTombstones] does — reporting it as absent would fail open on the one check that
+     * stops an upload from resurrecting a note deleted on another device.
+     */
+    override suspend fun fetchTombstone(uid: String, noteId: Long): Long? = withContext(Dispatchers.IO) {
+        val response = send(
+            getRequest("$baseUrl/users/$uid/tombstones/$noteId"),
+            treat404AsMissing = true
+        ) ?: return@withContext null
+        val parsed = codec.parseTombstone(json.decodeFromString<JsonObject>(response.body()))
+        parsed?.second ?: DateUtils.currentTimeMillis()
+    }
+
     override suspend fun writeTombstone(uid: String, noteId: Long, deletedAt: Long) {
         withContext(Dispatchers.IO) {
             send(
