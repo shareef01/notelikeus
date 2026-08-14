@@ -95,7 +95,13 @@ function armTimer(reminder: SwReminder) {
         armTimer(reminder);
         return;
       }
-      await fireReminder(reminder);
+      // Same reasoning as catchUpReminders: a rejected notification must not skip the cleanup
+      // below, or the reminder stays stored and re-fires on every subsequent wake-up.
+      try {
+        await fireReminder(reminder);
+      } catch {
+        // Best-effort delivery.
+      }
       // Drop it from storage so a later catch-up does not fire it a second time.
       const remaining = (await loadReminders()).filter((r) => r.noteId !== reminder.noteId);
       await saveReminders(remaining);
@@ -115,7 +121,16 @@ async function catchUpReminders(): Promise<void> {
   const upcoming = stored.filter((reminder) => reminder.fireAt > now);
 
   for (const reminder of due) {
-    await fireReminder(reminder);
+    // showNotification rejects when permission has been revoked since the reminder was set.
+    // Letting that escape used to strand the whole batch: the remaining due reminders never
+    // fired, and the save below never ran, so every one of them stayed stored and retried on
+    // each wake-up. Dropping a reminder we cannot show is the better failure — the condition is
+    // persistent, so retrying forever only produces repeated failures the user never sees.
+    try {
+      await fireReminder(reminder);
+    } catch {
+      // Best-effort delivery; it is removed from storage along with the rest of `due`.
+    }
   }
   if (due.length > 0) await saveReminders(upcoming);
   for (const reminder of upcoming) armTimer(reminder);
