@@ -46,15 +46,31 @@ class DesktopSyncCoordinator(
     /** Completed once [init] has restored the pending-state snapshot from disk. */
     private val initLatch = CompletableDeferred<Unit>()
 
+    /** Guards the cross-queue move in [enqueue] so a note cannot end up in two queues at once. */
     private val enqueueLock = Any()
 
-    /** Incremented by [clearPending] so an in-flight [flush] can detect it was signed out. */
-    @Volatile private var queueGeneration = 0
+    /**
+     * Bumped by [clearPending]; every deferred write carries the generation it was queued under and
+     * drops itself if that no longer matches.
+     *
+     * Sign-out has to beat work that is already in flight, and both directions of that race were
+     * live. A cancelled [flush] still runs its `finally` blocks — [runQueue] puts the drained ids
+     * back and [flush] calls [persist] — so the queues repopulated *after* [clearPending] emptied
+     * them, and since `persist()` and `pendingStore.clear()` are independent `scope.launch`es with
+     * no ordering between them, the save could land last and leave the signed-out user's queue on
+     * disk to be retried at next launch. The restore in `init` could do the same to a sign-out that
+     * arrived while it was still reading. Comparing generations makes both stale writes no-ops.
+     */
+    @Volatile private var generation = 0
 
     init {
+        val startedAt = generation
         scope.launch {
             try {
                 val restored = pendingStore.load()
+                // A sign-out landed while this read was in flight: those ids belong to the account
+                // that just left, so restoring them would resurrect its queue.
+                if (generation != startedAt) return@launch
                 pendingUploads.addAll(restored.uploads)
                 pendingDeletes.addAll(restored.deletes)
                 pendingRestores.addAll(restored.restores)
@@ -91,22 +107,35 @@ class DesktopSyncCoordinator(
     }
 
     override fun clearPending() {
+        generation++
+        val clearedAt = generation
         flushJob?.cancel()
         synchronized(enqueueLock) {
-            // Bumped so a flush already in flight can tell its work belongs to a previous
-            // session and drop it, rather than re-queueing a signed-out account's notes.
-            queueGeneration++
             pendingUploads.clear()
             pendingDeletes.clear()
             pendingRestores.clear()
         }
         consecutiveFailures = 0
-        scope.launch { pendingStore.clear() }
+        scope.launch {
+            initLatch.await()
+            // Another sign-in/sign-out overtook this one; leave its state alone.
+            if (generation != clearedAt) return@launch
+            // Clear again before writing: the cancelled flush's `finally` blocks run after the
+            // cancel above and re-add whatever they had drained, so the in-memory sets can be
+            // non-empty by the time this runs.
+            pendingUploads.clear()
+            pendingDeletes.clear()
+            pendingRestores.clear()
+            pendingStore.clear()
+        }
     }
 
     private fun persist() {
+        val queuedAt = generation
         scope.launch {
             initLatch.await()
+            // Queued before a sign-out; writing now would put that account's ids back on disk.
+            if (generation != queuedAt) return@launch
             pendingStore.save(
                 pendingUploads.toSet(),
                 pendingDeletes.toSet(),
@@ -133,7 +162,6 @@ class DesktopSyncCoordinator(
      * upload it *after* the delete had already been processed, resurrecting it in the cloud.
      */
     private suspend fun flush() = flushMutex.withLock {
-        val generation = queueGeneration
         var anyFailed = false
         try {
             // Each queue is drained inside runQueue, immediately before its own work, rather than
@@ -143,18 +171,9 @@ class DesktopSyncCoordinator(
             if (runQueue(pendingRestores) { syncEngine.restoreNote(it) }) anyFailed = true
             if (runQueue(pendingUploads) { syncEngine.uploadNote(it) }) anyFailed = true
         } finally {
-            // clearPending() ran while this flush was in flight (sign-out). runQueue puts failed
-            // and unattempted ids back, which would resurrect a signed-out account's queue and
-            // persist it to disk, so drop them again before the write below.
-            if (queueGeneration != generation) {
-                synchronized(enqueueLock) {
-                    pendingUploads.clear()
-                    pendingDeletes.clear()
-                    pendingRestores.clear()
-                }
-            }
             // Reached on cancellation too. persist() hands the write to `scope`, which outlives
-            // this job, so the restored queues still reach disk.
+            // this job — and drops itself if a sign-out bumped the generation meanwhile, so a
+            // cancelled flush's re-queued ids cannot reach disk for a signed-out account.
             persist()
         }
 
