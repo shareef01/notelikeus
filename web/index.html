@@ -2,6 +2,11 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      The CSP lives in firebase.json's hosting headers, not here. Two policies are enforced as
+      their intersection, so a duplicate that drifts silently tightens the real one; and
+      frame-ancestors is ignored in a meta tag anyway (X-Frame-Options: DENY covers it).
+    -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />

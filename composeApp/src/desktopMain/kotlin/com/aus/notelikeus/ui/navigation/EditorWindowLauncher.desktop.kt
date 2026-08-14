@@ -24,6 +24,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -51,6 +52,10 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.SettingsRepository
@@ -63,8 +68,10 @@ import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.ui.window.NativeCaptionDragSupport
+import org.koin.compose.getKoin
 import org.koin.compose.koinInject
 import org.koin.core.qualifier.named
+import java.awt.Toolkit
 
 private data class EditorWindowRequest(
     val key: Int,
@@ -72,6 +79,8 @@ private data class EditorWindowRequest(
     val initialColor: Int?
 )
 
+private val NoteWindowWidth = 920.dp
+private val NoteWindowHeight = 760.dp
 private val NoteTitleBarHeight = 40.dp
 private val NoteCaptionButtonWidth = 46.dp
 private val NoteChromeInset = 16.dp
@@ -79,6 +88,10 @@ private val NoteCornerRadius = 18.dp
 private val NoteShadowElevation = 24.dp
 private val CloseHover = Color(0xFFE81123)
 private val CaptionStrokePx = 1.1f
+
+/** Diagonal offset between successive note windows, and how many before the cascade restarts. */
+private const val CascadeStepUnits = 28f
+private const val CascadeWrapAfter = 8
 
 @Composable
 actual fun rememberEditorWindowLauncher(
@@ -92,6 +105,7 @@ actual fun rememberEditorWindowLauncher(
             EditorNoteWindow(
                 noteId = request.noteId,
                 initialColor = request.initialColor,
+                cascadeIndex = request.key,
                 onStageUndo = onStageUndo,
                 onClosed = { requests.remove(request) }
             )
@@ -108,6 +122,28 @@ actual fun rememberEditorWindowLauncher(
 }
 
 /**
+ * Centres the first note window and steps each later one down-right from there.
+ *
+ * Every window used to take `WindowPosition(Alignment.Center)`, so a second and third note landed
+ * pixel-identical on top of the first — only the topmost was reachable, and with no working caption
+ * drag they could not be pulled apart. The cascade wraps so a long session cannot walk windows off
+ * the bottom-right of the screen.
+ *
+ * Screen size and Dp are both user-space units here, so no density conversion is involved (the same
+ * property NativeCaptionDrag relies on).
+ */
+private fun cascadedPosition(index: Int): WindowPosition {
+    val screen = Toolkit.getDefaultToolkit().screenSize
+    val shift = (index % CascadeWrapAfter) * CascadeStepUnits
+    val centeredX = (screen.width - NoteWindowWidth.value) / 2f
+    val centeredY = (screen.height - NoteWindowHeight.value) / 2f
+    return WindowPosition(
+        x = (centeredX + shift).coerceAtLeast(0f).dp,
+        y = (centeredY + shift).coerceAtLeast(0f).dp
+    )
+}
+
+/**
  * One independent OS window hosting the note editor, like the web app's float layout. Undecorated
  * and transparent so the app can draw its own chrome: a rounded card with the note's surface
  * colour, a hairline border and a soft shadow, plus a caption bar that supports native docking
@@ -117,14 +153,19 @@ actual fun rememberEditorWindowLauncher(
 private fun EditorNoteWindow(
     noteId: Long?,
     initialColor: Int?,
+    cascadeIndex: Int,
     onStageUndo: (note: Note, action: UndoAction, message: String) -> Unit,
     onClosed: () -> Unit
 ) {
     var closeRequested by remember { mutableStateOf(false) }
+    // rememberWindowState keeps only the first value it is given, but still evaluates its
+    // arguments on every recomposition — so the screen-size query is remembered rather than run
+    // against the AWT toolkit on each pass.
+    val initialPosition = remember(cascadeIndex) { cascadedPosition(cascadeIndex) }
     val windowState = rememberWindowState(
-        width = 920.dp,
-        height = 760.dp,
-        position = WindowPosition(Alignment.Center)
+        width = NoteWindowWidth,
+        height = NoteWindowHeight,
+        position = initialPosition
     )
 
     Window(
@@ -140,8 +181,26 @@ private fun EditorNoteWindow(
         NotelikeusTheme(appTheme = appTheme) {
             // Plain factory injection: standalone windows have no SavedStateRegistryOwner, so
             // koinViewModel cannot build the editor's SavedStateHandle here. Each call creates
-            // an independent EditorViewModel scoped to this window's composition.
-            val viewModel: EditorViewModel = koinInject(named("windowEditor"))
+            // an independent EditorViewModel for this window.
+            //
+            // It is held in a ViewModelStore purely so closing the window can clear it. Resolving
+            // the factory straight into the composition left the view model unowned: nothing ever
+            // called onCleared(), so viewModelScope was never cancelled and the labels collector
+            // in EditorViewModel.loadLabels() stayed subscribed to Room for the life of the
+            // process. Every note window opened and closed added another one.
+            val koin = getKoin()
+            val viewModelStore = remember { ViewModelStore() }
+            val viewModel = remember(viewModelStore) {
+                ViewModelProvider.create(
+                    viewModelStore,
+                    viewModelFactory {
+                        initializer { koin.get<EditorViewModel>(named("windowEditor")) }
+                    }
+                )[EditorViewModel::class]
+            }
+            DisposableEffect(viewModelStore) {
+                onDispose { viewModelStore.clear() }
+            }
             val editorState by viewModel.state.collectAsState()
 
             val isDarkPalette = isNoteColorDarkTheme()
