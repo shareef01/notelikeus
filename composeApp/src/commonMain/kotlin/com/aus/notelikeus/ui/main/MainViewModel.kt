@@ -68,7 +68,12 @@ data class MainState(
     val pendingCloudSyncEvent: CloudSyncEvent? = null,
     val cloudAccount: CloudAccount = CloudAccount(),
     val isCloudAutoSyncEnabled: Boolean = true,
-    val isSigningIn: Boolean = false
+    val isSigningIn: Boolean = false,
+    /**
+     * The user chose to use the app without an account. Persisted, so the sign-in gate asks once
+     * rather than on every launch.
+     */
+    val hasChosenOffline: Boolean = false
 )
 
 class MainViewModel(
@@ -264,7 +269,20 @@ class MainViewModel(
             .launchIn(viewModelScope)
     }
 
+    /** Dismisses the sign-in gate for good; the app runs on local storage only. */
+    fun continueOffline() {
+        viewModelScope.launch {
+            settingsRepository.setChosenOffline(true)
+        }
+    }
+
     private fun loadSettings() {
+        settingsRepository.hasChosenOffline
+            .onEach { chosen ->
+                _state.update { it.copy(hasChosenOffline = chosen) }
+            }
+            .launchIn(viewModelScope)
+
         settingsRepository.appTheme
             .onEach { theme ->
                 _state.update { it.copy(appTheme = theme) }

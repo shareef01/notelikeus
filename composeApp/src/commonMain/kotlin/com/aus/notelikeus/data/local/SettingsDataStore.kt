@@ -13,6 +13,8 @@ val NOTE_SORT_ORDER_KEY = stringPreferencesKey("note_sort_order")
 /** Used by the home-screen widget theme selection (kept even though the in-app theme is fixed). */
 val USE_MONOCHROME_THEME_KEY = booleanPreferencesKey("use_monochrome_theme")
 val CLOUD_AUTO_SYNC_ENABLED_KEY = booleanPreferencesKey("cloud_auto_sync_enabled")
+/** Set once the user chooses to use the app without an account, so the gate stops asking. */
+val CONTINUE_OFFLINE_KEY = booleanPreferencesKey("continue_offline")
 val RECENT_SEARCHES_KEY = stringPreferencesKey("recent_searches")
 
 const val SETTINGS_DATASTORE_FILENAME = "settings.preferences_pb"
