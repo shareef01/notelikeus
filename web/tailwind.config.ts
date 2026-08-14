@@ -56,11 +56,11 @@ const config: Config = {
           '11px',
           { lineHeight: '14px', letterSpacing: '0.08em', fontWeight: '600' },
         ],
-        'note-title': ['18px', { lineHeight: '26px', letterSpacing: '-0.025em', fontWeight: '600' }],
-        'note-body': ['15px', { lineHeight: '1.5', letterSpacing: '0.01em', fontWeight: '400' }],
+        'note-title': ['18px', { lineHeight: '28px', letterSpacing: '-0.02em', fontWeight: '600' }],
+        'note-body': ['15px', { lineHeight: '1.6', letterSpacing: '0.005em', fontWeight: '400' }],
         'section-label': [
           '11px',
-          { lineHeight: '14px', letterSpacing: '0.06em', fontWeight: '600' },
+          { lineHeight: '16px', letterSpacing: '0.08em', fontWeight: '600' },
         ],
       },
       spacing: {
@@ -68,8 +68,11 @@ const config: Config = {
         'layout-gap': '20px',
       },
       borderRadius: {
-        note: '16px',
+        note: '18px',
         sheet: '16px',
+      },
+      lineClamp: {
+        7: '7',
       },
       maxWidth: {
         shell: '116rem',
@@ -78,6 +81,8 @@ const config: Config = {
       },
       boxShadow: {
         'header-scroll': '0 1px 0 0 rgb(var(--outline-rgb) / 0.4)',
+        card: '0 1px 3px 0 rgb(0 0 0 / 0.12), 0 1px 2px -1px rgb(0 0 0 / 0.12)',
+        'card-lg': '0 4px 12px -2px rgb(0 0 0 / 0.18), 0 2px 6px -2px rgb(0 0 0 / 0.12)',
       },
     },
   },

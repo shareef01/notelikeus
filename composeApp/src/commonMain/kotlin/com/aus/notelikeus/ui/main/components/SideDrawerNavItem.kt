@@ -35,13 +35,12 @@ import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 /**
  * A destination row in the side drawer.
  *
- * Colour here encodes *state*, not identity. Each destination used to carry its own saturated
- * hue — sky, amber, rose, violet, teal — which read as five unrelated icon sets stacked in one
- * column and left selection with nothing of its own to say. Now the row is quiet until selected,
- * at which point the accent, the fill, and the rail all move together.
+ * Each nav item carries its own colour identity (sky, amber, rose, violet, teal) matching
+ * the web sidebar, so the icons read as distinct destinations even when none is selected.
  *
  * @param icon shown when the row is not selected; prefer the outlined variant.
  * @param selectedIcon shown when it is; prefer the filled variant of the same glyph.
+ * @param identityColor the item's signature hue — used for the icon tint, active bar, and badge.
  */
 @Composable
 fun SideDrawerNavItem(
@@ -52,9 +51,11 @@ fun SideDrawerNavItem(
     modifier: Modifier = Modifier,
     selectedIcon: ImageVector = icon,
     count: Int? = null,
+    identityColor: Color = MaterialTheme.colorScheme.primary,
+    collapsed: Boolean = false,
 ) {
     val shape = RoundedCornerShape(12.dp)
-    val accent = MaterialTheme.colorScheme.primary
+    val accent = identityColor
     val wash by animateColorAsState(
         targetValue = if (selected) {
             accent.copy(alpha = Chrome.SoftWash)
@@ -64,32 +65,37 @@ fun SideDrawerNavItem(
         label = "drawer_nav_wash"
     )
     val iconTint by animateColorAsState(
-        targetValue = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (selected) accent else identityColor.copy(alpha = 0.85f),
         label = "drawer_nav_icon"
     )
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp)
+            .padding(horizontal = if (collapsed) 0.dp else 10.dp)
             .height(44.dp)
             .clip(shape)
             .background(wash)
             .clickable(onClick = onClick)
-            .padding(start = 12.dp, end = 10.dp),
+            .padding(
+                start = if (collapsed) 0.dp else 12.dp,
+                end = if (collapsed) 0.dp else 10.dp
+            ),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.spacedBy(12.dp)
     ) {
-        if (selected) {
-            Box(
-                modifier = Modifier
-                    .width(2.dp)
-                    .height(28.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(accent)
-            )
-        } else {
-            Spacer(modifier = Modifier.width(2.dp))
+        if (!collapsed) {
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .width(2.dp)
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(accent)
+                )
+            } else {
+                Spacer(modifier = Modifier.width(2.dp))
+            }
         }
 
         Icon(
@@ -99,30 +105,32 @@ fun SideDrawerNavItem(
             tint = iconTint
         )
 
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyLarge.copy(
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                letterSpacing = (-0.15).sp
-            ),
-            color = if (selected) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
-        )
+        if (!collapsed) {
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    letterSpacing = (-0.15).sp
+                ),
+                color = if (selected) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
+        }
 
-        if (count != null && count > 0) {
+        if (!collapsed && count != null && count > 0) {
             Box(
                 modifier = Modifier
                     .height(22.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(999.dp))
                     .background(
-                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                        else MaterialTheme.colorScheme.onSurface.copy(alpha = Chrome.SoftWash)
+                        if (selected) accent.copy(alpha = 0.2f)
+                        else accent.copy(alpha = 0.08f)
                     )
                     .padding(horizontal = 7.dp),
                 contentAlignment = Alignment.Center
@@ -134,9 +142,9 @@ fun SideDrawerNavItem(
                         fontSize = 12.sp
                     ),
                     color = if (selected) {
-                        MaterialTheme.colorScheme.primary
+                        accent
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        accent.copy(alpha = 0.85f)
                     }
                 )
             }
