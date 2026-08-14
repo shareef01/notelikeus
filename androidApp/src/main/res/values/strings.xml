@@ -8,4 +8,8 @@
     <string name="pinned_short">Pinned</string>
     <string name="app_functions_description">Manage your notes with ease</string>
     <string name="default_web_client_id">404285880902-cpiu3nj2itndnh0kkouvn374ec5ecl9v.apps.googleusercontent.com</string>
+
+    <string name="db_recovery_title">Your notes could not be opened</string>
+    <string name="db_recovery_message">This device\'s secure key changed, so the existing note database could not be unlocked — most often after transferring to a new device or resetting the screen lock.\n\nNothing was deleted. The old database is still stored on this device, and notes you synced to your account will come back when you sign in.</string>
+    <string name="db_recovery_dismiss">Got it</string>
 </resources>
