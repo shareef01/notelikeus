@@ -21,14 +21,18 @@ securityCrypto = "1.1.0"
 # Covers androidx.sqlite:sqlite and the desktop's sqlite-bundled driver, which ship together on
 # one version train. The bundled driver used to sit on 2.5.0-alpha13 while this said 2.5.0, so
 # conflict resolution quietly dragged the whole group onto the alpha.
-sqlite = "2.5.0"
+#
+# Ahead of Room on purpose: room 2.7.0 declares sqlite 2.5.0, so this resolves it upward
+# (`sqlite:2.5.0 -> 2.7.0`). Verified green — including the real-database transaction test — but it
+# does mean Room runs against a sqlite it was not built with. Pair the next Room bump with this.
+sqlite = "2.7.0"
 okio = "3.9.1"
 jna = "5.14.0"
 appcompat = "1.7.0"
 fragment = "1.8.2"
-googleServices = "4.4.4"
+googleServices = "4.5.0"
 firebaseBom = "34.17.0"
-playServicesAuth = "21.3.0"
+playServicesAuth = "21.6.0"
 credentials = "1.5.0"
 googleid = "1.1.1"
 windowSize = "1.3.1"
