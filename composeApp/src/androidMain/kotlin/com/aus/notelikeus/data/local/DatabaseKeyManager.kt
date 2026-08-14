@@ -94,17 +94,30 @@ class DatabaseKeyManager(
         }
     }
 
+    /**
+     * Publishes the passphrase only by rename, never by writing to the live path.
+     *
+     * The previous fallback wrote the payload straight to [passphraseFile] when the rename failed.
+     * A crash part-way through that write leaves a truncated file, which reads back as
+     * [PassphraseReadResult.Corrupt] on the next launch — and that path generates a *fresh* key,
+     * which in turn means [PlaintextDatabaseMigrator] cannot open the existing database and
+     * quarantines it. Trading a working keystore file for a quarantined database is a bad deal, so
+     * failing here is better: the caller falls back to the legacy ESP and the database still opens.
+     */
     private fun writeToKeystoreFile(passphrase: ByteArray): Boolean {
+        val tmp = File(context.filesDir, "$PASSPHRASE_FILE.tmp")
         return try {
             val payload = PassphraseFileCodec.encrypt(getOrCreateSecretKey(), passphrase.toHexString())
-            val tmp = File(context.filesDir, "$PASSPHRASE_FILE.tmp")
             tmp.writeBytes(payload)
-            if (!tmp.renameTo(passphraseFile())) {
-                passphraseFile().writeBytes(payload)
+            if (tmp.renameTo(passphraseFile())) {
+                true
+            } else {
                 tmp.delete()
+                Log.w(TAG, "Could not publish passphrase file by rename; leaving previous state intact")
+                false
             }
-            true
         } catch (error: Exception) {
+            tmp.delete()
             Log.w(TAG, "Failed to write Keystore passphrase file", error)
             false
         }
@@ -380,11 +393,43 @@ object PlaintextDatabaseMigrator {
      */
     private fun quarantineDatabaseFiles(context: Context, databaseName: String) {
         val suffix = System.currentTimeMillis()
+        var movedAny = false
         for (name in listOf(databaseName, "$databaseName-shm", "$databaseName-wal")) {
             val file = context.getDatabasePath(name)
             if (file.exists()) {
-                file.renameTo(File(file.parent, "$name.quarantined-$suffix"))
+                if (file.renameTo(File(file.parent, "$name.quarantined-$suffix"))) movedAny = true
             }
         }
+        // Only if something actually moved: the app is about to start with an empty database, and
+        // the user is owed an explanation for that.
+        if (movedAny) DatabaseRecoveryNotice.record(context, suffix)
+    }
+}
+
+/**
+ * Records that [PlaintextDatabaseMigrator] moved a database aside.
+ *
+ * Quarantining is the right call — the bytes stay recoverable rather than being deleted — but on
+ * its own it is silent: Room creates a fresh database and the user opens the app to find every
+ * note gone, with nothing saying the old data still exists on disk. This marker is what lets the
+ * UI say so. It survives the process because the migration runs during DI, long before any UI.
+ */
+object DatabaseRecoveryNotice {
+
+    private const val NOTICE_FILE = "db_quarantine_notice"
+
+    internal fun record(context: Context, suffix: Long) {
+        runCatching { File(context.filesDir, NOTICE_FILE).writeText(suffix.toString()) }
+    }
+
+    /** The quarantine timestamp if one is pending, else null. Does not clear it. */
+    fun pending(context: Context): Long? = runCatching {
+        val file = File(context.filesDir, NOTICE_FILE)
+        if (file.exists()) file.readText().trim().toLongOrNull() else null
+    }.getOrNull()
+
+    /** Clears the marker once the user has been shown it. */
+    fun consume(context: Context) {
+        runCatching { File(context.filesDir, NOTICE_FILE).delete() }
     }
 }
