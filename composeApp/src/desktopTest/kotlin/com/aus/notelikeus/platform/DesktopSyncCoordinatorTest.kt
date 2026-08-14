@@ -243,6 +243,63 @@ class DesktopSyncCoordinatorTest {
         assertTrue(transport.notes.isEmpty())
     }
 
+    @Test
+    fun `clearPending during an in-flight flush does not leave the queue on disk`() = runTest {
+        signedIn = true
+        val backing = FakeCloudNoteTransport()
+        noteDao = FakeNoteDao()
+        val syncEngine = NoteSyncEngine(
+            transport = SlowTransport(backing, delayMs = 1_000),
+            noteDao = noteDao,
+            labelDao = FakeLabelDao(),
+            syncStateStore = FakeNoteSyncStateStore(),
+            uidProvider = { Result.success("uid") },
+            platform = "desktop"
+        )
+        pendingStore = FakePendingSyncStore()
+        val coordinator = DesktopSyncCoordinator(syncEngine, pendingStore, backgroundScope)
+        for (id in 1L..4L) seedNote(id)
+
+        for (id in 1L..4L) coordinator.scheduleUpload(id)
+        // Into the flush but not through it: some ids are drained and still unattempted.
+        advanceTimeBy(3_500)
+
+        coordinator.clearPending()
+        advanceTimeBy(120_000)
+
+        // Cancelling the flush runs runQueue's `finally`, which puts the drained ids back, and
+        // flush's `finally`, which persists them. Both happen *after* clearPending emptied the
+        // queue, and the two writes race on an unordered scope — so the sign-out could be
+        // overwritten and the departed account's queue left on disk to retry at next launch.
+        assertTrue(
+            pendingStore.saved.uploads.isEmpty(),
+            "a cancelled flush must not persist the queue back over a sign-out"
+        )
+        assertTrue(
+            pendingStore.saved.deletes.isEmpty() && pendingStore.saved.restores.isEmpty()
+        )
+    }
+
+    @Test
+    fun `clearPending during startup is not undone by the restore`() = runTest {
+        signedIn = true
+        val syncEngine = engine()
+        val gatedStore = GatedPendingSyncStore(
+            DesktopPendingSyncStore.Pending(uploads = setOf(2L), deletes = emptySet(), restores = emptySet())
+        )
+        val coordinator = DesktopSyncCoordinator(syncEngine, gatedStore, backgroundScope)
+        seedNote(2L)
+
+        // Signing out while the disk restore is still in flight: the ids it is about to bring back
+        // belong to the account that just left, so the restore must not resurrect them.
+        coordinator.clearPending()
+        gatedStore.releaseLoad()
+        advanceTimeBy(120_000)
+
+        assertTrue(gatedStore.saved.uploads.isEmpty(), "the restore repopulated a cleared queue")
+        assertTrue(transport.notes.isEmpty(), "a signed-out account's queue must not flush")
+    }
+
     /**
      * [FakeCloudNoteTransport] with one suspension point.
      *
@@ -257,6 +314,15 @@ class DesktopSyncCoordinatorTest {
         override suspend fun fetchTombstones(uid: String): Map<Long, Long> {
             delay(delayMs)
             return delegate.fetchTombstones(uid)
+        }
+
+        // Must be overridden alongside fetchTombstones, not left to the delegate. `by delegate`
+        // forwards this straight to the fake, whose inherited default reads the collection without
+        // ever passing through the override above — so the single-note upload path would run with
+        // no suspension point at all and the cancellation window below would never open.
+        override suspend fun fetchTombstone(uid: String, noteId: Long): Long? {
+            delay(delayMs)
+            return delegate.fetchTombstone(uid, noteId)
         }
     }
 

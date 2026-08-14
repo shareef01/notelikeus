@@ -32,6 +32,18 @@ interface CloudNoteTransport {
     /** Returns every tombstone for [uid] as noteId → deletedAt. */
     suspend fun fetchTombstones(uid: String): Map<Long, Long>
 
+    /**
+     * Returns the deletedAt for a single tombstone, or null if the note is not tombstoned.
+     *
+     * Exists so the single-note paths do not have to list the whole collection to answer a
+     * question about one id — [com.aus.notelikeus.data.sync.NoteSyncEngine.uploadNote] runs once
+     * per queued note, so on desktop a flush of thirty edits was thirty full collection reads.
+     * Defaulted to a filter over [fetchTombstones] so existing transports and test doubles keep
+     * working unchanged; transports that can address the document directly should override it.
+     */
+    suspend fun fetchTombstone(uid: String, noteId: Long): Long? =
+        fetchTombstones(uid)[noteId]
+
     /** Writes or merges a single tombstone. */
     suspend fun writeTombstone(uid: String, noteId: Long, deletedAt: Long)
 
