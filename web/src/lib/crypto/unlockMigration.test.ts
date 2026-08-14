@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { unlockPersistedNote, unlockPersistedNotes } from '@/lib/crypto/unlockMigration';
+import {
+  resetKeyCacheForTests,
+  unlockPersistedNote,
+  unlockPersistedNotes,
+} from '@/lib/crypto/unlockMigration';
 import { createEmptyNote } from '@/types/note';
 
 const LEGACY_LOCK_KEY_STORAGE = 'notelikeus-lock-key';
@@ -42,6 +46,9 @@ async function writeLegacyLockedNote(secrets: {
 describe('unlockMigration', () => {
   beforeEach(() => {
     localStorage.clear();
+    // The key is memoised at module scope, so without this a suite that loaded a real key
+    // earlier keeps decrypting successfully and the "key is gone" cases pass vacuously.
+    resetKeyCacheForTests();
   });
 
   it('restores the body of a note that was hidden before the feature was removed', async () => {
@@ -64,6 +71,7 @@ describe('unlockMigration', () => {
     });
     // Simulate opening the app in a browser that never held the key.
     localStorage.removeItem(LEGACY_LOCK_KEY_STORAGE);
+    resetKeyCacheForTests();
 
     const restored = await unlockPersistedNote(persisted);
 
@@ -71,12 +79,45 @@ describe('unlockMigration', () => {
     expect((restored as { lockedBlob?: unknown }).lockedBlob).toBeUndefined();
   });
 
+  it('reports a note it could not decrypt instead of returning it as migrated', async () => {
+    const persisted = await writeLegacyLockedNote({
+      title: 'Hidden',
+      content: 'Secret',
+      checklist: [],
+    });
+    localStorage.removeItem(LEGACY_LOCK_KEY_STORAGE);
+    resetKeyCacheForTests();
+
+    const { notes, unrecoverable } = await unlockPersistedNotes([persisted]);
+
+    // The blanked note must not be presented as a successfully migrated one — that is what let
+    // the caller upload an empty copy and then delete the only surviving ciphertext.
+    expect(notes).toHaveLength(0);
+    expect(unrecoverable).toHaveLength(1);
+    expect(unrecoverable[0].id).toBe('1');
+  });
+
+  it('separates decryptable notes from undecryptable ones in the same batch', async () => {
+    const locked = await writeLegacyLockedNote({
+      title: 'Hidden',
+      content: 'Secret',
+      checklist: [],
+    });
+    const plain = { ...createEmptyNote({ id: '2', localId: 2 }), title: 'Open' };
+
+    const { notes, unrecoverable } = await unlockPersistedNotes([locked, plain]);
+
+    // The key written by writeLegacyLockedNote is still present, so both should succeed.
+    expect(unrecoverable).toHaveLength(0);
+    expect(notes.map((note) => note.title).sort()).toEqual(['Hidden', 'Open']);
+  });
+
   it('passes ordinary notes through untouched and strips a stale isLocked flag', async () => {
     const plain = { ...createEmptyNote({ id: '2', localId: 2 }), title: 'Open', isLocked: false };
 
-    const [restored] = await unlockPersistedNotes([plain]);
+    const { notes } = await unlockPersistedNotes([plain]);
 
-    expect(restored.title).toBe('Open');
-    expect((restored as { isLocked?: unknown }).isLocked).toBeUndefined();
+    expect(notes[0].title).toBe('Open');
+    expect((notes[0] as { isLocked?: unknown }).isLocked).toBeUndefined();
   });
 });
