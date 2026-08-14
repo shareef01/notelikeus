@@ -6,8 +6,17 @@ import {
 import { FirebaseError } from 'firebase/app';
 
 /** Dev-only email/password login. Requires Email/Password enabled in Firebase Auth. */
+/**
+ * Email/password sign-in is a development affordance, not a product feature — the app signs in
+ * with Google. It is also enabled for the end-to-end build, which is a production build in every
+ * other respect and needs a way to reach a signed-in state against the Auth emulator.
+ *
+ * `VITE_E2E` is set only by web/.env.e2e, which only `--mode e2e` loads, so a normal `vite build`
+ * cannot turn this on. The same flag gates the emulator redirect in lib/firebase.ts, so an e2e
+ * build can only ever sign in against a local emulator, never a real account.
+ */
 export function isTestLoginEnabled(): boolean {
-  return import.meta.env.DEV === true;
+  return import.meta.env.DEV === true || Boolean(import.meta.env.VITE_E2E);
 }
 
 export async function signInWithEmailPassword(email: string, password: string): Promise<void> {
