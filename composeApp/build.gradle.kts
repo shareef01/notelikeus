@@ -150,6 +150,18 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.test)
             }
         }
+
+        // On-device tests. PlaintextDatabaseMigrator's quarantine path opens real SQLCipher
+        // databases, and those native libraries are packaged per-ABI for Android — there is no
+        // JVM build, so Robolectric cannot reach this code at all.
+        val androidInstrumentedTest by getting {
+            dependencies {
+                implementation(libs.junit)
+                implementation(libs.androidx.test.runner)
+                implementation(libs.androidx.test.ext.junit)
+                implementation(libs.kotlinx.coroutines.test)
+            }
+        }
         
         val desktopMain by getting {
             kotlin.srcDir(generateDesktopSecrets)
@@ -176,6 +188,8 @@ android {
     compileSdk = 37
     defaultConfig {
         minSdk = 26
+        // Instrumented tests run on a device because SQLCipher's native libraries only exist there.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures {
         buildConfig = true
