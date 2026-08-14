@@ -1,9 +1,10 @@
 package com.aus.notelikeus.util
 
 import android.text.format.DateUtils as AndroidDateUtils
-import android.text.format.DateFormat
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.runtime.Composable
+import java.text.DateFormat as JavaDateFormat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 actual object DateUtils {
     actual fun currentTimeMillis(): Long = System.currentTimeMillis()
@@ -12,24 +13,27 @@ actual object DateUtils {
         return AndroidDateUtils.isToday(timestamp)
     }
 
+    /**
+     * Formatted with java.text rather than [AndroidDateUtils], deliberately.
+     *
+     * These are called from commonMain, which has no Context to pass. The previous code passed
+     * `null` on the assumption that "Context is only needed for some flags" — but FORMAT_SHOW_TIME
+     * is one of the flags that needs it: the platform resolves 12- vs 24-hour by calling
+     * DateFormat.is24HourFormat(context), which dereferences the null and throws. That made
+     * [formatTime] crash every time, and since EditorBottomBar formats the note's timestamp
+     * unconditionally, opening any note took the whole app down with it.
+     *
+     * java.text picks its pattern from the default locale instead, needs no Context, and matches
+     * what the desktop implementation already does.
+     */
     actual fun formatDateTime(timestamp: Long, showYear: Boolean): String {
-        // This is a bit tricky without context, so we might need to pass it or use a default
-        // But for commonMain usage, we often want a simple string.
-        return AndroidDateUtils.formatDateTime(
-            null, // Context is only needed for some flags
-            timestamp,
-            AndroidDateUtils.FORMAT_SHOW_DATE or 
-            (if (showYear) AndroidDateUtils.FORMAT_SHOW_YEAR else 0) or 
-            AndroidDateUtils.FORMAT_ABBREV_MONTH
-        )
+        val pattern = if (showYear) "MMM d, yyyy" else "MMM d"
+        return SimpleDateFormat(pattern, Locale.getDefault()).format(Date(timestamp))
     }
 
     actual fun formatTime(timestamp: Long): String {
-        return AndroidDateUtils.formatDateTime(
-            null,
-            timestamp,
-            AndroidDateUtils.FORMAT_SHOW_TIME
-        )
+        return JavaDateFormat.getTimeInstance(JavaDateFormat.SHORT, Locale.getDefault())
+            .format(Date(timestamp))
     }
 
     actual fun getTomorrowMorning(): Long {
