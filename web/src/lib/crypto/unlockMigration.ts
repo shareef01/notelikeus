@@ -128,30 +128,63 @@ async function decryptBlob(blob: LegacyLockedBlob): Promise<{
   }
 }
 
-/** Restores a previously locked note's text and strips the removed fields. */
-export async function unlockPersistedNote(raw: MaybeLockedNote): Promise<Note> {
+interface SingleUnlock {
+  note: Note;
+  /** True when this note carried a locked blob that could not be decrypted on this device. */
+  unrecoverable: boolean;
+}
+
+async function unlockOne(raw: MaybeLockedNote): Promise<SingleUnlock> {
   const { lockedBlob, isLocked: _wasLocked, ...note } = raw;
 
   if (!isLegacyBlob(lockedBlob)) {
-    return note as Note;
+    return { note: note as Note, unrecoverable: false };
   }
 
   const secrets = await decryptBlob(lockedBlob);
   if (!secrets) {
-    // Key is gone (different browser, cleared storage). The ciphertext is unrecoverable, so
-    // keep the note rather than dropping it and let the user see it is empty.
-    console.warn('[Notelikeus] A previously hidden note could not be unlocked on this device.');
-    return note as Note;
+    // Could not decrypt. That is not always permanent: loadLegacyKey() also returns null for a
+    // transient IndexedDB failure (another tab holding a connection, private browsing), and
+    // cachedKey memoises that for the rest of the session. Report it so the caller keeps the
+    // source data instead of treating a blank note as the migrated result.
+    return { note: note as Note, unrecoverable: true };
   }
 
   return {
-    ...(note as Note),
-    title: secrets.title,
-    content: secrets.content,
-    checklist: secrets.checklist,
+    note: {
+      ...(note as Note),
+      title: secrets.title,
+      content: secrets.content,
+      checklist: secrets.checklist,
+    },
+    unrecoverable: false,
   };
 }
 
-export async function unlockPersistedNotes(notes: MaybeLockedNote[]): Promise<Note[]> {
-  return Promise.all(notes.map((note) => unlockPersistedNote(note)));
+/** Restores a previously locked note's text and strips the removed fields. */
+export async function unlockPersistedNote(raw: MaybeLockedNote): Promise<Note> {
+  return (await unlockOne(raw)).note;
+}
+
+export interface UnlockBatch {
+  /** Never locked, or decrypted successfully. Safe to upload and to treat as migrated. */
+  notes: Note[];
+  /**
+   * Carried a locked blob that would not decrypt. Their text is *not* in [notes] — it is still
+   * only in the caller's source data, which must therefore be kept.
+   */
+  unrecoverable: Note[];
+}
+
+export async function unlockPersistedNotes(notes: MaybeLockedNote[]): Promise<UnlockBatch> {
+  const results = await Promise.all(notes.map((note) => unlockOne(note)));
+  return {
+    notes: results.filter((r) => !r.unrecoverable).map((r) => r.note),
+    unrecoverable: results.filter((r) => r.unrecoverable).map((r) => r.note),
+  };
+}
+
+/** Test seam: clears the memoised key so a suite can simulate the key being unavailable. */
+export function resetKeyCacheForTests(): void {
+  cachedKey = null;
 }
