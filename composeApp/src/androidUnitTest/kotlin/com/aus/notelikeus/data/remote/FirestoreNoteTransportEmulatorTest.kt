@@ -28,12 +28,20 @@ import java.net.Socket
  * timestamps come back partial, which downstream reads as "these notes are locally newer" and
  * re-uploads them on every sync forever.
  *
- * **Skipped unless the emulator is running.** CI has no emulator, so [assumeTrue] marks these
- * ignored rather than failed there. To run locally:
+ * **Skipped unless the emulator is running**, via [assumeTrue], so a developer without one is not
+ * blocked. Firebase CI runs them for real — see the "Android Firestore transport" step, which is
+ * what stops a skip from quietly hiding a failure. They did exactly that until then: written,
+ * never actually executed, and failing against the real rules the whole time.
+ *
+ * Note the config. This client has no auth token, so the production rules reject every write
+ * (`isOwner` requires `request.auth`); the emulator must therefore run *without* rules, which is
+ * what firebase.transport-test.json is for. That is not a gap — this test is about the transport's
+ * wire behaviour, and the rules themselves are covered by tests/firestore.rules.test.mjs and by
+ * web's notesSync.emulator.test.ts, both against the real firestore.rules with an authed context.
  *
  * ```
- * firebase emulators:start --only firestore --project notelikeus-c4-test
- * ./gradlew :composeApp:testDebugUnitTest --tests '*FirestoreNoteTransportEmulatorTest*'
+ * firebase emulators:exec --only firestore --config firebase.transport-test.json \
+ *   "./gradlew :composeApp:testDebugUnitTest --tests '*FirestoreNoteTransportEmulatorTest*'"
  * ```
  *
  * The FirebaseApp below is built from hardcoded dummy options with a project id that does not
