@@ -6,10 +6,15 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
 import androidx.biometric.BiometricPrompt
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
+import com.aus.notelikeus.data.local.DatabaseRecoveryNotice
 import com.aus.notelikeus.platform.ForegroundActivityTracker
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.ui.navigation.extractEditorNoteId
@@ -23,10 +28,13 @@ class MainActivity : FragmentActivity() {
     private var pendingNoteId by mutableStateOf<Long?>(null)
     private var pendingCreateNote by mutableStateOf(false)
     private var navigationRequest by mutableStateOf(0L)
+    private var showDatabaseRecoveryNotice by mutableStateOf(false)
 
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Read before the first composition: the migration that sets this already ran during DI.
+        showDatabaseRecoveryNotice = DatabaseRecoveryNotice.pending(this) != null
         pendingNoteId = extractEditorNoteId(intent)
         pendingCreateNote = intentRequestsNewNote(intent)
         navigationRequest++
@@ -59,7 +67,27 @@ class MainActivity : FragmentActivity() {
                 pendingCreateNote = pendingCreateNote,
                 navigationRequest = navigationRequest
             )
+
+            // Shown once, over the app, when the database had to be moved aside during startup.
+            // Without this the user sees an empty note list and no reason for it.
+            if (showDatabaseRecoveryNotice) {
+                AlertDialog(
+                    onDismissRequest = { dismissDatabaseRecoveryNotice() },
+                    confirmButton = {
+                        TextButton(onClick = { dismissDatabaseRecoveryNotice() }) {
+                            Text(stringResource(R.string.db_recovery_dismiss))
+                        }
+                    },
+                    title = { Text(stringResource(R.string.db_recovery_title)) },
+                    text = { Text(stringResource(R.string.db_recovery_message)) }
+                )
+            }
         }
+    }
+
+    private fun dismissDatabaseRecoveryNotice() {
+        showDatabaseRecoveryNotice = false
+        DatabaseRecoveryNotice.consume(this)
     }
 
     override fun onNewIntent(intent: Intent) {
