@@ -112,11 +112,19 @@ export async function deleteNote(userId: string, noteId: string): Promise<void> 
  * outright — and symmetrically, a confirmed local note beats an unconfirmed remote one (a legacy
  * doc that predates this field) regardless of either side's client timestamp. Only fall back to
  * comparing client timestamps when *neither* side has been confirmed by the server yet.
+ *
+ * Equal server stamps mean the two sides are the same confirmed revision, so there is nothing to
+ * upload: the tie goes to the cloud, matching Kotlin's `NoteSyncEngine.cloudWinsConflict`. This
+ * used to be `>=`, and because local notes reach the store through the same `cloudMapToNote` that
+ * `fetchRemoteNotes` uses, the two stamps are *always* equal in steady state — so the predicate
+ * returned true for every note and `syncNotesWithCloud` re-uploaded the entire library (a tombstone
+ * read plus a write each) on every reconcile. A locally-edited note is unaffected: its pending
+ * write leaves serverUpdatedAt null until the server confirms it, which is handled below.
  */
 export function shouldUploadOverRemote(note: Note, remote: Note | undefined): boolean {
   if (!remote) return true;
   if (note.serverUpdatedAt != null && remote.serverUpdatedAt != null) {
-    return note.serverUpdatedAt >= remote.serverUpdatedAt;
+    return note.serverUpdatedAt > remote.serverUpdatedAt;
   }
   if (remote.serverUpdatedAt != null) return false;
   if (note.serverUpdatedAt != null) return true;
