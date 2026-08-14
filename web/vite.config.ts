@@ -12,6 +12,9 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // Emulator-backed tests need a running Firestore, so they are not part of the default run.
+    // `npm run test:sync` starts the emulator and runs them via vitest.emulator.config.ts.
+    exclude: ['**/node_modules/**', '**/dist/**', 'src/**/*.emulator.test.ts'],
     // happy-dom ships no IndexedDB, which is where the locked-note key lives.
     setupFiles: ['./src/test/setup.ts'],
   },
