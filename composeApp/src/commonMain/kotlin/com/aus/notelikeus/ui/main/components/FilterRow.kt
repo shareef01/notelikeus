@@ -1,30 +1,35 @@
 package com.aus.notelikeus.ui.main.components
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -41,6 +46,13 @@ import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
+
+/**
+ * Desktop-only: adds mouse-wheel support to a horizontal scrollable, so the filter rows scroll
+ * horizontally instead of letting the wheel fall through to the notes grid below. No-op on
+ * Android (touch drag is the primary input there).
+ */
+expect fun Modifier.wheelHorizontalScroll(state: ScrollState): Modifier
 
 @Composable
 fun FilterRow(
@@ -59,38 +71,49 @@ fun FilterRow(
     val colors = noteColorsForTheme(isDarkTheme).filter { it != Color.Transparent }
     val railShape = RoundedCornerShape(999.dp)
     val allSelected = selectedColor == null
+    val filterRowScroll = rememberScrollState()
+    val labelRowScroll = rememberScrollState()
 
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .horizontalScroll(filterRowScroll)
+                .wheelHorizontalScroll(filterRowScroll)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            item {
+            PrecisionFilterChip(
+                selected = false,
+                onClick = onSortOrderCycle,
+                label = stringResource(sortOrderLabelRes(sortOrder)),
+                compact = true,
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Sort,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(14.dp)
+                            .alpha(0.8f)
+                    )
+                }
+            )
+            if (hasActiveFilters) {
                 PrecisionFilterChip(
-                    selected = false,
-                    onClick = onSortOrderCycle,
-                    label = stringResource(sortOrderLabelRes(sortOrder)),
+                    selected = true,
+                    onClick = onClearFilters,
+                    label = stringResource(Res.string.clear_filters_short),
                     compact = true
                 )
             }
-            if (hasActiveFilters) {
-                item {
-                    PrecisionFilterChip(
-                        selected = true,
-                        onClick = onClearFilters,
-                        label = stringResource(Res.string.clear_filters_short),
-                        compact = true
-                    )
-                }
-            }
-            item {
-                Row(
+            Row(
                     modifier = Modifier
-                        .height(40.dp)
+                        .height(36.dp)
                         .clip(railShape)
                         .border(
                             width = 1.dp,
@@ -111,7 +134,7 @@ fun FilterRow(
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
                         modifier = Modifier
-                            .height(32.dp)
+                            .height(28.dp)
                             .clip(RoundedCornerShape(999.dp))
                             .background(
                                 if (allSelected) {
@@ -134,8 +157,8 @@ fun FilterRow(
                         color = Color.Transparent,
                         isSelected = selectedColor == 0,
                         onClick = { onColorSelect(if (selectedColor == 0) null else 0) },
-                        touchSize = 40.dp,
-                        swatchSize = 28.dp,
+                        touchSize = 36.dp,
+                        swatchSize = 26.dp,
                         contentDescription = stringResource(Res.string.no_color)
                     )
                     colors.forEach { color ->
@@ -146,29 +169,31 @@ fun FilterRow(
                             onClick = {
                                 onColorSelect(if (selectedColor == colorArgb) null else colorArgb)
                             },
-                            touchSize = 40.dp,
-                            swatchSize = 28.dp
+                            touchSize = 36.dp,
+                            swatchSize = 26.dp
                         )
                     }
                 }
-            }
         }
 
         if (allLabels.isNotEmpty()) {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .horizontalScroll(labelRowScroll)
+                    .wheelHorizontalScroll(labelRowScroll)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                item {
-                    PrecisionFilterChip(
-                        selected = selectedLabelId == null,
-                        onClick = { onLabelSelect(null) },
-                        label = stringResource(Res.string.all_labels),
-                        compact = true
-                    )
-                }
-                items(allLabels, key = { it.id ?: it.name }) { label ->
+                PrecisionFilterChip(
+                    selected = selectedLabelId == null,
+                    onClick = { onLabelSelect(null) },
+                    label = stringResource(Res.string.all_labels),
+                    compact = true
+                )
+                allLabels.forEach { label ->
                     PrecisionFilterChip(
                         selected = selectedLabelId == label.id,
                         onClick = { onLabelSelect(if (selectedLabelId == label.id) null else label.id) },
@@ -188,6 +213,7 @@ internal fun PrecisionFilterChip(
     label: String,
     enabled: Boolean = true,
     compact: Boolean = false,
+    leadingIcon: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val borderColor = if (selected) {
@@ -202,6 +228,7 @@ internal fun PrecisionFilterChip(
         selected = selected,
         onClick = onClick,
         enabled = enabled,
+        leadingIcon = leadingIcon,
         label = {
             Text(
                 text = label,

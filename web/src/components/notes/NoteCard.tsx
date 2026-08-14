@@ -203,11 +203,11 @@ function NoteCardImpl({
 
           <div className="flex min-w-0 flex-1 items-start gap-3 px-3.5 py-3.5 sm:gap-4 sm:px-4 sm:py-4">
             <div className="min-w-0 flex-1">
-              <h2 className="line-clamp-2 text-note-title tracking-[-0.02em] sm:line-clamp-2">
+              <h2 className="line-clamp-2 break-words text-note-title tracking-[-0.02em] sm:line-clamp-2">
                 {highlight(title)}
               </h2>
               {showBody ? (
-                <p className="mt-2 line-clamp-2 text-note-body opacity-70 sm:mt-2.5 sm:line-clamp-3">
+                <p className="mt-2 line-clamp-2 break-words text-note-body opacity-70 sm:mt-2.5 sm:line-clamp-3">
                   {highlight(previewBody)}
                 </p>
               ) : null}
@@ -234,7 +234,7 @@ function NoteCardImpl({
         <>
           <div className="flex items-start gap-2">
             <h2
-              className={`min-w-0 flex-1 font-semibold tracking-[-0.02em] ${
+              className={`min-w-0 flex-1 break-words font-semibold tracking-[-0.02em] ${
                 isDense
                   ? 'line-clamp-2 text-[15px] leading-snug'
                   : 'line-clamp-3 text-note-title'
@@ -259,8 +259,8 @@ function NoteCardImpl({
             <p
               className={
                 isDense
-                  ? 'mt-2 line-clamp-5 text-[13px] leading-relaxed opacity-80'
-                  : 'mt-3 line-clamp-7 text-note-body leading-relaxed opacity-80'
+                  ? 'mt-2 line-clamp-5 break-words text-[13px] leading-relaxed opacity-80'
+                  : 'mt-3 line-clamp-7 break-words text-note-body leading-relaxed opacity-80'
               }
             >
               {highlight(previewBody)}
@@ -281,7 +281,7 @@ function NoteCardImpl({
                     ) : (
                       <CheckCircleOutlineIcon size={14} className="shrink-0 opacity-70" />
                     )}
-                    <span className="line-clamp-1 text-note-body opacity-70">
+                    <span className="line-clamp-1 break-words text-note-body opacity-70">
                       {highlight(stripMarkdownForPreview(item.text))}
                     </span>
                   </div>
