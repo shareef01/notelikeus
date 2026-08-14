@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -34,15 +33,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.window.WindowDraggableArea
+import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.WindowPlacement
-import androidx.compose.ui.window.WindowScope
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.Chrome
 
@@ -58,7 +55,7 @@ import com.aus.notelikeus.ui.theme.Chrome
  * native WM_NCHITTEST handling.
  */
 @Composable
-fun WindowScope.NotelikeusTitleBar(
+fun FrameWindowScope.NotelikeusTitleBar(
     title: String,
     isMaximized: Boolean,
     onMinimize: () -> Unit,
@@ -72,33 +69,32 @@ fun WindowScope.NotelikeusTitleBar(
     var menuOpen by remember { mutableStateOf(false) }
 
     Box(modifier = modifier.fillMaxWidth().height(TITLE_BAR_HEIGHT).background(colors.surface)) {
-        WindowDraggableArea(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight()
-                .pointerInput(isMaximized) {
-                    detectTapGestures(onDoubleTap = { onToggleMaximize() })
-                }
+        // Native caption drag: hands presses to the OS so the window keeps Aero Snap
+        // docking, snap previews and restore-by-drag. Caption buttons are excluded.
+        NativeCaptionDragSupport(
+            zoneHeight = TITLE_BAR_HEIGHT,
+            excludedEndWidth = CAPTION_BUTTON_WIDTH * 4, // overflow, minimize, maximize, close
+            onToggleMaximize = onToggleMaximize
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(start = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(start = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                BrandMarkIcon(
-                    size = 18.dp,
-                    backgroundColor = colors.onSurface.copy(alpha = 0.12f),
-                    stripeColor = colors.onSurface
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium,
-                    color = colors.onSurface.copy(alpha = 0.9f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            BrandMarkIcon(
+                size = 18.dp,
+                backgroundColor = colors.onSurface.copy(alpha = 0.12f),
+                stripeColor = colors.onSurface
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+                color = colors.onSurface.copy(alpha = 0.9f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
 
         Row(

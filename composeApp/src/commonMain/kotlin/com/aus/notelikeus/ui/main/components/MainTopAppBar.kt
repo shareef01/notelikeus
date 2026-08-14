@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -175,22 +176,18 @@ fun MainTopAppBar(
                 },
                 label = "topbar"
             ) { isSelectionMode ->
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(TopBarRowHeight)
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .border(1.dp, searchBorderColor, CircleShape),
-                    shape = CircleShape,
-                    color = if (isSelectionMode) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = searchFillAlpha)
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = searchFillAlpha)
-                    },
-                    tonalElevation = 0.dp,
-                    shadowElevation = 0.dp
-                ) {
-                    if (isSelectionMode) {
+                if (isSelectionMode) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(TopBarRowHeight)
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .border(1.dp, searchBorderColor, CircleShape),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = searchFillAlpha),
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp
+                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -255,12 +252,15 @@ fun MainTopAppBar(
                                 Icon(Icons.Default.Delete, contentDescription = stringResource(Res.string.cd_delete))
                             }
                         }
+                        }
                     } else {
                         Row(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .fillMaxWidth()
+                                .height(TopBarRowHeight)
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             if (showMenuIcon) {
                                 IconButton(onClick = {
@@ -273,10 +273,24 @@ fun MainTopAppBar(
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                            } else {
-                                Spacer(modifier = Modifier.width(12.dp))
                             }
 
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .border(1.dp, searchBorderColor, CircleShape),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = searchFillAlpha),
+                                tonalElevation = 0.dp,
+                                shadowElevation = 0.dp
+                            ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                             BasicTextField(
                                 value = searchQuery,
                                 onValueChange = onSearchQueryChange,
@@ -340,6 +354,8 @@ fun MainTopAppBar(
                                     )
                                 }
                             }
+                            }
+                            }
 
                             ViewModeMenu(
                                 viewMode = viewMode,
@@ -372,7 +388,6 @@ fun MainTopAppBar(
                         }
                     }
                 }
-            }
 
             AnimatedVisibility(
                 visible = showRecentSearches,

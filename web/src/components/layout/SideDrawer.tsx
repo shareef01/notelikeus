@@ -72,10 +72,10 @@ function NavButton({
       aria-current={ariaCurrent}
       aria-label={collapsed ? label : undefined}
       title={collapsed ? label : undefined}
-      className={`group relative flex w-full items-center gap-2.5 rounded-xl text-left text-sm leading-none tracking-tight transition-colors ${
+      className={`group relative flex w-full items-center gap-3 rounded-xl text-left text-sm leading-5 tracking-tight transition-colors ${
         collapsed
-          ? 'min-h-10 justify-center px-0 py-2.5'
-          : 'min-h-10 py-2.5 pl-3 pr-2.5'
+          ? 'min-h-11 justify-center px-0 py-2.5'
+          : 'min-h-11 py-2.5 pl-3 pr-2.5'
       } ${
         active
           ? 'bg-brand-primary/[0.08] font-semibold text-brand-primary'
@@ -84,14 +84,14 @@ function NavButton({
     >
       {!collapsed && active ? (
         <span
-          className={`absolute inset-y-2 left-0 w-0.5 rounded-full ${barClass}`}
+          className={`absolute inset-y-2.5 left-0 w-0.5 rounded-full ${barClass}`}
           aria-hidden
         />
       ) : null}
       <span
         className={`flex shrink-0 items-center justify-center transition-opacity ${iconClass} ${
           active ? 'opacity-100' : 'opacity-85 group-hover:opacity-100'
-        } ${collapsed ? 'size-5' : 'size-5'}`}
+        } ${collapsed ? 'size-6' : 'size-6'}`}
       >
         {icon}
       </span>
@@ -121,7 +121,7 @@ function NavSection({ title, children }: { title?: string; children: ReactNode }
 function CountBadge({ count, active }: { count: number; active: boolean }) {
   return (
     <span
-      className={`inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1.5 text-[11px] font-semibold tabular-nums ${
+      className={`inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${
         active
           ? 'bg-brand-primary/20 text-brand-primary'
           : 'bg-brand-primary/[0.08] text-brand-secondary'
@@ -171,11 +171,11 @@ export function SideDrawer({
         aria-label="Navigation"
       >
         {/* Header */}
-        <div className={`flex items-center gap-3 px-4 pb-5 pt-safe md:px-5 md:pt-7 ${
-          showCollapsed ? 'justify-center md:px-0' : 'justify-between'
+        <div className={`flex items-center gap-3 pb-5 pt-safe md:pt-7 ${
+          showCollapsed ? 'justify-center' : 'justify-between px-4 md:px-5'
         }`}>
           {showCollapsed ? (
-            <BrandMark size={28} />
+            <BrandMark size={32} />
           ) : (
             <div className="flex min-w-0 items-center gap-2.5">
               <BrandMark size={36} />
@@ -203,9 +203,9 @@ export function SideDrawer({
 
         {/* Nav */}
         <nav className={`flex flex-1 flex-col overflow-y-auto px-2.5 pb-5 ${
-          showCollapsed ? 'gap-4 md:px-1.5' : 'gap-7 md:px-3'
+          showCollapsed ? 'gap-3 md:px-1.5' : 'gap-5 md:px-3'
         }`}>
-          <NavSection>
+          <NavSection title={showCollapsed ? undefined : undefined}>
             {NAV_ITEMS.map(({ filter, label, Icon, iconClass, barClass }) => {
               const active = currentFilter === filter;
               const count = navCounts?.[filter];
@@ -221,7 +221,7 @@ export function SideDrawer({
                     onNavigate(filter);
                     onClose();
                   }}
-                  icon={<Icon size={showCollapsed ? 20 : 20} />}
+                  icon={<Icon size={showCollapsed ? 22 : 22} />}
                   label={label}
                   trailing={
                     !showCollapsed && count != null && count > 0 ? (
@@ -244,7 +244,7 @@ export function SideDrawer({
                     onEditLabels();
                     onClose();
                   }}
-                  icon={<LabelIcon size={20} />}
+                  icon={<LabelIcon size={22} />}
                   label="Edit labels"
                 />
               ) : null}
@@ -257,7 +257,7 @@ export function SideDrawer({
                     onOpenSettings();
                     onClose();
                   }}
-                  icon={<SettingsIcon size={20} />}
+                  icon={<SettingsIcon size={22} />}
                   label="Settings"
                 />
               ) : null}
@@ -271,18 +271,18 @@ export function SideDrawer({
             <button
               type="button"
               onClick={onToggleCollapse}
-              className={`group flex w-full items-center rounded-xl text-brand-muted transition-colors hover:bg-brand-primary/[0.06] hover:text-brand-primary ${
+              className={`group flex w-full items-center rounded-xl border border-brand-secondary/25 bg-brand-primary/[0.06] font-medium text-brand-primary/85 transition-colors hover:border-brand-secondary/45 hover:bg-brand-primary/[0.1] hover:text-brand-primary ${
                 showCollapsed
-                  ? 'justify-center py-2.5'
-                  : 'gap-2.5 py-2.5 pl-3 pr-2.5'
+                  ? 'min-h-11 justify-center py-2.5'
+                  : 'min-h-11 gap-2.5 py-2.5 pl-3 pr-2.5'
               }`}
               aria-label={showCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               title={showCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
-              <span className={`flex size-5 shrink-0 items-center justify-center transition-transform duration-300 ${
+              <span className={`flex size-6 shrink-0 items-center justify-center transition-transform duration-300 ${
                 showCollapsed ? '' : 'rotate-180'
               }`}>
-                <ChevronRightIcon size={18} />
+                <ChevronRightIcon size={20} />
               </span>
               {!showCollapsed && (
                 <span className="min-w-0 flex-1 truncate text-left text-sm tracking-tight">
