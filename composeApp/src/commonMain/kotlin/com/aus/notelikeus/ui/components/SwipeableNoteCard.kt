@@ -50,6 +50,7 @@ fun SwipeableNoteCard(
     enableArchiveSwipe: Boolean = true,
     enableSwipe: Boolean = true,
     compact: Boolean = false,
+    listStyle: Boolean = false,
     showReorderHandle: Boolean = false,
     reorderDragModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
@@ -162,6 +163,7 @@ fun SwipeableNoteCard(
                 isSelected = isSelected,
                 searchQuery = searchQuery,
                 compact = compact,
+                listStyle = listStyle,
                 onClick = onNoteClick,
                 onLongClick = onNoteLongClick,
                 onLabelClick = onLabelClick,
