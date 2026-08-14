@@ -135,8 +135,15 @@ class DesktopTokenStore(
         }
 
         if (response.statusCode() !in 200..299) {
-            // The refresh token itself was rejected (revoked, password change, account deleted).
-            clear()
+            // Only a 4xx that names the credential means the refresh token is genuinely dead
+            // (revoked, password change, account deleted) — that is worth signing the user out
+            // for. Everything else is the server having a bad moment: a 429 or a 5xx from
+            // securetoken.googleapis.com used to land here too and destroy the refresh token, so a
+            // transient outage cost the user the whole browser OAuth loop to get back in. Those
+            // keep the session, exactly like the network faults and unparseable bodies around this.
+            if (response.statusCode() in REVOCATION_STATUS_CODES) {
+                clear()
+            }
             return@withLock null
         }
 
@@ -235,6 +242,13 @@ class DesktopTokenStore(
     private companion object {
         /** Refresh this far ahead of the real expiry so an in-flight request cannot age out. */
         const val EXPIRY_SKEW_MS = 5 * 60 * 1000L
+
+        /**
+         * Statuses that mean the refresh token will never work again, so the session should be
+         * dropped. 400 is what Google's token endpoint actually returns for
+         * `invalid_grant`; 401 and 403 are included for completeness.
+         */
+        val REVOCATION_STATUS_CODES = setOf(400, 401, 403)
     }
 }
 
