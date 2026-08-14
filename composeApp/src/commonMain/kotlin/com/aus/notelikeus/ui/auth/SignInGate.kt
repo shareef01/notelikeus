@@ -113,10 +113,12 @@ fun SignInGate(
                     }
                     if (onSkip != null) {
                         Spacer(modifier = Modifier.height(12.dp))
+                        TextButton(onClick = onSkip) {
                             Text(
                                 stringResource(Res.string.sign_in_skip_offline),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
                     }
                 }
             }
@@ -166,6 +168,19 @@ fun SignInGate(
                             Spacer(modifier = Modifier.width(10.dp))
                         }
                         Text(stringResource(Res.string.cloud_sign_in_google), fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // The subtitle above promises local-only use, so the way out has to be here,
+                    // next to the sign-in button — not only in the no-Play-Services branch below,
+                    // which never renders on a healthy machine.
+                    if (onSkip != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        TextButton(onClick = onSkip, enabled = !isSigningIn) {
+                            Text(
+                                stringResource(Res.string.sign_in_skip_offline),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
