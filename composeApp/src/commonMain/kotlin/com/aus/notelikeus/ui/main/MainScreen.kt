@@ -171,7 +171,9 @@ fun MainScreen(
     // two-pane layout. On Android, Medium is a large phone or a folded foldable and must not.
     val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded ||
             (windowSizeClass.widthSizeClass == WindowWidthSizeClass.Medium && AppConfig.isDesktop)
-    var sidebarManuallyCollapsed by remember { mutableStateOf(initialSidebarCollapsed) }
+    var sidebarManuallyCollapsed by remember(initialSidebarCollapsed) {
+        mutableStateOf(initialSidebarCollapsed)
+    }
     val effectiveSidebarCollapsed = sidebarManuallyCollapsed && isExpanded
     val navigator = rememberListDetailPaneScaffoldNavigator<Long?>()
 
@@ -188,9 +190,10 @@ fun MainScreen(
             ) {
                 if (collapsed) {
                     BrandMarkIcon(
-                        size = 28.dp,
+                        size = 32.dp,
                         backgroundColor = MaterialTheme.colorScheme.onSurface,
                         stripeColor = MaterialTheme.colorScheme.surface,
+                        ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier.align(Alignment.Center)
                     )
                 } else {
@@ -199,7 +202,8 @@ fun MainScreen(
                         BrandMarkIcon(
                             size = 36.dp,
                             backgroundColor = MaterialTheme.colorScheme.onSurface,
-                            stripeColor = MaterialTheme.colorScheme.surface
+                            stripeColor = MaterialTheme.colorScheme.surface,
+                            ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
@@ -235,8 +239,8 @@ fun MainScreen(
                     selectedIcon = Icons.Filled.Lightbulb,
                     selected = state.currentFilter == NoteFilter.ACTIVE,
                     count = state.totalNoteCount,
-                    identityColor = Color(0xFF38BDF8), // sky-400
                     collapsed = collapsed,
+                    identityColor = Color(0xFF38BDF8), // sky-400
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.setFilter(NoteFilter.ACTIVE)
@@ -249,8 +253,8 @@ fun MainScreen(
                     selectedIcon = Icons.Filled.Archive,
                     selected = state.currentFilter == NoteFilter.ARCHIVED,
                     count = state.archivedNoteCount,
-                    identityColor = Color(0xFFFBBF24), // amber-400
                     collapsed = collapsed,
+                    identityColor = Color(0xFFFBBF24), // amber-400
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.setFilter(NoteFilter.ARCHIVED)
@@ -263,8 +267,8 @@ fun MainScreen(
                     selectedIcon = Icons.Filled.Delete,
                     selected = state.currentFilter == NoteFilter.TRASHED,
                     count = state.trashedNoteCount,
-                    identityColor = Color(0xFFFB7185), // rose-400
                     collapsed = collapsed,
+                    identityColor = Color(0xFFFB7185), // rose-400
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         viewModel.setFilter(NoteFilter.TRASHED)
@@ -277,12 +281,12 @@ fun MainScreen(
                 SideDrawerSectionLabel(text = stringResource(Res.string.nav_section_manage))
                 }
 
-                if (!collapsed) {
                 SideDrawerNavItem(
                     label = stringResource(Res.string.nav_edit_labels),
                     icon = Icons.AutoMirrored.Outlined.Label,
                     selectedIcon = Icons.AutoMirrored.Filled.Label,
                     selected = false,
+                    collapsed = collapsed,
                     identityColor = Color(0xFFA78BFA), // violet-400
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -295,6 +299,7 @@ fun MainScreen(
                     icon = Icons.Outlined.Settings,
                     selectedIcon = Icons.Filled.Settings,
                     selected = showProfileSheet,
+                    collapsed = collapsed,
                     identityColor = Color(0xFF2DD4BF), // teal-400
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
@@ -302,7 +307,6 @@ fun MainScreen(
                         scope.launch { if (!isExpanded) drawerState.close() }
                     }
                 )
-                }
             }
 
             // Collapse toggle — only in permanent (expanded) mode
@@ -317,13 +321,19 @@ fun MainScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = if (collapsed) 8.dp else 16.dp)
-                        .height(40.dp)
+                        .height(44.dp)
                         .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
                         .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            val next = !sidebarManuallyCollapsed
-                            sidebarManuallyCollapsed = next
-                            onSidebarCollapsedChange(next)
+                            val nextCollapsed = !sidebarManuallyCollapsed
+                            sidebarManuallyCollapsed = nextCollapsed
+                            onSidebarCollapsedChange(nextCollapsed)
                         }
                         .padding(horizontal = if (collapsed) 0.dp else 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -332,17 +342,19 @@ fun MainScreen(
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowLeft,
                         contentDescription = if (collapsed) "Expand sidebar" else "Collapse sidebar",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                         modifier = Modifier
-                            .size(18.dp)
-                            .rotate(if (collapsed) 180f else 0f)
+                            .size(20.dp)
+                            .rotate(if (collapsed) 0f else 180f)
                     )
                     if (!collapsed) {
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = "Collapse",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
                         )
                     }
                 }
@@ -413,6 +425,30 @@ fun MainScreen(
         }
     }
 
+    // Shared notes-list scaffold. Desktop shows it full-width (notes open in their own
+    // OS windows, so a detail pane would just sit there empty), while Android tablets
+    // pair it with the editor detail pane.
+    val mainScaffold: @Composable ((Long?) -> Unit) -> Unit = { handleNoteClick ->
+        MainScaffold(
+            state = state,
+            viewModel = viewModel,
+            onNoteClick = handleNoteClick,
+            gridState = gridState,
+            snackbarHostState = snackbarHostState,
+            showProfileSheet = showProfileSheet,
+            onShowProfileSheet = { showProfileSheet = it },
+            onShowDeleteConfirm = { showDeleteConfirm = it },
+            onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
+            onShowDrawer = { scope.launch { drawerState.open() } },
+            listScrolled = listScrolled,
+            haptic = haptic,
+            scope = scope,
+            showUndoSnackbar = { scope.launch { showUndoSnackbar(it) } },
+            searchFocusRequester = searchFocusRequester,
+            isExpanded = isExpanded
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -457,15 +493,25 @@ fun MainScreen(
                 }
             ) {
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    ListDetailPaneScaffold(
-                        directive = navigator.scaffoldDirective,
-                        value = navigator.scaffoldValue,
-                        listPane = {
-                            AnimatedPane {
-                                MainScaffold(
-                                    state = state,
-                                    viewModel = viewModel,
-                                    onNoteClick = { noteId ->
+                    if (AppConfig.isDesktop) {
+                        // Desktop opens each note in its own OS window, so a detail pane
+                        // would just sit there empty. Give the notes list the full window,
+                        // capped at the same content width the web app uses.
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.TopCenter
+                        ) {
+                            Box(modifier = Modifier.fillMaxHeight().widthIn(max = 1408.dp)) {
+                                mainScaffold { noteId -> onNoteClick(noteId) }
+                            }
+                        }
+                    } else {
+                        ListDetailPaneScaffold(
+                            directive = navigator.scaffoldDirective,
+                            value = navigator.scaffoldValue,
+                            listPane = {
+                                AnimatedPane {
+                                    mainScaffold { noteId ->
                                         scope.launch {
                                             // A new note arrives as null, which is also the
                                             // scaffold's "nothing selected" key — passing it
@@ -476,24 +522,10 @@ fun MainScreen(
                                                 noteId ?: NewNoteContentKey
                                             )
                                         }
-                                    },
-                                    gridState = gridState,
-                                    snackbarHostState = snackbarHostState,
-                                    showProfileSheet = showProfileSheet,
-                                    onShowProfileSheet = { showProfileSheet = it },
-                                    onShowDeleteConfirm = { showDeleteConfirm = it },
-                                    onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
-                                    onShowDrawer = { scope.launch { drawerState.open() } },
-                                    listScrolled = listScrolled,
-                                    haptic = haptic,
-                                    scope = scope,
-                                    showUndoSnackbar = { scope.launch { showUndoSnackbar(it) } },
-                                searchFocusRequester = searchFocusRequester,
-                                isExpanded = isExpanded
-                            )
-                            }
-                        },
-                        detailPane = {
+                                    }
+                                }
+                            },
+                            detailPane = {
                             AnimatedPane {
                                 val destination = navigator.currentDestination
                                 if (destination != null && destination.contentKey != null) {
@@ -550,6 +582,7 @@ fun MainScreen(
                                                 size = 80.dp,
                                                 backgroundColor = MaterialTheme.colorScheme.onSurface,
                                                 stripeColor = MaterialTheme.colorScheme.surface,
+                                                ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                                                 modifier = Modifier.alpha(0.08f)
                                             )
                                             Spacer(modifier = Modifier.height(24.dp))
@@ -573,8 +606,9 @@ fun MainScreen(
                                     }
                                 }
                             }
-                        }
-                    )
+                            }
+                        )
+                    }
                 }
             }
         } else {
@@ -1056,66 +1090,81 @@ private fun MainScaffold(
                         }
                     )
                 }
-                NoteStaggeredGrid(
-                    notes = filteredNotes,
-                    selectedNotes = state.selectedNotes,
-                    searchQuery = state.searchQuery,
-                    listRevision = state.listRevision,
-                    gridState = gridState,
-                    enableArchiveSwipe = state.currentFilter == NoteFilter.ACTIVE,
-                    enableSwipe = state.selectedNotes.isEmpty(),
-                    allowReorder = allowReorder,
-                    onNoteClick = { note ->
-                        if (state.selectedNotes.isNotEmpty()) {
-                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            viewModel.toggleNoteSelection(note.id!!)
-                        } else {
-                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            onNoteClick(note.id)
-                        }
-                    },
-                    onNoteLongClick = { note ->
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        viewModel.toggleNoteSelection(note.id!!)
-                    },
-                    onSwipeToArchive = { note ->
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        viewModel.archiveNote(note)
-                        scope.launch {
-                            showUndoSnackbar(getString(Res.string.note_archived))
-                        }
-                    },
-                    onSwipeToTrash = { note ->
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        viewModel.trashNote(note)
-                        scope.launch {
-                            val message = if (state.currentFilter == NoteFilter.TRASHED) {
-                                getString(Res.string.note_deleted)
-                            } else {
-                                getString(Res.string.note_trashed)
-                            }
-                            showUndoSnackbar(message)
-                        }
-                    },
-                    onLabelClick = { labelId ->
-                        viewModel.selectLabelFilter(labelId)
-                    },
-                    onMoveNote = viewModel::previewMoveNote,
-                    onReorderComplete = viewModel::commitNoteOrder,
-                    // In two-pane mode the list shares the window with the editor, so the wider
-                    // grid choices leave cards too narrow to read. Cap the list pane at 2.
-                    columns = if (isExpanded && state.viewMode.columns > 2) 2 else state.viewMode.columns,
-                    compact = state.viewMode.compact,
+                BoxWithConstraints(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
-                    contentPadding = PaddingValues(
-                        top = 12.dp,
-                        start = 12.dp,
-                        end = 12.dp,
-                        bottom = gridBottomPadding
+                        .fillMaxWidth()
+                ) {
+                    // Desktop owns the full window now, so mirror the web grid: ~300dp
+                    // minimum cards and 2–4 columns depending on available width.
+                    val adaptiveColumns =
+                        if (AppConfig.isDesktop && state.viewMode == NoteViewMode.GRID_2) {
+                            (maxWidth / 300.dp).toInt().coerceIn(2, 4)
+                        } else {
+                            null
+                        }
+                    NoteStaggeredGrid(
+                        notes = filteredNotes,
+                        selectedNotes = state.selectedNotes,
+                        searchQuery = state.searchQuery,
+                        listRevision = state.listRevision,
+                        gridState = gridState,
+                        enableArchiveSwipe = state.currentFilter == NoteFilter.ACTIVE,
+                        enableSwipe = state.selectedNotes.isEmpty(),
+                        allowReorder = allowReorder,
+                        onNoteClick = { note ->
+                            if (state.selectedNotes.isNotEmpty()) {
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                viewModel.toggleNoteSelection(note.id!!)
+                            } else {
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                onNoteClick(note.id)
+                            }
+                        },
+                        onNoteLongClick = { note ->
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.toggleNoteSelection(note.id!!)
+                        },
+                        onSwipeToArchive = { note ->
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            viewModel.archiveNote(note)
+                            scope.launch {
+                                showUndoSnackbar(getString(Res.string.note_archived))
+                            }
+                        },
+                        onSwipeToTrash = { note ->
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            viewModel.trashNote(note)
+                            scope.launch {
+                                val message = if (state.currentFilter == NoteFilter.TRASHED) {
+                                    getString(Res.string.note_deleted)
+                                } else {
+                                    getString(Res.string.note_trashed)
+                                }
+                                showUndoSnackbar(message)
+                            }
+                        },
+                        onLabelClick = { labelId ->
+                            viewModel.selectLabelFilter(labelId)
+                        },
+                        onMoveNote = viewModel::previewMoveNote,
+                        onReorderComplete = viewModel::commitNoteOrder,
+                        // In two-pane mode the list shares the window with the editor, so the
+                        // wider grid choices leave cards too narrow to read. Cap the list pane
+                        // at 2. Desktop has no detail pane, so it uses adaptive columns above.
+                        columns = adaptiveColumns
+                            ?: if (isExpanded && state.viewMode.columns > 2) 2 else state.viewMode.columns,
+                        compact = state.viewMode.compact,
+                        listStyle = state.viewMode == NoteViewMode.LIST,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            top = 12.dp,
+                            start = 12.dp,
+                            end = 12.dp,
+                            bottom = gridBottomPadding
+                        )
                     )
-                )
+                }
             }
         }
     }

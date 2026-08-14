@@ -74,9 +74,10 @@ fun SignInGate(
             verticalArrangement = Arrangement.Center
         ) {
             BrandMark(
-                modifier = Modifier.size(72.dp),
+                modifier = Modifier.size(56.dp),
                 backgroundColor = MaterialTheme.colorScheme.onSurface,
-                stripeColor = MaterialTheme.colorScheme.surface
+                stripeColor = MaterialTheme.colorScheme.surface,
+                ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
             )
             Spacer(modifier = Modifier.height(24.dp))
             Text(

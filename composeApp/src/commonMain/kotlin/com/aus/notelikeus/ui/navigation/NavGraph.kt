@@ -14,6 +14,7 @@ import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -25,6 +26,7 @@ import com.aus.notelikeus.ui.labels.LabelsScreen
 import com.aus.notelikeus.ui.labels.LabelsViewModel
 import com.aus.notelikeus.ui.main.MainScreen
 import com.aus.notelikeus.ui.main.MainViewModel
+import com.aus.notelikeus.util.AppConfig
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.annotation.KoinExperimentalAPI
 
@@ -52,6 +54,11 @@ fun NavGraph(
     navController: NavHostController,
     mainViewModel: MainViewModel,
     windowSizeClass: WindowSizeClass,
+    editorWindowLauncher: EditorWindowLauncher = remember {
+        object : EditorWindowLauncher {
+            override fun launch(noteId: Long?, initialColor: Int?) = Unit
+        }
+    },
     initialSidebarCollapsed: Boolean = false,
     onSidebarCollapsedChange: (Boolean) -> Unit = {},
     isAppLockEnabled: Boolean = false,
@@ -76,7 +83,11 @@ fun NavGraph(
                 onNoteClick = { noteId ->
                     val initialColor =
                         if (noteId == null) mainViewModel.state.value.selectedColor else null
-                    navController.navigate(Screen.Editor.createRoute(noteId, initialColor))
+                    if (AppConfig.isDesktop) {
+                        editorWindowLauncher.launch(noteId, initialColor)
+                    } else {
+                        navController.navigate(Screen.Editor.createRoute(noteId, initialColor))
+                    }
                 },
                 onEditLabels = {
                     navController.navigate(Screen.Labels.route)
