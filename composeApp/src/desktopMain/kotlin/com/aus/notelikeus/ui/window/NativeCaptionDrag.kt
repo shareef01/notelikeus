@@ -7,10 +7,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.FrameWindowScope
-import com.sun.jna.Library
 import com.sun.jna.Native
 import com.sun.jna.Pointer
 import com.sun.jna.platform.win32.WinDef
+import com.sun.jna.win32.StdCallLibrary
+import com.sun.jna.win32.W32APIOptions
 import java.awt.AWTEvent
 import java.awt.Component
 import java.awt.Toolkit
@@ -21,13 +22,23 @@ import javax.swing.SwingUtilities
 /** Non-client left-button-down with the caption hit-test code. */
 private const val WM_NCLBUTTONDOWN = 0x00A1
 private const val WM_LBUTTONUP = 0x0202
-private const val WM_SYSCOMMAND = 0x0112
-private const val SC_MOVE_HTCAPTION = 0xF012
 private const val HTCAPTION = 0x0002
 private const val DOUBLE_CLICK_MS = 400L
 
-/** The handful of user32 entry points this file needs. */
-private interface Win32 : Library {
+/**
+ * The handful of user32 entry points this file needs.
+ *
+ * [W32APIOptions.DEFAULT_OPTIONS] is not optional here. `user32.dll` exports `SendMessageA` and
+ * `SendMessageW`, never a plain `SendMessage`, and a bare [Native.load] has no function mapper to
+ * append the suffix — the lookup fails with `UnsatisfiedLinkError` on the first call. JNA resolves
+ * per function and lazily, so nothing catches that at compile time or at load: the caption bar
+ * simply throws the first time it is pressed, leaving the window undraggable. (`ReleaseCapture`
+ * has no A/W variants and resolves either way, which is what makes the failure partial and
+ * confusing rather than obvious.) [StdCallLibrary] pairs with it for the __stdcall convention
+ * these functions use on 32-bit Windows; on x64 there is only one convention, but declaring it
+ * keeps the interface honest.
+ */
+private interface Win32 : StdCallLibrary {
     fun SendMessage(
         hWnd: WinDef.HWND,
         msg: Int,
@@ -38,7 +49,8 @@ private interface Win32 : Library {
     fun ReleaseCapture(): Boolean
 
     companion object {
-        val INSTANCE: Win32 = Native.load("user32", Win32::class.java)
+        val INSTANCE: Win32 =
+            Native.load("user32", Win32::class.java, W32APIOptions.DEFAULT_OPTIONS)
     }
 }
 
@@ -89,11 +101,17 @@ fun FrameWindowScope.NativeCaptionDragSupport(
             // (Skia canvas, panel or the frame itself), each with its own coordinate space.
             val frameX = mouseEvent.xOnScreen - frame.x
             val frameY = mouseEvent.yOnScreen - frame.y
-            val density = frame.graphicsConfiguration.defaultTransform.scaleX
-            val zoneHeightPx = (zoneHeight.value * density).toInt()
-            val excludedWidthPx = (excludedEndWidth.value * density).toInt()
-            if (frameY >= zoneHeightPx) return@AWTEventListener
-            if (frameX >= frame.width - excludedWidthPx) return@AWTEventListener
+            // Compared in user space, with no density multiply. Every value on both sides of these
+            // comparisons is already user-space: AWT reports component bounds and pointer positions
+            // in user space on Java 9+ Windows, and Compose lays a 40.dp bar out to 40 user-space
+            // units whatever the display scale. Scaling the dp values by
+            // `defaultTransform.scaleX` applied the display scale a second time, so at 150% the
+            // 40dp strip was hit-tested as 60 units tall (starting drags on content below the bar)
+            // and the 138dp button exclusion as 207 (swallowing presses that should reach them).
+            val zoneHeightUnits = zoneHeight.value
+            val excludedWidthUnits = excludedEndWidth.value
+            if (frameY >= zoneHeightUnits) return@AWTEventListener
+            if (frameX >= frame.width - excludedWidthUnits) return@AWTEventListener
 
             val now = System.currentTimeMillis()
             if (now - lastPressMs < DOUBLE_CLICK_MS) {
@@ -113,24 +131,18 @@ private fun startNativeCaptionDrag(hwnd: Long) {
     val nativeWindow = WinDef.HWND(Pointer.createConstant(hwnd))
     // AWT captures the mouse on the original button-down; the move loop wants to own it.
     Win32.INSTANCE.ReleaseCapture()
-    // WM_NCLBUTTONDOWN with HTCAPTION blocks until the user releases the button when the OS
-    // accepts the drag. If it returns immediately the move loop never engaged, so fall back
-    // to the classic WM_SYSCOMMAND/SC_MOVE entry point.
-    val start = System.currentTimeMillis()
+    // WM_NCLBUTTONDOWN with HTCAPTION runs the OS move loop inline and returns once the user
+    // releases the button. Returning quickly is the correct outcome for a plain click, not a
+    // signal that the drag failed: an earlier WM_SYSCOMMAND/SC_MOVE fallback keyed off a 50ms
+    // threshold started a *second* move loop that tracks the pointer with no button held, so a
+    // click on the caption left the window following the cursor until the user clicked again or
+    // pressed Escape.
     Win32.INSTANCE.SendMessage(
         nativeWindow,
         WM_NCLBUTTONDOWN,
         WinDef.WPARAM(HTCAPTION.toLong()),
         WinDef.LPARAM(0L)
     )
-    if (System.currentTimeMillis() - start < 50) {
-        Win32.INSTANCE.SendMessage(
-            nativeWindow,
-            WM_SYSCOMMAND,
-            WinDef.WPARAM(SC_MOVE_HTCAPTION.toLong()),
-            WinDef.LPARAM(0L)
-        )
-    }
     // The caption move loop swallows the release, so AWT/Compose never learn the button came
     // up. Synthesize one, otherwise the pointer stays logically pressed and the next click
     // anywhere in the window would be treated as a continuation of this press.
