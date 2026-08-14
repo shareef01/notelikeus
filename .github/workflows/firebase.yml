@@ -57,3 +57,14 @@ jobs:
           --config firebase.transport-test.json
           --project notelikeus-c4-test
           "./gradlew :composeApp:testDebugUnitTest --tests '*FirestoreNoteTransportEmulatorTest*'"
+
+      # The only check that loads the built bundle in a real browser. Everything else is either
+      # pure functions or the sync layer under Node, so nothing else would catch a Firebase SDK
+      # upgrade that breaks bundling or browser-only initialisation.
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: web
+
+      - name: End-to-end browser tests
+        run: npm run test:e2e
+        working-directory: web
