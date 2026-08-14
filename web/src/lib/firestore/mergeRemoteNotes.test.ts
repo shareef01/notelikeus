@@ -61,7 +61,13 @@ describe('mergeRemoteNotes', () => {
     expect(merged[0]?.title).toBe('Confirmed remote');
   });
 
-  it('keeps local when both notes have equal serverUpdatedAt values', async () => {
+  it('takes remote when both notes are the same confirmed revision', async () => {
+    // Equal server stamps mean one confirmed revision of one document, so the two sides cannot
+    // really disagree — the differing titles here only make the tie-break observable. The tie goes
+    // to the cloud, matching Kotlin's cloudWinsConflict; resolving it locally made
+    // syncNotesWithCloud re-upload every note on every reconcile. An unflushed local edit does not
+    // reach this branch: its serverUpdatedAt stays null until the server confirms it, which the
+    // 'confirmed remote beats unconfirmed local' case above covers.
     const local = [
       note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500, title: 'Local same revision' }),
     ];
@@ -69,7 +75,7 @@ describe('mergeRemoteNotes', () => {
       note({ id: '1', localId: 1, timestamp: 999, serverUpdatedAt: 500, title: 'Remote same revision' }),
     ];
     const merged = await mergeRemoteNotes(local, remote);
-    expect(merged[0]?.title).toBe('Local same revision');
+    expect(merged[0]?.title).toBe('Remote same revision');
   });
 
   it('keeps local when both legacy notes have equal timestamps', async () => {
