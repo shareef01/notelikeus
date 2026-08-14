@@ -6,3 +6,9 @@ dist-ssr
 .env.local
 .DS_Store
 dev-dist
+
+# Playwright output. .env.e2e is NOT ignored — it is all placeholders and CI needs it.
+test-results
+playwright-report
+blob-report
+.playwright
