@@ -226,16 +226,16 @@ export async function fetchRemoteNotes(userId: string): Promise<Note[]> {
  * that a note absent from the cloud, whose id a previous download recorded as present, is deleted
  * rather than re-uploaded.
  *
- * There used to be a `previouslyKnownCloudIds` parameter for exactly that, but it defaulted to an
- * empty set and no caller ever passed one, so the branch was unreachable — the docstring claimed a
- * guarantee the code did not provide. Restoring it needs the empty-cloud guard Android carries
- * first (`SuspectEmptyCloudException`), or a failed read looks like a remote wipe and takes the
- * local notes with it. Until then the honest behaviour is the one below: the only gap is a note
- * reappearing after its tombstone is pruned at TTL.
+ * `previouslyKnownCloudIds` was previously removed because it defaulted to an empty set and no
+ * caller ever passed one, leaving the branch unreachable. It is back because its stated
+ * precondition now holds: the empty-cloud guard below matches Android's
+ * `SuspectEmptyCloudException`, so a failed read can no longer read as a remote wipe, and
+ * notesSyncService passes the id set it tracks across snapshots.
  */
 export async function syncNotesWithCloud(
   userId: string,
   localNotes: Note[],
+  previouslyKnownCloudIds: Set<string> = new Set(),
 ): Promise<{ changes: number; merged: Note[]; remoteIds: string[] }> {
   const cloudTombstones = await fetchCloudTombstones(userId);
   useTombstoneStore.getState().mergeFromCloud(cloudTombstones);
@@ -256,6 +256,7 @@ export async function syncNotesWithCloud(
 
   const isDeleted = (id: string) => useTombstoneStore.getState().isDeleted(id);
   let changes = 0;
+  const droppedLocalIds = new Set<string>();
 
   let merged = await mergeRemoteNotes(localNotes, remoteNotes);
   merged = merged.filter((note) => !isDeleted(note.id));
@@ -274,12 +275,26 @@ export async function syncNotesWithCloud(
       continue;
     }
 
-    // Absent from cloud and not tombstoned: treat it as never-synced and push it. See the note on
-    // delete-on-absence in this function's docstring for why absence alone is not read as deletion.
+    // Absent from cloud: if we previously knew this id there, it was deleted elsewhere, so do
+    // not re-upload it (Android deletes the local row in the same situation). The empty-cloud
+    // guard above is what makes this safe to act on.
+    if (previouslyKnownCloudIds.has(localNote.id)) {
+      droppedLocalIds.add(localNote.id);
+      useTombstoneStore.getState().markDeleted(localNote.id);
+      await writeCloudTombstone(userId, localNote.id);
+      changes++;
+      continue;
+    }
+
+    // Never seen in the cloud and not tombstoned: treat it as never-synced and push it.
     if (isCloudSyncEligible(localNote)) {
       await upsertNote(userId, localNote);
       changes++;
     }
+  }
+
+  if (droppedLocalIds.size > 0) {
+    merged = merged.filter((note) => !droppedLocalIds.has(note.id));
   }
 
   for (const remoteNote of remoteNotes) {
