@@ -41,7 +41,12 @@ class NoteSyncEngine(
     private val syncStateStore: NoteSyncStateStore,
     private val uidProvider: suspend () -> Result<String>,
     private val platform: String = "android",
-    private val transactionRunner: suspend (suspend () -> Unit) -> Unit = { block -> block() }
+    /**
+     * Wraps a multi-statement block in a database transaction. Defaults to a no-op so existing
+     * tests that use fake (in-memory) DAOs continue to work without changes; production DI
+     * modules supply the real Room [androidx.room.immediateTransaction] wrapper.
+     */
+    private val runInTransaction: suspend (suspend () -> Unit) -> Unit = { block -> block() }
 ) {
 
     suspend fun uploadAllNotes(): Result<Int> {
@@ -421,7 +426,7 @@ class NoteSyncEngine(
     }
 
     private suspend fun innerInsert(note: Note) {
-        transactionRunner {
+        runInTransaction {
             val insertedId = noteDao.insertNote(note.toNoteEntity())
             note.labels.forEach { label ->
                 label.id?.let { labelId ->
@@ -436,7 +441,7 @@ class NoteSyncEngine(
 
     private suspend fun innerUpdate(note: Note) {
         val noteId = note.id ?: return
-        transactionRunner {
+        runInTransaction {
             noteDao.updateNote(note.toNoteEntity())
 
             noteDao.deleteNoteLabelCrossRefs(noteId)

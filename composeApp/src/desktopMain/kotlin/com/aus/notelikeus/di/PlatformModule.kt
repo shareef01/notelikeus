@@ -1,7 +1,5 @@
 package com.aus.notelikeus.di
 
-import androidx.room.immediateTransaction
-import androidx.room.useWriterConnection
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
@@ -29,8 +27,12 @@ import com.aus.notelikeus.platform.DesktopWidgetManager
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.DesktopPathProvider
+import com.aus.notelikeus.util.SidebarCollapsedStore
+import com.aus.notelikeus.util.WindowMetricsStore
 import org.koin.dsl.module
 import java.io.File
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 
 
 actual val platformModule = module {
@@ -39,6 +41,9 @@ actual val platformModule = module {
             File(DesktopPathProvider.getDataDirectory(), SETTINGS_DATASTORE_FILENAME).absolutePath
         }
     }
+
+    single { WindowMetricsStore(get()) }
+    single { SidebarCollapsedStore(get()) }
 
     single<NotelikeusDatabase> {
         getDatabaseBuilder()
@@ -100,8 +105,10 @@ actual val platformModule = module {
                 else Result.failure(IllegalStateException("Not signed in"))
             },
             platform = "desktop",
-            transactionRunner = { block ->
-                database.useWriterConnection { tx -> tx.immediateTransaction { block() } }
+            runInTransaction = { block ->
+                database.useWriterConnection { transactor ->
+                    transactor.immediateTransaction { block() }
+                }
             }
         )
     }
@@ -135,6 +142,10 @@ actual val platformModule = module {
  *  2. `notelikeus.oauthClientSecret` in the repo's gitignored `local.properties`, which is the
  *     ergonomic path for day-to-day development — same pattern the project already uses for
  *     `signing.properties`.
+ *  3. [DesktopSecrets], generated at build time from the same two sources. An installed app has
+ *     neither an env var nor a checked-out `local.properties`, so without this a packaged build
+ *     could never sign in. Runtime sources come first so a build can still be overridden without
+ *     recompiling.
  *
  * Empty means desktop sign-in is simply not configured, and
  * [com.aus.notelikeus.platform.DesktopGoogleSignInHelper] says so up front rather than letting
@@ -142,8 +153,18 @@ actual val platformModule = module {
  * an account.
  */
 private object DesktopOAuthConfig {
+    /**
+     * A dedicated **Desktop app** client, not the web client Android uses — those are
+     * `…-hgpicaqc…` (Android native) and `…-cpiu3nj2…` (Android ID tokens and web GIS), and
+     * neither ever sees a client secret. Only this client has one, so its secret can be rotated
+     * without touching the other platforms.
+     *
+     * Desktop-app clients are what RFC 8252 expects for the loopback flow: Google accepts a
+     * `http://127.0.0.1:<port>` redirect on whatever ephemeral port the local server binds, which
+     * is why no fixed port is registered.
+     */
     const val CLIENT_ID =
-        "404285880902-9d7de03t81j8lpp4jd0vqicu5mme2jc2.apps.googleusercontent.com"
+        "404285880902-o8gn7j5v211m7rvldo19v0eb93im8b7e.apps.googleusercontent.com"
     const val FIREBASE_API_KEY = "AIzaSyBDF6ff82bZ-nSI5sW4MhtGiHomifciAQo"
 
     private const val SECRET_ENV_VAR = "NOTELIKEUS_OAUTH_CLIENT_SECRET"
@@ -151,7 +172,8 @@ private object DesktopOAuthConfig {
 
     fun clientSecret(): String {
         System.getenv(SECRET_ENV_VAR)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        return localPropertiesSecret().orEmpty()
+        localPropertiesSecret()?.let { return it }
+        return DesktopSecrets.OAUTH_CLIENT_SECRET
     }
 
     /**

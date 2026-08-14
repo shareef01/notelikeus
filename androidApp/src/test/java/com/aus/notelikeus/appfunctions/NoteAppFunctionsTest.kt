@@ -4,16 +4,19 @@ import androidx.appfunctions.AppFunctionContext
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.domain.repository.SettingsRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
 import org.koin.core.context.startKoin
@@ -25,6 +28,12 @@ class NoteAppFunctionsTest {
     private lateinit var noteAppFunctions: NoteAppFunctions
     private lateinit var repository: NoteRepository
     private lateinit var reminderManager: ReminderManager
+    private lateinit var settingsRepository: SettingsRepository
+
+    /** Flips the app lock for a test; the default in [setup] is unlocked. */
+    private fun setAppLocked(locked: Boolean) {
+        every { settingsRepository.isAppLockEnabled } returns flowOf(locked)
+    }
 
     /**
      * Every @AppFunction takes the caller's context as its first parameter. Nothing in
@@ -36,12 +45,15 @@ class NoteAppFunctionsTest {
     fun setup() {
         repository = mockk(relaxed = true)
         reminderManager = mockk(relaxed = true)
+        settingsRepository = mockk(relaxed = true)
+        setAppLocked(false)
 
         startKoin {
             modules(
                 module {
                     single<NoteRepository> { repository }
                     single<ReminderManager> { reminderManager }
+                    single<SettingsRepository> { settingsRepository }
                 }
             )
         }
@@ -148,5 +160,68 @@ class NoteAppFunctionsTest {
 
         assertNull(result)
         coVerify(exactly = 0) { repository.updateNote(any()) }
+    }
+
+    // --- App lock ---
+    // The UI and the widget both close behind the biometric lock; App Functions is the third
+    // surface onto the same notes and must not stay open. Reads would otherwise disclose every
+    // note body, and the writes are reachable on a guessed id.
+
+    @Test
+    fun `listNotes refuses to read while the app is locked`() = runTest {
+        setAppLocked(true)
+        every { repository.getActiveNotes() } returns flowOf(
+            listOf(Note(id = 1L, title = "Secret", content = "Hidden", timestamp = 0L, color = 0))
+        )
+
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking { noteAppFunctions.listNotes(context) }
+        }
+    }
+
+    @Test
+    fun `searchNotes refuses to read while the app is locked`() = runTest {
+        setAppLocked(true)
+        every { repository.getActiveNotes() } returns flowOf(
+            listOf(Note(id = 1L, title = "Secret", content = "Hidden", timestamp = 0L, color = 0))
+        )
+
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking { noteAppFunctions.searchNotes(context, "Secret") }
+        }
+    }
+
+    @Test
+    fun `archiveNote refuses to write while the app is locked`() = runTest {
+        setAppLocked(true)
+        coEvery { repository.getNoteById(1L) } returns
+            Note(id = 1L, title = "A", content = "B", timestamp = 0L, color = 0)
+
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking { noteAppFunctions.archiveNote(context, 1L) }
+        }
+        coVerify(exactly = 0) { repository.updateNote(any()) }
+    }
+
+    @Test
+    fun `createNote refuses to write while the app is locked`() = runTest {
+        setAppLocked(true)
+
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking { noteAppFunctions.createNote(context, "T", "C") }
+        }
+        coVerify(exactly = 0) { repository.insertNoteWithResult(any()) }
+    }
+
+    @Test
+    fun `addReminder refuses to write while the app is locked`() = runTest {
+        setAppLocked(true)
+        coEvery { repository.getNoteById(1L) } returns
+            Note(id = 1L, title = "A", content = "B", timestamp = 0L, color = 0)
+
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking { noteAppFunctions.addReminder(context, 1L, 1L) }
+        }
+        coVerify(exactly = 0) { reminderManager.scheduleReminder(any(), any()) }
     }
 }
