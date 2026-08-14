@@ -146,13 +146,16 @@ private fun AppContent(
             }
         }
         
-        if (!state.cloudAccount.isGoogleAccount) {
+        // Signing in is optional: the gate is shown until the user either signs in or explicitly
+        // chooses local-only use, and that choice is persisted so it is asked once, not per launch.
+        if (!state.cloudAccount.isGoogleAccount && !state.hasChosenOffline) {
             SignInGate(
                 onGoogleSignInClick = { onGoogleSignInClick(viewModel) },
                 isSigningIn = state.isSigningIn,
                 onEmailPassword = { email, password, create ->
                     viewModel.signInWithEmailPassword(email, password, create)
                 },
+                onSkip = { viewModel.continueOffline() },
                 externalError = gateError
             )
         } else {
