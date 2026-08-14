@@ -383,8 +383,8 @@ class NoteSyncEngine(
 
     private suspend fun refreshCloudTombstone(uid: String, noteId: Long) {
         if (noteId in syncStateStore.restoredIds()) return
-        val tombstones = transport.fetchTombstones(uid)
-        val deletedAt = tombstones[noteId] ?: return
+        // One document, not the whole collection: this runs per uploaded note.
+        val deletedAt = transport.fetchTombstone(uid, noteId) ?: return
         syncStateStore.mergeDeleted(mapOf(noteId to deletedAt))
     }
 

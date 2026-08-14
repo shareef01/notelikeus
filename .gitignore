@@ -27,6 +27,7 @@ signing.properties
 .agents/
 web/node_modules/
 web/dist/
+web/.env
 /node_modules/
 
 # Firebase emulator artefacts
