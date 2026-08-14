@@ -1,7 +1,8 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider, ReCaptchaV3Provider } from 'firebase/app-check';
-import { getAuth, type Auth } from 'firebase/auth';
+import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
 import {
+  connectFirestoreEmulator,
   initializeFirestore,
   memoryLocalCache,
   persistentLocalCache,
@@ -79,6 +80,32 @@ function initAppCheck(instance: FirebaseApp): void {
 }
 
 /**
+ * Points Auth and Firestore at local emulators when `VITE_FIREBASE_EMULATOR_HOST` is set.
+ *
+ * For the end-to-end suite and local development only. The variable is never set in a production
+ * build, and is ignored outside DEV/test builds regardless, so a stray value in a deployed
+ * environment cannot silently redirect a real user's data to a host that isn't there.
+ */
+function connectEmulatorsIfConfigured(authInstance: Auth, dbInstance: Firestore): void {
+  const host = import.meta.env.VITE_FIREBASE_EMULATOR_HOST?.trim();
+  if (!host) return;
+  if (import.meta.env.PROD && !import.meta.env.VITE_E2E) {
+    console.warn('[Firebase] Ignoring VITE_FIREBASE_EMULATOR_HOST in a production build.');
+    return;
+  }
+
+  const [hostname, firestorePort] = host.split(':');
+  try {
+    connectFirestoreEmulator(dbInstance, hostname, Number(firestorePort || 8080));
+    const authPort = import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_PORT?.trim() || '9099';
+    connectAuthEmulator(authInstance, `http://${hostname}:${authPort}`, { disableWarnings: true });
+    console.info(`[Firebase] Using emulators at ${hostname}`);
+  } catch (error) {
+    console.warn('[Firebase] Emulator connection failed:', error);
+  }
+}
+
+/**
  * Initializes Firebase once with Firestore offline persistence when available.
  * Falls back to memory cache if IndexedDB is blocked (private browsing, strict shields).
  */
@@ -109,6 +136,7 @@ export function initFirebase(): {
     initAppCheck(app);
     auth = getAuth(app);
     db = createFirestore(app);
+    connectEmulatorsIfConfigured(auth, db);
 
     return { app, auth, db };
   } catch (error) {
