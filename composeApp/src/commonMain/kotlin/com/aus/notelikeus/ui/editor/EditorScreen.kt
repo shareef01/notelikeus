@@ -22,6 +22,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -32,9 +33,12 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import org.jetbrains.compose.resources.stringResource
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.toArgb
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
@@ -259,23 +263,6 @@ fun EditorScreen(
                         .widthIn(max = EditorContentMaxWidth)
                         .align(Alignment.TopCenter)
                 ) {
-                    if (state.checklist.isEmpty()) {
-                        RichTextToolbar(
-                            onBoldClick = { viewModel.applyBoldToSelection() },
-                            onItalicClick = { viewModel.applyItalicToSelection() },
-                            onListClick = { viewModel.applyBulletListToSelection() },
-                            onChecklistClick = { viewModel.convertContentToChecklist() },
-                            onLinkClick = { showLinkDialog = true },
-                            contentColor = contentColor,
-                            // A wash of the note's own content colour, so the toolbar reads as
-                            // part of the note rather than a panel floating over it.
-                            surfaceColor = contentColor.copy(alpha = 0.07f),
-                            modifier = Modifier
-                                .padding(bottom = 12.dp)
-                                .align(Alignment.Start)
-                        )
-                    }
-
                     BasicTextField(
                         value = state.title,
                         onValueChange = { viewModel.onTitleChange(it) },
@@ -295,6 +282,56 @@ fun EditorScreen(
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
+
+                    // Divider between title and body, matching the web editor's hairline.
+                    HorizontalDivider(
+                        thickness = 1.dp,
+                        color = contentColor.copy(alpha = 0.12f)
+                    )
+
+                    if (state.labels.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            state.labels.forEach { label ->
+                                Text(
+                                    text = label.name,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Medium,
+                                        letterSpacing = 0.3.sp
+                                    ),
+                                    color = contentColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(contentColor.copy(alpha = 0.14f))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    if (state.checklist.isEmpty()) {
+                        RichTextToolbar(
+                            onBoldClick = { viewModel.applyBoldToSelection() },
+                            onItalicClick = { viewModel.applyItalicToSelection() },
+                            onListClick = { viewModel.applyBulletListToSelection() },
+                            onChecklistClick = { viewModel.convertContentToChecklist() },
+                            onLinkClick = { showLinkDialog = true },
+                            contentColor = contentColor,
+                            // A wash of the note's own content colour, so the toolbar reads as
+                            // part of the note rather than a panel floating over it.
+                            surfaceColor = contentColor.copy(alpha = 0.07f),
+                            modifier = Modifier
+                                .padding(bottom = 12.dp)
+                                .align(Alignment.Start)
+                        )
+                    }
                     if (state.checklist.isNotEmpty()) {
                         ChecklistUI(
                             items = state.checklist,

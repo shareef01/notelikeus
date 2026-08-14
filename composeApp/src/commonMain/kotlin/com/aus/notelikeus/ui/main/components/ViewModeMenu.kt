@@ -1,7 +1,16 @@
 package com.aus.notelikeus.ui.main.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.GridView
@@ -11,7 +20,6 @@ import androidx.compose.material.icons.filled.ViewHeadline
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,11 +27,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.StringResource
 import notelikeus.composeapp.generated.resources.Res
@@ -32,6 +46,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
+import com.aus.notelikeus.util.AppConfig
+
+/** The three web-equivalent view options shown as an icon-only segmented control on desktop. */
+private data class ViewModeSegment(
+    val mode: NoteViewMode,
+    val icon: ImageVector,
+    val label: StringResource
+)
+
+private val webViewModeSegments = listOf(
+    ViewModeSegment(NoteViewMode.LIST, Icons.Default.ViewHeadline, Res.string.view_mode_list),
+    ViewModeSegment(NoteViewMode.GRID_2, Icons.Default.GridView, Res.string.view_mode_grid_2),
+    ViewModeSegment(NoteViewMode.COMPACT, Icons.Default.ViewAgenda, Res.string.view_mode_compact)
+)
+
+/** Any grid column count (2–5) maps to the single web "Grid" segment. */
+private fun isSegmentSelected(viewMode: NoteViewMode, segmentMode: NoteViewMode): Boolean = when (segmentMode) {
+    NoteViewMode.LIST -> viewMode == NoteViewMode.LIST
+    NoteViewMode.COMPACT -> viewMode == NoteViewMode.COMPACT
+    else -> viewMode != NoteViewMode.LIST && viewMode != NoteViewMode.COMPACT
+}
 
 @Composable
 fun ViewModeMenu(
@@ -39,19 +74,85 @@ fun ViewModeMenu(
     onViewModeChange: (NoteViewMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var expanded by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
 
-    IconButton(
-        onClick = {
-            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-            expanded = true
-        },
+    if (AppConfig.isDesktop) {
+        // Web-style segmented control: three icon-only options (List / Grid / Compact),
+        // selected = solid inverted pill, matching web's ViewModeToggle.
+        Row(
+            modifier = modifier
+                .height(36.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    shape = CircleShape
+                )
+                .padding(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            webViewModeSegments.forEach { segment ->
+                val isSelected = isSegmentSelected(viewMode, segment.mode)
+                val segmentLabel = stringResource(segment.label)
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent
+                        )
+                        .semantics {
+                            contentDescription = segmentLabel
+                            selected = isSelected
+                        }
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                            onViewModeChange(segment.mode)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = segment.icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = if (isSelected) {
+                            MaterialTheme.colorScheme.surface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
+            }
+        }
+        return
+    }
+
+    var expanded by remember { mutableStateOf(false) }
+
+    // Icon-only pill trigger, matching the web header controls: visible border + surface fill
+    // so it reads as a control against the search bar background.
+    Box(
         modifier = modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                shape = CircleShape
+            )
+            .clickable {
+                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                expanded = true
+            },
+        contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = viewModeIcon(viewMode),
             contentDescription = stringResource(Res.string.cd_view_mode),
+            modifier = Modifier.size(20.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }

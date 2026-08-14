@@ -38,8 +38,6 @@ import com.aus.notelikeus.ui.theme.ChromeLabelStyle
  * Each nav item carries its own colour identity (sky, amber, rose, violet, teal) matching
  * the web sidebar, so the icons read as distinct destinations even when none is selected.
  *
- * @param collapsed when true, renders as a rail item: icon only, centered, no label, count,
- *   or active bar (mirrors the web sidebar's collapsed mode).
  * @param icon shown when the row is not selected; prefer the outlined variant.
  * @param selectedIcon shown when it is; prefer the filled variant of the same glyph.
  * @param identityColor the item's signature hue — used for the icon tint, active bar, and badge.
@@ -79,18 +77,14 @@ fun SideDrawerNavItem(
             .clip(shape)
             .background(wash)
             .clickable(onClick = onClick)
-            .padding(start = if (collapsed) 0.dp else 12.dp, end = if (collapsed) 0.dp else 10.dp),
+            .padding(
+                start = if (collapsed) 0.dp else 12.dp,
+                end = if (collapsed) 0.dp else 10.dp
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.spacedBy(12.dp)
     ) {
-        if (collapsed) {
-            Icon(
-                imageVector = if (selected) selectedIcon else icon,
-                contentDescription = label,
-                modifier = Modifier.size(22.dp),
-                tint = iconTint
-            )
-        } else {
+        if (!collapsed) {
             if (selected) {
                 Box(
                     modifier = Modifier
@@ -102,14 +96,16 @@ fun SideDrawerNavItem(
             } else {
                 Spacer(modifier = Modifier.width(2.dp))
             }
+        }
 
-            Icon(
-                imageVector = if (selected) selectedIcon else icon,
-                contentDescription = label,
-                modifier = Modifier.size(22.dp),
-                tint = iconTint
-            )
+        Icon(
+            imageVector = if (selected) selectedIcon else icon,
+            contentDescription = label,
+            modifier = Modifier.size(22.dp),
+            tint = iconTint
+        )
 
+        if (!collapsed) {
             Text(
                 text = label,
                 modifier = Modifier.weight(1f),
@@ -125,32 +121,32 @@ fun SideDrawerNavItem(
                     MaterialTheme.colorScheme.onSurfaceVariant
                 }
             )
+        }
 
-            if (count != null && count > 0) {
-                Box(
-                    modifier = Modifier
-                        .height(22.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(
-                            if (selected) accent.copy(alpha = 0.2f)
-                            else accent.copy(alpha = 0.08f)
-                        )
-                        .padding(horizontal = 7.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = count.toString(),
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.sp
-                        ),
-                        color = if (selected) {
-                            accent
-                        } else {
-                            accent.copy(alpha = 0.85f)
-                        }
+        if (!collapsed && count != null && count > 0) {
+            Box(
+                modifier = Modifier
+                    .height(22.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        if (selected) accent.copy(alpha = 0.2f)
+                        else accent.copy(alpha = 0.08f)
                     )
-                }
+                    .padding(horizontal = 7.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp
+                    ),
+                    color = if (selected) {
+                        accent
+                    } else {
+                        accent.copy(alpha = 0.85f)
+                    }
+                )
             }
         }
     }

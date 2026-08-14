@@ -31,20 +31,19 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
       <button
         type="button"
         onClick={() => onChange(nextMode(value))}
-        className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-brand-outline/30 bg-true-surface-variant/20 px-2.5 text-[11px] font-semibold tracking-wide text-brand-secondary shadow-sm transition-colors hover:bg-true-surface-variant/40 hover:text-brand-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary md:hidden"
+        className="flex size-9 shrink-0 items-center justify-center rounded-full border border-brand-outline/40 bg-true-surface-variant/70 text-brand-secondary shadow-sm transition-colors hover:text-brand-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary md:hidden"
         aria-label={`View: ${current.shortLabel}. Tap to change`}
         title={current.label}
       >
-        <CurrentIcon size={16} />
-        <span>{current.shortLabel}</span>
+        <CurrentIcon size={18} />
       </button>
 
       <div
-        className="hidden h-9 shrink-0 items-center gap-0.5 rounded-full border border-brand-outline/30 bg-true-surface-variant/20 p-0.5 shadow-sm md:flex"
+        className="hidden h-9 shrink-0 items-center gap-0.5 rounded-full border border-brand-outline/40 bg-true-surface-variant/70 p-0.5 shadow-sm md:flex"
         role="radiogroup"
         aria-label="Notes view size"
       >
-        {MODES.map(({ value: mode, label, shortLabel, icon: Icon }) => {
+        {MODES.map(({ value: mode, label, icon: Icon }) => {
           const selected = value === mode;
           return (
             <button
@@ -55,16 +54,13 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
               aria-label={label}
               title={label}
               onClick={() => onChange(mode)}
-              className={`flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-semibold transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
+              className={`flex size-8 items-center justify-center rounded-full transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
                 selected
-                  ? 'bg-brand-primary/20 text-brand-primary shadow-sm'
-                  : 'text-brand-muted/60 hover:bg-brand-primary/8 hover:text-brand-secondary'
+                  ? 'bg-brand-primary text-true-surface shadow-sm'
+                  : 'text-brand-secondary hover:bg-brand-primary/10 hover:text-brand-primary'
               }`}
             >
-              <Icon size={15} />
-              <span className="tracking-wide hidden sm:inline">
-                {shortLabel}
-              </span>
+              <Icon size={18} />
             </button>
           );
         })}
