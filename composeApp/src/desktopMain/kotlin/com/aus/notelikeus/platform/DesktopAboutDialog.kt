@@ -33,7 +33,8 @@ fun DesktopAboutDialog(
                 BrandMarkIcon(
                     size = 64.dp,
                     backgroundColor = MaterialTheme.colorScheme.onSurface,
-                    stripeColor = MaterialTheme.colorScheme.surface
+                    stripeColor = MaterialTheme.colorScheme.surface,
+                    ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
                 Spacer(modifier = Modifier.height(24.dp))
                 Text(

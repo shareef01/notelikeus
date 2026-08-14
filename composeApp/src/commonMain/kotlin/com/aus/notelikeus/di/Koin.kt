@@ -15,6 +15,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.KoinAppDeclaration
 import org.koin.dsl.module
 import org.koin.core.module.dsl.viewModel
+import org.koin.core.qualifier.named
 
 val sharedModule = module {
     single<NoteRepository> { NoteRepositoryImpl(get(), get(), get(), get(), get(), get(), get()) }
@@ -25,6 +26,11 @@ val sharedModule = module {
     viewModel { MainViewModel(get(), get(), get(), get(), get(), get()) }
     viewModel { params -> 
         EditorViewModel(get(), get(), get(), params.get()) 
+    }
+    // Standalone note windows on desktop cannot use koinViewModel (no SavedStateRegistryOwner
+    // exists there), so they resolve the editor through this plain factory with a fresh handle.
+    factory(named("windowEditor")) {
+        EditorViewModel(get(), get(), get(), SavedStateHandle())
     }
     viewModel { LabelsViewModel(get()) }
 }

@@ -52,6 +52,7 @@ fun NoteStaggeredGrid(
     allowReorder: Boolean = true,
     columns: Int = 2,
     compact: Boolean = false,
+    listStyle: Boolean = false,
     gridState: LazyStaggeredGridState = rememberLazyStaggeredGridState(),
     contentPadding: PaddingValues = PaddingValues(8.dp)
 ) {
@@ -172,6 +173,7 @@ fun NoteStaggeredGrid(
                         enableArchiveSwipe = enableArchiveSwipe,
                         enableSwipe = swipeEnabled,
                         compact = compact,
+                        listStyle = listStyle,
                         haptic = haptic,
                         onNoteClick = onNoteClick,
                         onNoteLongClick = onNoteLongClick,
@@ -199,6 +201,7 @@ fun NoteStaggeredGrid(
                         enableArchiveSwipe = enableArchiveSwipe,
                         enableSwipe = swipeEnabled,
                         compact = compact,
+                        listStyle = listStyle,
                         modifier = itemModifier
                     )
                 }
@@ -216,6 +219,7 @@ private fun noteListCard(
     enableArchiveSwipe: Boolean,
     enableSwipe: Boolean,
     compact: Boolean,
+    listStyle: Boolean,
     haptic: androidx.compose.ui.hapticfeedback.HapticFeedback,
     onNoteClick: (Note) -> Unit,
     onNoteLongClick: (Note) -> Unit,
@@ -247,6 +251,7 @@ private fun noteListCard(
         enableArchiveSwipe = enableArchiveSwipe,
         enableSwipe = enableSwipe,
         compact = compact,
+        listStyle = listStyle,
         showReorderHandle = showReorderHandle,
         reorderDragModifier = reorderDragModifier,
         modifier = modifier

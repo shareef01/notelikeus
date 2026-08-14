@@ -71,6 +71,9 @@ const config: Config = {
         note: '18px',
         sheet: '16px',
       },
+      lineClamp: {
+        7: '7',
+      },
       maxWidth: {
         shell: '116rem',
         content: '88rem',

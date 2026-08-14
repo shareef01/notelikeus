@@ -19,7 +19,9 @@ import com.aus.notelikeus.ui.main.CloudSyncEvent
 import com.aus.notelikeus.ui.main.MainViewModel
 import com.aus.notelikeus.ui.navigation.NavGraph
 import com.aus.notelikeus.ui.navigation.Screen
+import com.aus.notelikeus.ui.navigation.rememberEditorWindowLauncher
 import com.aus.notelikeus.ui.theme.NotelikeusTheme
+import com.aus.notelikeus.util.AppConfig
 import org.jetbrains.compose.resources.stringResource
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
@@ -157,6 +159,12 @@ private fun AppContent(
             Surface(modifier = Modifier.fillMaxSize()) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     val navController = rememberNavController()
+
+                    // Desktop opens each note in its own OS window (the web app's float layout
+                    // as a real window); Android keeps the in-pane editor route.
+                    val editorWindowLauncher = rememberEditorWindowLauncher { note, action, message ->
+                        viewModel.stageEditorUndo(note, action, message)
+                    }
                     
                     var internalPendingCreateNote by remember { mutableStateOf(false) }
                     var internalPendingNoteId by remember { mutableStateOf<Long?>(null) }
@@ -169,16 +177,24 @@ private fun AppContent(
                         if (state.isAppLockEnabled && !isUnlocked) return@LaunchedEffect
                         
                         if (internalPendingCreateNote) {
-                            navController.navigate(Screen.Editor.createRoute(null)) {
-                                popUpTo(Screen.Main.route) { saveState = true }
-                                launchSingleTop = true
+                            if (AppConfig.isDesktop) {
+                                editorWindowLauncher.launch(null, null)
+                            } else {
+                                navController.navigate(Screen.Editor.createRoute(null)) {
+                                    popUpTo(Screen.Main.route) { saveState = true }
+                                    launchSingleTop = true
+                                }
                             }
                             internalPendingCreateNote = false
                         }
                         internalPendingNoteId?.let { id ->
-                            navController.navigate(Screen.Editor.createRoute(id)) {
-                                popUpTo(Screen.Main.route) { saveState = true }
-                                launchSingleTop = true
+                            if (AppConfig.isDesktop) {
+                                editorWindowLauncher.launch(id, null)
+                            } else {
+                                navController.navigate(Screen.Editor.createRoute(id)) {
+                                    popUpTo(Screen.Main.route) { saveState = true }
+                                    launchSingleTop = true
+                                }
                             }
                             internalPendingNoteId = null
                         }
@@ -188,6 +204,7 @@ private fun AppContent(
                         navController = navController,
                         mainViewModel = viewModel,
                         windowSizeClass = windowSizeClass,
+                        editorWindowLauncher = editorWindowLauncher,
                         initialSidebarCollapsed = initialSidebarCollapsed,
                         onSidebarCollapsedChange = onSidebarCollapsedChange,
                         isAppLockEnabled = state.isAppLockEnabled,
