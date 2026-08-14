@@ -13,6 +13,7 @@ export function noteContentKey(note: Note): string {
   return [
     note.id,
     note.timestamp,
+    note.serverUpdatedAt ?? '',
     note.position,
     note.color,
     note.isPinned ? 1 : 0,
