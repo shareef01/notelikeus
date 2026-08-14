@@ -1,0 +1,19 @@
+{
+  "_comment": [
+    "Emulator config for FirestoreNoteTransportEmulatorTest only.",
+    "Deliberately declares no firestore.rules, so the emulator runs open. That test exercises the",
+    "Android transport's wire behaviour — the batched serverUpdatedAt readback — with a client that",
+    "has no auth token, which the real rules correctly reject (isOwner requires request.auth).",
+    "Rules are covered separately: tests/firestore.rules.test.mjs and web's notesSync.emulator.test.ts,",
+    "both of which run against the real firestore.rules through an authenticated context.",
+    "Same port as firebase.json on purpose: these never run concurrently, they run as separate steps."
+  ],
+  "emulators": {
+    "firestore": {
+      "port": 8080
+    },
+    "ui": {
+      "enabled": false
+    }
+  }
+}
