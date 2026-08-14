@@ -1,117 +1,135 @@
 # Notelikeus
 
-A portfolio-ready notes app for **Android**, **Windows (Desktop)**, and the **web** (PWA), inspired by the speed and simplicity of Google Keep.
+A notes app for **Android**, **Windows**, and the **web** — one product, three real clients, sharing a Kotlin Multiplatform core and a React PWA that speaks the same data model.
 
-**Live web app:** [https://notelike.web.app](https://notelike.web.app)
+It started as the app I actually wanted to use: something as quick as Google Keep, that works with no signal and no account, and that doesn't hold my notes hostage in one vendor's cloud. Everything here follows from that — local storage first, sync as an optional layer on top, and a backup format I can read without the app.
 
-> Note: the web app requires Google Sign-In because notes are stored per-user in Firestore.
+**Live web app:** [notelike.web.app](https://notelike.web.app)
 
-- **KMP (Android & Windows)** — offline-first: notes live in a Room database, encrypted with SQLCipher on Android. On Android, Google Sign-In is optional; when signed in, notes sync to Firestore (auto-sync can be toggled in Settings). The Windows build now supports Google Sign-In and Firestore sync too, over an OAuth loopback flow and the Firestore REST API, with the session encrypted at rest via Windows DPAPI. App lock and at-rest database encryption are still Android-only on Windows.
-- **Web** — Google Sign-In required. Notes live in Firestore with offline caching and installable PWA support.
+---
 
-Windows desktop extras: a collapsible side rail whose state survives restarts (like the web sidebar), an undecorated window with a custom title bar that restores its size, position, and maximized state, and a debounced, restart-surviving sync queue that retries failed writes with exponential backoff.
+## Screenshots
 
-## What I built
+### Windows
 
-- A multiplatform notes app for **Android**, **Windows**, and **web/PWA**
-- Refactored from native Android to **Kotlin Multiplatform (KMP)** and **Compose Multiplatform**
-- An offline-first experience with encrypted local storage (SQLCipher on Android)
-- A Firebase-backed sync flow designed to stay within the **Spark** plan
-- Shared core product features across clients: labels, reminders, backup, theming, and sync
-- Production-style UX hardening around auth, offline recovery, and destructive actions
+<p align="center">
+  <img src="screenshots/desktop-notes.png" width="90%" alt="Notelikeus on Windows — pinned notes, date-grouped sections, labels, and a collapsible side rail" />
+</p>
 
-## Engineering highlights
+### Web
 
-- **Kotlin Multiplatform migration**: Shared business logic, database, and UI across Android and Desktop using CMP and Koin.
-- **Offline-first architecture** using Room (SQLCipher on Android), with sync layered on top rather than required for basic use.
-- **Spark-plan-conscious Firebase design** using Auth + Firestore only, with legacy attachment support removed from active product flow.
-- **Cross-platform product parity** across Android, Desktop, and React PWA for core note workflows.
-- **Safer destructive actions** with stronger sign-out and cloud-delete confirmations.
-- **Desktop resilience**: undecorated window with custom title bar, window-state and sidebar-collapse persistence across launches, and a debounced sync queue that survives restarts and backs off on failure.
-- **Security review pass**: OAuth loopback hardening (PKCE + state, HTML-escaped error surfaces), DPAPI-entropy token encryption, a Room GCM IV fix, and Firestore rules that fail closed against malformed or spoofed writes.
-
-Notelikeus is maintained primarily for **personal use** and as a **portfolio piece**, rather than for Play Store launch readiness.
-
-## Overview
-
-Current screenshots from the app are shown below.
+<p align="center">
+  <img src="screenshots/web-notes.png" width="49%" alt="Web app note grid with sidebar, colour filters, and view-density toggle" />
+  <img src="screenshots/web-editor.png" width="49%" alt="Web app note editor" />
+</p>
 
 ### Android
+
 <p align="center">
   <img src="screenshots/1.png" width="30%" alt="Android notes list" />
   <img src="screenshots/2.png" width="30%" alt="Android navigation drawer" />
   <img src="screenshots/3.png" width="30%" alt="Android note editor" />
 </p>
 
-## Highlights
+---
 
-- Shared product direction across **native Android**, **Windows**, and **web/PWA**
-- Local-first storage with **Room**, encrypted with **SQLCipher** on Android
-- Optional Google sign-in on Android, required auth on web for clean sync boundaries
-- Firestore sync designed to stay within the **Firebase Spark** plan
-- Import/export support using an Android-compatible JSON backup format
-- UX hardening around sign-out, offline recovery, boot failures, and reminder expectations
+## How it works
+
+**Notes live on the device first.** Android and Windows use Room; on Android the database is encrypted with SQLCipher, keyed from the AndroidKeystore. Sync is a layer above that, not a prerequisite — sign in and your notes replicate through Firestore, or don't and the app is still fully usable offline.
+
+**The web client is Firestore-native**, with the SDK's offline cache doing the same job the Room database does elsewhere, plus a PWA install path and service-worker reminders.
+
+**Conflicts resolve on a server timestamp**, not a client clock. A device with a skewed clock — or an imported backup with a hand-edited timestamp — can't overwrite a revision the server has already confirmed. Deletions propagate as tombstones with a TTL, so a note deleted on one device stays deleted rather than being resurrected by another device syncing later.
+
+**Reads that fail open are treated as suspect.** A cloud fetch returning nothing when notes were expected refuses the sync rather than concluding everything was deleted, on every client. That guard exists because the alternative is silent, unrecoverable data loss.
+
+---
 
 ## Features
 
 | | Android | Windows | Web |
 |---|:---:|:---:|:---:|
-| Notes, labels, checklists, colors | ✓ | ✓ | ✓ |
+| Notes, labels, checklists, colours | ✓ | ✓ | ✓ |
 | Pin, archive, trash, search, filters | ✓ | ✓ | ✓ |
 | List / grid / compact layouts | ✓ | ✓ | ✓ |
 | Multi-select + bulk actions | ✓ | ✓ | ✓ |
 | Swipe actions + undo | ✓ | ✓ | ✓ |
 | Manual reorder (list view) | ✓ | ✓ | ✓ |
-| Collapsible side rail (persisted) | — (drawer) | ✓ | ✓ |
 | Date-grouped sections | ✓ | ✓ | ✓ |
+| Collapsible side rail (persisted) | — (drawer) | ✓ | ✓ |
 | Themes (light, dark, OLED, midnight, forest, auto) | ✓ | ✓ | ✓ |
-| Theme-aware note color palette | ✓ | ✓ | ✓ |
 | Rich text (bold, italic, links, bullets) | ✓ | ✓ | ✓ |
-| Reminders | System notifications | Tray notifications (while running; missed ones surface at next launch) | Browser / service worker |
-| Encrypted local database (SQLCipher) | ✓ | — (plain SQLite) | — |
-| Optional biometric app lock | ✓ | — (planned: Hello) | — |
-| Home-screen widget | ✓ | — | — |
-| Google Sign-In + Firestore sync | Optional | Optional | Required |
+| Reminders | System notifications | Tray (missed ones surface at next launch) | Service worker |
+| Encrypted local database | ✓ SQLCipher | — | — |
+| Biometric app lock | ✓ | — | — |
+| Home-screen widget | ✓ Glance | — | — |
+| Google sign-in + Firestore sync | Optional | Optional | Required |
+| Works with no account | ✓ | ✓ | — |
 | JSON backup import / export | ✓ | ✓ | ✓ |
 | Installable PWA | — | — | ✓ |
 
-## Architecture and stack
+---
+
+## Stack
 
 | Layer | Android / Windows | Web |
-|-------|---------|-----|
+|---|---|---|
 | UI | Compose Multiplatform | React 19, TypeScript, Tailwind |
-| Architecture | MVVM + Repositories (Shared) | Hooks + Zustand stores |
-| Local data | Room (+ SQLCipher on Android) | Firestore offline cache |
+| Architecture | MVVM + repositories (shared) | Hooks + Zustand stores |
+| Local data | Room (SQLCipher on Android) | Firestore offline cache |
 | Cloud | Firebase Auth + Firestore | Firebase Auth + Firestore |
-| DI / tooling | Koin, Coroutines, Flow | Vite, Vitest |
-| Widget | Glance (Android only) | — |
-| Tests | JUnit, Turbine, MockK, Compose UI tests | Vitest |
+| DI / tooling | Koin, Coroutines, Flow | Vite 8, Vitest |
+| Widget | Glance | — |
+
+Firebase usage is deliberately scoped to Auth and Firestore so the whole thing runs inside the **Spark** free tier.
+
+---
+
+## Testing
+
+Roughly 250 automated checks, arranged so that each one can actually fail:
+
+| Suite | Covers | Run with |
+|---|---|---|
+| JVM unit (~200) | Sync engine, mappers, repositories, backup, key management | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest` |
+| Instrumented (4) | Database quarantine and encryption migration, on a real device | `./gradlew :composeApp:connectedDebugAndroidTest` |
+| Firestore rules (30) | Security rules against the emulator | `npm run test:rules` |
+| Web unit (44) | Merge logic, conflict resolution, backup parsing | `cd web && npm test` |
+| Web sync (6) | The sync layer against a live Firestore, production rules enforced | `cd web && npm run test:sync` |
+| Browser end-to-end (4) | The built bundle in Chromium: boot, auth, note round-trip | `cd web && npm run test:e2e` |
+
+The last three run against Firebase emulators in CI. The instrumented suite needs a connected device, so it runs on demand.
+
+A note on why the split matters: the unit tests are all pure functions, so they'd happily pass while the app was broken in a browser. The emulator and end-to-end suites exist to cover exactly that gap — a Firebase SDK major upgrade landed cleanly because the browser suite could prove the built bundle still ran.
+
+---
 
 ## Requirements
 
 - Android 8.0+ (API 26) / Windows 10+
-- Android Studio Ladybug or newer
-- **JDK 17+** to build the mobile/desktop app
-- **JDK 21+** for Firestore rules unit tests (`npm run test:rules`)
-- Node.js 24 LTS (web + rules tests)
+- JDK 17+ to build; JDK 21+ for the Firestore rules tests
+- Node.js 24 LTS for the web app and emulator suites
 
 ## Getting started
 
-### Android & Desktop
-
 ```bash
+# Android
 ./gradlew :androidApp:assembleDebug
+
+# Windows
 ./gradlew :composeApp:run
-```
 
-### Web
-
-```bash
-cd web
-npm install
-cp .env.example .env   # set VITE_FIREBASE_APP_ID
+# Web
+cd web && npm install
+cp .env.example .env     # fill in your own Firebase web app config
 npm run dev
 ```
+
+The Firebase values in `.env.example` are placeholders — point it at your own project. Firestore rules live in `firestore.rules` and are covered by `npm run test:rules`.
+
+---
+
+Built and maintained for my own daily use. It's a real app rather than a demo, which is the interesting part and also the reason some of it is more careful than a side project strictly needs to be.
 
 ## License
 
