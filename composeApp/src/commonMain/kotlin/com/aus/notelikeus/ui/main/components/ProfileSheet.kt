@@ -125,9 +125,10 @@ fun ProfileSheet(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
             ) {
                 BrandMarkIcon(
-                    size = 48.dp,
+                    size = 40.dp,
                     backgroundColor = MaterialTheme.colorScheme.onSurface,
-                    stripeColor = MaterialTheme.colorScheme.surface
+                    stripeColor = MaterialTheme.colorScheme.surface,
+                    ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
                 Spacer(modifier = Modifier.width(14.dp))
                 Column {

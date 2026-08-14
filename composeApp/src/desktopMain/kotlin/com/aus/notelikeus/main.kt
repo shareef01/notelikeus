@@ -29,10 +29,19 @@ import com.aus.notelikeus.platform.DesktopReminderManager
 import com.aus.notelikeus.data.backup.BackupExportResult
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
+import com.aus.notelikeus.util.SidebarCollapsedStore
+import com.aus.notelikeus.util.WindowMetrics
+import com.aus.notelikeus.util.WindowMetricsStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.koin.core.context.GlobalContext
+import java.awt.GraphicsEnvironment
+import java.awt.Point
+import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
@@ -41,19 +50,62 @@ fun main() {
     // remembered in it changes (Ctrl+N, the tray item, the About dialog), and startKoin throws
     // KoinApplicationAlreadyStartedException the second time.
     initKoin()
-    launchApp()
+    // Read before the window exists, so the first frame is already the right size rather than
+    // resizing itself once a flow emits.
+    val metricsStore = GlobalContext.get().get<WindowMetricsStore>()
+    val sidebarStore = GlobalContext.get().get<SidebarCollapsedStore>()
+    launchApp(
+        metricsStore,
+        runBlocking { metricsStore.metrics.first() },
+        sidebarStore,
+        runBlocking { sidebarStore.collapsed.first() }
+    )
 }
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
-private fun launchApp() = application {
+private fun launchApp(
+    metricsStore: WindowMetricsStore,
+    initialMetrics: WindowMetrics,
+    sidebarStore: SidebarCollapsedStore,
+    initialSidebarCollapsed: Boolean
+) = application {
     val windowState = rememberWindowState(
-        width = 1000.dp,
-        height = 800.dp,
-        // Centred rather than left to the platform's cascade. With undecorated chrome the drag
-        // area is part of the window, so a cascade that puts the top edge above y=0 clips the
-        // title bar off-screen and leaves no way to drag the window back with the mouse.
-        position = WindowPosition(Alignment.Center)
+        width = initialMetrics.width,
+        height = initialMetrics.height,
+        // With undecorated chrome the drag area is part of the window, so a position that puts
+        // the top edge above y=0 clips the title bar off-screen and leaves no way to drag the
+        // window back with the mouse. restorablePosition() centres rather than restore one.
+        position = restorablePosition(initialMetrics),
+        placement = if (initialMetrics.isMaximized) {
+            WindowPlacement.Maximized
+        } else {
+            WindowPlacement.Floating
+        }
     )
+
+    // The last size and position seen while floating. While maximized the window reports the
+    // screen's bounds, which must not be saved as the size to restore to when un-maximizing.
+    var floatingMetrics by remember { mutableStateOf(initialMetrics) }
+
+    LaunchedEffect(windowState.size, windowState.position, windowState.placement) {
+        // Settle first: a drag-resize churns through hundreds of intermediate values.
+        delay(500.milliseconds)
+        val position = windowState.position
+        if (windowState.placement == WindowPlacement.Floating && windowState.size.isSpecified) {
+            floatingMetrics = WindowMetrics(
+                width = windowState.size.width,
+                height = windowState.size.height,
+                // Still unresolved from Aligned: keep whatever we last knew rather than
+                // dropping the save entirely, which would lose the resize as well.
+                x = (position as? WindowPosition.Absolute)?.x ?: floatingMetrics.x,
+                y = (position as? WindowPosition.Absolute)?.y ?: floatingMetrics.y
+            )
+        }
+        metricsStore.saveMetrics(
+            floatingMetrics.copy(isMaximized = windowState.placement == WindowPlacement.Maximized)
+        )
+    }
+
     val trayState = rememberTrayState()
     
     var pendingCreateNote by remember { mutableStateOf(false) }
@@ -72,6 +124,11 @@ private fun launchApp() = application {
     val reminderManager = remember { GlobalContext.get().get<DesktopReminderManager>() }
     val googleSignInHelper = remember { GlobalContext.get().get<GoogleSignInHelper>() }
     val coroutineScope = rememberCoroutineScope()
+    // Side drawer collapse is a manual preference, so persist it the moment the user toggles it
+    // (mirrors the web app's persisted `sidebarCollapsed`) rather than on some later settle.
+    val onSidebarCollapsedChange: (Boolean) -> Unit = { collapsed ->
+        coroutineScope.launch { sidebarStore.save(collapsed) }
+    }
     LaunchedEffect(Unit) {
         reminderManager.notify = { title, message ->
             trayState.sendNotification(Notification(title, message, Notification.Type.Info))
@@ -151,6 +208,8 @@ private fun launchApp() = application {
         
         App(
             windowSizeClass = windowSizeClass,
+            initialSidebarCollapsed = initialSidebarCollapsed,
+            onSidebarCollapsedChange = onSidebarCollapsedChange,
             onShowBiometricPrompt = { title, onSuccess, onCancel ->
                 biometricTitle = title
                 biometricOnSuccess = onSuccess
@@ -210,9 +269,32 @@ private fun launchApp() = application {
 
         LaunchedEffect(navigationRequest) {
             if (navigationRequest > 0) {
-                kotlinx.coroutines.delay(100.milliseconds)
+                delay(100.milliseconds)
                 pendingCreateNote = false
             }
         }
     }
+}
+
+/**
+ * The saved position, unless it falls outside every attached display.
+ *
+ * After a second monitor is unplugged the stored coordinates can land the window somewhere the
+ * user cannot reach — indistinguishable from the app failing to launch, and unrecoverable with
+ * undecorated chrome, where dragging the window back means grabbing a title bar that is itself
+ * off-screen. AWT reports display bounds in the same user-space units Compose uses for [Dp], so
+ * they compare directly.
+ */
+private fun restorablePosition(metrics: WindowMetrics): WindowPosition {
+    val x = metrics.x ?: return WindowPosition(Alignment.Center)
+    val y = metrics.y ?: return WindowPosition(Alignment.Center)
+
+    val topLeft = Point(x.value.roundToInt(), y.value.roundToInt())
+    val onAnyScreen = runCatching {
+        GraphicsEnvironment.getLocalGraphicsEnvironment().screenDevices.any { device ->
+            device.configurations.any { it.bounds.contains(topLeft) }
+        }
+    }.getOrDefault(false)
+
+    return if (onAnyScreen) WindowPosition(x, y) else WindowPosition(Alignment.Center)
 }

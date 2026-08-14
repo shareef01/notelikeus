@@ -1,7 +1,5 @@
 package com.aus.notelikeus.di
 
-import androidx.room.immediateTransaction
-import androidx.room.useWriterConnection
 import com.aus.notelikeus.data.ReminderScheduler
 import com.aus.notelikeus.data.local.DatabaseKeyManager
 import com.aus.notelikeus.data.local.DatabaseMigrations
@@ -36,6 +34,8 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import java.io.File
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 
 actual val platformModule = module {
     single {
@@ -96,8 +96,10 @@ actual val platformModule = module {
             labelDao = get(),
             syncStateStore = get<SharedPrefsNoteSyncStateStore>(),
             uidProvider = { sessionManager.ensureGoogleSignedIn() },
-            transactionRunner = { block ->
-                database.useWriterConnection { tx -> tx.immediateTransaction { block() } }
+            runInTransaction = { block ->
+                database.useWriterConnection { transactor ->
+                    transactor.immediateTransaction { block() }
+                }
             }
         )
     }

@@ -5,11 +5,10 @@ import com.aus.notelikeus.data.sync.CloudNoteTransport
 import com.aus.notelikeus.data.sync.ChecklistItemData
 import com.aus.notelikeus.domain.model.Note
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -60,18 +59,7 @@ class FirestoreNoteTransport(
 
             if (ids.isNotEmpty()) {
                 batch.commit().await()
-                // Read back server-resolved timestamps for every written note.
-                coroutineScope {
-                    ids.map { noteId ->
-                        async {
-                            noteId to readServerTimestamp(
-                                collection.document(noteId.toString())
-                            )
-                        }
-                    }.awaitAll().forEach { (noteId, ts) ->
-                        result[noteId] = ts
-                    }
-                }
+                result.putAll(readServerTimestamps(collection, ids))
             }
         }
 
@@ -144,14 +132,41 @@ class FirestoreNoteTransport(
         .document(uid)
         .collection("tombstones")
 
-    private suspend fun readServerTimestamp(
-        docRef: com.google.firebase.firestore.DocumentReference
-    ): Long? {
-        return docRef.get().await().getTimestamp("serverUpdatedAt")?.toEpochMillis()
+    /**
+     * Reads back the server-assigned `serverUpdatedAt` for [noteIds].
+     *
+     * The values have to come from the server — the rules require `serverUpdatedAt == request.time`
+     * so it cannot be computed here, and Android's `batch.commit()` returns `Task<Void>` with no
+     * write results (the desktop REST transport gets them free from the commit response). The
+     * round trips were avoidable though: this used to issue one `document().get()` per note, so a
+     * 400-note first sync cost 400 of them. A `documentId()` query covers [WHERE_IN_LIMIT] ids per
+     * request for the same billed reads.
+     *
+     * Ids absent from the response map to null, exactly as a missing field did before.
+     */
+    private suspend fun readServerTimestamps(
+        collection: CollectionReference,
+        noteIds: List<Long>
+    ): Map<Long, Long?> {
+        val timestamps = noteIds.associateWithTo(mutableMapOf<Long, Long?>()) { null }
+        for (idChunk in noteIds.chunked(WHERE_IN_LIMIT)) {
+            val snapshot = collection
+                .whereIn(FieldPath.documentId(), idChunk.map { it.toString() })
+                .get()
+                .await()
+            for (document in snapshot.documents) {
+                val noteId = document.id.toLongOrNull() ?: continue
+                timestamps[noteId] = document.getTimestamp("serverUpdatedAt")?.toEpochMillis()
+            }
+        }
+        return timestamps
     }
 
     private companion object {
         private const val BATCH_LIMIT = 400
+
+        /** Firestore caps the value list of a `whereIn` filter at 30 entries. */
+        private const val WHERE_IN_LIMIT = 30
     }
 }
 
@@ -160,19 +175,29 @@ class FirestoreNoteTransport(
 
 private fun Timestamp.toEpochMillis(): Long = seconds * 1000 + nanoseconds / 1_000_000
 
-private fun Map<String, Any?>.toCloudNoteRecord(noteId: Long): CloudNoteRecord {
-    val rawLabels = (this["labels"] as? List<Map<String, Any?>>).orEmpty()
-    val labelNames = rawLabels.mapNotNull { it["name"] as? String }
+/**
+ * The maps inside a cloud list field, skipping anything that isn't one.
+ *
+ * firestore.rules bounds these lists' *length* but not their element *types*, so a document
+ * written by an older client — or restored from a hand-edited backup — can legitimately hold bare
+ * strings in `labels`. The previous `as? List<Map<String, Any?>>` succeeded on any list at all
+ * (erasure), and indexing a String element as a Map threw ClassCastException out of fetchNotes,
+ * which failed every subsequent sync for that account until the document was repaired by hand.
+ * The web mapper (`cloudMapToNote`) has always filtered by element type; this matches it.
+ */
+private fun Map<String, Any?>.cloudMapList(key: String): List<Map<String, Any?>> =
+    (this[key] as? List<*>).orEmpty().filterIsInstance<Map<String, Any?>>()
 
-    val checklist = (this["checklist"] as? List<Map<String, Any?>>)
-        ?.mapIndexed { index, item ->
-            ChecklistItemData(
-                text = item["text"] as? String ?: "",
-                isChecked = item["isChecked"] as? Boolean ?: false,
-                position = (item["position"] as? Number)?.toInt() ?: index
-            )
-        }
-        .orEmpty()
+private fun Map<String, Any?>.toCloudNoteRecord(noteId: Long): CloudNoteRecord {
+    val labelNames = cloudMapList("labels").mapNotNull { it["name"] as? String }
+
+    val checklist = cloudMapList("checklist").mapIndexed { index, item ->
+        ChecklistItemData(
+            text = item["text"] as? String ?: "",
+            isChecked = item["isChecked"] as? Boolean ?: false,
+            position = (item["position"] as? Number)?.toInt() ?: index
+        )
+    }
 
     return CloudNoteRecord(
         noteId = noteId,

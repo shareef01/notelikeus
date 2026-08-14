@@ -139,7 +139,7 @@ export function TopBar({
 
             <form
               onSubmit={handleSearchSubmit}
-              className="flex h-11 min-w-0 flex-1 items-center rounded-full bg-true-surface-variant/70 px-1 sm:h-12"
+              className="flex h-11 min-w-0 flex-1 items-center rounded-full border border-brand-outline/20 bg-true-surface-variant/60 px-1 shadow-sm transition-colors focus-within:border-brand-outline/50 focus-within:bg-true-surface-variant/80 sm:h-12"
             >
               <input
                 ref={searchInputRef}
@@ -180,7 +180,7 @@ export function TopBar({
               <button
                 type="button"
                 onClick={onNewNote}
-                className={`hidden size-10 shrink-0 items-center justify-center rounded-note border border-brand-outline/55 bg-brand-primary/[0.08] text-brand-primary transition-[transform,background-color,border-color] hover:border-brand-outline/80 hover:bg-brand-primary/[0.14] active:scale-[0.98] md:inline-flex ${CHROME_FOCUS}`}
+                className={`hidden size-10 shrink-0 items-center justify-center rounded-note border border-brand-outline/40 bg-brand-primary/10 text-brand-primary shadow-sm transition-all duration-150 hover:border-brand-outline/60 hover:bg-brand-primary/18 hover:shadow active:scale-[0.97] md:inline-flex ${CHROME_FOCUS}`}
                 aria-label="New note"
               >
                 <AddIcon size={20} />

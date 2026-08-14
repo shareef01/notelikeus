@@ -31,13 +31,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import com.aus.notelikeus.ui.main.components.PrecisionFilterChip
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
+import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 
 private val EmptyStateIconSize = 72.dp
-private const val EmptyStateIconAlpha = 0.28f
+private const val EmptyStateIconAlpha = 0.2f
 
 @Composable
 fun NotesEmptyState(
@@ -68,25 +70,27 @@ fun NotesEmptyState(
                 icon = icon,
                 contentDescription = message
             )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(32.dp))
             Text(
                 text = message,
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
                     textAlign = TextAlign.Center
                 ),
-                color = mutedTextColor.copy(alpha = 0.9f),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
                 textAlign = TextAlign.Center
             )
             if (subtitle != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = FontWeight.Normal,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
                         textAlign = TextAlign.Center
                     ),
-                    color = mutedTextColor.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
             }
@@ -130,8 +134,8 @@ fun NotesEmptyState(
                 Spacer(modifier = Modifier.height(32.dp))
                 Text(
                     stringResource(Res.string.recent_searches),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = mutedTextColor.copy(alpha = 0.5f)
+                    style = ChromeLabelStyle,
+                    color = mutedTextColor.copy(alpha = 0.8f)
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 FlowRow(
@@ -173,6 +177,7 @@ private fun EmptyStateVisual(
             size = EmptyStateIconSize,
             backgroundColor = MaterialTheme.colorScheme.onSurface,
             stripeColor = MaterialTheme.colorScheme.surface,
+            ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             modifier = Modifier.alpha(EmptyStateIconAlpha)
         )
     }
