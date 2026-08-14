@@ -90,6 +90,17 @@ class SettingsRepositoryImpl(
         }
     }
 
+    override val hasChosenOffline: Flow<Boolean> = dataStore.data
+        .map { preferences ->
+            preferences[CONTINUE_OFFLINE_KEY] ?: false
+        }
+
+    override suspend fun setChosenOffline(chosen: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[CONTINUE_OFFLINE_KEY] = chosen
+        }
+    }
+
     override val recentSearches: Flow<List<String>> = dataStore.data
         .map { preferences ->
             preferences[RECENT_SEARCHES_KEY]?.split("|")?.filter { it.isNotBlank() } ?: emptyList()

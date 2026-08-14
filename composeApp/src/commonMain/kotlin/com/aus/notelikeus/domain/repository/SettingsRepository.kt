@@ -21,6 +21,10 @@ interface SettingsRepository {
     val isCloudAutoSyncEnabled: Flow<Boolean>
     suspend fun setCloudAutoSyncEnabled(enabled: Boolean)
 
+    /** True once the user has chosen to continue without an account. */
+    val hasChosenOffline: Flow<Boolean>
+    suspend fun setChosenOffline(chosen: Boolean)
+
     val recentSearches: Flow<List<String>>
     suspend fun addRecentSearch(query: String)
     suspend fun clearRecentSearches()
