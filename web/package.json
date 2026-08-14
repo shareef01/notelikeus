@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
+    "test:sync": "firebase emulators:exec --only firestore \"vitest run --config vitest.emulator.config.ts\"",
     "deploy": "npm run build && firebase deploy --only hosting,firestore:rules"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
     "zustand": "^5.0.6"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
