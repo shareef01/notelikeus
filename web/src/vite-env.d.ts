@@ -17,6 +17,12 @@ interface ImportMetaEnv {
   readonly VITE_APPCHECK_DEBUG_TOKEN?: string;
   readonly VITE_TEST_LOGIN_EMAIL?: string;
   readonly VITE_TEST_LOGIN_PASSWORD?: string;
+  /** `host` or `host:firestorePort`. Redirects Auth and Firestore to local emulators (e2e/dev). */
+  readonly VITE_FIREBASE_EMULATOR_HOST?: string;
+  /** Auth emulator port; defaults to 9099. Only read when the host above is set. */
+  readonly VITE_FIREBASE_AUTH_EMULATOR_PORT?: string;
+  /** Set by the e2e build so an emulator host is honoured in an otherwise production build. */
+  readonly VITE_E2E?: string;
 }
 
 interface ImportMeta {
