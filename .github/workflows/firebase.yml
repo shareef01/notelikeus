@@ -35,3 +35,14 @@ jobs:
 
       - name: Test Firestore security rules
         run: npm run test:rules
+
+      # The web sync layer is exercised against the same emulator, with the production rules
+      # enforced. It lives in web/ rather than here because it imports the app's own modules
+      # through their `@/` alias. Without this step it would only ever run locally.
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Test the web sync layer against the emulator
+        run: npm run test:sync
+        working-directory: web
