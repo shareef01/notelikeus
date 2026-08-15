@@ -74,10 +74,23 @@ class NoteSyncEngineTest {
     }
 
     @Test
-    fun `cloudWinsConflict — only local has server timestamp, remote client newer wins`() {
+    fun `cloudWinsConflict — a confirmed local note beats an unconfirmed remote one`() {
         setup()
-        // remote has no serverUpdatedAt but newer client timestamp
-        assertTrue(engine.cloudWinsConflict(null, 100, 500, 100))
+        // Remote is a legacy document written before serverUpdatedAt existed; local has been
+        // confirmed by the server. However far ahead the remote client clock reads, it does not
+        // get to overrule a revision the server stamped.
+        assertFalse(engine.cloudWinsConflict(null, 100, 500, 100))
+        assertFalse(engine.cloudWinsConflict(null, 100, Long.MAX_VALUE, 0))
+    }
+
+    @Test
+    fun `cloudWinsConflict — a confirmed remote note beats an unconfirmed local one`() {
+        setup()
+        // The mirror case, and the one an ordinary upgrade reaches: MIGRATION_5_6 adds the column
+        // with no backfill, so every note predating schema v6 reads null locally until its next
+        // upload. A skewed clock or a hand-edited backup timestamp must not win from there.
+        assertTrue(engine.cloudWinsConflict(100, null, 0, Long.MAX_VALUE))
+        assertTrue(engine.cloudWinsConflict(100, null, null, 500))
     }
 
     // ---- uploadAllNotes ----
@@ -350,6 +363,84 @@ class NoteSyncEngineTest {
         assertEquals(1, noteDao.notes.size)
         assertEquals("Cloud note", noteDao.notes[5L]?.title)
     }
+
+    @Test
+    fun `downloadAllNotes leaves an unchanged note alone and reports no changes`() = runTest {
+        val baseDao = FakeNoteDao()
+        var updates = 0
+        setupWithDao(object : NoteDao by baseDao {
+            override suspend fun updateNote(note: NoteEntity) {
+                updates++
+                baseDao.updateNote(note)
+            }
+        })
+
+        // Steady state: the same confirmed revision on both sides. cloudWinsConflict answers
+        // "cloud" here by design (the tie avoids pushing the note back up), which is exactly why
+        // the branch has to check whether anything actually differs before rewriting the row.
+        baseDao.insertNote(
+            Note(
+                id = 5L, title = "Same", content = "Body", timestamp = 1L, color = 0,
+                serverUpdatedAt = 200_000L
+            ).toNoteEntity()
+        )
+        transport.notes[5L] = cloudRecord(title = "Same", content = "Body")
+
+        val result = engine.downloadAllNotes()
+
+        assertTrue(result.isSuccess)
+        assertEquals(0, result.getOrNull(), "an unchanged library is not a change")
+        assertEquals(0, updates, "a row that already matches must not be rewritten")
+    }
+
+    @Test
+    fun `downloadAllNotes still applies a cloud note that really differs`() = runTest {
+        val baseDao = FakeNoteDao()
+        var updates = 0
+        setupWithDao(object : NoteDao by baseDao {
+            override suspend fun updateNote(note: NoteEntity) {
+                updates++
+                baseDao.updateNote(note)
+            }
+        })
+
+        baseDao.insertNote(
+            Note(
+                id = 5L, title = "Stale", content = "Old", timestamp = 1L, color = 0,
+                serverUpdatedAt = 100_000L
+            ).toNoteEntity()
+        )
+        transport.notes[5L] = cloudRecord(title = "Fresh", content = "New")
+
+        val result = engine.downloadAllNotes()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, result.getOrNull())
+        assertEquals(1, updates)
+        assertEquals("Fresh", baseDao.notes[5L]?.title)
+    }
+
+    private fun setupWithDao(dao: NoteDao) {
+        transport = FakeCloudNoteTransport()
+        stateStore = FakeNoteSyncStateStore()
+        noteDao = FakeNoteDao()
+        labelDao = FakeLabelDao()
+        engine = NoteSyncEngine(
+            transport = transport,
+            noteDao = dao,
+            labelDao = labelDao,
+            syncStateStore = stateStore,
+            uidProvider = { Result.success("uid") }
+        )
+    }
+
+    private fun cloudRecord(title: String, content: String) = CloudNoteRecord(
+        noteId = 5L, serverUpdatedAt = 200_000L, clientTimestamp = 1L,
+        title = title, content = content, timestamp = 1L, color = 0,
+        isPinned = false, isArchived = false, isTrashed = false,
+        position = 0, reminderTimestamp = null,
+        labels = emptyList(), checklistItems = emptyList()
+    )
 
     // ---- runInTransaction: production DI wraps multi-statement writes atomically ----
 
