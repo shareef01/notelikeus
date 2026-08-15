@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# One pipeline per ref: a newer push supersedes an older run, so a burst of commits
+# to main does not burn a full emulator boot per commit.
+concurrency:
+  group: web-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
