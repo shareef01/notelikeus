@@ -20,6 +20,14 @@ class NoteBackupImporter(
                 return BackupImportResult.InvalidFormat("Backup file is too large")
             }
 
+            // kotlinx.serialization parses recursively, so a crafted file of deeply nested
+            // arrays/objects can exhaust the stack and throw StackOverflowError — an Error the
+            // catch below cannot handle, which would take the whole app down with a file the user
+            // merely picked. Reject excessive nesting up front instead.
+            if (maxJsonNestingDepth(jsonStr) > MAX_JSON_DEPTH) {
+                return BackupImportResult.InvalidFormat("Backup file is too deeply nested")
+            }
+
             val backupData = json.decodeFromString<BackupData>(jsonStr)
             
             if (backupData.version > NoteBackupExporter.BACKUP_VERSION) {
@@ -127,5 +135,35 @@ class NoteBackupImporter(
         const val MAX_NOTE_CHECKLIST = 500
         const val MAX_FIELD_CHARS = 2_000
         const val MAX_CONTENT_CHARS = 100_000
+        const val MAX_JSON_DEPTH = 64
+    }
+
+    /**
+     * Maximum nesting depth of `{`/`[` in [jsonStr], ignoring braces inside strings.
+     *
+     * Well above anything a real backup produces (a note nests about a dozen levels), and far
+     * below the stack the serialization runtime needs to decode it.
+     */
+    private fun maxJsonNestingDepth(jsonStr: String): Int {
+        var depth = 0
+        var maxDepth = 0
+        var inString = false
+        var escaped = false
+        for (ch in jsonStr) {
+            when {
+                inString -> when {
+                    escaped -> escaped = false
+                    ch == '\\' -> escaped = true
+                    ch == '"' -> inString = false
+                }
+                ch == '"' -> inString = true
+                ch == '{' || ch == '[' -> {
+                    depth++
+                    if (depth > maxDepth) maxDepth = depth
+                }
+                ch == '}' || ch == ']' -> if (depth > 0) depth--
+            }
+        }
+        return maxDepth
     }
 }
