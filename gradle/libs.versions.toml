@@ -11,7 +11,7 @@ lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
 kotlin = "2.1.21"
 serialization = "1.7.3"
-room = "2.7.0"
+room = "2.8.4"
 ksp = "2.3.11"
 turbine = "1.2.1"
 mockk = "1.14.11"
@@ -27,9 +27,11 @@ securityCrypto = "1.1.0"
 # one version train. The bundled driver used to sit on 2.5.0-alpha13 while this said 2.5.0, so
 # conflict resolution quietly dragged the whole group onto the alpha.
 #
-# Ahead of Room on purpose: room 2.7.0 declares sqlite 2.5.0, so this resolves it upward
-# (`sqlite:2.5.0 -> 2.7.0`). Verified green — including the real-database transaction test — but it
-# does mean Room runs against a sqlite it was not built with. Pair the next Room bump with this.
+# Ahead of Room on purpose: room 2.8.4 declares sqlite 2.6.2, so this resolves it upward
+# (`sqlite:2.6.2 -> 2.7.0`). Re-verified on the 2.7.0 -> 2.8.4 bump — the desktop suite, including
+# the real-database transaction test, is green, and the pin still resolves upward rather than
+# downgrading. It does still mean Room runs against a sqlite it was not built with, so keep pairing
+# the next Room bump with a check of this line.
 sqlite = "2.7.0"
 okio = "3.9.1"
 jna = "5.19.1"
