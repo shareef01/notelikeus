@@ -4,6 +4,10 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Changed
+- Firestore rules type-check `localId` as `int` rather than the looser `number`, matching every
+  other numeric field — it is the note's primary key and is read back as a `Long`
+
 ### Security
 - Hosting adds `Strict-Transport-Security` for the first-request HTTPS upgrade
 - Backup import rejects deeply nested JSON up front instead of crashing on `StackOverflowError`
