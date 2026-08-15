@@ -26,9 +26,10 @@ It started as the app I actually wanted to use: something as quick as Google Kee
 ### Android
 
 <p align="center">
-  <img src="screenshots/1.png" width="30%" alt="Android notes list" />
-  <img src="screenshots/2.png" width="30%" alt="Android navigation drawer" />
-  <img src="screenshots/3.png" width="30%" alt="Android note editor" />
+  <img src="screenshots/android-notes.png" width="24%" alt="Android notes list with colour filters and date grouping" />
+  <img src="screenshots/android-drawer.png" width="24%" alt="Android navigation drawer" />
+  <img src="screenshots/android-editor.png" width="24%" alt="Android note editor with rich-text toolbar" />
+  <img src="screenshots/android-settings.png" width="24%" alt="Android settings — six themes, app lock, and sync controls" />
 </p>
 
 ---
