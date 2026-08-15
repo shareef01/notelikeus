@@ -114,12 +114,18 @@ export async function deleteNote(userId: string, noteId: string): Promise<void> 
  * comparing client timestamps when *neither* side has been confirmed by the server yet.
  *
  * Equal server stamps mean the two sides are the same confirmed revision, so there is nothing to
- * upload: the tie goes to the cloud, matching Kotlin's `NoteSyncEngine.cloudWinsConflict`. This
- * used to be `>=`, and because local notes reach the store through the same `cloudMapToNote` that
- * `fetchRemoteNotes` uses, the two stamps are *always* equal in steady state — so the predicate
- * returned true for every note and `syncNotesWithCloud` re-uploaded the entire library (a tombstone
- * read plus a write each) on every reconcile. A locally-edited note is unaffected: its pending
- * write leaves serverUpdatedAt null until the server confirms it, which is handled below.
+ * upload: the tie goes to the cloud. This used to be `>=`, and because local notes reach the store
+ * through the same `cloudMapToNote` that `fetchRemoteNotes` uses, the two stamps are *always* equal
+ * in steady state — so the predicate returned true for every note and `syncNotesWithCloud`
+ * re-uploaded the entire library (a tombstone read plus a write each) on every reconcile. A
+ * locally-edited note is unaffected: its pending write leaves serverUpdatedAt null until the server
+ * confirms it, which is handled below.
+ *
+ * Kotlin's `NoteSyncEngine.cloudWinsConflict` resolves every case here the same way, with one
+ * deliberate exception: on that equal-stamp tie it also compares client timestamps. A Room row
+ * keeps its old serverUpdatedAt through a local edit, so there a newer client `timestamp` against
+ * an unchanged server stamp is the only signal that an unsynced edit exists. Here the pending write
+ * nulls the stamp instead, so an equal-stamp tie genuinely means "identical".
  */
 export function shouldUploadOverRemote(note: Note, remote: Note | undefined): boolean {
   if (!remote) return true;
@@ -162,9 +168,9 @@ export async function uploadAllNotes(userId: string, notes: Note[]): Promise<num
 }
 
 /**
- * Last-write-wins merge, matching Android FirebaseNoteSync and [shouldUploadOverRemote].
- * Prefers server-assigned `serverUpdatedAt`; a confirmed remote beats an unconfirmed local
- * (e.g. backup import) regardless of client `timestamp`.
+ * Last-write-wins merge, matching Kotlin's `NoteSyncEngine.cloudWinsConflict` and
+ * [shouldUploadOverRemote]. Prefers server-assigned `serverUpdatedAt`; a confirmed remote beats an
+ * unconfirmed local (e.g. backup import) regardless of client `timestamp`.
  */
 export async function mergeRemoteNotes(localNotes: Note[], remoteNotes: Note[]): Promise<Note[]> {
   const byId = new Map<string, Note>(localNotes.map((note) => [note.id, note]));
