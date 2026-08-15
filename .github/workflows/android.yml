@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# One pipeline per ref: a newer push supersedes an older run, so a burst of commits
+# to main does not burn a full emulator boot per commit.
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -56,10 +62,15 @@ jobs:
       - name: Build debug APK
         run: ./gradlew :androidApp:assembleDebug --stacktrace
 
+      # Release artifacts are unsigned in CI (no signing.properties) and are only
+      # consumed at release time, so building both on every push roughly doubles the
+      # build job's cost for nothing. Tag a release (v*) to run them.
       - name: Build release APK
+        if: startsWith(github.ref, 'refs/tags/v')
         run: ./gradlew :androidApp:assembleRelease --stacktrace
 
       - name: Build release AAB
+        if: startsWith(github.ref, 'refs/tags/v')
         run: ./gradlew :androidApp:bundleRelease --stacktrace
 
   # The instrumented suite needs a real Android runtime: PlaintextDatabaseMigrator opens SQLCipher
