@@ -119,4 +119,74 @@ class NoteBackupImporterTest {
         assert(result is BackupImportResult.InvalidFormat) { "expected InvalidFormat, got $result" }
         coVerify(exactly = 0) { repository.insertLabel(any()) }
     }
+
+    @Test
+    fun `deeply nested json is rejected instead of exhausting the stack`() = runTest {
+        // The serializer parses recursively; on stack-constrained runtimes this shape could
+        // throw StackOverflowError, which the importer's Exception catch cannot contain.
+        val json = "[".repeat(NoteBackupImporter.MAX_JSON_DEPTH + 8) +
+            "]".repeat(NoteBackupImporter.MAX_JSON_DEPTH + 8)
+
+        val result = importer.importFromJson(json)
+
+        assert(result is BackupImportResult.InvalidFormat) { "expected InvalidFormat, got $result" }
+        coVerify(exactly = 0) { repository.insertNoteWithResult(any()) }
+    }
+
+    @Test
+    fun `an escaped quote inside a string does not end the string for the depth scanner`() = runTest {
+        coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
+        coEvery { repository.getNextNotePosition() } returns 0
+        coEvery { repository.insertLabel(any()) } returns 1L
+        coEvery { repository.insertNoteWithResult(any()) } returns 10L
+
+        // The escaped quote must not terminate the string, so the following brackets are
+        // string content and not counted towards nesting depth.
+        val json = """
+            {
+              "version": 1,
+              "labels": [],
+              "notes": [{
+                "title": "Quoted",
+                "content": "a\"[[",
+                "timestamp": 1000,
+                "color": -1,
+                "labels": [],
+                "checklist": []
+              }]
+            }
+        """.trimIndent()
+
+        val result = importer.importFromJson(json)
+
+        assert(result is BackupImportResult.Success) { "expected Success, got $result" }
+    }
+
+    @Test
+    fun `braces inside strings do not count towards nesting depth`() = runTest {
+        coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
+        coEvery { repository.getNextNotePosition() } returns 0
+        coEvery { repository.insertLabel(any()) } returns 1L
+        coEvery { repository.insertNoteWithResult(any()) } returns 10L
+
+        val bracesInContent = "{ [ ".repeat(NoteBackupImporter.MAX_JSON_DEPTH + 20)
+        val json = """
+            {
+              "version": 1,
+              "labels": [],
+              "notes": [{
+                "title": "Braces",
+                "content": "$bracesInContent",
+                "timestamp": 1000,
+                "color": -1,
+                "labels": [],
+                "checklist": []
+              }]
+            }
+        """.trimIndent()
+
+        val result = importer.importFromJson(json)
+
+        assert(result is BackupImportResult.Success) { "expected Success, got $result" }
+    }
 }

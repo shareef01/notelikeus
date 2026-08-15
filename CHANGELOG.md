@@ -4,6 +4,10 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Security
+- Hosting adds `Strict-Transport-Security` for the first-request HTTPS upgrade
+- Backup import rejects deeply nested JSON up front instead of crashing on `StackOverflowError`
+
 ## [1.0.0] — 2026-07-11
 
 ### Added
