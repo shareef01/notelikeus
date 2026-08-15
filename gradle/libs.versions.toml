@@ -32,7 +32,7 @@ securityCrypto = "1.1.0"
 # does mean Room runs against a sqlite it was not built with. Pair the next Room bump with this.
 sqlite = "2.7.0"
 okio = "3.9.1"
-jna = "5.14.0"
+jna = "5.19.1"
 appcompat = "1.7.0"
 fragment = "1.8.2"
 googleServices = "4.5.0"
