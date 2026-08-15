@@ -4,6 +4,10 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Changed
+- Firestore rules type-check `localId` as `int` rather than the looser `number`, matching every
+  other numeric field — it is the note's primary key and is read back as a `Long`
+
 ### Fixed
 - Android and desktop now resolve a sync conflict the way the web client already did when only one
   side carries a server-confirmed `serverUpdatedAt`: the confirmed side wins outright. A skewed
