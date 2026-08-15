@@ -15,6 +15,15 @@ concurrency:
   group: android-ci-${{ github.ref }}
   cancel-in-progress: true
 
+# gradle.properties asks for a 2 GB daemon heap, which is fine on a warm local daemon but marginal
+# on a runner: PackageAndroidArtifact died with OutOfMemoryError while packaging the debug APK on
+# PR #47, on a commit that packages cleanly on a developer machine. Overriding here rather than in
+# gradle.properties keeps local builds on the smaller heap that already suits them. The failure was
+# nondeterministic, which is what made it worth fixing — it attaches to whichever PR happens to be
+# running and reads as that PR's fault.
+env:
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -125,7 +134,7 @@ jobs:
 
       - name: Upload test report on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: instrumented-test-report
           path: composeApp/build/reports/androidTests/

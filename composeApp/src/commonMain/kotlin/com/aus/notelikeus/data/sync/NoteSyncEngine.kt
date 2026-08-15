@@ -283,9 +283,18 @@ class NoteSyncEngine(
                         innerInsert(cloudNote)
                         changes++
                     }
+                    // The cloud copy winning does not mean it differs. In steady state both sides
+                    // carry the same serverUpdatedAt and the same timestamp, so cloudWinsConflict
+                    // answers "cloud" for every note in the library — and innerUpdate is not a
+                    // cheap no-op, it rewrites the row and deletes and re-inserts every label
+                    // cross-ref and checklist item. Without this check a download rewrites the
+                    // whole library through SQLCipher on every sync and reports each note as a
+                    // change, so the snackbar always claims the full note count.
                     cloudWins -> {
-                        innerUpdate(cloudNote)
-                        changes++
+                        if (!sameContent(cloudNote, localNote)) {
+                            innerUpdate(cloudNote)
+                            changes++
+                        }
                     }
                     else -> {
                         toPushBack += localNote
@@ -347,10 +356,59 @@ class NoteSyncEngine(
             if (remoteServerUpdatedAt != localServerUpdatedAt) {
                 return remoteServerUpdatedAt > localServerUpdatedAt
             }
+            // Same confirmed revision on both sides. Only here does the client clock get a say, and
+            // only as a tie-break: Room keeps the old serverUpdatedAt after a local edit, so a newer
+            // local `timestamp` against an unchanged server stamp is exactly how a pending local edit
+            // announces itself. The tie itself goes to the cloud so an unchanged note is not pushed
+            // back up on every sync.
             return remoteClientTimestamp != null && remoteClientTimestamp >= localClientTimestamp
         }
+
+        // Exactly one side has been confirmed by the server: that side wins outright, whatever the
+        // client clocks say. A client `timestamp` is spoofable and skew-prone — an imported backup
+        // or a device with a wrong clock can carry any value at all — so letting it decide against a
+        // revision the server has already stamped is what the serverUpdatedAt field exists to
+        // prevent. Reachable on a normal upgrade: MIGRATION_5_6 adds the column with no backfill, so
+        // every note predating schema v6 reads null locally until its next upload, while the cloud
+        // copy written by any current client has one. Mirrors the web client's
+        // `shouldUploadOverRemote`, which has resolved it this way since the field was introduced.
+        if (remoteServerUpdatedAt != null) return true
+        if (localServerUpdatedAt != null) return false
+
+        // Neither side confirmed: the client clock is all there is.
         return remoteClientTimestamp != null && remoteClientTimestamp > localClientTimestamp
     }
+
+    /**
+     * True when the cloud copy carries nothing the local row does not already hold, so applying it
+     * would be a write with no effect. The Kotlin counterpart of the web client's `notesEqual`.
+     *
+     * Compares only what actually syncs. Row ids on labels and checklist items are deliberately
+     * excluded: a [CloudNoteRecord] carries label *names* and unkeyed checklist entries, so the ids
+     * on the two sides are assigned locally and would never match. Labels are compared as a set —
+     * NoteLabelCrossRef stores no ordering — and checklist items are ordered by their own position
+     * rather than list order.
+     */
+    internal fun sameContent(cloud: Note, local: Note): Boolean {
+        if (cloud.id != local.id) return false
+        if (cloud.timestamp != local.timestamp) return false
+        if (cloud.serverUpdatedAt != local.serverUpdatedAt) return false
+        if (cloud.title != local.title) return false
+        if (cloud.content != local.content) return false
+        if (cloud.color != local.color) return false
+        if (cloud.position != local.position) return false
+        if (cloud.isPinned != local.isPinned) return false
+        if (cloud.isArchived != local.isArchived) return false
+        if (cloud.isTrashed != local.isTrashed) return false
+        if (cloud.reminderTimestamp != local.reminderTimestamp) return false
+        if (cloud.labels.map { it.name }.sorted() != local.labels.map { it.name }.sorted()) {
+            return false
+        }
+        return cloud.checklist.checklistKey() == local.checklist.checklistKey()
+    }
+
+    private fun List<ChecklistItem>.checklistKey(): List<Triple<Int, Boolean, String>> =
+        map { Triple(it.position, it.isChecked, it.text) }.sortedBy { it.first }
 
     private suspend fun putNote(uid: String, note: Note) {
         putNotes(uid, listOf(note))

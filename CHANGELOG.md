@@ -4,6 +4,18 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Changed
+- Firestore rules type-check `localId` as `int` rather than the looser `number`, matching every
+  other numeric field — it is the note's primary key and is read back as a `Long`
+
+### Fixed
+- Android and desktop now resolve a sync conflict the way the web client already did when only one
+  side carries a server-confirmed `serverUpdatedAt`: the confirmed side wins outright. A skewed
+  clock or a hand-edited backup timestamp can no longer overwrite a revision the server has stamped
+- A cloud download no longer rewrites every note — and deletes and re-inserts its labels and
+  checklist items — when nothing has changed, and now reports the number of notes that actually
+  moved rather than the size of the whole library
+
 ### Security
 - Hosting adds `Strict-Transport-Security` for the first-request HTTPS upgrade
 - Backup import rejects deeply nested JSON up front instead of crashing on `StackOverflowError`
