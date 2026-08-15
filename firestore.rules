@@ -22,7 +22,7 @@ service cloud.firestore {
           'isPinned', 'isArchived', 'isTrashed',
           'position', 'labels', 'checklist'
         ])
-        && data.localId is number
+        && data.localId is int
         && data.title is string
         && data.content is string
         && data.title.size() <= 2000
