@@ -85,6 +85,13 @@ describe('firestore.rules', () => {
     await assertSucceeds(getDoc(noteRef(alice, 'alice', 'note-1')));
   });
 
+  // localId is the note's primary key and is read back as a Long on the Kotlin side, so it is
+  // type-checked as strictly as every other numeric field rather than as a general `number`.
+  it('rejects a fractional localId', async () => {
+    const alice = authed('alice');
+    await assertFails(setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ localId: 1.5 })));
+  });
+
   it('rejects oversized note content', async () => {
     const alice = authed('alice');
     await assertFails(
@@ -194,7 +201,7 @@ describe('firestore.rules', () => {
     );
   });
 
-  // serverUpdatedAt is the conflict-resolution clock — see FirebaseNoteSync.kt / notesRepository.ts.
+  // serverUpdatedAt is the conflict-resolution clock — see NoteSyncEngine.kt / notesRepository.ts.
   // It has to be genuinely server-assigned, or a malicious/modified client could forge it to win
   // every sync conflict.
   it('accepts a note with no serverUpdatedAt field at all', async () => {
