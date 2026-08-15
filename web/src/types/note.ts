@@ -26,7 +26,7 @@ export interface Note {
    * observed a write to this note in the cloud. Null until the note has synced at least once
    * under this scheme. This — not `timestamp` — is what conflict resolution compares, since a
    * device's own clock can be wrong or spoofed; see notesRepository.ts's `mergeRemoteNotes` and
-   * Android's FirebaseNoteSync.kt.
+   * the shared Kotlin engine's NoteSyncEngine.kt.
    */
   serverUpdatedAt: number | null;
   labels: Label[];
