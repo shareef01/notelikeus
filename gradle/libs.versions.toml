@@ -51,7 +51,7 @@ compose-multiplatform = "1.8.2"
 # JetBrains adaptive tracks androidx-adaptive versions separately; 1.1.x is the CMP 1.8 line.
 composeAdaptive = "1.1.2"
 composeNavigation = "2.9.0-beta03"
-koin = "4.1.1"
+koin = "4.2.2"
 # Matches the version koin-compose-viewmodel resolves, so the two don't fight.
 composeLifecycle = "2.9.3"
 work = "2.11.2"
