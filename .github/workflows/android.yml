@@ -3,6 +3,9 @@ name: Android CI
 on:
   push:
     branches: [main, master]
+    # Without this the v* tag conditions below are dead code: a `branches` filter
+    # alone excludes tag pushes, so "tag a release" never actually built anything.
+    tags: ['v*']
   pull_request:
     branches: [main, master]
 
