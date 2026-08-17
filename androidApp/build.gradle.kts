@@ -51,10 +51,14 @@ android {
 
     buildTypes {
         getByName("release") {
-            // Left off deliberately. Turning R8 on is a one-line change plus a proguard-rules.pro,
-            // but it needs an on-device smoke test of sync, widgets and AppFunctions before it can
-            // be trusted — a release build that merely compiles proves nothing about R8.
-            isMinifyEnabled = false
+            // Enabled with conservative keeps (proguard-rules.pro) and verified on an emulator:
+            // launch, sign-in gate, editor, note persistence and a cold restart of the encrypted
+            // database. Re-verify those paths after any rule change.
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             signingConfig = signingConfigs.findByName("release")
         }
     }
