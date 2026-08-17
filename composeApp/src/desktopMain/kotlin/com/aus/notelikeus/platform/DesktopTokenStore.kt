@@ -129,8 +129,9 @@ class DesktopTokenStore(
             withContext(Dispatchers.IO) {
                 httpClient.send(request, HttpResponse.BodyHandlers.ofString())
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             // Offline or a transient network fault — keep the session so a later sync can retry.
+            AppLog.warn(TAG, "Token refresh request failed; keeping session for retry", error)
             return@withLock null
         }
 
@@ -152,7 +153,8 @@ class DesktopTokenStore(
         // later sync retry — rather than throwing out of validIdToken() into the sync engine.
         val payload = try {
             json.decodeFromString<JsonObject>(response.body())
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            AppLog.warn(TAG, "Refresh response was not JSON (status ${response.statusCode()}); keeping session", error)
             return@withLock null
         }
         val newIdToken = payload["id_token"]?.jsonPrimitive?.content ?: return@withLock null
@@ -169,8 +171,11 @@ class DesktopTokenStore(
         }
         try {
             tokenFile.writeBytes(dpapiProtect(payload.toString().encodeToByteArray(), SESSION_ENTROPY))
-        } catch (_: Exception) {
+        } catch (error: Throwable) {
             // Session persistence is best-effort; the in-memory session still works this run.
+            // Throwable, not Exception: on a non-Windows JVM (desktop CI) loading Crypt32 fails
+            // with UnsatisfiedLinkError, which is an Error and would otherwise escape save().
+            AppLog.warn(TAG, "Failed to persist session to disk; in-memory session still active", error)
         }
     }
 
@@ -182,7 +187,8 @@ class DesktopTokenStore(
         // falling back to "no session"; this one belongs with them.
         val raw = try {
             tokenFile.readBytes()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            AppLog.warn(TAG, "Session file present but unreadable; starting without a session", error)
             return
         }
 
@@ -192,10 +198,11 @@ class DesktopTokenStore(
         var wasLegacyBlob = false
         val decrypted = try {
             String(dpapiUnprotect(raw, SESSION_ENTROPY))
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             try {
                 String(dpapiUnprotect(raw, null)).also { wasLegacyBlob = true }
-            } catch (_: Exception) {
+            } catch (legacyError: Exception) {
+                AppLog.warn(TAG, "Session file undecryptable by DPAPI (new and legacy entropy); deleting it", legacyError)
                 tokenFile.delete()
                 return
             }
@@ -234,12 +241,13 @@ class DesktopTokenStore(
             // `exp` is seconds since epoch. Deriving expiry from the token beats trusting a
             // separately reported expires_in that may not match what was actually issued.
             cachedExpiresAt = obj["exp"]?.jsonPrimitive?.content?.toLongOrNull()?.times(1000) ?: 0L
-        } catch (_: Exception) {
-            /* JWT decode best-effort */
+        } catch (error: Exception) {
+            AppLog.warn(TAG, "JWT decode failed; session kept without uid/email/expiry", error)
         }
     }
 
     private companion object {
+        private const val TAG = "DesktopTokenStore"
         /** Refresh this far ahead of the real expiry so an in-flight request cannot age out. */
         const val EXPIRY_SKEW_MS = 5 * 60 * 1000L
 
