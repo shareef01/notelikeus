@@ -2,11 +2,37 @@
 
 All notable changes to Notelikeus are documented here.
 
-## [Unreleased]
+## [1.0.1] — 2026-08-17
 
 ### Changed
+- Android opens the encrypted database on a background thread at startup. The key-manager
+  decrypt (Keystore + file IO) and the first-run `sqlcipher_export` re-encryption no longer
+  block the first composition — the window stays on the system splash until the database is
+  ready
+- Release builds are now minified with R8 (conservative keep rules; verified on-device through
+  sign-in, editing, persistence and a cold restart of the encrypted database)
+- Web styling migrated to Tailwind CSS v4 (CSS-first `@theme` config, `tw-animate-css`)
+  with no visual changes intended; custom utilities verified in the built CSS
+- `npm run deploy` (web) now gates on lint, unit tests and a successful build before touching
+  Firebase
+- Web CI runs oxlint (`correctness` as errors) on every PR — the repo previously had no JS/TS
+  linter at all
 - Firestore rules type-check `localId` as `int` rather than the looser `number`, matching every
   other numeric field — it is the note's primary key and is read back as a `Long`
+- Desktop logs previously-swallowed failures (session persistence, token refresh, DPAPI
+  migration) through a JUL-based `AppLog` so field issues stay diagnosable
+
+### Refactored
+- `MainViewModel` (717 lines) split into `CloudSyncController`, `NoteActionsController` and a
+  pure `filterAndSortNotes`; public API unchanged
+- `MainScreen` (1171 lines) split into `MainDrawerContent`, `MainDialogs` and `MainScaffold`
+- `DatabaseKeyManager.kt` (four top-level types) split into one file per class
+
+### Added
+- Tests for previously-uncovered surfaces: `FirebaseSessionManager` (account mapping, debug-only
+  email gate, error diagnosis), `ReminderScheduler` (exact alarm scheduling, past-timestamp
+  guard, cancellation — Robolectric) and `DesktopTokenStore` (JWT claim decoding, session
+  lifecycle)
 
 ### Fixed
 - Android and desktop now resolve a sync conflict the way the web client already did when only one
@@ -16,9 +42,14 @@ All notable changes to Notelikeus are documented here.
   checklist items — when nothing has changed, and now reports the number of notes that actually
   moved rather than the size of the whole library
 
+### Removed
+- Unused deprecated `play-services-auth` dependency (Credential Manager is the sign-in path)
+
 ### Security
 - Hosting adds `Strict-Transport-Security` for the first-request HTTPS upgrade
 - Backup import rejects deeply nested JSON up front instead of crashing on `StackOverflowError`
+- Dev-tooling npm audit is back to zero known vulnerabilities (pinned `uuid` and
+  `@opentelemetry/core` overrides for `firebase-tools`)
 
 ## [1.0.0] — 2026-07-11
 
