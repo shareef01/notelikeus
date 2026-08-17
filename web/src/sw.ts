@@ -138,6 +138,8 @@ async function catchUpReminders(): Promise<void> {
 
 async function syncSwReminders(reminders: SwReminder[]): Promise<void> {
   const activeIds = new Set(reminders.map((reminder) => reminder.noteId));
+  // Snapshot the keys: cancelSwReminder mutates swTimers inside the loop.
+  // oxlint-disable-next-line unicorn/no-useless-spread
   for (const noteId of [...swTimers.keys()]) {
     if (!activeIds.has(noteId)) cancelSwReminder(noteId);
   }

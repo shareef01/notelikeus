@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/oxlint/configuration.schema.json",
+  "ignorePatterns": ["dist", "dist-e2e", "playwright-report", "test-results"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  }
+}
