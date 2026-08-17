@@ -9,11 +9,20 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.appfunctions.service.AppFunctionConfiguration
 import androidx.work.WorkManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.aus.notelikeus.appfunctions.NoteAppFunctions
+import com.aus.notelikeus.data.local.NotelikeusDatabase
+import com.aus.notelikeus.data.local.warmUp
 import com.aus.notelikeus.data.remote.NotificationChannels
 import com.aus.notelikeus.data.remote.ReconciliationSyncWorker
 import com.aus.notelikeus.ui.navigation.InternalNavigationToken
 import com.aus.notelikeus.di.initKoin
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
@@ -25,7 +34,25 @@ val androidAppModule = module {
     }
 }
 
+/**
+ * Flips once the encrypted database has finished opening on the background startup thread.
+ * [MainActivity] holds the first composition back on this, so nothing that resolves through
+ * Koin to a DAO can pull the database open onto the main thread.
+ */
+object AppStartup {
+    var isReady by mutableStateOf(false)
+        private set
+
+    fun markReady() {
+        isReady = true
+    }
+}
+
 class NotelikeusApp : Application(), Configuration.Provider, AppFunctionConfiguration.Provider {
+
+    // Process-lived by design, matching CloudNoteSyncCoordinator's scope: it does one job at
+    // startup and outlives any screen.
+    private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -62,11 +89,27 @@ class NotelikeusApp : Application(), Configuration.Provider, AppFunctionConfigur
             )
         }
 
-        initKoin {
+        val koinApp = initKoin {
             androidContext(this@NotelikeusApp)
             modules(androidAppModule)
         }
-        
+
+        // Creating the database singleton runs the key-manager decrypt (Keystore + file IO)
+        // and, on the first launch after the encryption rollout, a full sqlcipher_export
+        // re-encryption. Room defers the actual open and its migrations to first use, which
+        // used to be the first composition — koinViewModel() -> repository -> DAO — on the
+        // main thread. Resolving it and checking out the writer connection here moves all of
+        // that to the background; MainActivity gates the UI on AppStartup until it finishes.
+        // If creation throws, markReady() still runs: the UI's own resolution then retries and
+        // surfaces the same failure it would have before, rather than hanging on the gate.
+        startupScope.launch {
+            try {
+                koinApp.koin.get<NotelikeusDatabase>().warmUp()
+            } finally {
+                AppStartup.markReady()
+            }
+        }
+
         InternalNavigationToken.init(this)
         // App Check is not installed here yet. The web client sends tokens (see web/src/lib/
         // firebase.ts); Android does not, so enabling enforcement in the Firebase console today

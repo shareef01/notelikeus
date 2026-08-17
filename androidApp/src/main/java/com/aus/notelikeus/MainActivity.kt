@@ -33,8 +33,6 @@ class MainActivity : FragmentActivity() {
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Read before the first composition: the migration that sets this already ran during DI.
-        showDatabaseRecoveryNotice = DatabaseRecoveryNotice.pending(this) != null
         pendingNoteId = extractEditorNoteId(intent)
         pendingCreateNote = intentRequestsNewNote(intent)
         navigationRequest++
@@ -47,40 +45,53 @@ class MainActivity : FragmentActivity() {
             val windowSizeClass = calculateWindowSizeClass(this)
             val scope = rememberCoroutineScope()
 
-            App(
-                windowSizeClass = windowSizeClass,
-                onShowBiometricPrompt = { title, onSuccess, onError ->
-                    showBiometricPrompt(title, onSuccess, onError)
-                },
-                onGoogleSignInClick = { viewModel ->
-                    // Credential Manager presents its own UI from a coroutine, so there is no
-                    // Intent to launch and no ActivityResult to parse.
-                    scope.launch {
-                        googleSignInHelper.requestIdToken()
-                            .onSuccess { idToken -> viewModel.signInWithGoogleIdToken(idToken) }
-                            .onFailure { error ->
-                                viewModel.reportGoogleSignInFailure(error)
-                            }
-                    }
-                },
-                pendingNoteId = pendingNoteId,
-                pendingCreateNote = pendingCreateNote,
-                navigationRequest = navigationRequest
-            )
+            // Nothing below may run before AppStartup: the first koinViewModel() call resolves
+            // the DAO, which opens the encrypted database. Until the background open finishes,
+            // composing nothing keeps the window on the system splash screen instead of
+            // blocking Main on the key-manager decrypt or a first-run re-encryption.
+            if (AppStartup.isReady) {
+                // The quarantine that records this notice runs during the database open, so it
+                // can only be read once that has finished — not in onCreate.
+                LaunchedEffect(Unit) {
+                    showDatabaseRecoveryNotice =
+                        DatabaseRecoveryNotice.pending(this@MainActivity) != null
+                }
 
-            // Shown once, over the app, when the database had to be moved aside during startup.
-            // Without this the user sees an empty note list and no reason for it.
-            if (showDatabaseRecoveryNotice) {
-                AlertDialog(
-                    onDismissRequest = { dismissDatabaseRecoveryNotice() },
-                    confirmButton = {
-                        TextButton(onClick = { dismissDatabaseRecoveryNotice() }) {
-                            Text(stringResource(R.string.db_recovery_dismiss))
+                App(
+                    windowSizeClass = windowSizeClass,
+                    onShowBiometricPrompt = { title, onSuccess, onError ->
+                        showBiometricPrompt(title, onSuccess, onError)
+                    },
+                    onGoogleSignInClick = { viewModel ->
+                        // Credential Manager presents its own UI from a coroutine, so there is no
+                        // Intent to launch and no ActivityResult to parse.
+                        scope.launch {
+                            googleSignInHelper.requestIdToken()
+                                .onSuccess { idToken -> viewModel.signInWithGoogleIdToken(idToken) }
+                                .onFailure { error ->
+                                    viewModel.reportGoogleSignInFailure(error)
+                                }
                         }
                     },
-                    title = { Text(stringResource(R.string.db_recovery_title)) },
-                    text = { Text(stringResource(R.string.db_recovery_message)) }
+                    pendingNoteId = pendingNoteId,
+                    pendingCreateNote = pendingCreateNote,
+                    navigationRequest = navigationRequest
                 )
+
+                // Shown once, over the app, when the database had to be moved aside during startup.
+                // Without this the user sees an empty note list and no reason for it.
+                if (showDatabaseRecoveryNotice) {
+                    AlertDialog(
+                        onDismissRequest = { dismissDatabaseRecoveryNotice() },
+                        confirmButton = {
+                            TextButton(onClick = { dismissDatabaseRecoveryNotice() }) {
+                                Text(stringResource(R.string.db_recovery_dismiss))
+                            }
+                        },
+                        title = { Text(stringResource(R.string.db_recovery_title)) },
+                        text = { Text(stringResource(R.string.db_recovery_message)) }
+                    )
+                }
             }
         }
     }

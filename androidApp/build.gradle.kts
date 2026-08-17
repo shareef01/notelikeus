@@ -72,7 +72,12 @@ dependencies {
     implementation(libs.koin.core)
     implementation(libs.koin.compose)
     implementation(libs.koin.compose.viewmodel)
-    
+
+    // Only so NotelikeusDatabase's supertype resolves: the startup warm-up call in
+    // NotelikeusApp touches the database type directly, and composeApp carries Room as
+    // implementation, not api.
+    implementation(libs.room.runtime)
+
     implementation(libs.androidx.appfunctions)
     implementation(libs.androidx.appfunctions.service)
     ksp(libs.androidx.appfunctions.compiler)
