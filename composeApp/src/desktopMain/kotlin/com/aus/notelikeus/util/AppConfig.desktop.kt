@@ -11,7 +11,7 @@ actual object AppConfig {
             .inputArguments
             .any { it.startsWith("-agentlib:jdwp") }
 
-    actual val versionName: String = "1.0.0"
+    actual val versionName: String = "1.0.1"
 
     // App lock needs Windows Hello via JNA — not implemented yet.
     actual val supportsAppLock: Boolean = false
