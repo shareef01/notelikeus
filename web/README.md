@@ -66,7 +66,7 @@ Firestore composite index: single-field `timestamp` ordering is automatic. No ex
 - **Vite + React 19 + TypeScript**
 - **Tailwind CSS** — true dark (`#000000`), note palette tokens, self-hosted Inter typography
 - **vite-plugin-pwa / Workbox** — offline asset caching, auto-updating service worker
-- **Firebase v11** — Auth, Firestore (`persistentLocalCache` + multi-tab), Storage SDK
+- **Firebase v12** — Auth, Firestore (`persistentLocalCache` + multi-tab)
 
 ## Setup
 
