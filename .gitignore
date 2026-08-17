@@ -22,6 +22,11 @@ local.properties
 *.jks
 *.keystore
 signing.properties
+# Credential material — none of these belong in a repo, ever.
+*.pem
+*.p12
+*.pfx
+*serviceAccount*.json
 .idea/
 .firebase/
 .agents/
