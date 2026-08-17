@@ -35,6 +35,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          # Both lockfiles: this workflow installs root deps (rules tests) and web deps (sync
+          # and e2e tests). Keying on the root lock alone never rotated the cache on a web bump.
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
 
       - name: Install dependencies
         run: npm ci
