@@ -11,7 +11,7 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:sync": "firebase emulators:exec --only firestore \"vitest run --config vitest.emulator.config.ts\"",
-    "deploy": "npm run build && firebase deploy --only hosting,firestore:rules",
+    "deploy": "npm run lint && npm test && npm run build && firebase deploy --only hosting,firestore:rules",
     "test:e2e": "firebase emulators:exec --only firestore,auth \"npm run e2e:run\"",
     "e2e:run": "vite build --mode e2e --outDir dist-e2e && playwright test"
   },
