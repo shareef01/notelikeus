@@ -1,0 +1,149 @@
+package com.aus.notelikeus.ui.main
+
+import com.aus.notelikeus.domain.repository.SyncManager
+import com.aus.notelikeus.util.DateUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+private const val AUTO_PULL_MIN_INTERVAL_MS = 30_000L
+
+/**
+ * Cloud account and sync actions for the main screen. Everything sign-in, sign-out, sync, and
+ * sync-event related lives here; MainViewModel exposes thin delegating methods so call sites in
+ * the UI do not change.
+ */
+internal class CloudSyncController(
+    private val state: MutableStateFlow<MainState>,
+    private val scope: CoroutineScope,
+    private val syncManager: SyncManager
+) {
+    private var lastAutoPullElapsedMs = 0L
+
+    /** Mirrors the SyncManager flows into UI state. Call once from the ViewModel's init. */
+    fun observe() {
+        syncManager.cloudAccount.onEach { account ->
+            state.update { it.copy(cloudAccount = account) }
+        }.launchIn(scope)
+
+        syncManager.syncStatus.onEach { status ->
+            state.update { it.copy(cloudSyncStatus = status) }
+        }.launchIn(scope)
+
+        // Only non-null events are adopted: the flow resets to null on acknowledgement, and
+        // mirroring that would wipe a failure this controller set itself (see
+        // signInWithGoogleIdToken, which reports before any SyncManager call happens).
+        syncManager.pendingEvent.onEach { event ->
+            if (event != null) {
+                state.update { it.copy(pendingCloudSyncEvent = event) }
+            }
+        }.launchIn(scope)
+    }
+
+    fun enterOfflineMode() {
+        state.update {
+            it.copy(
+                cloudAccount = CloudAccount(
+                    email = null,
+                    isGoogleAccount = false,
+                    isAnonymous = false,
+                    isOfflineMode = true
+                )
+            )
+        }
+    }
+
+    fun signInWithGoogleIdToken(idToken: String) {
+        scope.launch {
+            state.update { it.copy(isSigningIn = true) }
+            val result = syncManager.signInWithGoogle(idToken)
+            if (result.isSuccess) {
+                // Immediately pull cloud notes after successful sign-in
+                syncManager.downloadNotes()
+            }
+            state.update { currentState ->
+                currentState.copy(
+                    isSigningIn = false,
+                    // Surfaced through pendingCloudSyncEvent, which SignInGate already renders as
+                    // externalError. This used to drop the Result on the floor, so a failed
+                    // sign-in just silently returned the user to the gate.
+                    pendingCloudSyncEvent = result.exceptionOrNull()
+                        ?.let { CloudSyncEvent.Failure(signInFailureMessage(it)) }
+                        ?: currentState.pendingCloudSyncEvent
+                )
+            }
+        }
+    }
+
+    /**
+     * Reports a failure from the platform sign-in UI itself (before any token exists) — user
+     * cancellation, no Google account on the device, no Play Services, and so on.
+     */
+    fun reportGoogleSignInFailure(error: Throwable) {
+        state.update {
+            it.copy(
+                isSigningIn = false,
+                pendingCloudSyncEvent = CloudSyncEvent.Failure(signInFailureMessage(error))
+            )
+        }
+    }
+
+    private fun signInFailureMessage(error: Throwable): String =
+        error.message?.takeIf { it.isNotBlank() } ?: "Google sign-in failed"
+
+    fun signInWithEmailPassword(email: String, password: String, createAccount: Boolean) {
+        scope.launch {
+            state.update { it.copy(isSigningIn = true) }
+            val result = syncManager.signInWithEmail(email, password, createAccount)
+            state.update { currentState ->
+                currentState.copy(
+                    isSigningIn = false,
+                    pendingCloudSyncEvent = result.exceptionOrNull()
+                        ?.let { CloudSyncEvent.Failure(signInFailureMessage(it)) }
+                        ?: currentState.pendingCloudSyncEvent
+                )
+            }
+        }
+    }
+
+    fun signOutFromCloud(deleteCloudData: Boolean = false) {
+        scope.launch {
+            syncManager.signOut(deleteCloudData)
+        }
+    }
+
+    fun syncNotesToCloud() {
+        scope.launch {
+            syncManager.syncNotes()
+        }
+    }
+
+    fun downloadNotesFromCloud() {
+        scope.launch {
+            syncManager.downloadNotes()
+        }
+    }
+
+    /**
+     * Best-effort pull when the app returns to the foreground.
+     */
+    fun autoSyncOnForeground() {
+        if (state.value.cloudSyncStatus == CloudSyncStatus.Syncing) return
+        if (!state.value.cloudAccount.isGoogleAccount) return
+        if (!state.value.isCloudAutoSyncEnabled) return
+        val now = DateUtils.currentTimeMillis()
+        if (now - lastAutoPullElapsedMs < AUTO_PULL_MIN_INTERVAL_MS) return
+        lastAutoPullElapsedMs = now
+        scope.launch {
+            syncManager.downloadNotes()
+        }
+    }
+
+    fun clearPendingCloudSyncEvent() {
+        syncManager.clearPendingEvent()
+        state.update { it.copy(pendingCloudSyncEvent = null) }
+    }
+}
