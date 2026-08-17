@@ -1,115 +1,91 @@
 # Notelikeus Web (PWA)
 
-Progressive Web App twin of the Android Notelikeus client.
+React 19 + TypeScript PWA. Firestore-native, like the Android and Windows clients, but with the
+SDK's offline cache standing in for their local databases. Lives at
+[notelike.web.app](https://notelike.web.app).
 
-## Post–Step 4 — Settings & backup
-
-- **Profile sheet** — layout, appearance (brand theme, true dark), sync status, Google account
-- **Privacy policy** — in-app dialog (web-adapted copy)
-- **Cloud sync** — always on while signed in (no toggle); notes live in Firestore only, with no separate local copy; sign-out with optional cloud delete
-- **Backup** — export/import JSON v3 (Android-compatible format)
-- **Auth** — Google sign-in required (no guest mode)
-- **Editor** — markdown toolbar (bold/italic/bullet/link), reminders with browser notifications
-- **PWA icons** — `public/icons/icon-192.png` and `icon-512.png` from Android launcher art
-- **Deploy** — `npm run deploy` from `web/` (Firebase Hosting + Firestore rules)
-
-## Deploy (Firebase Hosting)
-
-From the repository root (after `web/.env` is configured):
-
-```bash
-cd web
-npm run build
-cd ..
-firebase deploy --only hosting,firestore:rules
-```
-
-Or from `web/`:
-
-```bash
-npm run deploy
-```
-
-Add your hosting domain (e.g. `notelikeus.web.app`) to Firebase Auth → Authorized domains.
-
-## Step 4 — What's included
-
-- **EditorScreen** — full-screen editor with note-colored background and dynamic text contrast
-- **Debounced autosave** — 1000ms delay (matches Android), writes to Firestore offline cache via `upsertNote`
-- **ChecklistEditor** — checked items sink to bottom with strikethrough; convert text ↔ checklist
-- **EditorOptionsSheet** — color swatches, label toggles, create label, delete
-- **Editor routing** — `openNewNote` / `openNote` / `closeEditor` in `uiStore`
-
-## Step 3 — What's included
-
-- **App shell** — slide-out drawer (Notes / Archive / Trash), sticky top search bar
-- **Top bar** — scroll-aware elevation + divider, view-mode cycle (1–3 columns), profile button
-- **Filter row** — border-only chips, color swatches, label chips, sort cycle
-- **Masonry grid** — CSS multi-column staggered layout (responsive 1→2→3 columns)
-- **List view** — single column with Material-style drag handle on leading edge
-- **Note cards** — 16px padding, title/body typography, dynamic contrast, pinned sections
-- **Empty states** — archive/trash/active variants with 72px muted icons
-- **Google sign-in** — drawer + empty-state CTA (popup auth)
-
-## Step 2 — What's included
-
-- **Types** — `Note`, `Label`, `ChecklistItem`, `Attachment` (Android field parity)
-- **Cloud mapper** — `noteToCloudMap` / `cloudMapToNote` (matches Android `NoteCloudMapper.kt`)
-- **Firestore repository** — `subscribeToNotes` (`onSnapshot`), `upsertNote`, `deleteNote`, `uploadAllNotes`
-- **Hooks** — `useAuth`, `useNotes` piping real-time updates into Zustand
-- **Conflict rule** — last-write-wins on the server-assigned `serverUpdatedAt` (falls back to the client `timestamp` only for a note that hasn't synced under this scheme yet)
-
-Firestore composite index: single-field `timestamp` ordering is automatic. No extra index required for Step 2.
-
-## Step 1 — What's included
-
-- **Vite + React 19 + TypeScript**
-- **Tailwind CSS** — true dark (`#000000`), note palette tokens, self-hosted Inter typography
-- **vite-plugin-pwa / Workbox** — offline asset caching, auto-updating service worker
-- **Firebase v12** — Auth, Firestore (`persistentLocalCache` + multi-tab)
+The root [README](../README.md) covers the shared product/architecture; this file is about
+working in `web/`.
 
 ## Setup
 
 ```bash
 cd web
 npm install
-cp .env.example .env
+cp .env.example .env   # then fill in the values (see below)
 ```
 
-1. Open [Firebase Console](https://console.firebase.google.com/) → project **notelikeus**
-2. Project settings → **Add app** → **Web** (`</>`)
-3. Copy the `appId` into `.env` as `VITE_FIREBASE_APP_ID`
-4. Authentication → Sign-in method → enable **Google**
-5. Add authorized domain: `localhost` (and your production domain later)
+`web/.env` is gitignored. Generate it from the Firebase CLI instead of copying values by hand:
 
-## Run
-
-```bash
-npm run dev
+```powershell
+# from the repo root
+./scripts/setup-web-env.ps1
 ```
 
-Open http://localhost:5173 — you should see the Step 1 shell and a green Firebase ready banner when `.env` is configured.
+Values are public app identifiers (API key, project id, app id) — the same ones Google ships in
+every client config. The web API key is referrer-restricted to this app's domains.
 
-## Build
+## Everyday commands
 
-```bash
-npm run build
-npm run preview
-```
+| Command | What it does |
+|---|---|
+| `npm run dev` | Vite dev server on http://localhost:5173 |
+| `npm run lint` | oxlint (`correctness` as errors) |
+| `npm test` | Vitest unit suite (pure logic; no Firebase) |
+| `npm run typecheck` | `tsc -b --noEmit` |
+| `npm run build` | typecheck + production build |
+| `npm run test:sync` | sync layer against a real Firestore emulator, production rules enforced |
+| `npm run test:e2e` | builds the app, boots emulators, runs Playwright/Chromium against it |
+| `npm run deploy` | **lint + tests + build**, then `firebase deploy --only hosting,firestore:rules` |
 
-## PWA install
+`deploy` is deliberately self-gating: it refuses to ship a tree that fails the quick local
+checks. The emulator-backed suites (`test:sync`, `test:e2e`) are not part of it — run them
+yourself around risky changes (Firebase upgrades, sync logic), or use
+`scripts/ci-local.ps1` at the root, which runs the whole CI matrix locally.
 
-In Chrome/Edge: Application tab → Manifest / Service workers, or use the browser install prompt when served over HTTPS (or localhost).
+E2e builds (`--mode e2e`) use `.env.e2e`, which points Firebase at local emulators with a fake
+API key and enables the email/password test login — they can never reach a real project.
+
+## Architecture map
+
+- **State** — Zustand stores (`src/store/`): auth, notes, ui. Real-time updates flow from
+  Firestore snapshots into the stores.
+- **Firestore layer** (`src/lib/firestore/`) — subscribe/upsert/delete, the cloud mapper
+  (field-parity with Android's `NoteCloudMapper.kt`), and the merge logic that decides
+  local-vs-remote wins.
+- **Rendering** — plain React text nodes throughout; no `dangerouslySetInnerHTML` anywhere.
+  Markdown preview is a small custom renderer emitting React elements, with link hrefs
+  scheme-sanitized (`toSafeHref`). Search highlighting builds `<mark>` nodes from a string
+  split, never HTML.
+- **Styling** — Tailwind CSS v4 (CSS-first config in `src/styles/globals.css`), theme-reactive
+  colours via CSS variables so all six themes work without rebuilds, animations from
+  `tw-animate-css`.
+- **PWA** — `vite-plugin-pwa` injectManifest with a custom service worker (`src/sw.ts`):
+  Workbox precache, SPA navigation route, and browser-notification reminders that persist in
+  Cache Storage and catch up on wake. Same-origin checks on all postMessage handling.
 
 ## Android parity
+
+The three clients must agree on the data model or sync corrupts it:
 
 | Item | Value |
 |------|--------|
 | Firestore path | `users/{uid}/notes/{localId}` |
-| Display timestamp field | `timestamp` (matches Android cloud mapper) |
-| Conflict-resolution field | `serverUpdatedAt` (Firestore server timestamp, matches Android `FirebaseNoteSync.kt`) |
+| Display timestamp field | `timestamp` |
+| Conflict-resolution field | `serverUpdatedAt` (Firestore server timestamp; last write wins) |
 | Note colors | Same ARGB integers as Android `Color.kt` |
+| Backup format | JSON v3 (Android-compatible, importable both ways) |
+
+Firestore security rules live at the repo root (`firestore.rules`) and are deployed by
+`npm run deploy`. They are owner-scoped, schema-validated, and reject client-forged
+`serverUpdatedAt`; `tests/firestore.rules.test.mjs` proves all of that against the emulator.
 
 ## Icons
 
-Production PNG icons live in `public/icons/` (192 and 512). `favicon.svg` remains for browser tabs.
+Production PNG icons live in `public/icons/` (192 and 512). `favicon.svg` remains for browser
+tabs.
+
+## CI
+
+`.github/workflows/web.yml` runs lint + unit tests + build on every PR;
+`firebase.yml` runs the emulator-backed sync tests and Playwright e2e.
