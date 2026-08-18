@@ -38,7 +38,20 @@ internal class CloudSyncController(
         // signInWithGoogleIdToken, which reports before any SyncManager call happens).
         syncManager.pendingEvent.onEach { event ->
             if (event != null) {
-                state.update { it.copy(pendingCloudSyncEvent = event) }
+                state.update { current ->
+                    current.copy(
+                        pendingCloudSyncEvent = event,
+                        // Nothing ever wrote cloudSyncedNoteCount. It was declared, threaded all
+                        // the way down to ProfileSheet and rendered as "Last sync: %d notes", so
+                        // that row read "Last sync: 0 notes" permanently, on every device, however
+                        // much had actually synced. The counts only exist on these two events.
+                        cloudSyncedNoteCount = when (event) {
+                            is CloudSyncEvent.Uploaded -> event.noteCount
+                            is CloudSyncEvent.Downloaded -> event.noteCount
+                            else -> current.cloudSyncedNoteCount
+                        }
+                    )
+                }
             }
         }.launchIn(scope)
     }
