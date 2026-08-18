@@ -255,7 +255,11 @@ export async function syncNotesWithCloud(
   useTombstoneStore.getState().mergeFromCloud(cloudTombstones);
 
   const remoteNotes = await fetchRemoteNotes(userId);
-  const cloudIds = new Set(remoteNotes.map((note) => note.id));
+  // Indexed once rather than scanned per local note: the loop below looked remotes up with
+  // `remoteNotes.find`, making the merge O(local x remote) on every reconcile. `cloudIds` is
+  // derivable from this map, but keeping the Set avoids re-deriving it on each membership test.
+  const remoteById = new Map(remoteNotes.map((note) => [note.id, note]));
+  const cloudIds = new Set(remoteById.keys());
 
   // Same guard Android NoteSyncEngine uses in every sync direction: an empty fetch when we
   // previously knew cloud note IDs is far more likely a failed-open fetch than a genuine mass
@@ -280,7 +284,7 @@ export async function syncNotesWithCloud(
 
     if (cloudIds.has(localNote.id)) {
       if (!isCloudSyncEligible(localNote)) continue;
-      const remote = remoteNotes.find((note) => note.id === localNote.id);
+      const remote = remoteById.get(localNote.id);
       if (shouldUploadOverRemote(localNote, remote)) {
         await upsertNote(userId, localNote);
         merged = merged.map((note) => (note.id === localNote.id ? localNote : note));
