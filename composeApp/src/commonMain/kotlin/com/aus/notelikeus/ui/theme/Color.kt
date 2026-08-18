@@ -143,8 +143,26 @@ fun noteColorsForTheme(isDarkTheme: Boolean): List<Color> =
     NOTE_COLOR_OPTIONS.map { if (isDarkTheme) it.dark else it.light }
 
 /** Display palette: map stored ARGB to the light/dark pair for the active theme. */
+/** A note with no colour of its own; renders as the active theme's surface. */
+const val NO_NOTE_COLOR: Int = 0
+
+/**
+ * Colours that older builds wrote as a note's "default", by storing whatever the active theme's
+ * background happened to be. Neither is in [NOTE_COLOR_OPTIONS], so neither can be a colour the
+ * user actually picked — the palette offers "no colour" plus eight pastels and nothing else.
+ *
+ * They are mapped back to [NO_NOTE_COLOR] on read rather than migrated in the database: the notes
+ * are already synced, so a migration would have to run on every client and race the others, while
+ * this fixes them everywhere at once and leaves the stored data untouched.
+ */
+private val LEGACY_THEME_DEFAULT_COLORS = setOf(
+    0xFFF0F0F0.toInt(), // BackgroundLight, written on every theme except OLED
+    0xFF000000.toInt(), // black, written on OLED
+)
+
 fun noteColorForTheme(argb: Int, isDarkTheme: Boolean): Int {
-    if (argb == 0) return 0
+    if (argb == NO_NOTE_COLOR) return NO_NOTE_COLOR
+    if (argb in LEGACY_THEME_DEFAULT_COLORS) return NO_NOTE_COLOR
     NOTE_COLOR_OPTIONS.forEach { option ->
         val lightArgb = option.light.toArgb()
         val darkArgb = option.dark.toArgb()
