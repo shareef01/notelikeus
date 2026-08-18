@@ -100,10 +100,18 @@ fun EditorScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val editorTapInteraction = remember { MutableInteractionSource() }
 
-    PlatformBackHandler {
-        viewModel.saveNote()
-        onBack()
+    // Leaving the editor pops this destination, which clears the ViewModel and cancels the scope
+    // saveNote() would have launched the write into. Await it first so navigating away cannot
+    // discard the edit, and close regardless of the outcome so a failed write cannot trap the
+    // user on the screen.
+    fun saveThenLeave() {
+        scope.launch {
+            runCatching { viewModel.saveNoteAndAwait() }
+            onBack()
+        }
     }
+
+    PlatformBackHandler { saveThenLeave() }
 
     LaunchedEffect(state.isNoteLoaded, state.id, state.checklist.isEmpty()) {
         if (state.isNoteLoaded && state.id == null && state.checklist.isEmpty()) {
@@ -167,10 +175,7 @@ fun EditorScreen(
                     title = {},
                     navigationIcon = {
                         if (!isExpanded) {
-                            IconButton(onClick = {
-                                viewModel.saveNote()
-                                onBack()
-                            }) {
+                            IconButton(onClick = { saveThenLeave() }) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = stringResource(Res.string.cd_back),
