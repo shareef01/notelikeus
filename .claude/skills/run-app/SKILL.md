@@ -35,21 +35,18 @@ Two bugs were only ever visible on a first run, because every real install is
 already signed in. If you are verifying startup behaviour, do it against an
 empty directory.
 
-**`APPDATA` isolates the local directory but NOT the account.** Overriding it
-does work as far as storage goes — `DesktopPathProvider` honours it, and the
-throwaway directory really does get its own `notelikeus_db`, `.session` and
-`settings.preferences_pb`. What it does not buy you is a first-run experience:
-launched this way the app still came up **signed in to the real account with the
-real notes on screen**, twice, on a cold daemon as well as a warm one. The local
-files under `%APPDATA%` were untouched, so the notes were arriving over Firestore
-rather than from disk; how the session was established on an empty directory is
-not understood.
+**`APPDATA` isolation is real but unreliable — verify it visually, every time.**
+When it takes effect the throwaway directory gets its own `notelikeus_db` and the app opens on
+the sign-in gate with no account, which is what you want. But across four launches it silently
+failed to take effect twice, landing on the **real signed-in account with the real notes**, and
+once it started isolated and acquired a session part-way through the run. The mechanism is not
+understood; a warm Gradle daemon is a suspect (`:composeApp:run` forks from it) but stopping the
+daemon did not reliably help.
 
-Treat this as the rule: `APPDATA` is a convenience for keeping test databases
-apart, **never a safety boundary**. Anything that reaches the cloud — sign-out,
-sign-out-and-delete, a sync — can still hit the real account from a "throwaway"
-run. Screenshot the window and read the bottom-left rail before doing anything
-destructive, every time.
+So never trust the export. Screenshot the window and read the bottom-left rail *before* every
+action, and treat a signed-in account as a stop signal. Notes are real data: prefer killing the
+process (`Stop-Process -Force`) over closing the window, because a graceful close runs the
+editor's save-on-close and rewrites the note's timestamp.
 
 ### Seeding demo notes
 
