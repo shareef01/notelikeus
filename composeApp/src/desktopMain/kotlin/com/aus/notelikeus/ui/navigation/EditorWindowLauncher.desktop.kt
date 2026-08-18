@@ -67,6 +67,7 @@ import com.aus.notelikeus.ui.theme.NotelikeusTheme
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
+import com.aus.notelikeus.platform.AppLog
 import com.aus.notelikeus.ui.window.NativeCaptionDragSupport
 import org.koin.compose.getKoin
 import org.koin.compose.koinInject
@@ -224,9 +225,19 @@ private fun EditorNoteWindow(
             LaunchedEffect(noteId, initialColor) {
                 viewModel.setRouteArgs(noteId, initialColor)
             }
+            // saveNoteAndAwait, not saveNote: saveNote only *launches* the write into
+            // viewModelScope, and onClosed() below takes this window out of composition, which
+            // disposes the ViewModelStore and cancels that scope. The write lost the race far
+            // more often than it won, so "new note, type, close" discarded the note outright —
+            // the reported broken + button. Awaiting keeps the window (and therefore the scope)
+            // alive until the row is actually committed.
+            //
+            // runCatching so a failing write still closes the window: letting the exception kill
+            // this coroutine would leave a note window that can never be closed.
             LaunchedEffect(closeRequested) {
                 if (closeRequested) {
-                    viewModel.saveNote()
+                    runCatching { viewModel.saveNoteAndAwait() }
+                        .onFailure { AppLog.warn("EditorWindow", "Save on close failed", it) }
                     onClosed()
                 }
             }
