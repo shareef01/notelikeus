@@ -76,6 +76,7 @@ fun MainScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showEmptyTrashConfirm by remember { mutableStateOf(false) }
     var showCloudSignOutConfirm by remember { mutableStateOf(false) }
+    var showCloudRestoreConfirm by remember { mutableStateOf(false) }
     var profileSignInError by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val haptic = LocalHapticFeedback.current
@@ -463,7 +464,7 @@ fun MainScreen(
                 viewModel.syncNotesToCloud()
             },
             onCloudRestoreClick = {
-                viewModel.downloadNotesFromCloud()
+                showCloudRestoreConfirm = true
             },
             onGoogleSignInClick = {
                 profileSignInError = null
@@ -478,6 +479,7 @@ fun MainScreen(
 
     MainDialogs(
         showCloudSignOutConfirm = showCloudSignOutConfirm,
+        showCloudRestoreConfirm = showCloudRestoreConfirm,
         showEmptyTrashConfirm = showEmptyTrashConfirm,
         showDeleteConfirm = showDeleteConfirm,
         selectedCount = state.selectedNotes.size,
@@ -487,6 +489,12 @@ fun MainScreen(
             showCloudSignOutConfirm = false
             showProfileSheet = false
             viewModel.signOutFromCloud(deleteCloudData = deleteCloudData)
+        },
+        onCloudRestoreConfirmDismiss = { showCloudRestoreConfirm = false },
+        onConfirmCloudRestore = {
+            showCloudRestoreConfirm = false
+            showProfileSheet = false
+            viewModel.downloadNotesFromCloud()
         },
         onEmptyTrashConfirmDismiss = { showEmptyTrashConfirm = false },
         onConfirmEmptyTrash = {
