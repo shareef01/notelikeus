@@ -214,41 +214,11 @@ fun ProfileSheet(
             )
 
             SettingsSectionDivider()
-            SettingsSectionHeader(title = stringResource(Res.string.section_account))
-            if (cloudAccount.isGoogleAccount && !cloudAccount.email.isNullOrBlank()) {
-                SettingsRow(
-                    icon = Icons.Default.AccountCircle,
-                    title = cloudAccount.email,
-                    subtitle = stringResource(Res.string.cloud_signed_in_as)
-                )
-                SettingsRow(
-                    icon = Icons.AutoMirrored.Filled.Logout,
-                    title = stringResource(Res.string.cloud_sign_out),
-                    subtitle = stringResource(Res.string.cloud_sign_out_subtitle),
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onGoogleSignOutClick()
-                    }
-                )
-            } else {
-                SettingsRow(
-                    icon = Icons.AutoMirrored.Filled.Login,
-                    title = stringResource(Res.string.cloud_sign_in_google),
-                    subtitle = stringResource(Res.string.cloud_sign_in_subtitle),
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onGoogleSignInClick()
-                    }
-                )
-            }
-            if (!signInError.isNullOrBlank()) {
-                Text(
-                    text = signInError,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 68.dp)
-                )
-            }
+            // Sync, data and account are three different jobs and now say so. They used to
+            // sit under one ACCOUNT header, which put Sign out -- the one destructive action
+            // here, and the one that can also delete the cloud copy -- second in the list,
+            // above routine controls like the auto-sync toggle. It reads last now.
+            SettingsSectionHeader(title = stringResource(Res.string.section_sync))
             SettingsToggleListItem(
                 icon = Icons.Default.Sync,
                 title = stringResource(Res.string.cloud_auto_sync),
@@ -289,6 +259,9 @@ fun ProfileSheet(
                     onCloudRestoreClick()
                 }
             )
+
+            SettingsSectionDivider()
+            SettingsSectionHeader(title = stringResource(Res.string.section_data))
             SettingsRow(
                 icon = Icons.Default.Backup,
                 title = stringResource(Res.string.backup_export),
@@ -307,6 +280,43 @@ fun ProfileSheet(
                     onImportClick()
                 }
             )
+
+            SettingsSectionDivider()
+            SettingsSectionHeader(title = stringResource(Res.string.section_account))
+            if (cloudAccount.isGoogleAccount && !cloudAccount.email.isNullOrBlank()) {
+                SettingsRow(
+                    icon = Icons.Default.AccountCircle,
+                    title = cloudAccount.email,
+                    subtitle = stringResource(Res.string.cloud_signed_in_as)
+                )
+                SettingsRow(
+                    icon = Icons.AutoMirrored.Filled.Logout,
+                    title = stringResource(Res.string.cloud_sign_out),
+                    subtitle = stringResource(Res.string.cloud_sign_out_subtitle),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onGoogleSignOutClick()
+                    }
+                )
+            } else {
+                SettingsRow(
+                    icon = Icons.AutoMirrored.Filled.Login,
+                    title = stringResource(Res.string.cloud_sign_in_google),
+                    subtitle = stringResource(Res.string.cloud_sign_in_subtitle),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onGoogleSignInClick()
+                    }
+                )
+            }
+            if (!signInError.isNullOrBlank()) {
+                Text(
+                    text = signInError,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 68.dp)
+                )
+            }
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(Res.string.section_about))
