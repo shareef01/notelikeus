@@ -13,7 +13,7 @@ import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.domain.platform.ReminderManager
-import com.aus.notelikeus.ui.theme.BackgroundLight
+import com.aus.notelikeus.ui.theme.NO_NOTE_COLOR
 import com.aus.notelikeus.util.DateUtils
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -105,19 +105,16 @@ class EditorViewModel(
 
     private fun loadSettingsAndNote() {
         viewModelScope.launch {
-            val theme = settingsRepository.appTheme.first()
-            val isTrueDark = theme == AppTheme.TRUE_DARK
-
-            val themeDefaultColor = if (isTrueDark) {
-                Color.Black.toArgb()
-            } else {
-                BackgroundLight.toArgb()
-            }
-            val initialColor = if (noteId == null) {
-                routedInitialColor ?: themeDefaultColor
-            } else {
-                themeDefaultColor
-            }
+            // A new note carries no colour of its own. NO_NOTE_COLOR means "use the theme
+            // surface", which follows the active theme for the life of the note.
+            //
+            // This used to store the *current theme's background* on the note instead — black on
+            // OLED, #F0F0F0 everywhere else. That value is persisted and synced, so a note created
+            // on Dark, Midnight or Forest was permanently near-white: noteColorForTheme only swaps
+            // light/dark variants for palette entries and passes anything else through untouched,
+            // so those notes rendered as white cards on a near-black background on every device,
+            // and could not follow a later theme change.
+            val initialColor = if (noteId == null) routedInitialColor ?: NO_NOTE_COLOR else NO_NOTE_COLOR
 
             if (noteId == null) {
                 // Merge, never replace: this runs after the user may already have typed.
