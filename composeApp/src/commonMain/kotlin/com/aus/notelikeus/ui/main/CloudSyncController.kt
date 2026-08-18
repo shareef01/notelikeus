@@ -109,11 +109,34 @@ internal class CloudSyncController(
         }
     }
 
+    /**
+     * Sign-out failures are surfaced rather than dropped, because the only way
+     * [SyncManager.signOut] fails is the one that matters: `deleteCloudData` was asked for and the
+     * cloud delete did not happen,
+     * so the session is deliberately still alive and the notes are still in Firestore. Silently
+     * swallowing that left the user looking at a signed-in app with no explanation.
+     */
     fun signOutFromCloud(deleteCloudData: Boolean = false) {
         scope.launch {
-            syncManager.signOut(deleteCloudData)
+            val result = syncManager.signOut(deleteCloudData)
+            state.update { currentState ->
+                currentState.copy(
+                    pendingCloudSyncEvent = result.fold(
+                        // Nothing emitted CloudSyncEvent.SignedOut, so the branch rendering it and
+                        // both its strings were unreachable. Confirming a destructive action is
+                        // worth more than deleting the code that was already written for it —
+                        // "sign out and delete my cloud notes" should say that it happened.
+                        onSuccess = { CloudSyncEvent.SignedOut(cloudDataDeleted = deleteCloudData) },
+                        onFailure = { CloudSyncEvent.Failure(signOutFailureMessage(it)) }
+                    )
+                )
+            }
         }
     }
+
+    private fun signOutFailureMessage(error: Throwable): String =
+        error.message?.takeIf { it.isNotBlank() }
+            ?: "Couldn't delete your cloud notes, so you're still signed in. Try again."
 
     fun syncNotesToCloud() {
         scope.launch {

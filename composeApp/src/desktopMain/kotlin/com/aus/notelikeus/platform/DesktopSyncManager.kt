@@ -69,9 +69,14 @@ class DesktopSyncManager(
         UnsupportedOperationException("Email/password sign-in is not available on desktop")
     )
 
+    /**
+     * See AndroidSyncManager.signOut: clearing the token store below destroys the credential
+     * [NoteSyncEngine.deleteAllCloudData] needs, so a swallowed failure leaves the notes in
+     * Firestore with no way to retry and still reports success.
+     */
     override suspend fun signOut(deleteCloudData: Boolean): Result<Unit> {
         if (deleteCloudData) {
-            syncEngine.deleteAllCloudData()
+            syncEngine.deleteAllCloudData().onFailure { return Result.failure(it) }
         }
         tokenStore.clear()
         _syncStatus.value = CloudSyncStatus.Offline
