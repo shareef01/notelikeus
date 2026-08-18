@@ -235,10 +235,13 @@ fun ProfileSheet(
                 title = stringResource(Res.string.cloud_sync_now),
                 subtitle = when (cloudSyncStatus) {
                     CloudSyncStatus.Syncing -> stringResource(Res.string.cloud_sync_in_progress)
-                    CloudSyncStatus.Synced -> stringResource(
-                        Res.string.cloud_sync_last,
-                        cloudSyncedNoteCount
-                    )
+                    // A successful sync that moved nothing is the steady state, not a failure to
+                    // sync anything, so it says so rather than reporting "0 notes".
+                    CloudSyncStatus.Synced -> if (cloudSyncedNoteCount > 0) {
+                        stringResource(Res.string.cloud_sync_last, cloudSyncedNoteCount)
+                    } else {
+                        stringResource(Res.string.cloud_sync_up_to_date)
+                    }
                     CloudSyncStatus.Offline, CloudSyncStatus.Error ->
                         stringResource(Res.string.cloud_sync_offline)
                     else -> stringResource(Res.string.cloud_sync_subtitle)
