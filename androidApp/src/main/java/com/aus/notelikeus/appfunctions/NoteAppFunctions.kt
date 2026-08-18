@@ -14,6 +14,12 @@ import org.koin.core.component.inject
 
 /**
  * Exposes note management capabilities to system agents.
+ *
+ * Every write here bumps the note's client `timestamp`, matching NoteActionsController. A local
+ * edit does not move `serverUpdatedAt`, so on an already-synced note the client timestamp is the
+ * only thing separating the two sides, and `cloudWinsConflict` gives an exact tie to the cloud --
+ * which meant an agent's archive or reminder was skipped by the upload and then overwritten by the
+ * next download, without ever reporting a failure.
  */
 class NoteAppFunctions : KoinComponent {
     private val repository: NoteRepository by inject()
@@ -52,6 +58,7 @@ class NoteAppFunctions : KoinComponent {
         content: String
     ): AppFunctionNote = withContext(Dispatchers.IO) {
         requireUnlocked()
+        requireWithinLimits(title, content)
         val note = Note(
             title = title,
             content = content,
@@ -124,7 +131,19 @@ class NoteAppFunctions : KoinComponent {
     ): AppFunctionNote? = withContext(Dispatchers.IO) {
         requireUnlocked()
         val note = repository.getNoteById(noteId) ?: return@withContext null
-        val updatedNote = note.copy(reminderTimestamp = timestamp)
+        // app_metadata.xml tells agents reminders must be in the future; nothing enforced it, so a
+        // past timestamp was accepted and handed to the alarm scheduler, which either fires at once
+        // or never. The editor rejects the same input, so this only differed by entry point.
+        //
+        // Checked after the lookup so an unknown id still answers "not found", which is the more
+        // specific thing to tell a caller that got both wrong.
+        if (timestamp <= System.currentTimeMillis()) {
+            throw IllegalArgumentException("Reminder time must be in the future.")
+        }
+        val updatedNote = note.copy(
+            reminderTimestamp = timestamp,
+            timestamp = System.currentTimeMillis()
+        )
         repository.updateNote(updatedNote)
         reminderManager.scheduleReminder(noteId, timestamp)
         updatedNote.toAppFunctionNote()
@@ -145,9 +164,32 @@ class NoteAppFunctions : KoinComponent {
     ): AppFunctionNote? = withContext(Dispatchers.IO) {
         requireUnlocked()
         val note = repository.getNoteById(noteId) ?: return@withContext null
-        val updatedNote = note.copy(isArchived = true)
+        val updatedNote = note.copy(isArchived = true, timestamp = System.currentTimeMillis())
         repository.updateNote(updatedNote)
         updatedNote.toAppFunctionNote()
+    }
+
+    /**
+     * Rejects note text the cloud will not accept.
+     *
+     * firestore.rules caps title at 2000 characters and content at 100000, and app_metadata.xml
+     * tells agents so -- but nothing checked. An over-long note saved locally and then failed the
+     * rules check on every sync attempt, silently, for as long as it existed: the one note that
+     * never reaches the cloud, with nothing in the UI to say why.
+     */
+    private fun requireWithinLimits(title: String, content: String) {
+        if (title.length > MAX_TITLE_CHARS) {
+            throw IllegalArgumentException("Title is limited to $MAX_TITLE_CHARS characters.")
+        }
+        if (content.length > MAX_CONTENT_CHARS) {
+            throw IllegalArgumentException("Content is limited to $MAX_CONTENT_CHARS characters.")
+        }
+    }
+
+    private companion object {
+        /** Mirrors the caps in firestore.rules; a note past either is rejected by the backend. */
+        const val MAX_TITLE_CHARS = 2_000
+        const val MAX_CONTENT_CHARS = 100_000
     }
 
     private fun Note.toAppFunctionNote() = AppFunctionNote(

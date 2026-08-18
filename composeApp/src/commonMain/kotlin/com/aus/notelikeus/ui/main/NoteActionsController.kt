@@ -157,11 +157,22 @@ internal class NoteActionsController(
         }
     }
 
+    // Both of these bump `timestamp`, like every other write in this file. A local edit does not
+    // move serverUpdatedAt, so once a note has synced, the client timestamp is the only thing
+    // separating the two sides -- and cloudWinsConflict resolves an exact tie in the cloud's
+    // favour. Leaving it unchanged meant uploadNote skipped the upload *and* the next download
+    // overwrote the row, so restoring or pinning a synced note silently undid itself.
     fun restoreSelectedNotes() {
         scope.launch {
             val notesToRestore = state.value.notes.filter { it.id in state.value.selectedNotes }
             notesToRestore.forEach { note ->
-                repository.updateNote(note.copy(isArchived = false, isTrashed = false))
+                repository.updateNote(
+                    note.copy(
+                        isArchived = false,
+                        isTrashed = false,
+                        timestamp = DateUtils.currentTimeMillis()
+                    )
+                )
             }
             clearSelection()
         }
@@ -171,7 +182,9 @@ internal class NoteActionsController(
         scope.launch {
             val notesToUpdate = state.value.notes.filter { it.id in state.value.selectedNotes }
             notesToUpdate.forEach { note ->
-                repository.updateNote(note.copy(isPinned = pin))
+                repository.updateNote(
+                    note.copy(isPinned = pin, timestamp = DateUtils.currentTimeMillis())
+                )
             }
             clearSelection()
         }
