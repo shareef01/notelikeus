@@ -94,7 +94,7 @@ Roughly 250 automated checks, arranged so that each one can actually fail:
 |---|---|---|
 | JVM unit (~200) | Sync engine, mappers, repositories, backup, key management | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest` |
 | Instrumented (4) | Database quarantine and encryption migration, on a real device | `./gradlew :composeApp:connectedDebugAndroidTest` |
-| Firestore rules (30) | Security rules against the emulator | `npm run test:rules` |
+| Firestore rules (31) | Security rules against the emulator | `npm run test:rules` |
 | Web unit (44) | Merge logic, conflict resolution, backup parsing | `cd web && npm test` |
 | Web sync (6) | The sync layer against a live Firestore, production rules enforced | `cd web && npm run test:sync` |
 | Browser end-to-end (4) | The built bundle in Chromium: boot, auth, note round-trip | `cd web && npm run test:e2e` |
