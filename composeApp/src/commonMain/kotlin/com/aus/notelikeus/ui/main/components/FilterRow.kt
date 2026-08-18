@@ -55,6 +55,16 @@ import com.aus.notelikeus.ui.theme.noteColorsForTheme
  */
 expect fun Modifier.wheelHorizontalScroll(state: ScrollState): Modifier
 
+/**
+ * Touch target for the colour swatches. 48dp is the accessibility minimum, and the swatch itself
+ * stays 26dp, so the extra is invisible padding rather than a bigger dot.
+ *
+ * It was 36dp because this row used to be pinned above the notes permanently, where every dp of
+ * height was worth saving. It is not pinned any more -- it folds away as soon as the list scrolls
+ * -- so the height costs far less than it did, while being under the minimum costs the same.
+ */
+private val ColorSwatchTouchSize = 48.dp
+
 @Composable
 fun FilterRow(
     selectedColor: Int?,
@@ -158,7 +168,7 @@ fun FilterRow(
                         color = Color.Transparent,
                         isSelected = selectedColor == 0,
                         onClick = { onColorSelect(if (selectedColor == 0) null else 0) },
-                        touchSize = 36.dp,
+                        touchSize = ColorSwatchTouchSize,
                         swatchSize = 26.dp,
                         contentDescription = stringResource(Res.string.no_color)
                     )
@@ -170,7 +180,7 @@ fun FilterRow(
                             onClick = {
                                 onColorSelect(if (selectedColor == colorArgb) null else colorArgb)
                             },
-                            touchSize = 36.dp,
+                            touchSize = ColorSwatchTouchSize,
                             swatchSize = 26.dp,
                             contentDescription = noteColorName(color)
                         )
