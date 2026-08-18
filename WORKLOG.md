@@ -6,8 +6,16 @@ this file captures the *what and why* across a whole session.
 ## 2026-08-17/18 — Full audit, hardening, and the 1.0.1 release
 
 ### Audit (full repo, three passes: security, KMP code quality, web/CI)
-No secret leaks (git history included); Firestore rules, CI pinning, and crypto key
-management all verified sound. Findings below were all actioned or explicitly declined.
+Firestore rules, CI pinning, and crypto key management all verified sound. Findings below
+were all actioned or explicitly declined.
+
+> **Correction (2026-08-18):** this section originally read "No secret leaks (git history
+> included)". That is wrong. The pre-rotation desktop OAuth client secret is in git history
+> at `a00cde6` and `b374fc5` (`PlatformModule.kt:107`, both 2026-08-07, both reachable from
+> `main`). The exposure is closed — that pair was rotated during this session and verified
+> dead against Google's token endpoint — but the blobs are still there, and the original
+> wording would have led the next audit to skip the check. Nothing tracked in the working
+> tree contains a live secret.
 
 ### Shipped
 - **Android:** encrypted DB opens on a background thread at startup (`AppStartup` gate in
