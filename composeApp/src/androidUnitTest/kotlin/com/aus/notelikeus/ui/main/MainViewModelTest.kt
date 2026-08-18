@@ -82,6 +82,41 @@ class MainViewModelTest {
         )
     }
 
+    /**
+     * cloudSyncedNoteCount was declared in MainState, threaded down to ProfileSheet and rendered as
+     * "Last sync: %d notes" -- and never assigned by anything. That row therefore read
+     * "Last sync: 0 notes" permanently, on every device, however much had actually synced.
+     */
+    @Test
+    fun `a completed sync reports how many notes it moved`() = runTest {
+        val events = MutableStateFlow<CloudSyncEvent?>(null)
+        every { syncManager.pendingEvent } returns events
+        viewModel = createViewModel()
+
+        events.value = CloudSyncEvent.Uploaded(7)
+        testScheduler.advanceUntilIdle()
+        assertEquals(7, viewModel.state.value.cloudSyncedNoteCount)
+
+        events.value = CloudSyncEvent.Downloaded(3)
+        testScheduler.advanceUntilIdle()
+        assertEquals(3, viewModel.state.value.cloudSyncedNoteCount)
+    }
+
+    @Test
+    fun `an event without a count leaves the last one alone`() = runTest {
+        val events = MutableStateFlow<CloudSyncEvent?>(null)
+        every { syncManager.pendingEvent } returns events
+        viewModel = createViewModel()
+
+        events.value = CloudSyncEvent.Uploaded(5)
+        testScheduler.advanceUntilIdle()
+        events.value = CloudSyncEvent.Failure("network")
+        testScheduler.advanceUntilIdle()
+
+        // A failure says nothing about how many notes are synced, so the figure must not reset.
+        assertEquals(5, viewModel.state.value.cloudSyncedNoteCount)
+    }
+
     @Test
     fun `initial state is empty`() = runTest {
         viewModel.state.test {
