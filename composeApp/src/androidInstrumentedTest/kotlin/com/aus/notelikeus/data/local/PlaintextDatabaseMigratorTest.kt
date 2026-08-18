@@ -103,6 +103,30 @@ class PlaintextDatabaseMigratorTest {
     }
 
     @Test
+    fun quarantineTakesTheJournalWithIt() {
+        val original = databaseFile()
+        createEncryptedDatabase(original, "the-old-key".toByteArray())
+        // A hot journal beside the database, as a non-WAL database leaves behind.
+        val journal = context.getDatabasePath("$dbName-journal")
+        journal.writeBytes(byteArrayOf(1, 2, 3, 4))
+
+        PlaintextDatabaseMigrator.migrateToEncryptedIfNeeded(
+            context,
+            dbName,
+            "a-completely-different-key".toByteArray()
+        )
+
+        // Left in place it would be a hot journal for a database that has moved away, sitting next
+        // to the fresh one Room creates under the same name.
+        assertFalse("the journal was left beside the new database", journal.exists())
+        val quarantinedJournal = original.parentFile!!
+            .listFiles { file -> file.name.startsWith("$dbName-journal.quarantined-") }
+            ?.toList()
+            .orEmpty()
+        assertEquals("the journal was not quarantined", 1, quarantinedJournal.size)
+    }
+
+    @Test
     fun quarantiningLeavesANoticeForTheUser() {
         createEncryptedDatabase(databaseFile(), "the-old-key".toByteArray())
         assertNull("stale notice before the run", DatabaseRecoveryNotice.pending(context))
