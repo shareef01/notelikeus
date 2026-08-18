@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -258,15 +259,20 @@ fun EditorScreen(
                     }
             ) {
                 Column(
+                    // Order matters here, and it used to be wrong: `fillMaxSize()` ran before
+                    // `widthIn`, so the width was already pinned to the parent by the time the cap
+                    // applied and EditorContentMaxWidth never did anything. On a desktop note
+                    // window the body ran the full width of the window instead of the intended
+                    // reading column. Height still fills; only the width is capped and centred.
                     modifier = Modifier
-                        .fillMaxSize()
+                        .fillMaxHeight()
+                        .widthIn(max = EditorContentMaxWidth)
+                        .align(Alignment.TopCenter)
                         .verticalScroll(rememberScrollState())
                         .padding(
                             horizontal = EditorHorizontalPadding,
                             vertical = EditorVerticalPadding
                         )
-                        .widthIn(max = EditorContentMaxWidth)
-                        .align(Alignment.TopCenter)
                 ) {
                     BasicTextField(
                         value = state.title,
