@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.ui.components.NoteColorSwatch
+import com.aus.notelikeus.ui.theme.noteColorName
 import com.aus.notelikeus.ui.main.components.SettingsSectionHeader
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
@@ -105,8 +106,11 @@ fun EditorBottomSheet(
                             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                             onColorSelect(colorArgb)
                         },
-                        touchSize = 44.dp,
-                        swatchSize = 32.dp
+                        // 48.dp is the accessibility minimum for a touch target; this sheet has
+                        // the room for it, so there is no reason to sit under it.
+                        touchSize = 48.dp,
+                        swatchSize = 32.dp,
+                        contentDescription = noteColorName(color)
                     )
                 }
             }
