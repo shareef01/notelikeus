@@ -35,21 +35,21 @@ Two bugs were only ever visible on a first run, because every real install is
 already signed in. If you are verifying startup behaviour, do it against an
 empty directory.
 
-**Exporting `APPDATA` does nothing if a Gradle daemon is already warm.**
-`DesktopPathProvider` reads `System.getenv("APPDATA")`, and `:composeApp:run`
-forks the app from the *daemon*, which inherits the environment it was started
-with, not the one you just exported. A daemon left over from an earlier
-`./gradlew test` silently wins, and you get the real signed-in app holding the
-real notes while believing you are on a throwaway directory. Stop it first:
+**`APPDATA` isolates the local directory but NOT the account.** Overriding it
+does work as far as storage goes — `DesktopPathProvider` honours it, and the
+throwaway directory really does get its own `notelikeus_db`, `.session` and
+`settings.preferences_pb`. What it does not buy you is a first-run experience:
+launched this way the app still came up **signed in to the real account with the
+real notes on screen**, twice, on a cold daemon as well as a warm one. The local
+files under `%APPDATA%` were untouched, so the notes were arriving over Firestore
+rather than from disk; how the session was established on an empty directory is
+not understood.
 
-```bash
-./gradlew --stop
-export APPDATA="C:\\Users\\LENOVO\\AppData\\Local\\Temp\\nk-demo-appdata"
-./gradlew :composeApp:run
-```
-
-Check before doing anything destructive: a throwaway run opens on the sign-in
-gate, the real one shows the signed-in account in the bottom-left rail.
+Treat this as the rule: `APPDATA` is a convenience for keeping test databases
+apart, **never a safety boundary**. Anything that reaches the cloud — sign-out,
+sign-out-and-delete, a sync — can still hit the real account from a "throwaway"
+run. Screenshot the window and read the bottom-left rail before doing anything
+destructive, every time.
 
 ### Seeding demo notes
 
