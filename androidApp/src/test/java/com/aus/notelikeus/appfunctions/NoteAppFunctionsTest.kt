@@ -124,6 +124,54 @@ class NoteAppFunctionsTest {
         coVerify { reminderManager.scheduleReminder(1L, futureTime) }
     }
 
+    /**
+     * A local edit does not move serverUpdatedAt, so on an already-synced note the client
+     * timestamp is the only thing separating the two sides -- and cloudWinsConflict gives an exact
+     * tie to the cloud. Without a bump, uploadNote skipped these writes and the next download
+     * overwrote them, so an agent's archive or reminder silently undid itself.
+     */
+    @Test
+    fun `archive bumps the client timestamp so the change can reach the cloud`() = runTest {
+        val note = Note(id = 1L, title = "A", content = "B", timestamp = 1L, color = 0)
+        coEvery { repository.getNoteById(1L) } returns note
+
+        noteAppFunctions.archiveNote(context, 1L)
+
+        coVerify { repository.updateNote(match { it.isArchived && it.timestamp > 1L }) }
+    }
+
+    @Test
+    fun `reminder bumps the client timestamp so the change can reach the cloud`() = runTest {
+        val note = Note(id = 1L, title = "A", content = "B", timestamp = 1L, color = 0)
+        coEvery { repository.getNoteById(1L) } returns note
+        val future = System.currentTimeMillis() + 10_000
+
+        noteAppFunctions.addReminder(context, 1L, future)
+
+        coVerify { repository.updateNote(match { it.timestamp > 1L }) }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `a reminder in the past is refused`() = runTest {
+        val note = Note(id = 1L, title = "A", content = "B", timestamp = 0L, color = 0)
+        coEvery { repository.getNoteById(1L) } returns note
+
+        // app_metadata.xml promises agents this constraint; nothing used to enforce it.
+        noteAppFunctions.addReminder(context, 1L, System.currentTimeMillis() - 10_000)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `a title past the cloud limit is refused rather than saved unsyncable`() = runTest {
+        // firestore.rules caps title at 2000; over that the note saves locally and then fails the
+        // rules check on every sync attempt, silently, forever.
+        noteAppFunctions.createNote(context, "x".repeat(2001), "body")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `content past the cloud limit is refused rather than saved unsyncable`() = runTest {
+        noteAppFunctions.createNote(context, "title", "x".repeat(100_001))
+    }
+
     @Test
     fun `addReminder returns null if note not found`() = runTest {
         coEvery { repository.getNoteById(any()) } returns null
