@@ -20,6 +20,12 @@ class FakeCloudNoteTransport : CloudNoteTransport {
     // Configurable: the server timestamp to assign to every write
     var nextServerTimestamp: Long = 100_000L
 
+    /**
+     * When set, [deleteTombstones] throws instead of deleting. Models the offline / expired-token
+     * case that strands a cloud tombstone after a restore.
+     */
+    var deleteTombstonesFailure: Throwable? = null
+
     override suspend fun fetchNotes(uid: String): List<CloudNoteRecord> =
         notes.values.toList()
 
@@ -68,6 +74,7 @@ class FakeCloudNoteTransport : CloudNoteTransport {
     }
 
     override suspend fun deleteTombstones(uid: String, noteIds: List<Long>) {
+        deleteTombstonesFailure?.let { throw it }
         deletedTombstoneIds.addAll(noteIds)
         noteIds.forEach { tombstones.remove(it) }
     }
