@@ -58,9 +58,17 @@ class AndroidSyncManager(
         }
     }
 
+    /**
+     * Signing out destroys the credential [NoteSyncEngine.deleteAllCloudData] needs, so a failure
+     * there is permanent once the session is gone: the notes stay in Firestore and nothing can
+     * retry. This used to discard the Result and sign out anyway, which reported success for a
+     * delete that never happened — and offline or on an expired token is exactly when a user
+     * reaches for "sign out and delete". Fail the sign-out instead and leave the session intact so
+     * the request can be made again.
+     */
     override suspend fun signOut(deleteCloudData: Boolean): Result<Unit> {
         if (deleteCloudData) {
-            syncEngine.deleteAllCloudData()
+            syncEngine.deleteAllCloudData().onFailure { return Result.failure(it) }
         }
         return sessionManager.signOut().onSuccess {
             refreshAccount()
