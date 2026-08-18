@@ -326,6 +326,50 @@ class NoteSyncEngineTest {
         assertTrue(11L in transport.notes)
     }
 
+    @Test
+    fun `restoreNote marks the note restored before clearing the local tombstone`() = runTest {
+        setup()
+        stateStore.markDeleted(11L, 99L)
+        transport.tombstones[11L] = 99L
+        noteDao.insertNote(
+            Note(id = 11L, title = "Back", content = "body", timestamp = 5L, color = 0).toNoteEntity()
+        )
+
+        // Offline, or the token expired: the cloud tombstone delete never lands.
+        transport.deleteTombstonesFailure = IllegalStateException("offline")
+        assertTrue(engine.restoreNote(11L).isFailure)
+
+        // The local tombstone is gone (it has to be, or the row the repository just re-inserted is
+        // purged on the next sync) — so the only thing standing between the stranded cloud
+        // tombstone and a second, silent deletion is the restore marker.
+        assertFalse(stateStore.isDeleted(11L))
+        assertTrue(11L in stateStore.restoredIds())
+    }
+
+    @Test
+    fun `a stranded cloud tombstone does not re-delete a restored note`() = runTest {
+        setup()
+        stateStore.markDeleted(11L, 99L)
+        transport.tombstones[11L] = 99L
+        noteDao.insertNote(
+            Note(id = 11L, title = "Back", content = "body", timestamp = 5L, color = 0).toNoteEntity()
+        )
+
+        transport.deleteTombstonesFailure = IllegalStateException("offline")
+        assertTrue(engine.restoreNote(11L).isFailure)
+
+        // Back online. Without the restore marker this download re-imports the cloud tombstone and
+        // purgeLocalTombstonedNotes destroys the note the user just brought back.
+        transport.deleteTombstonesFailure = null
+        assertTrue(engine.downloadAllNotes().isSuccess)
+
+        assertNotNull(noteDao.getNoteById(11L))
+        // The marker also drives the retry: the stale cloud tombstone is cleaned up here, and only
+        // then does the marker go away.
+        assertTrue(11L in transport.deletedTombstoneIds)
+        assertFalse(11L in stateStore.restoredIds())
+    }
+
     // ---- deleteNote ----
 
     @Test
