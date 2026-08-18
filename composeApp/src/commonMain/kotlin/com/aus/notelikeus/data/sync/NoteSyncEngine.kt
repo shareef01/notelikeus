@@ -183,8 +183,24 @@ class NoteSyncEngine(
         }
     }
 
+    /**
+     * Brings a permanently-deleted note back, locally and in the cloud.
+     *
+     * The restore marker is written first, and that ordering is the whole point of it. Clearing
+     * the local tombstone is what stops [purgeLocalTombstonedNotes] deleting the row the
+     * repository has just re-inserted, so it has to happen here rather than after the network
+     * call. But that leaves the *cloud* tombstone as the hazard: if [deleteTombstones] below
+     * never lands — offline, expired token, SyncWorker exhausting its retries — the next sync's
+     * [mergeCloudTombstones] re-imports it and the note is purged again, silently.
+     *
+     * The marker is what closes that window. It survives process death, [mergeCloudTombstones]
+     * treats a cloud tombstone for a restored id as stale and re-attempts the delete on every
+     * sync, and [refreshCloudTombstone] refuses to re-import one in the meantime. Clearing it
+     * only after [deleteTombstones] returns is what makes it mean "not confirmed gone yet".
+     */
     suspend fun restoreNote(noteId: Long): Result<Unit> {
         return runCatching {
+            syncStateStore.markRestored(noteId)
             syncStateStore.clearDeleted(listOf(noteId))
             val uid = uidProvider().getOrThrow()
             transport.deleteTombstones(uid, listOf(noteId))
