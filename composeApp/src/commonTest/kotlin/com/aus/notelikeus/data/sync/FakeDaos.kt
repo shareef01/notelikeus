@@ -50,7 +50,11 @@ class FakeNoteDao : NoteDao {
     override suspend fun getNoteIdsForLabel(labelId: Long): List<Long> =
         crossRefs.filter { it.labelId == labelId }.map { it.noteId }
 
+    /** Runs when the engine takes its note snapshot, so a test can see what happened before it. */
+    var onGetAllNotesForBackup: (() -> Unit)? = null
+
     override suspend fun getAllNotesForBackup(): List<NoteWithLabels> {
+        onGetAllNotesForBackup?.invoke()
         return notes.values.map { note ->
             NoteWithLabels(note, emptyList(), checklistItems[note.id] ?: emptyList())
         }
