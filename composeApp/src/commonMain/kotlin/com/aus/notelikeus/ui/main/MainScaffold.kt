@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
@@ -57,6 +59,14 @@ import org.jetbrains.compose.resources.stringResource
  * The notes list itself: top bar, FAB, empty states, trash banner and the staggered grid.
  * Extracted from MainScreen, which now owns only layout-mode wiring (drawers, panes, dialogs).
  */
+/**
+ * Comfortable reading measure for the single-column list modes on a wide window.
+ *
+ * ~720dp puts a 15sp body around 80 characters a line, near the top of the readable range while
+ * still looking generous rather than cramped on a large display.
+ */
+private val SingleColumnMaxWidth = 720.dp
+
 @Composable
 internal fun MainScaffold(
     state: MainState,
@@ -332,6 +342,9 @@ internal fun MainScaffold(
                         } else {
                             null
                         }
+                    val resolvedColumns = adaptiveColumns
+                        ?: if (isExpanded && state.viewMode.columns > 2) 2 else state.viewMode.columns
+
                     NoteStaggeredGrid(
                         notes = filteredNotes,
                         selectedNotes = state.selectedNotes,
@@ -381,11 +394,23 @@ internal fun MainScaffold(
                         // In two-pane mode the list shares the window with the editor, so the
                         // wider grid choices leave cards too narrow to read. Cap the list pane
                         // at 2. Desktop has no detail pane, so it uses adaptive columns above.
-                        columns = adaptiveColumns
-                            ?: if (isExpanded && state.viewMode.columns > 2) 2 else state.viewMode.columns,
+                        columns = resolvedColumns,
                         compact = state.viewMode.compact,
                         listStyle = state.viewMode == NoteViewMode.LIST,
-                        modifier = Modifier.fillMaxSize(),
+                        // The grid modes already spend width on more columns. The single-column
+                        // modes had nothing to spend it on, so on a desktop window a note's body
+                        // ran the full ~1140dp — several times a comfortable reading measure, and
+                        // the widest thing on screen by far. Capping and centring them keeps long
+                        // notes readable and makes the wide window look deliberate rather than
+                        // stretched. It is a maximum, so nothing changes on a phone.
+                        modifier = if (resolvedColumns == 1) {
+                            Modifier
+                                .fillMaxHeight()
+                                .widthIn(max = SingleColumnMaxWidth)
+                                .align(Alignment.TopCenter)
+                        } else {
+                            Modifier.fillMaxSize()
+                        },
                         contentPadding = PaddingValues(
                             top = 12.dp,
                             start = 12.dp,
