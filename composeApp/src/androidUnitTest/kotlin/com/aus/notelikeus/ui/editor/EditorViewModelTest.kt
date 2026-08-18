@@ -8,6 +8,7 @@ import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -73,6 +74,51 @@ class EditorViewModelTest {
             assertEquals("Old Content", state.content)
             assertEquals(true, state.isNoteLoaded)
         }
+    }
+
+    /**
+     * The editor's exit paths (Android back, desktop note-window close) navigate or dispose
+     * immediately after saving, which clears the ViewModel and cancels `viewModelScope`.
+     * `saveNote()` only *launches* the write into that scope, so the write was racing its own
+     * cancellation — and on desktop, where the window leaves composition in the same frame, it
+     * lost that race and the note was discarded. That was the reported broken + button.
+     *
+     * A StandardTestDispatcher is what makes the difference observable: the suite's default
+     * UnconfinedTestDispatcher runs launched coroutines eagerly, so both variants look identical
+     * and the bug stays invisible.
+     */
+    @Test
+    fun `saveNoteAndAwait persists before it returns`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        coEvery { repository.getNextNotePosition() } returns 0
+        coEvery { repository.insertNoteWithResult(any()) } returns 7L
+
+        viewModel = createViewModel(SavedStateHandle())
+        testScheduler.advanceUntilIdle()
+        viewModel.onTitleChange("Survives the close")
+
+        viewModel.saveNoteAndAwait()
+
+        // No advanceUntilIdle() in between: the row must already be committed when the call
+        // returns, because the caller disposes the ViewModel on the very next line.
+        coVerify(exactly = 1) { repository.insertNoteWithResult(any()) }
+    }
+
+    @Test
+    fun `saveNote alone has not written by the time it returns`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        coEvery { repository.getNextNotePosition() } returns 0
+        coEvery { repository.insertNoteWithResult(any()) } returns 7L
+
+        viewModel = createViewModel(SavedStateHandle())
+        testScheduler.advanceUntilIdle()
+        viewModel.onTitleChange("Racy")
+
+        viewModel.saveNote()
+
+        // Documents why the exit paths must not use this variant: the write is still queued, so
+        // anything that cancels viewModelScope now loses it.
+        coVerify(exactly = 0) { repository.insertNoteWithResult(any()) }
     }
 
     @Test
