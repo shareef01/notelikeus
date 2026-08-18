@@ -132,6 +132,7 @@
     <string name="cloud_sync_subtitle">Upload notes to your Firebase account</string>
     <string name="cloud_sync_in_progress">Uploading notes…</string>
     <string name="cloud_sync_last">Last sync: %1$d notes</string>
+    <string name="cloud_sync_up_to_date">Up to date</string>
     <string name="cloud_sync_offline">Cloud unavailable — check Firebase setup</string>
     <string name="cloud_sync_success">%1$d notes synced to cloud</string>
     <string name="cloud_download_success">%1$d notes restored from cloud</string>
