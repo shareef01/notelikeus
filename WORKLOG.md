@@ -3,6 +3,91 @@
 Running record of completed work sessions. Newest first. Granular history lives in git;
 this file captures the *what and why* across a whole session.
 
+## 2026-08-18 — Data-loss hunt, then the visual pass
+
+29 commits, `d743f89`..`b927c9a`. 304 tests (was 245). All four CI workflows green.
+
+### The through-line
+Seven mechanisms were built, documented, wired end to end — and never connected. That is
+this codebase's characteristic failure, and it is worth grepping for before anything else:
+
+| mechanism | consequence |
+|---|---|
+| `markRestored` | declared, tested, never called — a failed restore let the next sync re-delete the note |
+| `saveNoteAndAwait` | documented for exactly this hazard, called from nowhere — the "+ button is broken" bug |
+| `EditorContentMaxWidth` | 720dp, defeated by `fillMaxSize()` preceding `widthIn` — never applied |
+| `cloudSyncedNoteCount` | threaded to `ProfileSheet`, never assigned — "Last sync: 0 notes", always |
+| `CloudSyncEvent.SignedOut` | render branch and two strings, nothing emitted it |
+| timestamp bump on 4 write paths | the rule is in `updateNotePositions`' own comment; pin/restore/AppFunctions ignored it |
+| AppFunctions constraints | `app_metadata.xml` promised limits nothing enforced |
+
+### Six ways notes could be lost — all fixed, each with a test that fails against the old code
+1. **Editor saves blanked `serverUpdatedAt`.** `EditorState` has no such field, so
+   `buildNoteFromState` defaulted it to null and Room's `@Update` rewrote the row.
+   `cloudWinsConflict` reads "remote has a stamp, local has none" as the cloud holding the only
+   confirmed revision, so **the next sync reverted every edit to an already-synced note**. This
+   was the one actually eating notes day to day. Fixed in the repository, not the UI: a null
+   stamp on an existing row now means "caller does not know", not "clear it".
+2. **The editor's initial load wiped what was typed.** `loadSettingsAndNote` ended with
+   `_state.value = EditorState(...)` — a whole-state replacement reached through a suspending
+   settings read. The body is auto-focused, so typing immediately is the normal path. Both
+   branches now merge, with *per-field* tracking (one flag blanked the title instead).
+3. **The formatter threw on ordinary edits.** `SmartTextProcessor` sliced
+   `previous.selection.start until current.selection.start`, assuming the caret only moves
+   forward. Paste at an earlier point, IME commit, autocomplete and undo all threw
+   `StringIndexOutOfBoundsException` *inside* `onValueChange`, discarding the edit and letting
+   autosave persist older text.
+4. **Save on close raced its own cancellation** (Android back, desktop window close).
+5. **A failed restore let the next sync re-delete the note.**
+6. **Sign-out swallowed a failed cloud-data delete** and reported success.
+
+### Recovery
+Three notes had been blanked by #1. Recovered their bodies from the SQLite WAL, using frame byte
+offsets to establish write order, and restored them through the app's own editor. A scan of the
+WAL and the main DB's freed pages found no other lost content — but the WAL only spans recent
+activity, so anything lost earlier is gone.
+
+### Also fixed
+- **Sync could hang forever.** No timeout anywhere in the path; `ProfileSheet` gates its controls
+  on `status != Syncing`, so an offline sync disabled the only buttons that could retry it.
+  Observed on a real device. Both platform managers now bound it at 90s.
+- **`FLAG_SECURE`** now follows App Lock — the lock previously came off by pressing recents.
+- **Note contrast measured, not thresholded.** `luminance() > 0.45` was not the crossover; white
+  and `#121212` tie near 0.19, so mid-tones got white at ~2.3:1. Built-in colours are polarised
+  and unaffected; imported notes carry arbitrary ARGB and were not.
+- **Cloud restore now confirms** — it is a merge that can delete local notes, on one tap before.
+- **Colour swatches named** for screen readers (all eight announced identically), 48dp targets.
+
+### Visual pass — four of five were bugs, not taste
+- **Notes baked the theme background into their own colour** (`#F0F0F0` on every theme but OLED,
+  persisted and synced). Notes made on Forest were permanently white cards on near-black; on
+  Light they were *invisible*, being exactly the background colour. 5 of 9 notes carried it.
+  Neutralised on read, so every client is fixed without a migration.
+- **Reading measure** for the single-column list; the editor's own 720dp cap made to work.
+- **Filter chips fold away on scroll** — but never while a filter is active.
+- **Settings split** into Sync / Data / Account, with Sign out last rather than second.
+- **Drawer identity hues** were Tailwind `-400`s: 1.46–2.72:1 on light surfaces, all five under
+  the 3:1 WCAG minimum for graphics. Now measured light/dark pairs.
+
+### Corrections to this file and to the skills
+- The 1.0.1 entry claimed "No secret leaks (git history included)". Wrong — the pre-rotation
+  desktop OAuth secret is in `a00cde6` and `b374fc5`, reachable from `main`. Dead, so exposure is
+  closed, but the claim would have sent the next audit past the check.
+- `run-app`: `APPDATA` isolation **cannot be trusted**. It silently failed twice while verifying
+  the + button fix, surfacing the real signed-in account. Verify visually before every action.
+
+### Unresolved
+- **`App.kt`'s snackbar guard** is verified by reading, not by execution. The Compose mechanism it
+  relies on *is* demonstrated (`PendingEventConsumptionTest`), but composing `App.kt` needs the
+  whole DI graph, and reaching a `Failure` event on a real account needs a sync that fails *with*
+  connectivity — offline, the button that would trigger it is disabled.
+- The `-journal` line in `quarantineDatabaseFiles` is symmetry with the success path, not a
+  reproduced failure. An attempt to test it was removed: the journal does not survive the
+  migrator's two open attempts, so the scenario could not be constructed.
+- Colour dots in the filter row are still the loudest thing after the cards. Desaturating them
+  would misrepresent the actual note colours, so it was left as a deliberate call for the owner.
+- Never audited: web React components (the store/actions layer was, and is clean).
+
 ## 2026-08-17/18 — Full audit, hardening, and the 1.0.1 release
 
 ### Audit (full repo, three passes: security, KMP code quality, web/CI)
