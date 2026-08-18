@@ -163,10 +163,14 @@ object PlaintextDatabaseMigrator {
     private fun quarantineDatabaseFiles(context: Context, databaseName: String) {
         val suffix = System.currentTimeMillis()
         var movedAny = false
-        // -journal belongs in this list for the same reason the success path deletes it. Left
-        // behind, it is a hot journal for a database that is no longer at that path, sitting beside
-        // the fresh one Room is about to create under the same name -- which SQLite may try to roll
-        // back into a file it never belonged to.
+        // -journal is here for symmetry with the success path, which deletes it -- so a -journal
+        // is something this code already expects can exist, and leaving one beside the fresh
+        // database Room creates under the same name would be a hot journal for a file that moved.
+        //
+        // Defensive rather than demonstrated: by the time quarantine runs, the two open attempts
+        // above have already been made against the database, and SQLite discards the journal during
+        // them. An attempt to cover this with a test could not get a journal to survive that far,
+        // so this is symmetry and cheap insurance, not a reproduced failure.
         for (
             name in listOf(
                 databaseName,
