@@ -46,7 +46,13 @@ class NoteSyncEngine(
      * tests that use fake (in-memory) DAOs continue to work without changes; production DI
      * modules supply the real Room [androidx.room.immediateTransaction] wrapper.
      */
-    private val runInTransaction: suspend (suspend () -> Unit) -> Unit = { block -> block() }
+    private val runInTransaction: suspend (suspend () -> Unit) -> Unit = { block -> block() },
+    /**
+     * Wall clock, injectable so tests can observe *when* the engine reads it. That matters for
+     * [reconcileUploads], whose correctness is entirely about reading it before the note snapshot
+     * rather than after — a property no assertion on the result can express.
+     */
+    private val now: () -> Long = { DateUtils.currentTimeMillis() }
 ) {
 
     suspend fun uploadAllNotes(): Result<Int> {
@@ -125,7 +131,7 @@ class NoteSyncEngine(
             // it. Reading the clock early only risks re-examining a note that was already pushed,
             // which costs one comparison; reading it late silently drops the edit.
             val since = syncStateStore.lastReconciledAt()
-            val highWater = DateUtils.currentTimeMillis()
+            val highWater = now()
 
             mergeCloudTombstones(uid)
             val localNotes = noteDao.getAllNotesForBackup().map { it.toNote() }
@@ -220,7 +226,7 @@ class NoteSyncEngine(
 
     suspend fun deleteNote(noteId: Long): Result<Unit> {
         return runCatching {
-            val deletedAt = DateUtils.currentTimeMillis()
+            val deletedAt = now()
             syncStateStore.markDeleted(noteId, deletedAt)
             val uid = uidProvider().getOrThrow()
             transport.writeTombstone(uid, noteId, deletedAt)
@@ -280,7 +286,7 @@ class NoteSyncEngine(
 
                 if (syncStateStore.isDeleted(noteId)) {
                     transport.deleteNotes(uid, listOf(noteId))
-                    val deletedAt = syncStateStore.deletedAtById()[noteId] ?: DateUtils.currentTimeMillis()
+                    val deletedAt = syncStateStore.deletedAtById()[noteId] ?: now()
                     transport.writeTombstone(uid, noteId, deletedAt)
                     changes++
                     continue
@@ -333,7 +339,7 @@ class NoteSyncEngine(
 
                 if (noteId in previouslyKnownCloudIds) {
                     noteDao.deleteNote(localNote.toNoteEntity())
-                    val deletedAt = DateUtils.currentTimeMillis()
+                    val deletedAt = now()
                     syncStateStore.markDeleted(noteId, deletedAt)
                     transport.writeTombstone(uid, noteId, deletedAt)
                     changes++
@@ -495,7 +501,7 @@ class NoteSyncEngine(
         if (pruned.isNotEmpty()) {
             transport.deleteTombstones(uid, pruned.toList())
         }
-        val now = DateUtils.currentTimeMillis()
+        val now = now()
         val expiredRemote = cloud.mapNotNull { (noteId, deletedAt) ->
             if (noteId in liveNoteIds) return@mapNotNull null
             if (now - deletedAt >= NoteSyncStateStore.TOMBSTONE_TTL_MS) noteId else null
