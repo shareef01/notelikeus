@@ -136,19 +136,25 @@ private fun AppContent(
     unlockAppLabel: String
 ) {
     var gateError by remember { mutableStateOf<String?>(null) }
-        LaunchedEffect(state.pendingCloudSyncEvent) {
-            when (val event = state.pendingCloudSyncEvent) {
-                is CloudSyncEvent.Failure -> {
-                    gateError = event.message
-                    viewModel.clearPendingCloudSyncEvent()
-                }
-                else -> Unit
-            }
-        }
-        
+
         // Signing in is optional: the gate is shown until the user either signs in or explicitly
         // chooses local-only use, and that choice is persisted so it is asked once, not per launch.
-        if (!state.cloudAccount.isGoogleAccount && !state.hasChosenOffline) {
+        val isSignInGateVisible = !state.cloudAccount.isGoogleAccount && !state.hasChosenOffline
+
+        // Only consumed while the gate is the thing on screen. MainScreen keys its own effect on
+        // this same event and shows a snackbar, which suspends until the snackbar is dismissed
+        // before clearing — so this effect clearing the event first flipped that key to null,
+        // cancelled the suspended effect, and pulled the snackbar back off screen. Every Failure
+        // the main screen tried to report (a refused sync, a failed sign-out) flashed and vanished.
+        LaunchedEffect(state.pendingCloudSyncEvent, isSignInGateVisible) {
+            val event = state.pendingCloudSyncEvent
+            if (isSignInGateVisible && event is CloudSyncEvent.Failure) {
+                gateError = event.message
+                viewModel.clearPendingCloudSyncEvent()
+            }
+        }
+
+        if (isSignInGateVisible) {
             SignInGate(
                 onGoogleSignInClick = { onGoogleSignInClick(viewModel) },
                 isSigningIn = state.isSigningIn,
