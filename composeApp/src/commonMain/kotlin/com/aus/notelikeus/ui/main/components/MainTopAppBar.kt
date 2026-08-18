@@ -408,8 +408,16 @@ fun MainTopAppBar(
                 )
             }
 
+            // Sort, colours and labels are two rows of chips pinned above the notes -- about a
+            // tenth of the window height, held even while scrolling a long list that nothing is
+            // filtering. They fold away once the list moves and come straight back at the top.
+            //
+            // Never folded away while a filter is on, though: a hidden filter is a list that
+            // silently isn't showing everything, and the chips are the only thing saying so.
             AnimatedVisibility(
-                visible = selectedCount == 0 && !showRecentSearches,
+                visible = selectedCount == 0 &&
+                    !showRecentSearches &&
+                    (!listScrolled || hasActiveFilters),
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
