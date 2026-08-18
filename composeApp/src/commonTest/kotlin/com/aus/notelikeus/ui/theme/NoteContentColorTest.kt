@@ -125,6 +125,34 @@ class NoteContentColorTest {
         assertEquals(custom, noteColorForTheme(custom, isDarkTheme = true))
     }
 
+    /**
+     * The drawer's signature hues are graphics, not text, so WCAG asks 3:1. A single fixed hue
+     * cannot serve both themes: the Tailwind -400 shades these started as sat between 1.46:1 and
+     * 2.72:1 on the light surface and washed the icons out, while reading fine on dark.
+     */
+    @Test
+    fun `every drawer identity colour clears 3 to 1 on the theme it is used with`() {
+        val lightSurfaces = listOf(Color.White, Color(0xFFF0F0F0))
+        val darkSurfaces = listOf(Color(0xFF141C15), Color.Black) // Forest container, OLED
+        val identities = listOf(
+            "Notes" to NavIdentity.Notes,
+            "Archive" to NavIdentity.Archive,
+            "Trash" to NavIdentity.Trash,
+            "Labels" to NavIdentity.Labels,
+            "Settings" to NavIdentity.Settings,
+        )
+        identities.forEach { (name, identity) ->
+            lightSurfaces.forEach { surface ->
+                val ratio = contrast(surface, identity.light)
+                assertTrue(ratio >= 3f, "$name light variant is ${ratio} on $surface")
+            }
+            darkSurfaces.forEach { surface ->
+                val ratio = contrast(surface, identity.dark)
+                assertTrue(ratio >= 3f, "$name dark variant is ${ratio} on $surface")
+            }
+        }
+    }
+
     @Test
     fun `transparent falls back to the caller's colour`() {
         assertEquals(Color.Cyan, Color.Transparent.getContentColor(fallback = Color.Cyan))
