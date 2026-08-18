@@ -2,6 +2,7 @@ package com.aus.notelikeus.ui.theme
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -93,6 +94,35 @@ class NoteContentColorTest {
     fun `a colour outside the palette has no index`() {
         // Imported notes carry arbitrary ARGB; naming one would be guesswork.
         assertEquals(-1, noteColorPaletteIndex(Color(0xFF123456)))
+    }
+
+    /**
+     * Older builds stored the active theme's *background* as a new note's colour, so notes made on
+     * Dark/Midnight/Forest were permanently near-white and notes made on OLED permanently black —
+     * on every device, and unable to follow a later theme change, because noteColorForTheme only
+     * swaps palette entries and passes anything else through.
+     */
+    @Test
+    fun `legacy theme-default colours resolve to no colour on both palettes`() {
+        val backgroundLight = 0xFFF0F0F0.toInt()
+        val trueDarkBlack = 0xFF000000.toInt()
+        listOf(backgroundLight, trueDarkBlack).forEach { legacy ->
+            assertEquals(NO_NOTE_COLOR, noteColorForTheme(legacy, isDarkTheme = true))
+            assertEquals(NO_NOTE_COLOR, noteColorForTheme(legacy, isDarkTheme = false))
+        }
+    }
+
+    @Test
+    fun `a real palette colour still swaps between light and dark`() {
+        // The neutralising above must not swallow genuine choices.
+        assertEquals(NoteBlueDark.toArgb(), noteColorForTheme(NoteBlueLight.toArgb(), isDarkTheme = true))
+        assertEquals(NoteBlueLight.toArgb(), noteColorForTheme(NoteBlueDark.toArgb(), isDarkTheme = false))
+    }
+
+    @Test
+    fun `an unrecognised colour is still passed through untouched`() {
+        val custom = 0xFF123456.toInt()
+        assertEquals(custom, noteColorForTheme(custom, isDarkTheme = true))
     }
 
     @Test
