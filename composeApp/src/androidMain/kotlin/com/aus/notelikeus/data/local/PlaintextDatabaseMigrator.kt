@@ -163,7 +163,18 @@ object PlaintextDatabaseMigrator {
     private fun quarantineDatabaseFiles(context: Context, databaseName: String) {
         val suffix = System.currentTimeMillis()
         var movedAny = false
-        for (name in listOf(databaseName, "$databaseName-shm", "$databaseName-wal")) {
+        // -journal belongs in this list for the same reason the success path deletes it. Left
+        // behind, it is a hot journal for a database that is no longer at that path, sitting beside
+        // the fresh one Room is about to create under the same name -- which SQLite may try to roll
+        // back into a file it never belonged to.
+        for (
+            name in listOf(
+                databaseName,
+                "$databaseName-journal",
+                "$databaseName-shm",
+                "$databaseName-wal"
+            )
+        ) {
             val file = context.getDatabasePath(name)
             if (file.exists()) {
                 if (file.renameTo(File(file.parent, "$name.quarantined-$suffix"))) movedAny = true
