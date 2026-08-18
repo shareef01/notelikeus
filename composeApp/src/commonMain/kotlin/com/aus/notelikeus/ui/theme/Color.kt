@@ -1,5 +1,6 @@
 package com.aus.notelikeus.ui.theme
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
@@ -116,6 +117,27 @@ fun Color.getContentColor(fallback: Color = Color.White): Color {
     val whiteContrast = contrastRatio(background, 1f)
     val darkContrast = contrastRatio(background, NoteContentDark.luminance())
     return if (whiteContrast >= darkContrast) Color.White else NoteContentDark
+}
+
+/**
+ * Signature hue for a drawer destination, in a light and a dark variant.
+ *
+ * A single fixed hue cannot serve both. The drawer used the Tailwind -400 shades, which are meant
+ * for dark backgrounds: on the light theme all five sat between 1.46:1 and 2.72:1 against the
+ * surface, under the 3:1 WCAG asks for non-text graphics, and the icons washed out. The -600/-700
+ * counterparts clear it on light while the -400s stay well clear on dark.
+ */
+data class NavIdentityColor(val light: Color, val dark: Color) {
+    @Composable
+    fun resolve(): Color = if (isNoteColorDarkTheme()) dark else light
+}
+
+object NavIdentity {
+    val Notes = NavIdentityColor(light = Color(0xFF0284C7), dark = Color(0xFF38BDF8))
+    val Archive = NavIdentityColor(light = Color(0xFFB45309), dark = Color(0xFFFBBF24))
+    val Trash = NavIdentityColor(light = Color(0xFFE11D48), dark = Color(0xFFFB7185))
+    val Labels = NavIdentityColor(light = Color(0xFF7C3AED), dark = Color(0xFFA78BFA))
+    val Settings = NavIdentityColor(light = Color(0xFF0D9488), dark = Color(0xFF2DD4BF))
 }
 
 data class NoteColorOption(val light: Color, val dark: Color)
