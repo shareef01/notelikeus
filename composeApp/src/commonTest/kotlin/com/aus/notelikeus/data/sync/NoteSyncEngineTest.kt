@@ -370,6 +370,58 @@ class NoteSyncEngineTest {
         assertFalse(11L in stateStore.restoredIds())
     }
 
+    // ---- reconcileUploads high-water ordering ----
+
+    /**
+     * `highWater` becomes the next run's `since`, and the filter is `timestamp > since`. An edit
+     * saved after the snapshot but before the clock read would carry a timestamp inside that window
+     * *and* be absent from the snapshot, so every later reconcile would skip it — the note would
+     * simply never upload again.
+     *
+     * The property is about ordering, not about the return value, so it can only be observed by
+     * watching when the engine reads the clock. Hence the injected clock and the DAO hook.
+     */
+    @Test
+    fun `reconcile reads the clock before taking the note snapshot`() = runTest {
+        transport = FakeCloudNoteTransport()
+        stateStore = FakeNoteSyncStateStore()
+        noteDao = FakeNoteDao()
+        labelDao = FakeLabelDao()
+
+        var tick = 0L
+        val clockReadsBeforeSnapshot = mutableListOf<Long>()
+        var snapshotTaken = false
+        noteDao.onGetAllNotesForBackup = { snapshotTaken = true }
+
+        engine = NoteSyncEngine(
+            transport = transport,
+            noteDao = noteDao,
+            labelDao = labelDao,
+            syncStateStore = stateStore,
+            uidProvider = { Result.success("uid") },
+            now = {
+                tick += 1000L
+                if (!snapshotTaken) clockReadsBeforeSnapshot += tick
+                tick
+            }
+        )
+        stateStore.setLastMergedUserId("uid")
+
+        assertTrue(engine.reconcileUploads().isSuccess)
+
+        // The high-water mark that was stored has to be one the engine read *before* it looked at
+        // the notes, so the window it closes cannot contain an edit it never saw.
+        assertTrue(
+            clockReadsBeforeSnapshot.isNotEmpty(),
+            "the clock was not read before the snapshot at all"
+        )
+        assertTrue(
+            stateStore.lastReconciledAt() in clockReadsBeforeSnapshot,
+            "markReconciled stored ${stateStore.lastReconciledAt()}, " +
+                "which was not read before the snapshot ($clockReadsBeforeSnapshot)"
+        )
+    }
+
     // ---- deleteNote ----
 
     @Test
