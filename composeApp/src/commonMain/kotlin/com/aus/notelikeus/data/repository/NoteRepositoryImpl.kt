@@ -125,10 +125,34 @@ class NoteRepositoryImpl(
         return noteId
     }
 
+    /**
+     * Updates a note without letting the caller silently clear its sync stamp.
+     *
+     * `serverUpdatedAt` is written by the sync engine, never by the UI, and nothing in the editor
+     * carries it: `EditorState` has no such field, so `buildNoteFromState` produces a Note with it
+     * defaulting to null. Room's @Update rewrites the whole row, so every save from the editor
+     * used to blank the column.
+     *
+     * That is not a cosmetic loss. `NoteSyncEngine.cloudWinsConflict` reads "remote has a server
+     * stamp, local has none" as the cloud holding the only confirmed revision and returns true
+     * outright — so the very next sync overwrote the note the user had just edited with the stale
+     * cloud copy. Editing an already-synced note reverted it, every time.
+     *
+     * A null stamp on an existing row therefore means "the caller does not know", not "clear it".
+     * The sync engine always passes a real value when it means to move the stamp forward.
+     */
     override suspend fun updateNote(note: Note) {
         val noteId = note.id ?: return
         writeTransaction {
-            noteDao.updateNote(note.toNoteEntity())
+            val entity = note.toNoteEntity()
+            val preserved = if (entity.serverUpdatedAt == null) {
+                noteDao.getNoteById(noteId)?.note?.serverUpdatedAt
+            } else {
+                null
+            }
+            noteDao.updateNote(
+                if (preserved != null) entity.copy(serverUpdatedAt = preserved) else entity
+            )
 
             // Handle labels
             noteDao.deleteNoteLabelCrossRefs(noteId)
