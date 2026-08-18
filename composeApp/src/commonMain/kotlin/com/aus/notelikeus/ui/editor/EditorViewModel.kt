@@ -58,6 +58,26 @@ class EditorViewModel(
         savedStateHandle.get<Int>("initialColor")?.takeIf { it != Int.MIN_VALUE }
     private var hasAppliedInitialColor = false
 
+    /**
+     * Which fields the user has authored, tracked per field.
+     *
+     * [loadSettingsAndNote] completes asynchronously — it waits on a settings read first — and
+     * used to finish by *replacing* the whole state, so anything typed while that was in flight
+     * was silently discarded, and the autosave behind it then persisted the blank over what was
+     * already saved. The editor auto-focuses the body of a new note, so typing straight away is
+     * the normal way to use it, not an edge case.
+     *
+     * Per field rather than one flag: the load still has to supply everything the user has *not*
+     * touched, or typing a body into an existing note before it finished loading would blank its
+     * title instead.
+     */
+    private var titleEdited = false
+    private var contentEdited = false
+    private var checklistEdited = false
+    private var colorEdited = false
+    private val userHasEdited: Boolean
+        get() = titleEdited || contentEdited || checklistEdited || colorEdited
+
     init {
         loadNote()
     }
@@ -100,31 +120,46 @@ class EditorViewModel(
             }
 
             if (noteId == null) {
-                // Reset state for new note
-                _state.value = EditorState(
-                    isNoteLoaded = true,
-                    color = initialColor
-                )
+                // Merge, never replace: this runs after the user may already have typed.
+                _state.update { current ->
+                    current.copy(
+                        isNoteLoaded = true,
+                        color = if (colorEdited) current.color else initialColor
+                    )
+                }
             } else {
                 val id = noteId!!
                 repository.getNoteById(id)?.let { note ->
-                    _state.value = EditorState(
-                        id = note.id,
-                        title = note.title,
-                        content = note.content,
-                        contentValue = TextFieldValue(note.content),
-                        color = note.color,
-                        isPinned = note.isPinned,
-                        isArchived = note.isArchived,
-                        isTrashed = note.isTrashed,
-                        reminderTimestamp = note.reminderTimestamp,
-                        labels = note.labels,
-                        allLabels = _state.value.allLabels, // Preserve loaded labels
-                        checklist = note.checklist.sortedWith(compareBy({ it.isChecked }, { it.position })),
-                        timestamp = note.timestamp,
-                        position = note.position,
-                        isNoteLoaded = true,
-                    )
+                    _state.update { current ->
+                        val loaded = EditorState(
+                            id = note.id,
+                            title = note.title,
+                            content = note.content,
+                            contentValue = TextFieldValue(note.content),
+                            color = note.color,
+                            isPinned = note.isPinned,
+                            isArchived = note.isArchived,
+                            isTrashed = note.isTrashed,
+                            reminderTimestamp = note.reminderTimestamp,
+                            labels = note.labels,
+                            allLabels = current.allLabels, // Preserve loaded labels
+                            checklist = note.checklist.sortedWith(compareBy({ it.isChecked }, { it.position })),
+                            timestamp = note.timestamp,
+                            position = note.position,
+                            isNoteLoaded = true,
+                        )
+                        // The stored note still supplies every field the user has not touched, so
+                        // the editor is fully populated either way; it simply cannot overwrite
+                        // what they have already authored.
+                        if (!userHasEdited) loaded else loaded.copy(
+                            title = if (titleEdited) current.title else loaded.title,
+                            content = if (contentEdited) current.content else loaded.content,
+                            contentValue =
+                                if (contentEdited) current.contentValue else loaded.contentValue,
+                            checklist = if (checklistEdited) current.checklist else loaded.checklist,
+                            color = if (colorEdited) current.color else loaded.color
+                        )
+                    }
                 } ?: run {
                     _state.update { it.copy(isNoteLoaded = true, noteNotFound = true) }
                 }
@@ -147,6 +182,7 @@ class EditorViewModel(
     }
 
     fun onTitleChange(title: String) {
+        titleEdited = true
         _state.update { it.copy(title = title) }
         triggerAutosave()
     }
@@ -159,12 +195,14 @@ class EditorViewModel(
         if (result.structureChanged) {
             convertContentToChecklist()
         } else {
+            contentEdited = true
             _state.update { it.copy(contentValue = result.value, content = result.value.text) }
             triggerAutosave()
         }
     }
 
     fun onColorChange(color: Int) {
+        colorEdited = true
         _state.update { it.copy(color = color) }
         triggerAutosave()
     }
@@ -367,6 +405,7 @@ class EditorViewModel(
     }
 
     fun convertContentToChecklist() {
+        checklistEdited = true
         _state.update { currentState ->
             if (currentState.checklist.isNotEmpty()) return@update currentState
             val lines = currentState.content.lines().map { it.trim() }.filter { it.isNotEmpty() }
