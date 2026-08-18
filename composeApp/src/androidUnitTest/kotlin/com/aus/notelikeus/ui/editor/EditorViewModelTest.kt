@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import androidx.compose.ui.text.input.TextFieldValue
@@ -119,6 +120,60 @@ class EditorViewModelTest {
         // Documents why the exit paths must not use this variant: the write is still queued, so
         // anything that cancels viewModelScope now loses it.
         coVerify(exactly = 0) { repository.insertNoteWithResult(any()) }
+    }
+
+    /**
+     * `init { loadNote() }` finishes with `_state.value = EditorState(...)` — a *whole state
+     * replacement*, not a merge — and it gets there through a suspending settings read. Anything
+     * typed before that read completes is therefore overwritten by the blank initial state, and
+     * the autosave that follows persists the blank over whatever was already saved.
+     *
+     * The editor auto-focuses the body for a new note, so typing immediately is the normal way to
+     * use it, not an edge case.
+     */
+    @Test
+    fun `text typed before the initial load completes is not wiped`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        coEvery { repository.getNextNotePosition() } returns 0
+        coEvery { repository.insertNoteWithResult(any()) } returns 1L
+
+        // Created but not yet run: the load is queued behind the dispatcher, exactly as it is
+        // queued behind a DataStore read in the real app.
+        viewModel = createViewModel(SavedStateHandle())
+
+        viewModel.onContentValueChange(TextFieldValue("the note I just wrote"))
+        viewModel.onTitleChange("my title")
+
+        testScheduler.advanceUntilIdle()
+
+        assertEquals("the note I just wrote", viewModel.state.value.content)
+        assertEquals("my title", viewModel.state.value.title)
+    }
+
+    @Test
+    fun `typing before an existing note loads keeps the text and still fills the metadata`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val stored = Note(
+            id = 1L,
+            title = "Stored title",
+            content = "Stored body",
+            timestamp = 0L,
+            color = 7,
+            isPinned = true
+        )
+        coEvery { repository.getNoteById(1L) } returns stored
+
+        viewModel = createViewModel(SavedStateHandle(mapOf("noteId" to 1L)))
+        viewModel.onContentValueChange(TextFieldValue("typed before the load returned"))
+        testScheduler.advanceUntilIdle()
+
+        // The user's text survives...
+        assertEquals("typed before the load returned", viewModel.state.value.content)
+        // ...and the fields they did not touch still come from the stored note, so the editor is
+        // fully populated rather than half-empty.
+        assertEquals("Stored title", viewModel.state.value.title)
+        assertEquals(1L, viewModel.state.value.id)
+        assertTrue(viewModel.state.value.isPinned)
     }
 
     @Test
