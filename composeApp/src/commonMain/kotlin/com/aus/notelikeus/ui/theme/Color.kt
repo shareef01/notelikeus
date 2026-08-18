@@ -132,6 +132,13 @@ val NOTE_COLOR_OPTIONS: List<NoteColorOption> = listOf(
     NoteColorOption(NotePinkLight, NotePinkDark),
 )
 
+/**
+ * The palette index a colour occupies, or -1 when it is not one of the built-in colours.
+ * Matches on either the light or dark variant, since which one is on screen depends on the theme.
+ */
+fun noteColorPaletteIndex(color: Color): Int =
+    NOTE_COLOR_OPTIONS.indexOfFirst { it.light == color || it.dark == color }
+
 fun noteColorsForTheme(isDarkTheme: Boolean): List<Color> =
     NOTE_COLOR_OPTIONS.map { if (isDarkTheme) it.dark else it.light }
 

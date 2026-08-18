@@ -57,6 +57,44 @@ class NoteContentColorTest {
         assertTrue(contrast(midTone, midTone.getContentColor()) >= 4.5f)
     }
 
+    /**
+     * `noteColorName` maps a palette *index* to a spoken name, so reordering NOTE_COLOR_OPTIONS
+     * would silently rename every colour for screen-reader users without breaking a build. This
+     * pins the order that mapping assumes.
+     */
+    @Test
+    fun `palette order matches the names accessibility reads out`() {
+        val expected = listOf(
+            0 to Color.Transparent,
+            1 to NoteRedLight,
+            2 to NoteOrangeLight,
+            3 to NoteYellowLight,
+            4 to NoteGreenLight,
+            5 to NoteTealLight,
+            6 to NoteBlueLight,
+            7 to NotePurpleLight,
+            8 to NotePinkLight,
+        )
+        assertEquals(expected.size, NOTE_COLOR_OPTIONS.size)
+        expected.forEach { (index, color) ->
+            assertEquals(index, noteColorPaletteIndex(color), "light variant at index $index")
+        }
+        // The dark variants have to resolve to the same index: which one is on screen depends on
+        // the active theme, and the name must not change with it.
+        listOf(
+            1 to NoteRedDark, 2 to NoteOrangeDark, 3 to NoteYellowDark, 4 to NoteGreenDark,
+            5 to NoteTealDark, 6 to NoteBlueDark, 7 to NotePurpleDark, 8 to NotePinkDark,
+        ).forEach { (index, color) ->
+            assertEquals(index, noteColorPaletteIndex(color), "dark variant at index $index")
+        }
+    }
+
+    @Test
+    fun `a colour outside the palette has no index`() {
+        // Imported notes carry arbitrary ARGB; naming one would be guesswork.
+        assertEquals(-1, noteColorPaletteIndex(Color(0xFF123456)))
+    }
+
     @Test
     fun `transparent falls back to the caller's colour`() {
         assertEquals(Color.Cyan, Color.Transparent.getContentColor(fallback = Color.Cyan))

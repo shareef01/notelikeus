@@ -135,6 +135,9 @@
     <string name="cloud_download_success">%1$d notes restored from cloud</string>
     <string name="cloud_restore">Restore from cloud</string>
     <string name="cloud_restore_subtitle">Download notes stored in Firebase</string>
+    <string name="cloud_restore_confirm_title">Restore from cloud?</string>
+    <string name="cloud_restore_confirm_message">This merges the notes in your cloud account into this device. Where the same note differs, the more recently synced version wins. Notes this device has already synced, and that are no longer in the cloud, are removed here too.</string>
+    <string name="cloud_restore_confirm_action">Restore</string>
     <string name="cloud_sync_failed">Cloud sync failed</string>
     <string name="cloud_status_checking">…</string>
     <string name="cloud_status_ready">Ready</string>
@@ -189,6 +192,14 @@
     <string name="labels_more">+%1$d</string>
     <string name="selected_color">Selected color</string>
     <string name="cd_color_swatch">Note color</string>
+    <string name="color_name_red">Red</string>
+    <string name="color_name_orange">Orange</string>
+    <string name="color_name_yellow">Yellow</string>
+    <string name="color_name_green">Green</string>
+    <string name="color_name_teal">Teal</string>
+    <string name="color_name_blue">Blue</string>
+    <string name="color_name_purple">Purple</string>
+    <string name="color_name_pink">Pink</string>
 
     <!-- Widget -->
     <string name="widget_name">Notelikeus widget</string>
