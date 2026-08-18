@@ -79,14 +79,43 @@ val NoteBlueLight = Color(0xFFBBDEFB)
 val NotePurpleLight = Color(0xFFE1BEE7)
 val NotePinkLight = Color(0xFFF8BBD0)
 
+/** Near-black note foreground. Not pure black: softer against pastel note colours. */
+val NoteContentDark = Color(0xFF121212)
+
 /**
- * Dynamic Text Contrast Utility
- * Light backgrounds -> Dark Gray (#121212)
- * Dark backgrounds -> Pure White (#FFFFFF)
+ * WCAG contrast ratio between two relative luminances.
+ *
+ * `Color.luminance()` already returns WCAG relative luminance (it applies the sRGB transfer
+ * function), so these compose directly into the standard (L+0.05) ratio.
+ */
+private fun contrastRatio(a: Float, b: Float): Float {
+    val lighter = maxOf(a, b)
+    val darker = minOf(a, b)
+    return (lighter + 0.05f) / (darker + 0.05f)
+}
+
+/**
+ * Picks whichever foreground actually reads better on this background, by measuring both.
+ *
+ * This used to be `luminance() > 0.45f`, which is not where the two candidates cross over: white
+ * and [NoteContentDark] tie at a luminance of about **0.19**, so every background between 0.19 and
+ * 0.45 was given white text when near-black was the more legible choice — and the gap is not
+ * cosmetic. A mid-tone background at 0.40 reads at about 2.3:1 in white (below WCAG AA's 4.5:1)
+ * against roughly 8:1 in near-black.
+ *
+ * The nine built-in note colours are polarised — the dark set sits at or below 0.11, the light set
+ * at or above 0.58 — so none of them fell in that band and none of them change appearance here.
+ * What reaches it is arbitrary colour: `color` is a plain ARGB int in the backup format and in the
+ * Firestore document, so an imported note, or one written by a future client with a different
+ * palette, can carry any value at all. Measuring rather than thresholding means those get a
+ * readable foreground instead of an accidental one.
  */
 fun Color.getContentColor(fallback: Color = Color.White): Color {
     if (this == Color.Transparent) return fallback
-    return if (this.luminance() > 0.45f) Color(0xFF121212) else Color.White
+    val background = luminance()
+    val whiteContrast = contrastRatio(background, 1f)
+    val darkContrast = contrastRatio(background, NoteContentDark.luminance())
+    return if (whiteContrast >= darkContrast) Color.White else NoteContentDark
 }
 
 data class NoteColorOption(val light: Color, val dark: Color)

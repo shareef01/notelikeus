@@ -2,6 +2,7 @@ package com.aus.notelikeus
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
@@ -15,16 +16,22 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import com.aus.notelikeus.data.local.DatabaseRecoveryNotice
+import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.platform.ForegroundActivityTracker
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.ui.navigation.extractEditorNoteId
 import com.aus.notelikeus.ui.navigation.intentRequestsNewNote
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 
 class MainActivity : FragmentActivity() {
 
     private val googleSignInHelper: GoogleSignInHelper by inject()
+    private val settingsRepository: SettingsRepository by inject()
     private var pendingNoteId by mutableStateOf<Long?>(null)
     private var pendingCreateNote by mutableStateOf(false)
     private var navigationRequest by mutableStateOf(0L)
@@ -40,6 +47,7 @@ class MainActivity : FragmentActivity() {
         // Credential Manager needs an Activity to host its sign-in sheet; the helper is a
         // process-scoped singleton, so it looks the Activity up through this tracker.
         ForegroundActivityTracker.register(this)
+        applySecureFlagWhileAppLockEnabled()
         
         setContent {
             val windowSizeClass = calculateWindowSizeClass(this)
@@ -92,6 +100,33 @@ class MainActivity : FragmentActivity() {
                         text = { Text(stringResource(R.string.db_recovery_message)) }
                     )
                 }
+            }
+        }
+    }
+
+    /**
+     * Mirrors the App Lock setting onto FLAG_SECURE.
+     *
+     * App Lock gates the UI behind BiometricPrompt, but without this the note list is still
+     * readable from the recents switcher and still screenshottable — the lock is bypassed by
+     * pressing the recents key, which is not much of a lock for a notes app. FLAG_SECURE blanks
+     * the recents thumbnail and blocks capture.
+     *
+     * Tied to the setting rather than set unconditionally: it also blocks screen recording and
+     * casting, which is a real cost to impose on someone who never asked to lock the app.
+     */
+    private fun applySecureFlagWhileAppLockEnabled() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                settingsRepository.isAppLockEnabled
+                    .distinctUntilChanged()
+                    .collect { locked ->
+                        if (locked) {
+                            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        }
+                    }
             }
         }
     }
