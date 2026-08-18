@@ -118,12 +118,19 @@ class NoteSyncEngine(
             if (syncStateStore.lastMergedUserId() != uid) {
                 return@runCatching 0
             }
+            // Both marks are taken before anything is read, and the ordering matters. `highWater`
+            // becomes the next run's `since`, and the filter below is `timestamp > since` — so an
+            // edit saved after the snapshot but before this call would carry a timestamp <=
+            // highWater *and* be absent from that snapshot, and every future reconcile would skip
+            // it. Reading the clock early only risks re-examining a note that was already pushed,
+            // which costs one comparison; reading it late silently drops the edit.
+            val since = syncStateStore.lastReconciledAt()
+            val highWater = DateUtils.currentTimeMillis()
+
             mergeCloudTombstones(uid)
             val localNotes = noteDao.getAllNotesForBackup().map { it.toNote() }
             purgeLocalTombstonedNotes(localNotes)
 
-            val since = syncStateStore.lastReconciledAt()
-            val highWater = DateUtils.currentTimeMillis()
             val changed = localNotes.filter { note ->
                 val id = note.id ?: return@filter false
                 note.timestamp > since && !syncStateStore.isDeleted(id)
