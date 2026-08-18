@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.ui.components.NoteColorSwatch
+import com.aus.notelikeus.ui.theme.noteColorName
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
@@ -170,7 +171,8 @@ fun FilterRow(
                                 onColorSelect(if (selectedColor == colorArgb) null else colorArgb)
                             },
                             touchSize = 36.dp,
-                            swatchSize = 26.dp
+                            swatchSize = 26.dp,
+                            contentDescription = noteColorName(color)
                         )
                     }
                 }

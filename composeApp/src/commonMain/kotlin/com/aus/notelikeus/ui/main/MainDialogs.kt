@@ -17,19 +17,22 @@ import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * The three confirmation dialogs the main screen can show: cloud sign-out (with the
- * delete-cloud-data escalation), empty trash, and delete/trash selection. Extracted from
- * MainScreen; that screen owns the visibility flags and passes callbacks.
+ * The confirmation dialogs the main screen can show: cloud sign-out (with the
+ * delete-cloud-data escalation), cloud restore, empty trash, and delete/trash selection.
+ * Extracted from MainScreen; that screen owns the visibility flags and passes callbacks.
  */
 @Composable
 internal fun MainDialogs(
     showCloudSignOutConfirm: Boolean,
+    showCloudRestoreConfirm: Boolean,
     showEmptyTrashConfirm: Boolean,
     showDeleteConfirm: Boolean,
     selectedCount: Int,
     isTrashedFilter: Boolean,
     onCloudSignOutConfirmDismiss: () -> Unit,
     onCloudSignOut: (deleteCloudData: Boolean) -> Unit,
+    onCloudRestoreConfirmDismiss: () -> Unit,
+    onConfirmCloudRestore: () -> Unit,
     onEmptyTrashConfirmDismiss: () -> Unit,
     onConfirmEmptyTrash: () -> Unit,
     onDeleteConfirmDismiss: () -> Unit,
@@ -64,6 +67,29 @@ internal fun MainDialogs(
             },
             dismissButton = {
                 TextButton(onClick = onCloudSignOutConfirmDismiss) {
+                    Text(stringResource(Res.string.action_cancel))
+                }
+            }
+        )
+    }
+
+    // Restore is a merge, not a download, and it can remove notes: a note this device has
+    // already synced that is now absent from the cloud is treated as deleted elsewhere and
+    // deleted here too. That is correct behaviour, but it is not what "Restore from cloud"
+    // sounds like, and it used to run on a single unconfirmed tap.
+    if (showCloudRestoreConfirm) {
+        AlertDialog(
+            onDismissRequest = onCloudRestoreConfirmDismiss,
+            shape = MaterialTheme.shapes.large,
+            title = { Text(stringResource(Res.string.cloud_restore_confirm_title)) },
+            text = { Text(stringResource(Res.string.cloud_restore_confirm_message)) },
+            confirmButton = {
+                TextButton(onClick = onConfirmCloudRestore) {
+                    Text(stringResource(Res.string.cloud_restore_confirm_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onCloudRestoreConfirmDismiss) {
                     Text(stringResource(Res.string.action_cancel))
                 }
             }
