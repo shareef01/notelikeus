@@ -7,6 +7,8 @@ import com.aus.notelikeus.data.local.dao.NoteDao
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.domain.platform.PlatformWidgetManager
 import com.aus.notelikeus.domain.platform.SyncCoordinator
+import com.aus.notelikeus.data.local.model.NoteWithLabels
+import com.aus.notelikeus.data.mapper.toNoteEntity
 import com.aus.notelikeus.domain.model.Note
 import kotlinx.coroutines.Dispatchers
 import io.mockk.*
@@ -19,6 +21,10 @@ import org.junit.Before
 import org.junit.Test
 
 class NoteRepositoryImplTest {
+
+private fun Note.toNoteWithLabels(): NoteWithLabels =
+    NoteWithLabels(note = toNoteEntity(), labels = emptyList(), checklist = emptyList())
+
 
     private lateinit var repository: NoteRepositoryImpl
     private lateinit var database: NotelikeusDatabase
@@ -54,6 +60,37 @@ class NoteRepositoryImplTest {
         }
 
         repository = NoteRepositoryImpl(database, noteDao, labelDao, reminderManager, widgetManager, syncCoordinator, Dispatchers.Unconfined)
+    }
+
+    /**
+     * The editor has no `serverUpdatedAt` — `EditorState` does not carry one — so every save from
+     * it builds a Note whose stamp is null, and Room's @Update rewrites the whole row. Blanking
+     * that column made `cloudWinsConflict` read the cloud as holding the only confirmed revision,
+     * so the next sync replaced the note the user had just edited with the stale cloud copy.
+     */
+    @Test
+    fun `updateNote keeps the existing server stamp when the caller has none`() = runTest {
+        val stored = Note(id = 1L, title = "Stored", content = "body", timestamp = 1L, color = 0)
+            .copy(serverUpdatedAt = 999L)
+        coEvery { noteDao.getNoteById(1L) } returns stored.toNoteWithLabels()
+
+        repository.updateNote(
+            Note(id = 1L, title = "Edited", content = "new body", timestamp = 2L, color = 0)
+        )
+
+        coVerify { noteDao.updateNote(match { it.serverUpdatedAt == 999L && it.title == "Edited" }) }
+    }
+
+    @Test
+    fun `updateNote lets the sync engine move the server stamp forward`() = runTest {
+        repository.updateNote(
+            Note(id = 1L, title = "FromCloud", content = "c", timestamp = 2L, color = 0)
+                .copy(serverUpdatedAt = 4242L)
+        )
+
+        // A caller that supplies a stamp owns it; the stored value must not be read back over it.
+        coVerify { noteDao.updateNote(match { it.serverUpdatedAt == 4242L }) }
+        coVerify(exactly = 0) { noteDao.getNoteById(any()) }
     }
 
     @Test
