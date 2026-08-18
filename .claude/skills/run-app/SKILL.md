@@ -35,6 +35,22 @@ Two bugs were only ever visible on a first run, because every real install is
 already signed in. If you are verifying startup behaviour, do it against an
 empty directory.
 
+**Exporting `APPDATA` does nothing if a Gradle daemon is already warm.**
+`DesktopPathProvider` reads `System.getenv("APPDATA")`, and `:composeApp:run`
+forks the app from the *daemon*, which inherits the environment it was started
+with, not the one you just exported. A daemon left over from an earlier
+`./gradlew test` silently wins, and you get the real signed-in app holding the
+real notes while believing you are on a throwaway directory. Stop it first:
+
+```bash
+./gradlew --stop
+export APPDATA="C:\\Users\\LENOVO\\AppData\\Local\\Temp\\nk-demo-appdata"
+./gradlew :composeApp:run
+```
+
+Check before doing anything destructive: a throwaway run opens on the sign-in
+gate, the real one shows the signed-in account in the bottom-left rail.
+
 ### Seeding demo notes
 
 The desktop database is **plain SQLite** (no SQLCipher — that is Android only),
@@ -59,6 +75,12 @@ occlusion.
 
 Call `SetProcessDPIAware()` first, or `GetWindowRect` returns a rect that does
 not match what is on screen and the capture is cropped.
+
+**The window often launches minimized.** `GetWindowRect` then returns an
+off-screen rect (around `-25600`), and `PrintWindow` happily writes a ~199x34
+image of nothing instead of failing. Check `IsIconic` and call
+`ShowWindow(h, 9)` before capturing, and treat an implausibly small rect as an
+error rather than saving it.
 
 `Add-Type -PassThru` returns an **array** when the definition declares a struct
 alongside methods. Select the class:
