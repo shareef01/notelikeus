@@ -54,6 +54,17 @@ val SurfaceForest = Color(0xFF0F1610)
 val SurfaceVariantForest = Color(0xFF182119)
 val OutlineForest = Color(0xFF2A382C)
 
+/**
+ * Accent primaries for the light theme.
+ *
+ * The dark themes already had their accents — Midnight's and Forest's tinted `primary` — but
+ * light had only the neutral near-black, so "green accent on light" had no colour to use. Both
+ * clear 4.5:1 against `SurfaceLight` (#FFFFFF), which is what `primary` is read against when it
+ * tints text and icons: blue 6.7:1, green 6.4:1.
+ */
+val AccentBlueLight = Color(0xFF0B57D0)
+val AccentGreenLight = Color(0xFF1B6B2E)
+
 // Nav accents (match web SideDrawer: sky / amber / rose / violet / teal)
 // The per-destination drawer accents (sky/amber/rose/violet/teal) were removed: five saturated
 // hues in one column read as unrelated icon sets and left selection with no colour of its own.

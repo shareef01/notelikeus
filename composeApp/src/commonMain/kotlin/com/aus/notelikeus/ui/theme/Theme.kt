@@ -7,7 +7,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import com.aus.notelikeus.domain.model.AppTheme
+import com.aus.notelikeus.domain.model.AccentColor
+import com.aus.notelikeus.domain.model.ThemeBase
+import com.aus.notelikeus.domain.model.ThemePreference
 
 private val DarkColorScheme = darkColorScheme(
     primary = PrimaryDark,
@@ -135,28 +137,75 @@ private val LightColorScheme = lightColorScheme(
 )
 
 /**
- * The colour scheme a given preference resolves to.
+ * Pure black variant of a dark scheme, keeping its hue.
  *
- * Split out of [NotelikeusTheme] so it can be enumerated outside a composition — the contrast
- * test sweeps every scheme the app can render, and reading them through the composable would mean
+ * AMOLED used to be a whole third dark scheme (`TRUE_DARK`), which is why Midnight and Forest
+ * could never be AMOLED — there was one black level per named theme and no way to combine them.
+ * Only the surface family drops to black; `primary`, the containers and the outlines keep the
+ * accent's tint, so a green AMOLED theme still reads as green rather than as plain black.
+ */
+private fun ColorScheme.asAmoled(): ColorScheme = copy(
+    background = Color.Black,
+    surface = Color.Black,
+    surfaceContainerLowest = Color.Black,
+    surfaceContainerLow = Color(0xFF0A0A0A),
+    surfaceContainer = Color(0xFF141414),
+    surfaceContainerHigh = Color(0xFF1E1E1E),
+    surfaceContainerHighest = Color(0xFF282828)
+)
+
+private val MidnightAmoledColorScheme = MidnightColorScheme.asAmoled()
+private val ForestAmoledColorScheme = ForestColorScheme.asAmoled()
+
+private fun lightSchemeFor(accent: AccentColor): ColorScheme = when (accent) {
+    AccentColor.NEUTRAL -> LightColorScheme
+    AccentColor.BLUE -> LightColorScheme.copy(
+        primary = AccentBlueLight,
+        primaryContainer = AccentBlueLight.copy(alpha = 0.1f),
+        onPrimaryContainer = AccentBlueLight
+    )
+    AccentColor.GREEN -> LightColorScheme.copy(
+        primary = AccentGreenLight,
+        primaryContainer = AccentGreenLight.copy(alpha = 0.1f),
+        onPrimaryContainer = AccentGreenLight
+    )
+}
+
+private fun darkSchemeFor(accent: AccentColor, amoled: Boolean): ColorScheme = when (accent) {
+    AccentColor.NEUTRAL -> if (amoled) TrueDarkColorScheme else DarkColorScheme
+    AccentColor.BLUE -> if (amoled) MidnightAmoledColorScheme else MidnightColorScheme
+    AccentColor.GREEN -> if (amoled) ForestAmoledColorScheme else ForestColorScheme
+}
+
+/**
+ * The colour scheme a [ThemePreference] resolves to.
+ *
+ * Split out of [NotelikeusTheme] so it can be enumerated outside a composition — the contrast test
+ * sweeps every combination the app can render, and reading them through the composable would mean
  * the test asserted against a list it maintained itself, free to drift from this one.
  */
-internal fun colorSchemeFor(appTheme: AppTheme, darkTheme: Boolean): ColorScheme = when (appTheme) {
-    AppTheme.LIGHT -> LightColorScheme
-    AppTheme.DARK -> DarkColorScheme
-    AppTheme.TRUE_DARK -> TrueDarkColorScheme
-    AppTheme.MIDNIGHT -> MidnightColorScheme
-    AppTheme.FOREST -> ForestColorScheme
-    AppTheme.AUTO -> if (darkTheme) DarkColorScheme else LightColorScheme
+internal fun colorSchemeFor(preference: ThemePreference, systemDark: Boolean): ColorScheme {
+    val dark = when (preference.base) {
+        ThemeBase.LIGHT -> false
+        ThemeBase.DARK -> true
+        ThemeBase.SYSTEM -> systemDark
+    }
+    return if (dark) {
+        darkSchemeFor(preference.accent, preference.amoled)
+    } else {
+        // AMOLED is a black level for dark schemes and has no meaning on light, so it is ignored
+        // rather than producing a fourth light variant nobody asked for.
+        lightSchemeFor(preference.accent)
+    }
 }
 
 @Composable
 fun NotelikeusTheme(
-    appTheme: AppTheme = AppTheme.AUTO,
+    preference: ThemePreference = ThemePreference(),
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val colorScheme = colorSchemeFor(appTheme, darkTheme)
+    val colorScheme = colorSchemeFor(preference, darkTheme)
 
     MaterialTheme(
         colorScheme = colorScheme,
