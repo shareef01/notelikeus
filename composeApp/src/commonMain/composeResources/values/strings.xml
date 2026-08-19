@@ -258,6 +258,13 @@
     <string name="recent_searches">Recent searches</string>
     <string name="select_note_to_view">Select a note to view</string>
     <string name="select_note_to_view_subtitle">Choose a note from the list to edit it here</string>
+    <string name="theme_base_label">Theme</string>
+    <string name="accent_label">Accent</string>
+    <string name="accent_neutral">Neutral</string>
+    <string name="accent_blue">Blue</string>
+    <string name="accent_green">Green</string>
+    <string name="amoled_title">Pure black</string>
+    <string name="amoled_subtitle">True black backgrounds on dark themes. Saves power on OLED screens.</string>
     <string name="theme_auto">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>

@@ -432,7 +432,7 @@ fun MainScreen(
             noteCount = state.totalNoteCount,
             viewMode = state.viewMode,
             sortOrder = state.sortOrder,
-            appTheme = state.appTheme,
+            themePreference = state.themePreference,
             isAppLockEnabled = isAppLockEnabled,
             cloudSyncStatus = state.cloudSyncStatus,
             cloudSyncedNoteCount = state.cloudSyncedNoteCount,
@@ -441,7 +441,9 @@ fun MainScreen(
             signInError = profileSignInError,
             onViewModeChange = { viewModel.setViewMode(it) },
             onSortOrderChange = { viewModel.setSortOrder(it) },
-            onAppThemeChange = { viewModel.setAppTheme(it) },
+            onThemeBaseChange = { viewModel.setThemeBase(it) },
+            onAccentChange = { viewModel.setAccentColor(it) },
+            onAmoledChange = { viewModel.setAmoled(it) },
             onAppLockChange = { enabled ->
                 if (enabled) {
                     onRequestAppUnlock {
