@@ -67,14 +67,7 @@ class FirestoreNoteTransport(
     }
 
     override suspend fun deleteNotes(uid: String, noteIds: List<Long>) {
-        val collection = userNotesCollection(uid)
-        noteIds.chunked(BATCH_LIMIT).forEach { chunk ->
-            val batch = firestore.batch()
-            chunk.forEach { noteId ->
-                batch.delete(collection.document(noteId.toString()))
-            }
-            batch.commit().await()
-        }
+        deleteDocuments(userNotesCollection(uid), noteIds)
     }
 
     override suspend fun fetchTombstones(uid: String): Map<Long, Long> {
@@ -94,32 +87,17 @@ class FirestoreNoteTransport(
     }
 
     override suspend fun deleteTombstones(uid: String, noteIds: List<Long>) {
-        val collection = userTombstonesCollection(uid)
-        noteIds.chunked(BATCH_LIMIT).forEach { chunk ->
-            val batch = firestore.batch()
-            chunk.forEach { noteId ->
-                batch.delete(collection.document(noteId.toString()))
-            }
-            batch.commit().await()
-        }
+        deleteDocuments(userTombstonesCollection(uid), noteIds)
     }
 
     override suspend fun writeSyncMeta(uid: String, noteCount: Int, platform: String) {
-        firestore.collection("users")
-            .document(uid)
-            .collection("_meta")
-            .document("sync")
+        syncMetaDocument(uid)
             .set(syncMetaMap(noteCount, platform), SetOptions.merge())
             .await()
     }
 
     override suspend fun deleteSyncMeta(uid: String) {
-        firestore.collection("users")
-            .document(uid)
-            .collection("_meta")
-            .document("sync")
-            .delete()
-            .await()
+        syncMetaDocument(uid).delete().await()
     }
 
     // ---- private helpers ----
@@ -131,6 +109,22 @@ class FirestoreNoteTransport(
     private fun userTombstonesCollection(uid: String) = firestore.collection("users")
         .document(uid)
         .collection("tombstones")
+
+    private fun syncMetaDocument(uid: String) = firestore.collection("users")
+        .document(uid)
+        .collection("_meta")
+        .document("sync")
+
+    /** Deletes the documents named by [ids] from [collection], one committed batch per chunk. */
+    private suspend fun deleteDocuments(collection: CollectionReference, ids: List<Long>) {
+        ids.chunked(BATCH_LIMIT).forEach { chunk ->
+            val batch = firestore.batch()
+            chunk.forEach { id ->
+                batch.delete(collection.document(id.toString()))
+            }
+            batch.commit().await()
+        }
+    }
 
     /**
      * Reads back the server-assigned `serverUpdatedAt` for [noteIds].
