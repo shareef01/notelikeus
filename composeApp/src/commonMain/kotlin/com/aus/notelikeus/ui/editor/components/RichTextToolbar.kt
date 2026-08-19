@@ -15,6 +15,9 @@ import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.ui.theme.NoteEmphasis
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.theme.Elevation
 
 @Composable
 fun RichTextToolbar(
@@ -35,17 +38,17 @@ fun RichTextToolbar(
         modifier = modifier,
         shape = CircleShape,
         color = surfaceColor,
-        tonalElevation = if (isTransparent) 0.dp else 1.dp,
-        shadowElevation = if (isTransparent) 0.dp else 2.dp,
+        tonalElevation = if (isTransparent) Elevation.none else Elevation.raised,
+        shadowElevation = if (isTransparent) Elevation.none else Elevation.card,
         border = androidx.compose.foundation.BorderStroke(
-            1.dp,
+            Spacing.hairline,
             contentColor.copy(alpha = NoteEmphasis.Decorative)
         )
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
             IconButton(onClick = onBoldClick) {
                 Icon(Icons.Default.FormatBold, contentDescription = stringResource(Res.string.format_bold), tint = contentColor)
@@ -57,7 +60,7 @@ fun RichTextToolbar(
                 Icon(Icons.Default.Link, contentDescription = stringResource(Res.string.format_link), tint = contentColor)
             }
             VerticalDivider(
-                modifier = Modifier.height(24.dp).padding(horizontal = 4.dp),
+                modifier = Modifier.height(Size.iconLarge).padding(horizontal = Spacing.xs),
                 color = contentColor.copy(alpha = NoteEmphasis.Decorative)
             )
             IconButton(onClick = onListClick) {

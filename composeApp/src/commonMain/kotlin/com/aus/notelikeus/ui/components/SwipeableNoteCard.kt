@@ -34,6 +34,8 @@ import com.aus.notelikeus.ui.theme.SwipeArchiveLight
 import com.aus.notelikeus.ui.theme.SwipeDeleteDark
 import com.aus.notelikeus.ui.theme.SwipeDeleteLight
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -126,7 +128,7 @@ fun SwipeableNoteCard(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(color, MaterialTheme.shapes.large)
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = Spacing.lg),
                     contentAlignment = when (swipeSide) {
                         SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
                         SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
@@ -151,7 +153,7 @@ fun SwipeableNoteCard(
                                 deleteIconTint.copy(alpha = reveal)
                             },
                             modifier = Modifier
-                                .size(24.dp)
+                                .size(Size.iconLarge)
                                 .scale(iconScale)
                         )
                     }
