@@ -83,6 +83,7 @@ import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.ui.main.NoteFilter
 import com.aus.notelikeus.ui.theme.Chrome
+import com.aus.notelikeus.ui.components.AppFilterChip
 
 private val TopBarRowHeight = 56.dp
 
@@ -480,7 +481,7 @@ private fun RecentSearchRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(searches) { query ->
-                PrecisionFilterChip(
+                AppFilterChip(
                     selected = false,
                     onClick = { onSearchClick(query) },
                     label = query,
