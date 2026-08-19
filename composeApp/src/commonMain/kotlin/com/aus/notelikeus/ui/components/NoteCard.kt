@@ -58,8 +58,12 @@ import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.util.DateUtils
 import com.aus.notelikeus.ui.theme.AppType
 import com.aus.notelikeus.ui.theme.NoteEmphasis
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.theme.Elevation
+import com.aus.notelikeus.ui.theme.Radius
 
-private val NoteCardContentPadding = 20.dp
+private val NoteCardContentPadding = Spacing.xl
 
 /** Compact uppercase label pill, matching the web card's chip typography. */
 private val NoteCardLabelChipStyle = TextStyle(
@@ -120,9 +124,9 @@ fun NoteCard(
 
     val elevation by animateDpAsState(
         targetValue = when {
-            isSelected -> 2.dp
+            isSelected -> Spacing.xxs
             isHovered -> 6.dp
-            else -> 0.dp
+            else -> Spacing.none
         },
         label = "elevation"
     )
@@ -138,7 +142,7 @@ fun NoteCard(
     )
 
     val hairlineBorder = BorderStroke(
-        1.dp,
+        Spacing.hairline,
         // Web default-color cards use border-brand-outline/40.
         MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
     )
@@ -176,7 +180,7 @@ fun NoteCard(
     }
     val reorderLabel = stringResource(Res.string.cd_reorder)
     val contentStartPadding = if (showReorderHandle) {
-        48.dp
+        Size.touchTarget
     } else {
         NoteCardContentPadding
     }
@@ -197,7 +201,7 @@ fun NoteCard(
                 } else Modifier
             )
             */
-            .clip(RoundedCornerShape(18.dp)) // Web cards use rounded-note = 18px corners
+            .clip(RoundedCornerShape(Radius.lg)) // Web cards use rounded-note = 18px corners
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -205,14 +209,14 @@ fun NoteCard(
                 onLongClick = onLongClick
             )
             .hoverable(interactionSource),
-        shape = RoundedCornerShape(18.dp), // Web cards use rounded-note = 18px corners
+        shape = RoundedCornerShape(Radius.lg), // Web cards use rounded-note = 18px corners
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
             contentColor = contentColor
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = elevation),
         border = when {
-            isSelected -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+            isSelected -> BorderStroke(Spacing.xxs, MaterialTheme.colorScheme.primary)
             displayColorArgb == 0 -> hairlineBorder
             else -> null
         }
@@ -222,7 +226,7 @@ fun NoteCard(
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .size(48.dp)
+                        .size(Size.touchTarget)
                         .semantics { contentDescription = reorderLabel }
                         .then(reorderDragModifier),
                     contentAlignment = Alignment.Center
@@ -231,7 +235,7 @@ fun NoteCard(
                         imageVector = Icons.Default.DragIndicator,
                         contentDescription = null,
                         tint = contentColor.copy(alpha = NoteEmphasis.Icon),
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(Size.icon)
                     )
                 }
             }
@@ -321,7 +325,7 @@ fun NoteCard(
                                                     Modifier.clickable { onLabelClick.invoke(labelId) }
                                                 } else Modifier
                                             )
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            .padding(horizontal = 6.dp, vertical = Spacing.xxs)
                                     )
                                 }
                                 val overflowCount = note.labels.size - 3
@@ -335,24 +339,24 @@ fun NoteCard(
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(Spacing.md))
                     Column(
                         horizontalAlignment = Alignment.End,
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         if (isSelected) {
                             Surface(
-                                modifier = Modifier.size(24.dp),
+                                modifier = Modifier.size(Size.iconLarge),
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.primary,
-                                shadowElevation = 0.dp
+                                shadowElevation = Elevation.none
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         Icons.Default.Check,
                                         contentDescription = selectedLabel,
                                         tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(Size.iconTiny)
                                     )
                                 }
                             }
@@ -396,16 +400,16 @@ fun NoteCard(
                     }
                     .padding(
                     start = contentStartPadding,
-                    top = if (compact) 16.dp else NoteCardContentPadding,
-                    end = if (compact) 16.dp else NoteCardContentPadding,
-                    bottom = if (compact) 16.dp else NoteCardContentPadding
+                    top = if (compact) Spacing.lg else NoteCardContentPadding,
+                    end = if (compact) Spacing.lg else NoteCardContentPadding,
+                    bottom = if (compact) Spacing.lg else NoteCardContentPadding
                 )
             ) {
                 // Title row: title on the left, status/selection + timestamp on the right,
                 // matching the web card's header block.
                 Row(
                     verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
                     Text(
                         text = buildHighlightedString(
@@ -425,21 +429,21 @@ fun NoteCard(
                     )
                     Column(
                         horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
                     ) {
                         if (isSelected) {
                             Surface(
-                                modifier = Modifier.size(24.dp),
+                                modifier = Modifier.size(Size.iconLarge),
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.primary,
-                                shadowElevation = 0.dp
+                                shadowElevation = Elevation.none
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         Icons.Default.Check,
                                         contentDescription = selectedLabel,
                                         tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(Size.iconTiny)
                                     )
                                 }
                             }
@@ -476,7 +480,7 @@ fun NoteCard(
                     }
                 }
                 if (note.content.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(if (compact) 8.dp else 12.dp))
+                    Spacer(modifier = Modifier.height(if (compact) Spacing.sm else Spacing.md))
                     Text(
                         text = RichTextParser.parse(
                             text = note.content,
@@ -505,7 +509,7 @@ fun NoteCard(
                 }
 
                 if (!compact && note.checklist.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(Spacing.sm))
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         note.checklist.take(3).forEach { item ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -514,7 +518,7 @@ fun NoteCard(
                                     contentDescription = stringResource(
                                         if (item.isChecked) Res.string.cd_checked else Res.string.cd_unchecked
                                     ),
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(Size.iconTiny),
                                     tint = contentColor.copy(alpha = NoteEmphasis.Icon)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -539,7 +543,7 @@ fun NoteCard(
                     }
                     val remainingChecklistCount = note.checklist.size - 3
                     if (remainingChecklistCount > 0) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(Spacing.xs))
                         Text(
                             text = stringResource(Res.string.labels_more, remainingChecklistCount),
                             style = MaterialTheme.typography.labelSmall,
@@ -575,7 +579,7 @@ fun NoteCard(
                                             Modifier.clickable { onLabelClick.invoke(labelId) }
                                         } else Modifier
                                     )
-                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    .padding(horizontal = Spacing.sm, vertical = 3.dp)
                             )
                         }
                         val overflowCount = note.labels.size - 2

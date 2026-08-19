@@ -47,6 +47,9 @@ import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.util.AppConfig
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.theme.Elevation
 
 /** The three web-equivalent view options shown as an icon-only segmented control on desktop. */
 private data class ViewModeSegment(
@@ -81,16 +84,16 @@ fun ViewModeMenu(
         // selected = solid inverted pill, matching web's ViewModeToggle.
         Row(
             modifier = modifier
-                .height(36.dp)
+                .height(Size.controlHeight)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
                 .border(
-                    width = 1.dp,
+                    width = Spacing.hairline,
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                     shape = CircleShape
                 )
-                .padding(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                .padding(Spacing.xxs),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xxs),
             verticalAlignment = Alignment.CenterVertically
         ) {
             webViewModeSegments.forEach { segment ->
@@ -98,7 +101,7 @@ fun ViewModeMenu(
                 val segmentLabel = stringResource(segment.label)
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(Size.iconLarge)
                         .clip(CircleShape)
                         .background(
                             if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent
@@ -116,7 +119,7 @@ fun ViewModeMenu(
                     Icon(
                         imageVector = segment.icon,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(Size.iconMedium),
                         tint = if (isSelected) {
                             MaterialTheme.colorScheme.surface
                         } else {
@@ -135,11 +138,11 @@ fun ViewModeMenu(
     // so it reads as a control against the search bar background.
     Box(
         modifier = modifier
-            .size(36.dp)
+            .size(Size.controlHeight)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
             .border(
-                width = 1.dp,
+                width = Spacing.hairline,
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 shape = CircleShape
             )
@@ -152,7 +155,7 @@ fun ViewModeMenu(
         Icon(
             imageVector = viewModeIcon(viewMode),
             contentDescription = stringResource(Res.string.cd_view_mode),
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(Size.icon),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
@@ -163,8 +166,8 @@ fun ViewModeMenu(
         modifier = Modifier.widthIn(min = 220.dp),
         shape = MaterialTheme.shapes.large,
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 2.dp,
-        shadowElevation = 6.dp
+        tonalElevation = Elevation.card,
+        shadowElevation = Elevation.overlay
     ) {
         NoteViewMode.entries.forEach { mode ->
             val isSelected = mode == viewMode
@@ -185,7 +188,7 @@ fun ViewModeMenu(
                         imageVector = viewModeIcon(mode),
                         contentDescription = null,
                         modifier = Modifier
-                            .size(20.dp)
+                            .size(Size.icon)
                             .semantics { hideFromAccessibility() },
                         tint = if (isSelected) {
                             MaterialTheme.colorScheme.primary
@@ -200,7 +203,7 @@ fun ViewModeMenu(
                             Icons.Default.Check,
                             contentDescription = null,
                             modifier = Modifier
-                                .size(18.dp)
+                                .size(Size.iconMedium)
                                 .semantics { hideFromAccessibility() },
                             tint = MaterialTheme.colorScheme.primary
                         )
