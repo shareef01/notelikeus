@@ -29,6 +29,9 @@ class FakeNoteRepository : NoteRepository {
     // Simple Flow for active note count
     private val _activeNoteCount = MutableStateFlow(0)
 
+    /** Makes every note write reject, for exercising failure handling. */
+    var failWrites = false
+
     // ---- methods used by NoteSyncEngine ----
 
     override suspend fun getAllNotesForBackup(): List<Note> = notes.values.toList()
@@ -45,6 +48,7 @@ class FakeNoteRepository : NoteRepository {
     }
 
     override suspend fun updateNote(note: Note) {
+        if (failWrites) throw IllegalStateException("update failed")
         note.id?.let { id ->
             notes[id] = note
             updatedNotes.add(note)
@@ -52,6 +56,7 @@ class FakeNoteRepository : NoteRepository {
     }
 
     override suspend fun deleteNote(note: Note) {
+        if (failWrites) throw IllegalStateException("delete failed")
         note.id?.let { notes.remove(it) }
         deletedNotes.add(note)
         _activeNoteCount.value = notes.size

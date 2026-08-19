@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.aus.notelikeus.util.AppLog
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.serialization.builtins.SetSerializer
 import kotlinx.serialization.builtins.serializer
@@ -70,12 +71,16 @@ class DesktopPendingSyncStore(
         val raw = prefs?.get(key) ?: return emptySet()
         return try {
             json.decodeFromString<Set<String>>(raw).mapNotNull { it.toLongOrNull() }.toSet()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            // Dropping the queue silently is what the store exists to prevent: those ids are
+            // edits that never reached the cloud, and nothing else records them.
+            AppLog.warn(TAG, "Pending sync set '${key.name}' unreadable; those writes are lost", error)
             emptySet()
         }
     }
 
     private companion object {
+        const val TAG = "PendingSyncStore"
         val KEY_UPLOADS = stringPreferencesKey("pending_sync_uploads")
         val KEY_DELETES = stringPreferencesKey("pending_sync_deletes")
         val KEY_RESTORES = stringPreferencesKey("pending_sync_restores")
