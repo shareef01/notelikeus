@@ -35,12 +35,14 @@ import com.aus.notelikeus.ui.theme.AppType
 /**
  * A destination row in the side drawer.
  *
- * Each nav item carries its own colour identity (sky, amber, rose, violet, teal) matching
- * the web sidebar, so the icons read as distinct destinations even when none is selected.
+ * Icons take one colour role, not a per-destination hue. The five signature colours these rows
+ * used to carry (sky, amber, rose, violet, teal) read as unrelated icon sets rather than a system,
+ * and — worse — they left *selection* with no colour of its own to signal with, because every row
+ * was already saturated. Colour now means one of two things in this app: a note's colour, or the
+ * user's chosen accent. Selection is the accent; everything else is neutral.
  *
  * @param icon shown when the row is not selected; prefer the outlined variant.
  * @param selectedIcon shown when it is; prefer the filled variant of the same glyph.
- * @param identityColor the item's signature hue — used for the icon tint, active bar, and badge.
  */
 @Composable
 fun SideDrawerNavItem(
@@ -51,11 +53,10 @@ fun SideDrawerNavItem(
     modifier: Modifier = Modifier,
     selectedIcon: ImageVector = icon,
     count: Int? = null,
-    identityColor: Color = MaterialTheme.colorScheme.primary,
     collapsed: Boolean = false,
 ) {
     val shape = RoundedCornerShape(12.dp)
-    val accent = identityColor
+    val accent = MaterialTheme.colorScheme.primary
     val wash by animateColorAsState(
         targetValue = if (selected) {
             accent.copy(alpha = Chrome.SoftWash)
@@ -65,7 +66,7 @@ fun SideDrawerNavItem(
         label = "drawer_nav_wash"
     )
     val iconTint by animateColorAsState(
-        targetValue = if (selected) accent else identityColor.copy(alpha = 0.85f),
+        targetValue = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
         label = "drawer_nav_icon"
     )
 
