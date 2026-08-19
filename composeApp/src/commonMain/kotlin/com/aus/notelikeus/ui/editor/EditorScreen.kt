@@ -50,13 +50,12 @@ import com.aus.notelikeus.ui.editor.components.ChecklistUI
 import com.aus.notelikeus.ui.editor.components.EditorBottomBar
 import com.aus.notelikeus.ui.editor.components.EditorBottomSheet
 import com.aus.notelikeus.ui.editor.components.RichTextToolbar
-import com.aus.notelikeus.ui.theme.EditorBodyStyle
-import com.aus.notelikeus.ui.theme.EditorTitleStyle
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import com.aus.notelikeus.util.DateUtils
+import com.aus.notelikeus.ui.theme.AppType
 
 private val EditorHorizontalPadding = 20.dp
 private val EditorVerticalPadding = 20.dp
@@ -278,13 +277,13 @@ fun EditorScreen(
                         value = state.title,
                         onValueChange = { viewModel.onTitleChange(it) },
                         modifier = Modifier.fillMaxWidth(),
-                        textStyle = EditorTitleStyle.copy(color = contentColor),
+                        textStyle = AppType.editorTitle.copy(color = contentColor),
                         cursorBrush = SolidColor(contentColor),
                         decorationBox = { innerTextField ->
                             if (state.title.isEmpty()) {
                                 Text(
                                     text = stringResource(Res.string.title_hint),
-                                    style = EditorTitleStyle,
+                                    style = AppType.editorTitle,
                                     color = contentColor.copy(alpha = 0.38f)
                                 )
                             }
@@ -361,13 +360,13 @@ fun EditorScreen(
                                 .fillMaxWidth()
                                 .heightIn(min = EditorBodyMinHeight)
                                 .focusRequester(bodyFocusRequester),
-                            textStyle = EditorBodyStyle.copy(color = contentColor),
+                            textStyle = AppType.editorBody.copy(color = contentColor),
                             cursorBrush = SolidColor(contentColor),
                             decorationBox = { innerTextField ->
                                 if (state.content.isEmpty()) {
                                     Text(
                                         text = stringResource(Res.string.note_hint),
-                                        style = EditorBodyStyle,
+                                        style = AppType.editorBody,
                                         color = contentColor.copy(alpha = 0.38f)
                                     )
                                 }
