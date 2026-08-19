@@ -30,7 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.ui.theme.Chrome
-import com.aus.notelikeus.ui.theme.ChromeLabelStyle
+import com.aus.notelikeus.ui.theme.AppType
 
 /**
  * A destination row in the side drawer.
@@ -159,7 +159,7 @@ fun SideDrawerSectionLabel(
 ) {
     Text(
         text = text.uppercase(),
-        style = ChromeLabelStyle,
+        style = AppType.chromeLabel,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier.padding(start = 22.dp, end = 12.dp, top = 4.dp, bottom = 6.dp)
     )
@@ -193,7 +193,7 @@ fun SideDrawerAccountRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Signed in",
-                style = ChromeLabelStyle,
+                style = AppType.chromeLabel,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(

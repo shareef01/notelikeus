@@ -67,7 +67,7 @@ import com.aus.notelikeus.ui.main.CloudSyncStatus
 import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.Chrome
-import com.aus.notelikeus.ui.theme.ChromeLabelStyle
+import com.aus.notelikeus.ui.theme.AppType
 
 private val SettingsIconSize = 24.dp
 private val SettingsRowHorizontal = 16.dp
@@ -360,7 +360,7 @@ fun SettingsSectionHeader(
 ) {
     Text(
         text = title.uppercase(),
-        style = ChromeLabelStyle,
+        style = AppType.chromeLabel,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier.padding(
             start = SettingsRowHorizontal,

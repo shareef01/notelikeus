@@ -153,7 +153,7 @@ fun NotelikeusTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = rememberNotelikeusTypography(),
         shapes = Shapes,
         content = content
     )
