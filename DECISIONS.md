@@ -122,3 +122,25 @@ behind the same pure query function.
 **Trade accepted:** slower than FTS5 on a large corpus. At this app's note counts the
 difference is not measurable, and the brief's own budget (5,000 notes in under 50ms) is
 reachable without it.
+
+---
+
+## D7 — The shared confirmation is a dialog, not a bottom sheet.
+
+**Decided:** `ConfirmDialog`, built on `AlertDialog`, is the one confirmation component. The
+design brief names a `ConfirmSheet`.
+
+**Why:** this composable is in `commonMain` and therefore ships in the Windows build. A sheet
+sliding up from the bottom edge is a phone convention; on a desktop window it is not what anyone
+expects from a confirmation, and a modal dialog is. Building both — a sheet on Android, a dialog
+on desktop — is two components to keep in agreement for a difference nobody asked for, in a phase
+whose point is having fewer things that can disagree.
+
+**What was kept from the brief's intent:** one component, used everywhere, that *states the
+consequence*. `destructive` is a parameter rather than styling chosen per call site, which is what
+fixed the real defect: of the four confirmations on the main screen, the two that coloured their
+confirm action as destructive were "empty trash" and "delete", while "restore from cloud" — the
+one that can silently remove notes the cloud no longer has — looked like the safest of the four.
+
+**Cost to reverse:** low. The call sites pass content, not layout; swapping the surface is a
+change inside this one file.
