@@ -24,6 +24,8 @@ import com.aus.notelikeus.ui.editor.MarkdownVisualTransformation
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.AppType
 import com.aus.notelikeus.ui.theme.NoteEmphasis
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
 
 @Composable
 fun ChecklistUI(
@@ -43,8 +45,8 @@ fun ChecklistUI(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-                    .heightIn(min = 48.dp),
+                    .padding(vertical = Spacing.xs)
+                    .heightIn(min = Size.touchTarget),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Checkbox(
@@ -102,14 +104,14 @@ fun ChecklistUI(
                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                 onAdd()
             },
-            modifier = Modifier.padding(start = 4.dp)
+            modifier = Modifier.padding(start = Spacing.xs)
         ) {
             Icon(
                 Icons.Default.Add,
                 contentDescription = null,
                 tint = contentColor
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(Spacing.sm))
             Text(
                 text = stringResource(Res.string.cd_add_list_item),
                 color = contentColor,
@@ -123,7 +125,7 @@ fun ChecklistUI(
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     onConvertToText()
                 },
-                modifier = Modifier.padding(start = 4.dp)
+                modifier = Modifier.padding(start = Spacing.xs)
             ) {
                 Text(
                     text = stringResource(Res.string.convert_to_text),

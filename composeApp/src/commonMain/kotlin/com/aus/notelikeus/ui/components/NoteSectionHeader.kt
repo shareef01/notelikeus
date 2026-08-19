@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.ui.theme.AppType
+import com.aus.notelikeus.ui.theme.Spacing
 
 @Composable
 fun NoteSectionHeader(
@@ -20,6 +21,6 @@ fun NoteSectionHeader(
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 12.dp, bottom = 8.dp)
+            .padding(top = Spacing.md, bottom = Spacing.sm)
     )
 }
