@@ -1,4 +1,7 @@
 package com.aus.notelikeus.ui.main
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.theme.Elevation
 
     import androidx.compose.animation.core.animateDpAsState
     import androidx.compose.foundation.background
@@ -179,8 +182,8 @@ fun MainScreen(
     val drawerContent = @Composable {
         ModalDrawerSheet(
             drawerContainerColor = MaterialTheme.colorScheme.surface,
-            drawerTonalElevation = 0.dp,
-            modifier = if (isExpanded) Modifier.width(260.dp) else Modifier.widthIn(max = 300.dp)
+            drawerTonalElevation = Elevation.none,
+            modifier = if (isExpanded) Modifier.width(260.dp) else Modifier.widthIn(max = Size.gridMinCardWidth)
         ) {
             MainDrawerContent(
                 state = state,
@@ -259,7 +262,7 @@ fun MainScreen(
                 drawerContent = { 
                     PermanentDrawerSheet(
                         drawerContainerColor = MaterialTheme.colorScheme.surface,
-                        drawerTonalElevation = 0.dp,
+                        drawerTonalElevation = Elevation.none,
                         modifier = Modifier.width(drawerWidth)
                     ) {
                         MainDrawerContent(
@@ -344,7 +347,7 @@ fun MainScreen(
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxHeight()
-                                                .width(24.dp) // Wider for a smoother fade
+                                                .width(Size.iconLarge) // Wider for a smoother fade
                                                 .align(Alignment.CenterStart)
                                                 .background(
                                                     Brush.horizontalGradient(
@@ -372,7 +375,7 @@ fun MainScreen(
                                                 ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                                                 modifier = Modifier.alpha(0.08f)
                                             )
-                                            Spacer(modifier = Modifier.height(24.dp))
+                                            Spacer(modifier = Modifier.height(Size.iconLarge))
                                             Text(
                                                 text = stringResource(Res.string.select_note_to_view),
                                                 style = MaterialTheme.typography.titleLarge.copy(
@@ -382,7 +385,7 @@ fun MainScreen(
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                                                 textAlign = TextAlign.Center
                                             )
-                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Spacer(modifier = Modifier.height(Spacing.sm))
                                             Text(
                                                 text = stringResource(Res.string.select_note_to_view_subtitle),
                                                 style = MaterialTheme.typography.bodyLarge,

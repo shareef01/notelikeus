@@ -48,6 +48,9 @@ import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import com.aus.notelikeus.ui.theme.AppType
 import com.aus.notelikeus.ui.components.AppFilterChip
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.theme.Radius
 
 /**
  * Desktop-only: adds mouse-wheel support to a horizontal scrollable, so the filter rows scroll
@@ -64,7 +67,7 @@ expect fun Modifier.wheelHorizontalScroll(state: ScrollState): Modifier
  * height was worth saving. It is not pinned any more -- it folds away as soon as the list scrolls
  * -- so the height costs far less than it did, while being under the minimum costs the same.
  */
-private val ColorSwatchTouchSize = 48.dp
+private val ColorSwatchTouchSize = Size.touchTarget
 
 @Composable
 fun FilterRow(
@@ -81,24 +84,24 @@ fun FilterRow(
 ) {
     val isDarkTheme = isNoteColorDarkTheme()
     val colors = noteColorsForTheme(isDarkTheme).filter { it != Color.Transparent }
-    val railShape = RoundedCornerShape(999.dp)
+    val railShape = RoundedCornerShape(Radius.pill)
     val allSelected = selectedColor == null
     val filterRowScroll = rememberScrollState()
     val labelRowScroll = rememberScrollState()
 
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(44.dp)
+                .height(Size.chipHeight)
                 .horizontalScroll(filterRowScroll)
                 .wheelHorizontalScroll(filterRowScroll)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = Spacing.lg),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
             AppFilterChip(
                 selected = false,
@@ -110,7 +113,7 @@ fun FilterRow(
                         imageVector = Icons.AutoMirrored.Filled.Sort,
                         contentDescription = null,
                         modifier = Modifier
-                            .size(14.dp)
+                            .size(Size.iconTiny)
                             .alpha(0.8f)
                     )
                 }
@@ -125,10 +128,10 @@ fun FilterRow(
             }
             Row(
                     modifier = Modifier
-                        .height(36.dp)
+                        .height(Size.controlHeight)
                         .clip(railShape)
                         .border(
-                            width = 1.dp,
+                            width = Spacing.hairline,
                             color = MaterialTheme.colorScheme.outline.copy(alpha = Chrome.ChipBorder),
                             shape = railShape
                         )
@@ -147,7 +150,7 @@ fun FilterRow(
                         },
                         modifier = Modifier
                             .height(28.dp)
-                            .clip(RoundedCornerShape(999.dp))
+                            .clip(RoundedCornerShape(Radius.pill))
                             .background(
                                 if (allSelected) {
                                     MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SelectedWash)
@@ -161,8 +164,8 @@ fun FilterRow(
                     )
                     Box(
                         modifier = Modifier
-                            .width(1.dp)
-                            .height(16.dp)
+                            .width(Spacing.hairline)
+                            .height(Size.iconSmall)
                             .background(MaterialTheme.colorScheme.outline.copy(alpha = Chrome.SelectedBorder))
                     )
                     NoteColorSwatch(
@@ -170,7 +173,7 @@ fun FilterRow(
                         isSelected = selectedColor == 0,
                         onClick = { onColorSelect(if (selectedColor == 0) null else 0) },
                         touchSize = ColorSwatchTouchSize,
-                        swatchSize = 26.dp,
+                        swatchSize = Size.swatch,
                         contentDescription = stringResource(Res.string.no_color)
                     )
                     colors.forEach { color ->
@@ -182,7 +185,7 @@ fun FilterRow(
                                 onColorSelect(if (selectedColor == colorArgb) null else colorArgb)
                             },
                             touchSize = ColorSwatchTouchSize,
-                            swatchSize = 26.dp,
+                            swatchSize = Size.swatch,
                             contentDescription = noteColorName(color)
                         )
                     }
@@ -193,12 +196,12 @@ fun FilterRow(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
+                    .height(Size.chipHeightCompact)
                     .horizontalScroll(labelRowScroll)
                     .wheelHorizontalScroll(labelRowScroll)
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = Spacing.lg),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
             ) {
                 AppFilterChip(
                     selected = selectedLabelId == null,

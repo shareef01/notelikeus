@@ -72,10 +72,12 @@ import androidx.compose.material.icons.filled.Contrast
 import com.aus.notelikeus.domain.model.AccentColor
 import com.aus.notelikeus.domain.model.ThemeBase
 import com.aus.notelikeus.domain.model.ThemePreference
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
 
-private val SettingsIconSize = 24.dp
-private val SettingsRowHorizontal = 16.dp
-private val SettingsRowVertical = 12.dp
+private val SettingsIconSize = Spacing.xxl
+private val SettingsRowHorizontal = Spacing.lg
+private val SettingsRowVertical = Spacing.md
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -123,20 +125,20 @@ fun ProfileSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 24.dp)
+                .padding(bottom = Spacing.xxl)
                 .navigationBarsPadding()
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
+                modifier = Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.lg)
             ) {
                 BrandMarkIcon(
-                    size = 40.dp,
+                    size = Size.chipHeightCompact,
                     backgroundColor = MaterialTheme.colorScheme.onSurface,
                     stripeColor = MaterialTheme.colorScheme.surface,
                     ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
-                Spacer(modifier = Modifier.width(14.dp))
+                Spacer(modifier = Modifier.width(Size.iconTiny))
                 Column {
                     Text(
                         text = stringResource(Res.string.app_name),
@@ -371,7 +373,7 @@ fun ProfileSheet(
 @Composable
 private fun SettingsSectionDivider() {
     HorizontalDivider(
-        modifier = Modifier.padding(top = 8.dp),
+        modifier = Modifier.padding(top = Spacing.sm),
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
     )
 }
@@ -389,8 +391,8 @@ fun SettingsSectionHeader(
         modifier = modifier.padding(
             start = SettingsRowHorizontal,
             end = SettingsRowHorizontal,
-            top = if (isFirst) 16.dp else 20.dp,
-            bottom = 4.dp
+            top = if (isFirst) Spacing.lg else Spacing.xl,
+            bottom = Spacing.xs
         )
     )
 }
@@ -435,7 +437,7 @@ fun SettingsRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         SettingsLeadingIcon(icon = icon, contentDescription = title)
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(Size.iconTiny))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
@@ -451,7 +453,7 @@ fun SettingsRow(
             }
         }
         if (trailing != null) {
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(Spacing.sm))
             trailing()
         }
     }

@@ -26,6 +26,8 @@ import com.aus.notelikeus.ui.theme.noteColorName
 import com.aus.notelikeus.ui.main.components.SettingsSectionHeader
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,7 +87,7 @@ fun EditorBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 32.dp)
+                .padding(bottom = Spacing.xxxl)
                 .navigationBarsPadding()
         ) {
             // Color Selector
@@ -94,8 +96,8 @@ fun EditorBottomSheet(
                 isFirst = true
             )
             LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                contentPadding = PaddingValues(horizontal = Spacing.lg),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
             ) {
                 itemsIndexed(colors, key = { _, color -> color.toArgb() }) { _, color ->
                     val colorArgb = color.toArgb()
@@ -108,8 +110,8 @@ fun EditorBottomSheet(
                         },
                         // 48.dp is the accessibility minimum for a touch target; this sheet has
                         // the room for it, so there is no reason to sit under it.
-                        touchSize = 48.dp,
-                        swatchSize = 32.dp,
+                        touchSize = Size.touchTarget,
+                        swatchSize = Spacing.xxxl,
                         contentDescription = noteColorName(color)
                     )
                 }
@@ -122,7 +124,7 @@ fun EditorBottomSheet(
                     text = stringResource(Res.string.empty_labels_subtitle),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm)
                 )
             } else {
                 allLabels.forEachIndexed { index, label ->
@@ -156,7 +158,7 @@ fun EditorBottomSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
@@ -167,7 +169,7 @@ fun EditorBottomSheet(
                     singleLine = true,
                     shape = MaterialTheme.shapes.medium
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(Spacing.sm))
                 IconButton(
                     onClick = {
                         if (newLabelName.isNotBlank()) {
@@ -196,7 +198,7 @@ fun EditorBottomSheet(
                     Icon(
                         if (isChecklist) Icons.Default.TextFields else Icons.Default.Checklist,
                         contentDescription = null,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(Size.iconLarge)
                     )
                 },
                 modifier = Modifier.clickable {
@@ -218,7 +220,7 @@ fun EditorBottomSheet(
                         Icons.Default.Delete, 
                         contentDescription = stringResource(Res.string.action_delete),
                         tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(Size.iconLarge)
                     ) 
                 },
                 modifier = Modifier.clickable {
