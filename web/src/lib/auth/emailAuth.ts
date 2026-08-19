@@ -14,13 +14,16 @@ import { FirebaseError } from 'firebase/app';
  * `VITE_E2E` is set only by web/.env.e2e, which only `--mode e2e` loads, so a normal `vite build`
  * cannot turn this on. The same flag gates the emulator redirect in lib/firebase.ts, so an e2e
  * build can only ever sign in against a local emulator, never a real account.
+ *
+ * Written as a foldable expression over inlined env so a production bundle drops the test-login
+ * branches (and any credential literals they read) at build time.
  */
-export function isTestLoginEnabled(): boolean {
-  return import.meta.env.DEV === true || Boolean(import.meta.env.VITE_E2E);
-}
-
 export const testLoginBuildEnabled =
   import.meta.env.DEV === true || Boolean(import.meta.env.VITE_E2E);
+
+export function isTestLoginEnabled(): boolean {
+  return testLoginBuildEnabled;
+}
 
 export async function signInWithEmailPassword(email: string, password: string): Promise<void> {
   if (!isTestLoginEnabled()) {
