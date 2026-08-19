@@ -29,7 +29,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.ui.main.components.SideDrawerAccountRow
 import com.aus.notelikeus.ui.main.components.SideDrawerNavItem
-import com.aus.notelikeus.ui.theme.NavIdentity
 import com.aus.notelikeus.ui.main.components.SideDrawerSectionLabel
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.Chrome
@@ -123,7 +122,6 @@ internal fun MainDrawerContent(
                 selected = state.currentFilter == NoteFilter.ACTIVE,
                 count = state.totalNoteCount,
                 collapsed = collapsed,
-                identityColor = NavIdentity.Notes.resolve(),
                 onClick = { onFilterSelect(NoteFilter.ACTIVE) }
             )
             SideDrawerNavItem(
@@ -133,7 +131,6 @@ internal fun MainDrawerContent(
                 selected = state.currentFilter == NoteFilter.ARCHIVED,
                 count = state.archivedNoteCount,
                 collapsed = collapsed,
-                identityColor = NavIdentity.Archive.resolve(),
                 onClick = { onFilterSelect(NoteFilter.ARCHIVED) }
             )
             SideDrawerNavItem(
@@ -143,7 +140,6 @@ internal fun MainDrawerContent(
                 selected = state.currentFilter == NoteFilter.TRASHED,
                 count = state.trashedNoteCount,
                 collapsed = collapsed,
-                identityColor = NavIdentity.Trash.resolve(),
                 onClick = { onFilterSelect(NoteFilter.TRASHED) }
             )
 
@@ -158,7 +154,6 @@ internal fun MainDrawerContent(
                 selectedIcon = Icons.AutoMirrored.Filled.Label,
                 selected = false,
                 collapsed = collapsed,
-                identityColor = NavIdentity.Labels.resolve(),
                 onClick = onEditLabels
             )
             SideDrawerNavItem(
@@ -167,7 +162,6 @@ internal fun MainDrawerContent(
                 selectedIcon = Icons.Filled.Settings,
                 selected = settingsSelected,
                 collapsed = collapsed,
-                identityColor = NavIdentity.Settings.resolve(),
                 onClick = onOpenSettings
             )
         }
