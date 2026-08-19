@@ -102,7 +102,7 @@ function NoteCardImpl({
     }
     if (!showStatusCluster) return null;
     return (
-      <div className="flex shrink-0 items-center gap-1.5 opacity-50" aria-hidden>
+      <div className="flex shrink-0 items-center gap-1.5 opacity-60" aria-hidden>
         {note.isPinned ? <PinIcon size={size} /> : null}
         {hasReminder ? <NotificationIcon size={size} /> : null}
       </div>
@@ -140,7 +140,7 @@ function NoteCardImpl({
         ),
       )}
       {note.labels.length > labelLimit ? (
-        <span className="self-center text-[10px] font-semibold uppercase tracking-wider opacity-70">
+        <span className="self-center text-[10px] font-semibold uppercase tracking-wider opacity-80">
           +{note.labels.length - labelLimit}
         </span>
       ) : null}
@@ -207,12 +207,12 @@ function NoteCardImpl({
                 {highlight(title)}
               </h2>
               {showBody ? (
-                <p className="mt-2 line-clamp-2 break-words text-note-body opacity-70 sm:mt-2.5 sm:line-clamp-3">
+                <p className="mt-2 line-clamp-2 break-words text-note-body opacity-80 sm:mt-2.5 sm:line-clamp-3">
                   {highlight(previewBody)}
                 </p>
               ) : null}
               {showChecklist ? (
-                <p className="mt-1.5 text-[11px] font-medium tracking-wide opacity-60">
+                <p className="mt-1.5 text-[11px] font-medium tracking-wide opacity-80">
                   {checkedCount}/{note.checklist.length} checked
                 </p>
               ) : null}
@@ -223,7 +223,7 @@ function NoteCardImpl({
               {statusIcons(15)}
               <time
                 dateTime={new Date(note.timestamp).toISOString()}
-                className="text-[11px] font-medium tabular-nums tracking-wide opacity-55 sm:text-[12px]"
+                className="text-[11px] font-medium tabular-nums tracking-wide opacity-80 sm:text-[12px]"
               >
                 {timeLabel}
               </time>
@@ -246,7 +246,7 @@ function NoteCardImpl({
               {statusIcons(isDense ? 13 : 14)}
               <time
                 dateTime={new Date(note.timestamp).toISOString()}
-                className={`font-medium tabular-nums tracking-wide opacity-60 ${
+                className={`font-medium tabular-nums tracking-wide opacity-80 ${
                   isDense ? 'text-[10px]' : 'text-[11px]'
                 }`}
               >
@@ -269,7 +269,7 @@ function NoteCardImpl({
 
           {showChecklist ? (
             isDense ? (
-              <p className="mt-1.5 text-[11px] font-medium tracking-wide opacity-60">
+              <p className="mt-1.5 text-[11px] font-medium tracking-wide opacity-80">
                 {checkedCount}/{note.checklist.length} checked
               </p>
             ) : (
@@ -277,11 +277,11 @@ function NoteCardImpl({
                 {note.checklist.slice(0, 3).map((item) => (
                   <div key={item.id} className="flex items-center gap-2">
                     {item.isChecked ? (
-                      <CheckCircleIcon size={14} className="shrink-0 opacity-70" />
+                      <CheckCircleIcon size={14} className="shrink-0 opacity-60" />
                     ) : (
-                      <CheckCircleOutlineIcon size={14} className="shrink-0 opacity-70" />
+                      <CheckCircleOutlineIcon size={14} className="shrink-0 opacity-60" />
                     )}
-                    <span className="line-clamp-1 break-words text-note-body opacity-70">
+                    <span className="line-clamp-1 break-words text-note-body opacity-80">
                       {highlight(stripMarkdownForPreview(item.text))}
                     </span>
                   </div>
