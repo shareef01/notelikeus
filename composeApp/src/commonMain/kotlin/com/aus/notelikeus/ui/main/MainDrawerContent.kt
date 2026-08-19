@@ -33,12 +33,12 @@ import com.aus.notelikeus.ui.theme.NavIdentity
 import com.aus.notelikeus.ui.main.components.SideDrawerSectionLabel
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.Chrome
-import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 import com.aus.notelikeus.ui.theme.SignOutRose
 import com.aus.notelikeus.ui.theme.SignOutRoseContainer
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
+import com.aus.notelikeus.ui.theme.AppType
 
 /**
  * The side drawer / navigation rail content, shared between the modal drawer (compact) and the
@@ -101,7 +101,7 @@ internal fun MainDrawerContent(
                             )
                             Text(
                                 stringResource(Res.string.drawer_tagline_short),
-                                style = ChromeLabelStyle,
+                                style = AppType.chromeLabel,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }

@@ -7,7 +7,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.aus.notelikeus.ui.theme.ChromeLabelStyle
+import com.aus.notelikeus.ui.theme.AppType
 
 @Composable
 fun NoteSectionHeader(
@@ -16,7 +16,7 @@ fun NoteSectionHeader(
 ) {
     Text(
         text = title.uppercase(),
-        style = ChromeLabelStyle,
+        style = AppType.chromeLabel,
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
         modifier = modifier
             .fillMaxWidth()
