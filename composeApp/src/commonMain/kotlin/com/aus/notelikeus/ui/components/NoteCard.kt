@@ -51,13 +51,12 @@ import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.editor.RichTextParser
-import com.aus.notelikeus.ui.theme.NoteCardBodyStyle
-import com.aus.notelikeus.ui.theme.NoteCardTitleStyle
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.util.DateUtils
+import com.aus.notelikeus.ui.theme.AppType
 
 private val NoteCardContentPadding = 20.dp
 
@@ -271,7 +270,7 @@ fun NoteCard(
                         if (note.title.isNotEmpty()) {
                             Text(
                                 text = buildHighlightedString(note.title, searchQuery, contentColor, highlightColor),
-                                style = NoteCardTitleStyle,
+                                style = AppType.noteCardTitle,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -287,7 +286,7 @@ fun NoteCard(
                                     linkColor = MaterialTheme.colorScheme.primary,
                                     linksClickable = false
                                 ),
-                                style = NoteCardBodyStyle,
+                                style = AppType.noteCardBody,
                                 maxLines = 3,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -421,9 +420,9 @@ fun NoteCard(
                             highlightColor
                         ),
                         style = if (compact) {
-                            NoteCardTitleStyle.copy(fontSize = 15.sp, lineHeight = 20.sp)
+                            AppType.noteCardTitle.copy(fontSize = 15.sp, lineHeight = 20.sp)
                         } else {
-                            NoteCardTitleStyle
+                            AppType.noteCardTitle
                         },
                         maxLines = if (compact) 2 else 3,
                         overflow = TextOverflow.Ellipsis,
@@ -492,7 +491,7 @@ fun NoteCard(
                             linkColor = MaterialTheme.colorScheme.primary,
                             linksClickable = false
                         ),
-                        style = NoteCardBodyStyle,
+                        style = AppType.noteCardBody,
                         // Web grid preview clamps at 7 lines; the ellipsis says there is more.
                         maxLines = if (compact) 5 else 7,
                         overflow = TextOverflow.Ellipsis
@@ -532,7 +531,7 @@ fun NoteCard(
                                         searchQuery = searchQuery,
                                         linksClickable = false
                                     ),
-                                    style = NoteCardBodyStyle.copy(
+                                    style = AppType.noteCardBody.copy(
                                         fontSize = MaterialTheme.typography.labelSmall.fontSize,
                                         lineHeight = MaterialTheme.typography.labelSmall.lineHeight
                                     ),

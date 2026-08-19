@@ -36,7 +36,7 @@ import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import com.aus.notelikeus.ui.main.components.PrecisionFilterChip
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
-import com.aus.notelikeus.ui.theme.ChromeLabelStyle
+import com.aus.notelikeus.ui.theme.AppType
 
 private val EmptyStateIconSize = 72.dp
 private const val EmptyStateIconAlpha = 0.2f
@@ -134,7 +134,7 @@ fun NotesEmptyState(
                 Spacer(modifier = Modifier.height(32.dp))
                 Text(
                     stringResource(Res.string.recent_searches),
-                    style = ChromeLabelStyle,
+                    style = AppType.chromeLabel,
                     color = mutedTextColor.copy(alpha = 0.8f)
                 )
                 Spacer(modifier = Modifier.height(12.dp))
