@@ -5,6 +5,7 @@ import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
+import com.aus.notelikeus.domain.model.ThemePreference
 
 enum class NoteFilter {
     ACTIVE, ARCHIVED, TRASHED
@@ -28,7 +29,8 @@ data class MainState(
     val selectedColor: Int? = null,
     val selectedLabelId: Long? = null,
     val appTheme: AppTheme = AppTheme.AUTO,
-    val isTrueDarkMode: Boolean = false,
+    /** Base, black level and accent, resolved from the stored theme. See ThemePreference. */
+    val themePreference: ThemePreference = ThemePreference(),
     val viewMode: NoteViewMode = NoteViewMode.GRID_2,
     val sortOrder: NoteSortOrder = NoteSortOrder.MANUAL,
     val isAppLockEnabled: Boolean = false,
