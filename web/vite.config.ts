@@ -18,6 +18,13 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**', 'src/**/*.emulator.test.ts'],
     // happy-dom ships no IndexedDB, which is where the locked-note key lives.
     setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      // Untested files are reported too, so the numbers reflect the whole app rather than
+      // just the files a given run happened to import.
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.test.ts', 'src/test/**', 'src/main.tsx', 'src/sw.ts', 'src/vite-env.d.ts'],
+    },
   },
   plugins: [
     react(),
