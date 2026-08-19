@@ -47,6 +47,7 @@ import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import com.aus.notelikeus.ui.theme.AppType
+import com.aus.notelikeus.ui.components.AppFilterChip
 
 /**
  * Desktop-only: adds mouse-wheel support to a horizontal scrollable, so the filter rows scroll
@@ -99,7 +100,7 @@ fun FilterRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            PrecisionFilterChip(
+            AppFilterChip(
                 selected = false,
                 onClick = onSortOrderCycle,
                 label = stringResource(sortOrderLabelRes(sortOrder)),
@@ -115,7 +116,7 @@ fun FilterRow(
                 }
             )
             if (hasActiveFilters) {
-                PrecisionFilterChip(
+                AppFilterChip(
                     selected = true,
                     onClick = onClearFilters,
                     label = stringResource(Res.string.clear_filters_short),
@@ -199,14 +200,14 @@ fun FilterRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                PrecisionFilterChip(
+                AppFilterChip(
                     selected = selectedLabelId == null,
                     onClick = { onLabelSelect(null) },
                     label = stringResource(Res.string.all_labels),
                     compact = true
                 )
                 allLabels.forEach { label ->
-                    PrecisionFilterChip(
+                    AppFilterChip(
                         selected = selectedLabelId == label.id,
                         onClick = { onLabelSelect(if (selectedLabelId == label.id) null else label.id) },
                         label = label.name,
@@ -216,61 +217,4 @@ fun FilterRow(
             }
         }
     }
-}
-
-@Composable
-internal fun PrecisionFilterChip(
-    selected: Boolean,
-    onClick: () -> Unit,
-    label: String,
-    enabled: Boolean = true,
-    compact: Boolean = false,
-    leadingIcon: (@Composable () -> Unit)? = null,
-    modifier: Modifier = Modifier
-) {
-    val borderColor = if (selected) {
-        MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SelectedBorder)
-    } else {
-        MaterialTheme.colorScheme.outline.copy(alpha = Chrome.ChipBorder)
-    }
-    val selectedContainer = MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SelectedWash)
-    val inactiveContainer = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        enabled = enabled,
-        leadingIcon = leadingIcon,
-        label = {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontSize = if (compact) 13.sp else 14.sp,
-                    letterSpacing = (-0.15).sp
-                ),
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
-            )
-        },
-        modifier = modifier.heightIn(min = if (compact) 40.dp else 44.dp),
-        shape = CircleShape,
-        border = FilterChipDefaults.filterChipBorder(
-            enabled = enabled,
-            selected = selected,
-            borderColor = borderColor,
-            selectedBorderColor = borderColor,
-            borderWidth = 1.dp,
-            selectedBorderWidth = 1.dp
-        ),
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = inactiveContainer,
-            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            iconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            selectedContainerColor = selectedContainer,
-            selectedLabelColor = MaterialTheme.colorScheme.primary,
-            selectedLeadingIconColor = MaterialTheme.colorScheme.primary,
-            disabledContainerColor = Color.Transparent,
-            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-            disabledSelectedContainerColor = selectedContainer.copy(alpha = 0.45f)
-        )
-    )
 }
