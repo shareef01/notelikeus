@@ -1,5 +1,5 @@
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
-import { useEffect } from 'react';
 
 const PRIVACY_POLICY_BODY = `Sign-in with Google is required to use Notelikeus on the web. Your notes are stored in Firestore under your Google account. This browser may keep a Firestore-managed offline cache for continuity without a connection, and some browsers may fall back to temporary in-memory storage only.
 
@@ -45,15 +45,7 @@ interface PrivacyPolicyDialogProps {
 
 export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
-
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [open]);
+  useBodyScrollLock(open);
 
   if (!open) return null;
 
