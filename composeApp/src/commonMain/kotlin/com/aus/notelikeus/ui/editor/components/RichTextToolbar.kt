@@ -14,6 +14,7 @@ import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.unit.dp
+import com.aus.notelikeus.ui.theme.NoteEmphasis
 
 @Composable
 fun RichTextToolbar(
@@ -38,7 +39,7 @@ fun RichTextToolbar(
         shadowElevation = if (isTransparent) 0.dp else 2.dp,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            contentColor.copy(alpha = 0.14f)
+            contentColor.copy(alpha = NoteEmphasis.Decorative)
         )
     ) {
         Row(
@@ -57,7 +58,7 @@ fun RichTextToolbar(
             }
             VerticalDivider(
                 modifier = Modifier.height(24.dp).padding(horizontal = 4.dp),
-                color = contentColor.copy(alpha = 0.2f)
+                color = contentColor.copy(alpha = NoteEmphasis.Decorative)
             )
             IconButton(onClick = onListClick) {
                 Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = stringResource(Res.string.format_list), tint = contentColor)
