@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
+import com.aus.notelikeus.ui.components.ConfirmDialog
+import com.aus.notelikeus.ui.theme.Spacing
 
 /**
  * The confirmation dialogs the main screen can show: cloud sign-out (with the
@@ -39,14 +41,19 @@ internal fun MainDialogs(
     onConfirmDelete: () -> Unit
 ) {
     if (showCloudSignOutConfirm) {
-        AlertDialog(
-            onDismissRequest = onCloudSignOutConfirmDismiss,
-            shape = MaterialTheme.shapes.large,
-            title = { Text(stringResource(Res.string.cloud_sign_out_confirm_title)) },
-            text = {
+        ConfirmDialog(
+            title = stringResource(Res.string.cloud_sign_out_confirm_title),
+            message = stringResource(Res.string.cloud_sign_out_confirm_message),
+            confirmLabel = stringResource(Res.string.cloud_sign_out),
+            onConfirm = { onCloudSignOut(false) },
+            onDismiss = onCloudSignOutConfirmDismiss,
+            // Signing out is reversible; deleting the cloud copy on the way out is not, so that
+            // is the destructive action and it lives in the body rather than on the confirm
+            // button, where it would be one mis-tap away.
+            extraContent = {
                 Column {
                     Text(stringResource(Res.string.cloud_sign_out_confirm_message))
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(Spacing.md))
                     TextButton(
                         onClick = { onCloudSignOut(true) },
                         colors = ButtonDefaults.textButtonColors(
@@ -59,16 +66,6 @@ internal fun MainDialogs(
                         )
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { onCloudSignOut(false) }) {
-                    Text(stringResource(Res.string.cloud_sign_out))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onCloudSignOutConfirmDismiss) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
             }
         )
     }
@@ -76,86 +73,49 @@ internal fun MainDialogs(
     // Restore is a merge, not a download, and it can remove notes: a note this device has
     // already synced that is now absent from the cloud is treated as deleted elsewhere and
     // deleted here too. That is correct behaviour, but it is not what "Restore from cloud"
-    // sounds like, and it used to run on a single unconfirmed tap.
+    // sounds like, and it used to run on a single unconfirmed tap. It is marked destructive
+    // for the same reason -- it looked like the safest dialog of the four and is not.
     if (showCloudRestoreConfirm) {
-        AlertDialog(
-            onDismissRequest = onCloudRestoreConfirmDismiss,
-            shape = MaterialTheme.shapes.large,
-            title = { Text(stringResource(Res.string.cloud_restore_confirm_title)) },
-            text = { Text(stringResource(Res.string.cloud_restore_confirm_message)) },
-            confirmButton = {
-                TextButton(onClick = onConfirmCloudRestore) {
-                    Text(stringResource(Res.string.cloud_restore_confirm_action))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onCloudRestoreConfirmDismiss) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
-            }
+        ConfirmDialog(
+            title = stringResource(Res.string.cloud_restore_confirm_title),
+            message = stringResource(Res.string.cloud_restore_confirm_message),
+            confirmLabel = stringResource(Res.string.cloud_restore_confirm_action),
+            destructive = true,
+            onConfirm = onConfirmCloudRestore,
+            onDismiss = onCloudRestoreConfirmDismiss
         )
     }
 
     if (showEmptyTrashConfirm) {
-        AlertDialog(
-            onDismissRequest = onEmptyTrashConfirmDismiss,
-            shape = MaterialTheme.shapes.large,
-            title = { Text(stringResource(Res.string.empty_trash_title)) },
-            text = { Text(stringResource(Res.string.empty_trash_message)) },
-            confirmButton = {
-                TextButton(onClick = onConfirmEmptyTrash) {
-                    Text(
-                        stringResource(Res.string.empty_trash),
-                        color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onEmptyTrashConfirmDismiss) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
-            }
+        ConfirmDialog(
+            title = stringResource(Res.string.empty_trash_title),
+            message = stringResource(Res.string.empty_trash_message),
+            confirmLabel = stringResource(Res.string.empty_trash),
+            destructive = true,
+            onConfirm = onConfirmEmptyTrash,
+            onDismiss = onEmptyTrashConfirmDismiss
         )
     }
 
     if (showDeleteConfirm) {
         val count = selectedCount
-        AlertDialog(
-            onDismissRequest = onDeleteConfirmDismiss,
-            shape = MaterialTheme.shapes.large,
-            title = {
-                Text(
-                    if (count == 1) {
-                        stringResource(Res.string.delete_note_title)
-                    } else {
-                        stringResource(Res.string.delete_notes_title, count)
-                    }
-                )
+        ConfirmDialog(
+            title = if (count == 1) {
+                stringResource(Res.string.delete_note_title)
+            } else {
+                stringResource(Res.string.delete_notes_title, count)
             },
-            text = {
-                Text(
-                    if (isTrashedFilter) {
-                        stringResource(Res.string.delete_permanent_message)
-                    } else {
-                        stringResource(Res.string.delete_to_trash_message)
-                    }
-                )
+            message = if (isTrashedFilter) {
+                stringResource(Res.string.delete_permanent_message)
+            } else {
+                stringResource(Res.string.delete_to_trash_message)
             },
-            confirmButton = {
-                TextButton(onClick = onConfirmDelete) {
-                    Text(
-                        stringResource(Res.string.action_delete),
-                        color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onDeleteConfirmDismiss) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
-            }
+            confirmLabel = stringResource(Res.string.action_delete),
+            // Only permanent deletion is irreversible; moving to trash is undoable, and marking
+            // it destructive would make the two look equally final.
+            destructive = isTrashedFilter,
+            onConfirm = onConfirmDelete,
+            onDismiss = onDeleteConfirmDismiss
         )
     }
 }
