@@ -6,16 +6,14 @@ import { useAuthListener } from '@/hooks/useAuth';
 import { formatAuthError } from '@/lib/auth/authErrors';
 import {
   createEmailPasswordAccount,
-  isTestLoginEnabled,
   signInWithEmailPassword,
+  testLoginBuildEnabled,
 } from '@/lib/auth/emailAuth';
 import { signInWithGoogle } from '@/lib/auth/googleAuth';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
 import { useUiStore, type AuthMode } from '@/store/uiStore';
 import { useEffect, useState } from 'react';
-
-const testLoginEnabled = isTestLoginEnabled();
 
 const COPY: Record<
   AuthMode,
@@ -57,13 +55,11 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
   const { user, isReady } = useAuthListener();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Creds are only read when test login is enabled (DEV). Vite inlines env at build time, so
-  // an unguarded read would bake them into the production bundle.
   const [testEmail, setTestEmail] = useState(
-    () => (testLoginEnabled ? (import.meta.env.VITE_TEST_LOGIN_EMAIL?.trim() ?? '') : ''),
+    () => (testLoginBuildEnabled ? (import.meta.env.VITE_TEST_LOGIN_EMAIL?.trim() ?? '') : ''),
   );
   const [testPassword, setTestPassword] = useState(
-    () => (testLoginEnabled ? (import.meta.env.VITE_TEST_LOGIN_PASSWORD ?? '') : ''),
+    () => (testLoginBuildEnabled ? (import.meta.env.VITE_TEST_LOGIN_PASSWORD ?? '') : ''),
   );
 
   const copy = COPY[mode];
@@ -217,7 +213,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
               </>
             ) : null}
 
-            {testLoginEnabled ? (
+            {testLoginBuildEnabled ? (
               <>
                 <div className="relative flex items-center gap-3 py-1">
                   <div className="h-px flex-1 bg-brand-outline/40" />

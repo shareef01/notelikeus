@@ -19,6 +19,9 @@ export function isTestLoginEnabled(): boolean {
   return import.meta.env.DEV === true || Boolean(import.meta.env.VITE_E2E);
 }
 
+export const testLoginBuildEnabled =
+  import.meta.env.DEV === true || Boolean(import.meta.env.VITE_E2E);
+
 export async function signInWithEmailPassword(email: string, password: string): Promise<void> {
   if (!isTestLoginEnabled()) {
     throw new Error('Email/password sign-in is only available in development');
