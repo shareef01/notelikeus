@@ -44,9 +44,9 @@ import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.ui.components.NoteColorSwatch
 import com.aus.notelikeus.ui.theme.noteColorName
 import com.aus.notelikeus.ui.theme.Chrome
-import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
+import com.aus.notelikeus.ui.theme.AppType
 
 /**
  * Desktop-only: adds mouse-wheel support to a horizontal scrollable, so the filter rows scroll
@@ -138,7 +138,7 @@ fun FilterRow(
                 ) {
                     Text(
                         text = stringResource(Res.string.all_colors).uppercase(),
-                        style = ChromeLabelStyle,
+                        style = AppType.chromeLabel,
                         color = if (allSelected) {
                             MaterialTheme.colorScheme.primary
                         } else {
