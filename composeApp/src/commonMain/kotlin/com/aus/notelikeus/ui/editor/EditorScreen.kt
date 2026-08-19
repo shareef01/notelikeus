@@ -57,6 +57,7 @@ import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import com.aus.notelikeus.util.DateUtils
 import com.aus.notelikeus.ui.theme.AppType
 import com.aus.notelikeus.ui.theme.NoteEmphasis
+import com.aus.notelikeus.ui.components.AppSnackbar
 
 private val EditorHorizontalPadding = 20.dp
 private val EditorVerticalPadding = 20.dp
@@ -164,7 +165,7 @@ fun EditorScreen(
                 .navigationBarsPadding(),
             containerColor = Color.Transparent,
             contentColor = contentColor,
-            snackbarHost = { SnackbarHost(snackbarHostState) },
+            snackbarHost = { AppSnackbar(hostState = snackbarHostState) },
             topBar = {
                 CenterAlignedTopAppBar(
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
