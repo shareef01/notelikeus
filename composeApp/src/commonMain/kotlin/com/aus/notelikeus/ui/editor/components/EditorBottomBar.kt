@@ -17,6 +17,7 @@ import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.util.DateUtils
+import com.aus.notelikeus.ui.theme.NoteEmphasis
 
 @Composable
 fun EditorBottomBar(
@@ -58,14 +59,14 @@ fun EditorBottomBar(
                 Text(
                     text = editedLabel,
                     style = MaterialTheme.typography.labelMedium,
-                    color = contentColor.copy(alpha = 0.7f),
+                    color = contentColor.copy(alpha = NoteEmphasis.Secondary),
                     textAlign = TextAlign.Center
                 )
                 if (reminderLabel != null) {
                     Text(
                         text = reminderLabel,
                         style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.85f),
+                        color = contentColor.copy(alpha = NoteEmphasis.Secondary),
                         textAlign = TextAlign.Center
                     )
                 }
