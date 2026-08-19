@@ -1,6 +1,9 @@
 package com.aus.notelikeus.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import com.aus.notelikeus.domain.model.AccentColor
+import com.aus.notelikeus.domain.model.ThemeBase
+import com.aus.notelikeus.domain.model.ThemePreference
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import kotlin.test.Test
@@ -126,29 +129,30 @@ class NoteContentColorTest {
     }
 
     /**
-     * The drawer's signature hues are graphics, not text, so WCAG asks 3:1. A single fixed hue
-     * cannot serve both themes: the Tailwind -400 shades these started as sat between 1.46:1 and
-     * 2.72:1 on the light surface and washed the icons out, while reading fine on dark.
+     * The drawer's two icon roles, on every theme the app can render.
+     *
+     * This replaces a sweep over five per-destination hues, which are gone: colour now means a
+     * note's colour or the user's accent, and nothing else. Icons are graphics rather than text,
+     * so WCAG asks 3:1 — the same bar the old hues were held to, applied to what actually renders
+     * now. `onSurfaceVariant` is the unselected tint and `primary` the selected one.
      */
     @Test
-    fun `every drawer identity colour clears 3 to 1 on the theme it is used with`() {
-        val lightSurfaces = listOf(Color.White, Color(0xFFF0F0F0))
-        val darkSurfaces = listOf(Color(0xFF141C15), Color.Black) // Forest container, OLED
-        val identities = listOf(
-            "Notes" to NavIdentity.Notes,
-            "Archive" to NavIdentity.Archive,
-            "Trash" to NavIdentity.Trash,
-            "Labels" to NavIdentity.Labels,
-            "Settings" to NavIdentity.Settings,
-        )
-        identities.forEach { (name, identity) ->
-            lightSurfaces.forEach { surface ->
-                val ratio = contrast(surface, identity.light)
-                assertTrue(ratio >= 3f, "$name light variant is ${ratio} on $surface")
-            }
-            darkSurfaces.forEach { surface ->
-                val ratio = contrast(surface, identity.dark)
-                assertTrue(ratio >= 3f, "$name dark variant is ${ratio} on $surface")
+    fun `both drawer icon roles clear 3 to 1 in every theme`() {
+        ThemeBase.entries.forEach { base ->
+            listOf(false, true).forEach { amoled ->
+                AccentColor.entries.forEach { accent ->
+                    listOf(true, false).forEach { systemDark ->
+                        val scheme = colorSchemeFor(ThemePreference(base, amoled, accent), systemDark)
+                        val where = "$base/amoled=$amoled/$accent(systemDark=$systemDark)"
+                        listOf(
+                            "unselected" to scheme.onSurfaceVariant,
+                            "selected" to scheme.primary
+                        ).forEach { (role, tint) ->
+                            val ratio = contrast(scheme.surface, tint)
+                            assertTrue(ratio >= 3f, "$where: $role icon is ${ratio}:1 on surface")
+                        }
+                    }
+                }
             }
         }
     }
