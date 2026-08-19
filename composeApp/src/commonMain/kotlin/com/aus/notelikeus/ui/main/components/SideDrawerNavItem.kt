@@ -31,6 +31,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.AppType
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.theme.Radius
 
 /**
  * A destination row in the side drawer.
@@ -55,7 +58,7 @@ fun SideDrawerNavItem(
     count: Int? = null,
     collapsed: Boolean = false,
 ) {
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(Spacing.md)
     val accent = MaterialTheme.colorScheme.primary
     val wash by animateColorAsState(
         targetValue = if (selected) {
@@ -73,29 +76,29 @@ fun SideDrawerNavItem(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = if (collapsed) 0.dp else 10.dp)
-            .height(44.dp)
+            .padding(horizontal = if (collapsed) Spacing.none else 10.dp)
+            .height(Size.chipHeight)
             .clip(shape)
             .background(wash)
             .clickable(onClick = onClick)
             .padding(
-                start = if (collapsed) 0.dp else 12.dp,
-                end = if (collapsed) 0.dp else 10.dp
+                start = if (collapsed) Spacing.none else Spacing.md,
+                end = if (collapsed) Spacing.none else 10.dp
             ),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.spacedBy(12.dp)
+        horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.spacedBy(Spacing.md)
     ) {
         if (!collapsed) {
             if (selected) {
                 Box(
                     modifier = Modifier
-                        .width(2.dp)
+                        .width(Spacing.xxs)
                         .height(28.dp)
-                        .clip(RoundedCornerShape(999.dp))
+                        .clip(RoundedCornerShape(Radius.pill))
                         .background(accent)
                 )
             } else {
-                Spacer(modifier = Modifier.width(2.dp))
+                Spacer(modifier = Modifier.width(Spacing.xxs))
             }
         }
 
@@ -128,7 +131,7 @@ fun SideDrawerNavItem(
             Box(
                 modifier = Modifier
                     .height(22.dp)
-                    .clip(RoundedCornerShape(999.dp))
+                    .clip(RoundedCornerShape(Radius.pill))
                     .background(
                         if (selected) accent.copy(alpha = 0.2f)
                         else accent.copy(alpha = 0.08f)
@@ -162,7 +165,7 @@ fun SideDrawerSectionLabel(
         text = text.uppercase(),
         style = AppType.chromeLabel,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(start = 22.dp, end = 12.dp, top = 4.dp, bottom = 6.dp)
+        modifier = modifier.padding(start = 22.dp, end = Spacing.md, top = Spacing.xs, bottom = 6.dp)
     )
 }
 
@@ -174,13 +177,13 @@ fun SideDrawerAccountRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = Spacing.lg),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(32.dp)
+                .size(Size.iconLarge)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SelectedWash)),
             contentAlignment = Alignment.Center
