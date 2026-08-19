@@ -56,6 +56,7 @@ import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import com.aus.notelikeus.util.DateUtils
 import com.aus.notelikeus.ui.theme.AppType
+import com.aus.notelikeus.ui.theme.NoteEmphasis
 
 private val EditorHorizontalPadding = 20.dp
 private val EditorVerticalPadding = 20.dp
@@ -284,7 +285,7 @@ fun EditorScreen(
                                 Text(
                                     text = stringResource(Res.string.title_hint),
                                     style = AppType.editorTitle,
-                                    color = contentColor.copy(alpha = 0.38f)
+                                    color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                                 )
                             }
                             innerTextField()
@@ -296,7 +297,7 @@ fun EditorScreen(
                     // Divider between title and body, matching the web editor's hairline.
                     HorizontalDivider(
                         thickness = 1.dp,
-                        color = contentColor.copy(alpha = 0.12f)
+                        color = contentColor.copy(alpha = NoteEmphasis.Decorative)
                     )
 
                     if (state.labels.isNotEmpty()) {
@@ -318,7 +319,7 @@ fun EditorScreen(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier
                                         .clip(CircleShape)
-                                        .background(contentColor.copy(alpha = 0.14f))
+                                        .background(contentColor.copy(alpha = NoteEmphasis.Decorative))
                                         .padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
@@ -336,7 +337,7 @@ fun EditorScreen(
                             contentColor = contentColor,
                             // A wash of the note's own content colour, so the toolbar reads as
                             // part of the note rather than a panel floating over it.
-                            surfaceColor = contentColor.copy(alpha = 0.07f),
+                            surfaceColor = contentColor.copy(alpha = NoteEmphasis.Decorative),
                             modifier = Modifier
                                 .padding(bottom = 12.dp)
                                 .align(Alignment.Start)
@@ -367,7 +368,7 @@ fun EditorScreen(
                                     Text(
                                         text = stringResource(Res.string.note_hint),
                                         style = AppType.editorBody,
-                                        color = contentColor.copy(alpha = 0.38f)
+                                        color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                                     )
                                 }
                                 innerTextField()
