@@ -101,6 +101,21 @@ fun MainScreen(
         }
     }
 
+    LaunchedEffect(state.pendingActionFailure) {
+        val failure = state.pendingActionFailure ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            getString(
+                when (failure) {
+                    NoteActionFailure.UPDATE -> Res.string.note_update_failed
+                    NoteActionFailure.DELETE -> Res.string.note_delete_failed
+                    NoteActionFailure.UNDO -> Res.string.note_undo_failed
+                    NoteActionFailure.REORDER -> Res.string.note_order_save_failed
+                }
+            )
+        )
+        viewModel.clearPendingActionFailure()
+    }
+
     LaunchedEffect(state.pendingCloudSyncEvent) {
         when (val event = state.pendingCloudSyncEvent) {
             is CloudSyncEvent.Uploaded -> {

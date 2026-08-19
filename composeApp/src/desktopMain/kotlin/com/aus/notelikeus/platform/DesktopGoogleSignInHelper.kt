@@ -1,6 +1,7 @@
 package com.aus.notelikeus.platform
 
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
+import com.aus.notelikeus.util.AppLog
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -187,10 +188,14 @@ class DesktopGoogleSignInHelper(
                     if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                         Desktop.getDesktop().browse(URI(authUrl))
                     } else {
+                        // A null resume is indistinguishable from the user cancelling consent, so
+                        // the reason the browser never opened only exists in the log.
+                        AppLog.warn(TAG, "No AWT desktop browser support; cannot start sign-in")
                         server.stop(0)
                         cont.resume(null)
                     }
-                } catch (_: Exception) {
+                } catch (error: Exception) {
+                    AppLog.warn(TAG, "Failed to open the browser for sign-in", error)
                     server.stop(0)
                     cont.resume(null)
                 }
@@ -300,5 +305,9 @@ class DesktopGoogleSignInHelper(
             throw IllegalStateException("Firebase token exchange failed: ${response.statusCode()} ${response.body()}")
         }
         return json.decodeFromString<JsonObject>(response.body())
+    }
+
+    private companion object {
+        const val TAG = "GoogleSignIn"
     }
 }
