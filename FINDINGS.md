@@ -90,3 +90,22 @@ widget remains a separate render path with its own theme resolution, and a widge
 visual review is still owed.
 
 **Severity:** low. Partially mitigated; listed so the remaining gap stays visible.
+
+---
+
+## F7 — The web client's theme picker still offers the six fused themes
+
+The Kotlin clients now express appearance as base × black level × accent (`ThemePreference`).
+The web client still stores a single `AppTheme` of `auto | light | dark | true_dark | midnight |
+forest`, applied as one of five CSS classes by `ThemeApplier.tsx`.
+
+**Why it matters:** a user with both sees two different settings screens for the same concept.
+It is not a *data* divergence — the web stores its theme in localStorage, not Firestore, so there
+is nothing to migrate and nothing to conflict — which is why it was safe to leave for now.
+
+**Suggested fix:** mirror `toThemePreference` in `settingsStore.ts` as a read-time migration from
+the six stored strings, compose the CSS class from base + accent with a separate `amoled` class,
+and rebuild `ThemePicker.tsx` as two rows plus a toggle. The Kotlin implementation and its tests
+are the specification.
+
+**Severity:** low, and deliberately deferred rather than missed.
