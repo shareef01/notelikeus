@@ -256,17 +256,11 @@ fun NoteCard(
                         ),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .width(2.dp)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(
-                                if (note.color != 0) contentColor.copy(alpha = 0.3f)
-                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    // No accent strip. It existed only in this List branch, and it was drawn
+                    // from contentColor/outline rather than the note's colour -- so it never
+                    // rendered the colour it appeared to stand for, and Grid and List disagreed
+                    // about what it meant. The tinted container carries the colour in every
+                    // layout now; see DECISIONS.md D1.
                     Column(modifier = Modifier.weight(1f)) {
                         if (note.title.isNotEmpty()) {
                             Text(
