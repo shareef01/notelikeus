@@ -3,7 +3,9 @@ package com.aus.notelikeus.ui.theme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
-import com.aus.notelikeus.domain.model.AppTheme
+import com.aus.notelikeus.domain.model.AccentColor
+import com.aus.notelikeus.domain.model.ThemeBase
+import com.aus.notelikeus.domain.model.ThemePreference
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -54,14 +56,24 @@ class NotePaletteContrastTest {
                 add("palette[$index].dark" to noteColorRole(option.dark))
             }
         }
-        AppTheme.entries.forEach { theme ->
-            listOf(true, false).forEach { systemDark ->
-                val scheme = colorSchemeFor(theme, systemDark)
-                val label = if (theme == AppTheme.AUTO) "$theme(systemDark=$systemDark)" else "$theme"
-                add(
-                    "no-colour on $label" to
-                        NoteColorRole(container = scheme.surface, onContainer = scheme.onSurface)
-                )
+        // Every combination the picker can produce: 3 bases x 2 black levels x 3 accents,
+        // each resolved for both system settings. Enumerated rather than listed, so a new accent
+        // or base is covered the moment it exists instead of when someone remembers to add it.
+        ThemeBase.entries.forEach { base ->
+            listOf(false, true).forEach { amoled ->
+                AccentColor.entries.forEach { accent ->
+                    listOf(true, false).forEach { systemDark ->
+                        val preference = ThemePreference(base, amoled, accent)
+                        val scheme = colorSchemeFor(preference, systemDark)
+                        add(
+                            "no-colour on $base/amoled=$amoled/$accent (systemDark=$systemDark)" to
+                                NoteColorRole(
+                                    container = scheme.surface,
+                                    onContainer = scheme.onSurface
+                                )
+                        )
+                    }
+                }
             }
         }
     }
