@@ -57,6 +57,7 @@ import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.util.DateUtils
 import com.aus.notelikeus.ui.theme.AppType
+import com.aus.notelikeus.ui.theme.NoteEmphasis
 
 private val NoteCardContentPadding = 20.dp
 
@@ -229,7 +230,7 @@ fun NoteCard(
                     Icon(
                         imageVector = Icons.Default.DragIndicator,
                         contentDescription = null,
-                        tint = contentColor.copy(alpha = 0.38f),
+                        tint = contentColor.copy(alpha = NoteEmphasis.Icon),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -280,7 +281,7 @@ fun NoteCard(
                             Text(
                                 text = RichTextParser.parse(
                                     text = note.content,
-                                    contentColor = contentColor.copy(alpha = 0.7f),
+                                    contentColor = contentColor.copy(alpha = NoteEmphasis.Secondary),
                                     highlightColor = highlightColor,
                                     searchQuery = searchQuery,
                                     linkColor = MaterialTheme.colorScheme.primary,
@@ -296,7 +297,7 @@ fun NoteCard(
                             Text(
                                 text = stringResource(Res.string.checklist_progress, note.checklist.count { it.isChecked }, note.checklist.size),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = contentColor.copy(alpha = 0.6f),
+                                color = contentColor.copy(alpha = NoteEmphasis.Secondary),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -320,7 +321,7 @@ fun NoteCard(
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier
                                             .clip(CircleShape)
-                                            .background(contentColor.copy(alpha = 0.1f))
+                                            .background(contentColor.copy(alpha = NoteEmphasis.Decorative))
                                             .then(
                                                 if (clickable) {
                                                     Modifier.clickable { onLabelClick.invoke(labelId) }
@@ -334,7 +335,7 @@ fun NoteCard(
                                     Text(
                                         text = stringResource(Res.string.labels_more, overflowCount),
                                         style = NoteCardLabelChipStyle.copy(fontSize = 9.sp),
-                                        color = contentColor.copy(alpha = 0.7f)
+                                        color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                                     )
                                 }
                             }
@@ -366,7 +367,7 @@ fun NoteCard(
                                 Icon(
                                     Icons.Default.PushPin,
                                     contentDescription = null,
-                                    tint = contentColor.copy(alpha = 0.5f),
+                                    tint = contentColor.copy(alpha = NoteEmphasis.Icon),
                                     modifier = Modifier.size(15.dp)
                                 )
                             }
@@ -374,7 +375,7 @@ fun NoteCard(
                                 Icon(
                                     Icons.Default.Notifications,
                                     contentDescription = null,
-                                    tint = contentColor.copy(alpha = 0.5f),
+                                    tint = contentColor.copy(alpha = NoteEmphasis.Icon),
                                     modifier = Modifier.size(15.dp)
                                 )
                             }
@@ -386,7 +387,7 @@ fun NoteCard(
                                 fontFeatureSettings = "tnum",
                                 fontSize = 11.sp
                             ),
-                            color = contentColor.copy(alpha = 0.55f),
+                            color = contentColor.copy(alpha = NoteEmphasis.Secondary),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -454,7 +455,7 @@ fun NoteCard(
                                 Icon(
                                     Icons.Default.PushPin,
                                     contentDescription = null,
-                                    tint = contentColor.copy(alpha = 0.5f),
+                                    tint = contentColor.copy(alpha = NoteEmphasis.Icon),
                                     modifier = Modifier.size(statusSize)
                                 )
                             }
@@ -462,7 +463,7 @@ fun NoteCard(
                                 Icon(
                                     Icons.Default.Notifications,
                                     contentDescription = null,
-                                    tint = contentColor.copy(alpha = 0.5f),
+                                    tint = contentColor.copy(alpha = NoteEmphasis.Icon),
                                     modifier = Modifier.size(statusSize)
                                 )
                             }
@@ -474,7 +475,7 @@ fun NoteCard(
                                 fontFeatureSettings = "tnum",
                                 fontSize = if (compact) 10.sp else 11.sp
                             ),
-                            color = contentColor.copy(alpha = 0.6f),
+                            color = contentColor.copy(alpha = NoteEmphasis.Secondary),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -485,7 +486,7 @@ fun NoteCard(
                     Text(
                         text = RichTextParser.parse(
                             text = note.content,
-                            contentColor = contentColor.copy(alpha = 0.8f),
+                            contentColor = contentColor.copy(alpha = NoteEmphasis.Secondary),
                             highlightColor = highlightColor,
                             searchQuery = searchQuery,
                             linkColor = MaterialTheme.colorScheme.primary,
@@ -503,7 +504,7 @@ fun NoteCard(
                     Text(
                         text = stringResource(Res.string.checklist_progress, note.checklist.count { it.isChecked }, note.checklist.size),
                         style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.6f),
+                        color = contentColor.copy(alpha = NoteEmphasis.Secondary),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -520,13 +521,13 @@ fun NoteCard(
                                         if (item.isChecked) Res.string.cd_checked else Res.string.cd_unchecked
                                     ),
                                     modifier = Modifier.size(14.dp),
-                                    tint = contentColor.copy(alpha = 0.7f)
+                                    tint = contentColor.copy(alpha = NoteEmphasis.Icon)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = RichTextParser.parse(
                                         text = item.text,
-                                        contentColor = contentColor.copy(alpha = 0.7f),
+                                        contentColor = contentColor.copy(alpha = NoteEmphasis.Secondary),
                                         highlightColor = highlightColor,
                                         searchQuery = searchQuery,
                                         linksClickable = false
@@ -537,7 +538,7 @@ fun NoteCard(
                                     ),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    color = contentColor.copy(alpha = 0.7f)
+                                    color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                                 )
                             }
                         }
@@ -548,7 +549,7 @@ fun NoteCard(
                         Text(
                             text = stringResource(Res.string.labels_more, remainingChecklistCount),
                             style = MaterialTheme.typography.labelSmall,
-                            color = contentColor.copy(alpha = 0.55f)
+                            color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                         )
                     }
                 }
@@ -574,7 +575,7 @@ fun NoteCard(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier
                                     .clip(CircleShape)
-                                    .background(contentColor.copy(alpha = 0.1f))
+                                    .background(contentColor.copy(alpha = NoteEmphasis.Decorative))
                                     .then(
                                         if (clickable) {
                                             Modifier.clickable { onLabelClick.invoke(labelId) }
@@ -588,7 +589,7 @@ fun NoteCard(
                             Text(
                                 text = stringResource(Res.string.labels_more, overflowCount),
                                 style = NoteCardLabelChipStyle,
-                                color = contentColor.copy(alpha = 0.7f)
+                                color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                             )
                         }
                     }
