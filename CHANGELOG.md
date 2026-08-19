@@ -2,6 +2,13 @@
 
 All notable changes to Notelikeus are documented here.
 
+## [Unreleased]
+
+### Changed
+- Firestore rules type-check `timestamp` and `reminderTimestamp` as `int` rather than the
+  looser `number` — both are epoch millis written as integers by every client and read back
+  as `Long`, completing the tightening that `localId` received in 1.0.1
+
 ## [1.0.1] — 2026-08-17
 
 ### Changed
