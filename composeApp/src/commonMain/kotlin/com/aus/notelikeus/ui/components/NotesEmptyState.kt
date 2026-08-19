@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
-import com.aus.notelikeus.ui.main.components.PrecisionFilterChip
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.AppType
 
@@ -144,7 +143,7 @@ fun NotesEmptyState(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     recentSearches.forEach { query ->
-                        PrecisionFilterChip(
+                        AppFilterChip(
                             selected = false,
                             onClick = { onRecentSearchClick(query) },
                             label = query,
