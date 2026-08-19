@@ -36,6 +36,8 @@ import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.AppType
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
 
 private val EmptyStateIconSize = 72.dp
 private const val EmptyStateIconAlpha = 0.2f
@@ -69,7 +71,7 @@ fun NotesEmptyState(
                 icon = icon,
                 contentDescription = message
             )
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(Spacing.xxxl))
             Text(
                 text = message,
                 style = MaterialTheme.typography.titleMedium.copy(
@@ -81,7 +83,7 @@ fun NotesEmptyState(
                 textAlign = TextAlign.Center
             )
             if (subtitle != null) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(Spacing.sm))
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium.copy(
@@ -104,15 +106,15 @@ fun NotesEmptyState(
                         Icon(
                             Icons.Default.Add,
                             contentDescription = buttonLabel,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(Size.iconMedium)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(Spacing.sm))
                         Text(buttonLabel)
                     }
                 }
             }
             if (showClearFilters) {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(Spacing.md))
                 OutlinedButton(
                     onClick = onClearFilters,
                     shape = MaterialTheme.shapes.large
@@ -121,25 +123,25 @@ fun NotesEmptyState(
                         Icon(
                             Icons.Default.FilterAltOff,
                             contentDescription = stringResource(Res.string.clear_filters),
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(Size.iconMedium)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(Spacing.sm))
                         Text(stringResource(Res.string.clear_filters))
                     }
                 }
             }
 
             if (recentSearches.isNotEmpty() && !showCreateButton) {
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(Spacing.xxxl))
                 Text(
                     stringResource(Res.string.recent_searches),
                     style = AppType.chromeLabel,
                     color = mutedTextColor.copy(alpha = 0.8f)
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(Spacing.md))
                 FlowRow(
                     horizontalArrangement = Arrangement.Center,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.sm),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     recentSearches.forEach { query ->
@@ -148,7 +150,7 @@ fun NotesEmptyState(
                             onClick = { onRecentSearchClick(query) },
                             label = query,
                             compact = true,
-                            modifier = Modifier.padding(horizontal = 4.dp)
+                            modifier = Modifier.padding(horizontal = Spacing.xs)
                         )
                     }
                 }

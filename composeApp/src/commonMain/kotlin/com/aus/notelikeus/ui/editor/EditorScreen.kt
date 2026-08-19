@@ -58,13 +58,15 @@ import com.aus.notelikeus.util.DateUtils
 import com.aus.notelikeus.ui.theme.AppType
 import com.aus.notelikeus.ui.theme.NoteEmphasis
 import com.aus.notelikeus.ui.components.AppSnackbar
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
 
-private val EditorHorizontalPadding = 20.dp
-private val EditorVerticalPadding = 20.dp
+private val EditorHorizontalPadding = Spacing.xl
+private val EditorVerticalPadding = Spacing.xl
 private val EditorBodyMinHeight = 280.dp
 
 /** Readable measure for large screens; content centers inside the note-colored surface. */
-private val EditorContentMaxWidth = 720.dp
+private val EditorContentMaxWidth = Size.readingMeasure
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -181,7 +183,7 @@ fun EditorScreen(
                                 Icon(
                                     Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = stringResource(Res.string.cd_back),
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(Size.iconLarge)
                                 )
                             }
                         }
@@ -191,7 +193,7 @@ fun EditorScreen(
                             Icon(
                                 if (state.reminderTimestamp != null) Icons.Filled.Notifications else Icons.Outlined.Notifications,
                                 contentDescription = stringResource(Res.string.set_reminder),
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(Size.iconLarge)
                             )
                         }
                         IconButton(onClick = {
@@ -206,7 +208,7 @@ fun EditorScreen(
                             Icon(
                                 if (state.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                                 contentDescription = stringResource(Res.string.cd_pin_note),
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(Size.iconLarge)
                             )
                         }
                         IconButton(onClick = {
@@ -232,7 +234,7 @@ fun EditorScreen(
                             Icon(
                                 Icons.Default.Archive,
                                 contentDescription = stringResource(Res.string.cd_archive_note),
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(Size.iconLarge)
                             )
                         }
                     }
@@ -293,20 +295,20 @@ fun EditorScreen(
                         },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(Size.iconSmall))
 
                     // Divider between title and body, matching the web editor's hairline.
                     HorizontalDivider(
-                        thickness = 1.dp,
+                        thickness = Spacing.hairline,
                         color = contentColor.copy(alpha = NoteEmphasis.Decorative)
                     )
 
                     if (state.labels.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(Spacing.md))
                         FlowRow(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                         ) {
                             state.labels.forEach { label ->
                                 Text(
@@ -321,13 +323,13 @@ fun EditorScreen(
                                     modifier = Modifier
                                         .clip(CircleShape)
                                         .background(contentColor.copy(alpha = NoteEmphasis.Decorative))
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        .padding(horizontal = 10.dp, vertical = Spacing.xs)
                                 )
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(Size.iconSmall))
                     if (state.checklist.isEmpty()) {
                         RichTextToolbar(
                             onBoldClick = { viewModel.applyBoldToSelection() },
@@ -340,7 +342,7 @@ fun EditorScreen(
                             // part of the note rather than a panel floating over it.
                             surfaceColor = contentColor.copy(alpha = NoteEmphasis.Decorative),
                             modifier = Modifier
-                                .padding(bottom = 12.dp)
+                                .padding(bottom = Spacing.md)
                                 .align(Alignment.Start)
                         )
                     }
