@@ -1,6 +1,7 @@
 package com.aus.notelikeus.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -133,23 +134,29 @@ private val LightColorScheme = lightColorScheme(
     inversePrimary = Color(0xFFD9D9D9),
 )
 
+/**
+ * The colour scheme a given preference resolves to.
+ *
+ * Split out of [NotelikeusTheme] so it can be enumerated outside a composition — the contrast
+ * test sweeps every scheme the app can render, and reading them through the composable would mean
+ * the test asserted against a list it maintained itself, free to drift from this one.
+ */
+internal fun colorSchemeFor(appTheme: AppTheme, darkTheme: Boolean): ColorScheme = when (appTheme) {
+    AppTheme.LIGHT -> LightColorScheme
+    AppTheme.DARK -> DarkColorScheme
+    AppTheme.TRUE_DARK -> TrueDarkColorScheme
+    AppTheme.MIDNIGHT -> MidnightColorScheme
+    AppTheme.FOREST -> ForestColorScheme
+    AppTheme.AUTO -> if (darkTheme) DarkColorScheme else LightColorScheme
+}
+
 @Composable
 fun NotelikeusTheme(
     appTheme: AppTheme = AppTheme.AUTO,
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when (appTheme) {
-        AppTheme.LIGHT -> LightColorScheme
-        AppTheme.DARK -> DarkColorScheme
-        AppTheme.TRUE_DARK -> TrueDarkColorScheme
-        AppTheme.MIDNIGHT -> MidnightColorScheme
-        AppTheme.FOREST -> ForestColorScheme
-        AppTheme.AUTO -> {
-            if (darkTheme) DarkColorScheme
-            else LightColorScheme
-        }
-    }
+    val colorScheme = colorSchemeFor(appTheme, darkTheme)
 
     MaterialTheme(
         colorScheme = colorScheme,
