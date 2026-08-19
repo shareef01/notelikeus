@@ -42,6 +42,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.NoteViewMode
+import com.aus.notelikeus.ui.components.AppSnackbar
 import com.aus.notelikeus.ui.components.NoteStaggeredGrid
 import com.aus.notelikeus.ui.components.NotesEmptyState
 import com.aus.notelikeus.ui.main.components.MainTopAppBar
@@ -105,25 +106,7 @@ internal fun MainScaffold(
 
     Scaffold(
         containerColor = Color.Transparent, // Parent handles background
-        snackbarHost = {
-            SnackbarHost(
-                hostState = snackbarHostState,
-                modifier = Modifier.navigationBarsPadding()
-            ) { data ->
-                Snackbar(
-                    snackbarData = data,
-                    shape = MaterialTheme.shapes.medium,
-                    containerColor = MaterialTheme.colorScheme.inverseSurface,
-                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                    actionColor = MaterialTheme.colorScheme.inversePrimary,
-                    modifier = Modifier.padding(
-                        start = 16.dp,
-                        end = 16.dp,
-                        bottom = if (showFab) 88.dp else 16.dp
-                    )
-                )
-            }
-        },
+        snackbarHost = { AppSnackbar(hostState = snackbarHostState, aboveFab = showFab) },
         topBar = {
             MainTopAppBar(
                 searchQuery = state.searchQuery,
