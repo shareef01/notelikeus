@@ -23,6 +23,7 @@ import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.ui.editor.MarkdownVisualTransformation
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.AppType
+import com.aus.notelikeus.ui.theme.NoteEmphasis
 
 @Composable
 fun ChecklistUI(
@@ -54,7 +55,7 @@ fun ChecklistUI(
                     },
                     colors = CheckboxDefaults.colors(
                         checkedColor = contentColor,
-                        uncheckedColor = contentColor.copy(alpha = 0.6f),
+                        uncheckedColor = contentColor.copy(alpha = NoteEmphasis.Icon),
                         checkmarkColor = contentColor.getContentColor()
                     )
                 )
@@ -76,7 +77,7 @@ fun ChecklistUI(
                             Text(
                                 text = stringResource(Res.string.list_item_hint),
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = contentColor.copy(alpha = 0.4f)
+                                color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                             )
                         }
                         innerTextField()
@@ -90,7 +91,7 @@ fun ChecklistUI(
                     Icon(
                         Icons.Default.Close,
                         contentDescription = stringResource(Res.string.cd_remove_item),
-                        tint = contentColor.copy(alpha = 0.6f)
+                        tint = contentColor.copy(alpha = NoteEmphasis.Icon)
                     )
                 }
             }
@@ -126,7 +127,7 @@ fun ChecklistUI(
             ) {
                 Text(
                     text = stringResource(Res.string.convert_to_text),
-                    color = contentColor.copy(alpha = 0.8f),
+                    color = contentColor.copy(alpha = NoteEmphasis.Secondary),
                     style = AppType.editorBody
                 )
             }
