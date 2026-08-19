@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface ResponsiveSheetProps {
@@ -20,15 +21,7 @@ export function ResponsiveSheet({
   maxHeightClass = 'max-h-[92vh] md:max-h-[85vh]',
 }: ResponsiveSheetProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
-
-  useEffect(() => {
-    if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open]);
+  useBodyScrollLock(open);
 
   if (!open) return null;
 
