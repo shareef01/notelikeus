@@ -68,6 +68,10 @@ import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.AppType
+import androidx.compose.material.icons.filled.Contrast
+import com.aus.notelikeus.domain.model.AccentColor
+import com.aus.notelikeus.domain.model.ThemeBase
+import com.aus.notelikeus.domain.model.ThemePreference
 
 private val SettingsIconSize = 24.dp
 private val SettingsRowHorizontal = 16.dp
@@ -80,7 +84,7 @@ fun ProfileSheet(
     noteCount: Int,
     viewMode: NoteViewMode,
     sortOrder: NoteSortOrder,
-    appTheme: AppTheme,
+    themePreference: ThemePreference,
     isAppLockEnabled: Boolean,
     cloudSyncStatus: CloudSyncStatus = CloudSyncStatus.Unknown,
     cloudSyncedNoteCount: Int = 0,
@@ -89,7 +93,9 @@ fun ProfileSheet(
     signInError: String? = null,
     onViewModeChange: (NoteViewMode) -> Unit,
     onSortOrderChange: (NoteSortOrder) -> Unit,
-    onAppThemeChange: (AppTheme) -> Unit,
+    onThemeBaseChange: (ThemeBase) -> Unit,
+    onAccentChange: (AccentColor) -> Unit,
+    onAmoledChange: (Boolean) -> Unit,
     onAppLockChange: (Boolean) -> Unit,
     onExportClick: () -> Unit,
     onImportClick: () -> Unit,
@@ -174,10 +180,28 @@ fun ProfileSheet(
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(Res.string.section_appearance))
             ThemePicker(
-                value = appTheme,
-                onChange = {
+                preference = themePreference,
+                onBaseChange = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onAppThemeChange(it)
+                    onThemeBaseChange(it)
+                },
+                onAccentChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onAccentChange(it)
+                }
+            )
+            // Only meaningful on a dark scheme: on light there is no background to make blacker.
+            // Disabled rather than hidden, so the control does not appear and vanish as the base
+            // changes -- and so someone on System can still see it exists.
+            SettingsToggleListItem(
+                icon = Icons.Default.Contrast,
+                title = stringResource(Res.string.amoled_title),
+                subtitle = stringResource(Res.string.amoled_subtitle),
+                checked = themePreference.amoled,
+                enabled = themePreference.base != ThemeBase.LIGHT,
+                onCheckedChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onAmoledChange(it)
                 }
             )
             // Hidden where the platform can't verify the user — offering the toggle would imply a
