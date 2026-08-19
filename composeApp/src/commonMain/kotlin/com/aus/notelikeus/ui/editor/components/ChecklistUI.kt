@@ -21,8 +21,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.ui.editor.MarkdownVisualTransformation
-import com.aus.notelikeus.ui.theme.EditorBodyStyle
 import com.aus.notelikeus.ui.theme.getContentColor
+import com.aus.notelikeus.ui.theme.AppType
 
 @Composable
 fun ChecklistUI(
@@ -63,7 +63,7 @@ fun ChecklistUI(
                     value = item.text,
                     onValueChange = { onUpdate(itemId, it, item.isChecked) },
                     modifier = Modifier.weight(1f),
-                    textStyle = EditorBodyStyle.copy(
+                    textStyle = AppType.editorBody.copy(
                         color = contentColor,
                         textDecoration = if (item.isChecked) TextDecoration.LineThrough else TextDecoration.None
                     ),
@@ -112,7 +112,7 @@ fun ChecklistUI(
             Text(
                 text = stringResource(Res.string.cd_add_list_item),
                 color = contentColor,
-                style = EditorBodyStyle
+                style = AppType.editorBody
             )
         }
 
@@ -127,7 +127,7 @@ fun ChecklistUI(
                 Text(
                     text = stringResource(Res.string.convert_to_text),
                     color = contentColor.copy(alpha = 0.8f),
-                    style = EditorBodyStyle
+                    style = AppType.editorBody
                 )
             }
         }
