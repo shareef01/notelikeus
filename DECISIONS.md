@@ -144,3 +144,29 @@ one that can silently remove notes the cloud no longer has — looked like the s
 
 **Cost to reverse:** low. The call sites pass content, not layout; swapping the surface is a
 change inside this one file.
+
+---
+
+## D8 — The off-grid dp values are left as literals, not snapped to the grid.
+
+**Decided:** the token sweep converted every `.dp` literal with an exact token — the 4dp grid, icon
+and control sizes, radii, the reading measure — and left roughly 60 off-grid one-offs alone.
+Phase 1 therefore does **not** fully meet the brief's "zero hardcoded dp values in screen code".
+
+**What is left:** `6.dp` (15 uses) and `10.dp` (10) are the bulk; then a tail of 3, 7, 13, 15, 22,
+28, 30, 52, 56, 64, 68, 72, 80, 220, 260, 280 and one 1408.
+
+**Why:** snapping 6→8 and 10→12 is a *visible* layout change across the note card, the drawer and
+the filter rail, and the value of doing it is grid tidiness rather than anything a user would
+notice as better. The screens holding almost all of these — the notes list, the card, the editor,
+the drawer — are rebuilt in the later phases of this project, where those numbers get chosen
+deliberately against a real design rather than nudged to the nearest multiple. Doing it twice is
+worse than doing it once, and doing it now spends the phase's verification budget on the part of
+the work with the least user impact.
+
+**Cost to reverse:** none — this is deferral, not a design position. The sweep script is a dozen
+lines and the remaining values are already enumerated above.
+
+**Note:** the ~18 `sp` literals in screen code are in the same position and deferred for the same
+reason. The type *scale* is fully tokenised; what remains are per-call-site `fontSize` overrides,
+each of which is a decision the screen phases should be making, not preserving.
