@@ -92,6 +92,28 @@ describe('firestore.rules', () => {
     await assertFails(setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ localId: 1.5 })));
   });
 
+  // Same reasoning as localId: both are epoch millis written as integers by every client
+  // (Date.now() on web, Long on Kotlin, explicit integerValue on desktop) and read back as Long,
+  // so a fractional value has nowhere sensible to land.
+  it('rejects a fractional timestamp', async () => {
+    const alice = authed('alice');
+    await assertFails(setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ timestamp: 1.5 })));
+  });
+
+  it('rejects a fractional reminderTimestamp', async () => {
+    const alice = authed('alice');
+    await assertFails(
+      setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ reminderTimestamp: 1.5 }))
+    );
+  });
+
+  it('accepts an integer reminderTimestamp', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(
+      setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ reminderTimestamp: Date.now() }))
+    );
+  });
+
   it('rejects oversized note content', async () => {
     const alice = authed('alice');
     await assertFails(
