@@ -25,5 +25,18 @@ data class NoteEntity(
     val isLocked: Boolean = false,
     val reminderTimestamp: Long?,
     /** See [com.aus.notelikeus.domain.model.Note.serverUpdatedAt]. */
-    val serverUpdatedAt: Long? = null
+    val serverUpdatedAt: Long? = null,
+    /**
+     * The note's searchable text, folded once on write. See `buildSearchText`.
+     *
+     * **Null means "not yet indexed", not "no text"**, and the two must never be confused: a null
+     * here makes the matcher fall back to folding the note's fields on the spot, so a note is
+     * always findable. If this defaulted to an empty string instead, every row the backfill had
+     * not reached yet would silently match nothing — notes vanishing from search is exactly the
+     * failure this column exists to avoid.
+     *
+     * Local only. It is derived data, so it is not in the backup format and not in the cloud
+     * document; each client folds for itself.
+     */
+    val searchText: String? = null
 )
