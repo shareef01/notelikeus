@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.aus.notelikeus.data.sync.NoteSyncStateStore
+import com.aus.notelikeus.util.AppLog
 import com.aus.notelikeus.util.DateUtils
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
@@ -141,21 +142,32 @@ class DesktopNoteSyncStateStore(
         runBlocking { dataStore.edit { it[KEY_KNOWN_CLOUD_IDS] = encoded } }
     }
 
+    // Starting from empty is the only way to keep the app usable, but it is not harmless: losing
+    // the tombstone map lets an already-deleted note come back from the cloud, and losing the
+    // known-cloud set makes the next sync treat every remote note as new. Log it so a corrupt
+    // preferences file is diagnosable instead of showing up later as resurrected notes.
     private fun parseDeletedMap(prefs: Preferences?): Map<Long, Long> {
         val raw = prefs?.get(KEY_DELETED_JSON) ?: return emptyMap()
         return try {
             json.decodeFromString<Map<String, Long>>(raw).mapKeys { it.key.toLong() }
-        } catch (_: Exception) { emptyMap() }
+        } catch (error: Exception) {
+            AppLog.warn(TAG, "Deleted-note tombstones unreadable; starting with none", error)
+            emptyMap()
+        }
     }
 
     private fun parseIdSet(prefs: Preferences?, key: Preferences.Key<String>): Set<Long> {
         val raw = prefs?.get(key) ?: return emptySet()
         return try {
             json.decodeFromString<Set<String>>(raw).mapNotNull { it.toLongOrNull() }.toSet()
-        } catch (_: Exception) { emptySet() }
+        } catch (error: Exception) {
+            AppLog.warn(TAG, "Sync id set '${key.name}' unreadable; starting with none", error)
+            emptySet()
+        }
     }
 
     companion object {
+        private const val TAG = "NoteSyncStateStore"
         private val KEY_DELETED_JSON = stringPreferencesKey("sync_deleted_json")
         private val KEY_RESTORED_IDS = stringPreferencesKey("sync_restored_ids")
         private val KEY_KNOWN_CLOUD_IDS = stringPreferencesKey("sync_known_cloud_ids")
