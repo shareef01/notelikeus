@@ -1,16 +1,6 @@
 import type { Note } from '@/types/note';
 import { BACKUP_VERSION } from '@/lib/backup/constants';
-import { labelFromName } from '@/types/label';
-
-function uniqueLabels(notes: Note[]) {
-  const map = new Map<string, ReturnType<typeof labelFromName>>();
-  for (const note of notes) {
-    for (const label of note.labels) {
-      map.set(label.name.toLowerCase(), label);
-    }
-  }
-  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
+import { collectUniqueLabels } from '@/types/label';
 
 /** Plain backup DTO — mirrors Android NoteBackupExporter, no Firestore write sentinels. */
 function noteToBackupMap(note: Note): Record<string, unknown> {
@@ -41,7 +31,7 @@ function noteToBackupMap(note: Note): Record<string, unknown> {
 }
 
 export function exportNotesBackup(notes: Note[]): void {
-  const labels = uniqueLabels(notes);
+  const labels = collectUniqueLabels(notes);
   const payload = {
     version: BACKUP_VERSION,
     exportedAt: Date.now(),
