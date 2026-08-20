@@ -123,6 +123,34 @@ behind the same pure query function.
 difference is not measurable, and the brief's own budget (5,000 notes in under 50ms) is
 reachable without it.
 
+### Amended during Phase 2 — the SQL half turned out to be unnecessary
+
+The normalised column happened; the SQL query did not, and should not.
+
+Measured with the column in place, over 5,000 realistically-shaped notes:
+
+| query | time | budget |
+|---|---|---|
+| free text | 1ms | 50ms |
+| multi-token text | 1ms | 50ms |
+| text + labels + colours + flags + sort | 1ms | 50ms |
+| unfiltered | <1ms | 50ms |
+
+Fifty times the headroom. Pushing the same predicates into a parameterised `RawQuery` would mean
+rewiring the notes `Flow` to re-subscribe on every query change, and — worse — writing the query
+semantics a second time in SQL, where it could disagree with the matcher the tests and the live
+result count use. That is real complexity and a real correctness risk, bought for a saving that
+does not register.
+
+**So the plan changed on the evidence:** fold once on write, match in memory. The expensive thing
+was never *where* the filtering ran, it was that the old code re-folded and re-allocated per note
+per keystroke. `NoteQueryPerformanceTest` is the guard, and what would breach it is a change in
+kind — folding per keystroke, or splitting the haystack per note — both of which were the previous
+behaviour.
+
+If a corpus ever arrives where this stops holding, the pure matcher is the right place to swap the
+storage under, exactly as this entry originally described.
+
 ---
 
 ## D7 — The shared confirmation is a dialog, not a bottom sheet.
