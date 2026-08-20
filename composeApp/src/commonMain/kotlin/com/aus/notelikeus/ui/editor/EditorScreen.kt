@@ -45,6 +45,8 @@ import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.main.UndoAction
+import com.aus.notelikeus.util.AppLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import com.aus.notelikeus.ui.editor.components.ChecklistUI
 import com.aus.notelikeus.ui.editor.components.EditorBottomBar
@@ -104,10 +106,16 @@ fun EditorScreen(
     // Leaving the editor pops this destination, which clears the ViewModel and cancels the scope
     // saveNote() would have launched the write into. Await it first so navigating away cannot
     // discard the edit, and close regardless of the outcome so a failed write cannot trap the
-    // user on the screen.
+    // user on the screen. The screen is gone before a snackbar could be read, so the failure goes
+    // to the log — it is the only record that the edit was not stored.
     fun saveThenLeave() {
         scope.launch {
             runCatching { viewModel.saveNoteAndAwait() }
+                .onFailure { error ->
+                    if (error !is CancellationException) {
+                        AppLog.warn("EditorScreen", "Save on leave failed", error)
+                    }
+                }
             onBack()
         }
     }
@@ -129,6 +137,8 @@ fun EditorScreen(
     val reminderMustBeFutureMsg = stringResource(Res.string.reminder_must_be_future)
     val noteArchivedMsg = stringResource(Res.string.note_archived)
     val noteTrashedMsg = stringResource(Res.string.note_trashed)
+    val noteSaveFailedMsg = stringResource(Res.string.note_save_failed)
+    val noteDeleteFailedMsg = stringResource(Res.string.note_delete_failed)
     val reminderRemovedMsg = stringResource(Res.string.reminder_removed_confirmation)
 
     fun scheduleReminderIfAllowed(millis: Long) {
@@ -147,6 +157,12 @@ fun EditorScreen(
             return
         }
         scheduleReminderIfAllowed(millis)
+    }
+
+    LaunchedEffect(state.saveFailed) {
+        if (!state.saveFailed) return@LaunchedEffect
+        snackbarHostState.showSnackbar(noteSaveFailedMsg)
+        viewModel.clearSaveFailure()
     }
 
     val notePinnedMsg = stringResource(Res.string.note_pinned)
@@ -390,7 +406,15 @@ fun EditorScreen(
                 onCreateLabel = { viewModel.createLabel(it) },
                 onDeleteNote = {
                     scope.launch {
-                        val snapshot = viewModel.trashNoteForDelete()
+                        // Staging the undo and leaving on a failed write would report a delete
+                        // that never happened, and offer to undo it.
+                        val snapshot = runCatching { viewModel.trashNoteForDelete() }
+                            .getOrElse { error ->
+                                if (error is CancellationException) throw error
+                                AppLog.warn("EditorScreen", "Trashing the note failed", error)
+                                snackbarHostState.showSnackbar(noteDeleteFailedMsg)
+                                return@launch
+                            }
                         if (snapshot != null) {
                             onStageUndo(snapshot, UndoAction.TRASH, noteTrashedMsg)
                         }
