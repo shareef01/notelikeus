@@ -43,7 +43,8 @@ async function loadReminders(): Promise<SwReminder[]> {
     if (!stored) return [];
     const parsed: unknown = await stored.json();
     return Array.isArray(parsed) ? (parsed as SwReminder[]) : [];
-  } catch {
+  } catch (error) {
+    console.warn('[Notelikeus SW] Stored reminders unreadable; starting with none:', error);
     return [];
   }
 }
@@ -57,8 +58,10 @@ async function saveReminders(reminders: SwReminder[]): Promise<void> {
         headers: { 'Content-Type': 'application/json' },
       }),
     );
-  } catch {
-    // Storage unavailable — in-memory timers still cover this worker's lifetime.
+  } catch (error) {
+    // Storage unavailable — in-memory timers still cover this worker's lifetime, but reminders
+    // will not survive it being terminated.
+    console.warn('[Notelikeus SW] Could not persist reminders:', error);
   }
 }
 
