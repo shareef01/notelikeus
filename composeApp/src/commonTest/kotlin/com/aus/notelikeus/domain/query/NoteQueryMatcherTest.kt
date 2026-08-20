@@ -280,3 +280,39 @@ class NoteQueryMatcherTest {
         assertEquals(NoteSortOrder.NEWEST, cleared.sort)
     }
 }
+
+/**
+ * Manual reordering is only offered when it can actually be honoured.
+ *
+ * Separate class because this is not about matching: it guards a data-affecting bug rather than a
+ * cosmetic one. Dragging under a timestamp sort rewrote the timestamps of every note it touched --
+ * `updateNotePositions` bumps them so the new position survives the sync conflict guard -- and
+ * replicated them to every device, then re-sorted the list out from under the user.
+ */
+class ManualReorderGateTest {
+
+    @Test
+    fun `only manual sort allows reordering`() {
+        assertTrue(NoteQuery(sort = NoteSortOrder.MANUAL).allowsManualReorder)
+        assertFalse(NoteQuery(sort = NoteSortOrder.NEWEST).allowsManualReorder)
+        assertFalse(NoteQuery(sort = NoteSortOrder.OLDEST).allowsManualReorder)
+    }
+
+    @Test
+    fun `an active filter blocks reordering even under manual sort`() {
+        // Position is a property of the whole list; a drag inside a filtered subset cannot say
+        // where the note belongs among the notes that are hidden.
+        val manual = NoteQuery(sort = NoteSortOrder.MANUAL)
+        assertFalse(manual.copy(text = "x").allowsManualReorder)
+        assertFalse(manual.copy(labels = setOf(1)).allowsManualReorder)
+        assertFalse(manual.copy(colors = setOf(1)).allowsManualReorder)
+        assertFalse(manual.copy(flags = setOf(NoteFlag.PINNED)).allowsManualReorder)
+        assertFalse(manual.copy(dateRange = DateRange(0, 1)).allowsManualReorder)
+    }
+
+    @Test
+    fun `scope and view do not block reordering`() {
+        val manual = NoteQuery(sort = NoteSortOrder.MANUAL)
+        assertTrue(manual.copy(scope = NoteScope.ARCHIVE).allowsManualReorder)
+    }
+}
