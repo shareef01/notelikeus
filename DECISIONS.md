@@ -230,3 +230,32 @@ and no change to the matcher.
 
 **When to revisit:** if a corpus turns up where the un-indexed path breaches the budget. The perf
 test measures both paths on every run, so that shows up as a failure rather than as a complaint.
+
+---
+
+## D10 — The query is not persisted through `SavedStateHandle`.
+
+**Decided:** `sort` and `view` persist to DataStore as durable preferences. The ad-hoc dimensions
+— text, labels, colours, flags, date range — live only in memory and reset when the process does.
+The brief asks for `SavedStateHandle` survival; this does not do it.
+
+**Why:** the plumbing is riskier than the feature. `Koin.kt` already carries a comment explaining
+that standalone note windows on desktop *cannot* use `koinViewModel` because no
+`SavedStateRegistryOwner` exists there, and resolve the editor through a plain factory with a
+throwaway handle instead. Injecting a real handle into `MainViewModel` from the shared module
+means either a definition desktop cannot satisfy, or a nullable parameter that only Android fills.
+
+The second option is what this project keeps finding and removing: a fully-wired mechanism that
+nothing connects — `markRestored`, `saveNoteAndAwait`, `cloudSyncedNoteCount`, `isTrueDarkMode`,
+`MainState.appTheme`. Adding a `savedStateHandle` parameter that defaults to a fresh handle would
+compile, look implemented, and persist nothing.
+
+**What is actually lost:** only Android process death, and only the ad-hoc filters. A cold start is
+*supposed* to reset them — the brief says so in the same section — so the gap is the narrow case
+where Android reclaims the process mid-session and the user returns expecting their filter intact.
+
+**Cost to reverse:** moderate, and it belongs with the phase that rebuilds the filter surface,
+where the restore path can be exercised rather than assumed. The query is already a single
+immutable object with one setter, which is the hard part; what remains is DI and a handful of
+primitive round-trips.
+
