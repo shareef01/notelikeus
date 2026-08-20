@@ -390,12 +390,12 @@ class MainViewModel(
         val hiddenIds = pendingHiddenIds.toSet()
         val now = DateUtils.currentTimeMillis()
         viewModelScope.launch {
-            val visible = withContext(defaultDispatcher) {
+            val result = withContext(defaultDispatcher) {
                 val candidates = snapshot.notes.filter { it.id == null || it.id !in hiddenIds }
-                NoteQueryMatcher.apply(candidates, snapshot.query, now)
+                NoteQueryMatcher.search(candidates, snapshot.query, now)
             }
             if (generation != filterGeneration) return@launch
-            _state.update { it.copy(filteredNotes = visible) }
+            _state.update { it.copy(filteredNotes = result.notes, isFuzzyResult = result.isFuzzy) }
         }
     }
 
