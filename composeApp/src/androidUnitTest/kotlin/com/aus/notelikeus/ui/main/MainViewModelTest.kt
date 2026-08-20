@@ -413,4 +413,128 @@ class MainViewModelTest {
             state.pendingCloudSyncEvent
         )
     }
+    // ---- search operators ----
+
+    /**
+     * `label:` resolves against the user's actual labels, which is the half the parser cannot do.
+     */
+    @Test
+    fun `a label operator becomes a real label filter`() = runTest {
+        val work = Label(id = 42L, name = "Work")
+        every { repository.getLabels() } returns flowOf(listOf(work))
+        viewModel = createViewModel()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.onSearchQueryChange("label:work milk")
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals(setOf(42L), state.query.labels)
+        // The free text is what remains after the operator is lifted out...
+        assertEquals("milk", state.query.text)
+        // ...but the box still shows everything the user typed.
+        assertEquals("label:work milk", state.searchQuery)
+    }
+
+    @Test
+    fun `an unknown label matches nothing rather than everything`() = runTest {
+        every { repository.getLabels() } returns flowOf(emptyList())
+        viewModel = createViewModel()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.onSearchQueryChange("label:nosuchlabel")
+        testScheduler.advanceUntilIdle()
+
+        // No id to filter on, so the operator contributes nothing -- and critically it does not
+        // fall through to free text, which would search the notes for "label:nosuchlabel".
+        assertEquals(emptySet<Long>(), viewModel.state.value.query.labels)
+        assertEquals("", viewModel.state.value.query.text)
+    }
+
+    @Test
+    fun `a colour operator expands to both palette variants`() = runTest {
+        viewModel.onSearchQueryChange("color:green")
+        testScheduler.advanceUntilIdle()
+
+        val colors = viewModel.state.value.query.colors
+        // Both the light and the dark green, so a note coloured under either theme still matches.
+        assertEquals(2, colors.size)
+    }
+
+    @Test
+    fun `deleting an operator removes exactly that filter`() = runTest {
+        val work = Label(id = 42L, name = "Work")
+        every { repository.getLabels() } returns flowOf(listOf(work))
+        viewModel = createViewModel()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.onSearchQueryChange("label:work")
+        testScheduler.advanceUntilIdle()
+        assertEquals(setOf(42L), viewModel.state.value.query.labels)
+
+        viewModel.onSearchQueryChange("")
+        testScheduler.advanceUntilIdle()
+        assertEquals(emptySet<Long>(), viewModel.state.value.query.labels)
+    }
+
+    @Test
+    fun `a chip selection survives typing in the search box`() = runTest {
+        viewModel.selectLabelFilter(7L)
+        testScheduler.advanceUntilIdle()
+        assertEquals(setOf(7L), viewModel.state.value.query.labels)
+
+        viewModel.onSearchQueryChange("milk")
+        testScheduler.advanceUntilIdle()
+
+        // The two inputs own separate halves of the query, so a keystroke cannot clear a chip.
+        assertEquals(setOf(7L), viewModel.state.value.query.labels)
+        assertEquals("milk", viewModel.state.value.query.text)
+    }
+
+    @Test
+    fun `unrecognised operators are reported rather than searched for`() = runTest {
+        viewModel.onSearchQueryChange("is:sideways")
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf("is:sideways"), viewModel.state.value.unknownOperators)
+        assertEquals("", viewModel.state.value.query.text)
+    }
+
+    /**
+     * Clearing has to empty the box too. Leaving the text would re-apply its operators on the very
+     * next rebuild, so "Clear filters" would visibly do nothing for anyone filtering by typing.
+     */
+    @Test
+    fun `clearing filters also clears the search box`() = runTest {
+        val work = Label(id = 42L, name = "Work")
+        every { repository.getLabels() } returns flowOf(listOf(work))
+        viewModel = createViewModel()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.onSearchQueryChange("label:work milk")
+        viewModel.selectColorFilter(0xFF2E5A32.toInt())
+        testScheduler.advanceUntilIdle()
+
+        viewModel.clearFilters()
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals("", state.searchQuery)
+        assertEquals(false, state.query.hasActiveFilters)
+    }
+
+    /** Sort and view are durable; the rest of the query is not. */
+    @Test
+    fun `only sort and view are persisted`() = runTest {
+        viewModel.setSortOrder(NoteSortOrder.NEWEST)
+        viewModel.setViewMode(NoteViewMode.LIST)
+        viewModel.onSearchQueryChange("milk")
+        viewModel.selectLabelFilter(3L)
+        testScheduler.advanceUntilIdle()
+
+        coVerify { settingsRepository.setNoteSortOrder(NoteSortOrder.NEWEST) }
+        coVerify { settingsRepository.setNoteViewMode(NoteViewMode.LIST) }
+        coVerify(exactly = 0) { settingsRepository.addRecentSearch(any()) }
+    }
+
 }
