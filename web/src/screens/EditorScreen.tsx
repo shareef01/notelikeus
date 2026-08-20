@@ -16,6 +16,7 @@ import { MarkdownBody } from '@/components/editor/MarkdownPreview';
 import { ReminderPickerDialog } from '@/components/editor/ReminderPickerDialog';
 import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
 import { useNoteEditor } from '@/hooks/useNoteEditor';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { useShortcuts } from '@/hooks/useShortcuts';
@@ -156,15 +157,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
   }, [handleBack]);
 
   const floatPanelRef = useFocusTrap<HTMLDivElement>(isFloatLayout, onFloatClose);
-
-  useEffect(() => {
-    if (!isOverlayShell) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [isOverlayShell]);
+  useBodyScrollLock(isOverlayShell);
 
   const handleDelete = async () => {
     await editor.trashNote();
