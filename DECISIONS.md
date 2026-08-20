@@ -198,3 +198,35 @@ lines and the remaining values are already enumerated above.
 **Note:** the ~18 `sp` literals in screen code are in the same position and deferred for the same
 reason. The type *scale* is fully tokenised; what remains are per-call-site `fontSize` overrides,
 each of which is a decision the screen phases should be making, not preserving.
+
+---
+
+## D9 — No backfill for the search column. Notes index themselves as they are written.
+
+**Decided:** `MIGRATION_9_10` adds `searchText` and leaves every existing row null. Nothing sweeps
+the table afterwards. A note gets indexed the next time it is saved, and until then the matcher
+folds its fields on the spot.
+
+**Why:** the obvious design was a startup pass filling nulls in batches, idempotent and
+interruptible. Measured, it is not worth writing. At 5,000 notes:
+
+| | time |
+|---|---|
+| fully indexed | **0ms** |
+| fully un-indexed (the fallback) | **12ms** |
+
+Both are inside the brief's 50ms budget, with four times the headroom in the worst case. So the
+backfill would buy 12ms that nobody is waiting on, and it would pay for it by rewriting every row
+of a SQLCipher-encrypted database holding the user's real notes. Every row rewritten is a row that
+can go wrong; a pass that does nothing visible is a pass with only downside.
+
+**What makes this safe rather than merely cheap:** the fallback is not a degraded mode, it is the
+same answer computed a slower way, and there is a test asserting both paths return the identical
+result set. The column is an optimisation over a correct default, not a replacement for one.
+
+**Cost to reverse:** low, and it stays reversible precisely because null already means "not yet
+indexed" everywhere. A backfill can be added later as a pure optimisation with no schema change
+and no change to the matcher.
+
+**When to revisit:** if a corpus turns up where the un-indexed path breaches the budget. The perf
+test measures both paths on every run, so that shows up as a failure rather than as a complaint.
