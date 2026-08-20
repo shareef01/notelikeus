@@ -109,3 +109,25 @@ and rebuild `ThemePicker.tsx` as two rows plus a toggle. The Kotlin implementati
 are the specification.
 
 **Severity:** low, and deliberately deferred rather than missed.
+
+---
+
+## F8 — `EditorViewModel` injects a `SettingsRepository` it never uses
+
+`EditorViewModel`'s constructor takes `settingsRepository: SettingsRepository` and the class body
+references it exactly once — in the parameter list. Nothing reads it.
+
+It is left over from when a new note took its colour from the active theme's background; that was
+removed when `NO_NOTE_COLOR` was introduced, and the dependency stayed. It surfaced during the
+Phase 1 audit because `EditorViewModelTest` was still stubbing `settingsRepository.appTheme`,
+which is how a dead dependency stays invisible: the test keeps it looking used.
+
+**Why it matters:** minor, but it is a constructor argument threaded through the Koin module and
+the desktop `EditorWindowLauncher`'s manual factory, so it makes the editor look like it depends
+on settings when it does not.
+
+**Suggested fix:** drop the parameter, then the Koin definition and the desktop factory call.
+Deliberately not done inside the audit — it touches DI wiring in three places and belongs in a
+commit of its own.
+
+**Severity:** low.
