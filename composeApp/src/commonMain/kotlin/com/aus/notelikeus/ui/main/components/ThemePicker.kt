@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,103 +29,152 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aus.notelikeus.domain.model.AppTheme
-import com.aus.notelikeus.domain.model.appThemeLabelRes
+import com.aus.notelikeus.domain.model.AccentColor
+import com.aus.notelikeus.domain.model.ThemeBase
+import com.aus.notelikeus.domain.model.ThemePreference
+import com.aus.notelikeus.ui.theme.AppType
 import com.aus.notelikeus.ui.theme.Chrome
+import com.aus.notelikeus.ui.theme.Motion
+import com.aus.notelikeus.ui.theme.Radius
+import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.colorSchemeFor
+import notelikeus.composeapp.generated.resources.Res
+import notelikeus.composeapp.generated.resources.accent_blue
+import notelikeus.composeapp.generated.resources.accent_green
+import notelikeus.composeapp.generated.resources.accent_label
+import notelikeus.composeapp.generated.resources.accent_neutral
+import notelikeus.composeapp.generated.resources.theme_auto
+import notelikeus.composeapp.generated.resources.theme_base_label
+import notelikeus.composeapp.generated.resources.theme_dark
+import notelikeus.composeapp.generated.resources.theme_light
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringResource
 
-private data class ThemeSwatchMeta(
-    val surface: Color,
-    val accent: Color,
-    val surfaceAlt: Color? = null,
-    val lightCheck: Boolean = false,
-)
+private fun themeBaseLabelRes(base: ThemeBase): StringResource = when (base) {
+    ThemeBase.SYSTEM -> Res.string.theme_auto
+    ThemeBase.LIGHT -> Res.string.theme_light
+    ThemeBase.DARK -> Res.string.theme_dark
+}
 
-private val ThemeOrder = listOf(
-    AppTheme.AUTO,
-    AppTheme.LIGHT,
-    AppTheme.DARK,
-    AppTheme.TRUE_DARK,
-    AppTheme.MIDNIGHT,
-    AppTheme.FOREST,
-)
+private fun accentLabelRes(accent: AccentColor): StringResource = when (accent) {
+    AccentColor.NEUTRAL -> Res.string.accent_neutral
+    AccentColor.BLUE -> Res.string.accent_blue
+    AccentColor.GREEN -> Res.string.accent_green
+}
 
-private val ThemeSwatches: Map<AppTheme, ThemeSwatchMeta> = mapOf(
-    AppTheme.AUTO to ThemeSwatchMeta(
-        surface = Color(0xFFF7F7F7),
-        surfaceAlt = Color(0xFF1C1C1C),
-        accent = Color(0xFF8B8B8B),
-        lightCheck = true,
-    ),
-    AppTheme.LIGHT to ThemeSwatchMeta(
-        surface = Color(0xFFFFFFFF),
-        accent = Color(0xFF111111),
-        lightCheck = true,
-    ),
-    AppTheme.DARK to ThemeSwatchMeta(
-        surface = Color(0xFF1C1C1C),
-        accent = Color(0xFFF5F5F5),
-    ),
-    AppTheme.TRUE_DARK to ThemeSwatchMeta(
-        surface = Color(0xFF000000),
-        accent = Color(0xFFFFFFFF),
-    ),
-    AppTheme.MIDNIGHT to ThemeSwatchMeta(
-        surface = Color(0xFF0C111C),
-        accent = Color(0xFF8EB6FF),
-    ),
-    AppTheme.FOREST to ThemeSwatchMeta(
-        surface = Color(0xFF0F1610),
-        accent = Color(0xFF8FD49A),
-    ),
-)
-
+/**
+ * Base theme and accent, as two short rows of swatches.
+ *
+ * Every swatch previews the **real scheme**: its fill and dot come from [colorSchemeFor] applied
+ * to the preference that tapping it would produce. The previous picker painted them from
+ * seventeen hardcoded colour literals, which is how a preview drifts from the thing it previews —
+ * nothing connected `Color(0xFF0F1610)` to the Forest surface except someone having typed both.
+ *
+ * The accent row reflects the chosen base too, so picking green on Light shows the light green
+ * rather than the dark one.
+ */
 @Composable
 fun ThemePicker(
-    value: AppTheme,
-    onChange: (AppTheme) -> Unit,
-    modifier: Modifier = Modifier,
+    preference: ThemePreference,
+    onBaseChange: (ThemeBase) -> Unit,
+    onAccentChange: (AccentColor) -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val systemDark = isSystemInDarkTheme()
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = Spacing.md, vertical = Spacing.md),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
-        ThemeOrder.chunked(3).forEach { rowThemes ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                rowThemes.forEach { theme ->
-                    ThemePickerItem(
-                        label = stringResource(appThemeLabelRes(theme)),
-                        meta = ThemeSwatches.getValue(theme),
-                        selected = value == theme,
-                        onClick = { onChange(theme) },
-                        modifier = Modifier.weight(1f)
-                    )
+        PickerRowLabel(stringResource(Res.string.theme_base_label))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            ThemeBase.entries.forEach { base ->
+                val candidate = preference.copy(base = base)
+                // SYSTEM resolves two ways, so its swatch shows both halves rather than
+                // committing to whichever the device happens to be set to right now.
+                val isSystem = base == ThemeBase.SYSTEM
+                val scheme = colorSchemeFor(
+                    if (isSystem) candidate.copy(base = ThemeBase.LIGHT) else candidate,
+                    systemDark
+                )
+                val altSurface = if (isSystem) {
+                    colorSchemeFor(candidate.copy(base = ThemeBase.DARK), systemDark).surface
+                } else {
+                    null
                 }
+                SwatchItem(
+                    label = stringResource(themeBaseLabelRes(base)),
+                    surface = scheme.surface,
+                    surfaceAlt = altSurface,
+                    dot = scheme.primary,
+                    selected = preference.base == base,
+                    onClick = { onBaseChange(base) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        PickerRowLabel(stringResource(Res.string.accent_label))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            AccentColor.entries.forEach { accent ->
+                val scheme = colorSchemeFor(preference.copy(accent = accent), systemDark)
+                SwatchItem(
+                    label = stringResource(accentLabelRes(accent)),
+                    surface = scheme.surface,
+                    surfaceAlt = null,
+                    dot = scheme.primary,
+                    selected = preference.accent == accent,
+                    onClick = { onAccentChange(accent) },
+                    modifier = Modifier.weight(1f),
+                    prominentDot = true
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ThemePickerItem(
+private fun PickerRowLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = AppType.chromeLabel,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
+private fun SwatchItem(
     label: String,
-    meta: ThemeSwatchMeta,
+    surface: Color,
+    surfaceAlt: Color?,
+    dot: Color,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Draw the dot large and centred rather than small and low.
+     *
+     * The accent row needs it. Every dark scheme's surface is near-black by design, so an accent
+     * swatch filled with its surface reads as "another black circle" and the hue survives only in
+     * a 8dp dot. The base row does not need it: those swatches differ in their fill.
+     */
+    prominentDot: Boolean = false
 ) {
     val wash by animateColorAsState(
         targetValue = if (selected) {
@@ -132,11 +182,13 @@ private fun ThemePickerItem(
         } else {
             Color.Transparent
         },
-        label = "theme_wash"
+        animationSpec = Motion.standard(),
+        label = "swatch_wash"
     )
     val borderWidth by animateDpAsState(
-        targetValue = if (selected) 2.dp else 1.dp,
-        label = "theme_border_width"
+        targetValue = if (selected) Spacing.xxs else Spacing.hairline,
+        animationSpec = Motion.quick(),
+        label = "swatch_border_width"
     )
     val borderColor by animateColorAsState(
         targetValue = if (selected) {
@@ -144,89 +196,74 @@ private fun ThemePickerItem(
         } else {
             MaterialTheme.colorScheme.outline.copy(alpha = Chrome.SelectedBorder)
         },
-        label = "theme_border_color"
+        animationSpec = Motion.standard(),
+        label = "swatch_border_color"
     )
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(Radius.md))
             .background(wash)
             .clickable(role = Role.RadioButton, onClick = onClick)
             .semantics { this.selected = selected }
-            .padding(vertical = 6.dp, horizontal = 4.dp),
+            .padding(vertical = Spacing.sm, horizontal = Spacing.xs),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm)
     ) {
-        val fillModifier = if (meta.surfaceAlt != null) {
+        val fill = if (surfaceAlt != null) {
             Modifier.background(
                 Brush.linearGradient(
                     colorStops = arrayOf(
-                        0.0f to meta.surface,
-                        0.495f to meta.surface,
-                        0.505f to meta.surfaceAlt,
-                        1.0f to meta.surfaceAlt,
+                        0.0f to surface,
+                        0.495f to surface,
+                        0.505f to surfaceAlt,
+                        1.0f to surfaceAlt
                     ),
                     start = Offset.Zero,
-                    end = Offset(100f, 100f),
+                    end = Offset(100f, 100f)
                 )
             )
         } else {
-            Modifier.background(meta.surface)
+            Modifier.background(surface)
         }
 
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(Size.touchTarget)
                 .clip(CircleShape)
-                .border(
-                    width = borderWidth,
-                    color = borderColor,
-                    shape = CircleShape
-                )
-                .then(fillModifier),
+                .border(width = borderWidth, color = borderColor, shape = CircleShape)
+                .then(fill),
             contentAlignment = Alignment.Center
         ) {
-            if (meta.surfaceAlt != null && !selected) {
+            if (!selected) {
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .offset(x = 10.dp, y = 10.dp)
-                        .size(6.dp)
+                    modifier = if (prominentDot) {
+                        Modifier.size(Size.iconLarge)
+                    } else {
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .offset(y = -Spacing.sm)
+                            .size(Spacing.sm)
+                    }
                         .clip(CircleShape)
-                        .background(Color(0xFF111111))
+                        .background(dot)
                 )
+            } else {
+                // The check sits on the swatch's own surface, so its disc takes that scheme's
+                // primary and the tick takes that scheme's surface. The old picker carried a
+                // hardcoded `lightCheck` boolean per theme to approximate this by hand.
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .offset(x = (-10).dp, y = (-10).dp)
-                        .size(6.dp)
+                        .size(Size.icon)
                         .clip(CircleShape)
-                        .background(Color(0xFFF5F5F5))
-                )
-            } else if (!selected) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .offset(y = (-8).dp)
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(meta.accent)
-                )
-            }
-
-            if (selected) {
-                Box(
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clip(CircleShape)
-                        .background(if (meta.lightCheck) Color(0xFF171717) else Color.White),
+                        .background(dot),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = null,
-                        modifier = Modifier.size(12.dp),
-                        tint = if (meta.lightCheck) Color.White else Color(0xFF171717)
+                        modifier = Modifier.size(Size.iconTiny),
+                        tint = surface
                     )
                 }
             }

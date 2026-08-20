@@ -18,6 +18,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Elevation
 
 @Composable
 fun TrashBanner(
@@ -28,12 +30,12 @@ fun TrashBanner(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.22f),
-            tonalElevation = 0.dp
+            tonalElevation = Elevation.none
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = Spacing.lg, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {

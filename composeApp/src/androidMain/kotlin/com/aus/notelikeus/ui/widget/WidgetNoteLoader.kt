@@ -10,6 +10,11 @@ import com.aus.notelikeus.data.local.settingsDataStore
 import com.aus.notelikeus.domain.model.AppTheme
 import kotlinx.coroutines.flow.first
 import org.koin.core.context.GlobalContext
+import com.aus.notelikeus.data.local.ACCENT_COLOR_KEY
+import com.aus.notelikeus.data.local.TRUE_DARK_MODE_KEY
+import com.aus.notelikeus.domain.model.AccentColor
+import com.aus.notelikeus.domain.model.ThemeBase
+import com.aus.notelikeus.domain.model.toThemePreference
 
 data class WidgetNote(
     val id: Long,
@@ -54,13 +59,32 @@ object WidgetNoteLoader {
 
     suspend fun loadTheme(context: Context): WidgetThemeColors {
         val preferences = context.settingsDataStore.data.first()
-        val appTheme = AppTheme.fromName(preferences[APP_THEME_KEY])
         val isMonochrome = preferences[USE_MONOCHROME_THEME_KEY] ?: true
         val isSystemDark =
             (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
                 Configuration.UI_MODE_NIGHT_YES
+
+        // Resolved through the same mapping the app uses, not by comparing the stored name.
+        //
+        // This read `appTheme == AppTheme.TRUE_DARK` directly, which stopped being the whole
+        // answer once AMOLED became a toggle independent of the base theme: turning Pure black on
+        // writes APP_THEME_KEY=DARK and TRUE_DARK_MODE_KEY=true, so a name comparison sees "DARK"
+        // and the widget stayed charcoal while the app went black. The legacy TRUE_DARK name still
+        // resolves to amoled=true, so nobody who never touches the new toggle sees a change.
+        val preference = AppTheme.fromName(preferences[APP_THEME_KEY]).toThemePreference(
+            storedAmoled = preferences[TRUE_DARK_MODE_KEY] ?: false,
+            storedAccent = AccentColor.fromName(preferences[ACCENT_COLOR_KEY])
+        )
+        // AMOLED is a black level for the dark schemes; on light it means nothing, which is the
+        // same rule colorSchemeFor applies.
+        val resolvedDark = when (preference.base) {
+            ThemeBase.DARK -> true
+            ThemeBase.LIGHT -> false
+            ThemeBase.SYSTEM -> isSystemDark
+        }
+
         return when {
-            appTheme == AppTheme.TRUE_DARK -> WidgetThemes.TrueDark
+            preference.amoled && resolvedDark -> WidgetThemes.TrueDark
             isMonochrome && isSystemDark -> WidgetThemes.MonochromeDark
             isMonochrome -> WidgetThemes.MonochromeLight
             isSystemDark -> WidgetThemes.Dark

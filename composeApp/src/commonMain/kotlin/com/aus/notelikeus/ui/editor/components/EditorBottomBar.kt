@@ -17,6 +17,8 @@ import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.util.DateUtils
+import com.aus.notelikeus.ui.theme.NoteEmphasis
+import com.aus.notelikeus.ui.theme.Spacing
 
 @Composable
 fun EditorBottomBar(
@@ -43,13 +45,13 @@ fun EditorBottomBar(
     BottomAppBar(
         modifier = modifier,
         containerColor = Color.Transparent,
-        contentPadding = PaddingValues(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        contentPadding = PaddingValues(start = Spacing.md, end = Spacing.xs, top = Spacing.xs, bottom = Spacing.xs),
         windowInsets = WindowInsets.navigationBars
     ) {
         Box(
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = Spacing.lg)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -58,14 +60,14 @@ fun EditorBottomBar(
                 Text(
                     text = editedLabel,
                     style = MaterialTheme.typography.labelMedium,
-                    color = contentColor.copy(alpha = 0.7f),
+                    color = contentColor.copy(alpha = NoteEmphasis.Secondary),
                     textAlign = TextAlign.Center
                 )
                 if (reminderLabel != null) {
                     Text(
                         text = reminderLabel,
                         style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.85f),
+                        color = contentColor.copy(alpha = NoteEmphasis.Secondary),
                         textAlign = TextAlign.Center
                     )
                 }

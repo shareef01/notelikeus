@@ -67,11 +67,17 @@ import com.aus.notelikeus.ui.main.CloudSyncStatus
 import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.Chrome
-import com.aus.notelikeus.ui.theme.ChromeLabelStyle
+import com.aus.notelikeus.ui.theme.AppType
+import androidx.compose.material.icons.filled.Contrast
+import com.aus.notelikeus.domain.model.AccentColor
+import com.aus.notelikeus.domain.model.ThemeBase
+import com.aus.notelikeus.domain.model.ThemePreference
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
 
-private val SettingsIconSize = 24.dp
-private val SettingsRowHorizontal = 16.dp
-private val SettingsRowVertical = 12.dp
+private val SettingsIconSize = Spacing.xxl
+private val SettingsRowHorizontal = Spacing.lg
+private val SettingsRowVertical = Spacing.md
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,7 +86,7 @@ fun ProfileSheet(
     noteCount: Int,
     viewMode: NoteViewMode,
     sortOrder: NoteSortOrder,
-    appTheme: AppTheme,
+    themePreference: ThemePreference,
     isAppLockEnabled: Boolean,
     cloudSyncStatus: CloudSyncStatus = CloudSyncStatus.Unknown,
     cloudSyncedNoteCount: Int = 0,
@@ -89,7 +95,9 @@ fun ProfileSheet(
     signInError: String? = null,
     onViewModeChange: (NoteViewMode) -> Unit,
     onSortOrderChange: (NoteSortOrder) -> Unit,
-    onAppThemeChange: (AppTheme) -> Unit,
+    onThemeBaseChange: (ThemeBase) -> Unit,
+    onAccentChange: (AccentColor) -> Unit,
+    onAmoledChange: (Boolean) -> Unit,
     onAppLockChange: (Boolean) -> Unit,
     onExportClick: () -> Unit,
     onImportClick: () -> Unit,
@@ -117,20 +125,20 @@ fun ProfileSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 24.dp)
+                .padding(bottom = Spacing.xxl)
                 .navigationBarsPadding()
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
+                modifier = Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.lg)
             ) {
                 BrandMarkIcon(
-                    size = 40.dp,
+                    size = Size.chipHeightCompact,
                     backgroundColor = MaterialTheme.colorScheme.onSurface,
                     stripeColor = MaterialTheme.colorScheme.surface,
                     ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
-                Spacer(modifier = Modifier.width(14.dp))
+                Spacer(modifier = Modifier.width(Size.iconTiny))
                 Column {
                     Text(
                         text = stringResource(Res.string.app_name),
@@ -174,10 +182,28 @@ fun ProfileSheet(
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(Res.string.section_appearance))
             ThemePicker(
-                value = appTheme,
-                onChange = {
+                preference = themePreference,
+                onBaseChange = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onAppThemeChange(it)
+                    onThemeBaseChange(it)
+                },
+                onAccentChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onAccentChange(it)
+                }
+            )
+            // Only meaningful on a dark scheme: on light there is no background to make blacker.
+            // Disabled rather than hidden, so the control does not appear and vanish as the base
+            // changes -- and so someone on System can still see it exists.
+            SettingsToggleListItem(
+                icon = Icons.Default.Contrast,
+                title = stringResource(Res.string.amoled_title),
+                subtitle = stringResource(Res.string.amoled_subtitle),
+                checked = themePreference.amoled,
+                enabled = themePreference.base != ThemeBase.LIGHT,
+                onCheckedChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onAmoledChange(it)
                 }
             )
             // Hidden where the platform can't verify the user — offering the toggle would imply a
@@ -347,7 +373,7 @@ fun ProfileSheet(
 @Composable
 private fun SettingsSectionDivider() {
     HorizontalDivider(
-        modifier = Modifier.padding(top = 8.dp),
+        modifier = Modifier.padding(top = Spacing.sm),
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
     )
 }
@@ -360,13 +386,13 @@ fun SettingsSectionHeader(
 ) {
     Text(
         text = title.uppercase(),
-        style = ChromeLabelStyle,
+        style = AppType.chromeLabel,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier.padding(
             start = SettingsRowHorizontal,
             end = SettingsRowHorizontal,
-            top = if (isFirst) 16.dp else 20.dp,
-            bottom = 4.dp
+            top = if (isFirst) Spacing.lg else Spacing.xl,
+            bottom = Spacing.xs
         )
     )
 }
@@ -411,7 +437,7 @@ fun SettingsRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         SettingsLeadingIcon(icon = icon, contentDescription = title)
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(Size.iconTiny))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
@@ -427,7 +453,7 @@ fun SettingsRow(
             }
         }
         if (trailing != null) {
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(Spacing.sm))
             trailing()
         }
     }

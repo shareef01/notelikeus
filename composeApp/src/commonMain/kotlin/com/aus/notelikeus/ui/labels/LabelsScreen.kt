@@ -21,10 +21,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.ui.components.NotesEmptyState
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Elevation
 
 /**
  * Elite Label Management Screen
- * Geometric Discipline: 16.dp corner radius and standard grid spacing.
+ * Geometric Discipline: Spacing.lg corner radius and standard grid spacing.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,8 +67,8 @@ fun LabelsScreen(
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     shape = MaterialTheme.shapes.large,
                     elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 2.dp,
-                        pressedElevation = 4.dp
+                        defaultElevation = Elevation.card,
+                        pressedElevation = Elevation.dragging
                     )
                 ) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(Res.string.create_new_label))
@@ -92,9 +94,9 @@ fun LabelsScreen(
                     text = errorMessage,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 32.dp)
+                    modifier = Modifier.padding(horizontal = Spacing.xxxl)
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(Spacing.md))
                 OutlinedButton(onClick = { viewModel.loadLabels() }) {
                     Text(stringResource(Res.string.action_retry))
                 }
@@ -117,10 +119,10 @@ fun LabelsScreen(
                     .fillMaxSize()
                     .padding(paddingValues),
                 contentPadding = PaddingValues(
-                    top = 8.dp,
-                    start = 16.dp,
-                    end = 16.dp,
-                    bottom = 88.dp
+                    top = Spacing.sm,
+                    start = Spacing.lg,
+                    end = Spacing.lg,
+                    bottom = Spacing.snackbarAboveFab
                 )
             ) {
                 items(

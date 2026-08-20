@@ -4,7 +4,12 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import com.aus.notelikeus.data.local.*
+import com.aus.notelikeus.domain.model.AccentColor
 import com.aus.notelikeus.domain.model.AppTheme
+import com.aus.notelikeus.domain.model.ThemeBase
+import com.aus.notelikeus.domain.model.ThemePreference
+import com.aus.notelikeus.domain.model.toStoredAppTheme
+import com.aus.notelikeus.domain.model.toThemePreference
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.domain.platform.PlatformWidgetManager
@@ -21,14 +26,47 @@ class SettingsRepositoryImpl(
         widgetManager.refreshWidgets()
     }
 
-    override val appTheme: Flow<AppTheme> = dataStore.data
+    override val themePreference: Flow<ThemePreference> = dataStore.data
         .map { preferences ->
-            AppTheme.fromName(preferences[APP_THEME_KEY])
+            AppTheme.fromName(preferences[APP_THEME_KEY]).toThemePreference(
+                storedAmoled = preferences[TRUE_DARK_MODE_KEY] ?: false,
+                storedAccent = AccentColor.fromName(preferences[ACCENT_COLOR_KEY])
+            )
         }
 
-    override suspend fun setAppTheme(theme: AppTheme) {
+    /**
+     * Writes the base theme, and collapses any legacy value that was still stored.
+     *
+     * Picking a base is the moment the user takes ownership of the new model, so the accent and
+     * AMOLED level their legacy theme implied are written out explicitly here. Without that,
+     * moving a FOREST user to Light and back to Dark would silently drop the green, because the
+     * accent had only ever been implied by the name `FOREST` and never stored.
+     */
+    override suspend fun setThemeBase(base: ThemeBase) {
         dataStore.edit { preferences ->
-            preferences[APP_THEME_KEY] = theme.name
+            val current = AppTheme.fromName(preferences[APP_THEME_KEY]).toThemePreference(
+                storedAmoled = preferences[TRUE_DARK_MODE_KEY] ?: false,
+                storedAccent = AccentColor.fromName(preferences[ACCENT_COLOR_KEY])
+            )
+            preferences[APP_THEME_KEY] = base.toStoredAppTheme().name
+            preferences[TRUE_DARK_MODE_KEY] = current.amoled
+            preferences[ACCENT_COLOR_KEY] = current.accent.name
+        }
+        refreshWidget()
+    }
+
+    override suspend fun setAccentColor(accent: AccentColor) {
+        dataStore.edit { preferences ->
+            val stored = AppTheme.fromName(preferences[APP_THEME_KEY])
+            val current = stored.toThemePreference(
+                storedAmoled = preferences[TRUE_DARK_MODE_KEY] ?: false,
+                storedAccent = AccentColor.fromName(preferences[ACCENT_COLOR_KEY])
+            )
+            // Same collapse as setThemeBase: once any part of the theme is chosen explicitly the
+            // legacy name must stop being the source of truth, or it would keep overriding.
+            preferences[APP_THEME_KEY] = current.base.toStoredAppTheme().name
+            preferences[TRUE_DARK_MODE_KEY] = current.amoled
+            preferences[ACCENT_COLOR_KEY] = accent.name
         }
         refreshWidget()
     }
@@ -40,6 +78,14 @@ class SettingsRepositoryImpl(
 
     override suspend fun setTrueDarkMode(enabled: Boolean) {
         dataStore.edit { preferences ->
+            val current = AppTheme.fromName(preferences[APP_THEME_KEY]).toThemePreference(
+                storedAmoled = preferences[TRUE_DARK_MODE_KEY] ?: false,
+                storedAccent = AccentColor.fromName(preferences[ACCENT_COLOR_KEY])
+            )
+            // Collapse the legacy name, as in setThemeBase: a TRUE_DARK user turning AMOLED off
+            // would otherwise keep resolving to AMOLED, because the name says so.
+            preferences[APP_THEME_KEY] = current.base.toStoredAppTheme().name
+            preferences[ACCENT_COLOR_KEY] = current.accent.name
             preferences[TRUE_DARK_MODE_KEY] = enabled
         }
         refreshWidget()

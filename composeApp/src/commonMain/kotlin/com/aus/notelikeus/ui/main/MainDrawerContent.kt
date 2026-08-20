@@ -29,16 +29,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.ui.main.components.SideDrawerAccountRow
 import com.aus.notelikeus.ui.main.components.SideDrawerNavItem
-import com.aus.notelikeus.ui.theme.NavIdentity
 import com.aus.notelikeus.ui.main.components.SideDrawerSectionLabel
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 import com.aus.notelikeus.ui.theme.Chrome
-import com.aus.notelikeus.ui.theme.ChromeLabelStyle
 import com.aus.notelikeus.ui.theme.SignOutRose
 import com.aus.notelikeus.ui.theme.SignOutRoseContainer
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
+import com.aus.notelikeus.ui.theme.AppType
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
 
 /**
  * The side drawer / navigation rail content, shared between the modal drawer (compact) and the
@@ -67,13 +68,13 @@ internal fun MainDrawerContent(
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(
-                    horizontal = if (collapsed) 8.dp else 20.dp,
-                    vertical = if (collapsed) 16.dp else 20.dp
+                    horizontal = if (collapsed) Spacing.sm else Spacing.xl,
+                    vertical = if (collapsed) Spacing.lg else Spacing.xl
                 )
         ) {
             if (collapsed) {
                 BrandMarkIcon(
-                    size = 32.dp,
+                    size = Spacing.xxxl,
                     backgroundColor = MaterialTheme.colorScheme.onSurface,
                     stripeColor = MaterialTheme.colorScheme.surface,
                     ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
@@ -83,7 +84,7 @@ internal fun MainDrawerContent(
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         BrandMarkIcon(
-                            size = 36.dp,
+                            size = Size.controlHeight,
                             backgroundColor = MaterialTheme.colorScheme.onSurface,
                             stripeColor = MaterialTheme.colorScheme.surface,
                             ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
@@ -101,7 +102,7 @@ internal fun MainDrawerContent(
                             )
                             Text(
                                 stringResource(Res.string.drawer_tagline_short),
-                                style = ChromeLabelStyle,
+                                style = AppType.chromeLabel,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -113,8 +114,8 @@ internal fun MainDrawerContent(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(top = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(if (collapsed) 2.dp else 4.dp)
+                .padding(top = Spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(if (collapsed) Spacing.xxs else Spacing.xs)
         ) {
             SideDrawerNavItem(
                 label = stringResource(Res.string.nav_notes),
@@ -123,7 +124,6 @@ internal fun MainDrawerContent(
                 selected = state.currentFilter == NoteFilter.ACTIVE,
                 count = state.totalNoteCount,
                 collapsed = collapsed,
-                identityColor = NavIdentity.Notes.resolve(),
                 onClick = { onFilterSelect(NoteFilter.ACTIVE) }
             )
             SideDrawerNavItem(
@@ -133,7 +133,6 @@ internal fun MainDrawerContent(
                 selected = state.currentFilter == NoteFilter.ARCHIVED,
                 count = state.archivedNoteCount,
                 collapsed = collapsed,
-                identityColor = NavIdentity.Archive.resolve(),
                 onClick = { onFilterSelect(NoteFilter.ARCHIVED) }
             )
             SideDrawerNavItem(
@@ -143,11 +142,10 @@ internal fun MainDrawerContent(
                 selected = state.currentFilter == NoteFilter.TRASHED,
                 count = state.trashedNoteCount,
                 collapsed = collapsed,
-                identityColor = NavIdentity.Trash.resolve(),
                 onClick = { onFilterSelect(NoteFilter.TRASHED) }
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(Size.icon))
             if (!collapsed) {
                 SideDrawerSectionLabel(text = stringResource(Res.string.nav_section_manage))
             }
@@ -158,7 +156,6 @@ internal fun MainDrawerContent(
                 selectedIcon = Icons.AutoMirrored.Filled.Label,
                 selected = false,
                 collapsed = collapsed,
-                identityColor = NavIdentity.Labels.resolve(),
                 onClick = onEditLabels
             )
             SideDrawerNavItem(
@@ -167,36 +164,35 @@ internal fun MainDrawerContent(
                 selectedIcon = Icons.Filled.Settings,
                 selected = settingsSelected,
                 collapsed = collapsed,
-                identityColor = NavIdentity.Settings.resolve(),
                 onClick = onOpenSettings
             )
         }
 
         // Collapse toggle — only in permanent (expanded) mode
         if (isExpanded) {
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(Spacing.xs))
             HorizontalDivider(
-                modifier = Modifier.padding(horizontal = if (collapsed) 8.dp else 16.dp),
+                modifier = Modifier.padding(horizontal = if (collapsed) Spacing.sm else Spacing.lg),
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(Spacing.xs))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = if (collapsed) 8.dp else 16.dp)
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .padding(horizontal = if (collapsed) Spacing.sm else Spacing.lg)
+                    .height(Size.chipHeight)
+                    .clip(RoundedCornerShape(Spacing.md))
                     .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
                     .border(
-                        width = 1.dp,
+                        width = Spacing.hairline,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(Spacing.md)
                     )
                     .clickable {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         onSidebarCollapsedChange(!collapsed)
                     }
-                    .padding(horizontal = if (collapsed) 0.dp else 12.dp),
+                    .padding(horizontal = if (collapsed) Spacing.none else Spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.Start
             ) {
@@ -205,7 +201,7 @@ internal fun MainDrawerContent(
                     contentDescription = if (collapsed) "Expand sidebar" else "Collapse sidebar",
                     tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                     modifier = Modifier
-                        .size(20.dp)
+                        .size(Size.icon)
                         .rotate(if (collapsed) 0f else 180f)
                 )
                 if (!collapsed) {
@@ -222,33 +218,33 @@ internal fun MainDrawerContent(
         }
 
         if (!collapsed) {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(Spacing.sm))
             HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 16.dp),
+                modifier = Modifier.padding(horizontal = Spacing.lg),
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(Spacing.md))
             val email = state.cloudAccount.email
             if (state.cloudAccount.isGoogleAccount && !email.isNullOrBlank()) {
                 SideDrawerAccountRow(email = email)
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(Spacing.md))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .padding(horizontal = Spacing.lg)
+                        .height(Size.touchTarget)
+                        .clip(RoundedCornerShape(Spacing.md))
                         .background(SignOutRoseContainer)
                         .border(
-                            width = 1.dp,
+                            width = Spacing.hairline,
                             color = SignOutRose.copy(alpha = 0.25f),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(Spacing.md)
                         )
                         .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                             onCloudSignOut()
                         }
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = Spacing.lg),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
@@ -256,9 +252,9 @@ internal fun MainDrawerContent(
                         imageVector = Icons.AutoMirrored.Filled.Logout,
                         contentDescription = stringResource(Res.string.cloud_sign_out),
                         tint = SignOutRose,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(Size.iconMedium)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(Spacing.sm))
                     Text(
                         text = stringResource(Res.string.cloud_sign_out),
                         style = MaterialTheme.typography.labelLarge.copy(
@@ -268,9 +264,9 @@ internal fun MainDrawerContent(
                         color = SignOutRose
                     )
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(Spacing.md))
             }
         }
-        Spacer(modifier = Modifier.height(8.dp).navigationBarsPadding())
+        Spacer(modifier = Modifier.height(Spacing.sm).navigationBarsPadding())
     }
 }

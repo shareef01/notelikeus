@@ -54,10 +54,23 @@ val SurfaceForest = Color(0xFF0F1610)
 val SurfaceVariantForest = Color(0xFF182119)
 val OutlineForest = Color(0xFF2A382C)
 
-// Nav accents (match web SideDrawer: sky / amber / rose / violet / teal)
-// The per-destination drawer accents (sky/amber/rose/violet/teal) were removed: five saturated
-// hues in one column read as unrelated icon sets and left selection with no colour of its own.
-// SideDrawerNavItem now derives its tint from selection state against the theme's primary.
+/**
+ * Accent primaries for the light theme.
+ *
+ * The dark themes already had their accents — Midnight's and Forest's tinted `primary` — but
+ * light had only the neutral near-black, so "green accent on light" had no colour to use. Both
+ * clear 4.5:1 against `SurfaceLight` (#FFFFFF), which is what `primary` is read against when it
+ * tints text and icons: blue 6.7:1, green 6.4:1.
+ */
+val AccentBlueLight = Color(0xFF0B57D0)
+val AccentGreenLight = Color(0xFF1B6B2E)
+
+// The per-destination drawer accents (sky/amber/rose/violet/teal) are gone: five saturated hues
+// in one column read as unrelated icon sets and left selection with no colour of its own.
+// SideDrawerNavItem derives its tint from selection state against the theme's primary.
+//
+// This comment previously said the same thing while NavIdentity was still defined below it and
+// still used by MainDrawerContent. It is true now.
 val SignOutRose = Color(0xFFFB7185)
 val SignOutRoseContainer = Color(0x26FB7185) // ~15%
 
@@ -117,27 +130,6 @@ fun Color.getContentColor(fallback: Color = Color.White): Color {
     val whiteContrast = contrastRatio(background, 1f)
     val darkContrast = contrastRatio(background, NoteContentDark.luminance())
     return if (whiteContrast >= darkContrast) Color.White else NoteContentDark
-}
-
-/**
- * Signature hue for a drawer destination, in a light and a dark variant.
- *
- * A single fixed hue cannot serve both. The drawer used the Tailwind -400 shades, which are meant
- * for dark backgrounds: on the light theme all five sat between 1.46:1 and 2.72:1 against the
- * surface, under the 3:1 WCAG asks for non-text graphics, and the icons washed out. The -600/-700
- * counterparts clear it on light while the -400s stay well clear on dark.
- */
-data class NavIdentityColor(val light: Color, val dark: Color) {
-    @Composable
-    fun resolve(): Color = if (isNoteColorDarkTheme()) dark else light
-}
-
-object NavIdentity {
-    val Notes = NavIdentityColor(light = Color(0xFF0284C7), dark = Color(0xFF38BDF8))
-    val Archive = NavIdentityColor(light = Color(0xFFB45309), dark = Color(0xFFFBBF24))
-    val Trash = NavIdentityColor(light = Color(0xFFE11D48), dark = Color(0xFFFB7185))
-    val Labels = NavIdentityColor(light = Color(0xFF7C3AED), dark = Color(0xFFA78BFA))
-    val Settings = NavIdentityColor(light = Color(0xFF0D9488), dark = Color(0xFF2DD4BF))
 }
 
 data class NoteColorOption(val light: Color, val dark: Color)
