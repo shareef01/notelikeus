@@ -67,7 +67,7 @@ import com.aus.notelikeus.ui.theme.NotelikeusTheme
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
-import com.aus.notelikeus.platform.AppLog
+import com.aus.notelikeus.util.AppLog
 import com.aus.notelikeus.ui.window.NativeCaptionDragSupport
 import org.koin.compose.getKoin
 import org.koin.compose.koinInject

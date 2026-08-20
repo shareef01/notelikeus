@@ -107,9 +107,10 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       if (isCurrentRoute()) {
         setState({ ...working, isSaving: false, lastSavedAt: updatedTimestamp });
       }
-    } catch {
+    } catch (error) {
       // Never wedge the editor on a failed write (e.g. a rejected Firestore write): reset the
       // saving flag and surface the failure so the user can retry. Navigation must still work.
+      console.warn('[Notelikeus] Note save failed:', error);
       useToastStore.getState().show('Could not save changes. Check your connection and try again.', 'error');
       if (isCurrentRoute()) {
         setState((prev) => ({ ...prev, isSaving: false }));

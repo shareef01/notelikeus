@@ -59,7 +59,15 @@ export function useNotesSync(enabled: boolean) {
       startNotesRealtimeSync(userId);
     };
 
-    void bootstrap();
+    // Without this the store is left on 'loading' forever if the migration or the listener
+    // setup throws, with the failure visible nowhere.
+    void bootstrap().catch((error: unknown) => {
+      if (cancelled) return;
+      console.error('[Notelikeus] Notes sync startup failed:', error);
+      useNotesStore
+        .getState()
+        .setError(error instanceof Error ? error.message : 'Could not start syncing notes');
+    });
 
     return () => {
       cancelled = true;

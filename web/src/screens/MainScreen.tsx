@@ -39,6 +39,7 @@ import {
   saveNote,
   trashNoteById,
 } from '@/lib/notes/noteActions';
+import { runNoteAction } from '@/lib/notes/runNoteAction';
 import { showUndoToast } from '@/lib/notes/showUndoToast';
 import { commitNotePositions, previewMoveNote } from '@/lib/notes/noteOrder';
 
@@ -256,76 +257,82 @@ export function MainScreen() {
 
 
 
-  const handleArchiveNote = async (note: Note) => {
-    const previous = { ...note };
-    await archiveNoteById(note.id);
-    showUndoToast({
-      message: 'Note archived',
-      revert: () => saveNote(previous),
+  const handleArchiveNote = (note: Note) =>
+    runNoteAction('Archive', async () => {
+      const previous = { ...note };
+      await archiveNoteById(note.id);
+      showUndoToast({
+        message: 'Note archived',
+        revert: () => saveNote(previous),
+      });
     });
-  };
 
 
 
-  const handleTrashNote = async (note: Note) => {
-    const previous = { ...note };
-    await trashNoteById(note.id);
-    showUndoToast({
-      message: 'Note moved to trash',
-      revert: () => saveNote(previous),
+  const handleTrashNote = (note: Note) =>
+    runNoteAction('Move to trash', async () => {
+      const previous = { ...note };
+      await trashNoteById(note.id);
+      showUndoToast({
+        message: 'Note moved to trash',
+        revert: () => saveNote(previous),
+      });
     });
-  };
 
 
 
-  const handleRestoreNote = async (note: Note) => {
-    await restoreNoteById(note.id);
-    useToastStore.getState().show('Note restored');
-  };
-
-
-
-  const handlePermanentDelete = async (note: Note) => {
-    const previous = { ...note };
-    await removeNote(note.id);
-    showUndoToast({
-      message: 'Note deleted permanently',
-      revert: () => restorePermanentlyDeletedNote(previous),
+  const handleRestoreNote = (note: Note) =>
+    runNoteAction('Restore', async () => {
+      await restoreNoteById(note.id);
+      useToastStore.getState().show('Note restored');
     });
-  };
 
 
 
-  const handleEmptyTrash = async () => {
-    setShowEmptyTrashConfirm(false);
-    const trashedSnapshots = notes
-      .filter((note) => note.isTrashed)
-      .map((note) => ({ ...note }));
-    const count = await emptyTrash();
-    if (count === 0) {
-      useToastStore.getState().show('Trash is already empty');
-      return;
-    }
-    showUndoToast({
-      message: `Deleted ${count} note${count === 1 ? '' : 's'} permanently`,
-      revert: async () => {
-        await Promise.all(trashedSnapshots.map((note) => restorePermanentlyDeletedNote(note)));
-      },
+  const handlePermanentDelete = (note: Note) =>
+    runNoteAction('Delete', async () => {
+      const previous = { ...note };
+      await removeNote(note.id);
+      showUndoToast({
+        message: 'Note deleted permanently',
+        revert: () => restorePermanentlyDeletedNote(previous),
+      });
     });
-  };
 
-  const handleBulkPinToggle = async () => {
-    const snapshots = getSelectedSnapshots();
-    if (snapshots.length === 0) return;
-    const pin = !selectionAllPinned;
-    await Promise.all(
-      snapshots.map((note) => saveNote({ ...note, isPinned: pin, timestamp: Date.now() })),
-    );
-    clearSelection();
-    useToastStore.getState().show(
-      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} ${pin ? 'pinned' : 'unpinned'}`,
-    );
-  };
+
+
+  const handleEmptyTrash = () =>
+    runNoteAction('Empty trash', async () => {
+      setShowEmptyTrashConfirm(false);
+      const trashedSnapshots = notes
+        .filter((note) => note.isTrashed)
+        .map((note) => ({ ...note }));
+      const count = await emptyTrash();
+      if (count === 0) {
+        useToastStore.getState().show('Trash is already empty');
+        return;
+      }
+      showUndoToast({
+        message: `Deleted ${count} note${count === 1 ? '' : 's'} permanently`,
+        revert: async () => {
+          await Promise.all(trashedSnapshots.map((note) => restorePermanentlyDeletedNote(note)));
+        },
+      });
+    });
+
+  const handleBulkPinToggle = () =>
+    runNoteAction('Pin', async () => {
+      const snapshots = getSelectedSnapshots();
+      if (snapshots.length === 0) return;
+      const pin = !selectionAllPinned;
+      await Promise.all(
+        snapshots.map((note) => saveNote({ ...note, isPinned: pin, timestamp: Date.now() })),
+      );
+      clearSelection();
+      useToastStore.getState().show(
+        `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} ${pin ? 'pinned' : 'unpinned'}`,
+      );
+    });
 
   const handleMoveNote = (fromIndex: number, toIndex: number) => {
     const reordered = previewMoveNote(notes, filteredNotes, fromIndex, toIndex);
@@ -335,58 +342,64 @@ export function MainScreen() {
   };
 
   const handleReorderComplete = () => {
-    void commitNotePositions(useNotesStore.getState().notes);
-  };
-
-  const handleBulkArchive = async () => {
-    const snapshots = getSelectedSnapshots();
-    if (snapshots.length === 0) return;
-    await Promise.all(snapshots.map((note) => archiveNoteById(note.id)));
-    clearSelection();
-    showUndoToast({
-      message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} archived`,
-      revert: async () => {
-        await Promise.all(snapshots.map((note) => saveNote(note)));
-      },
+    void runNoteAction('Reorder', async () => {
+      await commitNotePositions(useNotesStore.getState().notes);
     });
   };
 
-  const handleBulkTrash = async () => {
-    const snapshots = getSelectedSnapshots();
-    if (snapshots.length === 0) return;
-    await Promise.all(snapshots.map((note) => trashNoteById(note.id)));
-    clearSelection();
-    showUndoToast({
-      message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} moved to trash`,
-      revert: async () => {
-        await Promise.all(snapshots.map((note) => saveNote(note)));
-      },
+  const handleBulkArchive = () =>
+    runNoteAction('Archive', async () => {
+      const snapshots = getSelectedSnapshots();
+      if (snapshots.length === 0) return;
+      await Promise.all(snapshots.map((note) => archiveNoteById(note.id)));
+      clearSelection();
+      showUndoToast({
+        message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} archived`,
+        revert: async () => {
+          await Promise.all(snapshots.map((note) => saveNote(note)));
+        },
+      });
     });
-  };
 
-  const handleBulkRestore = async () => {
-    const snapshots = getSelectedSnapshots();
-    if (snapshots.length === 0) return;
-    await Promise.all(snapshots.map((note) => restoreNoteById(note.id)));
-    clearSelection();
-    useToastStore.getState().show(
-      `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} restored`,
-    );
-  };
-
-  const handleBulkPermanentDelete = async () => {
-    setShowBulkDeleteConfirm(false);
-    const snapshots = getSelectedSnapshots();
-    if (snapshots.length === 0) return;
-    await Promise.all(snapshots.map((note) => removeNote(note.id)));
-    clearSelection();
-    showUndoToast({
-      message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} deleted permanently`,
-      revert: async () => {
-        await Promise.all(snapshots.map((note) => restorePermanentlyDeletedNote(note)));
-      },
+  const handleBulkTrash = () =>
+    runNoteAction('Move to trash', async () => {
+      const snapshots = getSelectedSnapshots();
+      if (snapshots.length === 0) return;
+      await Promise.all(snapshots.map((note) => trashNoteById(note.id)));
+      clearSelection();
+      showUndoToast({
+        message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} moved to trash`,
+        revert: async () => {
+          await Promise.all(snapshots.map((note) => saveNote(note)));
+        },
+      });
     });
-  };
+
+  const handleBulkRestore = () =>
+    runNoteAction('Restore', async () => {
+      const snapshots = getSelectedSnapshots();
+      if (snapshots.length === 0) return;
+      await Promise.all(snapshots.map((note) => restoreNoteById(note.id)));
+      clearSelection();
+      useToastStore.getState().show(
+        `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} restored`,
+      );
+    });
+
+  const handleBulkPermanentDelete = () =>
+    runNoteAction('Delete', async () => {
+      setShowBulkDeleteConfirm(false);
+      const snapshots = getSelectedSnapshots();
+      if (snapshots.length === 0) return;
+      await Promise.all(snapshots.map((note) => removeNote(note.id)));
+      clearSelection();
+      showUndoToast({
+        message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} deleted permanently`,
+        revert: async () => {
+          await Promise.all(snapshots.map((note) => restorePermanentlyDeletedNote(note)));
+        },
+      });
+    });
 
 
 
