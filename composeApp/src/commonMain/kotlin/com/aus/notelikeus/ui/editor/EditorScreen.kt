@@ -356,7 +356,7 @@ fun EditorScreen(
                             contentColor = contentColor,
                             // A wash of the note's own content colour, so the toolbar reads as
                             // part of the note rather than a panel floating over it.
-                            surfaceColor = contentColor.copy(alpha = NoteEmphasis.Decorative),
+                            surfaceColor = contentColor.copy(alpha = NoteEmphasis.Wash),
                             modifier = Modifier
                                 .padding(bottom = Spacing.md)
                                 .align(Alignment.Start)
