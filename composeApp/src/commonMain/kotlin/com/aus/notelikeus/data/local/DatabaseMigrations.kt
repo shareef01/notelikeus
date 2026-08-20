@@ -16,6 +16,40 @@ private fun SQLiteConnection.hasColumn(table: String, column: String): Boolean =
         }
     }
 
+/**
+ * Recreates `note_label_cross_ref` with its foreign keys and copies over only the rows whose note
+ * and label still exist, dropping orphans SQLite accepted while FKs were unenforced.
+ *
+ * Applied by both MIGRATION_4_5 and MIGRATION_7_8: the second pass exists because the first ran
+ * before the FKs were declared on every path, so it re-applies the same rebuild defensively.
+ */
+private fun SQLiteConnection.rebuildNoteLabelCrossRef() {
+    execSQL("DROP TABLE IF EXISTS note_label_cross_ref_new")
+    execSQL(
+        """
+        CREATE TABLE note_label_cross_ref_new (
+            noteId INTEGER NOT NULL,
+            labelId INTEGER NOT NULL,
+            PRIMARY KEY(noteId, labelId),
+            FOREIGN KEY(noteId) REFERENCES notes(id) ON DELETE CASCADE,
+            FOREIGN KEY(labelId) REFERENCES labels(id) ON DELETE CASCADE
+        )
+        """.trimIndent()
+    )
+    execSQL(
+        """
+        INSERT INTO note_label_cross_ref_new (noteId, labelId)
+        SELECT noteId, labelId FROM note_label_cross_ref
+        WHERE noteId IN (SELECT id FROM notes) AND labelId IN (SELECT id FROM labels)
+        """.trimIndent()
+    )
+    execSQL("DROP TABLE note_label_cross_ref")
+    execSQL("ALTER TABLE note_label_cross_ref_new RENAME TO note_label_cross_ref")
+    execSQL(
+        "CREATE INDEX IF NOT EXISTS index_note_label_cross_ref_labelId ON note_label_cross_ref(labelId)"
+    )
+}
+
 object DatabaseMigrations {
 
     val MIGRATION_1_2 = object : RoomMigration(1, 2) {
@@ -92,30 +126,7 @@ object DatabaseMigrations {
 
     val MIGRATION_4_5 = object : RoomMigration(4, 5) {
         override fun migrate(connection: SQLiteConnection) {
-            connection.execSQL("DROP TABLE IF EXISTS note_label_cross_ref_new")
-            connection.execSQL(
-                """
-                CREATE TABLE note_label_cross_ref_new (
-                    noteId INTEGER NOT NULL,
-                    labelId INTEGER NOT NULL,
-                    PRIMARY KEY(noteId, labelId),
-                    FOREIGN KEY(noteId) REFERENCES notes(id) ON DELETE CASCADE,
-                    FOREIGN KEY(labelId) REFERENCES labels(id) ON DELETE CASCADE
-                )
-                """.trimIndent()
-            )
-            connection.execSQL(
-                """
-                INSERT INTO note_label_cross_ref_new (noteId, labelId)
-                SELECT noteId, labelId FROM note_label_cross_ref
-                WHERE noteId IN (SELECT id FROM notes) AND labelId IN (SELECT id FROM labels)
-                """.trimIndent()
-            )
-            connection.execSQL("DROP TABLE note_label_cross_ref")
-            connection.execSQL("ALTER TABLE note_label_cross_ref_new RENAME TO note_label_cross_ref")
-            connection.execSQL(
-                "CREATE INDEX IF NOT EXISTS index_note_label_cross_ref_labelId ON note_label_cross_ref(labelId)"
-            )
+            connection.rebuildNoteLabelCrossRef()
         }
     }
 
@@ -140,30 +151,7 @@ object DatabaseMigrations {
     val MIGRATION_7_8 = object : RoomMigration(7, 8) {
         override fun migrate(connection: SQLiteConnection) {
             // Defensively re-apply FKs if possible. For KMP, we might need a better check.
-            connection.execSQL("DROP TABLE IF EXISTS note_label_cross_ref_new")
-            connection.execSQL(
-                """
-                CREATE TABLE note_label_cross_ref_new (
-                    noteId INTEGER NOT NULL,
-                    labelId INTEGER NOT NULL,
-                    PRIMARY KEY(noteId, labelId),
-                    FOREIGN KEY(noteId) REFERENCES notes(id) ON DELETE CASCADE,
-                    FOREIGN KEY(labelId) REFERENCES labels(id) ON DELETE CASCADE
-                )
-                """.trimIndent()
-            )
-            connection.execSQL(
-                """
-                INSERT INTO note_label_cross_ref_new (noteId, labelId)
-                SELECT noteId, labelId FROM note_label_cross_ref
-                WHERE noteId IN (SELECT id FROM notes) AND labelId IN (SELECT id FROM labels)
-                """.trimIndent()
-            )
-            connection.execSQL("DROP TABLE note_label_cross_ref")
-            connection.execSQL("ALTER TABLE note_label_cross_ref_new RENAME TO note_label_cross_ref")
-            connection.execSQL(
-                "CREATE INDEX IF NOT EXISTS index_note_label_cross_ref_labelId ON note_label_cross_ref(labelId)"
-            )
+            connection.rebuildNoteLabelCrossRef()
         }
     }
 
