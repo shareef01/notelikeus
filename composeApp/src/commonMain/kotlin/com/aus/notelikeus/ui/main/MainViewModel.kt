@@ -31,6 +31,9 @@ import com.aus.notelikeus.domain.query.NoteQueryMatcher
 import com.aus.notelikeus.ui.theme.noteColorCounterpart
 import com.aus.notelikeus.util.DateUtils
 import kotlinx.coroutines.delay
+import com.aus.notelikeus.domain.model.DateRange
+import com.aus.notelikeus.domain.query.NoteQueryParser
+import com.aus.notelikeus.ui.theme.noteColorForKeyword
 
 private const val TAG = "MainViewModel"
 
@@ -218,7 +221,7 @@ class MainViewModel(
         }
     }
 
-    fun onSearchQueryChange(query: String) = updateQuery { it.copy(text = query) }
+    fun onSearchQueryChange(query: String) = onSearchInputChange(query)
 
     // ---- labels & counts ----
 
@@ -267,17 +270,94 @@ class MainViewModel(
      * happens, and a keystroke should not recompute five times while a word is being typed.
      */
     fun updateQuery(transform: (NoteQuery) -> NoteQuery) {
-        val previous = _state.value.query
+        val previous = _state.value.baseQuery
         val next = transform(previous)
         if (next == previous) return
-        _state.update { it.copy(query = next) }
         persistQuerySettings(previous, next)
-        if (next.scope != previous.scope) {
-            observeScope(next.scope)
-            return
-        }
-        if (next.text != previous.text) scheduleTextRecompute() else recompute()
+        applyInputs(base = next, searchInput = _state.value.searchInput, textChanged = false)
     }
+
+    /**
+     * Records what the user typed, then re-derives the query from it.
+     *
+     * The box holds operators as well as free text, so this is where `label:work` stops being
+     * characters and becomes a filter.
+     */
+    fun onSearchInputChange(raw: String) {
+        if (raw == _state.value.searchInput) return
+        applyInputs(base = _state.value.baseQuery, searchInput = raw, textChanged = true)
+    }
+
+    /**
+     * Recombines the two inputs into the query that runs, in a single state emission.
+     *
+     * One emission per user action on purpose: writing the raw text and then the derived query
+     * separately would publish an intermediate state where the box and the results disagree, and
+     * would recompose the list twice for one keystroke.
+     *
+     * Both inputs are re-read every time rather than accumulated, so deleting `label:work` from
+     * the text removes exactly that filter and leaves the chips alone. A merge-in-place could not
+     * do that: it would have no way to tell which of the current filters came from text that is
+     * no longer there.
+     */
+    private fun applyInputs(base: NoteQuery, searchInput: String, textChanged: Boolean) {
+        val state = _state.value
+        val parsed = NoteQueryParser.parse(searchInput, ::startOfDayOffset)
+
+        val operatorLabels = parsed.labelNames.mapNotNull { name ->
+            state.allLabels.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id
+        }
+        // Colours resolve on the active palette and expand to their counterpart, so `color:green`
+        // finds a note coloured green under either theme.
+        val operatorColors = parsed.colorNames
+            .mapNotNull { noteColorForKeyword(it, isDarkPalette()) }
+            .flatMap { argb -> listOfNotNull(argb, noteColorCounterpart(argb)?.takeIf { it != argb }) }
+
+        val next = base.copy(
+            text = parsed.text,
+            labels = base.labels + operatorLabels,
+            colors = base.colors + operatorColors,
+            flags = base.flags + parsed.flags,
+            scope = parsed.scope ?: base.scope,
+            dateField = parsed.dateField ?: base.dateField,
+            dateRange = dateRangeOf(parsed.after, parsed.before) ?: base.dateRange
+        )
+
+        val scopeChanged = next.scope != state.query.scope
+        _state.update {
+            it.copy(
+                searchInput = searchInput,
+                baseQuery = base,
+                query = next,
+                unknownOperators = parsed.unknown
+            )
+        }
+        when {
+            scopeChanged -> observeScope(next.scope)
+            textChanged -> scheduleTextRecompute()
+            else -> recompute()
+        }
+    }
+
+    private fun dateRangeOf(after: Long?, before: Long?): DateRange? = when {
+        after == null && before == null -> null
+        // An open end is a bound far enough out to be unreachable rather than a nullable field on
+        // DateRange, which would double every comparison in the matcher.
+        else -> DateRange(after ?: Long.MIN_VALUE, before ?: Long.MAX_VALUE)
+    }
+
+    /** Epoch millis at the start of the local day [offset] days from today. */
+    private fun startOfDayOffset(offset: Int): Long =
+        DateUtils.startOfDay(DateUtils.currentTimeMillis() + offset * DateUtils.DAY_IN_MILLIS)
+
+    /**
+     * Which half of the palette is on screen, for resolving `color:` keywords.
+     *
+     * Read from the resolved theme rather than from a composable, because the ViewModel has to
+     * answer this without one.
+     */
+    private fun isDarkPalette(): Boolean =
+        _state.value.themePreference.base != ThemeBase.LIGHT
 
     /** `sort` and `view` are durable preferences; nothing else in the query is. */
     private fun persistQuerySettings(previous: NoteQuery, next: NoteQuery) {
@@ -378,7 +458,14 @@ class MainViewModel(
         query.copy(labels = setOfNotNull(labelId))
     }
 
-    fun clearFilters() = updateQuery { it.cleared() }
+    /**
+     * Clears the chips *and* the search box.
+     *
+     * Leaving the text would re-apply its operators on the next rebuild, so "Clear filters" would
+     * visibly do nothing for anyone filtering by typing.
+     */
+    fun clearFilters() =
+        applyInputs(base = _state.value.baseQuery.cleared(), searchInput = "", textChanged = false)
 
     // ---- selection & note actions (NoteActionsController) ----
 
