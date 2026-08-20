@@ -50,13 +50,31 @@ data class MainState(
     val filteredNotes: List<Note> = emptyList(),
     val recentSearches: List<String> = emptyList(),
     /**
-     * Everything that decides which notes are shown and in what order.
+     * The raw contents of the search box, operators and all.
      *
-     * The single source of truth for filtering. What used to be five independent fields here --
-     * searchQuery, selectedColor, selectedLabelId, sortOrder, currentFilter -- each with its own
-     * setter and its own path into the recompute, and six such paths in total.
+     * Kept verbatim because it is what the user is typing and looking at. [query] holds what it
+     * *means*, with `label:work` lifted out into a real label filter -- binding the field to that
+     * instead would make operator text disappear as it was typed.
+     */
+    val searchInput: String = "",
+    /**
+     * What the chips, the drawer and the sort control have selected.
+     *
+     * Half of [query]'s inputs. Separate from the search box so the two cannot overwrite each
+     * other: typing an operator must not clear a chip, and tapping a chip must not edit the text.
+     */
+    val baseQuery: NoteQuery = NoteQuery(),
+    /**
+     * [baseQuery] combined with whatever [searchInput]'s operators asked for.
+     *
+     * The single source of truth for filtering, and derived rather than set -- there is nowhere to
+     * write an inconsistent value. What used to be five independent fields here -- searchQuery,
+     * selectedColor, selectedLabelId, sortOrder, currentFilter -- each had its own setter and its
+     * own path into the recompute, six paths in total.
      */
     val query: NoteQuery = NoteQuery(),
+    /** Operator-shaped text the parser did not understand, so the UI can say so. */
+    val unknownOperators: List<String> = emptyList(),
     /** Base, black level and accent, resolved from the stored theme. See ThemePreference. */
     val themePreference: ThemePreference = ThemePreference(),
     val isAppLockEnabled: Boolean = false,
@@ -87,7 +105,7 @@ data class MainState(
     // meanwhile these keep the call sites compiling without giving anything a second place to
     // store the same fact. They are deliberately get-only: there is one setter, on the query.
 
-    val searchQuery: String get() = query.text
+    val searchQuery: String get() = searchInput
 
     /**
      * The colour the user picked, when exactly one is selected.
