@@ -42,6 +42,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.NoteViewMode
+import com.aus.notelikeus.ui.components.AppSnackbar
 import com.aus.notelikeus.ui.components.NoteStaggeredGrid
 import com.aus.notelikeus.ui.components.NotesEmptyState
 import com.aus.notelikeus.ui.main.components.MainTopAppBar
@@ -54,6 +55,9 @@ import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Elevation
+import com.aus.notelikeus.ui.theme.Size
 
 /**
  * The notes list itself: top bar, FAB, empty states, trash banner and the staggered grid.
@@ -65,7 +69,7 @@ import org.jetbrains.compose.resources.stringResource
  * ~720dp puts a 15sp body around 80 characters a line, near the top of the readable range while
  * still looking generous rather than cramped on a large display.
  */
-private val SingleColumnMaxWidth = 720.dp
+private val SingleColumnMaxWidth = Size.readingMeasure
 
 @Composable
 internal fun MainScaffold(
@@ -105,25 +109,7 @@ internal fun MainScaffold(
 
     Scaffold(
         containerColor = Color.Transparent, // Parent handles background
-        snackbarHost = {
-            SnackbarHost(
-                hostState = snackbarHostState,
-                modifier = Modifier.navigationBarsPadding()
-            ) { data ->
-                Snackbar(
-                    snackbarData = data,
-                    shape = MaterialTheme.shapes.medium,
-                    containerColor = MaterialTheme.colorScheme.inverseSurface,
-                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                    actionColor = MaterialTheme.colorScheme.inversePrimary,
-                    modifier = Modifier.padding(
-                        start = 16.dp,
-                        end = 16.dp,
-                        bottom = if (showFab) 88.dp else 16.dp
-                    )
-                )
-            }
-        },
+        snackbarHost = { AppSnackbar(hostState = snackbarHostState, aboveFab = showFab) },
         topBar = {
             MainTopAppBar(
                 searchQuery = state.searchQuery,
@@ -225,10 +211,10 @@ internal fun MainScaffold(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 2.dp,
-                        pressedElevation = 4.dp,
-                        hoveredElevation = 3.dp,
-                        focusedElevation = 3.dp
+                        defaultElevation = Elevation.card,
+                        pressedElevation = Elevation.dragging,
+                        hoveredElevation = Elevation.hover,
+                        focusedElevation = Elevation.hover
                     ),
                     shape = MaterialTheme.shapes.large
                 ) {
@@ -238,7 +224,7 @@ internal fun MainScaffold(
         }
     ) { paddingValues ->
         val filteredNotes = state.filteredNotes
-        val gridBottomPadding = paddingValues.calculateBottomPadding() + if (showFab) 80.dp else 16.dp
+        val gridBottomPadding = paddingValues.calculateBottomPadding() + if (showFab) 80.dp else Spacing.lg
 
         if (state.isLoading) {
             Box(
@@ -338,7 +324,7 @@ internal fun MainScaffold(
                     // minimum cards and 2–4 columns depending on available width.
                     val adaptiveColumns =
                         if (AppConfig.isDesktop && state.viewMode == NoteViewMode.GRID_2) {
-                            (maxWidth / 300.dp).toInt().coerceIn(2, 4)
+                            (maxWidth / Size.gridMinCardWidth).toInt().coerceIn(2, 4)
                         } else {
                             null
                         }
@@ -412,9 +398,9 @@ internal fun MainScaffold(
                             Modifier.fillMaxSize()
                         },
                         contentPadding = PaddingValues(
-                            top = 12.dp,
-                            start = 12.dp,
-                            end = 12.dp,
+                            top = Spacing.md,
+                            start = Spacing.md,
+                            end = Spacing.md,
                             bottom = gridBottomPadding
                         )
                     )

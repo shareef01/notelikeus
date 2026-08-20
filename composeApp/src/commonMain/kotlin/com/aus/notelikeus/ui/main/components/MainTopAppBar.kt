@@ -83,6 +83,10 @@ import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.ui.main.NoteFilter
 import com.aus.notelikeus.ui.theme.Chrome
+import com.aus.notelikeus.ui.components.AppFilterChip
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.theme.Elevation
 
 private val TopBarRowHeight = 56.dp
 
@@ -165,8 +169,8 @@ fun MainTopAppBar(
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = headerColor,
-        tonalElevation = if (listScrolled) 2.dp else 0.dp,
-        shadowElevation = 0.dp
+        tonalElevation = if (listScrolled) Elevation.card else Elevation.none,
+        shadowElevation = Elevation.none
     ) {
         Column(modifier = Modifier.statusBarsPadding()) {
             AnimatedContent(
@@ -181,17 +185,17 @@ fun MainTopAppBar(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(TopBarRowHeight)
-                            .padding(horizontal = 16.dp, vertical = 4.dp)
-                            .border(1.dp, searchBorderColor, CircleShape),
+                            .padding(horizontal = Spacing.lg, vertical = Spacing.xs)
+                            .border(Spacing.hairline, searchBorderColor, CircleShape),
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = searchFillAlpha),
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp
+                        tonalElevation = Elevation.none,
+                        shadowElevation = Elevation.none
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 4.dp),
+                                .padding(horizontal = Spacing.xs),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             IconButton(onClick = {
@@ -258,9 +262,9 @@ fun MainTopAppBar(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(TopBarRowHeight)
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                                .padding(horizontal = Spacing.lg, vertical = Spacing.xs),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                         ) {
                             if (showMenuIcon) {
                                 IconButton(onClick = {
@@ -279,16 +283,16 @@ fun MainTopAppBar(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
-                                    .border(1.dp, searchBorderColor, CircleShape),
+                                    .border(Spacing.hairline, searchBorderColor, CircleShape),
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = searchFillAlpha),
-                                tonalElevation = 0.dp,
-                                shadowElevation = 0.dp
+                                tonalElevation = Elevation.none,
+                                shadowElevation = Elevation.none
                             ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 4.dp),
+                                    .padding(horizontal = Spacing.xs),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                             BasicTextField(
@@ -319,7 +323,7 @@ fun MainTopAppBar(
                                         Icon(
                                             Icons.Default.Search,
                                             contentDescription = null,
-                                            modifier = Modifier.size(20.dp),
+                                            modifier = Modifier.size(Size.icon),
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
                                         )
                                         Spacer(modifier = Modifier.width(10.dp))
@@ -367,10 +371,10 @@ fun MainTopAppBar(
 
                             Box(
                                 modifier = Modifier
-                                    .size(44.dp)
+                                    .size(Size.chipHeight)
                                     .clip(CircleShape)
                                     .border(
-                                        width = 1.dp,
+                                        width = Spacing.hairline,
                                         color = MaterialTheme.colorScheme.outlineVariant.copy(
                                             alpha = Chrome.Divider
                                         ),
@@ -449,7 +453,7 @@ fun MainTopAppBar(
             if (listScrolled) {
                 HorizontalDivider(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider),
-                    thickness = 1.dp
+                    thickness = Spacing.hairline
                 )
             }
         }
@@ -465,22 +469,22 @@ private fun RecentSearchRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
+            .padding(vertical = Spacing.xxs),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             Icons.Default.History,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.padding(start = 16.dp, end = 8.dp).size(18.dp)
+            modifier = Modifier.padding(start = Spacing.lg, end = Spacing.sm).size(Size.iconMedium)
         )
         LazyRow(
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(end = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            contentPadding = PaddingValues(end = Spacing.lg),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
             items(searches) { query ->
-                PrecisionFilterChip(
+                AppFilterChip(
                     selected = false,
                     onClick = { onSearchClick(query) },
                     label = query,
@@ -490,7 +494,7 @@ private fun RecentSearchRow(
         }
         TextButton(
             onClick = onClearAll,
-            modifier = Modifier.padding(end = 8.dp)
+            modifier = Modifier.padding(end = Spacing.sm)
         ) {
             Text(
                 stringResource(Res.string.clear_recent_searches),
@@ -525,7 +529,7 @@ private fun AccountAvatar(email: String?) {
             Icon(
                 imageVector = Icons.Outlined.Person,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(Size.iconMedium),
                 tint = MaterialTheme.colorScheme.primary
             )
         }

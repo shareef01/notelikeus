@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.milliseconds
+import com.aus.notelikeus.domain.model.AccentColor
+import com.aus.notelikeus.domain.model.ThemeBase
 
 private const val TAG = "MainViewModel"
 
@@ -113,15 +115,9 @@ class MainViewModel(
             }
             .launchIn(viewModelScope)
 
-        settingsRepository.appTheme
-            .onEach { theme ->
-                _state.update { it.copy(appTheme = theme) }
-            }
-            .launchIn(viewModelScope)
-
-        settingsRepository.isTrueDarkMode
-            .onEach { enabled ->
-                _state.update { it.copy(isTrueDarkMode = enabled) }
+        settingsRepository.themePreference
+            .onEach { preference ->
+                _state.update { it.copy(themePreference = preference) }
             }
             .launchIn(viewModelScope)
 
@@ -174,15 +170,22 @@ class MainViewModel(
         applyFilters()
     }
 
-    fun setAppTheme(theme: AppTheme) {
+    /** AMOLED is a black level for the dark schemes, independent of base theme and accent. */
+    fun setAmoled(enabled: Boolean) {
         viewModelScope.launch {
-            settingsRepository.setAppTheme(theme)
+            settingsRepository.setTrueDarkMode(enabled)
         }
     }
 
-    fun setTrueDarkMode(enabled: Boolean) {
+    fun setThemeBase(base: ThemeBase) {
         viewModelScope.launch {
-            settingsRepository.setTrueDarkMode(enabled)
+            settingsRepository.setThemeBase(base)
+        }
+    }
+
+    fun setAccentColor(accent: AccentColor) {
+        viewModelScope.launch {
+            settingsRepository.setAccentColor(accent)
         }
     }
 
