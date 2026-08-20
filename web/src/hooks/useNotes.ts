@@ -4,18 +4,8 @@ import { saveNote, removeNote } from '@/lib/notes/noteActions';
 import { useNotesStore } from '@/store/notesStore';
 import type { NoteQueryFilters } from '@/types/note';
 import { filterNotes } from '@/types/note';
-import type { Label } from '@/types/label';
+import { collectUniqueLabels } from '@/types/label';
 import { useAuthListener } from '@/hooks/useAuth';
-
-function collectLabels(notes: ReturnType<typeof useNotesStore.getState>['notes']): Label[] {
-  const map = new Map<string, Label>();
-  for (const note of notes) {
-    for (const label of note.labels) {
-      map.set(label.name.toLowerCase(), label);
-    }
-  }
-  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
 
 /** Read notes state and actions. Does not subscribe to Firestore — use `useNotesSync` once in App. */
 export function useNotes() {
@@ -36,7 +26,7 @@ export function useNotes() {
     [notesKey, filterKey],
   );
 
-  const labels = useMemo(() => collectLabels(notes), [notesKey]);
+  const labels = useMemo(() => collectUniqueLabels(notes), [notesKey]);
 
   const actions = useMemo(
     () => ({
