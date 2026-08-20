@@ -75,6 +75,14 @@ data class MainState(
     val query: NoteQuery = NoteQuery(),
     /** Operator-shaped text the parser did not understand, so the UI can say so. */
     val unknownOperators: List<String> = emptyList(),
+    /**
+     * The visible notes are near misses, not exact matches.
+     *
+     * Set when nothing matched the text and the fuzzy fallback found something close. The UI has
+     * to say so -- presenting corrected results as though they were what was asked for is worse
+     * than showing nothing, because the user would believe their search worked.
+     */
+    val isFuzzyResult: Boolean = false,
     /** Base, black level and accent, resolved from the stored theme. See ThemePreference. */
     val themePreference: ThemePreference = ThemePreference(),
     val isAppLockEnabled: Boolean = false,
