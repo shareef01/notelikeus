@@ -8,8 +8,7 @@ export interface FirebaseEnv {
   googleClientId: string;
 }
 
-function requireEnv(key: keyof ImportMetaEnv): string {
-  const value = import.meta.env[key];
+function requireEnv(value: string | undefined, key: string): string {
   if (!value || typeof value !== 'string' || value.trim() === '') {
     throw new Error(`Missing required environment variable: ${key}`);
   }
@@ -18,13 +17,22 @@ function requireEnv(key: keyof ImportMetaEnv): string {
 
 export function loadFirebaseEnv(): FirebaseEnv {
   return {
-    apiKey: requireEnv('VITE_FIREBASE_API_KEY'),
-    authDomain: requireEnv('VITE_FIREBASE_AUTH_DOMAIN'),
-    projectId: requireEnv('VITE_FIREBASE_PROJECT_ID'),
-    storageBucket: requireEnv('VITE_FIREBASE_STORAGE_BUCKET'),
-    messagingSenderId: requireEnv('VITE_FIREBASE_MESSAGING_SENDER_ID'),
-    appId: requireEnv('VITE_FIREBASE_APP_ID'),
-    googleClientId: requireEnv('VITE_FIREBASE_GOOGLE_CLIENT_ID'),
+    apiKey: requireEnv(import.meta.env.VITE_FIREBASE_API_KEY, 'VITE_FIREBASE_API_KEY'),
+    authDomain: requireEnv(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN, 'VITE_FIREBASE_AUTH_DOMAIN'),
+    projectId: requireEnv(import.meta.env.VITE_FIREBASE_PROJECT_ID, 'VITE_FIREBASE_PROJECT_ID'),
+    storageBucket: requireEnv(
+      import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+      'VITE_FIREBASE_STORAGE_BUCKET',
+    ),
+    messagingSenderId: requireEnv(
+      import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      'VITE_FIREBASE_MESSAGING_SENDER_ID',
+    ),
+    appId: requireEnv(import.meta.env.VITE_FIREBASE_APP_ID, 'VITE_FIREBASE_APP_ID'),
+    googleClientId: requireEnv(
+      import.meta.env.VITE_FIREBASE_GOOGLE_CLIENT_ID,
+      'VITE_FIREBASE_GOOGLE_CLIENT_ID',
+    ),
   };
 }
 
