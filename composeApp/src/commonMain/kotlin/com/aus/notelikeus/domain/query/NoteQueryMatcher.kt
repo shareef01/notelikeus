@@ -129,11 +129,45 @@ object NoteQueryMatcher {
     }
 
     /** Match then order, which is what every caller actually wants. */
-    fun apply(notes: List<Note>, query: NoteQuery, now: Long): List<Note> {
+    fun apply(notes: List<Note>, query: NoteQuery, now: Long): List<Note> = search(notes, query, now).notes
+
+    /**
+     * Runs a query, ordering by relevance when there is text and falling back to near matches when
+     * nothing matches exactly.
+     *
+     * Relevance replaces the chosen sort *only* while searching. Someone typing a word wants the
+     * best answer first; the same person with an empty box wants their list in the order they
+     * asked for. The chosen sort is not lost, it simply is not what "best" means mid-search.
+     */
+    fun search(notes: List<Note>, query: NoteQuery, now: Long): QueryResult {
         val needles = textNeedles(query.text)
-        return sort(notes.filter { matches(it, query, now, needles) }, query.sort)
+        val strict = notes.filter { matches(it, query, now, needles) }
+        if (strict.isNotEmpty() || needles.isEmpty()) {
+            val ordered = if (needles.isEmpty()) {
+                sort(strict, query.sort)
+            } else {
+                NoteSearchRanking.byRelevance(strict, query.text)
+            }
+            return QueryResult(ordered, isFuzzy = false)
+        }
+
+        // Nothing matched. Retry with near misses, but keep every non-text dimension exact -- a
+        // typo in the text should not quietly widen the colour or the date range too.
+        val textless = query.copy(text = "")
+        val candidates = notes.filter { matches(it, textless, now, emptyList()) }
+        val fuzzy = NoteSearchRanking.fuzzyMatches(candidates, query.text)
+        return QueryResult(NoteSearchRanking.byRelevance(fuzzy, query.text), isFuzzy = fuzzy.isNotEmpty())
     }
 }
+
+/**
+ * The notes a query returned, and whether they are exact.
+ *
+ * [isFuzzy] exists so the UI can say "Did you mean..." rather than presenting corrected results as
+ * though they were what was asked for -- showing near misses silently would be worse than showing
+ * nothing, because the user would believe their search worked.
+ */
+data class QueryResult(val notes: List<Note>, val isFuzzy: Boolean)
 
 /** Everything about a note that free text searches, in one string. */
 internal fun Note.searchableText(): String = buildSearchText(
