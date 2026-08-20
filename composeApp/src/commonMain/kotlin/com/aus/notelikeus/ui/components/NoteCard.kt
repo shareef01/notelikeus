@@ -53,15 +53,18 @@ import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.editor.RichTextParser
-import com.aus.notelikeus.ui.theme.NoteCardBodyStyle
-import com.aus.notelikeus.ui.theme.NoteCardTitleStyle
+import com.aus.notelikeus.ui.theme.AppType
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.util.DateUtils
+import com.aus.notelikeus.ui.theme.NoteEmphasis
+import com.aus.notelikeus.ui.theme.Radius
+import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.theme.Spacing
 
-private val NoteCardContentPadding = 20.dp
+private val NoteCardContentPadding = Spacing.xl
 
 /** Compact uppercase label pill, matching the web card's chip typography. */
 private val NoteCardLabelChipStyle = TextStyle(
@@ -95,7 +98,7 @@ private fun ChecklistProgressText(note: Note, contentColor: Color) {
             note.checklist.size
         ),
         style = MaterialTheme.typography.labelSmall,
-        color = contentColor.copy(alpha = 0.6f),
+        color = contentColor.copy(alpha = NoteEmphasis.Secondary),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis
     )
@@ -133,7 +136,7 @@ private fun NoteCardLabelChips(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .clip(CircleShape)
-                    .background(contentColor.copy(alpha = 0.1f))
+                    .background(contentColor.copy(alpha = NoteEmphasis.Decorative))
                     .then(
                         if (clickable) {
                             Modifier.clickable { onLabelClick.invoke(labelId) }
@@ -147,7 +150,7 @@ private fun NoteCardLabelChips(
             Text(
                 text = stringResource(Res.string.labels_more, overflowCount),
                 style = chipStyle,
-                color = contentColor.copy(alpha = 0.7f)
+                color = contentColor.copy(alpha = NoteEmphasis.Secondary)
             )
         }
     }
@@ -175,17 +178,17 @@ private fun NoteCardStatusColumn(
     ) {
         if (isSelected) {
             Surface(
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(Size.iconLarge),
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.primary,
-                shadowElevation = 0.dp
+                shadowElevation = Spacing.none
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         Icons.Default.Check,
                         contentDescription = selectedLabel,
                         tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(Size.iconTiny)
                     )
                 }
             }
@@ -194,7 +197,7 @@ private fun NoteCardStatusColumn(
                 Icon(
                     Icons.Default.PushPin,
                     contentDescription = null,
-                    tint = contentColor.copy(alpha = 0.5f),
+                    tint = contentColor.copy(alpha = NoteEmphasis.Icon),
                     modifier = Modifier.size(statusIconSize)
                 )
             }
@@ -202,7 +205,7 @@ private fun NoteCardStatusColumn(
                 Icon(
                     Icons.Default.Notifications,
                     contentDescription = null,
-                    tint = contentColor.copy(alpha = 0.5f),
+                    tint = contentColor.copy(alpha = NoteEmphasis.Icon),
                     modifier = Modifier.size(statusIconSize)
                 )
             }
@@ -258,9 +261,9 @@ fun NoteCard(
 
     val elevation by animateDpAsState(
         targetValue = when {
-            isSelected -> 2.dp
+            isSelected -> Spacing.xxs
             isHovered -> 6.dp
-            else -> 0.dp
+            else -> Spacing.none
         },
         label = "elevation"
     )
@@ -276,7 +279,7 @@ fun NoteCard(
     )
 
     val hairlineBorder = BorderStroke(
-        1.dp,
+        Spacing.hairline,
         // Web default-color cards use border-brand-outline/40.
         MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
     )
@@ -335,7 +338,7 @@ fun NoteCard(
                 } else Modifier
             )
             */
-            .clip(RoundedCornerShape(18.dp)) // Web cards use rounded-note = 18px corners
+            .clip(RoundedCornerShape(Radius.lg)) // Web cards use rounded-note = 18px corners
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -343,14 +346,14 @@ fun NoteCard(
                 onLongClick = onLongClick
             )
             .hoverable(interactionSource),
-        shape = RoundedCornerShape(18.dp), // Web cards use rounded-note = 18px corners
+        shape = RoundedCornerShape(Radius.lg), // Web cards use rounded-note = 18px corners
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
             contentColor = contentColor
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = elevation),
         border = when {
-            isSelected -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+            isSelected -> BorderStroke(Spacing.xxs, MaterialTheme.colorScheme.primary)
             displayColorArgb == 0 -> hairlineBorder
             else -> null
         }
@@ -360,7 +363,7 @@ fun NoteCard(
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .size(48.dp)
+                        .size(Size.touchTarget)
                         .semantics { contentDescription = reorderLabel }
                         .then(reorderDragModifier),
                     contentAlignment = Alignment.Center
@@ -368,8 +371,8 @@ fun NoteCard(
                     Icon(
                         imageVector = Icons.Default.DragIndicator,
                         contentDescription = null,
-                        tint = contentColor.copy(alpha = 0.38f),
-                        modifier = Modifier.size(20.dp)
+                        tint = contentColor.copy(alpha = NoteEmphasis.Icon),
+                        modifier = Modifier.size(Size.icon)
                     )
                 }
             }
@@ -394,22 +397,16 @@ fun NoteCard(
                         ),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .width(2.dp)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(
-                                if (note.color != 0) contentColor.copy(alpha = 0.3f)
-                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    // No accent strip. It existed only in this List branch, and it was drawn
+                    // from contentColor/outline rather than the note's colour -- so it never
+                    // rendered the colour it appeared to stand for, and Grid and List disagreed
+                    // about what it meant. The tinted container carries the colour in every
+                    // layout now; see DECISIONS.md D1.
                     Column(modifier = Modifier.weight(1f)) {
                         if (note.title.isNotEmpty()) {
                             Text(
                                 text = buildHighlightedString(note.title, searchQuery, contentColor, highlightColor),
-                                style = NoteCardTitleStyle,
+                                style = AppType.noteCardTitle,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -419,13 +416,13 @@ fun NoteCard(
                             Text(
                                 text = RichTextParser.parse(
                                     text = note.content,
-                                    contentColor = contentColor.copy(alpha = 0.7f),
+                                    contentColor = contentColor.copy(alpha = NoteEmphasis.Secondary),
                                     highlightColor = highlightColor,
                                     searchQuery = searchQuery,
                                     linkColor = MaterialTheme.colorScheme.primary,
                                     linksClickable = false
                                 ),
-                                style = NoteCardBodyStyle,
+                                style = AppType.noteCardBody,
                                 maxLines = 3,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -442,12 +439,12 @@ fun NoteCard(
                                 contentColor = contentColor,
                                 chipStyle = NoteCardLabelChipStyle.copy(fontSize = 9.sp),
                                 chipHorizontalPadding = 6.dp,
-                                chipVerticalPadding = 2.dp,
+                                chipVerticalPadding = Spacing.xxs,
                                 onLabelClick = onLabelClick
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(Spacing.md))
                     NoteCardStatusColumn(
                         note = note,
                         isSelected = isSelected,
@@ -468,16 +465,16 @@ fun NoteCard(
                     }
                     .padding(
                     start = contentStartPadding,
-                    top = if (compact) 16.dp else NoteCardContentPadding,
-                    end = if (compact) 16.dp else NoteCardContentPadding,
-                    bottom = if (compact) 16.dp else NoteCardContentPadding
+                    top = if (compact) Spacing.lg else NoteCardContentPadding,
+                    end = if (compact) Spacing.lg else NoteCardContentPadding,
+                    bottom = if (compact) Spacing.lg else NoteCardContentPadding
                 )
             ) {
                 // Title row: title on the left, status/selection + timestamp on the right,
                 // matching the web card's header block.
                 Row(
                     verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
                     Text(
                         text = buildHighlightedString(
@@ -487,9 +484,9 @@ fun NoteCard(
                             highlightColor
                         ),
                         style = if (compact) {
-                            NoteCardTitleStyle.copy(fontSize = 15.sp, lineHeight = 20.sp)
+                            AppType.noteCardTitle.copy(fontSize = 15.sp, lineHeight = 20.sp)
                         } else {
-                            NoteCardTitleStyle
+                            AppType.noteCardTitle
                         },
                         maxLines = if (compact) 2 else 3,
                         overflow = TextOverflow.Ellipsis,
@@ -503,21 +500,21 @@ fun NoteCard(
                         statusIconSize = if (compact) 13.dp else 14.dp,
                         timestampFontSize = if (compact) 10.sp else 11.sp,
                         timestampAlpha = 0.6f,
-                        verticalSpacing = 4.dp
+                        verticalSpacing = Spacing.xs
                     )
                 }
                 if (note.content.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(if (compact) 8.dp else 12.dp))
+                    Spacer(modifier = Modifier.height(if (compact) Spacing.sm else Spacing.md))
                     Text(
                         text = RichTextParser.parse(
                             text = note.content,
-                            contentColor = contentColor.copy(alpha = 0.8f),
+                            contentColor = contentColor.copy(alpha = NoteEmphasis.Secondary),
                             highlightColor = highlightColor,
                             searchQuery = searchQuery,
                             linkColor = MaterialTheme.colorScheme.primary,
                             linksClickable = false
                         ),
-                        style = NoteCardBodyStyle,
+                        style = AppType.noteCardBody,
                         // Web grid preview clamps at 7 lines; the ellipsis says there is more.
                         maxLines = if (compact) 5 else 7,
                         overflow = TextOverflow.Ellipsis
@@ -530,7 +527,7 @@ fun NoteCard(
                 }
 
                 if (!compact && note.checklist.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(Spacing.sm))
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         note.checklist.take(3).forEach { item ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -539,36 +536,36 @@ fun NoteCard(
                                     contentDescription = stringResource(
                                         if (item.isChecked) Res.string.cd_checked else Res.string.cd_unchecked
                                     ),
-                                    modifier = Modifier.size(14.dp),
-                                    tint = contentColor.copy(alpha = 0.7f)
+                                    modifier = Modifier.size(Size.iconTiny),
+                                    tint = contentColor.copy(alpha = NoteEmphasis.Icon)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = RichTextParser.parse(
                                         text = item.text,
-                                        contentColor = contentColor.copy(alpha = 0.7f),
+                                        contentColor = contentColor.copy(alpha = NoteEmphasis.Secondary),
                                         highlightColor = highlightColor,
                                         searchQuery = searchQuery,
                                         linksClickable = false
                                     ),
-                                    style = NoteCardBodyStyle.copy(
+                                    style = AppType.noteCardBody.copy(
                                         fontSize = MaterialTheme.typography.labelSmall.fontSize,
                                         lineHeight = MaterialTheme.typography.labelSmall.lineHeight
                                     ),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    color = contentColor.copy(alpha = 0.7f)
+                                    color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                                 )
                             }
                         }
                     }
                     val remainingChecklistCount = note.checklist.size - 3
                     if (remainingChecklistCount > 0) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(Spacing.xs))
                         Text(
                             text = stringResource(Res.string.labels_more, remainingChecklistCount),
                             style = MaterialTheme.typography.labelSmall,
-                            color = contentColor.copy(alpha = 0.55f)
+                            color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                         )
                     }
                 }
@@ -580,7 +577,7 @@ fun NoteCard(
                         maxVisible = 2,
                         contentColor = contentColor,
                         chipStyle = NoteCardLabelChipStyle,
-                        chipHorizontalPadding = 8.dp,
+                        chipHorizontalPadding = Spacing.sm,
                         chipVerticalPadding = 3.dp,
                         onLabelClick = onLabelClick
                     )
