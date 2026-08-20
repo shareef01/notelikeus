@@ -12,8 +12,11 @@ async function postRemindersToServiceWorker(reminders: SwReminder[]) {
   try {
     const registration = await navigator.serviceWorker.ready;
     registration.active?.postMessage({ type: 'SYNC_REMINDERS', reminders });
-  } catch {
-    // Service worker may be unavailable in some contexts.
+  } catch (error) {
+    // Service worker may be unavailable in some contexts (private windows, unsupported
+    // browsers), and reminders are best-effort by design — but a failure here means none of
+    // this user's reminders are scheduled, so it must not vanish entirely.
+    console.warn('[Notelikeus] Could not hand reminders to the service worker:', error);
   }
 }
 
