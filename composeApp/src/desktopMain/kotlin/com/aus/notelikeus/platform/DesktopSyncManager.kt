@@ -3,6 +3,7 @@ package com.aus.notelikeus.platform
 import com.aus.notelikeus.data.remote.FirestoreTransportException
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.SuspectEmptyCloudException
+import com.aus.notelikeus.data.sync.runTimedSync
 import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.ui.main.CloudAccount
 import com.aus.notelikeus.ui.main.CloudSyncEvent
@@ -10,7 +11,6 @@ import com.aus.notelikeus.ui.main.CloudSyncStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -93,53 +93,19 @@ class DesktopSyncManager(
         runSync { syncEngine.downloadAllNotes() }
     }
 
-    /**
-     * Reports what actually happened.
-     *
-     * Both entry points used to discard the [Result] and set [CloudSyncStatus.Synced]
-     * unconditionally, which is why a completely non-functional cloud path still displayed as
-     * healthy.
-     */
-    /**
-     * A sync that never returns must not strand the UI.
-     *
-     * [runSync] flips the status to [CloudSyncStatus.Syncing] and only leaves it on the result, but
-     * nothing in the transport bounded how long that could take. Observed on a real device: with
-     * the network off, the status stayed Syncing indefinitely, and because ProfileSheet gates its
-     * sync controls on `cloudSyncStatus != Syncing`, "Sync to cloud" and "Restore from cloud" were
-     * disabled for as long as it hung — so the one screen that could retry had no working button
-     * on it. Only reconnecting released it.
-     *
-     * Generous on purpose: a first full sync of a large library is slow, and cutting a working sync
-     * short would be worse than the hang. This is the backstop, not a deadline.
-     */
-    private val syncTimeoutMs = 90_000L
-
-    private companion object {
-        const val SYNC_TIMED_OUT =
-            "Sync took too long and was stopped. Check your connection and try again."
-    }
-
-    private suspend fun runSync(block: suspend () -> Result<Int>) {
-        _syncStatus.value = CloudSyncStatus.Syncing
-        val result = withTimeoutOrNull(syncTimeoutMs) { block() }
-        if (result == null) {
-            _syncStatus.value = CloudSyncStatus.Error
-            _pendingEvent.value = CloudSyncEvent.Failure(SYNC_TIMED_OUT)
-            return
-        }
-        result
-            .onSuccess { _syncStatus.value = CloudSyncStatus.Synced }
-            .onFailure { error ->
-                _syncStatus.value = CloudSyncStatus.Error
-                _pendingEvent.value = CloudSyncEvent.Failure(describe(error))
-                // A rejected refresh token clears the stored session, so stop showing an account
-                // the app can no longer act as.
-                if (!tokenStore.hasSession()) {
-                    _cloudAccount.value = CloudAccount(isOfflineMode = true)
-                }
+    private suspend fun runSync(block: suspend () -> Result<Int>) = runTimedSync(
+        status = _syncStatus,
+        pendingEvent = _pendingEvent,
+        describeError = ::describe,
+        onFailure = {
+            // A rejected refresh token clears the stored session, so stop showing an account
+            // the app can no longer act as.
+            if (!tokenStore.hasSession()) {
+                _cloudAccount.value = CloudAccount(isOfflineMode = true)
             }
-    }
+        },
+        block = block
+    )
 
     private fun describe(error: Throwable): String = when {
         error is SuspectEmptyCloudException -> error.message ?: "Sync stopped to protect your notes."
