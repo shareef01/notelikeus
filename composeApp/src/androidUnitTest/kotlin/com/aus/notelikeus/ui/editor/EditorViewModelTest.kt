@@ -3,7 +3,6 @@ package com.aus.notelikeus.ui.editor
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.aus.notelikeus.domain.platform.ReminderManager
-import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
@@ -38,7 +37,6 @@ class EditorViewModelTest {
         settingsRepository = mockk(relaxed = true)
         reminderManager = mockk(relaxed = true)
         every { repository.getLabels() } returns flowOf(emptyList())
-        every { settingsRepository.appTheme } returns flowOf(AppTheme.AUTO)
     }
 
     private fun createViewModel(savedStateHandle: SavedStateHandle): EditorViewModel {
