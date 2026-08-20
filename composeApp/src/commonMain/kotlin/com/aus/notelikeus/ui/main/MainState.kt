@@ -2,12 +2,29 @@ package com.aus.notelikeus.ui.main
 
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.domain.model.NoteQuery
+import com.aus.notelikeus.domain.model.NoteScope
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.domain.model.ThemePreference
 
 enum class NoteFilter {
-    ACTIVE, ARCHIVED, TRASHED
+    ACTIVE, ARCHIVED, TRASHED;
+
+    fun toScope(): NoteScope = when (this) {
+        ACTIVE -> NoteScope.ACTIVE
+        ARCHIVED -> NoteScope.ARCHIVE
+        TRASHED -> NoteScope.TRASH
+    }
+
+    companion object {
+        /** [NoteScope.ALL] has no equivalent here; it reads as ACTIVE until the drawer offers it. */
+        fun fromScope(scope: NoteScope): NoteFilter = when (scope) {
+            NoteScope.ACTIVE, NoteScope.ALL -> ACTIVE
+            NoteScope.ARCHIVE -> ARCHIVED
+            NoteScope.TRASH -> TRASHED
+        }
+    }
 }
 
 enum class UndoAction {
@@ -32,19 +49,21 @@ data class MainState(
     val notes: List<Note> = emptyList(),
     val filteredNotes: List<Note> = emptyList(),
     val recentSearches: List<String> = emptyList(),
-    val searchQuery: String = "",
-    val selectedColor: Int? = null,
-    val selectedLabelId: Long? = null,
+    /**
+     * Everything that decides which notes are shown and in what order.
+     *
+     * The single source of truth for filtering. What used to be five independent fields here --
+     * searchQuery, selectedColor, selectedLabelId, sortOrder, currentFilter -- each with its own
+     * setter and its own path into the recompute, and six such paths in total.
+     */
+    val query: NoteQuery = NoteQuery(),
     /** Base, black level and accent, resolved from the stored theme. See ThemePreference. */
     val themePreference: ThemePreference = ThemePreference(),
-    val viewMode: NoteViewMode = NoteViewMode.GRID_2,
-    val sortOrder: NoteSortOrder = NoteSortOrder.MANUAL,
     val isAppLockEnabled: Boolean = false,
     val areSettingsLoaded: Boolean = false,
     val pendingUndoMessage: String? = null,
     val pendingActionFailure: NoteActionFailure? = null,
     val selectedNotes: Set<Long> = emptySet(),
-    val currentFilter: NoteFilter = NoteFilter.ACTIVE,
     val allLabels: List<Label> = emptyList(),
     val totalNoteCount: Int = 0,
     val archivedNoteCount: Int = 0,
@@ -61,4 +80,29 @@ data class MainState(
      * rather than on every launch.
      */
     val hasChosenOffline: Boolean = false
-)
+) {
+    // The five fields the query replaced, kept as read-only views onto it.
+    //
+    // The screens still speak in these terms and rebuilding that surface is the next phase's job;
+    // meanwhile these keep the call sites compiling without giving anything a second place to
+    // store the same fact. They are deliberately get-only: there is one setter, on the query.
+
+    val searchQuery: String get() = query.text
+
+    /**
+     * The colour the user picked, when exactly one is selected.
+     *
+     * `query.colors` also holds that colour's light/dark counterpart so a note saved under either
+     * theme matches, so this reads the first entry rather than the only one -- insertion order is
+     * preserved and the user's own choice is inserted first.
+     */
+    val selectedColor: Int? get() = query.colors.firstOrNull()
+
+    val selectedLabelId: Long? get() = query.labels.firstOrNull()
+
+    val sortOrder: NoteSortOrder get() = query.sort
+
+    val viewMode: NoteViewMode get() = query.view
+
+    val currentFilter: NoteFilter get() = NoteFilter.fromScope(query.scope)
+}

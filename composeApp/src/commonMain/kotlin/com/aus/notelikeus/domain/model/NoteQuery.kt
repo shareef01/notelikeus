@@ -77,6 +77,24 @@ data class NoteQuery(
             flags.isNotEmpty() ||
             dateRange != null
 
+    /**
+     * Whether dragging notes into a manual order is meaningful right now.
+     *
+     * Manual reordering and automatic sorting are mutually exclusive, and the UI used to promise
+     * something it could not honour: the drag handles appeared whenever the list was single-column,
+     * regardless of sort. Dragging under "Newest first" did not merely fail to stick -- it wrote.
+     * `updateNotePositions` bumps each moved note's `timestamp` so the new position survives the
+     * sync conflict guard, so a drag under a timestamp sort **rewrote the timestamps of every note
+     * it touched and replicated them to every device**, then re-sorted the list out from under the
+     * user. That is data loss with a cosmetic disguise.
+     *
+     * Filters exclude it for a smaller reason: position is a property of the whole list, and
+     * dragging within a filtered subset cannot express where the note goes among the notes that
+     * are hidden.
+     */
+    val allowsManualReorder: Boolean
+        get() = sort == NoteSortOrder.MANUAL && !hasActiveFilters
+
     /** Drops every narrowing dimension, keeping where you are and how you are looking at it. */
     fun cleared(): NoteQuery = NoteQuery(
         scope = scope,
