@@ -48,8 +48,27 @@ function asString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
 
-function asNumber(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+/**
+ * Coerces to a whole number, for the fields Firestore stores as `int`.
+ *
+ * `localId`, `color`, `position` and both timestamps are integers everywhere else in the system:
+ * Kotlin types them `Long`/`Int`, the desktop transport writes explicit `integerValue`, and
+ * `firestore.rules` type-checks them with `is int`. JavaScript has one number type, so nothing on
+ * this side enforced it — the previous helper accepted any finite value, and a note carrying `1.5`
+ * in one of those fields imports happily and is then **rejected by the rules on every write**.
+ * The note survives locally and silently never syncs, which is the worst shape a failure takes.
+ *
+ * Backups are user-editable JSON and import routes through `cloudMapToNote`, so this is reachable
+ * without a malicious actor — a hand-edited or third-party-generated file is enough.
+ *
+ * Truncates rather than rejects: the magnitude is the meaningful part and dropping a fractional
+ * remainder keeps the note usable, where discarding the field would lose real data. It matches
+ * what `serverUpdatedAt` already does a few lines below, flooring sub-millisecond precision so
+ * both platforms agree on one number.
+ */
+function asInteger(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.trunc(value);
 }
 
 function asBoolean(value: unknown, fallback = false): boolean {
@@ -106,13 +125,13 @@ export function cloudMapToNote(
   data: FirestoreNoteDocument,
   resolveLabel: (name: string) => Label = (name) => labelFromName(name),
 ): Note {
+  // Number.isInteger, not isFinite: a document literally named "1.5" would otherwise become a
+  // fractional localId, which is the same rules rejection by another route.
   const parsedId = Number(documentId);
-  const localId =
-    Number.isFinite(parsedId) && parsedId > 0
-      ? parsedId
-      : asNumber(data.localId, Date.now());
+  const hasNumericId = Number.isInteger(parsedId) && parsedId > 0;
+  const localId = hasNumericId ? parsedId : asInteger(data.localId, Date.now());
 
-  const id = Number.isFinite(parsedId) && parsedId > 0 ? documentId : String(localId);
+  const id = hasNumericId ? documentId : String(localId);
 
   const labels: Label[] = [];
   for (const entry of asArray(data.labels)) {
@@ -127,7 +146,7 @@ export function cloudMapToNote(
       id: `chk-${localId}-${index}`,
       text: asString(item.text),
       isChecked: asBoolean(item.isChecked),
-      position: asNumber(item.position, index),
+      position: asInteger(item.position, index),
     };
   });
 
@@ -148,16 +167,16 @@ export function cloudMapToNote(
     localId,
     title: asString(data.title),
     content: asString(data.content),
-    timestamp: asNumber(data.timestamp, Date.now()),
-    color: asNumber(data.color, 0xff1a1a1a | 0),
+    timestamp: asInteger(data.timestamp, Date.now()),
+    color: asInteger(data.color, 0xff1a1a1a | 0),
     isPinned: asBoolean(data.isPinned),
     isArchived: asBoolean(data.isArchived),
     isTrashed: asBoolean(data.isTrashed),
-    position: asNumber(data.position, 0),
-    reminderTimestamp: typeof data.reminderTimestamp === 'number' &&
-      Number.isFinite(data.reminderTimestamp)
-      ? data.reminderTimestamp
-      : null,
+    position: asInteger(data.position, 0),
+    reminderTimestamp:
+      typeof data.reminderTimestamp === 'number' && Number.isFinite(data.reminderTimestamp)
+        ? Math.trunc(data.reminderTimestamp)
+        : null,
     // Not `.toMillis()`: it keeps the sub-millisecond fraction (float division), while Android's
     // equivalent conversion floors it (integer division) — same commit, two different numbers
     // otherwise. Flooring on both sides is the coarsest representation both platforms agree on.
