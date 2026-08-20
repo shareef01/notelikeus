@@ -54,6 +54,17 @@ object NoteEmphasis {
      * at this opacity nothing is legible and nothing is meant to be.
      */
     const val Decorative = 0.14f
+
+    /**
+     * A surface tint: a panel that should read as part of the note rather than floating over it.
+     *
+     * Half [Decorative], and separate from it for a reason found by looking at the running app.
+     * The retokenisation pass mapped every low alpha to [Decorative] by value, which doubled the
+     * editor's formatting toolbar from 0.07 to 0.14 — enough that on the light theme it stopped
+     * being a tint and became a grey slab, which is exactly what its own comment said it must not
+     * be. A stroke and a filled panel need different opacities to read as equally quiet.
+     */
+    const val Wash = 0.07f
 }
 
 /**
