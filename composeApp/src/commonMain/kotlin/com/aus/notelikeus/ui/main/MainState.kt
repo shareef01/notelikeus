@@ -1,6 +1,5 @@
 package com.aus.notelikeus.ui.main
 
-import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.NoteSortOrder
@@ -28,7 +27,6 @@ data class MainState(
     val searchQuery: String = "",
     val selectedColor: Int? = null,
     val selectedLabelId: Long? = null,
-    val appTheme: AppTheme = AppTheme.AUTO,
     /** Base, black level and accent, resolved from the stored theme. See ThemePreference. */
     val themePreference: ThemePreference = ThemePreference(),
     val viewMode: NoteViewMode = NoteViewMode.GRID_2,

@@ -113,12 +113,6 @@ class MainViewModel(
             }
             .launchIn(viewModelScope)
 
-        settingsRepository.appTheme
-            .onEach { theme ->
-                _state.update { it.copy(appTheme = theme) }
-            }
-            .launchIn(viewModelScope)
-
         settingsRepository.themePreference
             .onEach { preference ->
                 _state.update { it.copy(themePreference = preference) }
@@ -170,12 +164,6 @@ class MainViewModel(
             settingsRepository.setNoteSortOrder(order)
         }
         applyFilters()
-    }
-
-    fun setAppTheme(theme: AppTheme) {
-        viewModelScope.launch {
-            settingsRepository.setAppTheme(theme)
-        }
     }
 
     /** AMOLED is a black level for the dark schemes, independent of base theme and accent. */
