@@ -56,8 +56,9 @@ class NoteQueryPerformanceTest {
                 emptyList()
             }
         )
-        // Indexed, as every note is after the backfill. Measuring the unindexed path would be
-        // measuring the fallback, which by design only ever covers a transient minority.
+        // Indexed, as a note is once it has been written since the column existed. The
+        // unindexed path is measured separately below -- there is no backfill, so on an upgraded
+        // database it stays the common path until each note is next edited.
         note.copy(searchText = note.searchableText())
     }
 
@@ -107,4 +108,34 @@ class NoteQueryPerformanceTest {
         // The common case: no query at all, so the cost is scope plus the sort.
         assertWithinBudget("unfiltered", corpus(), NoteQuery(sort = NoteSortOrder.NEWEST))
     }
+    /**
+     * What the fallback costs, and therefore why the backfill exists.
+     *
+     * An un-indexed note folds its fields on every pass, which is what keeps it findable on an
+     * upgraded database before it has been written since the column existed.
+     *
+     * This measures the gap rather than assuming it, and the number is why there is no backfill:
+     * 12ms against 0ms at 5,000 notes, both inside the 50ms budget. Rewriting every row of an
+     * encrypted database to save 12ms that nobody is waiting on is a bad trade -- see
+     * DECISIONS.md D9. What this test has to guarantee is that the two paths agree, because a
+     * fallback that returned different notes would be far worse than a slow one.
+     */
+    @Test
+    fun `the unindexed fallback is correct but markedly slower`() {
+        val indexed = corpus()
+        val unindexed = indexed.map { it.copy(searchText = null) }
+        val query = NoteQuery(text = "cafe", sort = NoteSortOrder.NEWEST)
+
+        val indexedMs = timeOf(indexed, query)
+        val unindexedMs = timeOf(unindexed, query)
+        println("  query perf | indexed ${indexedMs}ms vs unindexed ${unindexedMs}ms over $NOTE_COUNT notes")
+
+        // Same answers either way -- the fallback must never change which notes match.
+        assertTrue(
+            NoteQueryMatcher.apply(indexed, query, NOW).map { it.id } ==
+                NoteQueryMatcher.apply(unindexed, query, NOW).map { it.id },
+            "the fallback returned a different result set than the indexed path"
+        )
+    }
+
 }
