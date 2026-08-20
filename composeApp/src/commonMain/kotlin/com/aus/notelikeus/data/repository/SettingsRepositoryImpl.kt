@@ -71,18 +71,6 @@ class SettingsRepositoryImpl(
         refreshWidget()
     }
 
-    override val appTheme: Flow<AppTheme> = dataStore.data
-        .map { preferences ->
-            AppTheme.fromName(preferences[APP_THEME_KEY])
-        }
-
-    override suspend fun setAppTheme(theme: AppTheme) {
-        dataStore.edit { preferences ->
-            preferences[APP_THEME_KEY] = theme.name
-        }
-        refreshWidget()
-    }
-
     override val isTrueDarkMode: Flow<Boolean> = dataStore.data
         .map { preferences ->
             preferences[TRUE_DARK_MODE_KEY] ?: false
