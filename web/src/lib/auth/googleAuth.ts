@@ -1,7 +1,7 @@
 import { clearLocalUserData } from '@/lib/bootstrap';
 import { deleteAllCloudData } from '@/lib/firestore/notesRepository';
 import { stopNotesRealtimeSync } from '@/lib/notes/notesSyncService';
-import { getFirebaseAuth, initFirebase } from '@/lib/firebase';
+import { getFirebaseAuth, initFirebase, purgeFirestoreCache } from '@/lib/firebase';
 import {
   GoogleAuthProvider,
   getRedirectResult,
@@ -55,4 +55,5 @@ export async function signOutGoogle(options: { deleteCloudData?: boolean } = {})
   await signOut(auth);
   stopNotesRealtimeSync();
   clearLocalUserData();
+  await purgeFirestoreCache();
 }

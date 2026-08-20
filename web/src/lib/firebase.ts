@@ -3,10 +3,12 @@ import { initializeAppCheck, ReCaptchaEnterpriseProvider, ReCaptchaV3Provider } 
 import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
 import {
   connectFirestoreEmulator,
+  clearIndexedDbPersistence,
   initializeFirestore,
   memoryLocalCache,
   persistentLocalCache,
   persistentMultipleTabManager,
+  terminate,
   type Firestore,
 } from 'firebase/firestore';
 import { loadFirebaseEnv } from './config';
@@ -122,6 +124,12 @@ export function initFirebase(): {
     throw initError;
   }
 
+  if (app && auth) {
+    db = createFirestore(app);
+    connectEmulatorsIfConfigured(auth, db);
+    return { app, auth, db };
+  }
+
   try {
     const env = loadFirebaseEnv();
     app = initializeApp({
@@ -159,3 +167,21 @@ export function isFirestoreMemoryCache(): boolean {
   return firestoreUsesMemoryCache;
 }
 
+/** Best-effort purge for explicit sign-out; memory-cache sessions have nothing persistent to clear. */
+export async function purgeFirestoreCache(): Promise<void> {
+  if (!db || firestoreUsesMemoryCache) return;
+
+  const currentDb = db;
+  let terminated = false;
+  try {
+    await terminate(currentDb);
+    terminated = true;
+    db = null;
+    await clearIndexedDbPersistence(currentDb);
+  } catch (error) {
+    if (terminated && db === currentDb) {
+      db = null;
+    }
+    console.warn('[Firebase] Firestore cache purge skipped:', error);
+  }
+}
