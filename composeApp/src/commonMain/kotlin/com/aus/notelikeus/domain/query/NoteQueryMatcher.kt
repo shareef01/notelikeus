@@ -29,8 +29,22 @@ object NoteQueryMatcher {
      * lives with the palette, which is the only place that knows what is equivalent.
      */
     fun matches(note: Note, query: NoteQuery, now: Long): Boolean =
+        matches(note, query, now, textNeedles(query.text))
+
+    /**
+     * The per-note test, with the query's text needles hoisted out.
+     *
+     * [apply] prepares them once for the whole list; the single-note overload above prepares them
+     * for one call, which is what tests and one-off checks want.
+     */
+    fun matches(
+        note: Note,
+        query: NoteQuery,
+        now: Long,
+        needles: List<Pair<String, String>>
+    ): Boolean =
         matchesScope(note, query.scope) &&
-            matchesText(note, query.text) &&
+            matchesText(note, needles) &&
             matchesColors(note, query.colors) &&
             matchesLabels(note, query) &&
             matchesFlags(note, query.flags, now) &&
@@ -50,13 +64,24 @@ object NoteQueryMatcher {
      * rather than substring is a deliberate narrowing of the old behaviour: `contains` matched
      * mid-word, so "ote" found "notes", which is almost never what someone means and made short
      * queries useless.
+     *
+     * Scanned rather than split. Splitting the haystack allocates a list per note per keystroke,
+     * which at a few thousand notes is the whole cost of the filter; a token matches at a word
+     * boundary if the text starts with it or contains it preceded by a space, and neither
+     * allocates. [needles] is prepared once per query by [textNeedles] for the same reason.
      */
-    private fun matchesText(note: Note, text: String): Boolean {
-        val tokens = searchTokens(text)
-        if (tokens.isEmpty()) return true
-        val haystack = searchTokens(note.searchableText())
-        return tokens.all { needle -> haystack.any { it.startsWith(needle) } }
+    private fun matchesText(note: Note, needles: List<Pair<String, String>>): Boolean {
+        if (needles.isEmpty()) return true
+        // Null means not yet indexed, so fold on the spot: never "matches nothing".
+        val haystack = note.searchText ?: note.searchableText()
+        return needles.all { (token, spaced) ->
+            haystack.startsWith(token) || haystack.contains(spaced)
+        }
     }
+
+    /** Query tokens paired with their space-prefixed form, prepared once rather than per note. */
+    internal fun textNeedles(text: String): List<Pair<String, String>> =
+        searchTokens(text).map { it to " $it" }
 
     private fun matchesColors(note: Note, colors: Set<Int>): Boolean =
         colors.isEmpty() || note.color in colors
@@ -104,8 +129,10 @@ object NoteQueryMatcher {
     }
 
     /** Match then order, which is what every caller actually wants. */
-    fun apply(notes: List<Note>, query: NoteQuery, now: Long): List<Note> =
-        sort(notes.filter { matches(it, query, now) }, query.sort)
+    fun apply(notes: List<Note>, query: NoteQuery, now: Long): List<Note> {
+        val needles = textNeedles(query.text)
+        return sort(notes.filter { matches(it, query, now, needles) }, query.sort)
+    }
 }
 
 /** Everything about a note that free text searches, in one string. */
