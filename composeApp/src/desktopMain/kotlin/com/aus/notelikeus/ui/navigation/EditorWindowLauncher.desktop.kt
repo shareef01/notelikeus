@@ -73,6 +73,8 @@ import org.koin.compose.getKoin
 import org.koin.compose.koinInject
 import org.koin.core.qualifier.named
 import java.awt.Toolkit
+import com.aus.notelikeus.domain.model.ThemePreference
+import com.aus.notelikeus.domain.model.ThemeBase
 
 private data class EditorWindowRequest(
     val key: Int,
@@ -177,9 +179,13 @@ private fun EditorNoteWindow(
         resizable = true
     ) {
         val settingsRepository: SettingsRepository = koinInject()
-        val appTheme by settingsRepository.appTheme.collectAsState(initial = AppTheme.TRUE_DARK)
+        // A separate OS window composes its own theme, so it reads the preference directly
+        // rather than receiving it from MainState. The initial value is dark: this window opens
+        // over the main one, and a white flash on a dark desktop is worse than the reverse.
+        val themePreference by settingsRepository.themePreference
+            .collectAsState(initial = ThemePreference(base = ThemeBase.DARK))
 
-        NotelikeusTheme(appTheme = appTheme) {
+        NotelikeusTheme(preference = themePreference) {
             // Plain factory injection: standalone windows have no SavedStateRegistryOwner, so
             // koinViewModel cannot build the editor's SavedStateHandle here. Each call creates
             // an independent EditorViewModel for this window.

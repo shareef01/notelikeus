@@ -1,34 +1,31 @@
 package com.aus.notelikeus.domain.model
 
-import notelikeus.composeapp.generated.resources.Res
-import notelikeus.composeapp.generated.resources.*
-import org.jetbrains.compose.resources.StringResource
-
+/**
+ * The stored theme vocabulary. **Not** a UI model — nothing renders these directly any more.
+ *
+ * Appearance is chosen as [ThemePreference] (base x black level x accent); this enum is only the
+ * string that lands in DataStore, and the three legacy entries below are read-only history.
+ * `toThemePreference` maps them, and nothing ever writes them again — see DECISIONS.md D2 for why
+ * that mapping is permanent rather than transitional.
+ *
+ * It stays a six-entry enum for exactly that reason: dropping TRUE_DARK, MIDNIGHT or FOREST would
+ * make `fromName` fall through to AUTO and silently reset the appearance of anyone who has not
+ * touched their theme since.
+ */
 enum class AppTheme {
     AUTO,
     LIGHT,
     DARK,
+
+    // Legacy: written by builds that fused base, black level and hue into one setting.
+    // Read and mapped, never written.
     TRUE_DARK,
     MIDNIGHT,
     FOREST;
-
-    fun next(): AppTheme {
-        val values = entries
-        return values[(ordinal + 1) % values.size]
-    }
 
     companion object {
         fun fromName(name: String?): AppTheme {
             return entries.find { it.name == name } ?: AUTO
         }
     }
-}
-
-fun appThemeLabelRes(theme: AppTheme): StringResource = when (theme) {
-    AppTheme.AUTO -> Res.string.theme_auto
-    AppTheme.LIGHT -> Res.string.theme_light
-    AppTheme.DARK -> Res.string.theme_dark
-    AppTheme.TRUE_DARK -> Res.string.theme_true_dark
-    AppTheme.MIDNIGHT -> Res.string.theme_midnight
-    AppTheme.FOREST -> Res.string.theme_forest
 }

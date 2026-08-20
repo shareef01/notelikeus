@@ -32,6 +32,7 @@ import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.util.DateUtils
+import com.aus.notelikeus.ui.theme.Spacing
 
 @Composable
 fun NoteStaggeredGrid(
@@ -54,7 +55,7 @@ fun NoteStaggeredGrid(
     compact: Boolean = false,
     listStyle: Boolean = false,
     gridState: LazyStaggeredGridState = rememberLazyStaggeredGridState(),
-    contentPadding: PaddingValues = PaddingValues(8.dp)
+    contentPadding: PaddingValues = PaddingValues(Spacing.sm)
 ) {
     val haptic = LocalHapticFeedback.current
     val pinnedSectionLabel = stringResource(Res.string.section_pinned)
@@ -65,7 +66,7 @@ fun NoteStaggeredGrid(
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val canReorder = columns == 1 && selectedNotes.isEmpty() && !compact && allowReorder
     val swipeEnabled = enableSwipe && selectedNotes.isEmpty()
-    val itemSpacing = 16.dp
+    val itemSpacing = Spacing.lg
 
     fun getDateHeader(timestamp: Long): String {
         return when {
@@ -115,7 +116,7 @@ fun NoteStaggeredGrid(
                     label = "dragScale"
                 )
                 val dragElevation by animateDpAsState(
-                    targetValue = if (isBeingDragged) 4.dp else 0.dp,
+                    targetValue = if (isBeingDragged) Spacing.xs else Spacing.none,
                     label = "dragElevation"
                 )
                 val itemModifier = Modifier

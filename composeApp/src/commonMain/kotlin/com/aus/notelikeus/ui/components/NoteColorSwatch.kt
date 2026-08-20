@@ -26,6 +26,8 @@ import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import com.aus.notelikeus.ui.theme.Chrome
 import com.aus.notelikeus.ui.theme.getContentColor
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
 
 @Composable
 fun NoteColorSwatch(
@@ -33,8 +35,8 @@ fun NoteColorSwatch(
     isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    touchSize: Dp = 48.dp,
-    swatchSize: Dp = 32.dp,
+    touchSize: Dp = Size.touchTarget,
+    swatchSize: Dp = Spacing.xxxl,
     contentDescription: String? = null
 ) {
     val description = contentDescription ?: if (isSelected) {
@@ -58,7 +60,7 @@ fun NoteColorSwatch(
                 .clip(CircleShape)
                 .background(if (isDefault) MaterialTheme.colorScheme.surfaceVariant else color)
                 .border(
-                    width = if (isSelected) 2.dp else 1.dp,
+                    width = if (isSelected) Spacing.xxs else Spacing.hairline,
                     color = if (isSelected) {
                         MaterialTheme.colorScheme.primary
                     } else {
@@ -72,7 +74,7 @@ fun NoteColorSwatch(
                 Icon(
                     Icons.Default.Block,
                     contentDescription = null,
-                    modifier = Modifier.size(16.dp).semantics { hideFromAccessibility() },
+                    modifier = Modifier.size(Size.iconSmall).semantics { hideFromAccessibility() },
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
             }
@@ -81,7 +83,7 @@ fun NoteColorSwatch(
                     Icons.Default.Check,
                     contentDescription = null,
                     modifier = Modifier
-                        .size(16.dp)
+                        .size(Size.iconSmall)
                         .semantics { hideFromAccessibility() },
                     tint = if (isDefault) MaterialTheme.colorScheme.primary else color.getContentColor()
                 )
