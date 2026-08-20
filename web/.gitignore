@@ -14,3 +14,6 @@ blob-report
 .playwright
 
 dist-e2e
+
+# Coverage output from `npm run test:coverage`
+coverage

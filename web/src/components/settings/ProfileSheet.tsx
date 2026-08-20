@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { version } from '../../../package.json';
 import { BrandMark } from '@/components/brand/BrandMark';
 import { ThemePicker } from '@/components/settings/ThemePicker';
@@ -154,15 +154,7 @@ export function ProfileSheet({
   onSignOut,
 }: ProfileSheetProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
-
-  useEffect(() => {
-    if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open]);
+  useBodyScrollLock(open);
 
   if (!open) return null;
 

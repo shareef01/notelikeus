@@ -14,6 +14,8 @@ import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.util.AppConfig
+import com.aus.notelikeus.util.AppLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -121,6 +123,8 @@ class MainViewModel(
 
         settingsRepository.isAppLockEnabled
             .catch { error ->
+                // Fail closed: an unreadable setting must not be treated as "lock disabled".
+                AppLog.warn(TAG, "App-lock setting unreadable; assuming enabled", error)
                 emit(true)
             }
             .onEach { enabled ->
@@ -350,6 +354,8 @@ class MainViewModel(
 
     fun clearPendingUndoMessage() = noteActions.clearPendingUndoMessage()
 
+    fun clearPendingActionFailure() = noteActions.clearPendingActionFailure()
+
     fun toggleNoteSelection(noteId: Long) = noteActions.toggleNoteSelection(noteId)
 
     fun archiveNote(note: Note) = noteActions.archiveNote(note)
@@ -396,7 +402,16 @@ class MainViewModel(
     fun commitNoteOrder() {
         viewModelScope.launch {
             val notes = _state.value.notes
-            repository.updateNotePositions(notes)
+            try {
+                repository.updateNotePositions(notes)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                // The drag has already been applied to the in-memory list, so without this the
+                // order looks saved until the next time the notes flow re-emits.
+                AppLog.warn(TAG, "Saving the new note order failed", error)
+                _state.update { it.copy(pendingActionFailure = NoteActionFailure.REORDER) }
+            }
         }
     }
 

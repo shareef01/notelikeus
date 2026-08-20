@@ -20,7 +20,12 @@ function partitionTombstoned(remoteNotes: Note[]): { live: Note[]; staleIds: str
 
 function purgeStaleCloudDocs(userId: string, staleIds: string[]): void {
   if (staleIds.length === 0) return;
-  void Promise.all(staleIds.map((id) => deleteNote(userId, id)));
+  // Fire-and-forget on purpose: the tombstone already keeps these notes out of the UI, and the
+  // next snapshot retries the purge. Logging is all that stops a permanently failing delete
+  // (rules change, revoked access) from being invisible.
+  void Promise.all(staleIds.map((id) => deleteNote(userId, id))).catch((error: unknown) => {
+    console.warn('[Notelikeus] Purging tombstoned cloud notes failed:', error);
+  });
 }
 
 let unsubscribeRealtime: Unsubscribe | null = null;

@@ -14,7 +14,10 @@ export function useAuthSync() {
   useEffect(() => {
     try {
       initFirebase();
-    } catch {
+    } catch (error) {
+      // Ready-but-signed-out keeps the app usable, so this is the only trace of a
+      // misconfigured/blocked Firebase left for whoever has to explain why sign-in never works.
+      console.error('[Notelikeus] Firebase init failed; auth is unavailable:', error);
       useAuthStore.getState().setReady(true);
       return;
     }
