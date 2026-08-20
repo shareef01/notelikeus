@@ -14,7 +14,9 @@ import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.ui.theme.NO_NOTE_COLOR
+import com.aus.notelikeus.util.AppLog
 import com.aus.notelikeus.util.DateUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -38,7 +40,9 @@ data class EditorState(
     val timestamp: Long = DateUtils.currentTimeMillis(),
     val position: Int = 0,
     val isNoteLoaded: Boolean = false,
-    val noteNotFound: Boolean = false
+    val noteNotFound: Boolean = false,
+    /** A save (autosave included) failed: the editor still holds the only copy of the edit. */
+    val saveFailed: Boolean = false
 )
 
 class EditorViewModel(
@@ -216,10 +220,10 @@ class EditorViewModel(
             autosaveJob?.cancel()
             if (!wasArchived) {
                 val snapshot = buildNoteFromState(_state.value).copy(isArchived = false)
-                persistNote()
-                onArchived?.invoke(snapshot)
+                // Only offer the undo if the archive actually reached the database.
+                if (persistNoteReportingFailure()) onArchived?.invoke(snapshot)
             } else {
-                persistNote()
+                persistNoteReportingFailure()
             }
         }
     }
@@ -294,6 +298,29 @@ class EditorViewModel(
         }
         syncReminder(savedId, _state.value)
         return savedId
+    }
+
+    /**
+     * [persistNote] for the fire-and-forget call sites, which have no caller to propagate to: the
+     * exception used to escape into [viewModelScope] with the editor still showing the unsaved
+     * text as if it were stored. Reports the failure into the state instead, and returns whether
+     * the save landed.
+     */
+    private suspend fun persistNoteReportingFailure(): Boolean {
+        return try {
+            persistNote()
+            true
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            AppLog.warn(TAG, "Saving the note failed", error)
+            _state.update { it.copy(saveFailed = true) }
+            false
+        }
+    }
+
+    fun clearSaveFailure() {
+        if (_state.value.saveFailed) _state.update { it.copy(saveFailed = false) }
     }
 
     suspend fun undoArchive(snapshot: Note) {
@@ -461,7 +488,7 @@ class EditorViewModel(
             delay(1000)
             // persistNote, not saveNote: saveNote cancels autosaveJob, which from in here would
             // mean cancelling the very coroutine about to do the work.
-            persistNote()
+            persistNoteReportingFailure()
         }
     }
 
@@ -472,7 +499,7 @@ class EditorViewModel(
         // Supersede any autosave still counting down, so this save is the only one in flight.
         autosaveJob?.cancel()
         viewModelScope.launch {
-            persistNote()
+            persistNoteReportingFailure()
         }
     }
 
@@ -496,5 +523,9 @@ class EditorViewModel(
                 timestamp = state.reminderTimestamp!!
             )
         }
+    }
+
+    private companion object {
+        const val TAG = "EditorViewModel"
     }
 }

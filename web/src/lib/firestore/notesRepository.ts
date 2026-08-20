@@ -213,7 +213,9 @@ export async function deleteAllCloudData(userId: string): Promise<number> {
     await batch.commit();
   }
 
-  await deleteDoc(userSyncMetaDocument(userId)).catch(() => undefined);
+  // Propagates: this runs from "sign out and delete my cloud data", so leaving the sync document
+  // behind while reporting a completed wipe is the one outcome the caller must not report.
+  await deleteDoc(userSyncMetaDocument(userId));
   return deleted;
 }
 
