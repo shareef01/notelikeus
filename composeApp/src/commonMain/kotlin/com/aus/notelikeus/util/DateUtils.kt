@@ -10,6 +10,15 @@ expect object DateUtils {
      */
     fun currentTimeMillis(): Long
 
+    /**
+     * Epoch millis at local midnight of the day containing [timestamp].
+     *
+     * The search operators need a day boundary -- `after:yesterday` has to mean the same instant
+     * as `after:2026-08-19` -- and midnight is a timezone question, so it is answered per platform
+     * rather than in the parser.
+     */
+    fun startOfDay(timestamp: Long): Long
+
     fun isToday(timestamp: Long): Boolean
     fun formatDateTime(timestamp: Long, showYear: Boolean = true): String
     fun formatTime(timestamp: Long): String

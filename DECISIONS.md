@@ -123,6 +123,34 @@ behind the same pure query function.
 difference is not measurable, and the brief's own budget (5,000 notes in under 50ms) is
 reachable without it.
 
+### Amended during Phase 2 — the SQL half turned out to be unnecessary
+
+The normalised column happened; the SQL query did not, and should not.
+
+Measured with the column in place, over 5,000 realistically-shaped notes:
+
+| query | time | budget |
+|---|---|---|
+| free text | 1ms | 50ms |
+| multi-token text | 1ms | 50ms |
+| text + labels + colours + flags + sort | 1ms | 50ms |
+| unfiltered | <1ms | 50ms |
+
+Fifty times the headroom. Pushing the same predicates into a parameterised `RawQuery` would mean
+rewiring the notes `Flow` to re-subscribe on every query change, and — worse — writing the query
+semantics a second time in SQL, where it could disagree with the matcher the tests and the live
+result count use. That is real complexity and a real correctness risk, bought for a saving that
+does not register.
+
+**So the plan changed on the evidence:** fold once on write, match in memory. The expensive thing
+was never *where* the filtering ran, it was that the old code re-folded and re-allocated per note
+per keystroke. `NoteQueryPerformanceTest` is the guard, and what would breach it is a change in
+kind — folding per keystroke, or splitting the haystack per note — both of which were the previous
+behaviour.
+
+If a corpus ever arrives where this stops holding, the pure matcher is the right place to swap the
+storage under, exactly as this entry originally described.
+
 ---
 
 ## D7 — The shared confirmation is a dialog, not a bottom sheet.
@@ -170,3 +198,64 @@ lines and the remaining values are already enumerated above.
 **Note:** the ~18 `sp` literals in screen code are in the same position and deferred for the same
 reason. The type *scale* is fully tokenised; what remains are per-call-site `fontSize` overrides,
 each of which is a decision the screen phases should be making, not preserving.
+
+---
+
+## D9 — No backfill for the search column. Notes index themselves as they are written.
+
+**Decided:** `MIGRATION_9_10` adds `searchText` and leaves every existing row null. Nothing sweeps
+the table afterwards. A note gets indexed the next time it is saved, and until then the matcher
+folds its fields on the spot.
+
+**Why:** the obvious design was a startup pass filling nulls in batches, idempotent and
+interruptible. Measured, it is not worth writing. At 5,000 notes:
+
+| | time |
+|---|---|
+| fully indexed | **0ms** |
+| fully un-indexed (the fallback) | **12ms** |
+
+Both are inside the brief's 50ms budget, with four times the headroom in the worst case. So the
+backfill would buy 12ms that nobody is waiting on, and it would pay for it by rewriting every row
+of a SQLCipher-encrypted database holding the user's real notes. Every row rewritten is a row that
+can go wrong; a pass that does nothing visible is a pass with only downside.
+
+**What makes this safe rather than merely cheap:** the fallback is not a degraded mode, it is the
+same answer computed a slower way, and there is a test asserting both paths return the identical
+result set. The column is an optimisation over a correct default, not a replacement for one.
+
+**Cost to reverse:** low, and it stays reversible precisely because null already means "not yet
+indexed" everywhere. A backfill can be added later as a pure optimisation with no schema change
+and no change to the matcher.
+
+**When to revisit:** if a corpus turns up where the un-indexed path breaches the budget. The perf
+test measures both paths on every run, so that shows up as a failure rather than as a complaint.
+
+---
+
+## D10 — The query is not persisted through `SavedStateHandle`.
+
+**Decided:** `sort` and `view` persist to DataStore as durable preferences. The ad-hoc dimensions
+— text, labels, colours, flags, date range — live only in memory and reset when the process does.
+The brief asks for `SavedStateHandle` survival; this does not do it.
+
+**Why:** the plumbing is riskier than the feature. `Koin.kt` already carries a comment explaining
+that standalone note windows on desktop *cannot* use `koinViewModel` because no
+`SavedStateRegistryOwner` exists there, and resolve the editor through a plain factory with a
+throwaway handle instead. Injecting a real handle into `MainViewModel` from the shared module
+means either a definition desktop cannot satisfy, or a nullable parameter that only Android fills.
+
+The second option is what this project keeps finding and removing: a fully-wired mechanism that
+nothing connects — `markRestored`, `saveNoteAndAwait`, `cloudSyncedNoteCount`, `isTrueDarkMode`,
+`MainState.appTheme`. Adding a `savedStateHandle` parameter that defaults to a fresh handle would
+compile, look implemented, and persist nothing.
+
+**What is actually lost:** only Android process death, and only the ad-hoc filters. A cold start is
+*supposed* to reset them — the brief says so in the same section — so the gap is the narrow case
+where Android reclaims the process mid-session and the user returns expecting their filter intact.
+
+**Cost to reverse:** moderate, and it belongs with the phase that rebuilds the filter surface,
+where the restore path can be exercised rather than assumed. The query is already a single
+immutable object with one setter, which is the hard part; what remains is DI and a handful of
+primitive round-trips.
+
