@@ -20,9 +20,6 @@ interface SettingsRepository {
     suspend fun setThemeBase(base: ThemeBase)
     suspend fun setAccentColor(accent: AccentColor)
 
-    val appTheme: Flow<AppTheme>
-    suspend fun setAppTheme(theme: AppTheme)
-
     val isTrueDarkMode: Flow<Boolean>
     suspend fun setTrueDarkMode(enabled: Boolean)
 
