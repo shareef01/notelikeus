@@ -87,7 +87,7 @@ fun App(
     }
 
     NotelikeusTheme(
-        appTheme = state.appTheme
+        preference = state.themePreference
     ) {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {

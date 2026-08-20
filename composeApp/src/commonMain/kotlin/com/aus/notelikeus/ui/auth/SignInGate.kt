@@ -28,6 +28,8 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.koinInject
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
 
 /**
  * Mandatory sign-in screen shown whenever there is no Google account signed in.
@@ -69,7 +71,7 @@ fun SignInGate(
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 32.dp, vertical = 24.dp),
+                .padding(horizontal = Spacing.xxxl, vertical = Spacing.xxl),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -79,20 +81,20 @@ fun SignInGate(
                 stripeColor = MaterialTheme.colorScheme.surface,
                 ringColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
             )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(Size.iconLarge))
             Text(
                 text = stringResource(Res.string.sign_in_gate_title),
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(Spacing.md))
             Text(
                 text = stringResource(Res.string.sign_in_gate_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(Spacing.xxxl))
             AnimatedVisibility(
                 visible = !playServicesAvailable,
                 enter = expandVertically() + fadeIn(),
@@ -104,7 +106,7 @@ fun SignInGate(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(bottom = 16.dp)
+                        modifier = Modifier.padding(bottom = Spacing.lg)
                     )
                     OutlinedButton(
                         onClick = { playServicesAvailable = googleSignInHelper.isAvailable() }
@@ -112,7 +114,7 @@ fun SignInGate(
                         Text(stringResource(Res.string.action_retry), fontWeight = FontWeight.SemiBold)
                     }
                     if (onSkip != null) {
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(Spacing.md))
                         TextButton(onClick = onSkip) {
                             Text(
                                 stringResource(Res.string.sign_in_skip_offline),
@@ -139,7 +141,7 @@ fun SignInGate(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(bottom = 16.dp)
+                            modifier = Modifier.padding(bottom = Spacing.lg)
                         )
                     }
                     Button(
@@ -153,16 +155,16 @@ fun SignInGate(
                     ) {
                         if (isSigningIn) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(Size.iconMedium),
+                                strokeWidth = Spacing.xxs,
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(Spacing.sm))
                         } else {
                             Icon(
                                 imageVector = Icons.Default.Lock, // More stable
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(Size.iconMedium),
                                 tint = MaterialTheme.colorScheme.onPrimary
                             )
                             Spacer(modifier = Modifier.width(10.dp))
@@ -174,7 +176,7 @@ fun SignInGate(
                     // next to the sign-in button — not only in the no-Play-Services branch below,
                     // which never renders on a healthy machine.
                     if (onSkip != null) {
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(Spacing.md))
                         TextButton(onClick = onSkip, enabled = !isSigningIn) {
                             Text(
                                 stringResource(Res.string.sign_in_skip_offline),
@@ -192,7 +194,7 @@ fun SignInGate(
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(Spacing.md))
                 OutlinedTextField(
                     value = testEmail,
                     onValueChange = { testEmail = it },
@@ -201,7 +203,7 @@ fun SignInGate(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(Spacing.sm))
                 OutlinedTextField(
                     value = testPassword,
                     onValueChange = { testPassword = it },
@@ -211,10 +213,10 @@ fun SignInGate(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(Spacing.md))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
                     Button(
                         onClick = {
@@ -244,7 +246,7 @@ fun SignInGate(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = Spacing.sm)
                 )
             }
         }
