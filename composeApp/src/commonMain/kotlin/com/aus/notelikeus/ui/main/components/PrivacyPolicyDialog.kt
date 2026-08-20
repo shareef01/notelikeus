@@ -11,12 +11,13 @@ import androidx.compose.ui.Modifier
 import org.jetbrains.compose.resources.stringResource
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
+import com.aus.notelikeus.ui.theme.Spacing
 
 @Composable
 fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = MaterialTheme.shapes.large, // Strict 16.dp Geometry
+        shape = MaterialTheme.shapes.large, // Strict Spacing.lg Geometry
         title = {
             Text(text = stringResource(Res.string.privacy_policy_title))
         },

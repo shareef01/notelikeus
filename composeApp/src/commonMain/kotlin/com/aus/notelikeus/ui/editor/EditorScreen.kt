@@ -52,20 +52,23 @@ import com.aus.notelikeus.ui.editor.components.ChecklistUI
 import com.aus.notelikeus.ui.editor.components.EditorBottomBar
 import com.aus.notelikeus.ui.editor.components.EditorBottomSheet
 import com.aus.notelikeus.ui.editor.components.RichTextToolbar
-import com.aus.notelikeus.ui.theme.EditorBodyStyle
-import com.aus.notelikeus.ui.theme.EditorTitleStyle
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import com.aus.notelikeus.util.DateUtils
+import com.aus.notelikeus.ui.theme.AppType
+import com.aus.notelikeus.ui.theme.NoteEmphasis
+import com.aus.notelikeus.ui.components.AppSnackbar
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
 
-private val EditorHorizontalPadding = 20.dp
-private val EditorVerticalPadding = 20.dp
+private val EditorHorizontalPadding = Spacing.xl
+private val EditorVerticalPadding = Spacing.xl
 private val EditorBodyMinHeight = 280.dp
 
 /** Readable measure for large screens; content centers inside the note-colored surface. */
-private val EditorContentMaxWidth = 720.dp
+private val EditorContentMaxWidth = Size.readingMeasure
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -180,7 +183,7 @@ fun EditorScreen(
                 .navigationBarsPadding(),
             containerColor = Color.Transparent,
             contentColor = contentColor,
-            snackbarHost = { SnackbarHost(snackbarHostState) },
+            snackbarHost = { AppSnackbar(hostState = snackbarHostState) },
             topBar = {
                 CenterAlignedTopAppBar(
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -196,7 +199,7 @@ fun EditorScreen(
                                 Icon(
                                     Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = stringResource(Res.string.cd_back),
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(Size.iconLarge)
                                 )
                             }
                         }
@@ -206,7 +209,7 @@ fun EditorScreen(
                             Icon(
                                 if (state.reminderTimestamp != null) Icons.Filled.Notifications else Icons.Outlined.Notifications,
                                 contentDescription = stringResource(Res.string.set_reminder),
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(Size.iconLarge)
                             )
                         }
                         IconButton(onClick = {
@@ -221,7 +224,7 @@ fun EditorScreen(
                             Icon(
                                 if (state.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                                 contentDescription = stringResource(Res.string.cd_pin_note),
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(Size.iconLarge)
                             )
                         }
                         IconButton(onClick = {
@@ -247,7 +250,7 @@ fun EditorScreen(
                             Icon(
                                 Icons.Default.Archive,
                                 contentDescription = stringResource(Res.string.cd_archive_note),
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(Size.iconLarge)
                             )
                         }
                     }
@@ -294,34 +297,34 @@ fun EditorScreen(
                         value = state.title,
                         onValueChange = { viewModel.onTitleChange(it) },
                         modifier = Modifier.fillMaxWidth(),
-                        textStyle = EditorTitleStyle.copy(color = contentColor),
+                        textStyle = AppType.editorTitle.copy(color = contentColor),
                         cursorBrush = SolidColor(contentColor),
                         decorationBox = { innerTextField ->
                             if (state.title.isEmpty()) {
                                 Text(
                                     text = stringResource(Res.string.title_hint),
-                                    style = EditorTitleStyle,
-                                    color = contentColor.copy(alpha = 0.38f)
+                                    style = AppType.editorTitle,
+                                    color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                                 )
                             }
                             innerTextField()
                         },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(Size.iconSmall))
 
                     // Divider between title and body, matching the web editor's hairline.
                     HorizontalDivider(
-                        thickness = 1.dp,
-                        color = contentColor.copy(alpha = 0.12f)
+                        thickness = Spacing.hairline,
+                        color = contentColor.copy(alpha = NoteEmphasis.Decorative)
                     )
 
                     if (state.labels.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(Spacing.md))
                         FlowRow(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                         ) {
                             state.labels.forEach { label ->
                                 Text(
@@ -335,14 +338,14 @@ fun EditorScreen(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier
                                         .clip(CircleShape)
-                                        .background(contentColor.copy(alpha = 0.14f))
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        .background(contentColor.copy(alpha = NoteEmphasis.Decorative))
+                                        .padding(horizontal = 10.dp, vertical = Spacing.xs)
                                 )
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(Size.iconSmall))
                     if (state.checklist.isEmpty()) {
                         RichTextToolbar(
                             onBoldClick = { viewModel.applyBoldToSelection() },
@@ -353,9 +356,9 @@ fun EditorScreen(
                             contentColor = contentColor,
                             // A wash of the note's own content colour, so the toolbar reads as
                             // part of the note rather than a panel floating over it.
-                            surfaceColor = contentColor.copy(alpha = 0.07f),
+                            surfaceColor = contentColor.copy(alpha = NoteEmphasis.Wash),
                             modifier = Modifier
-                                .padding(bottom = 12.dp)
+                                .padding(bottom = Spacing.md)
                                 .align(Alignment.Start)
                         )
                     }
@@ -377,14 +380,14 @@ fun EditorScreen(
                                 .fillMaxWidth()
                                 .heightIn(min = EditorBodyMinHeight)
                                 .focusRequester(bodyFocusRequester),
-                            textStyle = EditorBodyStyle.copy(color = contentColor),
+                            textStyle = AppType.editorBody.copy(color = contentColor),
                             cursorBrush = SolidColor(contentColor),
                             decorationBox = { innerTextField ->
                                 if (state.content.isEmpty()) {
                                     Text(
                                         text = stringResource(Res.string.note_hint),
-                                        style = EditorBodyStyle,
-                                        color = contentColor.copy(alpha = 0.38f)
+                                        style = AppType.editorBody,
+                                        color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                                     )
                                 }
                                 innerTextField()

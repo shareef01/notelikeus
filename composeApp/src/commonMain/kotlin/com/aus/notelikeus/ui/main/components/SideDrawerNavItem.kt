@@ -30,17 +30,22 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.ui.theme.Chrome
-import com.aus.notelikeus.ui.theme.ChromeLabelStyle
+import com.aus.notelikeus.ui.theme.AppType
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.theme.Radius
 
 /**
  * A destination row in the side drawer.
  *
- * Each nav item carries its own colour identity (sky, amber, rose, violet, teal) matching
- * the web sidebar, so the icons read as distinct destinations even when none is selected.
+ * Icons take one colour role, not a per-destination hue. The five signature colours these rows
+ * used to carry (sky, amber, rose, violet, teal) read as unrelated icon sets rather than a system,
+ * and — worse — they left *selection* with no colour of its own to signal with, because every row
+ * was already saturated. Colour now means one of two things in this app: a note's colour, or the
+ * user's chosen accent. Selection is the accent; everything else is neutral.
  *
  * @param icon shown when the row is not selected; prefer the outlined variant.
  * @param selectedIcon shown when it is; prefer the filled variant of the same glyph.
- * @param identityColor the item's signature hue — used for the icon tint, active bar, and badge.
  */
 @Composable
 fun SideDrawerNavItem(
@@ -51,11 +56,10 @@ fun SideDrawerNavItem(
     modifier: Modifier = Modifier,
     selectedIcon: ImageVector = icon,
     count: Int? = null,
-    identityColor: Color = MaterialTheme.colorScheme.primary,
     collapsed: Boolean = false,
 ) {
-    val shape = RoundedCornerShape(12.dp)
-    val accent = identityColor
+    val shape = RoundedCornerShape(Spacing.md)
+    val accent = MaterialTheme.colorScheme.primary
     val wash by animateColorAsState(
         targetValue = if (selected) {
             accent.copy(alpha = Chrome.SoftWash)
@@ -65,36 +69,36 @@ fun SideDrawerNavItem(
         label = "drawer_nav_wash"
     )
     val iconTint by animateColorAsState(
-        targetValue = if (selected) accent else identityColor.copy(alpha = 0.85f),
+        targetValue = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
         label = "drawer_nav_icon"
     )
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = if (collapsed) 0.dp else 10.dp)
-            .height(44.dp)
+            .padding(horizontal = if (collapsed) Spacing.none else 10.dp)
+            .height(Size.chipHeight)
             .clip(shape)
             .background(wash)
             .clickable(onClick = onClick)
             .padding(
-                start = if (collapsed) 0.dp else 12.dp,
-                end = if (collapsed) 0.dp else 10.dp
+                start = if (collapsed) Spacing.none else Spacing.md,
+                end = if (collapsed) Spacing.none else 10.dp
             ),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.spacedBy(12.dp)
+        horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.spacedBy(Spacing.md)
     ) {
         if (!collapsed) {
             if (selected) {
                 Box(
                     modifier = Modifier
-                        .width(2.dp)
+                        .width(Spacing.xxs)
                         .height(28.dp)
-                        .clip(RoundedCornerShape(999.dp))
+                        .clip(RoundedCornerShape(Radius.pill))
                         .background(accent)
                 )
             } else {
-                Spacer(modifier = Modifier.width(2.dp))
+                Spacer(modifier = Modifier.width(Spacing.xxs))
             }
         }
 
@@ -127,7 +131,7 @@ fun SideDrawerNavItem(
             Box(
                 modifier = Modifier
                     .height(22.dp)
-                    .clip(RoundedCornerShape(999.dp))
+                    .clip(RoundedCornerShape(Radius.pill))
                     .background(
                         if (selected) accent.copy(alpha = 0.2f)
                         else accent.copy(alpha = 0.08f)
@@ -159,9 +163,9 @@ fun SideDrawerSectionLabel(
 ) {
     Text(
         text = text.uppercase(),
-        style = ChromeLabelStyle,
+        style = AppType.chromeLabel,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(start = 22.dp, end = 12.dp, top = 4.dp, bottom = 6.dp)
+        modifier = modifier.padding(start = 22.dp, end = Spacing.md, top = Spacing.xs, bottom = 6.dp)
     )
 }
 
@@ -173,13 +177,13 @@ fun SideDrawerAccountRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = Spacing.lg),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(32.dp)
+                .size(Size.iconLarge)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SelectedWash)),
             contentAlignment = Alignment.Center
@@ -193,7 +197,7 @@ fun SideDrawerAccountRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Signed in",
-                style = ChromeLabelStyle,
+                style = AppType.chromeLabel,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(

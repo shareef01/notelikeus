@@ -21,8 +21,11 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.ui.editor.MarkdownVisualTransformation
-import com.aus.notelikeus.ui.theme.EditorBodyStyle
 import com.aus.notelikeus.ui.theme.getContentColor
+import com.aus.notelikeus.ui.theme.AppType
+import com.aus.notelikeus.ui.theme.NoteEmphasis
+import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Size
 
 @Composable
 fun ChecklistUI(
@@ -42,8 +45,8 @@ fun ChecklistUI(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-                    .heightIn(min = 48.dp),
+                    .padding(vertical = Spacing.xs)
+                    .heightIn(min = Size.touchTarget),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Checkbox(
@@ -54,7 +57,7 @@ fun ChecklistUI(
                     },
                     colors = CheckboxDefaults.colors(
                         checkedColor = contentColor,
-                        uncheckedColor = contentColor.copy(alpha = 0.6f),
+                        uncheckedColor = contentColor.copy(alpha = NoteEmphasis.Icon),
                         checkmarkColor = contentColor.getContentColor()
                     )
                 )
@@ -63,7 +66,7 @@ fun ChecklistUI(
                     value = item.text,
                     onValueChange = { onUpdate(itemId, it, item.isChecked) },
                     modifier = Modifier.weight(1f),
-                    textStyle = EditorBodyStyle.copy(
+                    textStyle = AppType.editorBody.copy(
                         color = contentColor,
                         textDecoration = if (item.isChecked) TextDecoration.LineThrough else TextDecoration.None
                     ),
@@ -76,7 +79,7 @@ fun ChecklistUI(
                             Text(
                                 text = stringResource(Res.string.list_item_hint),
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = contentColor.copy(alpha = 0.4f)
+                                color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                             )
                         }
                         innerTextField()
@@ -90,7 +93,7 @@ fun ChecklistUI(
                     Icon(
                         Icons.Default.Close,
                         contentDescription = stringResource(Res.string.cd_remove_item),
-                        tint = contentColor.copy(alpha = 0.6f)
+                        tint = contentColor.copy(alpha = NoteEmphasis.Icon)
                     )
                 }
             }
@@ -101,18 +104,18 @@ fun ChecklistUI(
                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                 onAdd()
             },
-            modifier = Modifier.padding(start = 4.dp)
+            modifier = Modifier.padding(start = Spacing.xs)
         ) {
             Icon(
                 Icons.Default.Add,
                 contentDescription = null,
                 tint = contentColor
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(Spacing.sm))
             Text(
                 text = stringResource(Res.string.cd_add_list_item),
                 color = contentColor,
-                style = EditorBodyStyle
+                style = AppType.editorBody
             )
         }
 
@@ -122,12 +125,12 @@ fun ChecklistUI(
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     onConvertToText()
                 },
-                modifier = Modifier.padding(start = 4.dp)
+                modifier = Modifier.padding(start = Spacing.xs)
             ) {
                 Text(
                     text = stringResource(Res.string.convert_to_text),
-                    color = contentColor.copy(alpha = 0.8f),
-                    style = EditorBodyStyle
+                    color = contentColor.copy(alpha = NoteEmphasis.Secondary),
+                    style = AppType.editorBody
                 )
             }
         }
