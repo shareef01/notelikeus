@@ -2,7 +2,9 @@ package com.aus.notelikeus.ui.main
 
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.util.AppLog
 import com.aus.notelikeus.util.DateUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -16,6 +18,11 @@ import kotlinx.coroutines.launch
  * The hide/reveal callbacks belong to the ViewModel because hidden ids drive list filtering:
  * an optimistically hidden note is removed from `filteredNotes` until the repository flow
  * confirms the change (or undo reveals it again).
+ *
+ * Every write goes through [launchAction]. A failing repository call previously left the note
+ * hidden for the rest of the session — the list said "archived", the database did not — with an
+ * undo snackbar offering to reverse something that never happened, and the exception itself
+ * escaped into the ViewModel scope with nothing recording it.
  */
 internal class NoteActionsController(
     private val repository: NoteRepository,
@@ -34,6 +41,41 @@ internal class NoteActionsController(
 
     fun clearPendingUndoMessage() {
         state.update { it.copy(pendingUndoMessage = null) }
+    }
+
+    fun clearPendingActionFailure() {
+        state.update { it.copy(pendingActionFailure = null) }
+    }
+
+    /**
+     * Runs a note write, and on failure reveals whatever the action had optimistically hidden,
+     * drops the staged undo, and reports [failure] for the UI to show.
+     *
+     * [block] is handed the hide callback rather than hiding up front because a bulk action only
+     * knows which ids it is touching once it has read them out of the state.
+     */
+    private fun launchAction(
+        failure: NoteActionFailure,
+        block: suspend (hide: (Collection<Long>) -> Unit) -> Unit
+    ) {
+        scope.launch {
+            val hidden = mutableSetOf<Long>()
+            try {
+                block { ids ->
+                    hidden.addAll(ids)
+                    hideNotes(ids)
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                AppLog.warn(TAG, "Note action $failure failed", error)
+                revealNotes(hidden)
+                pendingUndo = null
+                state.update {
+                    it.copy(pendingUndoMessage = null, pendingActionFailure = failure)
+                }
+            }
+        }
     }
 
     fun toggleNoteSelection(noteId: Long) {
@@ -65,8 +107,8 @@ internal class NoteActionsController(
     fun archiveNote(note: Note) {
         val noteId = note.id ?: return
         pendingUndo = PendingUndo(listOf(note), UndoAction.ARCHIVE)
-        hideNotes(listOf(noteId))
-        scope.launch {
+        launchAction(NoteActionFailure.UPDATE) { hide ->
+            hide(listOf(noteId))
             repository.updateNote(
                 note.copy(
                     isArchived = true,
@@ -79,14 +121,15 @@ internal class NoteActionsController(
 
     fun trashNote(note: Note) {
         val noteId = note.id ?: return
-        scope.launch {
-            if (state.value.currentFilter == NoteFilter.TRASHED) {
+        val isPermanent = state.value.currentFilter == NoteFilter.TRASHED
+        launchAction(if (isPermanent) NoteActionFailure.DELETE else NoteActionFailure.UPDATE) { hide ->
+            if (isPermanent) {
                 pendingUndo = PendingUndo(listOf(note), UndoAction.PERMANENT_DELETE)
-                hideNotes(listOf(noteId))
+                hide(listOf(noteId))
                 repository.deleteNote(note)
             } else {
                 pendingUndo = PendingUndo(listOf(note), UndoAction.TRASH)
-                hideNotes(listOf(noteId))
+                hide(listOf(noteId))
                 repository.updateNote(
                     note.copy(
                         isTrashed = true,
@@ -100,11 +143,11 @@ internal class NoteActionsController(
 
     fun emptyTrash() {
         if (state.value.currentFilter != NoteFilter.TRASHED) return
-        scope.launch {
+        launchAction(NoteActionFailure.DELETE) { hide ->
             val notesToDelete = state.value.notes.toList()
-            if (notesToDelete.isEmpty()) return@launch
+            if (notesToDelete.isEmpty()) return@launchAction
             pendingUndo = PendingUndo(notesToDelete, UndoAction.PERMANENT_DELETE)
-            hideNotes(notesToDelete.mapNotNull { it.id })
+            hide(notesToDelete.mapNotNull { it.id })
             notesToDelete.forEach { note ->
                 repository.deleteNote(note.copy(timestamp = DateUtils.currentTimeMillis()))
             }
@@ -113,7 +156,7 @@ internal class NoteActionsController(
     }
 
     fun deleteSelectedNotes() {
-        scope.launch {
+        launchAction(NoteActionFailure.DELETE) { hide ->
             val notesToDelete = state.value.notes.filter { it.id in state.value.selectedNotes }
             val type = if (state.value.currentFilter == NoteFilter.TRASHED) {
                 UndoAction.PERMANENT_DELETE
@@ -121,7 +164,7 @@ internal class NoteActionsController(
                 UndoAction.TRASH
             }
             pendingUndo = PendingUndo(notesToDelete, type)
-            hideNotes(notesToDelete.mapNotNull { it.id })
+            hide(notesToDelete.mapNotNull { it.id })
             notesToDelete.forEach { note ->
                 if (state.value.currentFilter == NoteFilter.TRASHED) {
                     repository.deleteNote(note.copy(timestamp = DateUtils.currentTimeMillis()))
@@ -140,10 +183,10 @@ internal class NoteActionsController(
     }
 
     fun archiveSelectedNotes() {
-        scope.launch {
+        launchAction(NoteActionFailure.UPDATE) { hide ->
             val notesToArchive = state.value.notes.filter { it.id in state.value.selectedNotes }
             pendingUndo = PendingUndo(notesToArchive, UndoAction.ARCHIVE)
-            hideNotes(notesToArchive.mapNotNull { it.id })
+            hide(notesToArchive.mapNotNull { it.id })
             notesToArchive.forEach { note ->
                 repository.updateNote(
                     note.copy(
@@ -163,7 +206,7 @@ internal class NoteActionsController(
     // favour. Leaving it unchanged meant uploadNote skipped the upload *and* the next download
     // overwrote the row, so restoring or pinning a synced note silently undid itself.
     fun restoreSelectedNotes() {
-        scope.launch {
+        launchAction(NoteActionFailure.UPDATE) {
             val notesToRestore = state.value.notes.filter { it.id in state.value.selectedNotes }
             notesToRestore.forEach { note ->
                 repository.updateNote(
@@ -179,7 +222,7 @@ internal class NoteActionsController(
     }
 
     fun setSelectedNotesPinned(pin: Boolean) {
-        scope.launch {
+        launchAction(NoteActionFailure.UPDATE) {
             val notesToUpdate = state.value.notes.filter { it.id in state.value.selectedNotes }
             notesToUpdate.forEach { note ->
                 repository.updateNote(
@@ -192,7 +235,7 @@ internal class NoteActionsController(
 
     fun undoLastAction() {
         val undo = pendingUndo ?: return
-        scope.launch {
+        launchAction(NoteActionFailure.UNDO) {
             val restoredIds = undo.notes.mapNotNull { it.id }
             revealNotes(restoredIds)
             when (undo.type) {
@@ -210,5 +253,9 @@ internal class NoteActionsController(
             }
             pendingUndo = null
         }
+    }
+
+    private companion object {
+        const val TAG = "NoteActions"
     }
 }

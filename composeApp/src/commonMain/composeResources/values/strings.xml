@@ -32,6 +32,11 @@
     <string name="note_deleted">Note deleted</string>
     <string name="notes_deleted_count">%1$d notes deleted</string>
     <string name="auth_failed">Authentication failed</string>
+    <string name="note_update_failed">Couldn\'t save that change</string>
+    <string name="note_delete_failed">Couldn\'t delete that</string>
+    <string name="note_undo_failed">Couldn\'t undo that</string>
+    <string name="note_order_save_failed">Couldn\'t save the new order</string>
+    <string name="note_save_failed">Couldn\'t save this note</string>
 
     <!-- Delete confirmation -->
     <string name="delete_note_title">Delete note?</string>
