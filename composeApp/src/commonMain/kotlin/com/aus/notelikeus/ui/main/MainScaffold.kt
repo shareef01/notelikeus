@@ -103,9 +103,7 @@ internal fun MainScaffold(
     val allFilteredSelected = remember(visibleNoteIds, state.selectedNotes) {
         visibleNoteIds.isNotEmpty() && visibleNoteIds.all { it in state.selectedNotes }
     }
-    val allowReorder = remember(state.searchQuery, state.selectedColor, state.selectedLabelId) {
-        state.searchQuery.isEmpty() && state.selectedColor == null && state.selectedLabelId == null
-    }
+    val allowReorder = remember(state.query) { state.query.allowsManualReorder }
 
     Scaffold(
         containerColor = Color.Transparent, // Parent handles background
