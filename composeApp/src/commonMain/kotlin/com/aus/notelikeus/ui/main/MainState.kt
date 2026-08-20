@@ -14,6 +14,14 @@ enum class UndoAction {
     ARCHIVE, TRASH, PERMANENT_DELETE
 }
 
+/**
+ * A note write that failed after the list had already been updated optimistically. The UI maps it
+ * to a message; the state carries the kind rather than the text so the string stays localised.
+ */
+enum class NoteActionFailure {
+    UPDATE, DELETE, UNDO, REORDER
+}
+
 internal data class PendingUndo(
     val notes: List<Note>,
     val type: UndoAction
@@ -34,6 +42,7 @@ data class MainState(
     val isAppLockEnabled: Boolean = false,
     val areSettingsLoaded: Boolean = false,
     val pendingUndoMessage: String? = null,
+    val pendingActionFailure: NoteActionFailure? = null,
     val selectedNotes: Set<Long> = emptySet(),
     val currentFilter: NoteFilter = NoteFilter.ACTIVE,
     val allLabels: List<Label> = emptyList(),

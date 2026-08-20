@@ -1,5 +1,6 @@
 package com.aus.notelikeus.platform
 
+import com.aus.notelikeus.util.AppLog
 import com.sun.jna.Library
 import com.sun.jna.Memory
 import com.sun.jna.Native

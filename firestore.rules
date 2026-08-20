@@ -27,7 +27,7 @@ service cloud.firestore {
         && data.content is string
         && data.title.size() <= 2000
         && data.content.size() <= 100000
-        && data.timestamp is number
+        && data.timestamp is int
         && data.color is int
         && data.isPinned is bool
         && data.isArchived is bool
@@ -36,7 +36,7 @@ service cloud.firestore {
         && data.position is int
         && (!('reminderTimestamp' in data)
           || data.reminderTimestamp == null
-          || data.reminderTimestamp is number)
+          || data.reminderTimestamp is int)
         && data.labels is list
         && data.labels.size() <= 100
         && data.checklist is list

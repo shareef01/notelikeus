@@ -11,6 +11,7 @@ import {
   writeBatch,
   type QueryDocumentSnapshot,
   type DocumentData,
+  type WriteBatch,
 } from 'firebase/firestore';
 import { getFirestoreDb } from '@/lib/firebase';
 import {
@@ -48,14 +49,13 @@ function parseNoteDoc(
   return cloudMapToNote(snapshot.id, snapshot.data() as FirestoreNoteDocument, labelResolver);
 }
 
-export function subscribeToNotes(
-  userId: string,
-  onData: NotesSnapshotHandler,
-  onError?: NotesErrorHandler,
-): Unsubscribe {
-  const notesQuery = query(userNotesCollection(userId), orderBy('timestamp', 'desc'));
+/**
+ * Resolver that hands out one `Label` object per distinct name for a single read, so notes sharing
+ * a label share its identity.
+ */
+function createLabelResolver(): (name: string) => Label {
   const labelCache = new Map<string, Label>();
-  const resolveLabel = (name: string): Label => {
+  return (name: string): Label => {
     const key = name.trim().toLowerCase();
     const cached = labelCache.get(key);
     if (cached) return cached;
@@ -63,6 +63,29 @@ export function subscribeToNotes(
     labelCache.set(key, label);
     return label;
   };
+}
+
+/** Applies `apply` to every item, committing writes in chunks that respect Firestore's batch limit. */
+async function commitInBatches<T>(
+  items: readonly T[],
+  apply: (batch: WriteBatch, item: T) => void,
+): Promise<void> {
+  for (let i = 0; i < items.length; i += BATCH_LIMIT) {
+    const batch = writeBatch(getFirestoreDb());
+    for (const item of items.slice(i, i + BATCH_LIMIT)) {
+      apply(batch, item);
+    }
+    await batch.commit();
+  }
+}
+
+export function subscribeToNotes(
+  userId: string,
+  onData: NotesSnapshotHandler,
+  onError?: NotesErrorHandler,
+): Unsubscribe {
+  const notesQuery = query(userNotesCollection(userId), orderBy('timestamp', 'desc'));
+  const resolveLabel = createLabelResolver();
 
   return onSnapshot(
     notesQuery,
@@ -152,16 +175,9 @@ export async function uploadAllNotes(userId: string, notes: Note[]): Promise<num
 
   const toUpload = eligible.filter((note) => shouldUploadOverRemote(note, remoteById.get(note.id)));
 
-  const db = getFirestoreDb();
-  for (let i = 0; i < toUpload.length; i += BATCH_LIMIT) {
-    const chunk = toUpload.slice(i, i + BATCH_LIMIT);
-    const batch = writeBatch(db);
-    for (const note of chunk) {
-      const payload = noteToCloudMap(note);
-      batch.set(userNoteDocument(userId, note.id), payload, { merge: true });
-    }
-    await batch.commit();
-  }
+  await commitInBatches(toUpload, (batch, note) => {
+    batch.set(userNoteDocument(userId, note.id), noteToCloudMap(note), { merge: true });
+  });
 
   await setDoc(userSyncMetaDocument(userId), syncMetaMap(eligible.length, 'web'), { merge: true });
   return toUpload.length;
@@ -193,41 +209,25 @@ export async function deleteAllCloudData(userId: string): Promise<number> {
   const snapshot = await getDocs(userNotesCollection(userId));
   let deleted = 0;
 
-  for (let i = 0; i < snapshot.docs.length; i += BATCH_LIMIT) {
-    const chunk = snapshot.docs.slice(i, i + BATCH_LIMIT);
-    const batch = writeBatch(getFirestoreDb());
-    for (const document of chunk) {
-      batch.delete(document.ref);
-      deleted++;
-    }
-    await batch.commit();
-  }
+  await commitInBatches(snapshot.docs, (batch, document) => {
+    batch.delete(document.ref);
+    deleted++;
+  });
 
   const tombstones = await getDocs(userTombstonesCollection(userId));
-  for (let i = 0; i < tombstones.docs.length; i += BATCH_LIMIT) {
-    const chunk = tombstones.docs.slice(i, i + BATCH_LIMIT);
-    const batch = writeBatch(getFirestoreDb());
-    for (const document of chunk) {
-      batch.delete(document.ref);
-    }
-    await batch.commit();
-  }
+  await commitInBatches(tombstones.docs, (batch, document) => {
+    batch.delete(document.ref);
+  });
 
-  await deleteDoc(userSyncMetaDocument(userId)).catch(() => undefined);
+  // Propagates: this runs from "sign out and delete my cloud data", so leaving the sync document
+  // behind while reporting a completed wipe is the one outcome the caller must not report.
+  await deleteDoc(userSyncMetaDocument(userId));
   return deleted;
 }
 
 export async function fetchRemoteNotes(userId: string): Promise<Note[]> {
   const snapshot = await getDocs(query(userNotesCollection(userId), orderBy('timestamp', 'desc')));
-  const labelCache = new Map<string, Label>();
-  const resolveLabel = (name: string): Label => {
-    const key = name.trim().toLowerCase();
-    const cached = labelCache.get(key);
-    if (cached) return cached;
-    const label: Label = { id: `label-${key}`, name: name.trim() };
-    labelCache.set(key, label);
-    return label;
-  };
+  const resolveLabel = createLabelResolver();
   return snapshot.docs.map((docSnap) => parseNoteDoc(docSnap, resolveLabel));
 }
 
