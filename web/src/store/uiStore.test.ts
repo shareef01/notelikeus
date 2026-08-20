@@ -142,7 +142,7 @@ describe('persistence', () => {
   it('persists only layout preferences, never transient UI state', () => {
     const partialize = useUiStore.persist.getOptions().partialize;
     expect(partialize).toBeDefined();
-    expect([...Object.keys(partialize!(useUiStore.getState()) as object)].sort()).toEqual([
+    expect(Object.keys(partialize!(useUiStore.getState()) as object).sort()).toEqual([
       'editorLayout',
       'recentSearches',
       'sidebarCollapsed',
