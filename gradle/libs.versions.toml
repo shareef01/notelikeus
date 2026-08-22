@@ -6,7 +6,7 @@ junit = "4.13.2"
 # PlaintextDatabaseMigrator runs real SQLCipher, whose native libraries do not exist off-device,
 # so it cannot be covered by Robolectric.
 androidxTestRunner = "1.6.2"
-androidxTestExtJunit = "1.2.1"
+androidxTestExtJunit = "1.3.0"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
 kotlin = "2.1.21"
