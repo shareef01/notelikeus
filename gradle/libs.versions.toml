@@ -57,7 +57,7 @@ composeAdaptive = "1.1.2"
 composeNavigation = "2.9.0-beta03"
 koin = "4.1.1"
 # Matches the version koin-compose-viewmodel resolves, so the two don't fight.
-composeLifecycle = "2.9.3"
+composeLifecycle = "2.11.0"
 work = "2.11.2"
 
 [libraries]
