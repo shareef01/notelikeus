@@ -2,6 +2,7 @@ package com.aus.notelikeus.ui.main
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
 import com.aus.notelikeus.ui.theme.Elevation
+import com.aus.notelikeus.ui.main.components.FiltersSheet
 
     import androidx.compose.animation.core.animateDpAsState
     import androidx.compose.foundation.background
@@ -76,6 +77,7 @@ fun MainScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showProfileSheet by remember { mutableStateOf(false) }
+    var showFiltersSheet by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showEmptyTrashConfirm by remember { mutableStateOf(false) }
     var showCloudSignOutConfirm by remember { mutableStateOf(false) }
@@ -229,6 +231,7 @@ fun MainScreen(
             snackbarHostState = snackbarHostState,
             showProfileSheet = showProfileSheet,
             onShowProfileSheet = { showProfileSheet = it },
+            onShowFiltersSheet = { showFiltersSheet = it },
             onShowDeleteConfirm = { showDeleteConfirm = it },
             onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
             onShowDrawer = { scope.launch { drawerState.open() } },
@@ -429,6 +432,7 @@ fun MainScreen(
                     snackbarHostState = snackbarHostState,
                     showProfileSheet = showProfileSheet,
                     onShowProfileSheet = { showProfileSheet = it },
+                    onShowFiltersSheet = { showFiltersSheet = it },
                     onShowDeleteConfirm = { showDeleteConfirm = it },
                     onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
                     onShowDrawer = { scope.launch { drawerState.open() } },
@@ -444,6 +448,19 @@ fun MainScreen(
     }
 
     // Settings sheet
+    if (showFiltersSheet) {
+        FiltersSheet(
+            query = state.query,
+            // The notes loaded for the current scope: the sheet counts what tapping an option
+            // would leave visible, and it can only count what this screen has actually loaded.
+            notes = state.notes,
+            allLabels = state.allLabels,
+            onQueryChange = viewModel::updateQuery,
+            onClearFilters = viewModel::clearFilters,
+            onDismiss = { showFiltersSheet = false }
+        )
+    }
+
     if (showProfileSheet) {
         ProfileSheet(
             onDismiss = { showProfileSheet = false },
