@@ -131,3 +131,44 @@ Deliberately not done inside the audit — it touches DI wiring in three places 
 commit of its own.
 
 **Severity:** low.
+
+---
+
+## F9 — The app crashes on its first launch after install (`AppStartup` snapshot race)
+
+Reproduced twice on a clean emulator, both times at launch:
+
+```
+java.lang.IllegalStateException: Reading a state that was created after the snapshot was taken
+        or in a snapshot that has not yet been applied
+    at androidx.compose.runtime.snapshots.SnapshotKt.readError(Snapshot.kt:2159)
+    at com.aus.notelikeus.AppStartup.isReady(NotelikeusApp.kt:139)
+    at com.aus.notelikeus.MainActivity.onCreate$lambda$10(MainActivity.kt:60)
+```
+
+**Why it happens.** `AppStartup` is a process-lived `object` holding `var isReady by
+mutableStateOf(false)`, and `markReady()` is called from `startupScope`, a
+`CoroutineScope(SupervisorJob() + Dispatchers.IO)`. A Kotlin `object` initialises on first touch —
+so on a cold start the `MutableState` can be *created* on that background thread, after
+composition has already taken its snapshot. Composition then reads a state that did not exist when
+its snapshot was taken, which is exactly what the error says.
+
+It is a race, which is why it is intermittent and why it shows up on a fresh install: that is when
+the database open is slowest, so the background coroutine and the first composition are most
+likely to interleave badly.
+
+**Why it matters more than its frequency suggests.** The app recovers on the next launch, so it
+looks harmless in daily use — but the moment it happens is *the first time someone opens the app
+after installing it*, and it lands in Play vitals as a crash-on-launch.
+
+**Suggested fix.** `mutableStateOf` has snapshot semantics that assume main-thread creation;
+nothing here needs them. Replace it with a `MutableStateFlow<Boolean>` read through
+`collectAsStateWithLifecycle()`, which is built for cross-thread publication and has no snapshot
+identity. Failing that, force `AppStartup` initialisation on the main thread in `onCreate` before
+`setContent`, and write through `Snapshot.withMutableSnapshot { }`.
+
+**Not fixed here** because it is unrelated to the query work and an Android startup race deserves
+its own change and its own verification rather than a drive-by at the end of another phase. It is
+the highest-severity item in this file.
+
+**Severity:** high — it is a crash, on the first launch a user ever performs.
