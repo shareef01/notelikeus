@@ -81,6 +81,7 @@ internal fun MainScaffold(
     showProfileSheet: Boolean,
     onShowProfileSheet: (Boolean) -> Unit,
     onShowDeleteConfirm: (Boolean) -> Unit,
+    onShowFiltersSheet: (Boolean) -> Unit,
     onShowEmptyTrashConfirm: (Boolean) -> Unit,
     onShowDrawer: () -> Unit,
     listScrolled: Boolean,
@@ -163,12 +164,10 @@ internal fun MainScaffold(
                     onShowProfileSheet(true)
                 },
                 accountEmail = state.cloudAccount.email,
-                selectedColor = state.selectedColor,
-                onColorSelect = viewModel::selectColorFilter,
+                query = state.query,
+                onQueryChange = viewModel::updateQuery,
+                onOpenFilters = { onShowFiltersSheet(true) },
                 allLabels = state.allLabels,
-                selectedLabelId = state.selectedLabelId,
-                onLabelSelect = viewModel::selectLabelFilter,
-                sortOrder = state.sortOrder,
                 onSortOrderCycle = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     val next = state.sortOrder.next()
@@ -188,7 +187,6 @@ internal fun MainScaffold(
                     viewModel.addRecentSearch(it)
                 },
                 onClearRecentSearches = viewModel::clearRecentSearches,
-                hasActiveFilters = state.selectedColor != null || state.selectedLabelId != null,
                 onClearFilters = viewModel::clearFilters,
                 listScrolled = listScrolled,
                 searchFocusRequester = searchFocusRequester,
@@ -232,7 +230,7 @@ internal fun MainScaffold(
                 CircularProgressIndicator()
             }
         } else if (filteredNotes.isEmpty()) {
-            val hasActiveFilters = state.selectedColor != null || state.selectedLabelId != null
+            val hasActiveFilters = state.query.hasActiveFilters
             val message: String
             val subtitle: String?
             val showCreate: Boolean
