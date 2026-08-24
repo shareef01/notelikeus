@@ -28,44 +28,66 @@ class NoteQueryPerformanceTest {
         const val NOTE_COUNT = 5_000
         const val BUDGET_MS = 50L
         const val NOW = 1_755_000_000_000L
-    }
 
-    private val words = listOf(
-        "groceries", "meeting", "invoice", "holiday", "recipe", "reading", "project",
-        "café", "Zürich", "naïve", "budget", "birthday", "insurance", "renewal"
-    )
+        /**
+         * Built once for the whole class.
+         *
+         * Constructing 5,000 notes and folding each one is more expensive than the thing being
+         * measured, and doing it per test left enough garbage behind that a collection could land
+         * inside a timed run. That made the assertion flaky -- which is worse than a slow test,
+         * because a timing check that reddens CI at random gets muted rather than read.
+         */
+        val CORPUS: List<Note> by lazy { buildCorpus() }
 
-    /** Notes shaped like real ones: a title, a few lines of body, labels, some checklists. */
-    private fun corpus(): List<Note> = (1..NOTE_COUNT).map { i ->
-        val body = (0..12).joinToString(" ") { words[(i + it) % words.size] }
-        val note = Note(
-            id = i.toLong(),
-            title = "${words[i % words.size]} ${words[(i * 7) % words.size]} $i",
-            content = body,
-            timestamp = NOW - i * 1_000L,
-            color = if (i % 3 == 0) 0xFF2E5A32.toInt() else 0,
-            isPinned = i % 50 == 0,
-            isArchived = i % 11 == 0,
-            isTrashed = i % 23 == 0,
-            position = i,
-            reminderTimestamp = if (i % 17 == 0) NOW + i else null,
-            labels = if (i % 5 == 0) listOf(Label(id = (i % 7).toLong(), name = "label${i % 7}")) else emptyList(),
-            checklist = if (i % 9 == 0) {
-                listOf(ChecklistItem(id = i.toLong(), text = "buy ${words[i % words.size]}", position = 0))
-            } else {
-                emptyList()
-            }
+        private val WORDS = listOf(
+            "groceries", "meeting", "invoice", "holiday", "recipe", "reading", "project",
+            "café", "Zürich", "naïve", "budget", "birthday", "insurance", "renewal"
         )
-        // Indexed, as a note is once it has been written since the column existed. The
-        // unindexed path is measured separately below -- there is no backfill, so on an upgraded
-        // database it stays the common path until each note is next edited.
-        note.copy(searchText = note.searchableText())
+
+        /** Notes shaped like real ones: a title, a few lines of body, labels, some checklists. */
+        private fun buildCorpus(): List<Note> = (1..NOTE_COUNT).map { i ->
+            val body = (0..12).joinToString(" ") { WORDS[(i + it) % WORDS.size] }
+            val note = Note(
+                id = i.toLong(),
+                title = "${WORDS[i % WORDS.size]} ${WORDS[(i * 7) % WORDS.size]} $i",
+                content = body,
+                timestamp = NOW - i * 1_000L,
+                color = if (i % 3 == 0) 0xFF2E5A32.toInt() else 0,
+                isPinned = i % 50 == 0,
+                isArchived = i % 11 == 0,
+                isTrashed = i % 23 == 0,
+                position = i,
+                reminderTimestamp = if (i % 17 == 0) NOW + i else null,
+                labels = if (i % 5 == 0) {
+                    listOf(Label(id = (i % 7).toLong(), name = "label${i % 7}"))
+                } else {
+                    emptyList()
+                },
+                checklist = if (i % 9 == 0) {
+                    listOf(ChecklistItem(id = i.toLong(), text = "buy ${WORDS[i % WORDS.size]}", position = 0))
+                } else {
+                    emptyList()
+                }
+            )
+            // Indexed, as a note is once it has been written since the column existed. The
+            // unindexed path is measured separately below -- there is no backfill, so on an
+            // upgraded database it stays the common path until each note is next edited.
+            note.copy(searchText = note.searchableText())
+        }
     }
 
+    /**
+     * The best of several runs, after warming up.
+     *
+     * Minimum rather than mean on purpose: this is asking "how fast is this code", and every
+     * source of noise on a shared machine -- JIT, GC, another job on the runner -- can only make a
+     * sample slower. The fastest observed run is the closest thing to the real cost.
+     */
     private fun timeOf(notes: List<Note>, query: NoteQuery): Long {
-        // Warm up, so the first run's class loading and JIT are not attributed to the query.
-        repeat(3) { NoteQueryMatcher.apply(notes, query, NOW) }
-        return (1..5).minOf { measureTime { NoteQueryMatcher.apply(notes, query, NOW) }.inWholeMilliseconds }
+        repeat(5) { NoteQueryMatcher.apply(notes, query, NOW) }
+        return (1..9).minOf {
+            measureTime { NoteQueryMatcher.apply(notes, query, NOW) }.inWholeMilliseconds
+        }
     }
 
     private fun assertWithinBudget(name: String, notes: List<Note>, query: NoteQuery) {
@@ -76,14 +98,14 @@ class NoteQueryPerformanceTest {
 
     @Test
     fun `free text search stays within budget`() {
-        assertWithinBudget("text", corpus(), NoteQuery(text = "cafe", sort = NoteSortOrder.NEWEST))
+        assertWithinBudget("text", CORPUS, NoteQuery(text = "cafe", sort = NoteSortOrder.NEWEST))
     }
 
     @Test
     fun `multi-token search stays within budget`() {
         assertWithinBudget(
             "multi-token",
-            corpus(),
+            CORPUS,
             NoteQuery(text = "cafe zurich", sort = NoteSortOrder.NEWEST)
         )
     }
@@ -92,7 +114,7 @@ class NoteQueryPerformanceTest {
     fun `every dimension at once stays within budget`() {
         assertWithinBudget(
             "everything",
-            corpus(),
+            CORPUS,
             NoteQuery(
                 text = "cafe",
                 labels = setOf(1, 2, 3),
@@ -106,7 +128,7 @@ class NoteQueryPerformanceTest {
     @Test
     fun `an unfiltered list stays within budget`() {
         // The common case: no query at all, so the cost is scope plus the sort.
-        assertWithinBudget("unfiltered", corpus(), NoteQuery(sort = NoteSortOrder.NEWEST))
+        assertWithinBudget("unfiltered", CORPUS, NoteQuery(sort = NoteSortOrder.NEWEST))
     }
     /**
      * What the fallback costs, and therefore why the backfill exists.
@@ -122,7 +144,7 @@ class NoteQueryPerformanceTest {
      */
     @Test
     fun `the unindexed fallback is correct but markedly slower`() {
-        val indexed = corpus()
+        val indexed = CORPUS
         val unindexed = indexed.map { it.copy(searchText = null) }
         val query = NoteQuery(text = "cafe", sort = NoteSortOrder.NEWEST)
 
