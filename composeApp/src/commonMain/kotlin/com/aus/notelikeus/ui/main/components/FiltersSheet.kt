@@ -78,6 +78,7 @@ import notelikeus.composeapp.generated.resources.filters
 import notelikeus.composeapp.generated.resources.no_color
 import notelikeus.composeapp.generated.resources.showing_all
 import notelikeus.composeapp.generated.resources.showing_count
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -138,9 +139,14 @@ fun FiltersSheet(
                 )
                 Text(
                     text = if (query.hasActiveFilters) {
-                        stringResource(Res.string.showing_count, counts.current, notes.size)
+                        pluralStringResource(
+                            Res.plurals.showing_count,
+                            counts.current,
+                            counts.current,
+                            notes.size
+                        )
                     } else {
-                        stringResource(Res.string.showing_all, notes.size)
+                        pluralStringResource(Res.plurals.showing_all, notes.size, notes.size)
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
