@@ -265,12 +265,22 @@
     <string name="select_note_to_view_subtitle">Choose a note from the list to edit it here</string>
     <!-- Filtering -->
     <string name="filters">Filters</string>
+    <!--
+      The Filters sheet's live count. Plurals rather than "%1$d notes", which renders "1 notes" for
+      the single-note case that a new or heavily-filtered library hits constantly.
+    -->
+    <plurals name="showing_all">
+        <item quantity="one">%1$d note</item>
+        <item quantity="other">%1$d notes</item>
+    </plurals>
+    <plurals name="showing_count">
+        <item quantity="one">Showing %1$d of %2$d</item>
+        <item quantity="other">Showing %1$d of %2$d</item>
+    </plurals>
     <string name="filters_with_count">Filters · %1$d</string>
     <string name="clear_all">Clear all</string>
-    <string name="showing_count">Showing %1$d of %2$d</string>
-    <string name="showing_all">%1$d notes</string>
     <string name="cd_remove_filter">Remove filter %1$s</string>
-    <string name="filter_section_colors">Colours</string>
+    <string name="filter_section_colors">Colors</string>
     <string name="filter_section_labels">Labels</string>
     <string name="filter_section_status">Status</string>
     <string name="filter_section_date">Date</string>
