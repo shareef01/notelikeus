@@ -10,6 +10,10 @@ import androidx.compose.ui.text.font.FontWeight
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.action_cancel
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import com.aus.notelikeus.ui.theme.Spacing
 
 /**
  * One confirmation, used for every action that cannot be undone by tapping again.
@@ -36,6 +40,8 @@ fun ConfirmDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     destructive: Boolean = false,
+    /** False greys out the confirm button -- for a dialog whose input is not yet valid. */
+    confirmEnabled: Boolean = true,
     dismissLabel: String = stringResource(Res.string.action_cancel),
     extraContent: (@Composable () -> Unit)? = null
 ) {
@@ -44,15 +50,25 @@ fun ConfirmDialog(
         onDismissRequest = onDismiss,
         shape = MaterialTheme.shapes.large,
         title = { Text(title) },
+        // The message and the extra content stack rather than replace each other. They used to
+        // be alternatives, which meant a caller that needed both had to pass `message` for the
+        // sake of the parameter and then repeat it by hand inside `extraContent` -- two copies of
+        // one string, one of which was never displayed.
         text = {
-            if (extraContent != null) {
-                extraContent()
-            } else {
-                Text(message)
+            Column {
+                if (message.isNotBlank()) {
+                    Text(message)
+                }
+                if (extraContent != null) {
+                    if (message.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(Spacing.md))
+                    }
+                    extraContent()
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            TextButton(onClick = onConfirm, enabled = confirmEnabled) {
                 Text(
                     text = confirmLabel,
                     color = if (destructive) {
