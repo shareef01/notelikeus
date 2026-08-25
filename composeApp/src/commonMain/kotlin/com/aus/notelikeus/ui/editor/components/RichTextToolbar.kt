@@ -33,13 +33,19 @@ fun RichTextToolbar(
     // The surface is used exactly as given. It used to be `surfaceColor.copy(alpha = 0.95f)`,
     // which quietly turned the editor's Color.Transparent — RGB(0,0,0) with alpha 0 — into 95%
     // opaque black, so a slab sat over every coloured note instead of the intended tint.
-    val isTransparent = surfaceColor.alpha == 0f
+    //
+    // Elevation is only for an *opaque* fill, and the guard used to be `alpha == 0f`. A shadow
+    // under a translucent surface is visible through it, so the editor's 7%-alpha wash was
+    // rendering as a mid-grey slab: measured 189 on white, where the tint alone is about 239.
+    // That is the same "panel floating over the note" the wash exists to avoid, arriving by a
+    // different route than the alpha did.
+    val isTranslucent = surfaceColor.alpha < 1f
     Surface(
         modifier = modifier,
         shape = CircleShape,
         color = surfaceColor,
-        tonalElevation = if (isTransparent) Elevation.none else Elevation.raised,
-        shadowElevation = if (isTransparent) Elevation.none else Elevation.card,
+        tonalElevation = if (isTranslucent) Elevation.none else Elevation.raised,
+        shadowElevation = if (isTranslucent) Elevation.none else Elevation.card,
         border = androidx.compose.foundation.BorderStroke(
             Spacing.hairline,
             contentColor.copy(alpha = NoteEmphasis.Decorative)

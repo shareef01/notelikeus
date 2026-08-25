@@ -33,6 +33,10 @@ import notelikeus.composeapp.generated.resources.*
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.util.DateUtils
 import com.aus.notelikeus.ui.theme.Spacing
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 
 @Composable
 fun NoteStaggeredGrid(
@@ -51,6 +55,14 @@ fun NoteStaggeredGrid(
     enableArchiveSwipe: Boolean = true,
     enableSwipe: Boolean = true,
     allowReorder: Boolean = true,
+    /**
+     * Called when someone drags a handle that an automatic sort has disabled.
+     *
+     * Non-null turns the handle back on as an *offer* rather than a control: the drag does not
+     * move anything, it explains why it cannot and what would fix it. Null keeps the handle
+     * hidden, which is the right answer when nothing the user can tap would help.
+     */
+    onReorderBlocked: (() -> Unit)? = null,
     columns: Int = 2,
     compact: Boolean = false,
     listStyle: Boolean = false,
@@ -62,9 +74,16 @@ fun NoteStaggeredGrid(
     val todaySectionLabel = stringResource(Res.string.section_today)
     val yesterdaySectionLabel = stringResource(Res.string.section_yesterday)
     val reorderThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
+    val moveUpLabel = stringResource(Res.string.cd_move_up)
+    val moveDownLabel = stringResource(Res.string.cd_move_down)
+    val reorderBlockedLabel = stringResource(Res.string.cd_reorder_blocked)
     var draggingIndex by remember { mutableIntStateOf(-1) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
-    val canReorder = columns == 1 && selectedNotes.isEmpty() && !compact && allowReorder
+    // Three states, not two. The layout either can show a handle or cannot; on top of that the
+    // query either permits reordering or has an explanation for why it does not.
+    val layoutAllowsReorder = columns == 1 && selectedNotes.isEmpty() && !compact
+    val canReorder = layoutAllowsReorder && allowReorder
+    val offerReorder = layoutAllowsReorder && !allowReorder && onReorderBlocked != null
     val swipeEnabled = enableSwipe && selectedNotes.isEmpty()
     val itemSpacing = Spacing.lg
 
@@ -162,6 +181,53 @@ fun NoteStaggeredGrid(
                                 }
                             )
                         }
+                            // A screen reader cannot produce a drag, so without these the handle
+                            // announces a control its user has no way to operate. Same calls the
+                            // drag makes, one step at a time; onReorderComplete persists.
+                            .semantics {
+                                customActions = buildList {
+                                    if (index > 0) {
+                                        add(
+                                            CustomAccessibilityAction(moveUpLabel) {
+                                                onMoveNote(index, index - 1)
+                                                onReorderComplete()
+                                                true
+                                            }
+                                        )
+                                    }
+                                    if (index < notes.lastIndex) {
+                                        add(
+                                            CustomAccessibilityAction(moveDownLabel) {
+                                                onMoveNote(index, index + 1)
+                                                onReorderComplete()
+                                                true
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                    } else if (offerReorder) {
+                        // Drag start only. The gesture is consumed and nothing moves, so the list
+                        // stays exactly where it was while the dialog asks.
+                        Modifier.pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = { onReorderBlocked?.invoke() },
+                                onDrag = { change, _ -> change.consume() }
+                            )
+                        }
+                            // A custom action rather than onClick: the card's own
+                            // combinedClickable merges these descendants, and its onClick (open
+                            // the note) would win. Custom actions concatenate instead, so this
+                            // lands in the card's actions menu next to the others.
+                            .semantics {
+                                contentDescription = reorderBlockedLabel
+                                customActions = listOf(
+                                    CustomAccessibilityAction(reorderBlockedLabel) {
+                                        onReorderBlocked?.invoke()
+                                        true
+                                    }
+                                )
+                            }
                     } else {
                         Modifier
                     }
@@ -181,7 +247,7 @@ fun NoteStaggeredGrid(
                         onSwipeToArchive = onSwipeToArchive,
                         onSwipeToTrash = onSwipeToTrash,
                         onLabelClick = onLabelClick,
-                        showReorderHandle = canReorder,
+                        showReorderHandle = canReorder || offerReorder,
                         reorderDragModifier = reorderDragModifier,
                         modifier = itemModifier.fillMaxSize()
                     )

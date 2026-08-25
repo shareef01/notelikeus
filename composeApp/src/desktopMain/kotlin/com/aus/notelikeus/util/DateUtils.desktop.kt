@@ -7,6 +7,22 @@ import java.util.Calendar
 actual object DateUtils {
     actual fun currentTimeMillis(): Long = System.currentTimeMillis()
 
+    /**
+     * Calendar rather than arithmetic on [DAY_IN_MILLIS]: days are not all 86,400,000ms long, and
+     * dividing by that lands an hour out on either side of a daylight-saving change.
+     */
+    actual fun startOfDay(timestamp: Long): Long {
+        val cal = java.util.Calendar.getInstance().apply {
+            timeInMillis = timestamp
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        return cal.timeInMillis
+    }
+
+
     actual fun isToday(timestamp: Long): Boolean {
         val now = Calendar.getInstance()
         val then = Calendar.getInstance().apply { timeInMillis = timestamp }

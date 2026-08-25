@@ -2,7 +2,6 @@ package com.aus.notelikeus.ui.main.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +33,8 @@ import com.aus.notelikeus.ui.theme.AppType
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
 import com.aus.notelikeus.ui.theme.Radius
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 
 /**
  * A destination row in the side drawer.
@@ -80,7 +81,7 @@ fun SideDrawerNavItem(
             .height(Size.chipHeight)
             .clip(shape)
             .background(wash)
-            .clickable(onClick = onClick)
+            .selectable(selected = selected, onClick = onClick, role = Role.Tab)
             .padding(
                 start = if (collapsed) Spacing.none else Spacing.md,
                 end = if (collapsed) Spacing.none else 10.dp
@@ -104,7 +105,9 @@ fun SideDrawerNavItem(
 
         Icon(
             imageVector = if (selected) selectedIcon else icon,
-            contentDescription = label,
+            // The label is beside it whenever the drawer is open, so describing the icon too
+            // would read the destination twice. Collapsed, the icon is all there is.
+            contentDescription = if (collapsed) label else null,
             modifier = Modifier.size(22.dp),
             tint = iconTint
         )
