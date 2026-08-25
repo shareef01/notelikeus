@@ -13,7 +13,6 @@
     <string name="search_notes">Search your notes</string>
     <string name="search_archive">Search archive</string>
     <string name="search_trash">Search trash</string>
-    <string name="no_matching_notes">No matching notes</string>
     <string name="no_archived_notes">No archived notes</string>
     <string name="no_trashed_notes">No notes in trash</string>
     <string name="empty_notes_hint">Notes you add appear here</string>
@@ -307,7 +306,7 @@
     <string name="scope_archive">Archive</string>
     <string name="scope_trash">Trash</string>
     <string name="scope_all">Everywhere</string>
-    <string name="search_did_you_mean">Showing near matches</string>
+    <string name="search_did_you_mean">No exact match for \"%1$s\" — showing near matches</string>
     <string name="search_no_results">No results for \"%1$s\"</string>
     <string name="search_unknown_operator">Ignored: %1$s</string>
     <string name="sort_set_as_default">Set as default</string>
