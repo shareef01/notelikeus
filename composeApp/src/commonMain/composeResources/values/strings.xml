@@ -310,6 +310,14 @@
     <string name="search_no_results">No results for \"%1$s\"</string>
     <string name="search_unknown_operator">Ignored: %1$s</string>
     <string name="sort_set_as_default">Set as default</string>
+    <string name="nav_section_saved">Saved</string>
+    <string name="save_filter">Save these filters</string>
+    <string name="save_filter_title">Name this filter</string>
+    <string name="save_filter_hint">e.g. Invoices this month</string>
+    <string name="save_filter_replace">Replaces the filter already saved as \"%1$s\"</string>
+    <string name="save_filter_full">%1$d saved already. Saving replaces the oldest.</string>
+    <string name="action_save">Save</string>
+    <string name="cd_delete_saved_filter">Delete saved filter %1$s</string>
     <string name="nav_section_views">Views</string>
     <string name="view_reminders">Reminders</string>
     <string name="view_unfinished">Unfinished</string>
