@@ -9,9 +9,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.appfunctions.service.AppFunctionConfiguration
 import androidx.work.WorkManager
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import com.aus.notelikeus.appfunctions.NoteAppFunctions
 import com.aus.notelikeus.data.local.NotelikeusDatabase
 import com.aus.notelikeus.data.local.warmUp
@@ -27,6 +25,9 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 val androidAppModule = module {
     single(named("webClientId")) { 
@@ -38,13 +39,31 @@ val androidAppModule = module {
  * Flips once the encrypted database has finished opening on the background startup thread.
  * [MainActivity] holds the first composition back on this, so nothing that resolves through
  * Koin to a DAO can pull the database open onto the main thread.
+ *
+ * A [MutableStateFlow] rather than `mutableStateOf`, and the distinction is a crash rather than a
+ * style preference. This is a process-lived `object`, so it initialises on whichever thread first
+ * touches it — and the first toucher on a cold start is [markReady], running on the background
+ * startup dispatcher. A snapshot state created on that thread, after composition has already taken
+ * its snapshot, is read back with:
+ *
+ * ```
+ * IllegalStateException: Reading a state that was created after the snapshot was taken
+ *     or in a snapshot that has not yet been applied
+ * ```
+ *
+ * Observed on first launch after install, where the database open is slowest and the two are most
+ * likely to interleave. A flow has no snapshot identity, so the failure mode is not merely
+ * unlikely here — it cannot occur. The Compose-side state is created by `collectAsState` inside
+ * composition, on the main thread, which is where snapshot state is meant to be created.
+ *
+ * See FINDINGS.md F9.
  */
 object AppStartup {
-    var isReady by mutableStateOf(false)
-        private set
+    private val _isReady = MutableStateFlow(false)
+    val isReady: StateFlow<Boolean> = _isReady.asStateFlow()
 
     fun markReady() {
-        isReady = true
+        _isReady.value = true
     }
 }
 
