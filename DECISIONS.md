@@ -410,3 +410,56 @@ a note with no title *and* no content.
 placeholder — is one revert away, and the argument for it is that a card with no heading looks
 unfinished next to cards that have one. Verified on the emulator; it reads better in the hand than
 that argument suggests, because the note's own first line becomes the heading.
+
+## D16 — Compose Multiplatform 1.9.0: measured, exercised, and put to review rather than merged.
+
+Dependabot's #68 bumps `compose-multiplatform` alone. This branch bumps it **with** `composeAdaptive`
+(1.1.2 → 1.2.0, the CMP 1.9 line), which is what the catalog comment means by moving them together.
+
+### The line does not go flat, and cannot be flattened from here
+
+Resolved `org.jetbrains.compose.*` on `desktopRuntimeClasspath`:
+
+| Version | What lands on it |
+|---|---|
+| **1.8.2** | `material3`, `material3-desktop` |
+| **1.9.0** | the plugin, `desktop`/skiko, foundation, animation, components |
+| **1.9.1** | `runtime`, `ui` and their siblings, pulled up by transitives |
+| 1.2.0 | the adaptive artifacts (their own train) |
+| 1.7.3 | `material-icons-*` (their own train, unchanged) |
+
+There is no pin doing this. `compose.material3` comes from the plugin with no version of its own in
+this repo, so **CMP 1.9.0 itself ships material3 at 1.8.2** — the split is JetBrains', not a
+misconfiguration here, and no change to this catalog closes it.
+
+That matters because material3 1.8.2 compiled against 1.8.2 and executing against ui 1.9.1 is the
+same shape as the `NoSuchFieldError` in #49.
+
+### So it was exercised, not trusted
+
+- Compiles; **567 tests** pass, including the desktop Compose UI tests.
+- The **packaged desktop app** starts and stays up 40s with an empty log. No
+  `UnsatisfiedLinkError(RenderNodeContext_nMake)` — the skiko failure the comment warns about does
+  not occur on this combination.
+- The **Android build** was driven through material3-heavy surfaces — the notes list, the Filters
+  `ModalBottomSheet` with its chips and disabled states, the drawer, the editor, the reminder
+  `AlertDialog`. No `NoSuchFieldError`, `NoSuchMethodError`, `AbstractMethodError` or crash in
+  logcat.
+
+Note that this could only be tested *after* F19: the packaged app was dying at startup on `main` for
+an unrelated reason, which masked the question entirely.
+
+### Why it is still not merged
+
+Everything above is evidence of absence, over the paths that were walked. A version skew of this
+kind fails on the specific APIs that moved, and 40 seconds of an idle window plus one pass through
+the UI is not proof that none of them are reachable.
+
+Held as a draft for review rather than merged on my own judgement, because the catalog comment is an
+explicit instruction to be careful here and the person who wrote it has context I do not. The
+measurement is recorded so the next attempt does not start from zero.
+
+**`composeLifecycle` stays at 2.9.3** either way — that is #70, and it is blocked for a different
+and firmer reason: `koin-compose-viewmodel:4.1.1` pins `lifecycle-viewmodel-compose:2.9.3` exactly,
+and Koin 4.2.x pulls Compose 1.10, which is the combination the catalog comment says kills the
+desktop app.
