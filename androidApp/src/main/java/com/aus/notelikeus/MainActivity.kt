@@ -27,6 +27,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 
 class MainActivity : FragmentActivity() {
 
@@ -57,7 +59,12 @@ class MainActivity : FragmentActivity() {
             // the DAO, which opens the encrypted database. Until the background open finishes,
             // composing nothing keeps the window on the system splash screen instead of
             // blocking Main on the key-manager decrypt or a first-run re-encryption.
-            if (AppStartup.isReady) {
+            // Collected rather than read directly: AppStartup publishes through a flow so its
+            // value can be written from the background startup thread without creating snapshot
+            // state there. collectAsState creates that state here, in composition, on the main
+            // thread.
+            val isStartupReady by AppStartup.isReady.collectAsState()
+            if (isStartupReady) {
                 // The quarantine that records this notice runs during the database open, so it
                 // can only be read once that has finished — not in onCreate.
                 LaunchedEffect(Unit) {
