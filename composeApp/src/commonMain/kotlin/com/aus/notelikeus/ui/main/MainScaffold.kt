@@ -59,6 +59,11 @@ import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Elevation
 import com.aus.notelikeus.ui.theme.Size
 import com.aus.notelikeus.ui.main.components.SearchNoticeRow
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import com.aus.notelikeus.domain.model.NoteSortOrder
+import com.aus.notelikeus.ui.components.ConfirmDialog
 
 /**
  * The notes list itself: top bar, FAB, empty states, trash banner and the staggered grid.
@@ -106,6 +111,24 @@ internal fun MainScaffold(
         visibleNoteIds.isNotEmpty() && visibleNoteIds.all { it in state.selectedNotes }
     }
     val allowReorder = remember(state.query) { state.query.allowsManualReorder }
+    val reorderBlockedBySort = remember(state.query) {
+        state.query.switchingSortWouldAllowReorder
+    }
+    var showReorderPrompt by remember { mutableStateOf(false) }
+
+    if (showReorderPrompt) {
+        ConfirmDialog(
+            title = stringResource(Res.string.reorder_switch_title),
+            message = stringResource(Res.string.reorder_switch_message),
+            confirmLabel = stringResource(Res.string.reorder_switch_action),
+            onConfirm = {
+                showReorderPrompt = false
+                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                viewModel.setSortOrder(NoteSortOrder.MANUAL)
+            },
+            onDismiss = { showReorderPrompt = false }
+        )
+    }
 
     Scaffold(
         containerColor = Color.Transparent, // Parent handles background
@@ -357,6 +380,11 @@ internal fun MainScaffold(
                         enableArchiveSwipe = state.currentFilter == NoteFilter.ACTIVE,
                         enableSwipe = state.selectedNotes.isEmpty(),
                         allowReorder = allowReorder,
+                        onReorderBlocked = if (reorderBlockedBySort) {
+                            { showReorderPrompt = true }
+                        } else {
+                            null
+                        },
                         onNoteClick = { note ->
                             if (state.selectedNotes.isNotEmpty()) {
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
