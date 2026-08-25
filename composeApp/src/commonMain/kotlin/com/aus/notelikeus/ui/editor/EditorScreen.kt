@@ -63,6 +63,8 @@ import com.aus.notelikeus.ui.components.AppSnackbar
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
 import com.aus.notelikeus.ui.components.ConfirmDialog
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.ui.semantics.Role
 
 private val EditorHorizontalPadding = Spacing.xl
 private val EditorVerticalPadding = Spacing.xl
@@ -474,36 +476,69 @@ fun ReminderDialog(
     onRemove: (() -> Unit)?,
     onDismiss: () -> Unit
 ) {
-    // Basic reminder dialog placeholder
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(Res.string.set_reminder)) },
         text = {
             Column {
+                // initialTimestamp used to be computed by the caller and then ignored entirely,
+                // so the dialog took the one fact it needed and threw it away. It is the real
+                // reminder exactly when there is one to remove, which is when it is worth saying.
+                if (onRemove != null) {
+                    Text(
+                        text = stringResource(
+                            Res.string.reminder_currently_set,
+                            DateUtils.formatDateTime(initialTimestamp) + ", " +
+                                DateUtils.formatTime(initialTimestamp)
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                            alpha = NoteEmphasis.Secondary
+                        ),
+                        modifier = Modifier.padding(bottom = Spacing.sm)
+                    )
+                }
                 ListItem(
                     headlineContent = { Text(stringResource(Res.string.reminder_in_one_hour)) },
-                    modifier = Modifier.clickable { onConfirm(DateUtils.currentTimeMillis() + 3600000) }
+                    // Transparent, or the rows render on colorScheme.surface inside a
+                    // dialog painted surfaceContainerHigh -- a white slab dropped into a
+                    // grey card.
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable(role = Role.Button) { onConfirm(DateUtils.currentTimeMillis() + 3600000) }
                 )
                 ListItem(
                     headlineContent = { Text(stringResource(Res.string.reminder_tomorrow_morning)) },
-                    modifier = Modifier.clickable { onConfirm(DateUtils.getTomorrowMorning()) }
+                    // Transparent, or the rows render on colorScheme.surface inside a
+                    // dialog painted surfaceContainerHigh -- a white slab dropped into a
+                    // grey card.
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable(role = Role.Button) { onConfirm(DateUtils.getTomorrowMorning()) }
                 )
                 ListItem(
                     headlineContent = { Text(stringResource(Res.string.reminder_next_week)) },
-                    modifier = Modifier.clickable { onConfirm(DateUtils.getNextWeek()) }
+                    // Transparent, or the rows render on colorScheme.surface inside a
+                    // dialog painted surfaceContainerHigh -- a white slab dropped into a
+                    // grey card.
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable(role = Role.Button) { onConfirm(DateUtils.getNextWeek()) }
                 )
             }
         },
+        // No confirm button. Choosing a preset *is* the confirmation -- the "OK" that used to sit
+        // here called onDismiss, so it was a second Cancel wearing the label of the opposite
+        // action, and tapping it after picking nothing looked like it had done something.
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_ok)) }
+            if (onRemove != null) {
+                TextButton(onClick = onRemove) {
+                    Text(
+                        text = stringResource(Res.string.action_remove),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
         },
         dismissButton = {
-            Row {
-                if (onRemove != null) {
-                    TextButton(onClick = onRemove) { Text(stringResource(Res.string.action_remove)) }
-                }
-                TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
-            }
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
         }
     )
 }
