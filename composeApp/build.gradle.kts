@@ -260,6 +260,11 @@ compose.desktop {
                 "java.net.http",    // HttpClient: Firestore transport, token refresh, sign-in
                 "jdk.unsupported",  // sun.misc.Unsafe, via datastore-protobuf
                 "java.naming",      // reached from the TLS stack
+                // AppConfig.isDebug asks the RuntimeMXBean whether a JDWP agent is attached.
+                // Without this the packaged app dies on its first Koin resolution with
+                // NoClassDefFoundError(java/lang/management/ManagementFactory) -- before a window
+                // is ever shown. `./gradlew run` cannot catch it: it has the whole JDK on hand.
+                "java.management",
                 // Present by default on the current JDK, named anyway so a JDK change cannot
                 // silently drop EC and break the handshake with accounts.google.com.
                 "jdk.crypto.ec"
