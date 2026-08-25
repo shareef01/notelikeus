@@ -87,6 +87,7 @@ import com.aus.notelikeus.ui.components.AppFilterChip
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
 import com.aus.notelikeus.ui.theme.Elevation
+import com.aus.notelikeus.domain.model.NoteQuery
 
 private val TopBarRowHeight = 56.dp
 
@@ -116,17 +117,14 @@ fun MainTopAppBar(
      * were or hinted that the control opens your account.
      */
     accountEmail: String? = null,
-    selectedColor: Int?,
-    onColorSelect: (Int?) -> Unit,
+    query: NoteQuery,
+    onQueryChange: ((NoteQuery) -> NoteQuery) -> Unit,
+    onOpenFilters: () -> Unit,
     allLabels: List<Label>,
-    selectedLabelId: Long?,
-    onLabelSelect: (Long?) -> Unit,
-    sortOrder: NoteSortOrder = NoteSortOrder.MANUAL,
     onSortOrderCycle: () -> Unit = {},
     recentSearches: List<String> = emptyList(),
     onRecentSearchClick: (String) -> Unit = {},
     onClearRecentSearches: () -> Unit = {},
-    hasActiveFilters: Boolean = false,
     onClearFilters: () -> Unit = {},
     listScrolled: Boolean = false,
     searchFocusRequester: androidx.compose.ui.focus.FocusRequester? = null,
@@ -361,14 +359,6 @@ fun MainTopAppBar(
                             }
                             }
 
-                            ViewModeMenu(
-                                viewMode = viewMode,
-                                onViewModeChange = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    onViewModeChange(it)
-                                }
-                            )
-
                             Box(
                                 modifier = Modifier
                                     .size(Size.chipHeight)
@@ -412,40 +402,40 @@ fun MainTopAppBar(
                 )
             }
 
-            // Sort, colours and labels are two rows of chips pinned above the notes -- about a
-            // tenth of the window height, held even while scrolling a long list that nothing is
-            // filtering. They fold away once the list moves and come straight back at the top.
+            // One line, and it says what is *on* rather than offering everything that could be.
             //
-            // Never folded away while a filter is on, though: a hidden filter is a list that
-            // silently isn't showing everything, and the chips are the only thing saying so.
+            // It folds away once the list scrolls, but never while a filter is active: a hidden
+            // filter is a list that silently is not showing everything, and this row is the only
+            // thing saying so.
             AnimatedVisibility(
                 visible = selectedCount == 0 &&
                     !showRecentSearches &&
-                    (!listScrolled || hasActiveFilters),
+                    (!listScrolled || query.hasActiveFilters),
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
-                FilterRow(
-                    selectedColor = selectedColor,
-                    onColorSelect = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onColorSelect(it)
-                    },
+                FilterSummaryRow(
+                    query = query,
                     allLabels = allLabels,
-                    selectedLabelId = selectedLabelId,
-                    onLabelSelect = {
+                    onOpenFilters = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onLabelSelect(it)
+                        onOpenFilters()
                     },
-                    sortOrder = sortOrder,
-                    onSortOrderCycle = {
+                    onQueryChange = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onSortOrderCycle()
+                        onQueryChange(it)
                     },
-                    hasActiveFilters = hasActiveFilters,
                     onClearFilters = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         onClearFilters()
+                    },
+                    onViewModeChange = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onViewModeChange(it)
+                    },
+                    onSortOrderCycle = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onSortOrderCycle()
                     }
                 )
             }

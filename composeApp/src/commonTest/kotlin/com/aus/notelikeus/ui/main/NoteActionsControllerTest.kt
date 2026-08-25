@@ -11,6 +11,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import com.aus.notelikeus.domain.model.NoteQuery
+import com.aus.notelikeus.domain.model.NoteScope
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class NoteActionsControllerTest {
@@ -49,7 +51,7 @@ class NoteActionsControllerTest {
     fun failedPermanentDeleteReportsDeleteFailure() = runTest {
         val repository = FakeNoteRepository().apply { failWrites = true }
         val state = MutableStateFlow(
-            MainState(notes = listOf(note), currentFilter = NoteFilter.TRASHED)
+            MainState(notes = listOf(note), query = NoteQuery(scope = NoteScope.TRASH))
         )
         val hidden = mutableSetOf<Long>()
 

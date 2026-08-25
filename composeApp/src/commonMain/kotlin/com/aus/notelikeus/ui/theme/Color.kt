@@ -147,6 +147,25 @@ val NOTE_COLOR_OPTIONS: List<NoteColorOption> = listOf(
 )
 
 /**
+ * Keywords for the `color:` search operator, in [NOTE_COLOR_OPTIONS] order.
+ *
+ * Deliberately not the localised names in `NoteColorNames.kt`. Those are what a screen reader
+ * speaks; these are what someone types, and a query language whose keywords move when the device
+ * language changes is a query language nobody can write down or share.
+ */
+val NOTE_COLOR_KEYWORDS: List<String> = listOf(
+    "none", "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink"
+)
+
+/** The stored ARGB for a `color:` keyword on the given theme, or null if it is not a colour. */
+fun noteColorForKeyword(keyword: String, isDarkTheme: Boolean): Int? {
+    val index = NOTE_COLOR_KEYWORDS.indexOf(keyword.lowercase())
+    if (index < 0) return null
+    val option = NOTE_COLOR_OPTIONS[index]
+    return (if (isDarkTheme) option.dark else option.light).toArgb()
+}
+
+/**
  * The palette index a colour occupies, or -1 when it is not one of the built-in colours.
  * Matches on either the light or dark variant, since which one is on screen depends on the theme.
  */
