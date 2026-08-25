@@ -221,3 +221,23 @@ straight forms. Verified by decoding the rebuilt APK's resource table and by scr
 
 Worth knowing for anything added later: **this file must not use backslash escapes at all.** The
 apostrophe in `Couldn't` is simply an apostrophe here.
+
+## F12 — The drawer never told a screen reader which destination was current — **FIXED**
+
+`SideDrawerNavItem` marked the selected row with a background wash and an accent bar, and nothing
+else. It used a plain `clickable`, so the row announced "Notes, button" whether or not it was the
+current view: the one piece of state the drawer exists to convey was the one piece it did not
+convey to anyone not looking at the screen.
+
+Its icon also carried `contentDescription = label` unconditionally, while the same label sat
+visibly beside it — so an open drawer read every destination twice.
+
+Pre-existing, and both got worse with this branch, which added four more rows to this component
+(three smart views and one per saved filter).
+
+**Fixed**: `selectable(selected, onClick, role = Role.Tab)` instead of `clickable`, and the icon
+describes itself only when the drawer is collapsed and there is no visible label to read.
+
+`SideDrawerNavItemTest` had an assertion requiring the duplicate description in the expanded state.
+It was asserting the bug, so it is now asserting its absence, alongside a new test for the selected
+state.
