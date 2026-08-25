@@ -8,6 +8,7 @@ import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.domain.model.ThemePreference
 import com.aus.notelikeus.domain.model.SmartView
+import com.aus.notelikeus.domain.model.SavedFilter
 
 enum class NoteFilter {
     ACTIVE, ARCHIVED, TRASHED;
@@ -102,6 +103,8 @@ data class MainState(
      * list than the one tapping it opens.
      */
     val smartViewCounts: Map<SmartView, Int> = emptyMap(),
+    /** Named queries the user kept, newest first. Empty until settings have loaded. */
+    val savedFilters: List<SavedFilter> = emptyList(),
     val archivedNoteCount: Int = 0,
     val trashedNoteCount: Int = 0,
     val listRevision: Int = 0,
