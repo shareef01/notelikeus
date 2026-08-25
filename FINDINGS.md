@@ -319,3 +319,42 @@ no date or time picker in it. The helper is what is left of the picker that used
 Not deleted, because it is also the natural seed for a custom "Pick a date and time" option, which
 the reminder dialog arguably needs — three presets cannot express "Friday at 6". Either finish it or
 remove it and its test; leaving it as-is is the only wrong answer.
+
+## F17 — The editor's label list announced as buttons with no checked state — **FIXED**
+
+Each label row was a clickable `ListItem` wrapping a `Checkbox` that had its own `onCheckedChange` —
+one action wearing two hit targets. The row announced as **"Work, button"**, so the only thing the
+list exists to communicate, which labels are on, was the one thing it did not communicate to anyone
+not looking at the screen.
+
+**Fixed** with the idiomatic pairing: `Modifier.toggleable(value, role = Role.Checkbox)` on the row,
+and `onCheckedChange = null` on the checkbox so it is a picture of the state rather than a rival
+control. It now announces "Work, checkbox, checked".
+
+Worth recording how this nearly slipped through. My first guard counted toggleable nodes, expecting
+the broken version to produce more of them — it does not. `ListItem`'s clickable merges its
+descendants, so the inner checkbox's state merges upward either way, which is exactly how the row
+could carry the right state and still describe itself with the wrong role. The assertion that
+discriminates is on `Role`, and it was confirmed to fail against the old code.
+
+Two smaller ones in the same sheet: the Delete row's icon repeated its own visible label, so it
+announced "Delete, Delete"; and both action rows were `clickable` with no `Role`, so neither said it
+was a button.
+
+## F18 — Every checklist control announced the same thing as every other — **FIXED**
+
+A checklist is a column of identical controls, so each has to say what it belongs to. Neither did.
+
+The checkbox's label lives in a separate `BasicTextField` node beside it, not inside it, so the
+checkbox announced **"checkbox, checked"** — the same words for every row on the list, with nothing
+to say which item was being ticked. The remove button was worse in the same way: `cd_remove_item` is
+literally "Remove item", repeated down the column, identifying nothing.
+
+**Fixed**: the checkbox carries the item's text as its content description, and the remove button
+reads "Remove Bread". An item with no text yet gets "Empty item" rather than an empty string, so its
+controls are still nameable.
+
+`ChecklistSemanticsTest` asserts each control names its item, and that no two controls in a list
+share a description — which is the property that was actually violated.
+
+`cd_remove_item` is left in place; the widget still uses it.
