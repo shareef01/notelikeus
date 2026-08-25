@@ -4,6 +4,7 @@ import com.aus.notelikeus.ui.theme.Size
 import com.aus.notelikeus.ui.theme.Elevation
 import com.aus.notelikeus.ui.main.components.FiltersSheet
 import com.aus.notelikeus.domain.model.SmartView
+import com.aus.notelikeus.domain.model.SavedFilter
 
     import androidx.compose.animation.core.animateDpAsState
     import androidx.compose.foundation.background
@@ -186,6 +187,11 @@ fun MainScreen(
         viewModel.applySmartView(view)
         scope.launch { if (!isExpanded) drawerState.close() }
     }
+    val selectSavedFilter: (SavedFilter) -> Unit = { filter ->
+        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+        viewModel.applySavedFilter(filter)
+        scope.launch { if (!isExpanded) drawerState.close() }
+    }
     val editLabels: () -> Unit = {
         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
         onEditLabels()
@@ -215,6 +221,7 @@ fun MainScreen(
                 settingsSelected = showProfileSheet,
                 onFilterSelect = selectFilter,
                 onSmartViewSelect = selectSmartView,
+                onSavedFilterSelect = selectSavedFilter,
                 onEditLabels = editLabels,
                 onOpenSettings = openSettings,
                 onCloudSignOut = requestCloudSignOut,
@@ -297,6 +304,7 @@ fun MainScreen(
                             settingsSelected = showProfileSheet,
                             onFilterSelect = selectFilter,
                             onSmartViewSelect = selectSmartView,
+                            onSavedFilterSelect = selectSavedFilter,
                             onEditLabels = editLabels,
                             onOpenSettings = openSettings,
                             onCloudSignOut = requestCloudSignOut,
@@ -465,6 +473,13 @@ fun MainScreen(
             allLabels = state.allLabels,
             onQueryChange = viewModel::updateQuery,
             onClearFilters = viewModel::clearFilters,
+            savedFilters = state.savedFilters,
+            onApplySavedFilter = { filter ->
+                showFiltersSheet = false
+                selectSavedFilter(filter)
+            },
+            onSaveFilter = viewModel::saveCurrentFilter,
+            onDeleteSavedFilter = viewModel::deleteSavedFilter,
             onDismiss = { showFiltersSheet = false }
         )
     }
