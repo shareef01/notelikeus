@@ -340,3 +340,21 @@ discriminates is on `Role`, and it was confirmed to fail against the old code.
 Two smaller ones in the same sheet: the Delete row's icon repeated its own visible label, so it
 announced "Delete, Delete"; and both action rows were `clickable` with no `Role`, so neither said it
 was a button.
+
+## F18 — Every checklist control announced the same thing as every other — **FIXED**
+
+A checklist is a column of identical controls, so each has to say what it belongs to. Neither did.
+
+The checkbox's label lives in a separate `BasicTextField` node beside it, not inside it, so the
+checkbox announced **"checkbox, checked"** — the same words for every row on the list, with nothing
+to say which item was being ticked. The remove button was worse in the same way: `cd_remove_item` is
+literally "Remove item", repeated down the column, identifying nothing.
+
+**Fixed**: the checkbox carries the item's text as its content description, and the remove button
+reads "Remove Bread". An item with no text yet gets "Empty item" rather than an empty string, so its
+controls are still nameable.
+
+`ChecklistSemanticsTest` asserts each control names its item, and that no two controls in a list
+share a description — which is the property that was actually violated.
+
+`cd_remove_item` is left in place; the widget still uses it.
