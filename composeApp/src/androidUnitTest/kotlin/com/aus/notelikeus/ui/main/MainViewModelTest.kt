@@ -30,6 +30,8 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModelTest {
@@ -489,6 +491,55 @@ class MainViewModelTest {
         // The two inputs own separate halves of the query, so a keystroke cannot clear a chip.
         assertEquals(setOf(7L), viewModel.state.value.query.labels)
         assertEquals("milk", viewModel.state.value.query.text)
+    }
+
+    /**
+     * The near-match fallback is invisible in the results themselves -- a list of near matches
+     * looks exactly like a list of matches -- so the flag that lets the UI say so has to be right
+     * in both directions. Set when the fallback fired, and cleared again when it did not, or the
+     * banner would outlive the typo that caused it.
+     */
+    @Test
+    fun `a typo reports near matches, and a correction clears the flag`() = runTest {
+        val notes = listOf(
+            Note(id = 1L, title = "Recipes", content = "", timestamp = 0L, color = 0),
+            Note(id = 2L, title = "Home", content = "", timestamp = 0L, color = 0)
+        )
+        every { repository.getActiveNotes() } returns flowOf(notes)
+        viewModel = createViewModel()
+
+        viewModel.onSearchQueryChange("recipies")
+        advanceTimeBy(350)
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.state.value.filteredNotes.size)
+        assertTrue(viewModel.state.value.isFuzzyResult)
+
+        viewModel.onSearchQueryChange("recipes")
+        advanceTimeBy(350)
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.state.value.filteredNotes.size)
+        assertFalse(viewModel.state.value.isFuzzyResult)
+    }
+
+    /**
+     * A search that genuinely matches nothing is not a near-match result. The empty state reads
+     * this to choose between "no results for X" and an explanation of a fallback that never ran.
+     */
+    @Test
+    fun `a search with no near matches is not reported as fuzzy`() = runTest {
+        every { repository.getActiveNotes() } returns flowOf(
+            listOf(Note(id = 1L, title = "Home", content = "", timestamp = 0L, color = 0))
+        )
+        viewModel = createViewModel()
+
+        viewModel.onSearchQueryChange("xylophone")
+        advanceTimeBy(350)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.filteredNotes.isEmpty())
+        assertFalse(viewModel.state.value.isFuzzyResult)
     }
 
     @Test
