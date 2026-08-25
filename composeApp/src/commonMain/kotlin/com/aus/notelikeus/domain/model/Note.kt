@@ -2,6 +2,7 @@ package com.aus.notelikeus.domain.model
 
 import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /**
  * Marked @Immutable so Compose can skip recomposing NoteCard/SwipeableNoteCard when an
@@ -33,5 +34,19 @@ data class Note(
     val serverUpdatedAt: Long? = null,
     val labels: List<Label> = emptyList(),
     val attachments: List<Attachment> = emptyList(),
-    val checklist: List<ChecklistItem> = emptyList()
+    val checklist: List<ChecklistItem> = emptyList(),
+    /**
+     * The folded search text for this note, when it has been indexed. See `buildSearchText`.
+     *
+     * `@Transient` because it is derived, local and worthless to anyone else: it must not appear
+     * in the backup JSON, where it would roughly double the file for no information, and it has no
+     * place in the cloud document either -- every client folds for itself, using its own version
+     * of the folding table.
+     *
+     * Null means "not yet indexed", never "no text". The matcher folds on the spot when it sees
+     * null, so a note is findable from the moment it exists rather than from the moment the
+     * backfill reaches it.
+     */
+    @Transient
+    val searchText: String? = null
 )
