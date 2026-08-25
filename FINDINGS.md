@@ -264,3 +264,26 @@ previous scope's emptiness.
 Two tests: one holds the query pass open on a standard dispatcher to observe the state the UI
 actually rendered, and one drives the settings-restore path against a DAO that has not emitted.
 Both were confirmed to fail against the code before the fix.
+
+## F14 — Bold, Italic and Link did nothing when nothing was selected — **FIXED**
+
+`TextFormatting.wrapSelection` returned the value untouched for a collapsed selection, and
+`wrapAsLink` did the same. So three of the five buttons on the editor's formatting toolbar were dead
+controls in the ordinary case — tapping **B** with no selection is not an edge case, it is what you
+do when you are *about* to type something bold — and there was no selection on screen to hint at
+why nothing happened.
+
+Link was the worst of the three, because it wasted work rather than merely ignoring a tap: the
+dialog opened, you typed a URL, you confirmed, and the note was unchanged. Its OK button was also
+enabled for a blank URL, so that path threw the interaction away too.
+
+**Fixed**: with no selection, Bold and Italic open an empty pair of markers at the cursor and place
+the caret between them, so the next thing typed is formatted — what every other editor does. Link
+inserts `[example.com](https://example.com)`, a link that works immediately with a label that can be
+edited into something better. `LinkDialog` now uses the shared `ConfirmDialog`, which disables its
+confirm button — visibly — for a blank URL.
+
+Bullets were already correct: `prefixLinesWithBullet` acts on the line the cursor is in, selection
+or not. A test now pins that so it stays true.
+
+Verified on the emulator: Bold with the caret mid-word inserts the markers where the caret is.
