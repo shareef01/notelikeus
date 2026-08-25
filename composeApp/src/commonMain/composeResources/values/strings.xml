@@ -310,6 +310,9 @@
     <string name="search_no_results">No results for \"%1$s\"</string>
     <string name="search_unknown_operator">Ignored: %1$s</string>
     <string name="sort_set_as_default">Set as default</string>
+    <string name="cd_move_up">Move up</string>
+    <string name="cd_move_down">Move down</string>
+    <string name="cd_reorder_blocked">Reordering is off while notes are sorted automatically</string>
     <string name="reorder_switch_title">Switch to manual order?</string>
     <string name="reorder_switch_message">Notes are sorted automatically right now, so dragging cannot change their order. Switch to manual order to rearrange them.</string>
     <string name="reorder_switch_action">Switch</string>
