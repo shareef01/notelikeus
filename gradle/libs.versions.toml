@@ -24,7 +24,7 @@ datastore = "1.2.1"
 biometric = "1.1.0"
 glance = "1.1.1"
 appfunctions = "1.0.0-alpha09"
-sqlcipher = "4.6.1"
+sqlcipher = "4.18.0"
 securityCrypto = "1.1.0"
 # Covers androidx.sqlite:sqlite and the desktop's sqlite-bundled driver, which ship together on
 # one version train. The bundled driver used to sit on 2.5.0-alpha13 while this said 2.5.0, so
