@@ -103,7 +103,7 @@ fun EditorScreen(
         noteColor.getContentColor(fallback = MaterialTheme.colorScheme.onSurface)
     }
     var showBottomSheet by remember { mutableStateOf(false) }
-    var showDateTimePicker by remember { mutableStateOf(false) }
+    var showReminderDialog by remember { mutableStateOf(false) }
     var showLinkDialog by remember { mutableStateOf(false) }
     val bodyFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -149,7 +149,7 @@ fun EditorScreen(
 
     fun scheduleReminderIfAllowed(millis: Long) {
         viewModel.setReminder(millis)
-        showDateTimePicker = false
+        showReminderDialog = false
         scope.launch {
             snackbarHostState.showSnackbar(reminderSetMsg)
         }
@@ -208,7 +208,7 @@ fun EditorScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { showDateTimePicker = true }) {
+                        IconButton(onClick = { showReminderDialog = true }) {
                             Icon(
                                 if (state.reminderTimestamp != null) Icons.Filled.Notifications else Icons.Outlined.Notifications,
                                 contentDescription = stringResource(Res.string.set_reminder),
@@ -440,20 +440,20 @@ fun EditorScreen(
             )
         }
 
-        if (showDateTimePicker) {
+        if (showReminderDialog) {
             ReminderDialog(
                 initialTimestamp = state.reminderTimestamp ?: (DateUtils.currentTimeMillis() + 3600000),
                 onConfirm = { confirmReminder(it) },
                 onRemove = if (state.reminderTimestamp != null) {
                     {
                         viewModel.clearReminder()
-                        showDateTimePicker = false
+                        showReminderDialog = false
                         scope.launch {
                             snackbarHostState.showSnackbar(reminderRemovedMsg)
                         }
                     }
                 } else null,
-                onDismiss = { showDateTimePicker = false }
+                onDismiss = { showReminderDialog = false }
             )
         }
 
