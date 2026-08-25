@@ -195,3 +195,29 @@ sort carries the explanation as an action instead, so the switch is reachable wi
 
 `NoteReorderSemanticsTest` asserts on the semantics tree rather than on pixels, which is the point:
 that tree *is* the API a screen reader consumes, so the test exercises the thing that was broken.
+
+## F11 — Backslash escapes render literally in Compose Multiplatform resources — **FIXED**
+
+Android's `aapt` unescapes `\'` and `\"` in `res/values/strings.xml`. Compose Multiplatform's
+resource pipeline does not: it stores the string verbatim, backslash included. Ten strings in
+`composeApp/src/commonMain/composeResources/values/strings.xml` used Android's convention, so ten
+user-facing messages rendered with a visible backslash:
+
+```
+Couldn\'t save that change
+Google Play Services isn\'t available on this device
+```
+
+Confirmed by decoding the packaged resource rather than by inference — `strings.commonMain.cvr` in
+the built APK stores base64 values, and `note_delete_failed` decoded to `Couldn\'t delete that`.
+
+Seven were pre-existing (five error snackbars, two sign-in messages). Three I introduced in this
+branch's search notices, and those are what surfaced it: `No results for \"zzzqqq\"` was visible on
+screen during device testing.
+
+**Fixed** by using typographic quotes and apostrophes — `’` and `“ ”` — which need no escaping in
+XML, match the punctuation the rest of the file already uses (`—`, `…`), and read better than the
+straight forms. Verified by decoding the rebuilt APK's resource table and by screenshot.
+
+Worth knowing for anything added later: **this file must not use backslash escapes at all.** The
+apostrophe in `Couldn't` is simply an apostrophe here.

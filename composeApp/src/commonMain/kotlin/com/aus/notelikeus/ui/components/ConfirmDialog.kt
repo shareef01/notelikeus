@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import com.aus.notelikeus.ui.theme.Spacing
+import com.aus.notelikeus.ui.theme.Chrome
 
 /**
  * One confirmation, used for every action that cannot be undone by tapping again.
@@ -71,10 +72,15 @@ fun ConfirmDialog(
             TextButton(onClick = onConfirm, enabled = confirmEnabled) {
                 Text(
                     text = confirmLabel,
-                    color = if (destructive) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.primary
+                    // The colour has to follow `enabled` too. TextButton greys its own content
+                    // when disabled, but naming a colour here overrides that -- which left the
+                    // button inert and looking exactly as tappable as before, the precise failure
+                    // this codebase keeps hunting down elsewhere.
+                    color = when {
+                        !confirmEnabled ->
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = Chrome.Disabled)
+                        destructive -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.primary
                     },
                     fontWeight = if (destructive) FontWeight.SemiBold else FontWeight.Medium
                 )
