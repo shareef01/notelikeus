@@ -95,6 +95,18 @@ data class NoteQuery(
     val allowsManualReorder: Boolean
         get() = sort == NoteSortOrder.MANUAL && !hasActiveFilters
 
+    /**
+     * Whether one tap on the sort would make reordering possible.
+     *
+     * The difference between a blocker worth explaining and one worth hiding. An automatic sort is
+     * a choice the user made and can unmake, so a drag under one should say so and offer the
+     * switch. An active filter is not: positions are global, so there is no sort that makes
+     * dragging within a filtered subset mean anything, and offering to fix it would be offering
+     * something that does not.
+     */
+    val switchingSortWouldAllowReorder: Boolean
+        get() = sort != NoteSortOrder.MANUAL && !hasActiveFilters
+
     /** Drops every narrowing dimension, keeping where you are and how you are looking at it. */
     fun cleared(): NoteQuery = NoteQuery(
         scope = scope,

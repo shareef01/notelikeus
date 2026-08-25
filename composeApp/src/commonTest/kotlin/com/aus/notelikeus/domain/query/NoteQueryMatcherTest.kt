@@ -315,4 +315,44 @@ class ManualReorderGateTest {
         val manual = NoteQuery(sort = NoteSortOrder.MANUAL)
         assertTrue(manual.copy(scope = NoteScope.ARCHIVE).allowsManualReorder)
     }
+
+    /**
+     * The two blockers are not interchangeable. A sort is a choice the user can unmake in one tap,
+     * so a drag under one gets a handle and an offer to switch; a filter is not, so the handle
+     * stays hidden rather than offering a fix that would not fix anything.
+     */
+    @Test
+    fun `only the sort blocker is worth offering to fix`() {
+        assertTrue(NoteQuery(sort = NoteSortOrder.NEWEST).switchingSortWouldAllowReorder)
+        assertTrue(NoteQuery(sort = NoteSortOrder.OLDEST).switchingSortWouldAllowReorder)
+
+        // Already reorderable: there is nothing to offer.
+        assertFalse(NoteQuery(sort = NoteSortOrder.MANUAL).switchingSortWouldAllowReorder)
+
+        // Filtered: switching the sort would not help, so it is not offered.
+        assertFalse(
+            NoteQuery(sort = NoteSortOrder.NEWEST, labels = setOf(1)).switchingSortWouldAllowReorder
+        )
+        assertFalse(
+            NoteQuery(sort = NoteSortOrder.MANUAL, text = "x").switchingSortWouldAllowReorder
+        )
+    }
+
+    /** Exactly one of the three states holds for any query: reorderable, offerable, or neither. */
+    @Test
+    fun `reordering and the offer are mutually exclusive`() {
+        val queries = listOf(
+            NoteQuery(sort = NoteSortOrder.MANUAL),
+            NoteQuery(sort = NoteSortOrder.NEWEST),
+            NoteQuery(sort = NoteSortOrder.MANUAL, labels = setOf(1)),
+            NoteQuery(sort = NoteSortOrder.OLDEST, text = "x"),
+            NoteQuery(sort = NoteSortOrder.NEWEST, scope = NoteScope.ARCHIVE)
+        )
+        for (query in queries) {
+            assertFalse(
+                query.allowsManualReorder && query.switchingSortWouldAllowReorder,
+                "both true for $query"
+            )
+        }
+    }
 }
