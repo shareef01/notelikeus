@@ -62,6 +62,7 @@ import com.aus.notelikeus.ui.theme.NoteEmphasis
 import com.aus.notelikeus.ui.components.AppSnackbar
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.components.ConfirmDialog
 
 private val EditorHorizontalPadding = Spacing.xl
 private val EditorVerticalPadding = Spacing.xl
@@ -513,26 +514,24 @@ fun LinkDialog(
     onDismiss: () -> Unit
 ) {
     var url by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(Res.string.link_dialog_title)) },
-        text = {
+    ConfirmDialog(
+        title = stringResource(Res.string.link_dialog_title),
+        message = "",
+        confirmLabel = stringResource(Res.string.action_ok),
+        // A blank URL is not a link. OK used to be tappable anyway, so it closed the dialog and
+        // threw the interaction away without saying anything -- and before wrapAsLink learned to
+        // handle a collapsed selection, it did that with a real URL typed in too.
+        confirmEnabled = url.isNotBlank(),
+        onConfirm = { onConfirm(url) },
+        onDismiss = onDismiss,
+        extraContent = {
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it },
                 placeholder = { Text(stringResource(Res.string.link_url_hint)) },
-                singleLine = true
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
             )
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(url) }) {
-                Text(stringResource(Res.string.action_ok))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(Res.string.action_cancel))
-            }
         }
     )
 }
