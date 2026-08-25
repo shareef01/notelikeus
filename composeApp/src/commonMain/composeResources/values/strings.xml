@@ -310,6 +310,10 @@
     <string name="search_no_results">No results for \"%1$s\"</string>
     <string name="search_unknown_operator">Ignored: %1$s</string>
     <string name="sort_set_as_default">Set as default</string>
+    <string name="nav_section_views">Views</string>
+    <string name="view_reminders">Reminders</string>
+    <string name="view_unfinished">Unfinished</string>
+    <string name="view_unlabeled">Unlabelled</string>
     <string name="cd_move_up">Move up</string>
     <string name="cd_move_down">Move down</string>
     <string name="cd_reorder_blocked">Reordering is off while notes are sorted automatically</string>

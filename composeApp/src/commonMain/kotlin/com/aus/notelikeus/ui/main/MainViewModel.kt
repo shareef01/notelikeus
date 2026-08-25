@@ -34,6 +34,7 @@ import kotlinx.coroutines.delay
 import com.aus.notelikeus.domain.model.DateRange
 import com.aus.notelikeus.domain.query.NoteQueryParser
 import com.aus.notelikeus.ui.theme.noteColorForKeyword
+import com.aus.notelikeus.domain.model.SmartView
 
 private const val TAG = "MainViewModel"
 
@@ -83,6 +84,7 @@ class MainViewModel(
         loadSettings()
         loadLabels()
         loadTotalNoteCount()
+        loadSmartViewCounts()
         loadDrawerCounts()
         loadRecentSearches()
 
@@ -248,6 +250,40 @@ class MainViewModel(
             }
             .launchIn(viewModelScope)
     }
+
+    /**
+     * Keeps the drawer's smart-view counts current.
+     *
+     * A separate subscription rather than a fold into [recompute], because the counts describe
+     * active notes and the recompute describes whatever scope is on screen. Sharing one pass would
+     * mean the counts silently became counts of the trash the moment someone opened the trash.
+     *
+     * Follows the shape [loadDrawerCounts] already uses: collect the list, reduce it to numbers.
+     * The reduction runs off the main thread because it is three matcher passes over every active
+     * note, on every write.
+     */
+    private fun loadSmartViewCounts() {
+        repository.getActiveNotes()
+            .onEach { notes ->
+                val now = DateUtils.currentTimeMillis()
+                val counts = withContext(defaultDispatcher) {
+                    SmartView.entries.associateWith { view ->
+                        val query = view.applyTo(NoteQuery())
+                        notes.count { NoteQueryMatcher.matches(it, query, now, emptyList()) }
+                    }
+                }
+                _state.update { it.copy(smartViewCounts = counts) }
+            }
+            .launchIn(viewModelScope)
+    }
+
+    /**
+     * Navigates to a smart view, replacing whatever was filtering rather than adding to it.
+     *
+     * Goes through [updateQuery] like every other filter change, so it debounces, persists and
+     * recomputes on exactly the same path -- there is no second way to change the query.
+     */
+    fun applySmartView(view: SmartView) = updateQuery { view.applyTo(it) }
 
     private fun loadTotalNoteCount() {
         repository.getActiveNoteCount()

@@ -40,6 +40,15 @@ import org.jetbrains.compose.resources.stringResource
 import com.aus.notelikeus.ui.theme.AppType
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.domain.model.SmartView
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
+import androidx.compose.material.icons.outlined.NotificationsNone
+import androidx.compose.material.icons.automirrored.filled.LabelOff
+import androidx.compose.material.icons.automirrored.outlined.LabelOff
+import androidx.compose.ui.graphics.vector.ImageVector
+import org.jetbrains.compose.resources.StringResource
 
 /**
  * The side drawer / navigation rail content, shared between the modal drawer (compact) and the
@@ -55,6 +64,7 @@ internal fun MainDrawerContent(
     isExpanded: Boolean,
     settingsSelected: Boolean,
     onFilterSelect: (NoteFilter) -> Unit,
+    onSmartViewSelect: (SmartView) -> Unit,
     onEditLabels: () -> Unit,
     onOpenSettings: () -> Unit,
     onCloudSignOut: () -> Unit,
@@ -144,6 +154,30 @@ internal fun MainDrawerContent(
                 collapsed = collapsed,
                 onClick = { onFilterSelect(NoteFilter.TRASHED) }
             )
+
+            // Named queries sit with the scopes rather than in the Filters sheet, because they
+            // answer the same kind of question the scopes do -- "which pile am I looking at" --
+            // and burying a question that gets asked daily four taps into a sheet is what made
+            // this app feel like a pile of features.
+            Spacer(modifier = Modifier.height(Size.icon))
+            if (!collapsed) {
+                SideDrawerSectionLabel(text = stringResource(Res.string.nav_section_views))
+            }
+
+            SmartView.entries.forEach { view ->
+                val count = state.smartViewCounts[view]
+                SideDrawerNavItem(
+                    label = stringResource(view.labelRes()),
+                    icon = view.icon(selected = false),
+                    selectedIcon = view.icon(selected = true),
+                    selected = view.isActive(state.query),
+                    // Null, not zero: an empty view is worth showing -- it is how you learn you
+                    // have nothing unfinished -- but a "0" badge on every row is noise.
+                    count = count?.takeIf { it > 0 },
+                    collapsed = collapsed,
+                    onClick = { onSmartViewSelect(view) }
+                )
+            }
 
             Spacer(modifier = Modifier.height(Size.icon))
             if (!collapsed) {
@@ -269,4 +303,23 @@ internal fun MainDrawerContent(
         }
         Spacer(modifier = Modifier.height(Spacing.sm).navigationBarsPadding())
     }
+}
+
+
+/** The drawer's label for a view. Kept next to the drawer, not on the enum: it is presentation. */
+private fun SmartView.labelRes(): StringResource = when (this) {
+    SmartView.REMINDERS -> Res.string.view_reminders
+    SmartView.UNFINISHED -> Res.string.view_unfinished
+    SmartView.UNLABELED -> Res.string.view_unlabeled
+}
+
+/** Outlined when idle, filled when selected -- the same pairing the scope rows use. */
+private fun SmartView.icon(selected: Boolean): ImageVector = when (this) {
+    SmartView.REMINDERS ->
+        if (selected) Icons.Filled.NotificationsActive else Icons.Outlined.NotificationsNone
+    SmartView.UNFINISHED ->
+        if (selected) Icons.Filled.CheckBox else Icons.Outlined.CheckBoxOutlineBlank
+    SmartView.UNLABELED ->
+        if (selected) Icons.AutoMirrored.Filled.LabelOff
+        else Icons.AutoMirrored.Outlined.LabelOff
 }

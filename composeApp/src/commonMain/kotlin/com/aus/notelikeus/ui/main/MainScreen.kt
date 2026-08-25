@@ -3,6 +3,7 @@ import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
 import com.aus.notelikeus.ui.theme.Elevation
 import com.aus.notelikeus.ui.main.components.FiltersSheet
+import com.aus.notelikeus.domain.model.SmartView
 
     import androidx.compose.animation.core.animateDpAsState
     import androidx.compose.foundation.background
@@ -180,6 +181,11 @@ fun MainScreen(
         viewModel.setFilter(filter)
         scope.launch { if (!isExpanded) drawerState.close() }
     }
+    val selectSmartView: (SmartView) -> Unit = { view ->
+        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+        viewModel.applySmartView(view)
+        scope.launch { if (!isExpanded) drawerState.close() }
+    }
     val editLabels: () -> Unit = {
         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
         onEditLabels()
@@ -208,6 +214,7 @@ fun MainScreen(
                 isExpanded = isExpanded,
                 settingsSelected = showProfileSheet,
                 onFilterSelect = selectFilter,
+                onSmartViewSelect = selectSmartView,
                 onEditLabels = editLabels,
                 onOpenSettings = openSettings,
                 onCloudSignOut = requestCloudSignOut,
@@ -289,6 +296,7 @@ fun MainScreen(
                             isExpanded = isExpanded,
                             settingsSelected = showProfileSheet,
                             onFilterSelect = selectFilter,
+                            onSmartViewSelect = selectSmartView,
                             onEditLabels = editLabels,
                             onOpenSettings = openSettings,
                             onCloudSignOut = requestCloudSignOut,
