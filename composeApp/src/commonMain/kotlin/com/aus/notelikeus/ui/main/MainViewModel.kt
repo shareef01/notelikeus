@@ -77,6 +77,9 @@ class MainViewModel(
 
     private var currentNotesJob: Job? = null
     private var searchDebounceJob: Job? = null
+
+    /** Whether the current scope's notes have arrived at least once. See [observeScope]. */
+    private var notesLoaded = false
     private val pendingHiddenIds = mutableSetOf<Long>()
     private var filterGeneration = 0
 
@@ -469,7 +472,20 @@ class MainViewModel(
                 NoteQueryMatcher.search(candidates, snapshot.query, now)
             }
             if (generation != filterGeneration) return@launch
-            _state.update { it.copy(filteredNotes = result.notes, isFuzzyResult = result.isFuzzy) }
+            _state.update {
+                it.copy(
+                    filteredNotes = result.notes,
+                    isFuzzyResult = result.isFuzzy,
+                    // Loading ends when a query has run *over notes that arrived*, not when the
+                    // DAO emits and not merely when some query finishes. Both weaker rules put
+                    // "Notes you add appear here" on screen over a populated library: clearing on
+                    // the emission left a window while the off-thread pass ran, and clearing on
+                    // any completed pass was worse still, because restoring the stored sort and
+                    // view at startup triggers passes of their own, which finish instantly against
+                    // the empty list the DAO has not filled yet.
+                    isLoading = it.isLoading && !notesLoaded
+                )
+            }
         }
     }
 
@@ -481,7 +497,10 @@ class MainViewModel(
      */
     private fun observeScope(scope: NoteScope) {
         currentNotesJob?.cancel()
-        _state.update { it.copy(selectedNotes = emptySet()) }
+        // A new scope is a new list nobody has seen yet, so it starts out unknown rather than
+        // inheriting the previous scope's emptiness.
+        notesLoaded = false
+        _state.update { it.copy(selectedNotes = emptySet(), isLoading = true) }
 
         val notesFlow = when (scope) {
             NoteScope.ACTIVE, NoteScope.ALL -> repository.getActiveNotes()
@@ -493,7 +512,8 @@ class MainViewModel(
             .onEach { notes ->
                 val emittedIds = notes.mapNotNull { it.id }.toSet()
                 pendingHiddenIds.removeIf { it !in emittedIds }
-                _state.update { it.copy(notes = notes, isLoading = false) }
+                notesLoaded = true
+                _state.update { it.copy(notes = notes) }
                 recompute()
             }
             .launchIn(viewModelScope)
