@@ -26,6 +26,8 @@ import com.aus.notelikeus.ui.theme.AppType
 import com.aus.notelikeus.ui.theme.NoteEmphasis
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 
 @Composable
 fun ChecklistUI(
@@ -49,12 +51,18 @@ fun ChecklistUI(
                     .heightIn(min = Size.touchTarget),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // What the checkbox is checking. Its label lives in a separate text field node,
+                // so without this it announced "checkbox, checked" and nothing else -- identical
+                // for every row, and useless on a list of them.
+                val itemLabel = item.text.ifBlank { stringResource(Res.string.cd_untitled_item) }
+
                 Checkbox(
                     checked = item.isChecked,
                     onCheckedChange = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         onUpdate(itemId, item.text, it)
                     },
+                    modifier = Modifier.semantics { contentDescription = itemLabel },
                     colors = CheckboxDefaults.colors(
                         checkedColor = contentColor,
                         uncheckedColor = contentColor.copy(alpha = NoteEmphasis.Icon),
@@ -92,7 +100,11 @@ fun ChecklistUI(
                 }) {
                     Icon(
                         Icons.Default.Close,
-                        contentDescription = stringResource(Res.string.cd_remove_item),
+                        // Named, because "Remove item" repeated down a list identifies nothing.
+                        contentDescription = stringResource(
+                            Res.string.cd_remove_named_item,
+                            itemLabel
+                        ),
                         tint = contentColor.copy(alpha = NoteEmphasis.Icon)
                     )
                 }
