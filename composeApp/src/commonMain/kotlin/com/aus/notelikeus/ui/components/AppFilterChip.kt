@@ -81,7 +81,7 @@ fun AppFilterChip(
             selectedLabelColor = MaterialTheme.colorScheme.primary,
             selectedLeadingIconColor = MaterialTheme.colorScheme.primary,
             disabledContainerColor = Color.Transparent,
-            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = Chrome.Disabled),
             disabledSelectedContainerColor = selectedContainer.copy(alpha = 0.45f)
         )
     )
