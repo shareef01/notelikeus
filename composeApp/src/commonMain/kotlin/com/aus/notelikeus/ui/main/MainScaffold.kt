@@ -379,6 +379,7 @@ internal fun MainScaffold(
                         gridState = gridState,
                         enableArchiveSwipe = state.currentFilter == NoteFilter.ACTIVE,
                         enableSwipe = state.selectedNotes.isEmpty(),
+                        ordering = state.query.ordering,
                         allowReorder = allowReorder,
                         onReorderBlocked = if (reorderBlockedBySort) {
                             { showReorderPrompt = true }

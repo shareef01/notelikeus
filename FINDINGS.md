@@ -241,3 +241,26 @@ describes itself only when the drawer is collapsed and there is no visible label
 `SideDrawerNavItemTest` had an assertion requiring the duplicate description in the expanded state.
 It was asserting the bug, so it is now asserting its absence, alongside a new test for the selected
 state.
+
+## F13 — The empty state showed on top of a populated library at every cold start — **FIXED**
+
+`isLoading` was cleared the moment the notes DAO emitted, but the query pass that turns those notes
+into `filteredNotes` runs off the main thread. So there was a published state saying "not loading"
+with an empty list, and the notes screen read that as an empty library and rendered **"Notes you add
+appear here"** over four notes.
+
+The root cause was worse than the window that first showed it. Restoring the stored sort and view at
+startup pushes them through the same query funnel a user tap does, so passes run *before the DAO has
+emitted anything*. Those finish instantly against an empty list, so even "loading ends when a query
+finishes" ended it before there was anything to show.
+
+On the emulator, where opening the encrypted database takes tens of seconds from cold, the empty
+state was on screen for roughly twenty seconds — long enough that I first mistook it for data loss.
+
+**Fixed**: loading ends only when a query has run over notes that actually arrived (`notesLoaded`),
+and a scope change resets it, so switching to Archive shows a spinner rather than inheriting the
+previous scope's emptiness.
+
+Two tests: one holds the query pass open on a standard dispatcher to observe the state the UI
+actually rendered, and one drives the settings-restore path against a DAO that has not emitted.
+Both were confirmed to fail against the code before the fix.
