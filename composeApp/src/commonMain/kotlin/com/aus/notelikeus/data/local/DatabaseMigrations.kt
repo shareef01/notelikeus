@@ -161,6 +161,26 @@ object DatabaseMigrations {
         }
     }
 
+    /**
+     * Adds the folded search column.
+     *
+     * Nullable with no default on purpose. The value cannot be computed in SQL — folding
+     * diacritics needs the Kotlin table in `SearchText.kt` — so every existing row starts null and
+     * `SearchIndexBackfill` fills them in afterwards. Null reads as "not yet indexed" and the
+     * matcher falls back to folding on the spot, so there is no window in which a note is
+     * unfindable. A `DEFAULT ''` would have created exactly that window.
+     *
+     * ALTER TABLE ADD COLUMN is the whole migration: no table rebuild, so the ON DELETE CASCADE
+     * that checklist_items and note_label_cross_ref declare against `notes` never fires.
+     */
+    val MIGRATION_9_10 = object : RoomMigration(9, 10) {
+        override fun migrate(connection: SQLiteConnection) {
+            if (!connection.hasColumn("notes", "searchText")) {
+                connection.execSQL("ALTER TABLE notes ADD COLUMN searchText TEXT")
+            }
+        }
+    }
+
     val ALL = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -169,6 +189,7 @@ object DatabaseMigrations {
         MIGRATION_5_6,
         MIGRATION_6_7,
         MIGRATION_7_8,
-        MIGRATION_8_9
+        MIGRATION_8_9,
+        MIGRATION_9_10
     )
 }

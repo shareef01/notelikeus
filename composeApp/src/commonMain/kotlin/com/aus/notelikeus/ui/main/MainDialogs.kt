@@ -52,8 +52,6 @@ internal fun MainDialogs(
             // button, where it would be one mis-tap away.
             extraContent = {
                 Column {
-                    Text(stringResource(Res.string.cloud_sign_out_confirm_message))
-                    Spacer(modifier = Modifier.height(Spacing.md))
                     TextButton(
                         onClick = { onCloudSignOut(true) },
                         colors = ButtonDefaults.textButtonColors(
