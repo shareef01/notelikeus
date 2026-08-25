@@ -28,6 +28,8 @@ import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -132,18 +134,20 @@ fun EditorBottomSheet(
                     ListItem(
                         headlineContent = { Text(text = label.name) },
                         leadingContent = {
-                            Checkbox(
-                                checked = isChecked,
-                                onCheckedChange = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    onLabelToggle(label)
-                                }
-                            )
+                            // Null, so the checkbox is a picture of the state rather than a second
+                            // control. The row owns the interaction; a live checkbox inside a
+                            // clickable row is one action wearing two hit targets, and it left the
+                            // row announcing as a button with no checked state at all.
+                            Checkbox(checked = isChecked, onCheckedChange = null)
                         },
-                        modifier = Modifier.clickable {
-                            haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            onLabelToggle(label)
-                        },
+                        modifier = Modifier.toggleable(
+                            value = isChecked,
+                            role = Role.Checkbox,
+                            onValueChange = {
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                onLabelToggle(label)
+                            }
+                        ),
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)
                     )
                     if (index < allLabels.lastIndex) {
@@ -201,7 +205,7 @@ fun EditorBottomSheet(
                         modifier = Modifier.size(Size.iconLarge)
                     )
                 },
-                modifier = Modifier.clickable {
+                modifier = Modifier.clickable(role = Role.Button) {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     if (isChecklist) onConvertToText() else onConvertToChecklist()
                 },
@@ -217,13 +221,14 @@ fun EditorBottomSheet(
                 },
                 leadingContent = { 
                     Icon(
-                        Icons.Default.Delete, 
-                        contentDescription = stringResource(Res.string.action_delete),
+                        Icons.Default.Delete,
+                        // The row's own text says "Delete"; describing the icon too says it twice.
+                        contentDescription = null,
                         tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(Size.iconLarge)
                     ) 
                 },
-                modifier = Modifier.clickable {
+                modifier = Modifier.clickable(role = Role.Button) {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     showDeleteConfirm = true
                 },
