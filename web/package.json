@@ -30,7 +30,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.5",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.11.1",
     "oxlint": "^1.79.0",
