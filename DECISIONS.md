@@ -319,3 +319,40 @@ blocker is active, which is one more rule than "manual sort and no filters". The
 alternative — keep hiding the handle in both cases, no dialog at all — is what shipped before this
 commit. If the inconsistency reads worse in the hand than the silence did, reverting this is one
 commit.
+
+## D13 — Saved filters live in settings, not in the notes database.
+
+A saved filter is a name and a `NoteQuery`, stored as JSON under one preferences key.
+
+The alternative was a Room table, which is what "user data" normally earns. It was rejected on
+proportionality. A saved filter is a lens on the user's notes, not a note: losing one costs a few
+taps to rebuild, while a new table costs a schema migration on an encrypted database, a sync story
+against a Firebase document schema this project is not allowed to change, and a conflict-resolution
+question for a Windows client that would not know what a saved filter is. That is a large amount of
+risk to protect something cheap.
+
+Three consequences, all accepted deliberately:
+
+- **They do not sync.** Filters saved on the phone stay on the phone. Correct for what they are: a
+  saved filter references label ids, which are local, so syncing one would need id translation to
+  mean anything on another device.
+- **Reads never throw.** A blob that will not parse yields an empty list and a warning in the log.
+  This flow feeds the drawer, which is on screen from launch, so a throw here would be a settings
+  value taking down the notes list — to protect shortcuts that cost a few taps. `SerializationException`
+  and `IllegalArgumentException` are caught specifically rather than `Exception`, so a genuine bug
+  in this code still surfaces.
+- **Reads are tolerant of the future.** `ignoreUnknownKeys = true`, so a filter written by a later
+  build that added a query dimension still loads here minus the field this build does not know,
+  rather than the whole list being discarded because one entry had an extra key.
+
+`NoteQuery` and `DateRange` gained `@Serializable`, which is already the house pattern — `Note`,
+`Label`, `ChecklistItem` and `Attachment` all carry it.
+
+Saved filters store `narrowingOnly()` — the query without sort and view. Those are persisted
+preferences, so a shortcut that carried them would rewrite two settings the user did not touch
+every time it was tapped, and flip the list to two columns sorted oldest because that happened to
+be on screen when the filter was saved.
+
+`SavedFilterStorageTest` runs against a real file-backed DataStore rather than a fake, because the
+parts worth doubting — a truncated blob, an unknown field, whether a name really is the identity —
+are exactly the parts a fake would paper over.

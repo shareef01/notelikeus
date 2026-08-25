@@ -35,6 +35,7 @@ import com.aus.notelikeus.domain.model.DateRange
 import com.aus.notelikeus.domain.query.NoteQueryParser
 import com.aus.notelikeus.ui.theme.noteColorForKeyword
 import com.aus.notelikeus.domain.model.SmartView
+import com.aus.notelikeus.domain.model.SavedFilter
 
 private const val TAG = "MainViewModel"
 
@@ -85,6 +86,9 @@ class MainViewModel(
         loadLabels()
         loadTotalNoteCount()
         loadSmartViewCounts()
+        settingsRepository.savedFilters
+            .onEach { filters -> _state.update { it.copy(savedFilters = filters) } }
+            .launchIn(viewModelScope)
         loadDrawerCounts()
         loadRecentSearches()
 
@@ -284,6 +288,40 @@ class MainViewModel(
      * recomputes on exactly the same path -- there is no second way to change the query.
      */
     fun applySmartView(view: SmartView) = updateQuery { view.applyTo(it) }
+
+    /**
+     * Restores a saved query, search box included.
+     *
+     * Goes through [applyInputs] rather than [updateQuery] because a query has two inputs and this
+     * has to set both. [updateQuery] only writes the chip half, and the text half is re-derived
+     * from the search box on every rebuild -- so restoring a filter that was saved with text in it
+     * through that path would put the chips back and silently drop the words.
+     */
+    fun applySavedFilter(filter: SavedFilter) {
+        val current = _state.value.query
+        applyInputs(
+            // Sort and view are how the user likes to look at lists, not part of which list this
+            // is, so a shortcut restores the notes and leaves the preferences alone.
+            base = filter.query.copy(sort = current.sort, view = current.view),
+            searchInput = filter.query.text,
+            textChanged = false
+        )
+    }
+
+    /**
+     * Saves what is on screen under [name].
+     *
+     * Stores the combined query, not the chip half: what the user is looking at is what they are
+     * naming, and they have no reason to know that half of it came from the text box.
+     */
+    fun saveCurrentFilter(name: String) {
+        val query = _state.value.query.narrowingOnly()
+        viewModelScope.launch { settingsRepository.saveFilter(name, query) }
+    }
+
+    fun deleteSavedFilter(name: String) {
+        viewModelScope.launch { settingsRepository.deleteSavedFilter(name) }
+    }
 
     private fun loadTotalNoteCount() {
         repository.getActiveNoteCount()
