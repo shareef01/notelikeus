@@ -387,3 +387,26 @@ The derivation moved out of the composable into a pure function returning a list
 the notes, which makes it testable without a screen and also removes a small inefficiency: the old
 version formatted a date for the current note **and again for the note before it**, for every note,
 on every recomposition.
+
+## D15 — A note with no title gets no title line, not the word "Untitled".
+
+The card rendered `Untitled` in the title slot whenever a note had no title. That put a word the
+user did not write in the most prominent position on the card, and pushed their actual first line
+down a row to make space for it.
+
+The card's own accessibility description had already decided otherwise. It falls through
+title → first line of content → "Untitled", so a screen reader heard *"A note with no title at
+all"* while the eye read *"Untitled"*. The same note, described two ways, and the screen reader had
+the better of it.
+
+Now the title `Text` is simply not composed when the title is empty — the row stays, because it
+carries the timestamp and status icons — and the gap that separated title from body is dropped with
+it, since it would be space under nothing.
+
+`untitled` is still used, in the one place it is the honest answer: the accessibility description of
+a note with no title *and* no content.
+
+**Open for review.** This changes how every untitled note looks. The alternative — leave the
+placeholder — is one revert away, and the argument for it is that a card with no heading looks
+unfinished next to cards that have one. Verified on the emulator; it reads better in the hand than
+that argument suggests, because the note's own first line becomes the heading.
