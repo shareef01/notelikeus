@@ -35,6 +35,8 @@ fun AppFilterChip(
     enabled: Boolean = true,
     compact: Boolean = false,
     leadingIcon: (@Composable () -> Unit)? = null,
+    /** Used by the active-filter chips for their remove affordance. */
+    trailingIcon: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val borderColor = if (selected) {
@@ -50,6 +52,7 @@ fun AppFilterChip(
         onClick = onClick,
         enabled = enabled,
         leadingIcon = leadingIcon,
+        trailingIcon = trailingIcon,
         label = {
             Text(
                 text = label,
@@ -78,7 +81,7 @@ fun AppFilterChip(
             selectedLabelColor = MaterialTheme.colorScheme.primary,
             selectedLeadingIconColor = MaterialTheme.colorScheme.primary,
             disabledContainerColor = Color.Transparent,
-            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = Chrome.Disabled),
             disabledSelectedContainerColor = selectedContainer.copy(alpha = 0.45f)
         )
     )

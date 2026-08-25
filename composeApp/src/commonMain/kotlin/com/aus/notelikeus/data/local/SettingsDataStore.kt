@@ -16,6 +16,8 @@ val CLOUD_AUTO_SYNC_ENABLED_KEY = booleanPreferencesKey("cloud_auto_sync_enabled
 /** Set once the user chooses to use the app without an account, so the gate stops asking. */
 val CONTINUE_OFFLINE_KEY = booleanPreferencesKey("continue_offline")
 val RECENT_SEARCHES_KEY = stringPreferencesKey("recent_searches")
+/** Named queries the user kept, as a JSON array. See SavedFilter. */
+val SAVED_FILTERS_KEY = stringPreferencesKey("saved_filters")
 /** Accent hue, independent of base theme and black level. See ThemePreference. */
 val ACCENT_COLOR_KEY = stringPreferencesKey("accent_color")
 
