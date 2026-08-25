@@ -99,6 +99,22 @@ data class NoteQuery(
         get() = sort == NoteSortOrder.MANUAL && !hasActiveFilters
 
     /**
+     * What the list's order actually groups by.
+     *
+     * Headings can only describe an order that exists. Date headings over a manually ordered list
+     * name a grouping the list does not have -- edit a note from last week and its timestamp jumps
+     * to today while its position does not, so "Today" appears in the middle of the list, twice.
+     * The same is true mid-search, where the order is relevance and the dates are incidental.
+     */
+    val ordering: NoteOrdering
+        get() = when {
+            // Searching overrides the chosen sort with relevance; see NoteQueryMatcher.search.
+            text.isNotEmpty() -> NoteOrdering.RELEVANCE
+            sort == NoteSortOrder.MANUAL -> NoteOrdering.MANUAL
+            else -> NoteOrdering.DATE
+        }
+
+    /**
      * Whether one tap on the sort would make reordering possible.
      *
      * The difference between a blocker worth explaining and one worth hiding. An automatic sort is
