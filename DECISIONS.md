@@ -356,3 +356,57 @@ be on screen when the filter was saved.
 `SavedFilterStorageTest` runs against a real file-backed DataStore rather than a fake, because the
 parts worth doubting — a truncated blob, an unknown field, whether a name really is the identity —
 are exactly the parts a fake would paper over.
+
+## D14 — A heading may only describe an order the list actually has.
+
+Date section headings were emitted on every list, whatever the sort. That is right for one of the
+three orders and wrong for the other two.
+
+Under a **manual** order — which is the default — a note's date says nothing about where it sits.
+Edit a note from last week: its `timestamp` moves to today, its `position` does not, so it stays
+where it was and the list grows a "Today" heading in the middle while the real one still sits at
+the top. The heading names a grouping the list does not have.
+
+**Mid-search** the order is relevance, by design (`NoteQueryMatcher.search` overrides the chosen
+sort while there is text). Every date heading over a relevance-ordered list is equally arbitrary.
+
+`NoteQuery.ordering` names the three cases — `RELEVANCE`, `MANUAL`, `DATE` — and
+`noteSectionHeadings` maps each to what can honestly be said:
+
+| Order | Headings |
+|---|---|
+| Relevance | none |
+| Manual | Pinned / Others |
+| Date | Pinned, then one per day |
+
+"Others" only appears as the counterpart to "Pinned". Over a list with nothing pinned it would
+divide nothing from nothing, so it is omitted. The string (`section_other_notes`) already existed
+in the table and nothing rendered it — the split was intended once and never wired.
+
+The derivation moved out of the composable into a pure function returning a list index-aligned with
+the notes, which makes it testable without a screen and also removes a small inefficiency: the old
+version formatted a date for the current note **and again for the note before it**, for every note,
+on every recomposition.
+
+## D15 — A note with no title gets no title line, not the word "Untitled".
+
+The card rendered `Untitled` in the title slot whenever a note had no title. That put a word the
+user did not write in the most prominent position on the card, and pushed their actual first line
+down a row to make space for it.
+
+The card's own accessibility description had already decided otherwise. It falls through
+title → first line of content → "Untitled", so a screen reader heard *"A note with no title at
+all"* while the eye read *"Untitled"*. The same note, described two ways, and the screen reader had
+the better of it.
+
+Now the title `Text` is simply not composed when the title is empty — the row stays, because it
+carries the timestamp and status icons — and the gap that separated title from body is dropped with
+it, since it would be space under nothing.
+
+`untitled` is still used, in the one place it is the honest answer: the accessibility description of
+a note with no title *and* no content.
+
+**Open for review.** This changes how every untitled note looks. The alternative — leave the
+placeholder — is one revert away, and the argument for it is that a card with no heading looks
+unfinished next to cards that have one. Verified on the emulator; it reads better in the hand than
+that argument suggests, because the note's own first line becomes the heading.

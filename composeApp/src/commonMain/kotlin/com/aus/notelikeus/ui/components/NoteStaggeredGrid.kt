@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import com.aus.notelikeus.domain.model.NoteOrdering
 
 @Composable
 fun NoteStaggeredGrid(
@@ -54,6 +55,12 @@ fun NoteStaggeredGrid(
     listRevision: Int = 0,
     enableArchiveSwipe: Boolean = true,
     enableSwipe: Boolean = true,
+    /**
+     * What the list's order groups by, which decides what headings can honestly describe it.
+     *
+     * Defaults to RELEVANCE -- no headings -- because that is the answer that cannot be wrong.
+     */
+    ordering: NoteOrdering = NoteOrdering.RELEVANCE,
     allowReorder: Boolean = true,
     /**
      * Called when someone drags a handle that an automatic sort has disabled.
@@ -71,6 +78,7 @@ fun NoteStaggeredGrid(
 ) {
     val haptic = LocalHapticFeedback.current
     val pinnedSectionLabel = stringResource(Res.string.section_pinned)
+    val othersSectionLabel = stringResource(Res.string.section_other_notes)
     val todaySectionLabel = stringResource(Res.string.section_today)
     val yesterdaySectionLabel = stringResource(Res.string.section_yesterday)
     val reorderThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
@@ -87,12 +95,22 @@ fun NoteStaggeredGrid(
     val swipeEnabled = enableSwipe && selectedNotes.isEmpty()
     val itemSpacing = Spacing.lg
 
-    fun getDateHeader(timestamp: Long): String {
-        return when {
-            com.aus.notelikeus.util.DateUtils.isToday(timestamp) -> todaySectionLabel
-            com.aus.notelikeus.util.DateUtils.isToday(timestamp + com.aus.notelikeus.util.DateUtils.DAY_IN_MILLIS) -> yesterdaySectionLabel
-            else -> com.aus.notelikeus.util.DateUtils.formatDateTime(timestamp)
-        }
+    // Worked out once per list rather than twice per note: the version this replaced formatted a
+    // date for the current note and again for the one before it, on every recomposition.
+    val headings = remember(notes, ordering, pinnedSectionLabel) {
+        noteSectionHeadings(
+            notes = notes,
+            ordering = ordering,
+            labels = NoteSectionLabels(
+                pinned = pinnedSectionLabel,
+                others = othersSectionLabel,
+                today = todaySectionLabel,
+                yesterday = yesterdaySectionLabel
+            ),
+            isToday = DateUtils::isToday,
+            isYesterday = { DateUtils.isToday(it + DateUtils.DAY_IN_MILLIS) },
+            dateHeading = { DateUtils.formatDateTime(it) }
+        )
     }
 
     LazyVerticalStaggeredGrid(
@@ -104,27 +122,11 @@ fun NoteStaggeredGrid(
         verticalItemSpacing = itemSpacing
     ) {
         notes.forEachIndexed { index, note ->
-            val prevNote = if (index > 0) notes[index - 1] else null
-            
-            // 1. Pinned Header
-            if (note.isPinned && index == 0) {
-                item(key = "header-pinned", span = StaggeredGridItemSpan.FullLine) {
-                    NoteSectionHeader(title = pinnedSectionLabel)
+            headings.getOrNull(index)?.let { heading ->
+                item(key = "header-$index", span = StaggeredGridItemSpan.FullLine) {
+                    NoteSectionHeader(title = heading)
                 }
             }
-
-            // 2. Date Section Headers (for unpinned notes)
-            if (!note.isPinned) {
-                val currentHeader = getDateHeader(note.timestamp)
-                val prevHeader = prevNote?.let { if (it.isPinned) null else getDateHeader(it.timestamp) }
-
-                if (currentHeader != prevHeader) {
-                    item(key = "header-date-$index", span = StaggeredGridItemSpan.FullLine) {
-                        NoteSectionHeader(title = currentHeader)
-                    }
-                }
-            }
-
             item(
                 key = note.id ?: note.timestamp,
                 span = StaggeredGridItemSpan.SingleLane
