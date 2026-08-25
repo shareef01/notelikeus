@@ -308,7 +308,7 @@ transparent and carry `Role.Button`.
 
 Verified on the emulator, both states.
 
-## F16 — `ReminderDateTime.kt` is a fossil of a date/time picker that no longer exists
+## F16 — `ReminderDateTime.kt` is a fossil of a date/time picker that no longer exists — **RESOLVED**
 
 `combineDateAndTime` is a one-line pass-through to `DateUtils.combineDateAndTime` that no production
 code calls — only its own test does, which therefore tests the pass-through and nothing else.
@@ -316,9 +316,18 @@ code calls — only its own test does, which therefore tests the pass-through an
 The editor still names its flag `showDateTimePicker`, but what it opens is a three-preset list with
 no date or time picker in it. The helper is what is left of the picker that used to be there.
 
-Not deleted, because it is also the natural seed for a custom "Pick a date and time" option, which
-the reminder dialog arguably needs — three presets cannot express "Friday at 6". Either finish it or
-remove it and its test; leaving it as-is is the only wrong answer.
+**Resolved by removing it.** Building a custom picker is a new feature, and new features are last in
+this project's stated priority order — so of the two honest options, deletion is the one that was
+actually in scope.
+
+`DateUtils.combineDateAndTime` — the real implementation — stays. Only the pass-through and the flag
+name went. The test moved to `DateUtilsCombineTest` and now calls the real function, so it exercises
+the behaviour rather than the indirection; it also gained a midnight case, where an off-by-one-day
+bug would surface first. `showDateTimePicker` is now `showReminderDialog`, which is what it opens.
+
+**Still true, and still worth doing:** three presets cannot express "Friday at 6". If a custom
+date/time option is wanted, this is the note that says so — the arithmetic it needs is one call to
+`DateUtils.combineDateAndTime`, now covered by two tests.
 
 ## F17 — The editor's label list announced as buttons with no checked state — **FIXED**
 
