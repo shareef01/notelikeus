@@ -230,6 +230,8 @@
     <string name="cd_reorder">Reorder note</string>
     <string name="cd_add_list_item">Add list item</string>
     <string name="cd_remove_item">Remove item</string>
+    <string name="cd_remove_named_item">Remove %1$s</string>
+    <string name="cd_untitled_item">Empty item</string>
     <string name="cd_create_label">Create label</string>
     <string name="cd_pin_note">Pin note</string>
     <string name="notes_pinned">Notes pinned</string>
