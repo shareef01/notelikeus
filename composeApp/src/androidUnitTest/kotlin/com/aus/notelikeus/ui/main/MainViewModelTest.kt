@@ -32,6 +32,8 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.test.StandardTestDispatcher
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModelTest {
@@ -73,15 +75,95 @@ class MainViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun createViewModel(): MainViewModel {
+    /**
+     * @param backgroundDispatcher the one the query pass runs on. Unconfined by default, so tests
+     *   see finished state without advancing; pass a standard dispatcher to hold the pass open and
+     *   observe what the UI would see while it is still running.
+     */
+    private fun createViewModel(
+        backgroundDispatcher: CoroutineDispatcher = testDispatcher
+    ): MainViewModel {
         return MainViewModel(
             repository,
             settingsRepository,
             mockk<NoteBackupExporter>(relaxed = true),
             mockk<NoteBackupImporter>(relaxed = true),
             syncManager,
-            testDispatcher
+            backgroundDispatcher
         )
+    }
+
+    /**
+     * "Loading" has to mean "I do not yet know what to show", or the empty state gets shown over a
+     * library that is merely still being filtered.
+     *
+     * The flag used to clear the moment the DAO emitted, but the query runs off the main thread, so
+     * there was a window publishing isLoading = false with filteredNotes still empty. The list read
+     * that as an empty library and rendered "Notes you add appear here" on top of four notes, until
+     * the pass came back. Caught on the emulator, where the window was long enough to screenshot.
+     */
+    @Test
+    fun `loading does not end until the first query has actually run`() = runTest {
+        val notes = listOf(
+            Note(id = 1L, title = "Recipes", content = "", timestamp = 0L, color = 0),
+            Note(id = 2L, title = "Garden", content = "", timestamp = 0L, color = 0)
+        )
+        every { repository.getActiveNotes() } returns flowOf(notes)
+        // A standard dispatcher holds the query pass open, which is the only way to observe the
+        // state the UI actually rendered. The shared unconfined one finishes it before construction
+        // returns, so the window this test exists for would not exist.
+        viewModel = createViewModel(StandardTestDispatcher(testScheduler))
+
+        // The DAO has emitted, but nothing has filtered it yet. Claiming to be done here is what
+        // put the empty state on screen.
+        assertTrue(viewModel.state.value.filteredNotes.isEmpty())
+        assertTrue("loading ended before anything was filtered", viewModel.state.value.isLoading)
+
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(2, viewModel.state.value.filteredNotes.size)
+        assertFalse(viewModel.state.value.isLoading)
+    }
+
+    /**
+     * The root cause, and the harder half.
+     *
+     * Restoring the stored sort and view at startup pushes them through the same query funnel as a
+     * user tapping them, so passes run before the DAO has emitted anything. Those finish instantly
+     * against an empty list, and a rule of "loading ends when a query finishes" therefore ended it
+     * before there was anything to show — which is how the empty state came to sit on top of four
+     * notes for as long as opening an encrypted database takes.
+     */
+    @Test
+    fun `a query that runs before the notes arrive does not end loading`() = runTest {
+        val notes = MutableSharedFlow<List<Note>>(replay = 0)
+        every { repository.getActiveNotes() } returns notes
+        viewModel = createViewModel()
+        testScheduler.advanceUntilIdle()
+
+        // Settings have landed and run their passes; the DAO has emitted nothing.
+        viewModel.setSortOrder(NoteSortOrder.NEWEST)
+        viewModel.setViewMode(NoteViewMode.LIST)
+        testScheduler.advanceUntilIdle()
+
+        assertTrue("loading ended before any notes arrived", viewModel.state.value.isLoading)
+
+        notes.emit(listOf(Note(id = 1L, title = "Recipes", content = "", timestamp = 0L, color = 0)))
+        testScheduler.advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isLoading)
+        assertEquals(1, viewModel.state.value.filteredNotes.size)
+    }
+
+    /** A genuinely empty library still has to stop loading, or the spinner never goes away. */
+    @Test
+    fun `an empty library finishes loading`() = runTest {
+        every { repository.getActiveNotes() } returns flowOf(emptyList())
+        viewModel = createViewModel()
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.filteredNotes.isEmpty())
+        assertFalse("the spinner would never clear", viewModel.state.value.isLoading)
     }
 
     /**
