@@ -87,7 +87,30 @@ jobs:
           $release = "composeApp/build/compose/binaries/main/app/Notelikeus/runtime/release"
           if (-not (Test-Path $release)) { throw "No runtime image at $release" }
           $modules = (Get-Content $release | Select-String '^MODULES=').ToString()
-          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec') |
+          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec', 'java.management') |
             Where-Object { $modules -notmatch [regex]::Escape($_) }
           if ($missing) { throw "jlink runtime is missing: $($missing -join ', ')" }
           Write-Host "All required modules present."
+
+      # The list above only checks what someone remembered to add to it, which is how
+      # java.management went missing: AppConfig.isDebug started asking the RuntimeMXBean whether a
+      # JDWP agent is attached, and the packaged app died on its first Koin resolution -- before a
+      # window was ever shown -- while this job stayed green. Launching it checks every module at
+      # once, including the ones nobody has thought of yet.
+      - name: Launch the packaged app and confirm it survives startup
+        shell: pwsh
+        run: |
+          $exe = "composeApp/build/compose/binaries/main/app/Notelikeus/Notelikeus.exe"
+          if (-not (Test-Path $exe)) { throw "No packaged executable at $exe" }
+          $out = Join-Path $env:RUNNER_TEMP "desktop-stdout.log"
+          $err = Join-Path $env:RUNNER_TEMP "desktop-stderr.log"
+          $p = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          # Long enough for Koin, Room and the first frame; the failure it guards is immediate.
+          Start-Sleep -Seconds 30
+          if ($p.HasExited) {
+            Write-Host "--- stdout ---"; Get-Content $out -ErrorAction SilentlyContinue
+            Write-Host "--- stderr ---"; Get-Content $err -ErrorAction SilentlyContinue
+            throw "The packaged app exited with code $($p.ExitCode) instead of staying up."
+          }
+          Stop-Process -Id $p.Id -Force
+          Write-Host "Packaged app started and stayed up."
