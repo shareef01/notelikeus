@@ -476,22 +476,35 @@ fun NoteCard(
                     verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
-                    Text(
-                        text = buildHighlightedString(
-                            if (note.title.isNotEmpty()) note.title else untitledLabel,
-                            searchQuery,
-                            contentColor,
-                            highlightColor
-                        ),
-                        style = if (compact) {
-                            AppType.noteCardTitle.copy(fontSize = 15.sp, lineHeight = 20.sp)
-                        } else {
-                            AppType.noteCardTitle
-                        },
-                        maxLines = if (compact) 2 else 3,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                    // A note with no title gets no title line, rather than the word "Untitled"
+                    // in the most prominent position on the card. The placeholder took the line
+                    // the user's own words should lead with and pushed the content down to say
+                    // nothing -- and the card's accessibility description had already decided
+                    // otherwise, falling through to the first line of content. The eye and the
+                    // screen reader were describing the same note two different ways, and the
+                    // screen reader had the better of it.
+                    //
+                    // The row itself stays: it carries the timestamp and status icons.
+                    if (note.title.isNotEmpty()) {
+                        Text(
+                            text = buildHighlightedString(
+                                note.title,
+                                searchQuery,
+                                contentColor,
+                                highlightColor
+                            ),
+                            style = if (compact) {
+                                AppType.noteCardTitle.copy(fontSize = 15.sp, lineHeight = 20.sp)
+                            } else {
+                                AppType.noteCardTitle
+                            },
+                            maxLines = if (compact) 2 else 3,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                     NoteCardStatusColumn(
                         note = note,
                         isSelected = isSelected,
@@ -504,7 +517,11 @@ fun NoteCard(
                     )
                 }
                 if (note.content.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(if (compact) Spacing.sm else Spacing.md))
+                    // Only a real title needs separating from the body. With none, the gap would
+                    // be space under nothing.
+                    if (note.title.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(if (compact) Spacing.sm else Spacing.md))
+                    }
                     Text(
                         text = RichTextParser.parse(
                             text = note.content,
