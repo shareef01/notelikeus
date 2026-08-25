@@ -25,13 +25,27 @@ import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.milliseconds
 import com.aus.notelikeus.domain.model.AccentColor
 import com.aus.notelikeus.domain.model.ThemeBase
+import com.aus.notelikeus.domain.model.NoteQuery
+import com.aus.notelikeus.domain.model.NoteScope
+import com.aus.notelikeus.domain.query.NoteQueryMatcher
+import com.aus.notelikeus.ui.theme.noteColorCounterpart
+import com.aus.notelikeus.util.DateUtils
+import kotlinx.coroutines.delay
+import com.aus.notelikeus.domain.model.DateRange
+import com.aus.notelikeus.domain.query.NoteQueryParser
+import com.aus.notelikeus.ui.theme.noteColorForKeyword
+import com.aus.notelikeus.domain.model.SmartView
+import com.aus.notelikeus.domain.model.SavedFilter
 
 private const val TAG = "MainViewModel"
+
+/** Long enough that typing a word recomputes once, short enough to feel immediate. */
+private const val SEARCH_DEBOUNCE_MS = 250L
 
 /**
  * Coordinates the main screen's state. The three concerns that used to bloat this class each
  * live in their own file now: cloud account/sync in [CloudSyncController], selection actions and
- * undo in [NoteActionsController], and list filtering in [filterAndSortNotes]. The public API is
+ * undo in [NoteActionsController], and list filtering in [NoteQueryMatcher]. The public API is
  * unchanged — the UI keeps calling the ViewModel.
  */
 class MainViewModel(
@@ -62,16 +76,20 @@ class MainViewModel(
     )
 
     private var currentNotesJob: Job? = null
+    private var searchDebounceJob: Job? = null
     private val pendingHiddenIds = mutableSetOf<Long>()
     private var filterGeneration = 0
 
     init {
-        setFilter(NoteFilter.ACTIVE)
+        observeScope(_state.value.query.scope)
         loadSettings()
         loadLabels()
         loadTotalNoteCount()
+        loadSmartViewCounts()
+        settingsRepository.savedFilters
+            .onEach { filters -> _state.update { it.copy(savedFilters = filters) } }
+            .launchIn(viewModelScope)
         loadDrawerCounts()
-        setupSearchOptimization()
         loadRecentSearches()
 
         cloudSync.observe()
@@ -135,17 +153,14 @@ class MainViewModel(
             }
             .launchIn(viewModelScope)
 
+        // A stored default lands on the query like any other change, so restoring a
+        // preference and choosing one take the same path.
         settingsRepository.noteViewMode
-            .onEach { mode ->
-                _state.update { it.copy(viewMode = mode) }
-            }
+            .onEach { mode -> updateQuery { it.copy(view = mode) } }
             .launchIn(viewModelScope)
 
         settingsRepository.noteSortOrder
-            .onEach { order ->
-                _state.update { it.copy(sortOrder = order) }
-                applyFilters()
-            }
+            .onEach { order -> updateQuery { it.copy(sort = order) } }
             .launchIn(viewModelScope)
 
         settingsRepository.isCloudAutoSyncEnabled
@@ -155,20 +170,9 @@ class MainViewModel(
             .launchIn(viewModelScope)
     }
 
-    fun setViewMode(mode: NoteViewMode) {
-        _state.update { it.copy(viewMode = mode) }
-        viewModelScope.launch {
-            settingsRepository.setNoteViewMode(mode)
-        }
-    }
+    fun setViewMode(mode: NoteViewMode) = updateQuery { it.copy(view = mode) }
 
-    fun setSortOrder(order: NoteSortOrder) {
-        _state.update { it.copy(sortOrder = order) }
-        viewModelScope.launch {
-            settingsRepository.setNoteSortOrder(order)
-        }
-        applyFilters()
-    }
+    fun setSortOrder(order: NoteSortOrder) = updateQuery { it.copy(sort = order) }
 
     /** AMOLED is a black level for the dark schemes, independent of base theme and accent. */
     fun setAmoled(enabled: Boolean) {
@@ -223,9 +227,7 @@ class MainViewModel(
         }
     }
 
-    fun onSearchQueryChange(query: String) {
-        _state.update { it.copy(searchQuery = query) }
-    }
+    fun onSearchQueryChange(query: String) = onSearchInputChange(query)
 
     // ---- labels & counts ----
 
@@ -253,6 +255,74 @@ class MainViewModel(
             .launchIn(viewModelScope)
     }
 
+    /**
+     * Keeps the drawer's smart-view counts current.
+     *
+     * A separate subscription rather than a fold into [recompute], because the counts describe
+     * active notes and the recompute describes whatever scope is on screen. Sharing one pass would
+     * mean the counts silently became counts of the trash the moment someone opened the trash.
+     *
+     * Follows the shape [loadDrawerCounts] already uses: collect the list, reduce it to numbers.
+     * The reduction runs off the main thread because it is three matcher passes over every active
+     * note, on every write.
+     */
+    private fun loadSmartViewCounts() {
+        repository.getActiveNotes()
+            .onEach { notes ->
+                val now = DateUtils.currentTimeMillis()
+                val counts = withContext(defaultDispatcher) {
+                    SmartView.entries.associateWith { view ->
+                        val query = view.applyTo(NoteQuery())
+                        notes.count { NoteQueryMatcher.matches(it, query, now, emptyList()) }
+                    }
+                }
+                _state.update { it.copy(smartViewCounts = counts) }
+            }
+            .launchIn(viewModelScope)
+    }
+
+    /**
+     * Navigates to a smart view, replacing whatever was filtering rather than adding to it.
+     *
+     * Goes through [updateQuery] like every other filter change, so it debounces, persists and
+     * recomputes on exactly the same path -- there is no second way to change the query.
+     */
+    fun applySmartView(view: SmartView) = updateQuery { view.applyTo(it) }
+
+    /**
+     * Restores a saved query, search box included.
+     *
+     * Goes through [applyInputs] rather than [updateQuery] because a query has two inputs and this
+     * has to set both. [updateQuery] only writes the chip half, and the text half is re-derived
+     * from the search box on every rebuild -- so restoring a filter that was saved with text in it
+     * through that path would put the chips back and silently drop the words.
+     */
+    fun applySavedFilter(filter: SavedFilter) {
+        val current = _state.value.query
+        applyInputs(
+            // Sort and view are how the user likes to look at lists, not part of which list this
+            // is, so a shortcut restores the notes and leaves the preferences alone.
+            base = filter.query.copy(sort = current.sort, view = current.view),
+            searchInput = filter.query.text,
+            textChanged = false
+        )
+    }
+
+    /**
+     * Saves what is on screen under [name].
+     *
+     * Stores the combined query, not the chip half: what the user is looking at is what they are
+     * naming, and they have no reason to know that half of it came from the text box.
+     */
+    fun saveCurrentFilter(name: String) {
+        val query = _state.value.query.narrowingOnly()
+        viewModelScope.launch { settingsRepository.saveFilter(name, query) }
+    }
+
+    fun deleteSavedFilter(name: String) {
+        viewModelScope.launch { settingsRepository.deleteSavedFilter(name) }
+    }
+
     private fun loadTotalNoteCount() {
         repository.getActiveNoteCount()
             .onEach { count ->
@@ -263,47 +333,160 @@ class MainViewModel(
 
     // ---- list filtering ----
 
-    @OptIn(FlowPreview::class)
-    private fun setupSearchOptimization() {
-        _state
-            .map { it.searchQuery }
-            .distinctUntilChanged()
-            .debounce(300.milliseconds)
-            .onEach { applyFilters() }
-            .launchIn(viewModelScope)
-
-        _state
-            .map { Triple(it.selectedColor, it.selectedLabelId, it.notes) }
-            .distinctUntilChanged()
-            .onEach { applyFilters() }
-            .launchIn(viewModelScope)
-
-        _state
-            .map { it.sortOrder }
-            .distinctUntilChanged()
-            .onEach { applyFilters() }
-            .launchIn(viewModelScope)
+    /**
+     * The one way the query changes, and therefore the one thing that triggers a recompute.
+     *
+     * There used to be six: three `_state.map { }.distinctUntilChanged()` subscriptions plus three
+     * direct calls, each able to fire the recompute independently. Adding a filter dimension meant
+     * adding a seventh, and two of them firing for one user action meant recomputing twice.
+     *
+     * Text is debounced; everything else is immediate. A colour tap should land on the frame it
+     * happens, and a keystroke should not recompute five times while a word is being typed.
+     */
+    fun updateQuery(transform: (NoteQuery) -> NoteQuery) {
+        val previous = _state.value.baseQuery
+        val next = transform(previous)
+        if (next == previous) return
+        persistQuerySettings(previous, next)
+        applyInputs(base = next, searchInput = _state.value.searchInput, textChanged = false)
     }
 
-    private fun applyFilters() {
-        val generation = ++filterGeneration
-        val snapshot = _state.value
-        val hiddenIds = pendingHiddenIds.toSet()
-        viewModelScope.launch {
-            val sorted = withContext(defaultDispatcher) { filterAndSortNotes(snapshot, hiddenIds) }
-            if (generation != filterGeneration) return@launch
-            _state.update { it.copy(filteredNotes = sorted) }
+    /**
+     * Records what the user typed, then re-derives the query from it.
+     *
+     * The box holds operators as well as free text, so this is where `label:work` stops being
+     * characters and becomes a filter.
+     */
+    fun onSearchInputChange(raw: String) {
+        if (raw == _state.value.searchInput) return
+        applyInputs(base = _state.value.baseQuery, searchInput = raw, textChanged = true)
+    }
+
+    /**
+     * Recombines the two inputs into the query that runs, in a single state emission.
+     *
+     * One emission per user action on purpose: writing the raw text and then the derived query
+     * separately would publish an intermediate state where the box and the results disagree, and
+     * would recompose the list twice for one keystroke.
+     *
+     * Both inputs are re-read every time rather than accumulated, so deleting `label:work` from
+     * the text removes exactly that filter and leaves the chips alone. A merge-in-place could not
+     * do that: it would have no way to tell which of the current filters came from text that is
+     * no longer there.
+     */
+    private fun applyInputs(base: NoteQuery, searchInput: String, textChanged: Boolean) {
+        val state = _state.value
+        val parsed = NoteQueryParser.parse(searchInput, ::startOfDayOffset)
+
+        val operatorLabels = parsed.labelNames.mapNotNull { name ->
+            state.allLabels.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id
+        }
+        // Colours resolve on the active palette and expand to their counterpart, so `color:green`
+        // finds a note coloured green under either theme.
+        val operatorColors = parsed.colorNames
+            .mapNotNull { noteColorForKeyword(it, isDarkPalette()) }
+            .flatMap { argb -> listOfNotNull(argb, noteColorCounterpart(argb)?.takeIf { it != argb }) }
+
+        val next = base.copy(
+            text = parsed.text,
+            labels = base.labels + operatorLabels,
+            colors = base.colors + operatorColors,
+            flags = base.flags + parsed.flags,
+            scope = parsed.scope ?: base.scope,
+            dateField = parsed.dateField ?: base.dateField,
+            dateRange = dateRangeOf(parsed.after, parsed.before) ?: base.dateRange
+        )
+
+        val scopeChanged = next.scope != state.query.scope
+        _state.update {
+            it.copy(
+                searchInput = searchInput,
+                baseQuery = base,
+                query = next,
+                unknownOperators = parsed.unknown
+            )
+        }
+        when {
+            scopeChanged -> observeScope(next.scope)
+            textChanged -> scheduleTextRecompute()
+            else -> recompute()
         }
     }
 
-    fun setFilter(filter: NoteFilter) {
-        currentNotesJob?.cancel()
-        _state.update { it.copy(currentFilter = filter, selectedNotes = emptySet()) }
+    private fun dateRangeOf(after: Long?, before: Long?): DateRange? = when {
+        after == null && before == null -> null
+        // An open end is a bound far enough out to be unreachable rather than a nullable field on
+        // DateRange, which would double every comparison in the matcher.
+        else -> DateRange(after ?: Long.MIN_VALUE, before ?: Long.MAX_VALUE)
+    }
 
-        val notesFlow = when (filter) {
-            NoteFilter.ACTIVE -> repository.getActiveNotes()
-            NoteFilter.ARCHIVED -> repository.getArchivedNotes()
-            NoteFilter.TRASHED -> repository.getTrashedNotes()
+    /** Epoch millis at the start of the local day [offset] days from today. */
+    private fun startOfDayOffset(offset: Int): Long =
+        DateUtils.startOfDay(DateUtils.currentTimeMillis() + offset * DateUtils.DAY_IN_MILLIS)
+
+    /**
+     * Which half of the palette is on screen, for resolving `color:` keywords.
+     *
+     * Read from the resolved theme rather than from a composable, because the ViewModel has to
+     * answer this without one.
+     */
+    private fun isDarkPalette(): Boolean =
+        _state.value.themePreference.base != ThemeBase.LIGHT
+
+    /** `sort` and `view` are durable preferences; nothing else in the query is. */
+    private fun persistQuerySettings(previous: NoteQuery, next: NoteQuery) {
+        if (next.sort != previous.sort) {
+            viewModelScope.launch { settingsRepository.setNoteSortOrder(next.sort) }
+        }
+        if (next.view != previous.view) {
+            viewModelScope.launch { settingsRepository.setNoteViewMode(next.view) }
+        }
+    }
+
+    private fun scheduleTextRecompute() {
+        searchDebounceJob?.cancel()
+        searchDebounceJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            recompute()
+        }
+    }
+
+    /**
+     * Re-runs the query over the notes currently loaded for the scope.
+     *
+     * [filterGeneration] discards a result whose query has already been superseded, so a slow pass
+     * cannot overwrite a newer one -- the recompute runs off the main thread, and typing produces
+     * overlapping passes by design.
+     */
+    private fun recompute() {
+        val generation = ++filterGeneration
+        val snapshot = _state.value
+        val hiddenIds = pendingHiddenIds.toSet()
+        val now = DateUtils.currentTimeMillis()
+        viewModelScope.launch {
+            val result = withContext(defaultDispatcher) {
+                val candidates = snapshot.notes.filter { it.id == null || it.id !in hiddenIds }
+                NoteQueryMatcher.search(candidates, snapshot.query, now)
+            }
+            if (generation != filterGeneration) return@launch
+            _state.update { it.copy(filteredNotes = result.notes, isFuzzyResult = result.isFuzzy) }
+        }
+    }
+
+    /**
+     * Subscribes to the notes for a scope.
+     *
+     * Scope decides which DAO Flow is collected, so it is the one query dimension that cannot be
+     * applied in memory over an already-loaded list -- changing it means resubscribing.
+     */
+    private fun observeScope(scope: NoteScope) {
+        currentNotesJob?.cancel()
+        _state.update { it.copy(selectedNotes = emptySet()) }
+
+        val notesFlow = when (scope) {
+            NoteScope.ACTIVE, NoteScope.ALL -> repository.getActiveNotes()
+            NoteScope.ARCHIVE -> repository.getArchivedNotes()
+            NoteScope.TRASH -> repository.getTrashedNotes()
         }
 
         currentNotesJob = notesFlow
@@ -311,41 +494,52 @@ class MainViewModel(
                 val emittedIds = notes.mapNotNull { it.id }.toSet()
                 pendingHiddenIds.removeIf { it !in emittedIds }
                 _state.update { it.copy(notes = notes, isLoading = false) }
-                applyFilters()
+                recompute()
             }
             .launchIn(viewModelScope)
     }
 
+    fun setFilter(filter: NoteFilter) = updateQuery { it.copy(scope = filter.toScope()) }
+
     private fun hideNotesTemporarily(noteIds: Collection<Long>) {
         pendingHiddenIds.addAll(noteIds)
-        applyFilters()
+        recompute()
     }
 
     private fun revealNotes(noteIds: Collection<Long>) {
         if (noteIds.isEmpty()) return
         pendingHiddenIds.removeAll(noteIds.toSet())
         _state.update { it.copy(listRevision = it.listRevision + 1) }
-        applyFilters()
+        recompute()
     }
 
-    fun selectColorFilter(color: Int?) {
-        _state.update { it.copy(selectedColor = color) }
-    }
-
-    fun selectLabelFilter(labelId: Long?) {
-        _state.update { it.copy(selectedLabelId = labelId) }
-    }
-
-    fun clearFilters() {
-        _state.update {
-            it.copy(
-                selectedColor = null,
-                selectedLabelId = null,
-                searchQuery = ""
-            )
+    /**
+     * Selects a colour, expanded to its counterpart in the other theme.
+     *
+     * A note stores whichever palette variant was on screen when it was coloured, so filtering on
+     * one variant alone would hide the same colour saved under the other theme. The chosen value
+     * is inserted first, so `MainState.selectedColor` reports what the user actually picked.
+     */
+    fun selectColorFilter(color: Int?) = updateQuery { query ->
+        val colors = when (color) {
+            null -> emptySet()
+            else -> setOfNotNull(color, noteColorCounterpart(color)?.takeIf { it != color })
         }
-        applyFilters()
+        query.copy(colors = colors)
     }
+
+    fun selectLabelFilter(labelId: Long?) = updateQuery { query ->
+        query.copy(labels = setOfNotNull(labelId))
+    }
+
+    /**
+     * Clears the chips *and* the search box.
+     *
+     * Leaving the text would re-apply its operators on the next rebuild, so "Clear filters" would
+     * visibly do nothing for anyone filtering by typing.
+     */
+    fun clearFilters() =
+        applyInputs(base = _state.value.baseQuery.cleared(), searchInput = "", textChanged = false)
 
     // ---- selection & note actions (NoteActionsController) ----
 
@@ -396,7 +590,7 @@ class MainViewModel(
         val item = fullNotes.removeAt(fromFull)
         fullNotes.add(toFull, item)
         _state.update { it.copy(notes = fullNotes) }
-        applyFilters()
+        recompute()
     }
 
     fun commitNoteOrder() {

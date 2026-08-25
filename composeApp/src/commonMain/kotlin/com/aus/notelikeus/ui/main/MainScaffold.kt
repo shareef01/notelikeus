@@ -58,6 +58,12 @@ import org.jetbrains.compose.resources.stringResource
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Elevation
 import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.main.components.SearchNoticeRow
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import com.aus.notelikeus.domain.model.NoteSortOrder
+import com.aus.notelikeus.ui.components.ConfirmDialog
 
 /**
  * The notes list itself: top bar, FAB, empty states, trash banner and the staggered grid.
@@ -81,6 +87,7 @@ internal fun MainScaffold(
     showProfileSheet: Boolean,
     onShowProfileSheet: (Boolean) -> Unit,
     onShowDeleteConfirm: (Boolean) -> Unit,
+    onShowFiltersSheet: (Boolean) -> Unit,
     onShowEmptyTrashConfirm: (Boolean) -> Unit,
     onShowDrawer: () -> Unit,
     listScrolled: Boolean,
@@ -103,8 +110,24 @@ internal fun MainScaffold(
     val allFilteredSelected = remember(visibleNoteIds, state.selectedNotes) {
         visibleNoteIds.isNotEmpty() && visibleNoteIds.all { it in state.selectedNotes }
     }
-    val allowReorder = remember(state.searchQuery, state.selectedColor, state.selectedLabelId) {
-        state.searchQuery.isEmpty() && state.selectedColor == null && state.selectedLabelId == null
+    val allowReorder = remember(state.query) { state.query.allowsManualReorder }
+    val reorderBlockedBySort = remember(state.query) {
+        state.query.switchingSortWouldAllowReorder
+    }
+    var showReorderPrompt by remember { mutableStateOf(false) }
+
+    if (showReorderPrompt) {
+        ConfirmDialog(
+            title = stringResource(Res.string.reorder_switch_title),
+            message = stringResource(Res.string.reorder_switch_message),
+            confirmLabel = stringResource(Res.string.reorder_switch_action),
+            onConfirm = {
+                showReorderPrompt = false
+                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                viewModel.setSortOrder(NoteSortOrder.MANUAL)
+            },
+            onDismiss = { showReorderPrompt = false }
+        )
     }
 
     Scaffold(
@@ -165,12 +188,10 @@ internal fun MainScaffold(
                     onShowProfileSheet(true)
                 },
                 accountEmail = state.cloudAccount.email,
-                selectedColor = state.selectedColor,
-                onColorSelect = viewModel::selectColorFilter,
+                query = state.query,
+                onQueryChange = viewModel::updateQuery,
+                onOpenFilters = { onShowFiltersSheet(true) },
                 allLabels = state.allLabels,
-                selectedLabelId = state.selectedLabelId,
-                onLabelSelect = viewModel::selectLabelFilter,
-                sortOrder = state.sortOrder,
                 onSortOrderCycle = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     val next = state.sortOrder.next()
@@ -190,7 +211,6 @@ internal fun MainScaffold(
                     viewModel.addRecentSearch(it)
                 },
                 onClearRecentSearches = viewModel::clearRecentSearches,
-                hasActiveFilters = state.selectedColor != null || state.selectedLabelId != null,
                 onClearFilters = viewModel::clearFilters,
                 listScrolled = listScrolled,
                 searchFocusRequester = searchFocusRequester,
@@ -234,15 +254,19 @@ internal fun MainScaffold(
                 CircularProgressIndicator()
             }
         } else if (filteredNotes.isEmpty()) {
-            val hasActiveFilters = state.selectedColor != null || state.selectedLabelId != null
+            val hasActiveFilters = state.query.hasActiveFilters
             val message: String
             val subtitle: String?
             val showCreate: Boolean
             val showClear: Boolean
             val emptyIcon: ImageVector?
             when {
-                state.searchQuery.isNotEmpty() -> {
-                    message = stringResource(Res.string.no_matching_notes)
+                // Named rather than generic: "No results for \"recipies\"" tells the user their
+                // typo was searched for verbatim, which "No matching notes" hides. Keyed on the
+                // parsed text, not the raw box -- a pure-operator query like `label:work` has no
+                // term to quote and belongs in the filter branch below.
+                state.query.text.isNotEmpty() -> {
+                    message = stringResource(Res.string.search_no_results, state.query.text)
                     subtitle = stringResource(Res.string.empty_search_subtitle)
                     showCreate = false
                     showClear = true
@@ -278,35 +302,51 @@ internal fun MainScaffold(
                     emptyIcon = null
                 }
             }
-            NotesEmptyState(
-                message = message,
-                subtitle = subtitle,
-                icon = emptyIcon,
-                showCreateButton = showCreate,
-                showClearFilters = showClear,
-                recentSearches = state.recentSearches,
-                onRecentSearchClick = {
-                    viewModel.onSearchQueryChange(it)
-                    viewModel.addRecentSearch(it)
-                },
-                onCreateClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onNoteClick(null)
-                },
-                onClearFilters = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    viewModel.clearFilters()
-                },
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-            )
+            ) {
+                SearchNoticeRow(
+                    searchText = state.query.text,
+                    isFuzzyResult = state.isFuzzyResult,
+                    unknownOperators = state.unknownOperators
+                )
+                NotesEmptyState(
+                    message = message,
+                    subtitle = subtitle,
+                    icon = emptyIcon,
+                    showCreateButton = showCreate,
+                    showClearFilters = showClear,
+                    recentSearches = state.recentSearches,
+                    onRecentSearchClick = {
+                        viewModel.onSearchQueryChange(it)
+                        viewModel.addRecentSearch(it)
+                    },
+                    onCreateClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onNoteClick(null)
+                    },
+                    onClearFilters = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        viewModel.clearFilters()
+                    },
+                    // weight, not fillMaxSize: the notice above it is a sibling in this Column, and
+                    // a child asking for the full height would push itself past the bottom.
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
+            }
         } else {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
+                SearchNoticeRow(
+                    searchText = state.query.text,
+                    isFuzzyResult = state.isFuzzyResult,
+                    unknownOperators = state.unknownOperators
+                )
                 if (state.currentFilter == NoteFilter.TRASHED && state.selectedNotes.isEmpty()) {
                     TrashBanner(
                         onEmptyTrash = {
@@ -340,6 +380,11 @@ internal fun MainScaffold(
                         enableArchiveSwipe = state.currentFilter == NoteFilter.ACTIVE,
                         enableSwipe = state.selectedNotes.isEmpty(),
                         allowReorder = allowReorder,
+                        onReorderBlocked = if (reorderBlockedBySort) {
+                            { showReorderPrompt = true }
+                        } else {
+                            null
+                        },
                         onNoteClick = { note ->
                             if (state.selectedNotes.isNotEmpty()) {
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
