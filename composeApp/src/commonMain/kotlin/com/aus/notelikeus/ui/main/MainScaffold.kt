@@ -58,6 +58,7 @@ import org.jetbrains.compose.resources.stringResource
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Elevation
 import com.aus.notelikeus.ui.theme.Size
+import com.aus.notelikeus.ui.main.components.SearchNoticeRow
 
 /**
  * The notes list itself: top bar, FAB, empty states, trash banner and the staggered grid.
@@ -237,8 +238,12 @@ internal fun MainScaffold(
             val showClear: Boolean
             val emptyIcon: ImageVector?
             when {
-                state.searchQuery.isNotEmpty() -> {
-                    message = stringResource(Res.string.no_matching_notes)
+                // Named rather than generic: "No results for \"recipies\"" tells the user their
+                // typo was searched for verbatim, which "No matching notes" hides. Keyed on the
+                // parsed text, not the raw box -- a pure-operator query like `label:work` has no
+                // term to quote and belongs in the filter branch below.
+                state.query.text.isNotEmpty() -> {
+                    message = stringResource(Res.string.search_no_results, state.query.text)
                     subtitle = stringResource(Res.string.empty_search_subtitle)
                     showCreate = false
                     showClear = true
@@ -274,35 +279,51 @@ internal fun MainScaffold(
                     emptyIcon = null
                 }
             }
-            NotesEmptyState(
-                message = message,
-                subtitle = subtitle,
-                icon = emptyIcon,
-                showCreateButton = showCreate,
-                showClearFilters = showClear,
-                recentSearches = state.recentSearches,
-                onRecentSearchClick = {
-                    viewModel.onSearchQueryChange(it)
-                    viewModel.addRecentSearch(it)
-                },
-                onCreateClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onNoteClick(null)
-                },
-                onClearFilters = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    viewModel.clearFilters()
-                },
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-            )
+            ) {
+                SearchNoticeRow(
+                    searchText = state.query.text,
+                    isFuzzyResult = state.isFuzzyResult,
+                    unknownOperators = state.unknownOperators
+                )
+                NotesEmptyState(
+                    message = message,
+                    subtitle = subtitle,
+                    icon = emptyIcon,
+                    showCreateButton = showCreate,
+                    showClearFilters = showClear,
+                    recentSearches = state.recentSearches,
+                    onRecentSearchClick = {
+                        viewModel.onSearchQueryChange(it)
+                        viewModel.addRecentSearch(it)
+                    },
+                    onCreateClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onNoteClick(null)
+                    },
+                    onClearFilters = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        viewModel.clearFilters()
+                    },
+                    // weight, not fillMaxSize: the notice above it is a sibling in this Column, and
+                    // a child asking for the full height would push itself past the bottom.
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
+            }
         } else {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
+                SearchNoticeRow(
+                    searchText = state.query.text,
+                    isFuzzyResult = state.isFuzzyResult,
+                    unknownOperators = state.unknownOperators
+                )
                 if (state.currentFilter == NoteFilter.TRASHED && state.selectedNotes.isEmpty()) {
                     TrashBanner(
                         onEmptyTrash = {
