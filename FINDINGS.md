@@ -287,3 +287,35 @@ Bullets were already correct: `prefixLinesWithBullet` acts on the line the curso
 or not. A test now pins that so it stays true.
 
 Verified on the emulator: Bold with the caret mid-word inserts the markers where the caret is.
+
+## F15 — The reminder dialog ignored its own input and its OK button cancelled — **FIXED**
+
+Three defects in one 30-line composable, all of the same family: the UI said something that was not
+so.
+
+1. **`initialTimestamp` was never read.** The caller computed it carefully —
+   `state.reminderTimestamp ?: (now + 1h)` — and the dialog threw it away. A parameter that
+   compiles, looks implemented, and does nothing.
+2. **The confirm button called `onDismiss`.** So "OK" and "Cancel" were the same button with
+   opposite labels, and tapping OK after choosing nothing looked like it had set something.
+3. **The preset rows rendered on `colorScheme.surface`** inside an `AlertDialog` painted
+   `surfaceContainerHigh` — a white slab dropped into a grey card.
+
+**Fixed**: the dialog now says *"Currently set for Aug 25, 2026, 3:45 PM"* when there is a reminder
+to remove, which is exactly when `initialTimestamp` is real. The fake OK is gone — choosing a preset
+*is* the confirmation — leaving Cancel and, when applicable, Remove in error red. The rows are
+transparent and carry `Role.Button`.
+
+Verified on the emulator, both states.
+
+## F16 — `ReminderDateTime.kt` is a fossil of a date/time picker that no longer exists
+
+`combineDateAndTime` is a one-line pass-through to `DateUtils.combineDateAndTime` that no production
+code calls — only its own test does, which therefore tests the pass-through and nothing else.
+
+The editor still names its flag `showDateTimePicker`, but what it opens is a three-preset list with
+no date or time picker in it. The helper is what is left of the picker that used to be there.
+
+Not deleted, because it is also the natural seed for a custom "Pick a date and time" option, which
+the reminder dialog arguably needs — three presets cannot express "Friday at 6". Either finish it or
+remove it and its test; leaving it as-is is the only wrong answer.
