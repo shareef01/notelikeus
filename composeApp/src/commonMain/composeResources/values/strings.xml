@@ -96,6 +96,7 @@
     <string name="reminder_permission_denied">Enable notifications to receive reminders</string>
     <string name="reminder_set_confirmation_approximate">Reminder set — may arrive a few minutes late</string>
     <string name="reminder_set_confirmation">Reminder set</string>
+    <string name="reminder_currently_set">Currently set for %1$s</string>
     <string name="reminder_removed_confirmation">Reminder removed</string>
     <string name="notification_permission_title">Notifications</string>
     <string name="note_not_found">This note no longer exists</string>
