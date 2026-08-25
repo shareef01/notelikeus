@@ -49,6 +49,9 @@ import androidx.compose.material.icons.automirrored.filled.LabelOff
 import androidx.compose.material.icons.automirrored.outlined.LabelOff
 import androidx.compose.ui.graphics.vector.ImageVector
 import org.jetbrains.compose.resources.StringResource
+import com.aus.notelikeus.domain.model.SavedFilter
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.outlined.BookmarkBorder
 
 /**
  * The side drawer / navigation rail content, shared between the modal drawer (compact) and the
@@ -65,6 +68,7 @@ internal fun MainDrawerContent(
     settingsSelected: Boolean,
     onFilterSelect: (NoteFilter) -> Unit,
     onSmartViewSelect: (SmartView) -> Unit,
+    onSavedFilterSelect: (SavedFilter) -> Unit,
     onEditLabels: () -> Unit,
     onOpenSettings: () -> Unit,
     onCloudSignOut: () -> Unit,
@@ -177,6 +181,26 @@ internal fun MainDrawerContent(
                     collapsed = collapsed,
                     onClick = { onSmartViewSelect(view) }
                 )
+            }
+
+            // Only when there are any. An empty "Saved" heading would advertise a feature by
+            // showing the hole where its results go.
+            if (state.savedFilters.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(Size.icon))
+                if (!collapsed) {
+                    SideDrawerSectionLabel(text = stringResource(Res.string.nav_section_saved))
+                }
+                val narrowing = state.query.narrowingOnly()
+                state.savedFilters.forEach { filter ->
+                    SideDrawerNavItem(
+                        label = filter.name,
+                        icon = Icons.Outlined.BookmarkBorder,
+                        selectedIcon = Icons.Filled.Bookmark,
+                        selected = filter.query == narrowing,
+                        collapsed = collapsed,
+                        onClick = { onSavedFilterSelect(filter) }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(Size.icon))
