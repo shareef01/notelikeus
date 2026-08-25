@@ -289,3 +289,33 @@ predictable timing.
 **What was tried first, and kept:** sharing one corpus across the class rather than rebuilding
 5,000 notes per test, and widening the sample to the best of nine after five warmups. Both reduced
 the variance and are worth having; they were not enough on their own.
+
+## D12 — A drag blocked by the sort gets an offer; a drag blocked by a filter gets nothing.
+
+Reordering is gated on `NoteQuery.allowsManualReorder`, which is false for two unrelated reasons:
+an automatic sort is active, or a filter is narrowing the list. Until now both produced the same
+result — the drag handle simply was not drawn — which is honest but silent. Someone who reorders
+their notes, then sorts by Newest, then wants to reorder again finds the handle gone with no
+statement of why or what to do.
+
+The brief asks for a prompt on drag under an automatic sort, and that is what shipped: the handle
+stays visible, a drag on it moves nothing, and a dialog offers the switch to manual order.
+
+It deliberately does **not** do the same for the filter case, and the two are not symmetrical:
+
+- **Sort** is a choice the user made and can unmake in one tap. Offering the switch is offering a
+  real fix, and the dialog's Switch button performs it.
+- **Filters** cannot be fixed by any sort. Position is a property of the whole list, so dragging
+  note 3 above note 7 while notes 4–6 are hidden has no meaning to express. The only "fix" is
+  clearing the filters, which is a much larger action to trigger from a stray drag — and one the
+  filter summary row already offers, in view, one tap away, at the moment it applies.
+
+So a filtered list keeps hiding the handle. `NoteQuery.switchingSortWouldAllowReorder` encodes the
+distinction on the model rather than in the composable, so it is testable, and
+`ManualReorderGateTest` asserts the two predicates are never both true.
+
+**Open question for review:** the cost is that the handle's visibility now depends on *which*
+blocker is active, which is one more rule than "manual sort and no filters". The smaller
+alternative — keep hiding the handle in both cases, no dialog at all — is what shipped before this
+commit. If the inconsistency reads worse in the hand than the silence did, reverting this is one
+commit.
