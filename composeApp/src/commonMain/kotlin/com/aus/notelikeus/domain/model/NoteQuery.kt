@@ -1,6 +1,7 @@
 package com.aus.notelikeus.domain.model
 
 import androidx.compose.runtime.Immutable
+import kotlinx.serialization.Serializable
 
 /** Which pile of notes is being looked at. Replaces the old `NoteFilter` enum. */
 enum class NoteScope { ACTIVE, ARCHIVE, TRASH, ALL }
@@ -30,6 +31,7 @@ enum class NoteFlag {
 
 /** Inclusive-start, exclusive-end epoch-millis window. */
 @Immutable
+@Serializable
 data class DateRange(val fromInclusive: Long, val toExclusive: Long) {
     operator fun contains(timestamp: Long): Boolean =
         timestamp >= fromInclusive && timestamp < toExclusive
@@ -51,6 +53,7 @@ data class DateRange(val fromInclusive: Long, val toExclusive: Long) {
  * it does not belong.
  */
 @Immutable
+@Serializable
 data class NoteQuery(
     val text: String = "",
     val labels: Set<Long> = emptySet(),
@@ -107,6 +110,19 @@ data class NoteQuery(
     val switchingSortWouldAllowReorder: Boolean
         get() = sort != NoteSortOrder.MANUAL && !hasActiveFilters
 
+    /**
+     * Just the narrowing half: which notes, with how they are displayed reset to the defaults.
+     *
+     * What a saved filter stores. A saved filter names a set of notes, not a way of looking at
+     * one -- restoring "Invoices" should not also flip the list back to two columns sorted oldest
+     * because that happened to be on screen when it was saved, and sort and view are persisted
+     * preferences, so writing them from a shortcut would change a setting the user did not touch.
+     *
+     * Also what makes "is this saved filter the one on screen" an exact comparison rather than a
+     * field-by-field one that has to be kept in step by hand.
+     */
+    fun narrowingOnly(): NoteQuery = copy(sort = Default.sort, view = Default.view)
+
     /** Drops every narrowing dimension, keeping where you are and how you are looking at it. */
     fun cleared(): NoteQuery = NoteQuery(
         scope = scope,
@@ -115,4 +131,9 @@ data class NoteQuery(
         dateField = dateField,
         labelMatch = labelMatch
     )
+
+    companion object {
+        /** The defaults, named once so nothing has to repeat the constructor's values. */
+        val Default = NoteQuery()
+    }
 }
