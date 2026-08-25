@@ -13,7 +13,6 @@
     <string name="search_notes">Search your notes</string>
     <string name="search_archive">Search archive</string>
     <string name="search_trash">Search trash</string>
-    <string name="no_matching_notes">No matching notes</string>
     <string name="no_archived_notes">No archived notes</string>
     <string name="no_trashed_notes">No notes in trash</string>
     <string name="empty_notes_hint">Notes you add appear here</string>
@@ -32,11 +31,11 @@
     <string name="note_deleted">Note deleted</string>
     <string name="notes_deleted_count">%1$d notes deleted</string>
     <string name="auth_failed">Authentication failed</string>
-    <string name="note_update_failed">Couldn\'t save that change</string>
-    <string name="note_delete_failed">Couldn\'t delete that</string>
-    <string name="note_undo_failed">Couldn\'t undo that</string>
-    <string name="note_order_save_failed">Couldn\'t save the new order</string>
-    <string name="note_save_failed">Couldn\'t save this note</string>
+    <string name="note_update_failed">Couldn’t save that change</string>
+    <string name="note_delete_failed">Couldn’t delete that</string>
+    <string name="note_undo_failed">Couldn’t undo that</string>
+    <string name="note_order_save_failed">Couldn’t save the new order</string>
+    <string name="note_save_failed">Couldn’t save this note</string>
 
     <!-- Delete confirmation -->
     <string name="delete_note_title">Delete note?</string>
@@ -162,7 +161,7 @@
     <string name="cloud_sign_out_success">Signed out</string>
     <string name="cloud_sign_out_deleted_success">Signed out and cloud data deleted</string>
     <string name="cloud_sign_out_confirm_title">Sign out of Google?</string>
-    <string name="cloud_sign_out_confirm_message">Signing out clears notes on this device so another Google account cannot inherit them. Cloud copies remain unless you delete them. You\'ll need to sign in again to keep using Notelikeus.</string>
+    <string name="cloud_sign_out_confirm_message">Signing out clears notes on this device so another Google account cannot inherit them. Cloud copies remain unless you delete them. You’ll need to sign in again to keep using Notelikeus.</string>
     <string name="cloud_sign_out_delete_data">Sign out and delete cloud data</string>
     <string name="cloud_signed_in_as">Signed in</string>
     <string name="sign_in_gate_title">Sign in to continue</string>
@@ -174,7 +173,7 @@
     <string name="test_login_sign_in">Sign in</string>
     <string name="test_login_create">Create</string>
     <string name="test_login_hint">Requires Email/Password enabled in Firebase Authentication.</string>
-    <string name="sign_in_no_play_services">Google Play Services isn\'t available on this device, so sign-in isn\'t possible right now.</string>
+    <string name="sign_in_no_play_services">Google Play Services isn’t available on this device, so sign-in isn’t possible right now.</string>
     <string name="sign_in_cancelled">Sign-in was cancelled.</string>
     <string name="sign_in_network_error">Network error. Check your connection and try again.</string>
     <string name="sign_in_in_progress">Sign-in is already in progress.</string>
@@ -263,6 +262,72 @@
     <string name="recent_searches">Recent searches</string>
     <string name="select_note_to_view">Select a note to view</string>
     <string name="select_note_to_view_subtitle">Choose a note from the list to edit it here</string>
+    <!-- Filtering -->
+    <string name="filters">Filters</string>
+    <!--
+      The Filters sheet’s live count. Plurals rather than "%1$d notes", which renders "1 notes" for
+      the single-note case that a new or heavily-filtered library hits constantly.
+    -->
+    <plurals name="showing_all">
+        <item quantity="one">%1$d note</item>
+        <item quantity="other">%1$d notes</item>
+    </plurals>
+    <plurals name="showing_count">
+        <item quantity="one">Showing %1$d of %2$d</item>
+        <item quantity="other">Showing %1$d of %2$d</item>
+    </plurals>
+    <string name="filters_with_count">Filters · %1$d</string>
+    <string name="clear_all">Clear all</string>
+    <string name="cd_remove_filter">Remove filter %1$s</string>
+    <string name="filter_section_colors">Colors</string>
+    <string name="filter_section_labels">Labels</string>
+    <string name="filter_section_status">Status</string>
+    <string name="filter_section_date">Date</string>
+    <string name="filter_section_scope">Where</string>
+    <string name="filter_label_search">Search labels</string>
+    <string name="filter_labels_any">Any of these</string>
+    <string name="filter_labels_all">All of these</string>
+    <string name="flag_pinned">Pinned</string>
+    <string name="flag_has_reminder">Has reminder</string>
+    <string name="flag_reminder_overdue">Overdue</string>
+    <string name="flag_has_checklist">Has checklist</string>
+    <string name="flag_has_unchecked">Unfinished items</string>
+    <string name="flag_has_links">Has links</string>
+    <string name="flag_untitled">Untitled</string>
+    <string name="flag_unlabeled">No labels</string>
+    <string name="date_field_created">Created</string>
+    <string name="date_field_edited">Edited</string>
+    <string name="date_field_reminder">Reminder</string>
+    <string name="date_any">Any time</string>
+    <string name="date_today">Today</string>
+    <string name="date_last_7_days">Last 7 days</string>
+    <string name="date_last_30_days">Last 30 days</string>
+    <string name="scope_active">Notes</string>
+    <string name="scope_archive">Archive</string>
+    <string name="scope_trash">Trash</string>
+    <string name="scope_all">Everywhere</string>
+    <string name="search_did_you_mean">No exact match for “%1$s” — showing near matches</string>
+    <string name="search_no_results">No results for “%1$s”</string>
+    <string name="search_unknown_operator">Ignored: %1$s</string>
+    <string name="sort_set_as_default">Set as default</string>
+    <string name="nav_section_saved">Saved</string>
+    <string name="save_filter">Save these filters</string>
+    <string name="save_filter_title">Name this filter</string>
+    <string name="save_filter_hint">e.g. Invoices this month</string>
+    <string name="save_filter_replace">Replaces the filter already saved as “%1$s”</string>
+    <string name="save_filter_full">%1$d saved already. Saving replaces the oldest.</string>
+    <string name="action_save">Save</string>
+    <string name="cd_delete_saved_filter">Delete saved filter %1$s</string>
+    <string name="nav_section_views">Views</string>
+    <string name="view_reminders">Reminders</string>
+    <string name="view_unfinished">Unfinished</string>
+    <string name="view_unlabeled">Unlabelled</string>
+    <string name="cd_move_up">Move up</string>
+    <string name="cd_move_down">Move down</string>
+    <string name="cd_reorder_blocked">Reordering is off while notes are sorted automatically</string>
+    <string name="reorder_switch_title">Switch to manual order?</string>
+    <string name="reorder_switch_message">Notes are sorted automatically right now, so dragging cannot change their order. Switch to manual order to rearrange them.</string>
+    <string name="reorder_switch_action">Switch</string>
     <string name="theme_base_label">Theme</string>
     <string name="accent_label">Accent</string>
     <string name="accent_neutral">Neutral</string>

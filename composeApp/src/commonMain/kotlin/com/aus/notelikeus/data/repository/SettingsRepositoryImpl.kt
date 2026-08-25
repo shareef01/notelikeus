@@ -16,6 +16,13 @@ import com.aus.notelikeus.domain.platform.PlatformWidgetManager
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import com.aus.notelikeus.domain.model.SavedFilter
+import com.aus.notelikeus.domain.model.NoteQuery
+import com.aus.notelikeus.data.local.SAVED_FILTERS_KEY
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import com.aus.notelikeus.util.AppLog
+import kotlinx.serialization.builtins.ListSerializer
 
 class SettingsRepositoryImpl(
     private val dataStore: DataStore<Preferences>,
@@ -147,6 +154,56 @@ class SettingsRepositoryImpl(
         }
     }
 
+    /**
+     * Named queries, newest first.
+     *
+     * A decode failure yields an empty list rather than an exception. This flow feeds the drawer,
+     * which is on screen from launch, so a throw here would be a settings blob taking down the
+     * notes list -- and the blob holds shortcuts, which cost a few taps to rebuild. Failing quiet
+     * is the proportionate answer; failing loud is not.
+     */
+    override val savedFilters: Flow<List<SavedFilter>> = dataStore.data
+        .map { preferences -> decodeSavedFilters(preferences[SAVED_FILTERS_KEY]) }
+
+    override suspend fun saveFilter(name: String, query: NoteQuery) {
+        val trimmed = name.trim().take(SavedFilter.MAX_NAME_LENGTH)
+        if (trimmed.isEmpty()) return
+        dataStore.edit { preferences ->
+            val existing = decodeSavedFilters(preferences[SAVED_FILTERS_KEY])
+            // Name is the identity, so saving over one replaces it the way a file does, and the
+            // rewritten filter comes back to the top where the user just put it.
+            val updated = (listOf(SavedFilter(trimmed, query)) +
+                existing.filterNot { it.name.equals(trimmed, ignoreCase = true) })
+                .take(SavedFilter.MAX_SAVED)
+            preferences[SAVED_FILTERS_KEY] = json.encodeToString(savedFilterList, updated)
+        }
+    }
+
+    override suspend fun deleteSavedFilter(name: String) {
+        dataStore.edit { preferences ->
+            val remaining = decodeSavedFilters(preferences[SAVED_FILTERS_KEY])
+                .filterNot { it.name == name }
+            if (remaining.isEmpty()) {
+                preferences.remove(SAVED_FILTERS_KEY)
+            } else {
+                preferences[SAVED_FILTERS_KEY] = json.encodeToString(savedFilterList, remaining)
+            }
+        }
+    }
+
+    private fun decodeSavedFilters(raw: String?): List<SavedFilter> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return try {
+            json.decodeFromString(savedFilterList, raw)
+        } catch (e: SerializationException) {
+            AppLog.warn(TAG, "Discarding unreadable saved filters", e)
+            emptyList()
+        } catch (e: IllegalArgumentException) {
+            AppLog.warn(TAG, "Discarding unreadable saved filters", e)
+            emptyList()
+        }
+    }
+
     override val recentSearches: Flow<List<String>> = dataStore.data
         .map { preferences ->
             preferences[RECENT_SEARCHES_KEY]?.split("|")?.filter { it.isNotBlank() } ?: emptyList()
@@ -168,6 +225,17 @@ class SettingsRepositoryImpl(
     }
 
     companion object {
+        private const val TAG = "SettingsRepository"
         private const val MAX_RECENT_SEARCHES = 10
+
+        /**
+         * Tolerant on read: a filter saved by a newer build that added a query dimension still
+         * loads here, minus the field this build does not know about, instead of the whole list
+         * being discarded because one entry had an extra key.
+         */
+        private val json = Json { ignoreUnknownKeys = true }
+
+        /** Named once so encode and decode cannot drift onto different shapes. */
+        private val savedFilterList = ListSerializer(SavedFilter.serializer())
     }
 }
