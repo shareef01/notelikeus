@@ -173,7 +173,7 @@ the highest-severity item in this file.
 
 **Severity:** high — it is a crash, on the first launch a user ever performs.
 
-## F10 — Manual reordering is unreachable with a screen reader
+## F10 — Manual reordering is unreachable with a screen reader — **FIXED**
 
 `NoteCard` draws the reorder handle with `semantics { contentDescription = reorderLabel }`, but the
 only interaction attached to it is `detectDragGestures`. TalkBack and other screen readers cannot
@@ -186,5 +186,12 @@ The plumbing is already in `NoteStaggeredGrid` — this is an addition at the se
 change to how reordering works.
 
 Pre-existing; not introduced by the reorder-prompt work, which only changed when the handle is
-drawn. Out of scope for that commit, but it is the largest remaining accessibility gap I have seen
-in the notes list, so it should not wait long.
+drawn.
+
+**Fixed** in the commit after the one that recorded this. The handle now carries
+`CustomAccessibilityAction`s for Move up and Move down, bounded at the ends of the list, calling the
+same `onMoveNote` / `onReorderComplete` pair the drag calls. The handle offered under an automatic
+sort carries the explanation as an action instead, so the switch is reachable without a drag too.
+
+`NoteReorderSemanticsTest` asserts on the semantics tree rather than on pixels, which is the point:
+that tree *is* the API a screen reader consumes, so the test exercises the thing that was broken.
