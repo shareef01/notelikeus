@@ -78,8 +78,25 @@ import notelikeus.composeapp.generated.resources.filters
 import notelikeus.composeapp.generated.resources.no_color
 import notelikeus.composeapp.generated.resources.showing_all
 import notelikeus.composeapp.generated.resources.showing_count
+import notelikeus.composeapp.generated.resources.action_save
+import notelikeus.composeapp.generated.resources.cd_delete_saved_filter
+import notelikeus.composeapp.generated.resources.nav_section_saved
+import notelikeus.composeapp.generated.resources.save_filter
+import notelikeus.composeapp.generated.resources.save_filter_full
+import notelikeus.composeapp.generated.resources.save_filter_hint
+import notelikeus.composeapp.generated.resources.save_filter_replace
+import notelikeus.composeapp.generated.resources.save_filter_title
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
+import com.aus.notelikeus.domain.model.SavedFilter
+import com.aus.notelikeus.ui.components.ConfirmDialog
+import com.aus.notelikeus.ui.theme.NoteEmphasis
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.DeleteOutline
 
 /**
  * Every filter in one place, with the count each choice would produce.
@@ -101,8 +118,14 @@ fun FiltersSheet(
     allLabels: List<Label>,
     onQueryChange: ((NoteQuery) -> NoteQuery) -> Unit,
     onClearFilters: () -> Unit,
+    savedFilters: List<SavedFilter>,
+    onApplySavedFilter: (SavedFilter) -> Unit,
+    onSaveFilter: (String) -> Unit,
+    onDeleteSavedFilter: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var namingFilter by remember { mutableStateOf(false) }
+    var pendingName by remember { mutableStateOf("") }
     val now = remember { DateUtils.currentTimeMillis() }
     val isDark = isNoteColorDarkTheme()
 
@@ -113,6 +136,40 @@ fun FiltersSheet(
     // previewing a list this screen has not loaded would mean loading all of them to answer a
     // question nobody has asked yet.
     val counts = remember(query, notes, now) { FilterCounts(query, notes, now) }
+
+    if (namingFilter) {
+        val trimmed = pendingName.trim()
+        val replacing = savedFilters.firstOrNull { it.name.equals(trimmed, ignoreCase = true) }
+        ConfirmDialog(
+            title = stringResource(Res.string.save_filter_title),
+            // Says what saving will do before it does it. Overwriting a filter you had forgotten
+            // about is silent otherwise, and the name is the only warning available.
+            message = when {
+                replacing != null -> stringResource(Res.string.save_filter_replace, replacing.name)
+                savedFilters.size >= SavedFilter.MAX_SAVED ->
+                    stringResource(Res.string.save_filter_full, savedFilters.size)
+                else -> ""
+            },
+            confirmLabel = stringResource(Res.string.action_save),
+            // An unnamed filter is not saveable, and a Save button that closes the dialog having
+            // done nothing is worse than one that plainly cannot be pressed yet.
+            confirmEnabled = trimmed.isNotEmpty(),
+            onConfirm = {
+                namingFilter = false
+                onSaveFilter(trimmed)
+            },
+            onDismiss = { namingFilter = false },
+            extraContent = {
+                OutlinedTextField(
+                    value = pendingName,
+                    onValueChange = { pendingName = it.take(SavedFilter.MAX_NAME_LENGTH) },
+                    singleLine = true,
+                    placeholder = { Text(stringResource(Res.string.save_filter_hint)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -224,10 +281,39 @@ fun FiltersSheet(
                 }
             }
 
+            // Saved filters live here as well as in the drawer because this is where they are
+            // made, and something you can create in a place you cannot delete it from is a
+            // one-way door. The drawer gets the one-tap version.
+            if (savedFilters.isNotEmpty()) {
+                val narrowing = query.narrowingOnly()
+                FilterSectionColumn(stringResource(Res.string.nav_section_saved)) {
+                    savedFilters.forEach { filter ->
+                        SavedFilterRow(
+                            filter = filter,
+                            selected = filter.query == narrowing,
+                            onApply = { onApplySavedFilter(filter) },
+                            onDelete = { onDeleteSavedFilter(filter.name) }
+                        )
+                    }
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = Spacing.md),
-                horizontalArrangement = Arrangement.End
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                TextButton(
+                    onClick = {
+                        pendingName = ""
+                        namingFilter = true
+                    },
+                    // Nothing to save when nothing is narrowing: an unfiltered list is not a
+                    // filter, and saving one would be a shortcut to where you already are.
+                    enabled = query.hasActiveFilters
+                ) {
+                    Text(stringResource(Res.string.save_filter))
+                }
+                Spacer(modifier = Modifier.weight(1f))
                 TextButton(onClick = onClearFilters, enabled = query.hasActiveFilters) {
                     Text(stringResource(Res.string.clear_all))
                 }
@@ -483,5 +569,79 @@ private fun ColorFilterChip(
                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)
             }
         )
+    }
+}
+
+
+/** A section whose contents stack rather than wrap -- rows, not chips. */
+@Composable
+private fun FilterSectionColumn(label: String, content: @Composable () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = Spacing.md)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = NoteEmphasis.Secondary),
+            modifier = Modifier.padding(bottom = Spacing.sm)
+        )
+        content()
+    }
+}
+
+/**
+ * One saved filter: tap the name to apply it, tap the bin to remove it.
+ *
+ * A row rather than a chip with a close icon in it, because a chip is a single touch target and
+ * sharing one between "apply" and "delete" is how people delete the thing they meant to open. Two
+ * targets, both full height, both named.
+ */
+@Composable
+private fun SavedFilterRow(
+    filter: SavedFilter,
+    selected: Boolean,
+    onApply: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(
+                if (selected) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = Chrome.SelectedWash)
+                } else {
+                    Color.Transparent
+                }
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .clip(MaterialTheme.shapes.medium)
+                .clickable(onClick = onApply)
+                .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (selected) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = NoteEmphasis.Icon),
+                modifier = Modifier.size(Size.icon)
+            )
+            Text(
+                text = filter.name,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = Spacing.md)
+            )
+        }
+        IconButton(onClick = onDelete) {
+            Icon(
+                imageVector = Icons.Outlined.DeleteOutline,
+                contentDescription = stringResource(Res.string.cd_delete_saved_filter, filter.name),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = NoteEmphasis.Icon)
+            )
+        }
     }
 }
