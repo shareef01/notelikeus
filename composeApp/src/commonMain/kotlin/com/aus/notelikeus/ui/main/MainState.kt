@@ -7,6 +7,7 @@ import com.aus.notelikeus.domain.model.NoteScope
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.domain.model.ThemePreference
+import com.aus.notelikeus.domain.model.SmartView
 
 enum class NoteFilter {
     ACTIVE, ARCHIVED, TRASHED;
@@ -92,6 +93,15 @@ data class MainState(
     val selectedNotes: Set<Long> = emptySet(),
     val allLabels: List<Label> = emptyList(),
     val totalNoteCount: Int = 0,
+    /**
+     * How many active notes each smart view would show.
+     *
+     * Counted with the same matcher the list runs, so a drawer row cannot promise notes the list
+     * then fails to produce. Always over the *active* notes, whatever scope is on screen -- the
+     * rows navigate to active notes, so a count taken from the trash would describe a different
+     * list than the one tapping it opens.
+     */
+    val smartViewCounts: Map<SmartView, Int> = emptyMap(),
     val archivedNoteCount: Int = 0,
     val trashedNoteCount: Int = 0,
     val listRevision: Int = 0,
