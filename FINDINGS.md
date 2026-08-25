@@ -367,3 +367,36 @@ controls are still nameable.
 share a description — which is the property that was actually violated.
 
 `cd_remove_item` is left in place; the widget still uses it.
+
+## F19 — The packaged Windows desktop app could not start at all — **FIXED**
+
+`AppConfig.isDebug` asks the `RuntimeMXBean` whether a JDWP agent is attached, which reaches
+`java.lang.management.ManagementFactory`. That class lives in the **`java.management`** JDK module,
+and `java.management` was not in the `modules` list `jlink` builds the packaged runtime from.
+
+So the packaged app died on its first Koin resolution — before a window was ever shown:
+
+```
+Exception in thread "main" java.lang.NoClassDefFoundError: java/lang/management/ManagementFactory
+	at com.aus.notelikeus.util.AppConfig.<clinit>(AppConfig.desktop.kt:10)
+	at com.aus.notelikeus.di.PlatformModuleKt.platformModule$lambda$20$lambda$12(PlatformModule.kt:68)
+```
+
+Reproduced on `main` at `8a60a91`, not on any branch of mine. `./gradlew run` cannot catch it — it
+has the whole JDK on hand, which is exactly what the build file's own comment says about the last
+three modules that went missing this way.
+
+**Fixed** by adding `java.management` to the list. Verified by rebuilding the image — `MODULES=` in
+`runtime/release` now carries it — and by launching the packaged executable, which stayed up for 40
+seconds with an empty log where it previously died instantly.
+
+### Why CI was green
+
+The `package` job did assert the modules were present, but against a **hand-maintained list of
+four** — so it only ever checked what someone had remembered to add. `java.management` was never on
+it.
+
+That list is now five, and the job also **launches the packaged executable** and fails if it exits
+within 30 seconds. Building is not the check, and neither is a list: jlink succeeds either way and
+just emits a smaller runtime. Only starting the thing tests every module at once, including the ones
+nobody has thought of yet.
