@@ -72,6 +72,44 @@ class RichTextParserTest {
         assertEquals("__unclosed emphasis", result.text)
     }
 
+    /**
+     * There is no base colour layer under the spans, so every character has to be covered by one
+     * or it renders uncoloured. Also what keeps `spanStyles.first()` the emphasis a caller is
+     * looking for, rather than a full-width colour span sitting in front of it.
+     */
+    @Test
+    fun `every character of the output belongs to a span`() {
+        val sources = listOf(
+            "plain text",
+            "**bold** and _italic_",
+            "**a __b__ c**",
+            "see [docs](https://example.com) now",
+            "bare https://example.com here",
+            "trailing plain after **bold**"
+        )
+
+        for (source in sources) {
+            val result = RichTextParser.parse(text = source, contentColor = Color.Black)
+            val covered = BooleanArray(result.text.length)
+            result.spanStyles.forEach { range ->
+                for (i in range.start until range.end) covered[i] = true
+            }
+            val gaps = covered.indices.filter { !covered[it] }
+            assertTrue(gaps.isEmpty(), "uncovered offsets $gaps in \"$source\" -> \"${result.text}\"")
+        }
+    }
+
+    /** Nested emphasis carries both styles, not just the outer one. */
+    @Test
+    fun parse_mergesNestedEmphasis() {
+        val result = RichTextParser.parse(text = "**_both_**", contentColor = Color.Black)
+
+        assertEquals("both", result.text)
+        val style = result.spanStyles.first { it.start == 0 }.item
+        assertEquals(FontWeight.Bold, style.fontWeight)
+        assertEquals(FontStyle.Italic, style.fontStyle)
+    }
+
     @Test
     fun parse_appliesBoldStyle() {
         val result = RichTextParser.parse(
