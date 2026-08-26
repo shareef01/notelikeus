@@ -482,3 +482,67 @@ them"**. That is answerable from release notes plus a call-site search, without 
 and firmer reason: `koin-compose-viewmodel:4.1.1` pins `lifecycle-viewmodel-compose:2.9.3` exactly,
 and Koin 4.2.x pulls Compose 1.10, which is the combination the catalog comment says kills the
 desktop app.
+
+---
+
+## D17 — TypeScript 7.0.2 adopted for the web client; the shipped bundle is provably unchanged.
+
+Dependabot's #48. A major-version bump usually deserves the same suspicion D16 gave Compose 1.9,
+but the two are not the same shape, and the difference is measurable rather than a matter of taste.
+
+### `tsc` does not build anything here
+
+`build` is `tsc -b && vite build`, and every tsconfig sets `noEmit`. TypeScript type-checks; **Vite
+and esbuild produce the bundle**. So the question "could TS 7 change what users receive" has a
+direct answer rather than an argument.
+
+Built `dist/` twice from the same tree, once under 5.9.3 and once under 7.0.2, and hashed every
+file:
+
+```
+TS 5.9.3  c293a3e4b62726d9c153dabb5f0038b28aa14e9f0d7f6cfb29f9119b735714b5
+TS 7.0.2  c293a3e4b62726d9c153dabb5f0038b28aa14e9f0d7f6cfb29f9119b735714b5
+```
+
+Byte-identical. The blast radius is confined to *whether type errors get caught*, and cannot reach
+the artifact. That is the opposite of the Compose 1.9 case, where the risk was a runtime skew inside
+the thing the user actually runs.
+
+### It required two config changes, and both are repairs
+
+TS 7 removed `baseUrl` and rejects non-relative `paths`. `tsconfig.app.json` used both, so the 340
+`@/…` imports stopped resolving.
+
+- `baseUrl: "."` deleted; `"@/*": ["src/*"]` becomes `["./src/*"]`.
+- `"types": ["node"]` added — see F24.
+
+Both are backward-compatible: verified that the new config type-checks clean on **5.9.3 as well as
+7.0.2**, so this is not a one-way door and a revert of the version alone is sufficient.
+
+### Verified
+
+Under 7.0.2: `typecheck`, `lint`, `build` and **220 tests across 26 files** all pass. Cold
+type-check goes from **6.5s to 1.9s**, which is the only user-visible benefit and it belongs to
+whoever is editing the code, not to whoever is running the app.
+
+### What it costs on disk
+
+TS 7 is the Go port, so it is no longer one JavaScript package. It publishes **20 platform-specific
+binaries** as optional dependencies, and the lockfile lists all 20 — which is why a one-line version
+bump moves ~375 lines of `package-lock.json`. Only the matching one installs: on this machine that
+is `@typescript/typescript-win32-x64` alone, and CI resolves `linux-x64` the same way.
+
+Installed footprint here is 3.2 MB of JS shim plus 28 MB of native binary. Bigger than 5.9.3, and
+paid once per developer machine rather than by anything that ships.
+
+### What is being accepted
+
+TS 7's checker is a new implementation. A new checker can in principle miss something the old one
+caught, and a false negative is silent by nature — no failing build, just an error that stops being
+reported. Nothing here proves that has not happened; what is proved is that the same 220 tests pass
+and the same bytes ship.
+
+Held to be an acceptable trade because the type checker is a development-time net, not the only one.
+The 220 unit tests sit underneath it and were run. The Playwright e2e suite was **not** re-run, and
+deliberately so: it drives the built bundle, and the bundle is byte-identical, so it would be
+exercising the same artifact and could not distinguish the two versions.
