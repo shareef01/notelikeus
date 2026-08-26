@@ -102,7 +102,7 @@ it is the step that historically breaks Compose resource lookups.
 
 ---
 
-## F6 — The Glance widget carries a fourth, independent palette
+## F6 — The Glance widget carries a fourth, independent palette — **FIXED**
 
 `ui/widget/WidgetThemes.kt` defines 18 colour literals because Glance composables cannot read
 `MaterialTheme`. That is a real platform constraint, not sloppiness, but it means the widget's
@@ -113,6 +113,35 @@ widget remains a separate render path with its own theme resolution, and a widge
 visual review is still owed.
 
 **Severity:** low. Partially mitigated; listed so the remaining gap stays visible.
+
+---
+
+**Fixed**, and the drift this was warning about had already happened — in two ways.
+
+The eighteen literals are gone. `widgetColorsFor` calls `colorSchemeFor`, the same function the app
+renders with, and wraps its six colours in `ColorProvider`s. The widget cannot disagree with the app
+about a colour any more, because it is asking the app.
+
+What the literals were hiding:
+
+- **The chosen base was ignored.** `WidgetNoteLoader` resolved the base into `resolvedDark` and then
+  used it for the AMOLED branch *only* — every other arm keyed off `isSystemDark`. So choosing Light
+  while the OS was dark gave a dark widget beside a light app, and choosing Dark on a light OS gave
+  the reverse, unless Pure black happened to be on.
+- **The accent was read and discarded.** `AccentColor.fromName(...)` was passed into
+  `toThemePreference` and `preference.accent` was never looked at, so Midnight and Forest users had
+  a neutral widget.
+
+The monochrome branches went too. `USE_MONOCHROME_THEME_KEY` has no writer anywhere in the app and
+defaults to `true`, so those two arms always won — and both were aliases of the arms below them,
+which is exactly how the base being ignored went unnoticed.
+
+`WidgetThemeParityTest` sweeps all 18 settings combinations × both system modes and asserts the
+widget's six colours are the app's, which no shared list of constants could guarantee.
+
+**Still owed, and this entry stays worth reading for it:** the widget has not been looked at on a
+home screen. The colours are now provably the app's and the app runs clean, but a widget-specific
+visual review has never happened.
 
 ---
 
