@@ -19,6 +19,20 @@ expect object DateUtils {
      */
     fun startOfDay(timestamp: Long): Long
 
+    /**
+     * Epoch millis at local midnight of the civil date [year]-[month]-[day], or null if that date
+     * does not exist (`2026-02-31`).
+     *
+     * A typed `before:2026-08-01` has to land on the same instant as `before:today` would on that
+     * day, and only the platform knows where that midnight is. Deriving it in commonMain by
+     * dividing [startOfDay]'s result back into a day index is what this replaces: local midnight
+     * east of UTC falls on the previous UTC day, so the division answered a day early and every
+     * ISO date resolved one day late.
+     *
+     * [month] is 1-based, unlike `Calendar.MONTH`.
+     */
+    fun startOfDay(year: Int, month: Int, day: Int): Long?
+
     fun isToday(timestamp: Long): Boolean
     fun formatDateTime(timestamp: Long, showYear: Boolean = true): String
     fun formatTime(timestamp: Long): String
