@@ -16,6 +16,19 @@ import androidx.compose.ui.text.withStyle
 object RichTextParser {
 
   private val boldPattern = Regex("""\*\*(.+?)\*\*""")
+
+  /**
+   * The other CommonMark spelling of bold.
+   *
+   * The app's own toolbar writes `**`, so this is for text that arrived from somewhere else --
+   * pasted from another editor, or typed by someone who writes markdown by hand. Without it the
+   * single-underscore italic rule ate the *outer* pair of `__bold__` and left the inner two
+   * visible: `__this is a new note__` rendered as `_this is a new note_`. Found on a real note.
+   *
+   * It has to be tried wherever [boldPattern] is, and before the italic rule, or `_` wins the
+   * first underscore and the same thing happens again.
+   */
+  private val boldUnderscorePattern = Regex("""__(.+?)__""")
   private val italicPattern = Regex("""_(.+?)_""")
   private val linkPattern = Regex("""\[([^\]]+)\]\(([^)]+)\)""")
   private val autoLinkPattern = Regex("""https?://[^\s)]+""")
@@ -81,6 +94,7 @@ object RichTextParser {
       originalToTransformed[originalIndex] = transformedIndex
 
       val boldMatch = boldPattern.matchAt(source, originalIndex)
+          ?: boldUnderscorePattern.matchAt(source, originalIndex)
       if (boldMatch != null) {
         mapHiddenMarkers(
             originalToTransformed = originalToTransformed,
@@ -182,6 +196,7 @@ object RichTextParser {
 
     while (index < text.length) {
       val boldMatch = boldPattern.matchAt(text, index)
+          ?: boldUnderscorePattern.matchAt(text, index)
       if (boldMatch != null) {
         segments += TextSegment(boldMatch.groupValues[1], SegmentStyle.Bold)
         index = boldMatch.range.last + 1
@@ -206,7 +221,10 @@ object RichTextParser {
         continue
       }
 
-      val nextBold = boldPattern.find(text, index)?.range?.first ?: text.length
+      val nextBold = minOf(
+          boldPattern.find(text, index)?.range?.first ?: text.length,
+          boldUnderscorePattern.find(text, index)?.range?.first ?: text.length
+      )
       val nextItalic = italicPattern.find(text, index)?.range?.first ?: text.length
       val nextLink = linkPattern.find(text, index)?.range?.first ?: text.length
       val nextSpecial = minOf(nextBold, nextItalic, nextLink)
