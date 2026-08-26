@@ -419,3 +419,66 @@ Confirmed on real notes as well as the emulator. An untitled note now leads with
 title at all" rather than the word *Untitled* above it, which is both shorter and more informative.
 
 Reverting is still one commit if it wears badly.
+
+---
+
+## D16 — Compose Multiplatform 1.9.0: measured, exercised, and declined.
+
+Dependabot's #68 bumps `compose-multiplatform` alone. This branch bumps it **with** `composeAdaptive`
+(1.1.2 → 1.2.0, the CMP 1.9 line), which is what the catalog comment means by moving them together.
+
+### The line does not go flat, and cannot be flattened from here
+
+Resolved `org.jetbrains.compose.*` on `desktopRuntimeClasspath`:
+
+| Version | What lands on it |
+|---|---|
+| **1.8.2** | `material3`, `material3-desktop` |
+| **1.9.0** | the plugin, `desktop`/skiko, foundation, animation, components |
+| **1.9.1** | `runtime`, `ui` and their siblings, pulled up by transitives |
+| 1.2.0 | the adaptive artifacts (their own train) |
+| 1.7.3 | `material-icons-*` (their own train, unchanged) |
+
+There is no pin doing this. `compose.material3` comes from the plugin with no version of its own in
+this repo, so **CMP 1.9.0 itself ships material3 at 1.8.2** — the split is JetBrains', not a
+misconfiguration here, and no change to this catalog closes it.
+
+That matters because material3 1.8.2 compiled against 1.8.2 and executing against ui 1.9.1 is the
+same shape as the `NoSuchFieldError` in #49.
+
+### So it was exercised, not trusted
+
+- Compiles; **567 tests** pass, including the desktop Compose UI tests.
+- The **packaged desktop app** starts and stays up 40s with an empty log. No
+  `UnsatisfiedLinkError(RenderNodeContext_nMake)` — the skiko failure the comment warns about does
+  not occur on this combination.
+- The **Android build** was driven through material3-heavy surfaces — the notes list, the Filters
+  `ModalBottomSheet` with its chips and disabled states, the drawer, the editor, the reminder
+  `AlertDialog`. No `NoSuchFieldError`, `NoSuchMethodError`, `AbstractMethodError` or crash in
+  logcat.
+
+Note that this could only be tested *after* F19: the packaged app was dying at startup on `main` for
+an unrelated reason, which masked the question entirely.
+
+### Why it was declined
+
+Everything above is evidence of absence, over the paths that were walked. A version skew of this
+kind fails on the specific APIs that moved, and 40 seconds of an idle window plus one pass through
+the UI is not proof that none of them are reachable. A screen nobody opened, or a state nobody
+reached, is untested ground rather than working ground.
+
+Weighed against that: nothing the app wants is on the far side of 1.9. The reward was currency, not
+capability. **Reviewed and declined** — PR #77 and Dependabot's #68 are both closed, and the repo
+stays on 1.8.2, which works.
+
+This entry is the point of closing it this way rather than just clicking the button. The measurement
+above cost a packaged-app run, a full test sweep and a hand-driven pass over the material3 surfaces,
+and none of it has to be repeated. When 1.9 is revisited — because something actually needs it, or
+because JetBrains un-splits material3 — the open question is already isolated. It is not "does 1.9
+work"; it is **"which material3 APIs moved between 1.8.2 and 1.9.1, and does this app call any of
+them"**. That is answerable from release notes plus a call-site search, without booting anything.
+
+**`composeLifecycle` stays at 2.9.3** either way — that is #70, and it is blocked for a different
+and firmer reason: `koin-compose-viewmodel:4.1.1` pins `lifecycle-viewmodel-compose:2.9.3` exactly,
+and Koin 4.2.x pulls Compose 1.10, which is the combination the catalog comment says kills the
+desktop app.
