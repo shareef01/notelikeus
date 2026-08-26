@@ -1,11 +1,9 @@
 <resources>
     <string name="app_name">Notelikeus</string>
     <string name="widget_name">Notelikeus Widget</string>
-    <string name="app_lock_title">App Lock</string>
-    <string name="untitled">Untitled</string>
-    <string name="widget_new">+ New</string>
-    <string name="widget_empty">No notes yet</string>
-    <string name="pinned_short">Pinned</string>
+    <!-- The widget's own strings live in composeApp/src/androidMain/res, which is the R it
+         actually reads (com.aus.notelikeus.shared.R). Copies here were dead, and worse than
+         dead: editing one changed nothing on screen. -->
     <string name="app_functions_description">Manage your notes with ease</string>
     <string name="default_web_client_id">404285880902-cpiu3nj2itndnh0kkouvn374ec5ecl9v.apps.googleusercontent.com</string>
 
