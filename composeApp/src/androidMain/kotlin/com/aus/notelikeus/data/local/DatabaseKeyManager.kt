@@ -92,6 +92,41 @@ class DatabaseKeyManager(
     }
 
     /**
+     * Persists the passphrase under the AndroidKeyStore key, replacing that key if it has died.
+     *
+     * Returns false only when the second attempt fails too; the caller then falls back to the
+     * legacy ESP and the database still opens.
+     */
+    private fun writeToKeystoreFile(passphrase: ByteArray): Boolean {
+        val payload = encryptUnderKeystoreKey(passphrase)
+            // Encryption itself failed, which is the one signal that proves the key rather than the
+            // filesystem is at fault — an invalidated AndroidKeyStore key still *exists*, so
+            // getOrCreateSecretKey keeps handing back the same dead alias and every attempt, this
+            // launch and every launch after, fails identically. Left alone that is permanent: the
+            // passphrase falls back to the legacy ESP and stays there for good, which is precisely
+            // the deprecated store this class was written to replace.
+            //
+            // Deleting the alias is safe here and only here. By this point the key protects
+            // nothing: either no passphrase file exists (first run, or the legacy migration), or
+            // readFromKeystoreFile already found it undecryptable and preserveUnreadablePassphraseFile
+            // moved it aside. The decrypt path deliberately does the opposite and keeps the alias,
+            // because dropping it would destroy the only chance of ever reading that preserved blob.
+            ?: run {
+                if (!deleteInvalidatedKey()) return false
+                encryptUnderKeystoreKey(passphrase) ?: return false
+            }
+        return publishByRename(payload)
+    }
+
+    /** The encrypted payload, or null when the Keystore key could not produce one. */
+    private fun encryptUnderKeystoreKey(passphrase: ByteArray): ByteArray? = try {
+        PassphraseFileCodec.encrypt(getOrCreateSecretKey(), passphrase.toHexString())
+    } catch (error: Exception) {
+        Log.w(TAG, "Keystore key could not encrypt the passphrase", error)
+        null
+    }
+
+    /**
      * Publishes the passphrase only by rename, never by writing to the live path.
      *
      * The previous fallback wrote the payload straight to [passphraseFile] when the rename failed.
@@ -100,11 +135,15 @@ class DatabaseKeyManager(
      * which in turn means [PlaintextDatabaseMigrator] cannot open the existing database and
      * quarantines it. Trading a working keystore file for a quarantined database is a bad deal, so
      * failing here is better: the caller falls back to the legacy ESP and the database still opens.
+     *
+     * A failure here says nothing about the key, which is why it never triggers the replacement
+     * above: deleting a healthy key because a rename lost a race would make the existing passphrase
+     * file undecryptable and quarantine the database — the exact outcome this method exists to
+     * avoid.
      */
-    private fun writeToKeystoreFile(passphrase: ByteArray): Boolean {
+    private fun publishByRename(payload: ByteArray): Boolean {
         val tmp = File(context.filesDir, "$PASSPHRASE_FILE.tmp")
         return try {
-            val payload = PassphraseFileCodec.encrypt(getOrCreateSecretKey(), passphrase.toHexString())
             tmp.writeBytes(payload)
             if (tmp.renameTo(passphraseFile())) {
                 true
@@ -118,6 +157,16 @@ class DatabaseKeyManager(
             Log.w(TAG, "Failed to write Keystore passphrase file", error)
             false
         }
+    }
+
+    /** Drops the unusable alias so the next [getOrCreateSecretKey] generates a working one. */
+    private fun deleteInvalidatedKey(): Boolean = try {
+        KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }.deleteEntry(KEY_ALIAS)
+        Log.w(TAG, "Deleted unusable AndroidKeyStore key; regenerating")
+        true
+    } catch (error: Exception) {
+        Log.e(TAG, "Could not delete unusable AndroidKeyStore key", error)
+        false
     }
 
     private fun getOrCreateSecretKey(): SecretKey {
