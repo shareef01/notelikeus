@@ -59,13 +59,12 @@ The entity comment explains why it was not dropped, and the reasoning is sound: 
 `notes` fires the `ON DELETE CASCADE` that `checklist_items` and `note_label_cross_ref`
 declare against it. Not worth risking checklists and label links to reclaim one boolean.
 
-**Severity:** cosmetic.
+**Severity:** cosmetic. Documented deliberately; listed so a future reader does not "discover" it
+and try to clean it up.
 
-**Fixed.** `mutableLongStateOf` for the navigation counter (it is bumped on every deep link and
-widget tap, so the generic version boxed a `Long` each time), `tools:targetApi="tiramisu"` on the
-back-callback attribute, and the activity's `android:label` dropped as a repeat of the
-application's. Documented deliberately; listed so a future reader does not
-"discover" it and try to clean it up.
+**Deliberately not fixed.** Dropping the column means recreating the `notes` table, which fires the
+`ON DELETE CASCADE` that `checklist_items` and `note_label_cross_ref` declare against it. One
+boolean is not worth risking every checklist and label link in a populated, encrypted database.
 
 ---
 
@@ -113,6 +112,11 @@ it is the step that historically breaks Compose resource lookups.
 - `AndroidManifest.xml:55` — redundant `android:label` (`RedundantLabel`).
 
 **Severity:** cosmetic.
+
+**Fixed.** `mutableLongStateOf` for the navigation counter (it is bumped on every deep link and
+widget tap, so the generic version boxed a `Long` each time), `tools:targetApi="tiramisu"` on the
+back-callback attribute, and the activity's `android:label` dropped as a repeat of the
+application's.
 
 ---
 
