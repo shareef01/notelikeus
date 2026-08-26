@@ -26,6 +26,8 @@ import com.aus.notelikeus.shared.R
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.ui.theme.getContentColor
 import android.content.res.Configuration
+import com.aus.notelikeus.domain.model.ThemeBase
+import com.aus.notelikeus.domain.model.ThemePreference
 
 private data class WidgetStrings(
     val appName: String,
@@ -50,7 +52,10 @@ class NoteWidget : GlanceAppWidget() {
         } else {
             runCatching { WidgetNoteLoader.loadNotes(context) }.getOrDefault(emptyList())
         }
-        val theme = runCatching { WidgetNoteLoader.loadTheme(context) }.getOrDefault(WidgetThemes.Light)
+        // The fallback is the app's own light scheme rather than a hand-written palette, so even
+        // the "settings could not be read" path cannot disagree with the app about a colour.
+        val theme = runCatching { WidgetNoteLoader.loadTheme(context) }
+            .getOrDefault(widgetColorsFor(ThemePreference(base = ThemeBase.LIGHT), systemDark = false))
         val isDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         val strings = WidgetStrings(
             appName = context.getString(R.string.app_name),
@@ -170,21 +175,21 @@ class NoteWidget : GlanceAppWidget() {
         val rowBackground = if (noteColorArgb == 0) {
             theme.surfaceVariant
         } else {
-            WidgetThemes.dynamicColor(bgColor)
+            dynamicColor(bgColor)
         }
         
         val onRowColor = if (noteColorArgb == 0) {
             theme.onSurface
         } else {
             val textColor = bgColor.getContentColor(theme.onSurface.getColor(context))
-            WidgetThemes.dynamicColor(textColor)
+            dynamicColor(textColor)
         }
         
         val onRowMutedColor = if (noteColorArgb == 0) {
             theme.onSurfaceVariant
         } else {
             val textColor = bgColor.getContentColor(theme.onSurfaceVariant.getColor(context)).copy(alpha = 0.7f)
-            WidgetThemes.dynamicColor(textColor)
+            dynamicColor(textColor)
         }
 
         Column(
