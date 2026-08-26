@@ -524,7 +524,7 @@ The underlying oddity is left alone deliberately: `Unknown` really does mean "no
 and that is honest as a *status*. It was the rendering that turned it into a claim about work in
 progress.
 
-## F22 — Nested emphasis leaves its inner markers on screen
+## F22 — Nested emphasis leaves its inner markers on screen — **FIXED**
 
 `**bold with __inner__ inside**` renders bold, correctly — and shows the `__` characters. Same for
 `**_x_**`. `splitIntoSegments` matches the outer marker, emits the inner text as one opaque segment
@@ -555,6 +555,38 @@ markers visible, because that note has no closing `**`. An unclosed marker is no
 leaving it as text is what markdown is supposed to do.
 
 **Severity:** cosmetic, but on a card preview, which is where notes are read most.
+
+---
+
+**Fixed**, by removing the reason it was dangerous rather than by patching around it.
+
+`parse()` and `buildOffsetMapping()` were two independent walks over the same string that had to
+agree about length or Compose's text field throws. They are now **one**: `render()` produces the
+displayed text, the styles and the offset map together, and each caller takes what it needs. A
+matched span recurses, so inner markers are hidden and styles merge — `**a __b__ c**` renders
+*a b c* in bold, and `**_x_**` is bold italic.
+
+Two smaller things fell out of building it that way. The `AnnotatedString` is now the rendered
+string appended once and styled by offset, rather than a second assembly of the same pieces — so
+the text the mapping was built against is literally the text on screen. And search highlighting runs
+over the whole displayed string instead of per styled run, so a query spanning a style boundary
+matches, which the old per-segment pass could not do.
+
+Guarded by an invariant rather than examples: `the mapping always agrees with the text it was built
+for` sweeps 24 sources — nesting, unclosed markers, bare `***`, links, long runs — and checks every
+offset maps in range in both directions; `the mapping never goes backwards` protects the
+binary-search inverse; `every character of the output belongs to a span` catches uncoloured text.
+
+### What this did *not* turn out to explain
+
+The two notes that led me here were **not** instances of it. Both contain **unclosed** markers —
+`• __this is a new note…` with no closing `__`, and `**_Wednesday…` with no closing `**` — and
+markdown correctly leaves those as literal text. Confirmed by rendering the exact strings: output
+unchanged, font weight 400.
+
+I had read the card as bold and built a theory on it twice. It is not bold; the maroon note's
+background just makes it look heavier. The nesting bug was real and reproducible on its own terms
+(`**__inner__**` → `__inner__`), but it was never what was on screen.
 
 ## F23 — Google sign-in killed the packaged desktop app — **FIXED**
 
