@@ -167,6 +167,21 @@ signatures differ and `install -r` fails — at which point the only way through
 plugged in it installs there too, whatever you intended. Pass an explicit
 `adb -s <serial> install -r <apk>` when you mean one device.
 
+**Placing the widget on the home screen is unsolved too.** There is no
+`cmd appwidget` shell implementation on this image ("No shell command
+implementation"), so it has to go through the launcher. The picker itself
+automates fine — long-press home → Widgets → search "Notelikeus" → tap to
+expand — but the final drag does not. Both `input swipe` and a hand-built
+`input motionevent DOWN / MOVE… / UP` sequence (with a 2s hold and 5px creep
+before the larger moves) dismiss the sheet without binding a widget;
+`dumpsys appwidget` shows the provider but never an instance. Note also that
+the picker's preview is the **static `previewImage`**, not a live Glance
+render, so expanding the entry tells you nothing about the widget's actual
+colours.
+
+If you need to see the widget, ask for it to be placed by hand — it takes
+seconds and has already cost two automation attempts.
+
 Seeding demo notes is **unsolved**. The database is SQLCipher-encrypted so it
 cannot be written directly the way the desktop one can, and `adb` UI automation
 has failed repeatedly: focus starts in the body rather than the title, and the
