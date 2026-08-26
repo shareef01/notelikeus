@@ -35,13 +35,31 @@ Two bugs were only ever visible on a first run, because every real install is
 already signed in. If you are verifying startup behaviour, do it against an
 empty directory.
 
-**`APPDATA` isolation is real but unreliable — verify it visually, every time.**
-When it takes effect the throwaway directory gets its own `notelikeus_db` and the app opens on
-the sign-in gate with no account, which is what you want. But across four launches it silently
-failed to take effect twice, landing on the **real signed-in account with the real notes**, and
-once it started isolated and acquired a session part-way through the run. The mechanism is not
-understood; a warm Gradle daemon is a suspect (`:composeApp:run` forks from it) but stopping the
-daemon did not reliably help.
+**`APPDATA` isolates the database. It does not isolate the account.** This is the part that
+bites, and it is now understood.
+
+The throwaway directory does get its own `notelikeus_db` — that part works, and the real
+`%APPDATA%\Notelikeus` is genuinely left alone (check its mtimes afterwards to confirm). But the
+Firebase credential is restored from **outside** `APPDATA`, so the app can start on the sign-in
+gate, look perfectly isolated, and then be **signed into the real account a few seconds later** —
+writing a fresh `.session` into the throwaway directory and pulling the real notes down from
+Firestore into the throwaway database.
+
+Observed exactly that: screenshotted the sign-in gate, clicked *Continue offline*, created a note,
+and the next screenshot showed a signed-in account with the real notes beside a new empty one.
+Local data was untouched; the exposure is the **other direction** — anything created or edited in
+that state can sync **up** to the real account.
+
+Consequences worth internalising:
+
+- **Checking the rail once is not enough.** Check it again in the screenshot before *every*
+  mutating action, not just at startup.
+- **Never press "Sign in with Google"** while driving. It can complete silently against a live
+  browser session, and there is no confirmation step.
+- If a signed-in account appears, **`Stop-Process -Force` immediately** rather than tidying up
+  through the UI, then verify the account from another client before doing anything else.
+- Prefer read-only exploration on the desktop app. For flows that must create notes, the **Android
+  emulator** is the safe target: local data, no account.
 
 So never trust the export. Screenshot the window and read the bottom-left rail *before* every
 action, and treat a signed-in account as a stop signal. Notes are real data: prefer killing the
