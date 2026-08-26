@@ -87,7 +87,7 @@ jobs:
           $release = "composeApp/build/compose/binaries/main/app/Notelikeus/runtime/release"
           if (-not (Test-Path $release)) { throw "No runtime image at $release" }
           $modules = (Get-Content $release | Select-String '^MODULES=').ToString()
-          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec', 'java.management') |
+          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec', 'java.management', 'jdk.httpserver') |
             Where-Object { $modules -notmatch [regex]::Escape($_) }
           if ($missing) { throw "jlink runtime is missing: $($missing -join ', ')" }
           Write-Host "All required modules present."

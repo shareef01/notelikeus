@@ -265,6 +265,11 @@ compose.desktop {
                 // NoClassDefFoundError(java/lang/management/ManagementFactory) -- before a window
                 // is ever shown. `./gradlew run` cannot catch it: it has the whole JDK on hand.
                 "java.management",
+                // DesktopGoogleSignInHelper stands up a com.sun.net.httpserver.HttpServer to catch
+                // the OAuth redirect. Without this the packaged app dies the moment anyone presses
+                // "Sign in with Google" -- NoClassDefFoundError, then "Failed to launch JVM", the
+                // whole process. `./gradlew run` cannot see it: the full JDK has the class.
+                "jdk.httpserver",
                 // Present by default on the current JDK, named anyway so a JDK change cannot
                 // silently drop EC and break the handshake with accounts.google.com.
                 "jdk.crypto.ec"
