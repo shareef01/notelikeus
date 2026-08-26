@@ -555,3 +555,37 @@ markers visible, because that note has no closing `**`. An unclosed marker is no
 leaving it as text is what markdown is supposed to do.
 
 **Severity:** cosmetic, but on a card preview, which is where notes are read most.
+
+## F23 — Google sign-in killed the packaged desktop app — **FIXED**
+
+`DesktopGoogleSignInHelper.captureAuthCode` stands up a `com.sun.net.httpserver.HttpServer` to
+catch the OAuth redirect. That class lives in the **`jdk.httpserver`** module, which was not in the
+`modules` list `jlink` builds the packaged runtime from. Pressing **Sign in with Google** therefore
+did this:
+
+```
+Exception in thread "main" java.lang.NoClassDefFoundError: com/sun/net/httpserver/HttpServer
+	at com.aus.notelikeus.platform.DesktopGoogleSignInHelper$captureAuthCode$2.invokeSuspend(...:138)
+Caused by: java.lang.ClassNotFoundException: com.sun.net.httpserver.HttpServer
+Failed to launch JVM
+```
+
+Not an error dialog — **the whole process died.**
+
+The second instance of exactly the failure F19 was about, found the same way: by running the
+packaged build rather than `./gradlew run`, which has the full JDK and cannot see any of this.
+
+**Fixed** by adding `jdk.httpserver`. Verified by rebuilding (`MODULES=` now carries it) and by
+pressing Sign in with Google on the packaged app against an isolated profile: process still alive,
+log empty, where before it was gone instantly. The CI module assertion now lists six.
+
+### Why the CI smoke test would not have caught this
+
+The launch check added in F19 starts the app and fails if it exits within 30 seconds. This crash
+needs a **click** first, so a launch-only check sails past it. That check is still worth having —
+it would have caught F19 — but it establishes only that the app starts, not that it works.
+
+A sweep of `desktopMain` for JDK packages turned up nothing else missing: `java.awt` and
+`javax.swing` are covered by `java.desktop`, and `com.sun.jna` is a jar rather than a JDK module.
+That sweep is the thing to repeat when this class of bug is suspected, rather than waiting to
+stumble into the next one.
