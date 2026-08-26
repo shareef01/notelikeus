@@ -648,3 +648,28 @@ A sweep of `desktopMain` for JDK packages turned up nothing else missing: `java.
 `javax.swing` are covered by `java.desktop`, and `com.sun.jna` is a jar rather than a JDK module.
 That sweep is the thing to repeat when this class of bug is suspected, rather than waiting to
 stumble into the next one.
+
+---
+
+## F24 — The web client type-checks against `@types/node`, which nothing declares
+
+`src/lib/firestore/notesSync.emulator.test.ts` imports `node:fs`, `node:path` and reads `process`.
+Those type-check only because `@types/node` happens to be installed, arriving transitively via
+`vite`, `vitest`, `happy-dom` and `firebase`. **`web/package.json` does not mention it.**
+
+TypeScript 5.9 auto-includes every `@types/*` package it finds, so this was invisible. TypeScript 7
+does not, which is how it surfaced: three `TS2591` errors on a file that had been type-checking for
+its whole life by accident. D17 adds `"types": ["node"]` to make the reliance explicit in config,
+which fixes the errors but not the underlying gap — nothing still guarantees the package is there.
+
+**Severity:** latent. Four separate declared dependencies supply it, so it realistically will not
+vanish, and if it did the failure is loud (`Cannot find type definition file for 'node'`) rather
+than silent. This is the same shape as the note already in `libs.versions.toml` about
+`compose-lifecycle-runtime`: *"It used to arrive transitively, which meant a dependency bump
+elsewhere could silently remove it."* That one was worth pinning; this one probably is too.
+
+**The fix is one line** — `"@types/node": "^26.2.0"` in `devDependencies`. Not applied here, because
+adding to `package.json` is a dependency decision and those are the owner's call. For the record, in
+the terms that decision is normally made in: it replaces nothing, it is **already on disk** so the
+install cost is zero, it is DefinitelyTyped's most-used package, and the alternative — leaving it
+undeclared — keeps a type-check that works by coincidence rather than by statement.
