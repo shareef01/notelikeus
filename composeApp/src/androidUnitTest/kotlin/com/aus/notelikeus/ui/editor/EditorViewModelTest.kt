@@ -5,7 +5,6 @@ import app.cash.turbine.test
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
-import com.aus.notelikeus.domain.repository.SettingsRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -26,7 +25,6 @@ class EditorViewModelTest {
 
     private lateinit var viewModel: EditorViewModel
     private lateinit var repository: NoteRepository
-    private lateinit var settingsRepository: SettingsRepository
     private lateinit var reminderManager: ReminderManager
     private val testDispatcher = UnconfinedTestDispatcher()
 
@@ -34,7 +32,6 @@ class EditorViewModelTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         repository = mockk(relaxed = true)
-        settingsRepository = mockk(relaxed = true)
         reminderManager = mockk(relaxed = true)
         every { repository.getLabels() } returns flowOf(emptyList())
     }
@@ -42,7 +39,6 @@ class EditorViewModelTest {
     private fun createViewModel(savedStateHandle: SavedStateHandle): EditorViewModel {
         return EditorViewModel(
             repository,
-            settingsRepository,
             reminderManager,
             savedStateHandle
         )
