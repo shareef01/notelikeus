@@ -57,6 +57,11 @@ android {
             // launch, sign-in gate, editor, note persistence and a cold restart of the encrypted
             // database. Re-verify those paths after any rule change.
             isMinifyEnabled = true
+            // Verified the same way R8 was: a release APK built, debug-signed, installed on the
+            // emulator and driven through launch, the notes list, the filters sheet, the editor
+            // and a cold restart of the encrypted database. Shrinking is the step that
+            // historically breaks Compose resource lookups, so it does not go in on lint's word.
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

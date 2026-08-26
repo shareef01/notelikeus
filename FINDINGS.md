@@ -80,9 +80,18 @@ Deleting a string that only the widget uses would not fail the build.
 
 **Severity:** low.
 
+**Fixed, after doing the verification pass this entry asked for.** A release APK was built both
+ways, debug-signed with `apksigner`, installed on the emulator and driven through launch, the notes
+list, the Filters sheet, the drawer and the editor — the Compose resource lookups that shrinking
+historically breaks. Nothing missing, nothing in logcat, screenshots identical to the unshrunk
+build.
+
+**14,861,446 → 14,358,143 bytes: 492 KiB, 3.4%.** Modest, which is the honest number — most of this
+APK is the bundled Inter fonts and native libraries, and neither is a `res/` entry.
+
 ---
 
-## F4 — Release builds minify but do not shrink resources
+## F4 — Release builds minify but do not shrink resources — **FIXED**
 
 `androidApp/build.gradle.kts:59` sets `isMinifyEnabled = true` without
 `isShrinkResources = true`. Lint flags it.
