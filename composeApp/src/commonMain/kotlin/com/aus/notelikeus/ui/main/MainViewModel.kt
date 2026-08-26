@@ -379,7 +379,11 @@ class MainViewModel(
      */
     private fun applyInputs(base: NoteQuery, searchInput: String, textChanged: Boolean) {
         val state = _state.value
-        val parsed = NoteQueryParser.parse(searchInput, ::startOfDayOffset)
+        val parsed = NoteQueryParser.parse(
+            searchInput,
+            ::startOfDayOffset,
+            { year, month, day -> DateUtils.startOfDay(year, month, day) }
+        )
 
         val operatorLabels = parsed.labelNames.mapNotNull { name ->
             state.allLabels.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id
