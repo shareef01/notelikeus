@@ -56,7 +56,11 @@ compose-multiplatform = "1.8.2"
 composeAdaptive = "1.1.2"
 composeNavigation = "2.9.0-beta03"
 koin = "4.1.1"
-# Matches the version koin-compose-viewmodel resolves, so the two don't fight.
+# Koin requests 2.9.1 and this upgrades it; it is not a pin, and it is not what holds the version
+# down. 2.11.0 is what breaks: it depends on compose-runtime 1.11 directly, which wins conflict
+# resolution and leaves runtime at 1.11 while compose-ui and skiko stay on the CMP plugin's 1.8.2.
+# The packaged app then dies composing App() with "CompositionLocal LocalHostDefaultProvider not
+# present". Measured in D18; #70 is blocked on this, not on Koin.
 composeLifecycle = "2.9.3"
 work = "2.11.2"
 
