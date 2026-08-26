@@ -74,6 +74,8 @@ import com.aus.notelikeus.domain.model.ThemeBase
 import com.aus.notelikeus.domain.model.ThemePreference
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 
 private val SettingsIconSize = Spacing.xxl
 private val SettingsRowHorizontal = Spacing.lg
@@ -233,7 +235,10 @@ fun ProfileSheet(
                     CloudSyncStatus.Connected, CloudSyncStatus.Synced -> Icons.Default.CloudDone
                     CloudSyncStatus.Syncing -> Icons.Default.CloudSync
                     CloudSyncStatus.Error, CloudSyncStatus.Offline -> Icons.Default.CloudOff
-                    CloudSyncStatus.Unknown -> Icons.Default.CloudQueue
+                    // Queued implies something is coming. Nothing is, without an account.
+                    CloudSyncStatus.Unknown ->
+                        if (cloudAccount.isGoogleAccount) Icons.Default.CloudQueue
+                        else Icons.Default.CloudOff
                 },
                 title = stringResource(Res.string.cloud_sync),
                 subtitle = cloudStatusLabel(cloudSyncStatus, cloudSyncedNoteCount, cloudAccount)
@@ -416,6 +421,14 @@ fun SettingsRow(
     title: String,
     subtitle: String? = null,
     onClick: (() -> Unit)? = null,
+    /**
+     * Set alongside [onClick] to make the row a switch rather than a button.
+     *
+     * It drives the semantics only -- [onClick] still does the work. Without it a settings toggle
+     * announced as "Pure black, button", which is the state of the setting withheld from exactly
+     * the person who cannot see the switch.
+     */
+    checked: Boolean? = null,
     enabled: Boolean = true,
     trailing: @Composable (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -426,17 +439,25 @@ fun SettingsRow(
             .fillMaxWidth()
             .heightIn(min = 52.dp)
             .then(
-                if (onClick != null) {
-                    Modifier.clickable(enabled = enabled, onClick = onClick)
-                } else {
-                    Modifier
+                when {
+                    onClick != null && checked != null -> Modifier.toggleable(
+                        value = checked,
+                        enabled = enabled,
+                        role = Role.Switch,
+                        onValueChange = { onClick() }
+                    )
+                    onClick != null ->
+                        Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                    else -> Modifier
                 }
             )
             .padding(horizontal = SettingsRowHorizontal, vertical = SettingsRowVertical)
             .alpha(contentAlpha),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SettingsLeadingIcon(icon = icon, contentDescription = title)
+        // Null: the title is rendered as text on the very next line, and this row merges its
+        // descendants, so describing the icon too announced every setting twice.
+        SettingsLeadingIcon(icon = icon, contentDescription = null)
         Spacer(modifier = Modifier.width(Size.iconTiny))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -500,11 +521,14 @@ fun SettingsToggleListItem(
         subtitle = subtitle,
         enabled = enabled,
         onClick = { onCheckedChange(!checked) },
+        checked = checked,
         modifier = modifier,
         trailing = {
+            // Null, so the switch pictures the state rather than being a second control inside a
+            // row that already toggles. The row owns the interaction and reports it.
             Switch(
                 checked = checked,
-                onCheckedChange = onCheckedChange,
+                onCheckedChange = null,
                 enabled = enabled
             )
         }
@@ -522,6 +546,10 @@ private fun cloudStatusLabel(
         if (localPart.length <= 12) return localPart
         return localPart.take(10) + "…"
     }
+    // Without an account there is nothing to check, so it must not say it is checking. The status
+    // starts at Unknown and is only ever written *during* a sync, so anyone who chose "Continue
+    // offline" sat under a permanent "…" -- a progress indicator for work that would never start.
+    if (!account.isGoogleAccount) return stringResource(Res.string.cloud_status_signed_out)
     return when (status) {
         CloudSyncStatus.Unknown -> stringResource(Res.string.cloud_status_checking)
         CloudSyncStatus.Connected -> stringResource(Res.string.cloud_status_ready)

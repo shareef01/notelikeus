@@ -148,6 +148,7 @@
     <string name="cloud_restore_confirm_action">Restore</string>
     <string name="cloud_sync_failed">Cloud sync failed</string>
     <string name="cloud_status_checking">…</string>
+    <string name="cloud_status_signed_out">Not signed in</string>
     <string name="cloud_status_ready">Ready</string>
     <string name="cloud_status_offline">Offline</string>
     <string name="cloud_status_syncing">Syncing</string>
