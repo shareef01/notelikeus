@@ -601,3 +601,41 @@ Nothing above is visible to `assembleDebug`, to `lint`, to the unit tests, or to
 green and fails on launch, which is the third time in this project that the only test that would
 have caught something was running the artifact. The reason it was found at all is that the recorded
 justification was checked instead of trusted.
+
+---
+
+## D19 — Array elements in `firestore.rules` are left unvalidated, rather than half-validated.
+
+**Decided:** `labels` and `checklist` are checked for type and length and nothing more. The
+per-element check that would say "every entry is a map with the right fields" is not written,
+and index-based approximations of it are deliberately not used either.
+
+**Why:** the rules language has no iteration — no loop, no comprehension, no `all` over a list — so
+the check cannot be expressed. Verified against the emulator rather than assumed: a rule using
+`checklist.all(i, i.text is string)` **denies** a write whose data satisfies it, because the unknown
+method errors and an errored condition evaluates to deny.
+
+Element access by index *does* work — `checklist[0].keys().hasOnly([...])` correctly accepts a
+well-formed element and rejects a malformed one, also confirmed on the emulator. It was rejected on
+its merits: it can only cover indices named literally, so it would validate element 0 and wave
+through elements 1 to 499. That is validation in appearance only, and the appearance is the harm —
+the next person to read the rule would take it at face value and stop looking.
+
+**What actually bounds the risk**, and why the gap is tolerable: only the owner can write to this
+subtree, so a malformed element damages the writer's own note and nobody else's; Firestore's 1 MiB
+document cap bounds total size; and all three clients already read these arrays defensively, coercing
+field by field (`item["text"] as? String ?: ""`, and a label whose `name` is absent is dropped). The
+defensive readers are the real enforcement point. The rules file now says so, so that this is not
+rediscovered as an oversight.
+
+**Cost to reverse:** none, and it becomes free the day the rules language gains iteration. A test —
+`accepts malformed elements inside labels and checklist` — pins the current behaviour, so whoever
+closes the gap properly will see it fail and know to update it.
+
+**Related, and decided the other way:** `tombstones.deletedAt` gained a `> 0` bound in the same pass,
+because that one *is* expressible and the failure it prevents is real — `pruneExpiredTombstones`
+deletes a tombstone once `now - deletedAt >= 180 days`, so a `deletedAt` of 0 is pruned on the first
+sync and the deleted note returns on every other device. The bound is one-sided on purpose: an upper
+bound would reject the write from a device with a fast clock, and a rejected tombstone means the
+deletion never propagates at all.
+
