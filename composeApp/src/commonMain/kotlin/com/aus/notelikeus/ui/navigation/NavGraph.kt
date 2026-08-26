@@ -29,6 +29,7 @@ import com.aus.notelikeus.ui.main.MainViewModel
 import com.aus.notelikeus.util.AppConfig
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.annotation.KoinExperimentalAPI
+import androidx.savedstate.read
 
 /*
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -130,19 +131,23 @@ fun NavGraph(
             popEnterTransition = { fadeIn() },
             popExitTransition = { slideOutHorizontally { it / 4 } + fadeOut() }
         ) { backStackEntry ->
-            // Compose Navigation on Desktop/JVM targets does not populate the Bundle via
-            // SavedStateHandle, so standard argument accessors are unavailable. The argument
-            // values are present in toString() output, so we parse them with a regex as a
-            // stable workaround. If this ever breaks (e.g. after a Navigation library update),
-            // the editor opens as a blank new note rather than the one that was tapped.
-            val arguments = backStackEntry.arguments?.toString()
-            fun argument(name: String): String? =
-                arguments?.let { Regex("$name=(-?\\d+)").find(it)?.groupValues?.get(1) }
-
-            val noteId = argument("noteId")?.toLongOrNull()?.takeIf { it != -1L }
-            // Parsed alongside noteId: reading it from SavedStateHandle alone meant a new note
-            // always opened in the theme default colour on desktop.
-            val initialColor = argument("initialColor")?.toIntOrNull()?.takeIf { it != Int.MIN_VALUE }
+            // Read out of the SavedState by key. This used to regex `arguments.toString()`, on
+            // the grounds that the JVM target does not populate SavedStateHandle -- true, but the
+            // savedstate `read` block is the supported way to reach the values and works on every
+            // target. That string is now `androidx.savedstate.SavedState@36cf295c` on desktop, an
+            // identity toString with no arguments in it at all, so the workaround had already
+            // stopped working there. It survived only because desktop stopped using this route
+            // when the editor moved into its own OS window.
+            //
+            // RouteArgumentParsingTest drives a real NavHost and fails if these keys stop
+            // resolving -- which is a promise a regex over an unguaranteed format could not make.
+            val arguments = backStackEntry.arguments
+            val noteId = arguments
+                ?.read { if (contains(NOTE_ID_ARG)) getLong(NOTE_ID_ARG) else null }
+                ?.takeIf { it != -1L }
+            val initialColor = arguments
+                ?.read { if (contains(INITIAL_COLOR_ARG)) getInt(INITIAL_COLOR_ARG) else null }
+                ?.takeIf { it != Int.MIN_VALUE }
 
             val viewModel: EditorViewModel = koinViewModel()
             LaunchedEffect(noteId, initialColor) { viewModel.setRouteArgs(noteId, initialColor) }
@@ -158,3 +163,7 @@ fun NavGraph(
         }
     }
 }
+
+/** The editor route's argument keys, named once so the route and the reads cannot drift apart. */
+private const val NOTE_ID_ARG = "noteId"
+private const val INITIAL_COLOR_ARG = "initialColor"
