@@ -1,8 +1,18 @@
 package com.aus.notelikeus.ui.widget
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.glance.unit.ColorProvider
+import com.aus.notelikeus.domain.model.ThemePreference
+import com.aus.notelikeus.ui.theme.colorSchemeFor
 
+/**
+ * The six colours the widget draws with.
+ *
+ * Glance composables cannot read `MaterialTheme`, so the widget has to be handed its colours
+ * rather than reading them. That is a real platform constraint -- what is not forced is where the
+ * values come from.
+ */
 data class WidgetThemeColors(
     val surface: ColorProvider,
     val onSurface: ColorProvider,
@@ -13,40 +23,27 @@ data class WidgetThemeColors(
 )
 
 /**
- * Widget Theme Overhaul
- * Synchronized with "Elite" Architecture Standards.
+ * The widget's colours for a theme, taken from the scheme the app itself would render.
+ *
+ * This used to be eighteen colour literals in three hand-written palettes -- a fourth copy of the
+ * app's colours, free to drift from them with nothing failing when it did (F6). Deriving them from
+ * [colorSchemeFor] means the widget cannot disagree with the app about what "dark" looks like,
+ * because it is asking the same function.
+ *
+ * It also makes the accent work. The widget had no notion of one, so Midnight and Forest users got
+ * a neutral widget beside a tinted app.
  */
-object WidgetThemes {
-    val Light = WidgetThemeColors(
-        surface = ColorProvider(Color(0xFFF7F7F7)),
-        onSurface = ColorProvider(Color(0xFF000000)),
-        onSurfaceVariant = ColorProvider(Color(0xFF5C5C5C)),
-        primary = ColorProvider(Color(0xFF000000)),
-        primaryContainer = ColorProvider(Color(0xFFEEEEEE)),
-        surfaceVariant = ColorProvider(Color(0xFFFFFFFF))
-    )
+fun widgetColorsFor(preference: ThemePreference, systemDark: Boolean): WidgetThemeColors =
+    widgetColorsFrom(colorSchemeFor(preference, systemDark))
 
-    val Dark = WidgetThemeColors(
-        surface = ColorProvider(Color(0xFF121212)),
-        onSurface = ColorProvider(Color(0xFFFFFFFF)),
-        onSurfaceVariant = ColorProvider(Color(0xFFAAAAAA)),
-        primary = ColorProvider(Color(0xFFFFFFFF)),
-        primaryContainer = ColorProvider(Color(0xFF222222)),
-        surfaceVariant = ColorProvider(Color(0xFF1A1A1A))
-    )
+internal fun widgetColorsFrom(scheme: ColorScheme): WidgetThemeColors = WidgetThemeColors(
+    surface = ColorProvider(scheme.surface),
+    onSurface = ColorProvider(scheme.onSurface),
+    onSurfaceVariant = ColorProvider(scheme.onSurfaceVariant),
+    primary = ColorProvider(scheme.primary),
+    primaryContainer = ColorProvider(scheme.primaryContainer),
+    surfaceVariant = ColorProvider(scheme.surfaceVariant)
+)
 
-    val TrueDark = WidgetThemeColors(
-        surface = ColorProvider(Color.Black), // OLED Absolute Black
-        onSurface = ColorProvider(Color.White),
-        onSurfaceVariant = ColorProvider(Color(0xFFAAAAAA)),
-        primary = ColorProvider(Color(0xFFFFFFFF)),
-        primaryContainer = ColorProvider(Color(0xFF121212)),
-        surfaceVariant = ColorProvider(Color(0xFF121212))
-    )
-
-    val MonochromeLight = Light
-    val MonochromeDark = Dark
-
-    /** Factory for dynamic colors to bypass strange Glance internal restrictions. */
-    fun dynamicColor(color: Color): ColorProvider = ColorProvider(color)
-}
+/** Factory for dynamic colors to bypass strange Glance internal restrictions. */
+fun dynamicColor(color: Color): ColorProvider = ColorProvider(color)
