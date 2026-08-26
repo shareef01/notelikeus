@@ -478,10 +478,10 @@ because JetBrains un-splits material3 — the open question is already isolated.
 work"; it is **"which material3 APIs moved between 1.8.2 and 1.9.1, and does this app call any of
 them"**. That is answerable from release notes plus a call-site search, without booting anything.
 
-**`composeLifecycle` stays at 2.9.3** either way — that is #70, and it is blocked for a different
-and firmer reason: `koin-compose-viewmodel:4.1.1` pins `lifecycle-viewmodel-compose:2.9.3` exactly,
-and Koin 4.2.x pulls Compose 1.10, which is the combination the catalog comment says kills the
-desktop app.
+**`composeLifecycle` stays at 2.9.3** either way — that is #70, blocked for its own reason. The
+reason given here originally was wrong, and D18 replaces it: Koin does not pin lifecycle exactly.
+The real blocker was found by resolving and running rather than by reading, and it is firmer than
+the guess it replaces.
 
 ---
 
@@ -546,3 +546,58 @@ Held to be an acceptable trade because the type checker is a development-time ne
 The 220 unit tests sit underneath it and were run. The Playwright e2e suite was **not** re-run, and
 deliberately so: it drives the built bundle, and the bundle is byte-identical, so it would be
 exercising the same artifact and could not distinguish the two versions.
+
+---
+
+## D18 — `composeLifecycle` stays at 2.9.3, because 2.11.0 breaks the desktop app at composition.
+
+Dependabot's #70. The reason recorded in D16 — that `koin-compose-viewmodel:4.1.1` pins
+`lifecycle-viewmodel-compose:2.9.3` exactly — **was wrong**, and it was wrong in the comfortable
+direction: it made a real blocker sound like a settled one, so nobody would check.
+
+Resolving `desktopRuntimeClasspath` on `main` shows Koin *requesting* 2.9.1 and Gradle upgrading it:
+
+```
+org.jetbrains.androidx.lifecycle:lifecycle-common:2.9.1 -> 2.9.3
+```
+
+An upgrade, not a pin. 2.9.3 is this catalog's choice, and nothing was stopping it moving.
+
+### What actually stops it
+
+Bumping to 2.11.0 fractures the Compose line the catalog comment exists to keep flat:
+
+| Artifact | main | with lifecycle 2.11.0 |
+|---|---|---|
+| `org.jetbrains.compose.runtime:runtime` | 1.8.2 | **1.11.0** |
+| `org.jetbrains.compose.runtime:runtime-saveable` | 1.8.2 | **1.11.0** |
+| `org.jetbrains.compose.desktop:desktop-jvm` (carries skiko) | 1.8.2 | 1.8.2 |
+
+148 artifacts stay on 1.8.2 while `runtime` alone jumps three minor versions, because lifecycle
+2.11.0 depends on it directly and direct dependencies win conflict resolution.
+
+### It compiles, packages, and then does not work
+
+`createDistributable` succeeds. The packaged app launches and the entire UI fails to compose:
+
+```
+java.lang.IllegalStateException: CompositionLocal LocalHostDefaultProvider not present
+  at androidx.compose.runtime.HostDefaultProviderKt.LocalHostDefaultProvider$lambda$0
+  at androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner.getCurrent
+  at com.aus.notelikeus.AppKt.App(App.kt:311)
+```
+
+Lifecycle 2.11.0's `LocalViewModelStoreOwner` is built on `compositionLocalWithHostDefaultOf`, a
+Compose **runtime** 1.11 mechanism whose provider lives in Compose **ui** — and ui is still 1.8.2,
+so the provider is never installed. `App()` dies on its first read.
+
+Worth noting the symptom is **not** the `UnsatisfiedLinkError(RenderNodeContext_nMake)` the catalog
+comment predicts. Same cause — a fractured Compose line — different failure. The comment describes
+one instance of the class, not the class.
+
+### The standing lesson
+
+Nothing above is visible to `assembleDebug`, to `lint`, to the unit tests, or to CI. It packages
+green and fails on launch, which is the third time in this project that the only test that would
+have caught something was running the artifact. The reason it was found at all is that the recorded
+justification was checked instead of trusted.
