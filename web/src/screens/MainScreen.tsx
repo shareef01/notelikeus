@@ -124,8 +124,10 @@ export function MainScreen() {
 
   const selectionMode = selectedNoteIds.length > 0;
 
-  const appTheme = useSettingsStore((s) => s.appTheme);
-  const setAppTheme = useSettingsStore((s) => s.setAppTheme);
+  const theme = useSettingsStore((s) => s.theme);
+  const setThemeBase = useSettingsStore((s) => s.setThemeBase);
+  const setAccentColor = useSettingsStore((s) => s.setAccentColor);
+  const setAmoled = useSettingsStore((s) => s.setAmoled);
 
   const cloud = useCloudSync();
 
@@ -761,8 +763,10 @@ export function MainScreen() {
         sortOrder={filters.sortOrder ?? 'manual'}
         onViewColumnsCycle={cycleViewColumns}
         onSortOrderCycle={cycleSortOrder}
-        appTheme={appTheme}
-        onAppThemeChange={setAppTheme}
+        theme={theme}
+        onThemeBaseChange={setThemeBase}
+        onAccentChange={setAccentColor}
+        onAmoledChange={setAmoled}
         isGoogleAccount={cloud.isGoogleAccount}
         isGuest={cloud.isGuest}
         userEmail={cloud.userEmail}
