@@ -59,12 +59,17 @@ The entity comment explains why it was not dropped, and the reasoning is sound: 
 `notes` fires the `ON DELETE CASCADE` that `checklist_items` and `note_label_cross_ref`
 declare against it. Not worth risking checklists and label links to reclaim one boolean.
 
-**Severity:** cosmetic. Documented deliberately; listed so a future reader does not
+**Severity:** cosmetic.
+
+**Fixed.** `mutableLongStateOf` for the navigation counter (it is bumped on every deep link and
+widget tap, so the generic version boxed a `Long` each time), `tools:targetApi="tiramisu"` on the
+back-callback attribute, and the activity's `android:label` dropped as a repeat of the
+application's. Documented deliberately; listed so a future reader does not
 "discover" it and try to clean it up.
 
 ---
 
-## F3 — Unused string resources (21) and lint `Typos` (18)
+## F3 — Unused string resources (21) and lint `Typos` (18) — **FIXED**
 
 `lintDebug` reports 21 `UnusedResources` and 18 `Typos`, zero errors. Some of the unused
 strings are for features that were removed; some may be reachable only from Glance or the
@@ -75,9 +80,18 @@ Deleting a string that only the widget uses would not fail the build.
 
 **Severity:** low.
 
+**Fixed, after doing the verification pass this entry asked for.** A release APK was built both
+ways, debug-signed with `apksigner`, installed on the emulator and driven through launch, the notes
+list, the Filters sheet, the drawer and the editor — the Compose resource lookups that shrinking
+historically breaks. Nothing missing, nothing in logcat, screenshots identical to the unshrunk
+build.
+
+**14,861,446 → 14,358,143 bytes: 492 KiB, 3.4%.** Modest, which is the honest number — most of this
+APK is the bundled Inter fonts and native libraries, and neither is a `res/` entry.
+
 ---
 
-## F4 — Release builds minify but do not shrink resources
+## F4 — Release builds minify but do not shrink resources — **FIXED**
 
 `androidApp/build.gradle.kts:59` sets `isMinifyEnabled = true` without
 `isShrinkResources = true`. Lint flags it.
@@ -90,7 +104,7 @@ it is the step that historically breaks Compose resource lookups.
 
 ---
 
-## F5 — Two trivial lint warnings in `androidApp`
+## F5 — Two trivial lint warnings in `androidApp` — **FIXED**
 
 - `MainActivity.kt:37` — `mutableStateOf` holding a `Long`; should be `mutableLongStateOf`
   (`AutoboxingStateCreation`).
@@ -185,7 +199,7 @@ looked at the result on screen.
 
 ---
 
-## F8 — `EditorViewModel` injects a `SettingsRepository` it never uses
+## F8 — `EditorViewModel` injects a `SettingsRepository` it never uses — **FIXED**
 
 `EditorViewModel`'s constructor takes `settingsRepository: SettingsRepository` and the class body
 references it exactly once — in the parameter list. Nothing reads it.
@@ -198,6 +212,9 @@ which is how a dead dependency stays invisible: the test keeps it looking used.
 **Why it matters:** minor, but it is a constructor argument threaded through the Koin module and
 the desktop `EditorWindowLauncher`'s manual factory, so it makes the editor look like it depends
 on settings when it does not.
+
+**Fixed.** Removed from the constructor, both Koin factories and the test's stub — the stub being
+the thing that kept it looking used.
 
 **Suggested fix:** drop the parameter, then the Koin definition and the desktop factory call.
 Deliberately not done inside the audit — it touches DI wiring in three places and belongs in a
