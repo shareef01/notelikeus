@@ -40,8 +40,15 @@ data class ParsedQuery(
  * property most easily broken here and the one most visible when broken.
  *
  * [dayStart] converts a whole-day offset from today into epoch millis at that day's local
- * midnight. Injected rather than computed, because midnight is a timezone question and this file
- * has no business answering it; it also lets the tests pin dates without pinning a clock.
+ * midnight, and [dayStartOfDate] does the same for a civil date. Both are injected rather than
+ * computed, because midnight is a timezone question and this file has no business answering it;
+ * it also lets the tests pin dates without pinning a clock.
+ *
+ * Two functions rather than one because deriving the second from the first is exactly the bug
+ * this shape exists to prevent: an ISO date used to be turned into a day offset by dividing
+ * `dayStart(0)` by 86,400,000, but that value carries a timezone — local midnight east of UTC
+ * falls on the previous UTC day — so the division answered a day early and every typed date
+ * resolved one day late for roughly two thirds of the world.
  */
 object NoteQueryParser {
 
@@ -82,7 +89,11 @@ object NoteQueryParser {
     /** The operator prefixes, so free text containing a colon is left alone. */
     private val KNOWN_PREFIXES = setOf("label", "color", "colour", "is", "has", "before", "after", "in")
 
-    fun parse(input: String, dayStart: (daysFromToday: Int) -> Long): ParsedQuery {
+    fun parse(
+        input: String,
+        dayStart: (daysFromToday: Int) -> Long,
+        dayStartOfDate: (year: Int, month: Int, day: Int) -> Long?
+    ): ParsedQuery {
         var result = ParsedQuery()
         val freeText = StringBuilder()
 
@@ -101,7 +112,7 @@ object NoteQueryParser {
                 result = result.copy(unknown = result.unknown + token)
                 continue
             }
-            result = applyOperator(result, prefix, value, dayStart) ?: result.copy(
+            result = applyOperator(result, prefix, value, dayStart, dayStartOfDate) ?: result.copy(
                 unknown = result.unknown + token
             )
         }
@@ -113,7 +124,8 @@ object NoteQueryParser {
         current: ParsedQuery,
         prefix: String,
         value: String,
-        dayStart: (Int) -> Long
+        dayStart: (Int) -> Long,
+        dayStartOfDate: (Int, Int, Int) -> Long?
     ): ParsedQuery? {
         val lower = value.lowercase()
         return when (prefix) {
@@ -126,10 +138,10 @@ object NoteQueryParser {
             }
             "has" -> HAS_FLAGS[lower]?.let { current.copy(flags = current.flags + it) }
             "in" -> IN_SCOPES[lower]?.let { current.copy(scope = it) }
-            "before" -> parseDate(lower, dayStart)?.let {
+            "before" -> parseDate(lower, dayStart, dayStartOfDate)?.let {
                 current.copy(before = it, dateField = current.dateField ?: DateField.EDITED)
             }
-            "after" -> parseDate(lower, dayStart)?.let {
+            "after" -> parseDate(lower, dayStart, dayStartOfDate)?.let {
                 // `after:monday` means from the start of that day onwards, so the boundary is that
                 // day's midnight rather than the following one.
                 current.copy(after = it, dateField = current.dateField ?: DateField.EDITED)
@@ -144,34 +156,36 @@ object NoteQueryParser {
      * Returns the epoch millis of that day's start; callers decide whether that is an inclusive
      * lower bound or an exclusive upper one.
      */
-    private fun parseDate(value: String, dayStart: (Int) -> Long): Long? = when (value) {
+    private fun parseDate(
+        value: String,
+        dayStart: (Int) -> Long,
+        dayStartOfDate: (Int, Int, Int) -> Long?
+    ): Long? = when (value) {
         "today" -> dayStart(0)
         "yesterday" -> dayStart(-1)
         "tomorrow" -> dayStart(1)
         "week" -> dayStart(-7)
         "month" -> dayStart(-30)
         "year" -> dayStart(-365)
-        else -> parseIsoDate(value, dayStart)
+        else -> parseIsoDate(value, dayStartOfDate)
     }
 
     /**
-     * An ISO date, converted to a day offset and handed to [dayStart].
+     * An ISO date, handed straight to [dayStartOfDate].
      *
-     * Going through the offset rather than computing millis directly is what keeps the timezone
-     * question in one place: the caller's [dayStart] already knows where midnight is, so a date
-     * typed by the user lands on the same boundary as `today` does.
+     * Nothing is computed from it here. The shape of the operator — three integers — is all this
+     * function decides; where that date's midnight falls is the caller's answer to give, and a
+     * date that does not exist comes back null so the operator is recorded as unrecognised rather
+     * than resolved to a day the user did not type.
      */
-    private fun parseIsoDate(value: String, dayStart: (Int) -> Long): Long? {
+    private fun parseIsoDate(value: String, dayStartOfDate: (Int, Int, Int) -> Long?): Long? {
         val parts = value.split('-')
         if (parts.size != 3) return null
         val year = parts[0].toIntOrNull() ?: return null
         val month = parts[1].toIntOrNull() ?: return null
         val day = parts[2].toIntOrNull() ?: return null
         if (month !in 1..12 || day !in 1..31) return null
-        val today = dayStart(0)
-        val todayEpochDay = floorDiv(today, DAY_MILLIS)
-        val targetEpochDay = epochDayFromCivil(year, month, day)
-        return dayStart((targetEpochDay - todayEpochDay).toInt())
+        return dayStartOfDate(year, month, day)
     }
 
     /**
@@ -211,26 +225,3 @@ object NoteQueryParser {
         }
 }
 
-private const val DAY_MILLIS = 86_400_000L
-
-/** Floor division, which Kotlin's `/` is not for negative numerators. */
-private fun floorDiv(a: Long, b: Long): Long {
-    val q = a / b
-    return if (a % b != 0L && (a xor b) < 0) q - 1 else q
-}
-
-/**
- * Days since 1970-01-01 for a civil date, by Howard Hinnant's `days_from_civil`.
- *
- * Pure arithmetic with no calendar library, which is what lets this live in `commonMain`. Valid
- * across the whole range anyone will type into a notes app.
- */
-internal fun epochDayFromCivil(year: Int, month: Int, day: Int): Long {
-    val y = if (month <= 2) year - 1 else year
-    val era = (if (y >= 0) y else y - 399) / 400
-    val yoe = (y - era * 400).toLong()
-    val mp = (month + 9) % 12
-    val doy = (153 * mp + 2) / 5 + day - 1
-    val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
-    return era.toLong() * 146_097 + doe - 719_468
-}
