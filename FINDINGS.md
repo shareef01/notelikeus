@@ -651,7 +651,7 @@ stumble into the next one.
 
 ---
 
-## F24 — The web client type-checks against `@types/node`, which nothing declares
+## F24 — The web client type-checks against `@types/node`, which nothing declares — **FIXED**
 
 `src/lib/firestore/notesSync.emulator.test.ts` imports `node:fs`, `node:path` and reads `process`.
 Those type-check only because `@types/node` happens to be installed, arriving transitively via
@@ -673,3 +673,112 @@ adding to `package.json` is a dependency decision and those are the owner's call
 the terms that decision is normally made in: it replaces nothing, it is **already on disk** so the
 install cost is zero, it is DefinitelyTyped's most-used package, and the alternative — leaving it
 undeclared — keeps a type-check that works by coincidence rather than by statement.
+
+**Fixed** during the audit that produced F25–F27, once the decision was handed over. One line in
+`devDependencies`, `^26.2.0` — the version already resolved on disk — and `npm install
+--package-lock-only` added exactly one line to the lockfile with no other version movement, which is
+what "it is already there" should look like when it is true.
+
+---
+
+## F25 — Every typed date in search resolved a day late east of UTC — **FIXED**
+
+`NoteQueryParser.parseIsoDate` recovered "today" as a day index by dividing `dayStart(0)` by
+86,400,000. But `dayStart(0)` is *local* midnight in epoch millis, and in any zone with a positive
+UTC offset that instant falls on the previous UTC day, so the floor division answered a day early
+and every offset computed from it was one too large.
+
+`before:2026-08-27` in Berlin, Kolkata, Tokyo or Auckland therefore meant *before the 28th* — it
+included a whole day the user had explicitly excluded. `after:` was wrong the same way. Relative
+keywords (`today`, `week`) were unaffected: they go straight to `dayStart` and never touch the
+arithmetic.
+
+**Confirmed before it was written down**, by a throwaway test against the real parser: UTC and
+`America/New_York` passed, `Asia/Kolkata` failed by exactly one day. That asymmetry is the whole
+finding — the defect is invisible at or west of UTC, which is where the existing test fixture sat.
+
+**Why the test suite could not see it.** `NoteQueryParserTest` injected
+`dayStart = { TODAY_START + offset * DAY }` with `TODAY_START` on an exact UTC day boundary. That
+models the one timezone in which the bug does not occur, so the suite could grow indefinitely
+without ever discriminating.
+
+**Fixed by deleting the arithmetic rather than correcting it.** The value being divided carries a
+timezone; nothing in `commonMain` can honestly divide it. `parse` now takes a second injected
+function, `dayStartOfDate(year, month, day)`, and an ISO date is handed straight to it — the parser
+decides the *shape* of the operator (three integers) and nothing else. `epochDayFromCivil` and
+`floorDiv` existed only to serve the deleted calculation and went with it; the calendar arithmetic
+the tests still need to name a date now lives in the test file, where getting it wrong fails a test
+instead of shipping.
+
+Two tests, in the two places the behaviour now lives: `NoteQueryParserTest` models a whole zone as
+an object so `dayStart` and `dayStartOfDate` cannot disagree in a fixture, and asserts against
+UTC+05:30 as well as UTC; `DateUtilsCivilDateTest` sets a real default timezone and runs the real
+`Calendar` code across seven zones on both sides of UTC.
+
+**A second defect fell out of the fix, and only the tests found it.** The first version of
+`DateUtils.startOfDay(y, m, d)` used a non-lenient `Calendar` to reject `2026-02-31`. Non-lenient
+also throws for a date whose local midnight does not *exist* — America/Santiago and America/Havana
+shift DST at midnight, so there is no 00:00 on transition day — which turned `before:<that date>`
+into an unrecognised operator for everyone in those zones. Worse than the bug being fixed, and
+invisible to review. The day-of-month range is now checked explicitly and the Calendar left lenient,
+so a missing midnight moves forward to the first instant that exists, exactly as the
+`startOfDay(timestamp)` overload already did. Guarded by a sweep of every day of a year in four
+midnight-shifting zones rather than a named date, because tzdata moves transitions.
+
+**Bonus, from the same change:** `2026-02-31` used to be accepted — the check only bounded the day
+at 31 and the arithmetic carried the overflow into March 3. It is now recorded as `unknown`.
+
+---
+
+## F26 — An invalidated Keystore key stranded the passphrase in the deprecated ESP forever — **FIXED**
+
+`getOrCreateSecretKey` returns the existing alias whenever `KeyStore.getKey` hands one back — and an
+invalidated AndroidKeyStore key still *exists*; it only fails at `Cipher.init`. Nothing in the
+codebase ever called `deleteEntry`.
+
+So after a lock-screen credential reset or a device-to-device transfer: decrypt throws, the file is
+preserved aside, a fresh passphrase is generated, `writeToKeystoreFile` asks for the same dead key,
+encrypt throws, and the passphrase falls back to `EncryptedSharedPreferences`. Every later launch
+repeats it identically. The passphrase then lives permanently in the deprecated store this class was
+written to replace, and the app can never climb back onto the Keystore path.
+
+It fails safe rather than losing data, which is why this is not higher — and the log line at `:47`
+shows a one-off failure here was anticipated. What was missed is that the condition is permanent.
+
+**Fixed** by deleting the alias and retrying once, but *only* when encryption itself failed. That
+distinction is the whole fix and the first attempt got it wrong: retrying on any failure of the
+combined encrypt-and-publish step would delete a perfectly healthy key because a rename lost a race
+— which makes the existing passphrase file undecryptable and quarantines the database, precisely the
+outcome the surrounding code is built to avoid. `encryptUnderKeystoreKey` and `publishByRename` are
+now separate, and only the former's failure is evidence about the key.
+
+Deleting is safe on that path and no other: by then the key protects nothing — either no passphrase
+file exists (first run, or the legacy migration) or `preserveUnreadablePassphraseFile` has already
+moved it aside. The decrypt path deliberately keeps the alias, because dropping it would destroy the
+only chance of ever reading that preserved blob back.
+
+**Not covered by a test.** `DatabaseKeyManagerTest` reaches the codec and the file swap with software
+keys; the invalidation branch needs a real AndroidKeyStore key to be invalidated, which is
+instrumented-test territory at best and a physical credential reset at worst. Recorded as unverified
+rather than claimed.
+
+---
+
+## F27 — The desktop session loader could take the whole app down on a non-Windows JVM — **FIXED**
+
+`persist()` catches `Throwable`, with a comment explaining why: on a non-Windows JVM, loading
+`Crypt32` fails with `UnsatisfiedLinkError`, which is an `Error` and would otherwise escape.
+`load()` makes the same JNA call three times and caught only `Exception` — and `load()` runs from
+`init`, so an escape there fails the whole Koin graph and the app never starts.
+
+Latent rather than live: `persist()` can never create a `.session` on a platform where `load()`
+would fail, so the file is not there to trip over. But it is the same failure shape as F19 and F23,
+with the mitigation already written one function above and simply not carried across.
+
+**Fixed** by widening both catches to `Throwable`. That change forced a second one: the inner catch
+used to `delete()` the session file, and once the `Error` is actually caught, that line would start
+destroying sessions on any machine where DPAPI is merely *unavailable* rather than the blob being
+bad. It now keeps the file — consistent with `preserveUnreadablePassphraseFile` and the quarantine
+path, which never delete what they only failed to read. Nothing is lost by keeping it: the next
+successful `save()` overwrites the file wholesale.
+
