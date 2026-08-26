@@ -9,7 +9,7 @@ through, with the commit that closed them.
 
 ---
 
-## F1 — Desktop route arguments are parsed with a regex over `toString()`
+## F1 — Desktop route arguments are parsed with a regex over `toString()` — **FIXED**
 
 `NavGraph.kt:135-146` reads `noteId` and `initialColor` by regex-matching
 `backStackEntry.arguments?.toString()`, because Compose Navigation does not populate
@@ -24,6 +24,29 @@ already carries them for the separate-window path), or add a test that asserts t
 still extracts both arguments from a real `NavBackStackEntry`.
 
 **Severity:** medium. Latent, but it silently loses the user's navigation intent.
+
+---
+
+**Fixed**, and the premise turned out to be wrong in an instructive way.
+
+Writing the guard is what found it. The regex had **already stopped working on desktop**:
+`arguments.toString()` is now `androidx.savedstate.SavedState@36cf295c`, an identity string with no
+values in it at all. Nobody noticed because desktop stopped using this route when the editor moved
+into its own OS window — `MainScreen` sends desktop through `editorWindowLauncher.launch(...)`
+instead, which carries the arguments out-of-band.
+
+So the workaround was applied on the platform that no longer needs it, and the platform actually
+relying on it was **Android**, where `Bundle.toString()` still happens to include the contents. The
+comment describing it had it backwards.
+
+`arguments.read { getLong("noteId") }` — the supported savedstate accessor — works on both targets,
+proven by the same test. `NavGraph` uses that now, with the keys named once as constants so the
+route and the reads cannot drift apart. No string format is depended on anywhere.
+
+`RouteArgumentParsingTest` drives a **real** `NavHost` with the real argument types, which is the
+only shape of test that could have caught this: a fixture-based test would encode an assumption
+about the format and keep passing through exactly the change it exists to detect. Verified on the
+emulator that tapping a note still opens that note.
 
 ---
 
@@ -134,7 +157,7 @@ commit of its own.
 
 ---
 
-## F9 — The app crashes on its first launch after install (`AppStartup` snapshot race)
+## F9 — The app crashes on its first launch after install (`AppStartup` snapshot race) — **FIXED**
 
 Reproduced twice on a clean emulator, both times at launch:
 
@@ -167,11 +190,14 @@ nothing here needs them. Replace it with a `MutableStateFlow<Boolean>` read thro
 identity. Failing that, force `AppStartup` initialisation on the main thread in `onCreate` before
 `setContent`, and write through `Snapshot.withMutableSnapshot { }`.
 
-**Not fixed here** because it is unrelated to the query work and an Android startup race deserves
-its own change and its own verification rather than a drive-by at the end of another phase. It is
-the highest-severity item in this file.
+**Fixed** in #71, separately from the query work, as this entry asked. `AppStartup.isReady` is a
+`MutableStateFlow` rather than a `mutableStateOf`: the snapshot state was being created off the main
+thread by `markReady`, which is where the `IllegalStateException` came from. `MainActivity` reads it
+through `collectAsState`, so the Compose state is created in composition, on the main thread, where
+it belongs.
 
-**Severity:** high — it is a crash, on the first launch a user ever performs.
+This heading went un-updated for several sessions after the fix landed, which is its own small
+lesson: a findings file is only worth what it costs to keep true.
 
 ## F10 — Manual reordering is unreachable with a screen reader — **FIXED**
 
