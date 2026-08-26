@@ -61,7 +61,7 @@ koin = "4.1.1"
 # resolution and leaves runtime at 1.11 while compose-ui and skiko stay on the CMP plugin's 1.8.2.
 # The packaged app then dies composing App() with "CompositionLocal LocalHostDefaultProvider not
 # present". Measured in D18; #70 is blocked on this, not on Koin.
-composeLifecycle = "2.9.3"
+composeLifecycle = "2.11.0"
 work = "2.11.2"
 
 [libraries]
