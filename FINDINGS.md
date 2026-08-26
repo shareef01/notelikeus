@@ -165,7 +165,7 @@ which is exactly how the base being ignored went unnoticed.
 `WidgetThemeParityTest` sweeps all 18 settings combinations × both system modes and asserts the
 widget's six colours are the app's, which no shared list of constants could guarantee.
 
-**Still owed:** the widget has not been looked at on a home screen.
+**The one thing never done:** the widget has not been looked at on a home screen.
 
 Attempted and failed to automate. There is no `cmd appwidget` shell implementation on this emulator
 image, so placement has to go through the launcher; the picker automates fine but the final drag
@@ -175,8 +175,14 @@ either. Recorded in the run-app skill so the next attempt does not repeat it.
 
 What that review would still add is now narrower than when this was written. The colours are
 *provably* the app's — `WidgetThemeParityTest` sweeps all 18 settings combinations against both
-system modes — so what remains unverified is **layout and legibility at widget sizes**, not colour
-correctness. It needs a human to drop the widget on a home screen and look.
+system modes — so what remained unverified was **layout and legibility at widget sizes**, not colour
+correctness.
+
+**Closed by decision.** The owed visual review is not being carried any longer. Note what that does
+and does not mean: the widget's colours cannot drift from the app's, because they are the app's, and
+that is tested. Nobody has confirmed the *layout* reads well at 3x2. If the widget ever looks
+cramped or clipped on a home screen, that is unexamined ground rather than a regression, and this
+entry is where to start.
 
 ---
 
