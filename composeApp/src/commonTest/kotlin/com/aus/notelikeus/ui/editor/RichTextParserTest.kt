@@ -10,6 +10,68 @@ import kotlin.test.assertTrue
 
 class RichTextParserTest {
 
+    /**
+     * Found on a real note, on a real device.
+     *
+     * `__bold__` is the other CommonMark spelling, and the app's own toolbar never writes it -- so
+     * it arrives by paste or by hand. The single-underscore italic rule used to eat the *outer*
+     * pair and leave the inner two on screen, which is how a note came to read
+     * `_this is a new note_` with the underscores showing.
+     */
+    @Test
+    fun parse_appliesBoldStyleToUnderscoreSpelling() {
+        val result = RichTextParser.parse(
+            text = "__hello__ world",
+            contentColor = Color.Black
+        )
+
+        assertEquals("hello world", result.text)
+        assertEquals(FontWeight.Bold, result.spanStyles.first().item.fontWeight)
+    }
+
+    @Test
+    fun parse_doesNotLeaveStrayUnderscores() {
+        val result = RichTextParser.parse(
+            text = "__this is a new note__",
+            contentColor = Color.Black
+        )
+
+        assertEquals("this is a new note", result.text)
+    }
+
+    /** The single-underscore rule still has to work, and must not swallow a `__` pair. */
+    @Test
+    fun parse_keepsItalicAndBoldSpellingsApart() {
+        val italic = RichTextParser.parse(text = "_hello_", contentColor = Color.Black)
+        assertEquals("hello", italic.text)
+        assertEquals(FontStyle.Italic, italic.spanStyles.first().item.fontStyle)
+
+        val bold = RichTextParser.parse(text = "__hello__", contentColor = Color.Black)
+        assertEquals("hello", bold.text)
+        assertEquals(FontWeight.Bold, bold.spanStyles.first().item.fontWeight)
+    }
+
+    @Test
+    fun parse_handlesBothSpellingsInOneString() {
+        val result = RichTextParser.parse(
+            text = "__one__ and **two** and _three_",
+            contentColor = Color.Black
+        )
+
+        assertEquals("one and two and three", result.text)
+    }
+
+    /** An unclosed marker is not emphasis, and markdown leaves it alone rather than guessing. */
+    @Test
+    fun parse_leavesAnUnclosedMarkerAsText() {
+        val result = RichTextParser.parse(
+            text = "__unclosed emphasis",
+            contentColor = Color.Black
+        )
+
+        assertEquals("__unclosed emphasis", result.text)
+    }
+
     @Test
     fun parse_appliesBoldStyle() {
         val result = RichTextParser.parse(
