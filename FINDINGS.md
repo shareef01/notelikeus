@@ -523,3 +523,35 @@ Verified on the emulator.
 The underlying oddity is left alone deliberately: `Unknown` really does mean "no sync has run yet",
 and that is honest as a *status*. It was the rendering that turned it into a claim about work in
 progress.
+
+## F22 — Nested emphasis leaves its inner markers on screen
+
+`**bold with __inner__ inside**` renders bold, correctly — and shows the `__` characters. Same for
+`**_x_**`. `splitIntoSegments` matches the outer marker, emits the inner text as one opaque segment
+and never re-parses it, so any emphasis inside a span survives as literal characters.
+
+Found on a real note on the Pixel, where a bulleted line read:
+
+```
+• __this is a new note; the plus button on the windows app seems to be broken....
+```
+
+bold, with the underscores visible. Reproduced exactly:
+
+| in | out |
+|---|---|
+| `**__inner__**` | `__inner__` (bold) |
+| `**_inner_**` | `_inner_` (bold) |
+
+**Not fixed, deliberately.** The fix is to recurse into a matched segment and merge styles — but
+`toTransformedText` pairs `parse(text)` with `buildOffsetMapping(text)`, and Compose's text field
+throws if the two disagree about the transformed length. Hiding more markers in `parse` without
+making the mapping hide exactly the same ones turns a cosmetic defect into a crash while typing.
+Both need rewriting together, with the offset sweep in `MarkdownOffsetMappingTest` extended to cover
+nesting first.
+
+**Not a defect, for contrast:** the same note list shows `**_Wednesday, August 19...` with its
+markers visible, because that note has no closing `**`. An unclosed marker is not emphasis, and
+leaving it as text is what markdown is supposed to do.
+
+**Severity:** cosmetic, but on a card preview, which is where notes are read most.
