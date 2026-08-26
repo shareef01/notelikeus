@@ -106,6 +106,10 @@
   --outline-rgb: 38 38 38;
 }
 
+/* Appearance is three independent settings -- a base, an accent and a black level -- composed by
+   the classes ThemeApplier puts on <html>. It used to be five fused themes, one class each, which
+   is why a blue theme could never also be OLED: there was one black level per named theme. */
+
 .theme-light {
   --background-rgb: 247 247 247;
   --surface-rgb: 255 255 255;
@@ -114,6 +118,16 @@
   --secondary-rgb: 82 82 82;
   --muted-rgb: 107 107 107;
   --outline-rgb: 216 216 216;
+}
+
+/* On light, an accent tints the primary and nothing else -- matching lightSchemeFor() in
+   Theme.kt, which copies the light scheme and changes only `primary` and its container. */
+.theme-light.accent-blue {
+  --primary-rgb: 11 87 208;
+}
+
+.theme-light.accent-green {
+  --primary-rgb: 27 107 46;
 }
 
 .theme-dark {
@@ -126,17 +140,8 @@
   --outline-rgb: 55 55 55;
 }
 
-.theme-true-dark {
-  --background-rgb: 0 0 0;
-  --surface-rgb: 0 0 0;
-  --surface-variant-rgb: 18 18 18;
-  --primary-rgb: 255 255 255;
-  --secondary-rgb: 168 168 168;
-  --muted-rgb: 153 153 153;
-  --outline-rgb: 38 38 38;
-}
-
-.theme-midnight {
+/* What Midnight was. */
+.theme-dark.accent-blue {
   --background-rgb: 7 10 18;
   --surface-rgb: 12 17 28;
   --surface-variant-rgb: 20 27 42;
@@ -146,7 +151,8 @@
   --outline-rgb: 40 52 72;
 }
 
-.theme-forest {
+/* What Forest was. */
+.theme-dark.accent-green {
   --background-rgb: 9 14 10;
   --surface-rgb: 15 22 16;
   --surface-variant-rgb: 24 33 25;
@@ -154,6 +160,28 @@
   --secondary-rgb: 154 184 158;
   --muted-rgb: 138 164 142;
   --outline-rgb: 42 56 44;
+}
+
+/* Neutral dark at true black -- the palette that used to be called OLED, values intact. It gets
+   its own primary and outline rather than merely blacking the surfaces, because TrueDark is a
+   scheme of its own in Theme.kt and not DarkColorScheme.asAmoled(). */
+.theme-dark.amoled {
+  --background-rgb: 0 0 0;
+  --surface-rgb: 0 0 0;
+  --surface-variant-rgb: 18 18 18;
+  --primary-rgb: 255 255 255;
+  --secondary-rgb: 168 168 168;
+  --muted-rgb: 153 153 153;
+  --outline-rgb: 38 38 38;
+}
+
+/* An accented theme at true black keeps its hue: only the surface family drops, exactly as
+   ColorScheme.asAmoled() does. Three classes, so this wins over the neutral rule above. */
+.theme-dark.accent-blue.amoled,
+.theme-dark.accent-green.amoled {
+  --background-rgb: 0 0 0;
+  --surface-rgb: 0 0 0;
+  --surface-variant-rgb: 18 18 18;
 }
 
 @layer base {

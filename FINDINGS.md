@@ -116,7 +116,7 @@ visual review is still owed.
 
 ---
 
-## F7 — The web client's theme picker still offers the six fused themes
+## F7 — The web client's theme picker still offers the six fused themes — **FIXED**
 
 The Kotlin clients now express appearance as base × black level × accent (`ThemePreference`).
 The web client still stores a single `AppTheme` of `auto | light | dark | true_dark | midnight |
@@ -132,6 +132,27 @@ and rebuild `ThemePicker.tsx` as two rows plus a toggle. The Kotlin implementati
 are the specification.
 
 **Severity:** low, and deliberately deferred rather than missed.
+
+---
+
+**Fixed** along the lines suggested. `toThemePreference` in `settingsStore.ts` mirrors the Kotlin
+function case for case, applied through zustand's `migrate` at version 1 — read-time only, so a user
+who downgrades still has their theme. `ThemeApplier` composes three classes on `<html>` (a base, an
+optional accent, an optional black level) and `globals.css` decomposes the five fused rules to
+match, including the specificity that lets an accented theme go pure black while keeping its hue —
+the combination the six named themes could not express at all.
+
+`ThemePicker` is two swatch rows and a toggle, the same three controls the Kotlin clients show.
+
+**One real bug fell out of it.** The old applier resolved `auto` with a dark OS to `true_dark`, so
+choosing **System** turned the app pure black without anyone asking. It resolves to the ordinary dark
+palette now, with the black level applied only if it was chosen — and only on a dark base, since a
+black background on a light theme is simply wrong.
+
+Verified: 220 web tests (up from 201), `tsc` clean, `npm run lint` 0 errors, production build clean,
+and the composed selectors confirmed present and correctly ordered in the built CSS. **Not** viewed
+in a browser — the class logic is covered by unit tests and the CSS by inspection, but nobody has
+looked at the result on screen.
 
 ---
 
