@@ -400,3 +400,33 @@ That list is now five, and the job also **launches the packaged executable** and
 within 30 seconds. Building is not the check, and neither is a list: jlink succeeds either way and
 just emits a smaller runtime. Only starting the thing tests every module at once, including the ones
 nobody has thought of yet.
+
+## F20 — Every settings toggle announced as a button with no on/off state — **FIXED**
+
+`SettingsToggleListItem` put `onClick` on the row **and** a live `Switch` in its trailing slot — one
+action wearing two hit targets, the same shape as F17 one layer up. The merged row announced
+**"Pure black, button"**: the state of the setting withheld from precisely the person who cannot see
+the switch.
+
+The row is now `toggleable` with `Role.Switch`, and the switch takes `onCheckedChange = null` so it
+pictures the state rather than rivalling the row for the tap. `SettingsRow` gained an optional
+`checked` that drives the semantics only — `onClick` still does the work — so a row is a button or a
+switch and says which.
+
+Its leading icon also carried the title as its description while the title sat visibly on the next
+line, so every setting announced itself twice. Same fix as F12 and F17: the visible label is the
+description.
+
+## F21 — "Cloud Sync …" was a progress indicator for work that would never start — **FIXED**
+
+`CloudSyncStatus` starts at `Unknown` and `_syncStatus` is only ever written *inside* `runTimedSync`
+— that is, during an actual sync. Anyone who chose "Continue offline" therefore sat under a
+permanent **"…"** in the settings sheet, with a `CloudQueue` icon implying something was queued.
+Nothing was, and nothing ever would be.
+
+**Fixed**: with no signed-in account the row reads **"Not signed in"** with a `CloudOff` icon.
+Verified on the emulator.
+
+The underlying oddity is left alone deliberately: `Unknown` really does mean "no sync has run yet",
+and that is honest as a *status*. It was the rendering that turned it into a claim about work in
+progress.
