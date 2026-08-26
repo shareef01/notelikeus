@@ -11,7 +11,6 @@ import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.repository.NoteRepository
-import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.ui.theme.NO_NOTE_COLOR
 import com.aus.notelikeus.util.AppLog
@@ -47,7 +46,6 @@ data class EditorState(
 
 class EditorViewModel(
     private val repository: NoteRepository,
-    private val settingsRepository: SettingsRepository,
     private val reminderManager: ReminderManager,
     private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {

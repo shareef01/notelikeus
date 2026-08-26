@@ -59,12 +59,17 @@ The entity comment explains why it was not dropped, and the reasoning is sound: 
 `notes` fires the `ON DELETE CASCADE` that `checklist_items` and `note_label_cross_ref`
 declare against it. Not worth risking checklists and label links to reclaim one boolean.
 
-**Severity:** cosmetic. Documented deliberately; listed so a future reader does not
+**Severity:** cosmetic.
+
+**Fixed.** `mutableLongStateOf` for the navigation counter (it is bumped on every deep link and
+widget tap, so the generic version boxed a `Long` each time), `tools:targetApi="tiramisu"` on the
+back-callback attribute, and the activity's `android:label` dropped as a repeat of the
+application's. Documented deliberately; listed so a future reader does not
 "discover" it and try to clean it up.
 
 ---
 
-## F3 — Unused string resources (21) and lint `Typos` (18)
+## F3 — Unused string resources (21) and lint `Typos` (18) — **FIXED**
 
 `lintDebug` reports 21 `UnusedResources` and 18 `Typos`, zero errors. Some of the unused
 strings are for features that were removed; some may be reachable only from Glance or the
@@ -90,7 +95,7 @@ it is the step that historically breaks Compose resource lookups.
 
 ---
 
-## F5 — Two trivial lint warnings in `androidApp`
+## F5 — Two trivial lint warnings in `androidApp` — **FIXED**
 
 - `MainActivity.kt:37` — `mutableStateOf` holding a `Long`; should be `mutableLongStateOf`
   (`AutoboxingStateCreation`).
@@ -185,7 +190,7 @@ looked at the result on screen.
 
 ---
 
-## F8 — `EditorViewModel` injects a `SettingsRepository` it never uses
+## F8 — `EditorViewModel` injects a `SettingsRepository` it never uses — **FIXED**
 
 `EditorViewModel`'s constructor takes `settingsRepository: SettingsRepository` and the class body
 references it exactly once — in the parameter list. Nothing reads it.
@@ -198,6 +203,9 @@ which is how a dead dependency stays invisible: the test keeps it looking used.
 **Why it matters:** minor, but it is a constructor argument threaded through the Koin module and
 the desktop `EditorWindowLauncher`'s manual factory, so it makes the editor look like it depends
 on settings when it does not.
+
+**Fixed.** Removed from the constructor, both Koin factories and the test's stub — the stub being
+the thing that kept it looking used.
 
 **Suggested fix:** drop the parameter, then the Koin definition and the desktop factory call.
 Deliberately not done inside the audit — it touches DI wiring in three places and belongs in a
