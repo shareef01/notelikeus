@@ -50,7 +50,7 @@ emulator that tapping a note still opens that note.
 
 ---
 
-## F2 — `notes.isLocked` is a vestigial column
+## F2 — `notes.isLocked` is a vestigial column — **CLOSED: won't fix**
 
 Note locking was removed from the product. `NoteEntity.isLocked` remains, `NoteCloudMapper`
 still writes `isLocked: false` on every upload, and `firestore.rules` still type-checks it.
@@ -62,9 +62,17 @@ declare against it. Not worth risking checklists and label links to reclaim one 
 **Severity:** cosmetic. Documented deliberately; listed so a future reader does not "discover" it
 and try to clean it up.
 
-**Deliberately not fixed.** Dropping the column means recreating the `notes` table, which fires the
-`ON DELETE CASCADE` that `checklist_items` and `note_label_cross_ref` declare against it. One
-boolean is not worth risking every checklist and label link in a populated, encrypted database.
+**Closed as won't-fix, by decision rather than neglect.** SQLite cannot drop a column; the table has
+to be recreated, and recreating `notes` fires the `ON DELETE CASCADE` that `checklist_items` and
+`note_label_cross_ref` declare against it. Reclaiming one unused boolean is not worth putting every
+checklist and label link in a populated, encrypted database at risk.
+
+The cost of leaving it is genuinely nil: one boolean per row, written as `false` on every cloud
+upload, type-checked by `firestore.rules`. Nothing reads it.
+
+**If it is ever revisited**, the reason to do so would be a migration that has to rebuild `notes`
+anyway for some other purpose — at which point dropping this column is free. Doing it on its own is
+the version that is not worth it. Do not "discover" this and tidy it up as an isolated change.
 
 ---
 
