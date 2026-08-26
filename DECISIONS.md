@@ -314,11 +314,16 @@ So a filtered list keeps hiding the handle. `NoteQuery.switchingSortWouldAllowRe
 distinction on the model rather than in the composable, so it is testable, and
 `ManualReorderGateTest` asserts the two predicates are never both true.
 
-**Open question for review:** the cost is that the handle's visibility now depends on *which*
-blocker is active, which is one more rule than "manual sort and no filters". The smaller
-alternative — keep hiding the handle in both cases, no dialog at all — is what shipped before this
-commit. If the inconsistency reads worse in the hand than the silence did, reverting this is one
-commit.
+**Reviewed and kept.** The cost is real and worth naming: the handle's visibility depends on *which*
+blocker is active, which is one more rule than "manual sort and no filters". The smaller alternative
+— keep hiding it in both cases, say nothing — was what shipped before.
+
+Kept because the two blockers genuinely differ in what the user can do about them. A sort is one tap
+from being unmade, so silence there withholds a fix the user could apply; a filter is not, so a
+handle offering nothing would be the worse lie. Asymmetric rules are acceptable when the underlying
+situations are asymmetric.
+
+Reverting is still one commit if it wears badly.
 
 ## D13 — Saved filters live in settings, not in the notes database.
 
@@ -406,7 +411,11 @@ it, since it would be space under nothing.
 `untitled` is still used, in the one place it is the honest answer: the accessibility description of
 a note with no title *and* no content.
 
-**Open for review.** This changes how every untitled note looks. The alternative — leave the
-placeholder — is one revert away, and the argument for it is that a card with no heading looks
-unfinished next to cards that have one. Verified on the emulator; it reads better in the hand than
-that argument suggests, because the note's own first line becomes the heading.
+**Reviewed and kept.** The argument against — a card with no heading looks unfinished beside cards
+that have one — did not survive contact: the note's own first line becomes the heading, so the card
+reads as finished, just written by the user rather than by the app.
+
+Confirmed on real notes as well as the emulator. An untitled note now leads with "A note with no
+title at all" rather than the word *Untitled* above it, which is both shorter and more informative.
+
+Reverting is still one commit if it wears badly.
