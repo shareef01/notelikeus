@@ -25,12 +25,12 @@ val sharedModule = module {
     
     viewModel { MainViewModel(get(), get(), get(), get(), get(), get()) }
     viewModel { params -> 
-        EditorViewModel(get(), get(), get(), params.get()) 
+        EditorViewModel(get(), get(), params.get()) 
     }
     // Standalone note windows on desktop cannot use koinViewModel (no SavedStateRegistryOwner
     // exists there), so they resolve the editor through this plain factory with a fresh handle.
     factory(named("windowEditor")) {
-        EditorViewModel(get(), get(), get(), SavedStateHandle())
+        EditorViewModel(get(), get(), SavedStateHandle())
     }
     viewModel { LabelsViewModel(get()) }
 }

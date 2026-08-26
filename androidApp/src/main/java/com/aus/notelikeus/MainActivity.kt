@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 
 class MainActivity : FragmentActivity() {
 
@@ -36,7 +37,9 @@ class MainActivity : FragmentActivity() {
     private val settingsRepository: SettingsRepository by inject()
     private var pendingNoteId by mutableStateOf<Long?>(null)
     private var pendingCreateNote by mutableStateOf(false)
-    private var navigationRequest by mutableStateOf(0L)
+    // mutableLongStateOf, not mutableStateOf: this is a counter bumped on every deep link and
+    // every widget tap, and the generic version boxes a java.lang.Long on each one.
+    private var navigationRequest by mutableLongStateOf(0L)
     private var showDatabaseRecoveryNotice by mutableStateOf(false)
 
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
