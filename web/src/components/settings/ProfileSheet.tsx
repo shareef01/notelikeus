@@ -5,7 +5,7 @@ import { BrandMark } from '@/components/brand/BrandMark';
 import { ThemePicker } from '@/components/settings/ThemePicker';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { ViewColumns } from '@/store/uiStore';
-import type { AppTheme } from '@/store/settingsStore';
+import type { AccentColor, ThemeBase, ThemePreference } from '@/store/settingsStore';
 import {
   GridViewIcon,
   SortIcon,
@@ -116,8 +116,10 @@ interface ProfileSheetProps {
   sortOrder: 'manual' | 'newest' | 'oldest';
   onViewColumnsCycle: () => void;
   onSortOrderCycle: () => void;
-  appTheme: AppTheme;
-  onAppThemeChange: (theme: AppTheme) => void;
+  theme: ThemePreference;
+  onThemeBaseChange: (base: ThemeBase) => void;
+  onAccentChange: (accent: AccentColor) => void;
+  onAmoledChange: (amoled: boolean) => void;
   isGoogleAccount: boolean;
   isGuest: boolean;
   userEmail: string | null;
@@ -139,8 +141,10 @@ export function ProfileSheet({
   sortOrder,
   onViewColumnsCycle,
   onSortOrderCycle,
-  appTheme,
-  onAppThemeChange,
+  theme,
+  onThemeBaseChange,
+  onAccentChange,
+  onAmoledChange,
   isGoogleAccount,
   isGuest,
   userEmail,
@@ -203,7 +207,12 @@ export function ProfileSheet({
             </SettingsSection>
 
             <SettingsSection title="Appearance">
-              <ThemePicker value={appTheme} onChange={onAppThemeChange} />
+              <ThemePicker
+                value={theme}
+                onBaseChange={onThemeBaseChange}
+                onAccentChange={onAccentChange}
+                onAmoledChange={onAmoledChange}
+              />
             </SettingsSection>
 
             <SettingsSection title="Insights">
@@ -313,4 +322,3 @@ export function ProfileSheet({
   );
 }
 
-export { THEME_ORDER } from '@/components/settings/ThemePicker';
