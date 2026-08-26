@@ -132,9 +132,22 @@ adb -s emulator-5554 exec-out screencap -p > shot.png
 Use `exec-out screencap -p`, not `shell screencap -p /sdcard/...` — the latter
 fails on current images.
 
-**Never install onto the physical device.** The installed build there is a
-release build holding real notes; installing a debug build requires uninstalling
-first, which destroys them.
+**Installing onto the physical device is safe, but be deliberate about it.** The
+build already there is a **debug** build (`dumpsys package com.aus.notelikeus`
+shows `flags=[ DEBUGGABLE ]`), signed with the same debug key, so
+`adb -s <serial> install -r` updates it in place and keeps the notes —
+verified by `firstInstallTime` staying put across an update. The older warning
+here said it was a release build needing an uninstall first; that was wrong, and
+acting on it would have meant avoiding a safe operation or performing a
+destructive one.
+
+Check before you trust that, though: if `flags` ever loses `DEBUGGABLE`, the
+signatures differ and `install -r` fails — at which point the only way through
+*is* an uninstall, and that does destroy the notes.
+
+**`./gradlew installDebug` targets every connected device**, so with a phone
+plugged in it installs there too, whatever you intended. Pass an explicit
+`adb -s <serial> install -r <apk>` when you mean one device.
 
 Seeding demo notes is **unsolved**. The database is SQLCipher-encrypted so it
 cannot be written directly the way the desktop one can, and `adb` UI automation
@@ -142,6 +155,26 @@ has failed repeatedly: focus starts in the body rather than the title, and the
 editor does not reliably close on `keyevent 4`, so subsequent notes type into
 the still-open one. If you need populated Android screenshots, add the notes by
 hand — it takes under a minute and has cost hours of automation attempts.
+
+### Clicking a desktop window
+
+The window is often **taller than the screen** (1250x1000 launched on a 1536x864
+display), so a control near the bottom maps to a screen coordinate that does not
+exist and the click silently goes nowhere. Move and size the window into the
+virtual screen first (`SetWindowPos`), then compute from the fresh rect.
+
+Apply the same guards to clicking that the screenshot code needs: a **minimized**
+window reports a rect near `-32000`, and clicking that lands nowhere. Check
+`IsIconic` and `ShowWindow(h, 9)` first, refuse an implausible rect, and refuse a
+target outside `SystemInformation::VirtualScreen`. Without those a failed click
+looks exactly like a working button that does nothing — which is how a "the +
+button is broken" report nearly got confirmed from a click that never landed.
+
+Match windows by **process**, not title: `Get-Process -Name Notelikeus | Where
+MainWindowHandle -ne 0` (there are two processes — launcher and JVM — and only
+one has the window). Editor windows are `undecorated` with **no title at all**,
+so a title search cannot find them; to answer "did a window open", capture the
+whole `VirtualScreen` and look.
 
 ## Driving, not just launching
 
