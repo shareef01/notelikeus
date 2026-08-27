@@ -757,10 +757,28 @@ file exists (first run, or the legacy migration) or `preserveUnreadablePassphras
 moved it aside. The decrypt path deliberately keeps the alias, because dropping it would destroy the
 only chance of ever reading that preserved blob back.
 
-**Not covered by a test.** `DatabaseKeyManagerTest` reaches the codec and the file swap with software
-keys; the invalidation branch needs a real AndroidKeyStore key to be invalidated, which is
-instrumented-test territory at best and a physical credential reset at worst. Recorded as unverified
-rather than claimed.
+**Was not covered by a test, and is now.** The obstacle was real: a real AndroidKeyStore key cannot
+be invalidated from a test — invalidation is a lock-screen credential reset or a device transfer, not
+an API call — so the branch was unreachable and this said so rather than claiming otherwise.
+
+Closed by extracting `PassphraseKeyStore`, the same move `PassphraseFileCodec` already represents:
+the interesting behaviour cannot be driven without a seam. The public API did not move —
+`DatabaseKeyManager(context)` is a secondary constructor now — and the fake supplies a key that
+genuinely fails to encrypt, since a 7-byte AES key makes `Cipher.init` throw exactly the way an
+invalidated one does.
+
+`DatabaseKeyManagerRecoveryTest` asserts the dead key is replaced *once* and that the passphrase is
+**persisted** under the replacement, read back through a second manager — the property that actually
+matters, because without the retry no file is published and every launch regenerates a different
+passphrase, which is how an openable database becomes a quarantined one. Confirmed to discriminate:
+reverting `writeToKeystoreFile` to the pre-fix version fails two of the three tests.
+
+**One thing it still does not cover**, stated rather than glossed: the first attempt's bug deleted a
+healthy key when *publishing* failed, and that variant is unreachable here — publish always succeeds
+against Robolectric's temp `filesDir`, so the third test passes against the buggy version too. It
+guards against deletion becoming unconditional, not against that specific race. Forcing a rename
+failure was attempted and abandoned: a directory planted at the target path gets moved aside by
+`preserveUnreadablePassphraseFile` before publish is ever reached.
 
 ---
 
