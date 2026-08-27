@@ -8,16 +8,11 @@ import { SideDrawer } from '@/components/layout/SideDrawer';
 import { TopBar } from '@/components/layout/TopBar';
 import { NoteStaggeredGrid } from '@/components/notes/NoteStaggeredGrid';
 import { NotesEmptyState } from '@/components/notes/NotesEmptyState';
-import { BulkDeleteDialog } from '@/components/notes/BulkDeleteDialog';
-import { EmptyTrashDialog } from '@/components/notes/EmptyTrashDialog';
 import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
 import { TrashBanner } from '@/components/notes/TrashBanner';
 
-import { ProfileSheet } from '@/components/settings/ProfileSheet';
 
-import { PrivacyPolicyDialog } from '@/components/settings/PrivacyPolicyDialog';
 
-import { SignOutDialog } from '@/components/settings/SignOutDialog';
 
 import { useAuthListener } from '@/hooks/useAuth';
 
@@ -25,27 +20,10 @@ import { useCloudSync } from '@/hooks/useCloudSync';
 
 import { useNotes } from '@/hooks/useNotes';
 
-import { exportNotesBackup } from '@/lib/backup/exportBackup';
 
-import { importNotesFromBackup, readBackupFile } from '@/lib/backup/importBackup';
 
-import { signOutGoogle } from '@/lib/auth/googleAuth';
-import {
-  archiveNoteById,
-  emptyTrash,
-  removeNote,
-  restoreNoteById,
-  restorePermanentlyDeletedNote,
-  saveNote,
-  trashNoteById,
-} from '@/lib/notes/noteActions';
-import { runNoteAction } from '@/lib/notes/runNoteAction';
-import { showUndoToast } from '@/lib/notes/showUndoToast';
-import { commitNotePositions, previewMoveNote } from '@/lib/notes/noteOrder';
 
-import { uploadAllNotes } from '@/lib/firestore/notesRepository';
 
-import { useNotesStore } from '@/store/notesStore';
 
 import { useSettingsStore } from '@/store/settingsStore';
 
@@ -54,6 +32,10 @@ import { useToastStore } from '@/store/toastStore';
 import { useUiStore } from '@/store/uiStore';
 
 import type { Note, NoteFilter } from '@/types/note';
+import { MainDialogs, NO_DIALOGS_OPEN, type MainDialogState } from '@/screens/main/MainDialogs';
+import { getEmptyState } from '@/screens/main/mainEmptyState';
+import { useAccountActions } from '@/screens/main/useAccountActions';
+import { useNoteActions } from '@/screens/main/useNoteActions';
 
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { useShortcuts } from '@/hooks/useShortcuts';
@@ -83,13 +65,11 @@ export function MainScreen() {
 
   const { user } = useAuthListener();
 
-  const [showProfile, setShowProfile] = useState(false);
-
-  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
-
-  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
-  const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
-  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [dialogs, setDialogs] = useState<MainDialogState>(NO_DIALOGS_OPEN);
+  const openDialogs = useCallback(
+    (patch: Partial<MainDialogState>) => setDialogs((current) => ({ ...current, ...patch })),
+    [],
+  );
 
 
 
@@ -259,223 +239,35 @@ export function MainScreen() {
 
 
 
-  const handleArchiveNote = (note: Note) =>
-    runNoteAction('Archive', async () => {
-      const previous = { ...note };
-      await archiveNoteById(note.id);
-      showUndoToast({
-        message: 'Note archived',
-        revert: () => saveNote(previous),
-      });
-    });
+  const {
+    archiveNote,
+    trashNote,
+    restoreNote,
+    permanentlyDeleteNote,
+    emptyTheTrash,
+    bulkPinToggle,
+    bulkArchive,
+    bulkTrash,
+    bulkRestore,
+    bulkPermanentDelete,
+    moveNote,
+    reorderComplete,
+  } = useNoteActions({
+    notes,
+    filteredNotes,
+    getSelectedSnapshots,
+    selectionAllPinned,
+    clearSelection,
+    closeEmptyTrashConfirm: () => openDialogs({ emptyTrashConfirm: false }),
+    closeBulkDeleteConfirm: () => openDialogs({ bulkDeleteConfirm: false }),
+  });
 
-
-
-  const handleTrashNote = (note: Note) =>
-    runNoteAction('Move to trash', async () => {
-      const previous = { ...note };
-      await trashNoteById(note.id);
-      showUndoToast({
-        message: 'Note moved to trash',
-        revert: () => saveNote(previous),
-      });
-    });
-
-
-
-  const handleRestoreNote = (note: Note) =>
-    runNoteAction('Restore', async () => {
-      await restoreNoteById(note.id);
-      useToastStore.getState().show('Note restored');
-    });
-
-
-
-  const handlePermanentDelete = (note: Note) =>
-    runNoteAction('Delete', async () => {
-      const previous = { ...note };
-      await removeNote(note.id);
-      showUndoToast({
-        message: 'Note deleted permanently',
-        revert: () => restorePermanentlyDeletedNote(previous),
-      });
-    });
-
-
-
-  const handleEmptyTrash = () =>
-    runNoteAction('Empty trash', async () => {
-      setShowEmptyTrashConfirm(false);
-      const trashedSnapshots = notes
-        .filter((note) => note.isTrashed)
-        .map((note) => ({ ...note }));
-      const count = await emptyTrash();
-      if (count === 0) {
-        useToastStore.getState().show('Trash is already empty');
-        return;
-      }
-      showUndoToast({
-        message: `Deleted ${count} note${count === 1 ? '' : 's'} permanently`,
-        revert: async () => {
-          await Promise.all(trashedSnapshots.map((note) => restorePermanentlyDeletedNote(note)));
-        },
-      });
-    });
-
-  const handleBulkPinToggle = () =>
-    runNoteAction('Pin', async () => {
-      const snapshots = getSelectedSnapshots();
-      if (snapshots.length === 0) return;
-      const pin = !selectionAllPinned;
-      await Promise.all(
-        snapshots.map((note) => saveNote({ ...note, isPinned: pin, timestamp: Date.now() })),
-      );
-      clearSelection();
-      useToastStore.getState().show(
-        `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} ${pin ? 'pinned' : 'unpinned'}`,
-      );
-    });
-
-  const handleMoveNote = (fromIndex: number, toIndex: number) => {
-    const reordered = previewMoveNote(notes, filteredNotes, fromIndex, toIndex);
-    if (reordered) {
-      useNotesStore.getState().setNotes(reordered);
-    }
-  };
-
-  const handleReorderComplete = () => {
-    void runNoteAction('Reorder', async () => {
-      await commitNotePositions(useNotesStore.getState().notes);
-    });
-  };
-
-  const handleBulkArchive = () =>
-    runNoteAction('Archive', async () => {
-      const snapshots = getSelectedSnapshots();
-      if (snapshots.length === 0) return;
-      await Promise.all(snapshots.map((note) => archiveNoteById(note.id)));
-      clearSelection();
-      showUndoToast({
-        message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} archived`,
-        revert: async () => {
-          await Promise.all(snapshots.map((note) => saveNote(note)));
-        },
-      });
-    });
-
-  const handleBulkTrash = () =>
-    runNoteAction('Move to trash', async () => {
-      const snapshots = getSelectedSnapshots();
-      if (snapshots.length === 0) return;
-      await Promise.all(snapshots.map((note) => trashNoteById(note.id)));
-      clearSelection();
-      showUndoToast({
-        message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} moved to trash`,
-        revert: async () => {
-          await Promise.all(snapshots.map((note) => saveNote(note)));
-        },
-      });
-    });
-
-  const handleBulkRestore = () =>
-    runNoteAction('Restore', async () => {
-      const snapshots = getSelectedSnapshots();
-      if (snapshots.length === 0) return;
-      await Promise.all(snapshots.map((note) => restoreNoteById(note.id)));
-      clearSelection();
-      useToastStore.getState().show(
-        `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} restored`,
-      );
-    });
-
-  const handleBulkPermanentDelete = () =>
-    runNoteAction('Delete', async () => {
-      setShowBulkDeleteConfirm(false);
-      const snapshots = getSelectedSnapshots();
-      if (snapshots.length === 0) return;
-      await Promise.all(snapshots.map((note) => removeNote(note.id)));
-      clearSelection();
-      showUndoToast({
-        message: `${snapshots.length} note${snapshots.length === 1 ? '' : 's'} deleted permanently`,
-        revert: async () => {
-          await Promise.all(snapshots.map((note) => restorePermanentlyDeletedNote(note)));
-        },
-      });
-    });
-
-
-
-  const handleSignOut = async (deleteCloudData: boolean) => {
-    setShowSignOutConfirm(false);
-    setShowProfile(false);
-
-    try {
-      await signOutGoogle({ deleteCloudData });
-      useToastStore.getState().show(
-        deleteCloudData ? 'Signed out and cloud data deleted' : 'Signed out',
-      );
-    } catch (error) {
-      useToastStore.getState().show(
-        error instanceof Error ? error.message : 'Sign out failed',
-        'error',
-      );
-    }
-  };
-
-
-
-  const handleExportBackup = () => {
-    try {
-      exportNotesBackup(notes);
-      useToastStore.getState().show('Backup exported');
-    } catch (error) {
-      useToastStore.getState().show(
-        error instanceof Error ? error.message : 'Export failed',
-        'error',
-      );
-    }
-  };
-
-  const handleImportBackup = async (file: File) => {
-    try {
-      const json = await readBackupFile(file);
-      const { merged, result } = importNotesFromBackup(json, notes);
-      // Web notes live in the Firestore-backed store only — there is no durable local DB.
-      // Always upload when signed in so the realtime listener cannot wipe an "import only"
-      // mirror before the user notices.
-      useNotesStore.getState().setNotes(merged);
-
-      let uploadedToCloud = false;
-      if (user?.uid && result.notesImported > 0) {
-        await uploadAllNotes(user.uid, merged);
-        uploadedToCloud = true;
-      }
-
-      const parts: string[] = [];
-      if (result.notesImported > 0) {
-        parts.push(
-          `${result.notesImported} note${result.notesImported === 1 ? '' : 's'}`,
-        );
-      }
-      if (result.labelsCreated > 0) {
-        parts.push(
-          `${result.labelsCreated} label${result.labelsCreated === 1 ? '' : 's'}`,
-        );
-      }
-      const base =
-        parts.length > 0 ? `Imported ${parts.join(' and ')}` : 'No notes found in backup';
-      useToastStore.getState().show(
-        uploadedToCloud ? `${base} and synced to cloud` : base,
-      );
-    } catch (error) {
-      useToastStore.getState().show(
-        error instanceof Error ? error.message : 'Import failed',
-        'error',
-      );
-    }
-  };
-
-
+  const { signOut, exportBackup, importBackup } = useAccountActions({
+    notes,
+    userId: user?.uid,
+    closeSignOutConfirm: () => openDialogs({ signOutConfirm: false }),
+    closeProfile: () => openDialogs({ profile: false }),
+  });
 
   const emptyState = getEmptyState(filters.filter, hasActiveFilters, Boolean(filters.searchQuery));
 
@@ -529,13 +321,13 @@ export function MainScreen() {
 
         onSignIn={() => openAuthScreen('signin')}
 
-        onSignOut={() => setShowSignOutConfirm(true)}
+        onSignOut={() => openDialogs({ signOutConfirm: true })}
 
         onEditLabels={() => setLabelsOpen(true)}
 
         navCounts={navCounts}
 
-        onOpenSettings={() => setShowProfile(true)}
+        onOpenSettings={() => openDialogs({ profile: true })}
 
       />
 
@@ -572,7 +364,7 @@ export function MainScreen() {
 
           onMenuClick={() => setDrawerOpen(true)}
 
-          onProfileClick={() => setShowProfile(true)}
+          onProfileClick={() => openDialogs({ profile: true })}
           viewColumns={viewColumns}
           onViewColumnsChange={setViewColumns}
           onNewNote={openNewNote}
@@ -583,11 +375,11 @@ export function MainScreen() {
           onClearSelection={clearSelection}
           onToggleSelectAll={() => toggleSelectAll(filteredNoteIds)}
           selectionAllPinned={selectionAllPinned}
-          onBulkPinToggle={() => void handleBulkPinToggle()}
-          onBulkArchive={() => void handleBulkArchive()}
-          onBulkRestore={() => void handleBulkRestore()}
-          onBulkTrash={() => void handleBulkTrash()}
-          onBulkPermanentDelete={() => setShowBulkDeleteConfirm(true)}
+          onBulkPinToggle={() => void bulkPinToggle()}
+          onBulkArchive={() => void bulkArchive()}
+          onBulkRestore={() => void bulkRestore()}
+          onBulkTrash={() => void bulkTrash()}
+          onBulkPermanentDelete={() => openDialogs({ bulkDeleteConfirm: true })}
           recentSearches={recentSearches}
           onRecentSearchClick={(query) => {
             setSearchQuery(query);
@@ -604,7 +396,7 @@ export function MainScreen() {
         <InstallPrompt />
 
         {filters.filter === 'trashed' && filteredNotes.length > 0 ? (
-          <TrashBanner onEmptyTrash={() => setShowEmptyTrashConfirm(true)} />
+          <TrashBanner onEmptyTrash={() => openDialogs({ emptyTrashConfirm: true })} />
         ) : null}
 
 
@@ -683,15 +475,15 @@ export function MainScreen() {
                   setLabelFilter(name);
                 }}
                 listActions={{
-                  onArchive: (note) => void handleArchiveNote(note),
-                  onTrash: (note) => void handleTrashNote(note),
-                  onRestore: (note) => void handleRestoreNote(note),
-                  onPermanentDelete: (note) => void handlePermanentDelete(note),
+                  onArchive: (note) => void archiveNote(note),
+                  onTrash: (note) => void trashNote(note),
+                  onRestore: (note) => void restoreNote(note),
+                  onPermanentDelete: (note) => void permanentlyDeleteNote(note),
                 }}
                 searchQuery={filters.searchQuery ?? ''}
                 allowReorder={allowReorder}
-                onMoveNote={handleMoveNote}
-                onReorderComplete={handleReorderComplete}
+                onMoveNote={moveNote}
+                onReorderComplete={reorderComplete}
               />
             )}
 
@@ -751,17 +543,15 @@ export function MainScreen() {
 
 
 
-      <ProfileSheet
-
-        open={showProfile}
-
-        onClose={() => setShowProfile(false)}
-
+      <MainDialogs
+        open={dialogs}
+        onOpenChange={openDialogs}
         noteCount={notes.length}
-
+        trashedCount={navCounts.trashed}
+        selectedCount={selectedNoteIds.length}
         viewColumns={viewColumns}
-        sortOrder={filters.sortOrder ?? 'manual'}
         onViewColumnsCycle={cycleViewColumns}
+        sortOrder={filters.sortOrder ?? 'manual'}
         onSortOrderCycle={cycleSortOrder}
         theme={theme}
         onThemeBaseChange={setThemeBase}
@@ -770,61 +560,16 @@ export function MainScreen() {
         isGoogleAccount={cloud.isGoogleAccount}
         isGuest={cloud.isGuest}
         userEmail={cloud.userEmail}
-
         syncStatus={cloud.status}
-
         syncedNoteCount={cloud.syncedCount}
-
-        onExportBackup={handleExportBackup}
-
+        onExportBackup={exportBackup}
         onImportBackup={() => backupInputRef.current?.click()}
-
-        onPrivacyPolicy={() => setShowPrivacyPolicy(true)}
-
         onSignIn={() => openAuthScreen('signin')}
-
         onSignUp={() => openAuthScreen('signup')}
-
-        onSignOut={() => setShowSignOutConfirm(true)}
-
+        onSignOut={(deleteCloudData) => void signOut(deleteCloudData)}
+        onEmptyTrash={() => void emptyTheTrash()}
+        onBulkPermanentDelete={() => void bulkPermanentDelete()}
       />
-
-
-
-      <SignOutDialog
-        open={showSignOutConfirm}
-        onCancel={() => setShowSignOutConfirm(false)}
-        onSignOut={() => void handleSignOut(false)}
-        onSignOutAndDelete={() => void handleSignOut(true)}
-      />
-
-
-
-      <BulkDeleteDialog
-        open={showBulkDeleteConfirm}
-        noteCount={selectedNoteIds.length}
-        onCancel={() => setShowBulkDeleteConfirm(false)}
-        onConfirm={() => void handleBulkPermanentDelete()}
-      />
-
-      <EmptyTrashDialog
-        open={showEmptyTrashConfirm}
-        noteCount={navCounts.trashed}
-        onCancel={() => setShowEmptyTrashConfirm(false)}
-        onConfirm={() => void handleEmptyTrash()}
-      />
-
-
-
-      <PrivacyPolicyDialog
-
-        open={showPrivacyPolicy}
-
-        onClose={() => setShowPrivacyPolicy(false)}
-
-      />
-
-
 
       <ToastHost />
 
@@ -846,7 +591,7 @@ export function MainScreen() {
 
           event.target.value = '';
 
-          if (file) void handleImportBackup(file);
+          if (file) void importBackup(file);
 
         }}
 
@@ -857,95 +602,3 @@ export function MainScreen() {
   );
 
 }
-
-
-
-function getEmptyState(
-
-  filter: NoteFilter,
-
-  hasActiveFilters: boolean,
-
-  hasSearch: boolean,
-
-): {
-
-  message: string;
-
-  subtitle?: string;
-
-  icon: 'brand' | 'archive' | 'trash';
-
-  showClearFilters?: boolean;
-
-  showCreate?: boolean;
-
-} {
-
-  if (hasSearch) {
-
-    return {
-
-      message: 'No matching notes',
-
-      subtitle: 'Try a different search term or clear filters',
-
-      icon: 'brand',
-
-      showClearFilters: true,
-
-    };
-
-  }
-
-  if (hasActiveFilters) {
-
-    return {
-
-      message: 'No notes match your filters',
-
-      subtitle: 'Try another color or label',
-
-      icon: 'brand',
-
-      showClearFilters: true,
-
-    };
-
-  }
-
-  if (filter === 'archived') {
-
-    return { message: 'No archived notes', icon: 'archive' };
-
-  }
-
-  if (filter === 'trashed') {
-
-    return {
-
-      message: 'No notes in trash',
-
-      subtitle: 'Deleted notes are removed permanently',
-
-      icon: 'trash',
-
-    };
-
-  }
-
-  return {
-
-    message: 'Notes you add appear here',
-
-    subtitle: 'Synced automatically with your Android device',
-
-    icon: 'brand',
-
-    showCreate: true,
-
-  };
-
-}
-
-
