@@ -6,7 +6,7 @@
     "test:rules": "firebase emulators:exec --only firestore \"vitest run tests/firestore.rules.test.mjs\""
   },
   "devDependencies": {
-    "@firebase/rules-unit-testing": "^5.0.1",
+    "@firebase/rules-unit-testing": "^5.0.2",
     "firebase": "^12.18.0",
     "firebase-tools": "^15.28.1",
     "vitest": "^4.1.11"
