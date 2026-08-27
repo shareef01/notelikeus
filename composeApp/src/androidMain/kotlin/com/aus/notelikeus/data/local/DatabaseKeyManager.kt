@@ -2,16 +2,11 @@ package com.aus.notelikeus.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import java.io.File
-import java.security.KeyStore
 import java.security.SecureRandom
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
 
 /**
  * Holds the SQLCipher passphrase.
@@ -20,9 +15,19 @@ import javax.crypto.SecretKey
  * (replacement for deprecated EncryptedSharedPreferences).
  * Legacy: one-time read from ESP, then migrate and clear.
  */
-class DatabaseKeyManager(
-    private val context: Context
+class DatabaseKeyManager internal constructor(
+    private val context: Context,
+    /**
+     * The AndroidKeyStore operations, behind a seam so the key-replacement path can be tested.
+     * A real key cannot be invalidated from a test -- that is a lock-screen credential reset, not
+     * an API call -- so without this the recovery below could only ever be reasoned about.
+     */
+    private val keyStore: PassphraseKeyStore
 ) {
+
+    /** The production entry point. The seam above is visible to tests only. */
+    constructor(context: Context) : this(context, AndroidPassphraseKeyStore())
+
     private val lock = Any()
 
     fun getPassphrase(): ByteArray = synchronized(lock) {
@@ -61,7 +66,7 @@ class DatabaseKeyManager(
         val file = passphraseFile()
         if (!file.exists()) return PassphraseReadResult.Absent
         return try {
-            val hex = PassphraseFileCodec.decrypt(getOrCreateSecretKey(), file.readBytes())
+            val hex = PassphraseFileCodec.decrypt(keyStore.getOrCreateKey(), file.readBytes())
             PassphraseReadResult.Decrypted(hex.hexToByteArray())
         } catch (error: Exception) {
             Log.e(
@@ -101,7 +106,7 @@ class DatabaseKeyManager(
         val payload = encryptUnderKeystoreKey(passphrase)
             // Encryption itself failed, which is the one signal that proves the key rather than the
             // filesystem is at fault — an invalidated AndroidKeyStore key still *exists*, so
-            // getOrCreateSecretKey keeps handing back the same dead alias and every attempt, this
+            // getOrCreateKey keeps handing back the same dead alias and every attempt, this
             // launch and every launch after, fails identically. Left alone that is permanent: the
             // passphrase falls back to the legacy ESP and stays there for good, which is precisely
             // the deprecated store this class was written to replace.
@@ -112,7 +117,7 @@ class DatabaseKeyManager(
             // moved it aside. The decrypt path deliberately does the opposite and keeps the alias,
             // because dropping it would destroy the only chance of ever reading that preserved blob.
             ?: run {
-                if (!deleteInvalidatedKey()) return false
+                if (!keyStore.deleteKey()) return false
                 encryptUnderKeystoreKey(passphrase) ?: return false
             }
         return publishByRename(payload)
@@ -120,7 +125,7 @@ class DatabaseKeyManager(
 
     /** The encrypted payload, or null when the Keystore key could not produce one. */
     private fun encryptUnderKeystoreKey(passphrase: ByteArray): ByteArray? = try {
-        PassphraseFileCodec.encrypt(getOrCreateSecretKey(), passphrase.toHexString())
+        PassphraseFileCodec.encrypt(keyStore.getOrCreateKey(), passphrase.toHexString())
     } catch (error: Exception) {
         Log.w(TAG, "Keystore key could not encrypt the passphrase", error)
         null
@@ -157,34 +162,6 @@ class DatabaseKeyManager(
             Log.w(TAG, "Failed to write Keystore passphrase file", error)
             false
         }
-    }
-
-    /** Drops the unusable alias so the next [getOrCreateSecretKey] generates a working one. */
-    private fun deleteInvalidatedKey(): Boolean = try {
-        KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }.deleteEntry(KEY_ALIAS)
-        Log.w(TAG, "Deleted unusable AndroidKeyStore key; regenerating")
-        true
-    } catch (error: Exception) {
-        Log.e(TAG, "Could not delete unusable AndroidKeyStore key", error)
-        false
-    }
-
-    private fun getOrCreateSecretKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
-
-        val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        keyGenerator.init(
-            KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-            )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .build()
-        )
-        return keyGenerator.generateKey()
     }
 
     private fun legacyEsp(): SharedPreferences? = try {
@@ -232,8 +209,6 @@ class DatabaseKeyManager(
 
     companion object {
         private const val TAG = "DatabaseKeyManager"
-        private const val ANDROID_KEYSTORE = "AndroidKeyStore"
-        private const val KEY_ALIAS = "notelikeus_db_passphrase_aes"
         const val PASSPHRASE_FILE = "db_passphrase.enc"
 
         private const val LEGACY_PREFS_NAME = "db_security_prefs"
