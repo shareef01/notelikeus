@@ -112,6 +112,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
+    # Two API levels, because the suite's whole subject is version-sensitive. The one test here,
+    # PlaintextDatabaseMigratorTest, drives SQLCipher and Room against a real filesystem -- and
+    # SQLite ships *with the platform*, so which Android version it runs on changes the thing
+    # under test. API 30 alone was testing one point of a range that starts at minSdk 26 and now
+    # targets 37.
+    #
+    # Not about predictive back. `enableOnBackInvokedCallback` is API 33+, but no instrumented
+    # test exercises back navigation, so raising the API level would not have covered it -- that
+    # gap needs a test, not a newer emulator.
+    #
+    # fail-fast off: when one level breaks, the other's result is the most useful thing for
+    # telling an API-specific failure from a real regression.
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [30, 36]
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -145,7 +162,7 @@ jobs:
       - name: Run instrumented tests
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
-          api-level: 30
+          api-level: ${{ matrix.api-level }}
           target: default
           arch: x86_64
           disable-animations: true
@@ -155,7 +172,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: instrumented-test-report
+          name: instrumented-test-report-api${{ matrix.api-level }}
           path: composeApp/build/reports/androidTests/
 
   # Publishes the tag's artifacts as a GitHub Release. Runs only after every gate has
