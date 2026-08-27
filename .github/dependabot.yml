@@ -21,3 +21,25 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # See DECISIONS.md, D18. lifecycle 2.10+ depends on compose-runtime 1.11 directly, and a
+      # direct dependency wins conflict resolution -- so the runtime jumps while compose-ui and
+      # skiko stay on the CMP plugin's 1.8.2. The packaged desktop app then dies composing App()
+      # with "CompositionLocal LocalHostDefaultProvider not present". Re-checked on 2026-08-27:
+      # it now also drags androidx.compose.runtime onto the desktop classpath, which is the
+      # separate hazard libs.versions.toml warns about.
+      #
+      # This is NOT "the bump is unwanted" -- it is that it cannot land alone. Nothing in CI can
+      # catch the failure: it compiles, lints, unit-tests and packages green, and dies only when
+      # the packaged app composes its first frame. Dependabot re-proposing it weekly means
+      # re-deciding it weekly from a green checkmark, which is how it eventually gets merged.
+      #
+      # REMOVE THIS ENTRY when Compose Multiplatform moves off 1.8.x -- the two have to move
+      # together. The check is: resolve desktopRuntimeClasspath and confirm compose runtime, ui
+      # and skiko all agree before packaging.
+      #
+      # Patches on the 2.9.x line still come through; only 2.10+ is held.
+      - dependency-name: "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose"
+        versions: [">= 2.10"]
+      - dependency-name: "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose"
+        versions: [">= 2.10"]
