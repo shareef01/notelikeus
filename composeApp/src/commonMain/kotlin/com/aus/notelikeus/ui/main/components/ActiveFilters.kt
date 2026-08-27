@@ -1,18 +1,24 @@
 package com.aus.notelikeus.ui.main.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import com.aus.notelikeus.domain.model.DateRange
+import com.aus.notelikeus.domain.model.DateRangeSummary
+import com.aus.notelikeus.domain.model.summarizeDateRange
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.NoteFlag
 import com.aus.notelikeus.domain.model.NoteQuery
 import com.aus.notelikeus.ui.theme.NOTE_COLOR_OPTIONS
+import com.aus.notelikeus.util.DateUtils
 import com.aus.notelikeus.ui.theme.noteColorName
 import com.aus.notelikeus.ui.theme.noteColorPaletteIndex
 import notelikeus.composeapp.generated.resources.Res
+import notelikeus.composeapp.generated.resources.date_before
 import notelikeus.composeapp.generated.resources.date_last_30_days
 import notelikeus.composeapp.generated.resources.date_last_7_days
+import notelikeus.composeapp.generated.resources.date_since
 import notelikeus.composeapp.generated.resources.date_today
 import notelikeus.composeapp.generated.resources.flag_has_checklist
 import notelikeus.composeapp.generated.resources.flag_has_links
@@ -107,15 +113,25 @@ fun activeFilters(query: NoteQuery, allLabels: List<Label>): List<ActiveFilter> 
     return result
 }
 
-/** The preset a range corresponds to, or a plain count of days when it is not one of them. */
+/**
+ * Words for what a range means. The deciding is done by [summarizeDateRange]; this only renders.
+ *
+ * It used to subtract the bounds and bucket the difference, which overflows in both directions
+ * because both bounds are sentinels in the ordinary case -- so `before:` chips read "Today" and
+ * every preset read "106751970482 d". Keeping the arithmetic out of a composable is what makes it
+ * testable, and it is now covered by DateRangeSummaryTest.
+ */
 @Composable
 private fun dateRangeLabel(range: DateRange): String {
-    val span = range.toExclusive - range.fromInclusive
-    val days = span / 86_400_000L
-    return when {
-        days <= 1L -> stringResource(Res.string.date_today)
-        days <= 7L -> stringResource(Res.string.date_last_7_days)
-        days <= 31L -> stringResource(Res.string.date_last_30_days)
-        else -> "$days d"
+    val todayStart = remember { DateUtils.startOfDay(DateUtils.currentTimeMillis()) }
+    return when (val summary = summarizeDateRange(range, todayStart)) {
+        DateRangeSummary.Today -> stringResource(Res.string.date_today)
+        DateRangeSummary.Last7Days -> stringResource(Res.string.date_last_7_days)
+        DateRangeSummary.Last30Days -> stringResource(Res.string.date_last_30_days)
+        is DateRangeSummary.Before ->
+            stringResource(Res.string.date_before, DateUtils.formatDateTime(summary.toExclusive))
+        is DateRangeSummary.Since ->
+            stringResource(Res.string.date_since, DateUtils.formatDateTime(summary.fromInclusive))
+        is DateRangeSummary.Spanning -> "${summary.days} d"
     }
 }
