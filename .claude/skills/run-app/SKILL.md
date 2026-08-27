@@ -172,6 +172,44 @@ adb -s emulator-5554 exec-out screencap -p > shot.png
 Use `exec-out screencap -p`, not `shell screencap -p /sdcard/...` — the latter
 fails on current images.
 
+### Never tap from a stale screenshot
+
+`adb shell input tap` fires at screen coordinates with no idea what is under them.
+On a **physical device** those coordinates may not even belong to this app any
+more: the phone is in use, apps get switched, and a `assembleDebug` between the
+screenshot and the tap is three-plus minutes of opportunity for the screen to
+change completely.
+
+This has already happened once. A tap computed from a 13-minute-old capture landed
+in an unrelated app on the developer's own phone — one with financial data in it —
+because the build ran in between and Notelikeus had gone to the background. It
+appears to have hit dead space, but "appears to" is the whole problem: there is no
+way to prove afterwards what a blind tap did.
+
+Before **every** tap, in this order:
+
+```bash
+adb -s <serial> shell dumpsys activity activities | grep topResumedActivity
+adb -s <serial> exec-out screencap -p > fresh.png
+```
+
+Confirm the package is `com.aus.notelikeus`, look at the fresh image, and compute
+coordinates from *that* capture. Never reuse coordinates across a build, an
+install, or any wait longer than a few seconds.
+
+To put the app in a known state first rather than hoping it is still foreground:
+
+```bash
+adb -s <serial> shell am start -n com.aus.notelikeus/.MainActivity
+```
+
+The desktop section above already says the equivalent ("check the rail again in
+the screenshot before *every* mutating action"). That warning was written for
+`SetForegroundWindow` and was not carried across to `adb`, which is exactly how
+the gap got filled by a mistake instead of a sentence. A physical device is the
+**less** forgiving of the two: the desktop app at least cannot be replaced by
+someone else's app between two commands.
+
 **Installing onto the physical device is safe, but be deliberate about it.** The
 build already there is a **debug** build (`dumpsys package com.aus.notelikeus`
 shows `flags=[ DEBUGGABLE ]`), signed with the same debug key, so
