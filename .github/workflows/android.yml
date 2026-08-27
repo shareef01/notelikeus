@@ -66,7 +66,9 @@ jobs:
       # drifted out of sync with the composables it tests and stopped compiling.
       # Compiling it here catches that without needing an emulator.
       - name: Compile instrumented tests
-        run: ./gradlew :composeApp:compileDebugAndroidTestSources --stacktrace
+        run: >
+          ./gradlew :composeApp:compileDebugAndroidTestSources
+          :androidApp:compileDebugAndroidTestSources --stacktrace
 
       - name: Run Android lint
         run: ./gradlew :androidApp:lintDebug --stacktrace
@@ -166,14 +168,21 @@ jobs:
           target: default
           arch: x86_64
           disable-animations: true
-          script: ./gradlew :composeApp:connectedDebugAndroidTest --stacktrace
+          # :androidApp's suite is the predictive-back check, which has to live beside the
+          # manifest that declares the opt-in. It self-skips below API 33, so the api-30 leg
+          # reports it as skipped rather than as a pass it did not earn.
+          script: >
+            ./gradlew :composeApp:connectedDebugAndroidTest
+            :androidApp:connectedDebugAndroidTest --stacktrace
 
       - name: Upload test report on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: instrumented-test-report-api${{ matrix.api-level }}
-          path: composeApp/build/reports/androidTests/
+          path: |
+            composeApp/build/reports/androidTests/
+            androidApp/build/reports/androidTests/
 
   # Publishes the tag's artifacts as a GitHub Release. Runs only after every gate has
   # passed — a release tag on a red build must not ship. CI has no signing config
