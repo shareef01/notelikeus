@@ -223,7 +223,7 @@ self.addEventListener('notificationclick', (event) => {
           // — there is no targetOrigin to pass, and adding one would be a transfer list. The
           // message also never crosses an origin: `clients.matchAll` only ever returns clients this
           // service worker controls, which are same-origin by definition.
-          // eslint-disable-next-line unicorn/require-post-message-target-origin
+          // oxlint-disable-next-line unicorn/require-post-message-target-origin
           client.postMessage({ type: 'OPEN_NOTE', noteId });
           return undefined;
         }
