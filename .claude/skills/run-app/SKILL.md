@@ -11,16 +11,24 @@ first attempt, which is why this file exists.
 ## Windows desktop (Compose Multiplatform)
 
 ```bash
-export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
-export PATH="$JAVA_HOME/bin:$PATH"
 ./gradlew :composeApp:run
 ```
 
-`JAVA_HOME` is **required** — there is no `java` on PATH in this environment and
-Gradle fails with "JAVA_HOME is not set" before it does anything else.
-
 Run it backgrounded (`run_in_background: true`); `:composeApp:run` blocks until
 the window closes.
+
+**Do not set `JAVA_HOME`.** This entry used to insist it was required, on the
+grounds that there is no `java` on PATH — there is (OpenJDK 21, Microsoft build),
+and every other Gradle invocation in this repo works without it. Exporting the
+POSIX path is actively harmful: Gradle is a Windows process, the `/c/...` form
+does not survive the boundary, and the launch dies with
+
+```
+Error: could not open `C:\Program Files\Android\Android Studio\jbr\lib\jvm.cfg'
+```
+
+which reads like a broken JDK rather than a broken variable. Verified by removing
+it: the app launches.
 
 ### Use a throwaway data directory
 
@@ -60,6 +68,20 @@ Consequences worth internalising:
   through the UI, then verify the account from another client before doing anything else.
 - Prefer read-only exploration on the desktop app. For flows that must create notes, the **Android
   emulator** is the safe target: local data, no account.
+
+**Searching is read-only, and it verifies more than it looks like it does.** A whole class of
+behaviour can be confirmed on the real app without writing anything: type into the search box and
+screenshot the result. That is how the `before:` / `after:` day-boundary fix was verified end to end
+against real notes — `before:<today>` returning the library and `before:<yesterday>` returning
+nothing is the exact pair that distinguishes a correct day boundary from an off-by-one, and it needs
+no note to be created, edited or deleted.
+
+It is also how the date-chip overflow was found, which no test had caught. **Reach for a read-only
+interaction before concluding a flow cannot be checked safely** — the account hazard above is about
+data flowing *up*, and a search never does.
+
+Driving the search box: click it, then `SendKeys('^a{DEL}')` before typing, or the new query lands
+appended to the old one.
 
 So never trust the export. Screenshot the window and read the bottom-left rail *before* every
 action, and treat a signed-in account as a stop signal. Notes are real data: prefer killing the
@@ -203,9 +225,19 @@ target outside `SystemInformation::VirtualScreen`. Without those a failed click
 looks exactly like a working button that does nothing — which is how a "the +
 button is broken" report nearly got confirmed from a click that never landed.
 
-Match windows by **process**, not title: `Get-Process -Name Notelikeus | Where
-MainWindowHandle -ne 0` (there are two processes — launcher and JVM — and only
-one has the window). Editor windows are `undecorated` with **no title at all**,
+Match windows by **process**, not title — but by the *right* process name, which
+depends on how it was started:
+
+- **`./gradlew :composeApp:run`** (the dev path above) produces a plain **`java`**
+  process. `Get-Process -Name Notelikeus` finds nothing at all, which looks
+  exactly like "the app failed to start". There are usually several `java`
+  processes; the app is the one with a non-zero handle:
+  `Get-Process -Name java | Where MainWindowHandle -ne 0`.
+- **The packaged build** is `Notelikeus` (two processes — launcher and JVM — and
+  only one has the window).
+
+Safest either way, since it covers both: `Get-Process | Where MainWindowHandle -ne
+0 | Where { $_.ProcessName -match 'java|Notelikeus' }`. Editor windows are `undecorated` with **no title at all**,
 so a title search cannot find them; to answer "did a window open", capture the
 whole `VirtualScreen` and look.
 
