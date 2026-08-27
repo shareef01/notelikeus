@@ -4,12 +4,11 @@ import android.os.Build
 import android.view.KeyEvent
 import android.window.OnBackInvokedDispatcher
 import androidx.activity.OnBackPressedCallback
-import androidx.annotation.RequiresApi
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.CountDownLatch
@@ -37,18 +36,18 @@ import java.util.concurrent.TimeUnit
  * what the app happens to be showing (the sign-in gate on a fresh install, for instance). What is
  * being verified is the delivery path, and that is shared.
  */
+/*
+ * `@SdkSuppress` rather than `@RequiresApi` plus a manual assumption: below API 33 the flag does
+ * nothing and a back press takes the legacy route, so both tests would hold whether or not
+ * predictive back worked. CI runs this on API 30 *and* 36, and the runner filters them out on 30
+ * rather than letting them claim a pass they did not earn.
+ *
+ * Lint says this directly -- `UseSdkSuppress`: "Don't use @RequiresApi from tests" -- and it was
+ * right; the first version of this file used the annotation meant for production code.
+ */
 @RunWith(AndroidJUnit4::class)
+@SdkSuppress(minSdkVersion = Build.VERSION_CODES.TIRAMISU)
 class PredictiveBackTest {
-
-    /**
-     * Below API 33 the flag does nothing and a back press takes the legacy route, so everything
-     * here would hold whether or not predictive back worked. CI runs this on API 30 *and* 36; on
-     * 30 it skips rather than claiming a pass it did not earn.
-     */
-    private fun assumeApi33() = assumeTrue(
-        "predictive back is API 33+; nothing to verify on this level",
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
-    )
 
     /**
      * The discriminating half: a callback registered on `OnBackInvokedDispatcher` **only** receives
@@ -56,11 +55,8 @@ class PredictiveBackTest {
      * using the legacy key-event path and this never fires — so deleting the manifest attribute
      * fails this test, which a check on `OnBackPressedDispatcher` alone would not do.
      */
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     @Test
     fun the_manifest_opt_in_is_live_and_the_system_drives_OnBackInvokedDispatcher() {
-        assumeApi33()
-
         val invoked = CountDownLatch(1)
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
@@ -81,8 +77,6 @@ class PredictiveBackTest {
 
     @Test
     fun a_system_back_press_reaches_the_OnBackPressedDispatcher() {
-        assumeApi33()
-
         val reachedCallback = CountDownLatch(1)
 
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
