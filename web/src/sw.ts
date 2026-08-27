@@ -218,6 +218,12 @@ self.addEventListener('notificationclick', (event) => {
           if ('navigate' in client) {
             return (client as WindowClient).navigate(targetUrl);
           }
+          // False positive: the rule is written for `Window.postMessage(message, targetOrigin)`.
+          // This is a ServiceWorker `Client`, whose signature is `postMessage(message, transfer?)`
+          // — there is no targetOrigin to pass, and adding one would be a transfer list. The
+          // message also never crosses an origin: `clients.matchAll` only ever returns clients this
+          // service worker controls, which are same-origin by definition.
+          // eslint-disable-next-line unicorn/require-post-message-target-origin
           client.postMessage({ type: 'OPEN_NOTE', noteId });
           return undefined;
         }
