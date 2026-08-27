@@ -32,6 +32,8 @@ android {
         // Same gradle.properties value composeApp compiles into AppConfig.versionName, so the
         // number stamped on the APK and the number the UI shows are the same number.
         versionName = providers.gradleProperty("notelikeus.versionName").get()
+        // Required for the androidTest source set below; :composeApp sets its own.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     packaging {
@@ -109,6 +111,12 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
+
+    // On-device only. The predictive-back opt-in in AndroidManifest.xml is an API 33+ runtime
+    // behaviour: nothing about it is visible to a unit test, and it is declared here rather than
+    // in :composeApp, so the test that checks it has to live beside it.
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
