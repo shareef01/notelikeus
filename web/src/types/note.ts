@@ -2,6 +2,7 @@ import type { ChecklistItem } from './checklist';
 import type { Label } from './label';
 import type { Attachment } from './attachment';
 import { noteColorsMatch } from '@/theme/colors';
+import { buildSearchText, noteMatchesSearchQuery } from '@/lib/text/searchText';
 
 /**
  * Canonical note model — field names match Android Room + Firestore cloud map.
@@ -98,19 +99,21 @@ export function nextLocalNoteIdAfter(maxId: number): number {
 }
 
 export function filterNotes(notes: Note[], filters: NoteQueryFilters): Note[] {
-  const query = filters.searchQuery?.trim().toLowerCase() ?? '';
+  const needlesEmpty = !filters.searchQuery?.trim();
   let result = notes.filter((note) => {
     if (filters.filter === 'active' && (note.isArchived || note.isTrashed)) return false;
     if (filters.filter === 'archived' && !note.isArchived) return false;
     if (filters.filter === 'trashed' && !note.isTrashed) return false;
     if (filters.colorArgb != null && !noteColorsMatch(note.color, filters.colorArgb)) return false;
     if (filters.labelName && !note.labels.some((l) => l.name === filters.labelName)) return false;
-    if (!query) return true;
-    const inTitle = note.title.toLowerCase().includes(query);
-    const inContent = note.content.toLowerCase().includes(query);
-    const inChecklist = note.checklist.some((item) => item.text.toLowerCase().includes(query));
-    const inLabels = note.labels.some((label) => label.name.toLowerCase().includes(query));
-    return inTitle || inContent || inChecklist || inLabels;
+    if (needlesEmpty) return true;
+    const haystack = buildSearchText(
+      note.title,
+      note.content,
+      note.checklist.map((item) => item.text),
+      note.labels.map((label) => label.name),
+    );
+    return noteMatchesSearchQuery(haystack, filters.searchQuery ?? '');
   });
 
   const pinned = result.filter((n) => n.isPinned);
