@@ -77,11 +77,9 @@ object TextFormatting {
         val selection = value.selection
         val start = minOf(selection.start, selection.end)
         val end = maxOf(selection.start, selection.end)
-        val label = if (selection.collapsed) url.trim() else value.text.substring(start, end)
-        val normalizedUrl = when {
-            url.startsWith("http://") || url.startsWith("https://") -> url
-            else -> "https://$url"
-        }
+        val trimmedUrl = url.trim()
+        val normalizedUrl = SafeHref.normalize(trimmedUrl) ?: return value
+        val label = if (selection.collapsed) trimmedUrl else value.text.substring(start, end)
         val link = "[$label]($normalizedUrl)"
         val newText = value.text.replaceRange(start, end, link)
 

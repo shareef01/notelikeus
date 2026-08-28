@@ -10,6 +10,7 @@ import com.aus.notelikeus.data.local.createDataStore
 import com.aus.notelikeus.data.local.getDatabaseBuilder
 import com.aus.notelikeus.data.remote.DesktopFirestoreTransport
 import com.aus.notelikeus.data.sync.CloudNoteTransport
+import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.NoteSyncStateStore
 import com.aus.notelikeus.di.DesktopNoteSyncStateStore
@@ -113,8 +114,9 @@ actual val platformModule = module {
         )
     }
 
+    single { LocalAccountIsolator(get(), get(), get()) }
     single<SyncManager> {
-        DesktopSyncManager(get<NoteSyncEngine>(), get<DesktopTokenStore>())
+        DesktopSyncManager(get<NoteSyncEngine>(), get<DesktopTokenStore>(), get<LocalAccountIsolator>())
     }
 
     single<GoogleSignInHelper> {
