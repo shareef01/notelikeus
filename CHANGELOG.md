@@ -4,10 +4,34 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- Native sign-out now isolates the device: local notes, tombstones, known cloud ids and the
+  pending upload queue are cleared so the next Google account cannot inherit them or apply
+  leftover deletes to colliding ids. The sync engine refuses to run while leftover state belongs
+  to a different uid
+- Web live saves compare the existing cloud document before writing. An equal server stamp
+  uses the same client-timestamp tie-break as Kotlin, so a stale flush cannot overwrite a newer
+  revision on another device
+- Native JSON import runs in one Room transaction and only schedules cloud uploads after that
+  transaction commits, so a mid-loop failure cannot leave a partial library
+- Web backup import uploads before updating the in-memory store, and drops realtime snapshots
+  for the duration, so a stale listener cannot wipe the import
+- Web search uses the same token-prefix and diacritic folding as Android and Windows, so the
+  same query over the same notes no longer disagrees across clients
+
+### Security
+- Native markdown links reject `javascript:` / `data:` / other non-http(s)/mailto schemes,
+  matching the web client's `toSafeHref`
+- Hosting `Strict-Transport-Security` now includes `preload`, matching the live site. The repo
+  CSP stays host-specific (`notelikeus.firebaseapp.com`) rather than the live wildcard
+
 ### Changed
 - Firestore rules type-check `timestamp` and `reminderTimestamp` as `int` rather than the
   looser `number` — both are epoch millis written as integers by every client and read back
   as `Long`, completing the tightening that `localId` received in 1.0.1
+- `@types/node` is a direct web `devDependency` so typecheck no longer relies on a transitive
+  copy arriving by coincidence (F24)
+- README documents that the web client can continue without an account
 
 ## [1.0.1] — 2026-08-17
 

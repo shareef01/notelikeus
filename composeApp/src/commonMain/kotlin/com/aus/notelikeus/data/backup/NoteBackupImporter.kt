@@ -39,66 +39,70 @@ class NoteBackupImporter(
             // while leaving the notes and labels it had already written committed.
             validate(backupData)?.let { return it }
 
-            val labelMap = repository.getAllLabelsSnapshot()
-                .associateBy { it.name.lowercase() }
-                .toMutableMap()
+            val importedIds = mutableListOf<Long>()
             var labelsCreated = 0
-
-            suspend fun ensureLabel(name: String): Label {
-                val key = name.trim().lowercase()
-                labelMap[key]?.let { return it }
-                val id = repository.insertLabel(Label(name = name.trim()))
-                val label = Label(id = id, name = name.trim())
-                labelMap[key] = label
-                labelsCreated++
-                return label
-            }
-
-            // Import labels from the root labels array
-            backupData.labels.forEach { label ->
-                if (label.name.isNotBlank()) {
-                    ensureLabel(label.name)
-                }
-            }
-
-            val basePosition = repository.getNextNotePosition()
             var notesImported = 0
 
-            backupData.notes.forEach { noteDto ->
-                val resolvedLabels = noteDto.labels.map { name ->
-                    ensureLabel(name)
+            repository.withWriteTransaction {
+                val labelMap = repository.getAllLabelsSnapshot()
+                    .associateBy { it.name.lowercase() }
+                    .toMutableMap()
+
+                suspend fun ensureLabel(name: String): Label {
+                    val key = name.trim().lowercase()
+                    labelMap[key]?.let { return it }
+                    val id = repository.insertLabel(Label(name = name.trim()))
+                    val label = Label(id = id, name = name.trim())
+                    labelMap[key] = label
+                    labelsCreated++
+                    return label
                 }
 
-                val checklist = noteDto.checklist.map { item ->
-                    ChecklistItem(
-                        text = item.text.take(MAX_FIELD_CHARS),
-                        isChecked = item.isChecked,
-                        position = item.position
+                backupData.labels.forEach { label ->
+                    if (label.name.isNotBlank()) {
+                        ensureLabel(label.name)
+                    }
+                }
+
+                val basePosition = repository.getNextNotePosition()
+
+                backupData.notes.forEach { noteDto ->
+                    val resolvedLabels = noteDto.labels.map { name ->
+                        ensureLabel(name)
+                    }
+
+                    val checklist = noteDto.checklist.map { item ->
+                        ChecklistItem(
+                            text = item.text.take(MAX_FIELD_CHARS),
+                            isChecked = item.isChecked,
+                            position = item.position
+                        )
+                    }
+
+                    val reminderTimestamp = noteDto.reminderTimestamp
+                        ?.takeIf { it > DateUtils.currentTimeMillis() }
+
+                    val note = Note(
+                        title = noteDto.title.take(MAX_FIELD_CHARS),
+                        content = noteDto.content.take(MAX_CONTENT_CHARS),
+                        timestamp = noteDto.timestamp,
+                        color = noteDto.color,
+                        isPinned = noteDto.isPinned,
+                        isArchived = noteDto.isArchived,
+                        isTrashed = noteDto.isTrashed,
+                        position = basePosition + notesImported,
+                        reminderTimestamp = reminderTimestamp,
+                        labels = resolvedLabels,
+                        attachments = emptyList(),
+                        checklist = checklist
                     )
+
+                    importedIds += repository.insertNoteWithoutSync(note)
+                    notesImported++
                 }
-
-                val reminderTimestamp = noteDto.reminderTimestamp
-                    ?.takeIf { it > DateUtils.currentTimeMillis() }
-
-                val note = Note(
-                    title = noteDto.title.take(MAX_FIELD_CHARS),
-                    content = noteDto.content.take(MAX_CONTENT_CHARS),
-                    timestamp = noteDto.timestamp,
-                    color = noteDto.color,
-                    isPinned = noteDto.isPinned,
-                    isArchived = noteDto.isArchived,
-                    isTrashed = noteDto.isTrashed,
-                    position = basePosition + notesImported,
-                    reminderTimestamp = reminderTimestamp,
-                    labels = resolvedLabels,
-                    attachments = emptyList(),
-                    checklist = checklist
-                )
-
-                repository.insertNoteWithResult(note)
-                notesImported++
             }
 
+            repository.finalizeImportedNotes(importedIds)
             BackupImportResult.Success(notesImported = notesImported, labelsCreated = labelsCreated)
         } catch (e: Exception) {
             BackupImportResult.Error(e)

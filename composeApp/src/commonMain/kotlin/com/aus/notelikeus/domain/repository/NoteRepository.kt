@@ -11,6 +11,17 @@ interface NoteRepository {
     suspend fun getNoteById(id: Long): Note?
     suspend fun insertNote(note: Note)
     suspend fun insertNoteWithResult(note: Note): Long
+    /**
+     * Inserts [note] without enqueueing a cloud upload. Used inside [withWriteTransaction]
+     * so a rolled-back import cannot schedule uploads for rows that never committed.
+     */
+    suspend fun insertNoteWithoutSync(note: Note): Long
+    /**
+     * Runs [block] in one writer transaction. Nested calls join the outer transaction.
+     */
+    suspend fun <R> withWriteTransaction(block: suspend () -> R): R
+    /** Reminder + upload + widget refresh after a successful import transaction. */
+    suspend fun finalizeImportedNotes(ids: List<Long>)
     /** Re-inserts a previously deleted note and ensures cloud tombstones are cleared. */
     suspend fun restoreNote(note: Note): Long
     suspend fun updateNote(note: Note)

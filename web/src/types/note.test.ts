@@ -94,6 +94,20 @@ describe('filterNotes', () => {
     expect(ids('   ')).toHaveLength(5);
   });
 
+  it('matches token prefixes and ignores diacritics, like the native client', () => {
+    const notes = [
+      note({ id: '1', title: 'notes' }),
+      note({ id: '2', title: 'Café Zürich' }),
+      note({ id: '3', title: 'Bread and milk' }),
+    ];
+    const ids = (query: string) =>
+      filterNotes(notes, { filter: 'active', searchQuery: query }).map((n) => n.id);
+    expect(ids('not')).toEqual(['1']);
+    expect(ids('ote')).toEqual([]);
+    expect(ids('cafe')).toEqual(['2']);
+    expect(ids('milk bread')).toEqual(['3']);
+  });
+
   it('matches a color filter across the light/dark pair', () => {
     const { light, dark } = NOTE_COLOR_OPTIONS[1];
     const notes = [note({ id: '1', color: dark }), note({ id: '2', color: NOTE_COLOR_OPTIONS[2].light })];
