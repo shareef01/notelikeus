@@ -29,6 +29,20 @@ class SuspectEmptyCloudException(
 )
 
 /**
+ * Local sync state still belongs to a different Google account than the current session.
+ *
+ * Native note ids are small autoincrements and tombstones are keyed by those ids, so applying
+ * leftover deletes or uploads under the new uid can erase or overwrite the wrong cloud notes.
+ * [LocalAccountIsolator] wipes the device first; the engine refuses rather than mixing.
+ */
+class WrongAccountSyncException(
+    val lastMergedUserId: String,
+    val currentUserId: String,
+) : Exception(
+    "This device still has another account's notes. Sign out and back in to isolate it before syncing."
+)
+
+/**
  * Policy-only cloud-sync engine.
  *
  * Broken cycle: NoteSyncEngine now depends on DAOs instead of the high-level Repository,
@@ -58,6 +72,7 @@ class NoteSyncEngine(
     suspend fun uploadAllNotes(): Result<Int> {
         return runCatching {
             val uid = uidProvider().getOrThrow()
+            requireCurrentAccount(uid)
             mergeCloudTombstones(uid)
             val localNotes = noteDao.getAllNotesForBackup().map { it.toNote() }
             purgeLocalTombstonedNotes(localNotes)
@@ -178,6 +193,7 @@ class NoteSyncEngine(
     suspend fun uploadNote(noteId: Long): Result<Unit> {
         return runCatching {
             val uid = uidProvider().getOrThrow()
+            requireCurrentAccount(uid)
             refreshCloudTombstone(uid, noteId)
             if (syncStateStore.isDeleted(noteId)) {
                 return deleteNote(noteId)
@@ -213,9 +229,10 @@ class NoteSyncEngine(
      */
     suspend fun restoreNote(noteId: Long): Result<Unit> {
         return runCatching {
+            val uid = uidProvider().getOrThrow()
+            requireCurrentAccount(uid)
             syncStateStore.markRestored(noteId)
             syncStateStore.clearDeleted(listOf(noteId))
-            val uid = uidProvider().getOrThrow()
             transport.deleteTombstones(uid, listOf(noteId))
             syncStateStore.clearRestored(listOf(noteId))
             val note = noteDao.getNoteById(noteId)?.toNote()
@@ -226,9 +243,10 @@ class NoteSyncEngine(
 
     suspend fun deleteNote(noteId: Long): Result<Unit> {
         return runCatching {
+            val uid = uidProvider().getOrThrow()
+            requireCurrentAccount(uid)
             val deletedAt = now()
             syncStateStore.markDeleted(noteId, deletedAt)
-            val uid = uidProvider().getOrThrow()
             transport.writeTombstone(uid, noteId, deletedAt)
             transport.deleteNotes(uid, listOf(noteId))
         }
@@ -237,6 +255,7 @@ class NoteSyncEngine(
     suspend fun downloadAllNotes(): Result<Int> {
         return runCatching {
             val uid = uidProvider().getOrThrow()
+            requireCurrentAccount(uid)
             val cloudTombstones = mergeCloudTombstones(uid)
             val localNotesBeforePurge = noteDao.getAllNotesForBackup().map { it.toNote() }
             val purgedIds = purgeLocalTombstonedNotes(localNotesBeforePurge)
@@ -372,6 +391,17 @@ class NoteSyncEngine(
             transport.deleteSyncMeta(uid)
             syncStateStore.clear()
             noteIds.size
+        }
+    }
+
+    /**
+     * `lastMergedUserId == null` is a first sync (guest notes may upload). A non-null value that
+     * does not match [uid] means another account's tombstones and known ids are still on disk.
+     */
+    private fun requireCurrentAccount(uid: String) {
+        val last = syncStateStore.lastMergedUserId()
+        if (last != null && last != uid) {
+            throw WrongAccountSyncException(lastMergedUserId = last, currentUserId = uid)
         }
     }
 

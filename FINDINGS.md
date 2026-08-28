@@ -651,7 +651,7 @@ stumble into the next one.
 
 ---
 
-## F24 — The web client type-checks against `@types/node`, which nothing declares
+## F24 — The web client type-checks against `@types/node`, which nothing declares — **FIXED**
 
 `src/lib/firestore/notesSync.emulator.test.ts` imports `node:fs`, `node:path` and reads `process`.
 Those type-check only because `@types/node` happens to be installed, arriving transitively via
@@ -673,3 +673,9 @@ adding to `package.json` is a dependency decision and those are the owner's call
 the terms that decision is normally made in: it replaces nothing, it is **already on disk** so the
 install cost is zero, it is DefinitelyTyped's most-used package, and the alternative — leaving it
 undeclared — keeps a type-check that works by coincidence rather than by statement.
+
+---
+
+**Fixed.** `"@types/node"` is now a direct `devDependency`. The pin is `^24.3.0` (Node 24 LTS,
+which is what the README requires) rather than the `^26.2.0` suggested above. Typecheck no longer
+depends on vite / vitest / happy-dom / firebase happening to install it.
