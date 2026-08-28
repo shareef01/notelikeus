@@ -1,6 +1,7 @@
 package com.aus.notelikeus.platform
 
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
+import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.runTimedSync
 import com.aus.notelikeus.domain.repository.SyncManager
@@ -14,7 +15,8 @@ import kotlinx.coroutines.flow.update
 
 class AndroidSyncManager(
     private val sessionManager: FirebaseSessionManager,
-    private val syncEngine: NoteSyncEngine
+    private val syncEngine: NoteSyncEngine,
+    private val isolator: LocalAccountIsolator,
 ) : SyncManager {
     private val _syncStatus = MutableStateFlow<CloudSyncStatus>(CloudSyncStatus.Unknown)
     override val syncStatus: StateFlow<CloudSyncStatus> = _syncStatus.asStateFlow()
@@ -32,12 +34,14 @@ class AndroidSyncManager(
     override suspend fun signInWithGoogle(idToken: String): Result<Unit> {
         return sessionManager.signInWithGoogle(idToken).onSuccess {
             refreshAccount()
+            isolateIncomingSession()
         }
     }
 
     override suspend fun signInWithEmail(email: String, password: String, create: Boolean): Result<Unit> {
         return sessionManager.signInWithEmailPassword(email, password, create).onSuccess {
             refreshAccount()
+            isolateIncomingSession()
         }
     }
 
@@ -65,16 +69,23 @@ class AndroidSyncManager(
             syncEngine.deleteAllCloudData().onFailure { return Result.failure(it) }
         }
         return sessionManager.signOut().onSuccess {
+            isolator.isolate()
             refreshAccount()
         }
     }
 
     override suspend fun syncNotes() {
+        isolateIncomingSession()
         runSync({ CloudSyncEvent.Uploaded(it) }) { syncEngine.uploadAllNotes() }
     }
 
     override suspend fun downloadNotes() {
+        isolateIncomingSession()
         runSync({ CloudSyncEvent.Downloaded(it) }) { syncEngine.downloadAllNotes() }
+    }
+
+    private suspend fun isolateIncomingSession() {
+        sessionManager.getCurrentAccount().userId?.let { isolator.isolateIfAccountChanged(it) }
     }
 
     private suspend fun runSync(
