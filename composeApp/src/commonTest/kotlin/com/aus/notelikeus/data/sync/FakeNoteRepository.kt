@@ -25,6 +25,7 @@ class FakeNoteRepository : NoteRepository {
     val insertedNotes = mutableListOf<Note>()
     val updatedNotes = mutableListOf<Note>()
     val clearedAll = mutableListOf<Boolean>()
+    val finalizedIds = mutableListOf<Long>()
 
     // Simple Flow for active note count
     private val _activeNoteCount = MutableStateFlow(0)
@@ -45,6 +46,14 @@ class FakeNoteRepository : NoteRepository {
         insertedNotes.add(saved)
         _activeNoteCount.value = notes.size
         return id
+    }
+
+    override suspend fun insertNoteWithoutSync(note: Note): Long = insertNoteWithResult(note)
+
+    override suspend fun <R> withWriteTransaction(block: suspend () -> R): R = block()
+
+    override suspend fun finalizeImportedNotes(ids: List<Long>) {
+        finalizedIds.addAll(ids)
     }
 
     override suspend fun updateNote(note: Note) {

@@ -47,10 +47,12 @@ class NoteRepositoryImpl(
      * `immediateTransaction`, a failure part-way through e.g. [updateNote] would leave the note
      * with its label/checklist rows deleted and not yet re-inserted.
      */
-    private suspend fun <R> writeTransaction(block: suspend () -> R): R =
+    override suspend fun <R> withWriteTransaction(block: suspend () -> R): R =
         database.useWriterConnection { transactor ->
             transactor.immediateTransaction { block() }
         }
+
+    private suspend fun <R> writeTransaction(block: suspend () -> R): R = withWriteTransaction(block)
 
     private fun refreshWidget() {
         synchronized(widgetRefreshLock) {
@@ -94,32 +96,42 @@ class NoteRepositoryImpl(
         return noteId
     }
 
+    override suspend fun insertNoteWithoutSync(note: Note): Long = insertNoteRows(note)
+
+    override suspend fun finalizeImportedNotes(ids: List<Long>) {
+        for (id in ids) {
+            getNoteById(id)?.let { syncReminderForNote(it) }
+            syncCoordinator.scheduleUpload(id)
+        }
+        if (ids.isNotEmpty()) refreshWidget()
+    }
+
     override suspend fun restoreNote(note: Note): Long {
         val noteId = innerInsert(note)
         syncCoordinator.scheduleRestore(noteId)
         return noteId
     }
 
-    private suspend fun innerInsert(note: Note): Long {
-        val noteId = writeTransaction {
-            val insertedId = noteDao.insertNote(note.toNoteEntity())
+    private suspend fun insertNoteRows(note: Note): Long {
+        val insertedId = noteDao.insertNote(note.toNoteEntity())
 
-            // Handle labels
-            noteDao.deleteNoteLabelCrossRefs(insertedId)
-            note.labels.forEach { label ->
-                label.id?.let { labelId ->
-                    noteDao.insertNoteLabelCrossRef(NoteLabelCrossRef(insertedId, labelId))
-                }
+        noteDao.deleteNoteLabelCrossRefs(insertedId)
+        note.labels.forEach { label ->
+            label.id?.let { labelId ->
+                noteDao.insertNoteLabelCrossRef(NoteLabelCrossRef(insertedId, labelId))
             }
-
-            // Handle checklists
-            noteDao.deleteChecklistItems(insertedId)
-            note.checklist.forEach { item ->
-                noteDao.insertChecklistItem(item.toChecklistItemEntity(insertedId))
-            }
-
-            insertedId
         }
+
+        noteDao.deleteChecklistItems(insertedId)
+        note.checklist.forEach { item ->
+            noteDao.insertChecklistItem(item.toChecklistItemEntity(insertedId))
+        }
+
+        return insertedId
+    }
+
+    private suspend fun innerInsert(note: Note): Long {
+        val noteId = writeTransaction { insertNoteRows(note) }
         syncReminderForNote(note.copy(id = noteId))
         refreshWidget()
         return noteId
