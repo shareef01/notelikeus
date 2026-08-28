@@ -53,6 +53,25 @@ describe('shouldUploadOverRemote', () => {
     expect(shouldUploadOverRemote(local, remote)).toBe(false);
   });
 
+  it('does not re-upload when stamps and client timestamps both match', () => {
+    const local = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });
+    const remote = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });
+    expect(shouldUploadOverRemote(local, remote)).toBe(false);
+  });
+
+  it('uploads an equal-stamp local edit whose client timestamp is newer', () => {
+    // Room and the web editor keep serverUpdatedAt through a local save and only bump timestamp.
+    const local = note({ id: '1', localId: 1, timestamp: 30, serverUpdatedAt: 500 });
+    const remote = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });
+    expect(shouldUploadOverRemote(local, remote)).toBe(true);
+  });
+
+  it('refuses to overwrite a strictly newer remote stamp even if local timestamp is newer', () => {
+    const local = note({ id: '1', localId: 1, timestamp: 999, serverUpdatedAt: 500 });
+    const remote = note({ id: '1', localId: 1, timestamp: 1, serverUpdatedAt: 501 });
+    expect(shouldUploadOverRemote(local, remote)).toBe(false);
+  });
+
   it('uploads when the local copy is a strictly newer confirmed revision', () => {
     const local = note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 501 });
     const remote = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });

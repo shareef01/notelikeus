@@ -156,4 +156,22 @@ describe('notes sync against a real Firestore', () => {
 
     expect(result.merged.find((n) => n.id === '1')?.title).toBe('Remote edit');
   });
+
+  it('does not overwrite a strictly newer remote revision with a stale live save', async () => {
+    await upsertNote(USER, note('1', { title: 'First', timestamp: 1_000 }));
+    const remote = (await fetchRemoteNotes(USER))[0];
+    expect(remote.serverUpdatedAt).toBeTypeOf('number');
+
+    await upsertNote(USER, {
+      ...note('1', {
+        title: 'Stale local',
+        timestamp: 1,
+        serverUpdatedAt: remote.serverUpdatedAt,
+      }),
+    });
+
+    const after = await fetchRemoteNotes(USER);
+    expect(after).toHaveLength(1);
+    expect(after[0].title).toBe('First');
+  });
 });

@@ -30,6 +30,20 @@ function purgeStaleCloudDocs(userId: string, staleIds: string[]): void {
 
 let unsubscribeRealtime: Unsubscribe | null = null;
 let realtimeUserId: string | null = null;
+/** Import holds snapshots so a stale listener cannot wipe notes that have not been uploaded yet. */
+let realtimeApplyPaused = false;
+
+/**
+ * Drop incoming snapshots until {@link resumeRealtimeSnapshots}. The handler is synchronous,
+ * so a callback cannot be paused mid-apply.
+ */
+export function pauseRealtimeSnapshots(): void {
+  realtimeApplyPaused = true;
+}
+
+export function resumeRealtimeSnapshots(): void {
+  realtimeApplyPaused = false;
+}
 
 function applyNotes(incoming: Note[]) {
   const current = useNotesStore.getState().notes;
@@ -148,6 +162,7 @@ export function startNotesRealtimeSync(userId: string): void {
   unsubscribeRealtime = subscribeToNotes(
     userId,
     (remoteNotes) => {
+      if (realtimeApplyPaused) return;
       const { live, staleIds } = partitionTombstoned(remoteNotes);
       purgeStaleCloudDocs(userId, staleIds);
 
@@ -185,5 +200,6 @@ export function stopNotesRealtimeSync(): void {
   lastReconcileStartedAt = 0;
   lastSnapshotAppliedAt = 0;
   knownRemoteIds = new Set();
+  realtimeApplyPaused = false;
   detachReconciliationTriggers();
 }

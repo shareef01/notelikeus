@@ -38,7 +38,7 @@ It started as the app I actually wanted to use: something as quick as Google Kee
 
 **Notes live on the device first.** Android and Windows use Room; on Android the database is encrypted with SQLCipher, keyed from the AndroidKeystore. Sync is a layer above that, not a prerequisite — sign in and your notes replicate through Firestore, or don't and the app is still fully usable offline.
 
-**The web client is Firestore-native**, with the SDK's offline cache doing the same job the Room database does elsewhere, plus a PWA install path and service-worker reminders.
+**The web client is Firestore-native** when you are signed in, with the SDK's offline cache doing the same job the Room database does elsewhere. You can also continue without an account: notes stay in that browser until you sign in or export a backup. There is a PWA install path and service-worker reminders.
 
 **Conflicts resolve on a server timestamp**, not a client clock. A device with a skewed clock — or an imported backup with a hand-edited timestamp — can't overwrite a revision the server has already confirmed. Deletions propagate as tombstones with a TTL, so a note deleted on one device stays deleted rather than being resurrected by another device syncing later.
 
@@ -64,8 +64,8 @@ It started as the app I actually wanted to use: something as quick as Google Kee
 | Encrypted local database | ✓ SQLCipher | — | — |
 | Biometric app lock | ✓ | — | — |
 | Home-screen widget | ✓ Glance | — | — |
-| Google sign-in + Firestore sync | Optional | Optional | Required |
-| Works with no account | ✓ | ✓ | — |
+| Google sign-in + Firestore sync | Optional | Optional | Optional |
+| Works with no account | ✓ | ✓ | ✓ |
 | JSON backup import / export | ✓ | ✓ | ✓ |
 | Installable PWA | — | — | ✓ |
 
@@ -94,8 +94,8 @@ Roughly 250 automated checks, arranged so that each one can actually fail:
 |---|---|---|
 | JVM unit (~200) | Sync engine, mappers, repositories, backup, key management | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest` |
 | Instrumented (4) | Database quarantine and encryption migration, on a real device | `./gradlew :composeApp:connectedDebugAndroidTest` |
-| Firestore rules (31) | Security rules against the emulator | `npm run test:rules` |
-| Web unit (44) | Merge logic, conflict resolution, backup parsing | `cd web && npm test` |
+| Firestore rules (34) | Security rules against the emulator | `npm run test:rules` |
+| Web unit (238) | Merge logic, conflict resolution, backup parsing, search | `cd web && npm test` |
 | Web sync (6) | The sync layer against a live Firestore, production rules enforced | `cd web && npm run test:sync` |
 | Browser end-to-end (4) | The built bundle in Chromium: boot, auth, note round-trip | `cd web && npm run test:e2e` |
 
