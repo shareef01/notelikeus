@@ -170,4 +170,16 @@ class RichTextParserTest {
         assertEquals("See https://example.com today", result.text)
         assertEquals(1, result.getLinkAnnotations(0, result.text.length).size)
     }
+
+    @Test
+    fun parse_doesNotMakeJavascriptUrlsClickable() {
+        val result = RichTextParser.parse(
+            text = "Visit [docs](javascript:alert) now",
+            contentColor = Color.Black,
+            linkColor = Color.Blue
+        )
+
+        assertEquals("Visit docs now", result.text)
+        assertTrue(result.getLinkAnnotations(0, result.text.length).isEmpty())
+    }
 }
