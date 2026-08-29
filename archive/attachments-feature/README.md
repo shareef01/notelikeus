@@ -28,10 +28,10 @@ the next note edit.
 
 ## To restore later
 
-1. Copy archived `src/` files back into their original packages under `app/src/main/java/`.
+1. Copy archived `src/` files back into their original packages under `composeApp/src/`.
 2. Re-add `firebase-storage` and `coil-compose` in Gradle.
 3. Restore UI wiring in `EditorScreen`, `EditorBottomBar`, and `NoteCard`.
-4. Restore backup and `FirebaseNoteSync` attachment handling (see git history).
+4. Restore backup and cloud-sync attachment handling (see git history).
 5. Enable Firebase Storage (Blaze plan) and publish `storage.rules`.
 
 Original paths:

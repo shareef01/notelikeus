@@ -56,7 +56,7 @@ val androidAppModule = module {
  * unlikely here — it cannot occur. The Compose-side state is created by `collectAsState` inside
  * composition, on the main thread, which is where snapshot state is meant to be created.
  *
- * See FINDINGS.md F9.
+ * See docs/FINDINGS.md F9.
  */
 object AppStartup {
     private val _isReady = MutableStateFlow(false)
