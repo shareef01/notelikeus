@@ -30,7 +30,7 @@ import com.aus.notelikeus.ui.theme.Chrome
  *
  * A dialog rather than the bottom sheet the design brief names. This composable is shared with
  * the Windows build, where a sheet sliding up from the bottom of a desktop window is not a
- * convention anyone expects, and a modal confirmation is. See DECISIONS.md D7.
+ * convention anyone expects, and a modal confirmation is. See docs/DECISIONS.md D7.
  */
 @Composable
 fun ConfirmDialog(
