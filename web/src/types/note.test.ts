@@ -166,4 +166,16 @@ describe('filterNotes', () => {
     filterNotes(notes, { filter: 'active', sortOrder: 'newest' });
     expect(notes.map((n) => n.id)).toEqual(['b', 'a']);
   });
+
+  it('ranks a text query by relevance rather than the chosen sort', () => {
+    const inBody = note({ id: 'body', title: 'x', content: 'budget', timestamp: 900 });
+    const inTitle = note({ id: 'title', title: 'budget', timestamp: 100 });
+    expect(
+      filterNotes([inBody, inTitle], {
+        filter: 'active',
+        searchQuery: 'budget',
+        sortOrder: 'newest',
+      }).map((n) => n.id),
+    ).toEqual(['title', 'body']);
+  });
 });
