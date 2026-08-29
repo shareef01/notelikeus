@@ -9,6 +9,7 @@ import { TopBar } from '@/components/layout/TopBar';
 import { NoteStaggeredGrid } from '@/components/notes/NoteStaggeredGrid';
 import { NotesEmptyState } from '@/components/notes/NotesEmptyState';
 import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
+import { SearchNotice } from '@/components/notes/SearchNotice';
 import { TrashBanner } from '@/components/notes/TrashBanner';
 
 
@@ -118,6 +119,8 @@ export function MainScreen() {
     notes,
 
     filteredNotes,
+
+    isFuzzyResult,
 
     labels,
 
@@ -462,7 +465,11 @@ export function MainScreen() {
               />
 
             ) : (
-              <NoteStaggeredGrid
+              <>
+                {isFuzzyResult ? (
+                  <SearchNotice query={filters.searchQuery ?? ''} />
+                ) : null}
+                <NoteStaggeredGrid
                 notes={filteredNotes}
                 viewPreference={viewColumns}
                 filter={filters.filter}
@@ -485,6 +492,7 @@ export function MainScreen() {
                 onMoveNote={moveNote}
                 onReorderComplete={reorderComplete}
               />
+              </>
             )}
 
           </div>
