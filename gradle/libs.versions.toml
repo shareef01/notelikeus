@@ -36,7 +36,7 @@ securityCrypto = "1.1.0"
 # downgrading. It does still mean Room runs against a sqlite it was not built with, so keep pairing
 # the next Room bump with a check of this line.
 sqlite = "2.7.0"
-okio = "3.9.1"
+okio = "3.18.1"
 jna = "5.19.1"
 appcompat = "1.8.0"
 fragment = "1.9.0"
@@ -61,7 +61,7 @@ koin = "4.1.1"
 # resolution and leaves runtime at 1.11 while compose-ui and skiko stay on the CMP plugin's 1.8.2.
 # The packaged app then dies composing App() with "CompositionLocal LocalHostDefaultProvider not
 # present". Measured in D18; #70 is blocked on this, not on Koin.
-composeLifecycle = "2.9.3"
+composeLifecycle = "2.9.6"
 work = "2.11.2"
 
 [libraries]
