@@ -97,7 +97,7 @@ from the shared palette source rather than from independent literals.
 a choice. Deriving the values means a palette change cannot silently leave the widget behind,
 while accepting that the widget resolves its theme separately.
 
-**Cost to reverse:** n/a. Logged in `FINDINGS.md` (F6) as a gap that still owes a
+**Cost to reverse:** n/a. Logged in [`FINDINGS.md`](FINDINGS.md) (F6) as a gap that still owes a
 widget-specific visual review.
 
 ---
