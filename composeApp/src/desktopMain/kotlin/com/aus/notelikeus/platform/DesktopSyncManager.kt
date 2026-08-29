@@ -1,8 +1,10 @@
 package com.aus.notelikeus.platform
 
 import com.aus.notelikeus.data.remote.FirestoreTransportException
+import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.SuspectEmptyCloudException
+import com.aus.notelikeus.data.sync.WrongAccountSyncException
 import com.aus.notelikeus.data.sync.runTimedSync
 import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.ui.main.CloudAccount
@@ -24,7 +26,8 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 class DesktopSyncManager(
     private val syncEngine: NoteSyncEngine,
-    private val tokenStore: DesktopTokenStore
+    private val tokenStore: DesktopTokenStore,
+    private val isolator: LocalAccountIsolator,
 ) : SyncManager {
 
     private val _syncStatus = MutableStateFlow(CloudSyncStatus.Offline)
@@ -59,6 +62,7 @@ class DesktopSyncManager(
             return Result.failure(IllegalStateException("Token uid ($tokenUid) does not match stored session"))
         }
         refreshAccount()
+        tokenStore.uid()?.let { isolator.isolateIfAccountChanged(it) }
         return Result.success(Unit)
     }
 
@@ -80,16 +84,19 @@ class DesktopSyncManager(
             syncEngine.deleteAllCloudData().onFailure { return Result.failure(it) }
         }
         tokenStore.clear()
+        isolator.isolate()
         _syncStatus.value = CloudSyncStatus.Offline
         _cloudAccount.value = CloudAccount(isOfflineMode = true)
         return Result.success(Unit)
     }
 
     override suspend fun syncNotes() {
+        tokenStore.uid()?.let { isolator.isolateIfAccountChanged(it) }
         runSync { syncEngine.uploadAllNotes() }
     }
 
     override suspend fun downloadNotes() {
+        tokenStore.uid()?.let { isolator.isolateIfAccountChanged(it) }
         runSync { syncEngine.downloadAllNotes() }
     }
 
@@ -109,6 +116,8 @@ class DesktopSyncManager(
 
     private fun describe(error: Throwable): String = when {
         error is SuspectEmptyCloudException -> error.message ?: "Sync stopped to protect your notes."
+        error is WrongAccountSyncException ->
+            error.message ?: "This device still has another account's notes. Sign out and back in."
         error is FirestoreTransportException && error.isAuthFailure ->
             "Your session expired. Sign in again to sync."
         else -> error.message?.takeIf { it.isNotBlank() } ?: "Sync failed. Try again."
