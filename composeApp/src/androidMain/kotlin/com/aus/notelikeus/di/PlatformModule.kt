@@ -19,6 +19,7 @@ import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.data.remote.SharedPrefsNoteSyncStateStore
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
 import com.aus.notelikeus.data.remote.FirestoreNoteTransport
+import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.NoteSyncStateStore
 import com.aus.notelikeus.data.sync.CloudNoteTransport
@@ -80,6 +81,7 @@ actual val platformModule = module {
     }
     single { NoteBackupImporter(get<NoteRepository>()) }
     single { SharedPrefsNoteSyncStateStore(get()) }
+    single<NoteSyncStateStore> { get<SharedPrefsNoteSyncStateStore>() }
     single { androidx.work.WorkManager.getInstance(get<android.content.Context>()) }
 
     // Firebase Core
@@ -107,7 +109,8 @@ actual val platformModule = module {
     // Sync
     single { PendingCloudSyncStore(get()) }
     single<SyncCoordinator> { CloudNoteSyncCoordinator(get(), get(), get(), get(), get()) }
-    single<SyncManager> { AndroidSyncManager(get(), get()) }
+    single { LocalAccountIsolator(get(), get(), get()) }
+    single<SyncManager> { AndroidSyncManager(get(), get(), get()) }
 
     single<GoogleSignInHelper> {
         AndroidGoogleSignInHelper(
