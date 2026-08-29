@@ -121,12 +121,9 @@
     <string name="sort_newest">Newest first</string>
     <string name="sort_oldest">Oldest first</string>
     <string name="sorted_by">Sorted by %1$s</string>
-    <string name="view_mode_grid_2">2-column grid</string>
-    <string name="view_mode_grid_3">3-column grid</string>
-    <string name="view_mode_grid_4">4-column grid</string>
-    <string name="view_mode_grid_5">5-column grid</string>
+    <string name="view_mode_grid_2">Grid</string>
     <string name="view_mode_list">List</string>
-    <string name="view_mode_compact">Compact list</string>
+    <string name="view_mode_compact">Compact</string>
     <string name="app_lock_title">App lock</string>
     <string name="app_lock_subtitle">Require biometrics when opening the app</string>
     <string name="app_lock_message">Authenticate to access your notes</string>
