@@ -48,7 +48,7 @@ data class ThemePreference(
  * reversible by reverting the build.
  *
  * It follows that this function is load-bearing indefinitely and cannot be deleted after
- * "everyone has upgraded" — see DECISIONS.md, D2.
+ * "everyone has upgraded" — see docs/DECISIONS.md, D2.
  *
  * [storedAmoled] and [storedAccent] are the independently-stored values, used for the three
  * non-legacy entries. For `TRUE_DARK`, `MIDNIGHT` and `FOREST` the legacy name already implies a
