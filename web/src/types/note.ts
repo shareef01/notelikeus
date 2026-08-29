@@ -2,7 +2,8 @@ import type { ChecklistItem } from './checklist';
 import type { Label } from './label';
 import type { Attachment } from './attachment';
 import { noteColorsMatch } from '@/theme/colors';
-import { buildSearchText, noteMatchesSearchQuery } from '@/lib/text/searchText';
+import { byRelevance, fuzzyMatches } from '@/lib/text/noteSearchRanking';
+import { buildSearchText, noteMatchesSearchQuery, searchTokens } from '@/lib/text/searchText';
 
 /**
  * Canonical note model — field names match Android Room + Firestore cloud map.
@@ -98,47 +99,75 @@ export function nextLocalNoteIdAfter(maxId: number): number {
   return Math.max(maxId + 1, candidate);
 }
 
-export function filterNotes(notes: Note[], filters: NoteQueryFilters): Note[] {
-  const needlesEmpty = !filters.searchQuery?.trim();
-  let result = notes.filter((note) => {
-    if (filters.filter === 'active' && (note.isArchived || note.isTrashed)) return false;
-    if (filters.filter === 'archived' && !note.isArchived) return false;
-    if (filters.filter === 'trashed' && !note.isTrashed) return false;
-    if (filters.colorArgb != null && !noteColorsMatch(note.color, filters.colorArgb)) return false;
-    if (filters.labelName && !note.labels.some((l) => l.name === filters.labelName)) return false;
-    if (needlesEmpty) return true;
-    const haystack = buildSearchText(
-      note.title,
-      note.content,
-      note.checklist.map((item) => item.text),
-      note.labels.map((label) => label.name),
-    );
-    return noteMatchesSearchQuery(haystack, filters.searchQuery ?? '');
-  });
+function matchesScopeAndFacets(note: Note, filters: NoteQueryFilters): boolean {
+  if (filters.filter === 'active' && (note.isArchived || note.isTrashed)) return false;
+  if (filters.filter === 'archived' && !note.isArchived) return false;
+  if (filters.filter === 'trashed' && !note.isTrashed) return false;
+  if (filters.colorArgb != null && !noteColorsMatch(note.color, filters.colorArgb)) return false;
+  if (filters.labelName && !note.labels.some((l) => l.name === filters.labelName)) return false;
+  return true;
+}
 
-  const pinned = result.filter((n) => n.isPinned);
-  const unpinned = result.filter((n) => !n.isPinned);
+function noteHaystack(note: Note): string {
+  return buildSearchText(
+    note.title,
+    note.content,
+    note.checklist.map((item) => item.text),
+    note.labels.map((label) => label.name),
+  );
+}
 
-  switch (filters.sortOrder) {
+function sortWithoutSearch(notes: Note[], sortOrder: NoteQueryFilters['sortOrder']): Note[] {
+  const pinned = notes.filter((n) => n.isPinned);
+  const unpinned = notes.filter((n) => !n.isPinned);
+
+  switch (sortOrder) {
     case 'newest':
-      result = [
+      return [
         ...pinned.sort((a, b) => b.timestamp - a.timestamp),
         ...unpinned.sort((a, b) => b.timestamp - a.timestamp),
       ];
-      break;
     case 'oldest':
-      result = [
+      return [
         ...pinned.sort((a, b) => a.timestamp - b.timestamp),
         ...unpinned.sort((a, b) => a.timestamp - b.timestamp),
       ];
-      break;
     case 'manual':
     default:
-      result = [
+      return [
         ...pinned.sort((a, b) => a.position - b.position || b.timestamp - a.timestamp),
         ...unpinned.sort((a, c) => a.position - c.position || c.timestamp - a.timestamp),
       ];
   }
+}
 
-  return result;
+export interface NoteSearchResult {
+  notes: Note[];
+  /** True when nothing matched exactly and these are near misses. The UI must say so. */
+  isFuzzy: boolean;
+}
+
+/**
+ * Match then order. Text queries rank by relevance (Kotlin `NoteQueryMatcher.search`); an empty
+ * box keeps the chosen sort. A typo falls back to near matches without loosening colour/label/scope.
+ */
+export function searchNotes(notes: Note[], filters: NoteQueryFilters): NoteSearchResult {
+  const scoped = notes.filter((note) => matchesScopeAndFacets(note, filters));
+  const query = filters.searchQuery ?? '';
+  const needles = searchTokens(query);
+  if (needles.length === 0) {
+    return { notes: sortWithoutSearch(scoped, filters.sortOrder), isFuzzy: false };
+  }
+
+  const strict = scoped.filter((note) => noteMatchesSearchQuery(noteHaystack(note), query));
+  if (strict.length > 0) {
+    return { notes: byRelevance(strict, query), isFuzzy: false };
+  }
+
+  const fuzzy = fuzzyMatches(scoped, query);
+  return { notes: byRelevance(fuzzy, query), isFuzzy: fuzzy.length > 0 };
+}
+
+export function filterNotes(notes: Note[], filters: NoteQueryFilters): Note[] {
+  return searchNotes(notes, filters).notes;
 }
