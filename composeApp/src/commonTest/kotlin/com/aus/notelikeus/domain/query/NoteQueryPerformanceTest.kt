@@ -168,7 +168,7 @@ class NoteQueryPerformanceTest {
      * This measures the gap rather than assuming it, and the number is why there is no backfill:
      * 12ms against 0ms at 5,000 notes, both inside the 50ms budget. Rewriting every row of an
      * encrypted database to save 12ms that nobody is waiting on is a bad trade -- see
-     * DECISIONS.md D9. What this test has to guarantee is that the two paths agree, because a
+     * docs/DECISIONS.md D9. What this test has to guarantee is that the two paths agree, because a
      * fallback that returned different notes would be far worse than a slow one.
      */
     @Test
