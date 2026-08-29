@@ -223,6 +223,29 @@ describe('firestore.rules', () => {
     );
   });
 
+  // Pins a known ceiling rather than a behaviour anyone wants: the rules language has no iteration,
+  // so "every element of labels/checklist has the right shape" cannot be expressed. Verified
+  // against the emulator — a rule using `checklist.all(i, i.text is string)` denies a write whose
+  // data satisfies it, because the unknown method errors and an errored condition denies.
+  //
+  // Element access by index does work, and was deliberately not used: it can only cover indices
+  // named literally, so it would validate element 0 and wave through elements 1..499 — validation
+  // in appearance only. This test exists so the gap is recorded as a decision instead of being
+  // rediscovered as a bug, and so it fails loudly if the language ever gains iteration and someone
+  // closes it properly.
+  it('accepts malformed elements inside labels and checklist (rules cannot iterate)', async () => {
+    const alice = authed('alice');
+    await assertSucceeds(
+      setDoc(
+        noteRef(alice, 'alice', 'note-1'),
+        validNote({
+          labels: [{ name: 'ok' }, { nonsense: 1 }],
+          checklist: [{ text: 'ok', isChecked: false, position: 0 }, 'not even a map'],
+        }),
+      ),
+    );
+  });
+
   // serverUpdatedAt is the conflict-resolution clock — see NoteSyncEngine.kt / notesRepository.ts.
   // It has to be genuinely server-assigned, or a malicious/modified client could forge it to win
   // every sync conflict.
@@ -285,6 +308,26 @@ describe('firestore.rules', () => {
     await assertFails(setDoc(doc(alice, 'users/alice/tombstones/note-1'), {}));
     await assertFails(
       setDoc(doc(alice, 'users/alice/tombstones/note-1'), { deletedAt: 'yesterday' }),
+    );
+  });
+
+  it('rejects a tombstone whose deletedAt is not positive', async () => {
+    // `pruneExpiredTombstones` deletes a tombstone once `now - deletedAt >= TOMBSTONE_TTL_MS`
+    // (180 days). At 0 or negative that is true on the first sync, so the tombstone is pruned
+    // before it has reached the other devices and the deleted note comes back everywhere.
+    const alice = authed('alice');
+    await assertFails(setDoc(doc(alice, 'users/alice/tombstones/note-1'), { deletedAt: 0 }));
+    await assertFails(setDoc(doc(alice, 'users/alice/tombstones/note-1'), { deletedAt: -1 }));
+  });
+
+  it('still accepts a tombstone from a device whose clock runs ahead', async () => {
+    // The bound above is deliberately one-sided. Rejecting a future deletedAt would mean the
+    // deletion never propagates at all, which is worse than storing a skewed one.
+    const alice = authed('alice');
+    await assertSucceeds(
+      setDoc(doc(alice, 'users/alice/tombstones/note-1'), {
+        deletedAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+      }),
     );
   });
 

@@ -11,16 +11,24 @@ first attempt, which is why this file exists.
 ## Windows desktop (Compose Multiplatform)
 
 ```bash
-export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
-export PATH="$JAVA_HOME/bin:$PATH"
 ./gradlew :composeApp:run
 ```
 
-`JAVA_HOME` is **required** — there is no `java` on PATH in this environment and
-Gradle fails with "JAVA_HOME is not set" before it does anything else.
-
 Run it backgrounded (`run_in_background: true`); `:composeApp:run` blocks until
 the window closes.
+
+**Do not set `JAVA_HOME`.** This entry used to insist it was required, on the
+grounds that there is no `java` on PATH — there is (OpenJDK 21, Microsoft build),
+and every other Gradle invocation in this repo works without it. Exporting the
+POSIX path is actively harmful: Gradle is a Windows process, the `/c/...` form
+does not survive the boundary, and the launch dies with
+
+```
+Error: could not open `C:\Program Files\Android\Android Studio\jbr\lib\jvm.cfg'
+```
+
+which reads like a broken JDK rather than a broken variable. Verified by removing
+it: the app launches.
 
 ### Use a throwaway data directory
 
@@ -60,6 +68,20 @@ Consequences worth internalising:
   through the UI, then verify the account from another client before doing anything else.
 - Prefer read-only exploration on the desktop app. For flows that must create notes, the **Android
   emulator** is the safe target: local data, no account.
+
+**Searching is read-only, and it verifies more than it looks like it does.** A whole class of
+behaviour can be confirmed on the real app without writing anything: type into the search box and
+screenshot the result. That is how the `before:` / `after:` day-boundary fix was verified end to end
+against real notes — `before:<today>` returning the library and `before:<yesterday>` returning
+nothing is the exact pair that distinguishes a correct day boundary from an off-by-one, and it needs
+no note to be created, edited or deleted.
+
+It is also how the date-chip overflow was found, which no test had caught. **Reach for a read-only
+interaction before concluding a flow cannot be checked safely** — the account hazard above is about
+data flowing *up*, and a search never does.
+
+Driving the search box: click it, then `SendKeys('^a{DEL}')` before typing, or the new query lands
+appended to the old one.
 
 So never trust the export. Screenshot the window and read the bottom-left rail *before* every
 action, and treat a signed-in account as a stop signal. Notes are real data: prefer killing the
@@ -150,6 +172,44 @@ adb -s emulator-5554 exec-out screencap -p > shot.png
 Use `exec-out screencap -p`, not `shell screencap -p /sdcard/...` — the latter
 fails on current images.
 
+### Never tap from a stale screenshot
+
+`adb shell input tap` fires at screen coordinates with no idea what is under them.
+On a **physical device** those coordinates may not even belong to this app any
+more: the phone is in use, apps get switched, and a `assembleDebug` between the
+screenshot and the tap is three-plus minutes of opportunity for the screen to
+change completely.
+
+This has already happened once. A tap computed from a 13-minute-old capture landed
+in an unrelated app on the developer's own phone — one with financial data in it —
+because the build ran in between and Notelikeus had gone to the background. It
+appears to have hit dead space, but "appears to" is the whole problem: there is no
+way to prove afterwards what a blind tap did.
+
+Before **every** tap, in this order:
+
+```bash
+adb -s <serial> shell dumpsys activity activities | grep topResumedActivity
+adb -s <serial> exec-out screencap -p > fresh.png
+```
+
+Confirm the package is `com.aus.notelikeus`, look at the fresh image, and compute
+coordinates from *that* capture. Never reuse coordinates across a build, an
+install, or any wait longer than a few seconds.
+
+To put the app in a known state first rather than hoping it is still foreground:
+
+```bash
+adb -s <serial> shell am start -n com.aus.notelikeus/.MainActivity
+```
+
+The desktop section above already says the equivalent ("check the rail again in
+the screenshot before *every* mutating action"). That warning was written for
+`SetForegroundWindow` and was not carried across to `adb`, which is exactly how
+the gap got filled by a mistake instead of a sentence. A physical device is the
+**less** forgiving of the two: the desktop app at least cannot be replaced by
+someone else's app between two commands.
+
 **Installing onto the physical device is safe, but be deliberate about it.** The
 build already there is a **debug** build (`dumpsys package com.aus.notelikeus`
 shows `flags=[ DEBUGGABLE ]`), signed with the same debug key, so
@@ -203,9 +263,19 @@ target outside `SystemInformation::VirtualScreen`. Without those a failed click
 looks exactly like a working button that does nothing — which is how a "the +
 button is broken" report nearly got confirmed from a click that never landed.
 
-Match windows by **process**, not title: `Get-Process -Name Notelikeus | Where
-MainWindowHandle -ne 0` (there are two processes — launcher and JVM — and only
-one has the window). Editor windows are `undecorated` with **no title at all**,
+Match windows by **process**, not title — but by the *right* process name, which
+depends on how it was started:
+
+- **`./gradlew :composeApp:run`** (the dev path above) produces a plain **`java`**
+  process. `Get-Process -Name Notelikeus` finds nothing at all, which looks
+  exactly like "the app failed to start". There are usually several `java`
+  processes; the app is the one with a non-zero handle:
+  `Get-Process -Name java | Where MainWindowHandle -ne 0`.
+- **The packaged build** is `Notelikeus` (two processes — launcher and JVM — and
+  only one has the window).
+
+Safest either way, since it covers both: `Get-Process | Where MainWindowHandle -ne
+0 | Where { $_.ProcessName -match 'java|Notelikeus' }`. Editor windows are `undecorated` with **no title at all**,
 so a title search cannot find them; to answer "did a window open", capture the
 whole `VirtualScreen` and look.
 
