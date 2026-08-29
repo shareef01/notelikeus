@@ -94,6 +94,28 @@ private fun Note.toNoteWithLabels(): NoteWithLabels =
     }
 
     @Test
+    fun `insertNoteWithoutSync does not schedule an upload`() = runTest {
+        val note = Note(title = "Imported", content = "", timestamp = 0L, color = 0)
+        coEvery { noteDao.insertNote(any()) } returns 7L
+
+        val result = repository.insertNoteWithoutSync(note)
+
+        assertEquals(7L, result)
+        coVerify { noteDao.insertNote(match { it.title == "Imported" }) }
+        coVerify(exactly = 0) { syncCoordinator.scheduleUpload(any()) }
+    }
+
+    @Test
+    fun `finalizeImportedNotes schedules uploads only after the caller commits`() = runTest {
+        val stored = Note(id = 3L, title = "Imported", content = "", timestamp = 1L, color = 0)
+        coEvery { noteDao.getNoteById(3L) } returns stored.toNoteWithLabels()
+
+        repository.finalizeImportedNotes(listOf(3L))
+
+        coVerify { syncCoordinator.scheduleUpload(3L) }
+    }
+
+    @Test
     fun `insertNoteWithResult inserts note and schedules upload`() = runTest {
         val note = Note(title = "Test", content = "Content", timestamp = 0L, color = 0)
         coEvery { noteDao.insertNote(any()) } returns 1L

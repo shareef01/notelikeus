@@ -34,6 +34,10 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     if (!noteId || noteId === 'new') return null;
     return state.notes.find((note) => note.id === noteId)?.timestamp ?? null;
   });
+  const sourceServerUpdatedAt = useNotesStore((state) => {
+    if (!noteId || noteId === 'new') return null;
+    return state.notes.find((note) => note.id === noteId)?.serverUpdatedAt ?? null;
+  });
   const allLabels = useNoteLabels();
 
   const [state, setState] = useState<EditorState>(createBlankEditorState());
@@ -95,6 +99,19 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       content: working.content.slice(0, MAX_NOTE_CONTENT_CHARS),
       timestamp: updatedTimestamp,
     };
+
+    // A cache snapshot can load the editor before Firestore has resolved serverTimestamp()
+    // into a Timestamp. upsertNote then sees an unconfirmed local vs a confirmed remote and
+    // skips the write — the e2e edit-after-reload path, and any live save in that window.
+    // The store may already have the stamp from a later snapshot; take it without discarding
+    // the in-progress edit. Never adopt a stamp the editor already has: a newer remote stamp
+    // means another device won, and shouldUploadOverRemote must still see that.
+    const stored = working.id
+      ? useNotesStore.getState().notes.find((n) => n.id === working.id)
+      : undefined;
+    if (working.serverUpdatedAt == null && stored?.serverUpdatedAt != null) {
+      working = { ...working, serverUpdatedAt: stored.serverUpdatedAt };
+    }
 
     const note = buildNoteFromEditor(working);
     if (!note) {
@@ -166,6 +183,16 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     // route that never loaded and refuses to allocate a fresh id — no phantom note is minted,
     // and the editor stays inert until the effect re-runs once the note (if ever) arrives.
   }, [noteId, sourceTimestamp, persistNow]);
+
+  useEffect(() => {
+    if (!noteId || noteId === 'new') return;
+    if (loadedRouteRef.current !== noteId) return;
+    if (sourceServerUpdatedAt == null) return;
+    if (stateRef.current.serverUpdatedAt != null) return;
+    const next = { ...stateRef.current, serverUpdatedAt: sourceServerUpdatedAt };
+    stateRef.current = next;
+    setState(next);
+  }, [noteId, sourceServerUpdatedAt]);
 
   // Flush on tab close/refresh and on backgrounding (mobile browsers don't
   // reliably fire beforeunload) so a pending debounce never silently drops.

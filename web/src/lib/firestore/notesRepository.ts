@@ -117,6 +117,27 @@ export async function upsertNote(userId: string, note: Note): Promise<void> {
     return;
   }
 
+  const existing = await getDoc(ref);
+  if (existing.exists()) {
+    const remote = cloudMapToNote(
+      existing.id,
+      existing.data() as FirestoreNoteDocument,
+      createLabelResolver(),
+    );
+    if (!shouldUploadOverRemote(note, remote)) {
+      // A cache snapshot can hand the editor a confirmed note with serverUpdatedAt still
+      // null (the sentinel has not resolved to a Timestamp yet). The merge predicate then
+      // treats a live edit as an untrusted import and skips — the user sees their change
+      // locally and it never reaches Firestore. Import/reconcile still call
+      // shouldUploadOverRemote themselves and never take this path.
+      const cacheLoadedWithoutStamp =
+        note.serverUpdatedAt == null && remote.serverUpdatedAt != null;
+      if (!cacheLoadedWithoutStamp) {
+        return;
+      }
+    }
+  }
+
   await setDoc(ref, noteToCloudMap(note), { merge: true });
 }
 
@@ -127,33 +148,31 @@ export async function deleteNote(userId: string, noteId: string): Promise<void> 
 
 /**
  * Prefers serverUpdatedAt (server-assigned) over the client-set `timestamp` for deciding whether
- * `note` should overwrite `remote`. Backup files are arbitrary user JSON — `cloudMapToNote` never
- * resolves a plain JSON value into a real serverUpdatedAt, only an actual Firestore `Timestamp`
- * does, so an imported note's serverUpdatedAt is always null. A hand-edited `timestamp` in that
- * JSON must not be able to masquerade as newer than a remote note that's already confirmed-
- * synced, so if remote has a serverUpdatedAt and `note` doesn't, the untrusted side loses
- * outright — and symmetrically, a confirmed local note beats an unconfirmed remote one (a legacy
- * doc that predates this field) regardless of either side's client timestamp. Only fall back to
- * comparing client timestamps when *neither* side has been confirmed by the server yet.
+ * `note` should overwrite `remote`.
  *
- * Equal server stamps mean the two sides are the same confirmed revision, so there is nothing to
- * upload: the tie goes to the cloud. This used to be `>=`, and because local notes reach the store
- * through the same `cloudMapToNote` that `fetchRemoteNotes` uses, the two stamps are *always* equal
- * in steady state — so the predicate returned true for every note and `syncNotesWithCloud`
- * re-uploaded the entire library (a tombstone read plus a write each) on every reconcile. A
- * locally-edited note is unaffected: its pending write leaves serverUpdatedAt null until the server
- * confirms it, which is handled below.
+ * Backup files are arbitrary user JSON — `cloudMapToNote` never resolves a plain JSON value into a
+ * real serverUpdatedAt, only an actual Firestore `Timestamp` does, so an imported note's
+ * serverUpdatedAt is always null. A hand-edited `timestamp` in that JSON must not be able to
+ * masquerade as newer than a remote note that's already confirmed-synced, so if remote has a
+ * serverUpdatedAt and `note` doesn't, the untrusted side loses outright — and symmetrically, a
+ * confirmed local note beats an unconfirmed remote one (a legacy doc that predates this field)
+ * regardless of either side's client timestamp. Only fall back to comparing client timestamps when
+ * *neither* side has been confirmed by the server yet.
  *
- * Kotlin's `NoteSyncEngine.cloudWinsConflict` resolves every case here the same way, with one
- * deliberate exception: on that equal-stamp tie it also compares client timestamps. A Room row
- * keeps its old serverUpdatedAt through a local edit, so there a newer client `timestamp` against
- * an unchanged server stamp is the only signal that an unsynced edit exists. Here the pending write
- * nulls the stamp instead, so an equal-stamp tie genuinely means "identical".
+ * Equal server stamps mean the two sides started from the same confirmed revision. A locally-edited
+ * note keeps that stamp (the pending write only bumps `timestamp`), so upload iff the client clock
+ * is strictly newer — matching Kotlin's `cloudWinsConflict` equal-stamp tie-break. Equal client
+ * timestamps too means nothing changed, so reconcile does not rewrite the library. A strictly newer
+ * remote stamp still wins outright, which is what stops a stale live save from clobbering another
+ * device's edit.
  */
 export function shouldUploadOverRemote(note: Note, remote: Note | undefined): boolean {
   if (!remote) return true;
   if (note.serverUpdatedAt != null && remote.serverUpdatedAt != null) {
-    return note.serverUpdatedAt > remote.serverUpdatedAt;
+    if (note.serverUpdatedAt !== remote.serverUpdatedAt) {
+      return note.serverUpdatedAt > remote.serverUpdatedAt;
+    }
+    return note.timestamp > remote.timestamp;
   }
   if (remote.serverUpdatedAt != null) return false;
   if (note.serverUpdatedAt != null) return true;

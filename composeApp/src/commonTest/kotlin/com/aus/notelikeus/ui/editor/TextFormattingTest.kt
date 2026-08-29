@@ -65,6 +65,21 @@ class TextFormattingTest {
         assertEquals(collapsed, TextFormatting.wrapAsLink(collapsed, ""))
     }
 
+    @Test
+    fun wrapAsLink_rejectsUnsafeSchemes() {
+        val input = TextFieldValue("hello", TextRange(0, 5))
+
+        assertEquals(input, TextFormatting.wrapAsLink(input, "javascript:alert(1)"))
+        assertEquals(input, TextFormatting.wrapAsLink(input, "data:text/html,hi"))
+    }
+
+    @Test
+    fun wrapAsLink_keepsMailto() {
+        val result = TextFormatting.wrapAsLink(TextFieldValue("mail", TextRange(0, 4)), "mailto:a@b.com")
+
+        assertEquals("[mail](mailto:a@b.com)", result.text)
+    }
+
     /** Bullets already worked without a selection: they act on the line the cursor is in. */
     @Test
     fun prefixLinesWithBullet_withNoSelection_bulletsTheCurrentLine() {
