@@ -125,7 +125,16 @@ export async function upsertNote(userId: string, note: Note): Promise<void> {
       createLabelResolver(),
     );
     if (!shouldUploadOverRemote(note, remote)) {
-      return;
+      // A cache snapshot can hand the editor a confirmed note with serverUpdatedAt still
+      // null (the sentinel has not resolved to a Timestamp yet). The merge predicate then
+      // treats a live edit as an untrusted import and skips — the user sees their change
+      // locally and it never reaches Firestore. Import/reconcile still call
+      // shouldUploadOverRemote themselves and never take this path.
+      const cacheLoadedWithoutStamp =
+        note.serverUpdatedAt == null && remote.serverUpdatedAt != null;
+      if (!cacheLoadedWithoutStamp) {
+        return;
+      }
     }
   }
 
