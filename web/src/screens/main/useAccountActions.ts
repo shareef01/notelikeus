@@ -1,8 +1,7 @@
 import { signOutGoogle } from '@/lib/auth/googleAuth';
+import { commitImportedNotes } from '@/lib/backup/commitImportedNotes';
 import { exportNotesBackup } from '@/lib/backup/exportBackup';
 import { importNotesFromBackup, readBackupFile } from '@/lib/backup/importBackup';
-import { uploadAllNotes } from '@/lib/firestore/notesRepository';
-import { useNotesStore } from '@/store/notesStore';
 import { useToastStore } from '@/store/toastStore';
 import type { Note } from '@/types/note';
 
@@ -60,16 +59,11 @@ export function useAccountActions({
     try {
       const json = await readBackupFile(file);
       const { merged, result } = importNotesFromBackup(json, notes);
-      // Web notes live in the Firestore-backed store only — there is no durable local DB.
-      // Always upload when signed in so the realtime listener cannot wipe an "import only"
-      // mirror before the user notices.
-      useNotesStore.getState().setNotes(merged);
-
-      let uploadedToCloud = false;
-      if (userId && result.notesImported > 0) {
-        await uploadAllNotes(userId, merged);
-        uploadedToCloud = true;
-      }
+      const uploadedToCloud = await commitImportedNotes(
+        merged,
+        result.notesImported,
+        userId,
+      );
 
       const parts: string[] = [];
       if (result.notesImported > 0) {
