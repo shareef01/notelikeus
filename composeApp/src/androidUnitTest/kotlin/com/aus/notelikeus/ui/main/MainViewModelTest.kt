@@ -535,6 +535,52 @@ class MainViewModelTest {
         assertEquals("", viewModel.state.value.query.text)
     }
 
+    /**
+     * The date operators end to end, in a timezone east of UTC.
+     *
+     * `NoteQueryParserTest` proves the parser delegates and `DateUtilsCivilDateTest` proves the
+     * platform answers correctly, but nothing exercised the wiring between them -- the ViewModel is
+     * where `startOfDayOffset` and `DateUtils.startOfDay(y, m, d)` are actually handed to the
+     * parser, and a date operator had no test here at all while `label:`, `color:` and `is:` did.
+     *
+     * Asia/Kolkata rather than the machine's zone deliberately. Local midnight at UTC+05:30 falls
+     * on the previous UTC day, which is the condition the original defect needed; running this at
+     * whatever timezone the build agent happens to use would make it pass or fail by accident.
+     */
+    @Test
+    fun `a typed date filters on that day's local midnight east of UTC`() = runTest {
+        val original = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Kolkata"))
+        try {
+            // Local midnight of 2026-08-20 and of the day before it, in this zone.
+            val todayStart = requireNotNull(
+                com.aus.notelikeus.util.DateUtils.startOfDay(2026, 8, 20)
+            )
+            val yesterdayStart = requireNotNull(
+                com.aus.notelikeus.util.DateUtils.startOfDay(2026, 8, 19)
+            )
+            val notes = listOf(
+                Note(id = 1L, title = "Older", content = "", timestamp = yesterdayStart, color = 0),
+                Note(id = 2L, title = "Today", content = "", timestamp = todayStart, color = 0)
+            )
+            every { repository.getActiveNotes() } returns flowOf(notes)
+            viewModel = createViewModel()
+            advanceUntilIdle()
+
+            viewModel.onSearchQueryChange("before:2026-08-20")
+            advanceTimeBy(350)
+            advanceUntilIdle()
+
+            // The boundary is 2026-08-20's own midnight, so the note stamped at it is excluded.
+            // Under the old day-index arithmetic the boundary landed on the 21st and both notes
+            // survived -- which is the assertion that discriminates.
+            val titles = viewModel.state.value.filteredNotes.map { it.title }
+            assertEquals(listOf("Older"), titles)
+        } finally {
+            java.util.TimeZone.setDefault(original)
+        }
+    }
+
     @Test
     fun `a colour operator expands to both palette variants`() = runTest {
         viewModel.onSearchQueryChange("color:green")
