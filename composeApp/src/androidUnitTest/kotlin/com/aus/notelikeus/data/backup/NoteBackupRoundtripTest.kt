@@ -36,17 +36,17 @@ class NoteBackupRoundtripTest {
             labels = listOf(Label(id = 2L, name = "Travel"))
         )
         coEvery { repository.getAllNotesForBackup() } returns listOf(note)
+        stubImportRepository()
         coEvery { repository.getAllLabelsSnapshot() } returns listOf(Label(id = 2L, name = "Travel"))
         coEvery { repository.getNextNotePosition() } returns 3
         coEvery { repository.insertLabel(any()) } returns 99L
-        coEvery { repository.insertNoteWithResult(any()) } returns 42L
 
         val json = exporter.createJson()
         val result = importer.importFromJson(json) as BackupImportResult.Success
 
         assertEquals(1, result.notesImported)
         val captured = slot<Note>()
-        coVerify { repository.insertNoteWithResult(capture(captured)) }
+        coVerify { repository.insertNoteWithoutSync(capture(captured)) }
         assertEquals("Trip", captured.captured.title)
         assertEquals("**pack** bags", captured.captured.content)
         assertTrue(captured.captured.labels.any { it.name == "Travel" })
@@ -74,14 +74,14 @@ class NoteBackupRoundtripTest {
             })
         }.toString()
 
+        stubImportRepository()
         coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
         coEvery { repository.getNextNotePosition() } returns 0
-        coEvery { repository.insertNoteWithResult(any()) } returns 7L
 
         importer.importFromJson(json)
 
         val captured = slot<Note>()
-        coVerify { repository.insertNoteWithResult(capture(captured)) }
+        coVerify { repository.insertNoteWithoutSync(capture(captured)) }
         assertTrue(captured.captured.attachments.isEmpty())
     }
 
@@ -100,16 +100,16 @@ class NoteBackupRoundtripTest {
             )
         )
         coEvery { repository.getAllNotesForBackup() } returns listOf(note)
+        stubImportRepository()
         coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
         coEvery { repository.getNextNotePosition() } returns 0
-        coEvery { repository.insertNoteWithResult(any()) } returns 42L
 
         val json = exporter.createJson()
         val result = importer.importFromJson(json) as BackupImportResult.Success
 
         assertEquals(1, result.notesImported)
         val captured = slot<Note>()
-        coVerify { repository.insertNoteWithResult(capture(captured)) }
+        coVerify { repository.insertNoteWithoutSync(capture(captured)) }
         assertEquals(true, captured.captured.isPinned)
         assertEquals(2, captured.captured.checklist.size)
         assertEquals("Milk", captured.captured.checklist[0].text)
@@ -126,5 +126,14 @@ class NoteBackupRoundtripTest {
         val result = importer.importFromJson(json)
         assertTrue(result is BackupImportResult.InvalidFormat)
         assertTrue((result as BackupImportResult.InvalidFormat).message.contains("Unsupported backup version"))
+    }
+
+    private fun stubImportRepository() {
+        coEvery { repository.withWriteTransaction<Unit>(any()) } coAnswers {
+            val block = it.invocation.args[0] as suspend () -> Unit
+            block()
+        }
+        coEvery { repository.insertNoteWithoutSync(any()) } returns 42L
+        coEvery { repository.finalizeImportedNotes(any()) } returns Unit
     }
 }

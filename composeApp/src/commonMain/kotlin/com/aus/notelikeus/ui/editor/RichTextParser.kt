@@ -235,18 +235,19 @@ object RichTextParser {
     // layer would be redundant -- and it would also make spanStyles.first() the colour rather than
     // the emphasis, which is not what a caller reading this list expects.
     spans.forEach { span ->
+      val href = span.url?.let { SafeHref.normalize(it) }
       addStyle(
           SpanStyle(
-              color = if (span.url != null) linkColor else contentColor,
+              color = if (href != null) linkColor else contentColor,
               fontWeight = if (span.bold) FontWeight.Bold else null,
               fontStyle = if (span.italic) FontStyle.Italic else null,
-              textDecoration = if (span.url != null) TextDecoration.Underline else null
+              textDecoration = if (href != null) TextDecoration.Underline else null
           ),
           span.start,
           span.end
       )
-      if (span.url != null && linksClickable) {
-        addLink(LinkAnnotation.Url(span.url), span.start, span.end)
+      if (href != null && linksClickable) {
+        addLink(LinkAnnotation.Url(href), span.start, span.end)
       }
     }
 
