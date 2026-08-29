@@ -36,7 +36,7 @@ securityCrypto = "1.1.0"
 # downgrading. It does still mean Room runs against a sqlite it was not built with, so keep pairing
 # the next Room bump with a check of this line.
 sqlite = "2.7.0"
-okio = "3.9.1"
+okio = "3.18.1"
 jna = "5.19.1"
 appcompat = "1.8.0"
 fragment = "1.9.0"
