@@ -3,7 +3,7 @@ import { notesContentKey } from '@/lib/notes/noteEquality';
 import { saveNote, removeNote } from '@/lib/notes/noteActions';
 import { useNotesStore } from '@/store/notesStore';
 import type { NoteQueryFilters } from '@/types/note';
-import { filterNotes } from '@/types/note';
+import { searchNotes } from '@/types/note';
 import { collectUniqueLabels } from '@/types/label';
 import { useAuthListener } from '@/hooks/useAuth';
 
@@ -18,13 +18,12 @@ export function useNotes() {
   const notesKey = notesContentKey(notes);
   const filterKey = `${filters.filter}|${filters.searchQuery ?? ''}|${filters.colorArgb ?? ''}|${filters.labelName ?? ''}|${filters.sortOrder ?? 'manual'}`;
 
-  const filteredNotes = useMemo(
-    () => filterNotes(notes, filters),
-    // notesKey/filterKey are content-derived guards: `notes` and `filters` get new references
-    // on every store update even when nothing relevant to filtering changed, so they're
-    // deliberately left out of the deps to avoid recomputing on every render.
-    [notesKey, filterKey],
-  );
+  // notesKey/filterKey are content-derived guards: `notes` and `filters` get new references
+  // on every store update even when nothing relevant to filtering changed.
+  const { filteredNotes, isFuzzyResult } = useMemo(() => {
+    const result = searchNotes(notes, filters);
+    return { filteredNotes: result.notes, isFuzzyResult: result.isFuzzy };
+  }, [notesKey, filterKey]);
 
   const labels = useMemo(() => collectUniqueLabels(notes), [notesKey]);
 
@@ -53,6 +52,7 @@ export function useNotes() {
     authReady,
     notes,
     filteredNotes,
+    isFuzzyResult,
     labels,
     status,
     error,
