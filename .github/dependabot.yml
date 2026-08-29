@@ -22,7 +22,7 @@ updates:
     schedule:
       interval: "weekly"
     ignore:
-      # See DECISIONS.md, D18. lifecycle 2.10+ depends on compose-runtime 1.11 directly, and a
+      # See docs/DECISIONS.md, D18. lifecycle 2.10+ depends on compose-runtime 1.11 directly, and a
       # direct dependency wins conflict resolution -- so the runtime jumps while compose-ui and
       # skiko stay on the CMP plugin's 1.8.2. The packaged desktop app then dies composing App()
       # with "CompositionLocal LocalHostDefaultProvider not present". Re-checked on 2026-08-27:
