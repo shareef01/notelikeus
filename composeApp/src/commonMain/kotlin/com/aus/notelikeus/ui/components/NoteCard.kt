@@ -401,7 +401,7 @@ fun NoteCard(
                     // from contentColor/outline rather than the note's colour -- so it never
                     // rendered the colour it appeared to stand for, and Grid and List disagreed
                     // about what it meant. The tinted container carries the colour in every
-                    // layout now; see DECISIONS.md D1.
+                    // layout now; see docs/DECISIONS.md D1.
                     Column(modifier = Modifier.weight(1f)) {
                         if (note.title.isNotEmpty()) {
                             Text(

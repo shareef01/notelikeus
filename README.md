@@ -129,6 +129,18 @@ npm run dev
 
 The Firebase values in `.env.example` are placeholders — point it at your own project. Firestore rules live in `firestore.rules` and are covered by `npm run test:rules`.
 
+## Repository layout
+
+| Path | What it is |
+|---|---|
+| `androidApp/` | Android application (manifest, AppFunctions, widget metadata) |
+| `composeApp/` | Shared Kotlin Multiplatform UI, domain, Room, and Windows desktop |
+| `web/` | React PWA |
+| `docs/` | Decisions, closed findings, worklog, Pixel QA checklist |
+| `archive/` | Removed features kept with restore notes (attachments) |
+| `store/` | Play listing copy |
+| `tests/` | Firestore rules tests |
+
 ---
 
 Built and maintained for my own daily use. It's a real app rather than a demo, which is the interesting part and also the reason some of it is more careful than a side project strictly needs to be.
