@@ -306,6 +306,9 @@
     <string name="date_today">Today</string>
     <string name="date_last_7_days">Last 7 days</string>
     <string name="date_last_30_days">Last 30 days</string>
+    <!-- No backslash escapes in this file: Compose resources store them verbatim (see F11). -->
+    <string name="date_before">Before %1$s</string>
+    <string name="date_since">Since %1$s</string>
     <string name="scope_active">Notes</string>
     <string name="scope_archive">Archive</string>
     <string name="scope_trash">Trash</string>
