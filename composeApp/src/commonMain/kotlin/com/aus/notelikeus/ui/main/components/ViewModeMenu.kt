@@ -169,12 +169,12 @@ fun ViewModeMenu(
         tonalElevation = Elevation.card,
         shadowElevation = Elevation.overlay
     ) {
-        NoteViewMode.entries.forEach { mode ->
-            val isSelected = mode == viewMode
+        webViewModeSegments.forEach { segment ->
+            val isSelected = isSegmentSelected(viewMode, segment.mode)
             DropdownMenuItem(
                 text = {
                     Text(
-                        text = stringResource(viewModeLabelRes(mode)),
+                        text = stringResource(segment.label),
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                         color = if (isSelected) {
                             MaterialTheme.colorScheme.primary
@@ -185,7 +185,7 @@ fun ViewModeMenu(
                 },
                 leadingIcon = {
                     Icon(
-                        imageVector = viewModeIcon(mode),
+                        imageVector = segment.icon,
                         contentDescription = null,
                         modifier = Modifier
                             .size(Size.icon)
@@ -211,7 +211,7 @@ fun ViewModeMenu(
                 },
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onViewModeChange(mode)
+                    onViewModeChange(segment.mode)
                     expanded = false
                 }
             )
@@ -229,12 +229,9 @@ private fun viewModeIcon(mode: NoteViewMode) = when (mode) {
 }
 
 fun viewModeLabelRes(mode: NoteViewMode): StringResource = when (mode) {
-    NoteViewMode.GRID_2 -> Res.string.view_mode_grid_2
-    NoteViewMode.GRID_3 -> Res.string.view_mode_grid_3
-    NoteViewMode.GRID_4 -> Res.string.view_mode_grid_4
-    NoteViewMode.GRID_5 -> Res.string.view_mode_grid_5
     NoteViewMode.LIST -> Res.string.view_mode_list
     NoteViewMode.COMPACT -> Res.string.view_mode_compact
+    else -> Res.string.view_mode_grid_2
 }
 
 fun sortOrderLabelRes(order: NoteSortOrder): StringResource = when (order) {
