@@ -10,12 +10,57 @@ import kotlin.test.assertTrue
 
 private const val DAY = 86_400_000L
 
-/** 2026-08-20T00:00Z as the "today" every test is relative to (epoch day 20685). */
-private const val TODAY_START = 1_787_184_000_000L
+/** Epoch day of 2026-08-20, the "today" every test is relative to. */
+private const val TODAY_EPOCH_DAY = 20_685L
 
-private val dayStart: (Int) -> Long = { offset -> TODAY_START + offset * DAY }
+/**
+ * Days since 1970-01-01 for a civil date, by Howard Hinnant's `days_from_civil`.
+ *
+ * Fixture arithmetic, not production arithmetic. The parser used to carry a copy of this and use
+ * it to turn a typed date into a day offset; that is the calculation the off-by-one lived in, and
+ * it is gone. The tests still need to name a date, so the helper lives here now — where getting it
+ * wrong fails a test rather than shipping.
+ */
+private fun epochDay(year: Int, month: Int, day: Int): Long {
+    val y = if (month <= 2) year - 1 else year
+    val era = (if (y >= 0) y else y - 399) / 400
+    val yoe = (y - era * 400).toLong()
+    val mp = (month + 9) % 12
+    val doy = (153 * mp + 2) / 5 + day - 1
+    val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+    return era.toLong() * 146_097 + doe - 719_468
+}
 
-private fun parse(input: String) = NoteQueryParser.parse(input, dayStart)
+/**
+ * A timezone, modelled as a fixed offset from UTC.
+ *
+ * Both injected functions answer from the same clock, which is what the platform implementations
+ * do — and modelling them as one object is what makes it impossible to write a fixture where
+ * `after:yesterday` and `after:<yesterday's date>` disagree without the test saying so.
+ */
+private class Zone(offsetHours: Double) {
+    private val offset = (offsetHours * 60 * 60 * 1000).toLong()
+
+    /** Local midnight of the day [daysFromToday] from today. */
+    val dayStart: (Int) -> Long = { n -> (TODAY_EPOCH_DAY + n) * DAY - offset }
+
+    /** Local midnight of a civil date; null for a date that does not exist. */
+    val dayStartOfDate: (Int, Int, Int) -> Long? = { y, m, d ->
+        if (m == 2 && d > 29) null else epochDay(y, m, d) * DAY - offset
+    }
+
+    fun midnightOf(year: Int, month: Int, day: Int): Long = epochDay(year, month, day) * DAY - offset
+}
+
+private val UTC = Zone(0.0)
+
+/** UTC+05:30 — the shape of timezone the old day-index arithmetic resolved a day late in. */
+private val KOLKATA = Zone(5.5)
+
+private val TODAY_START = UTC.dayStart(0)
+
+private fun parse(input: String, zone: Zone = UTC) =
+    NoteQueryParser.parse(input, zone.dayStart, zone.dayStartOfDate)
 
 class NoteQueryParserTest {
 
@@ -121,10 +166,35 @@ class NoteQueryParserTest {
 
     @Test
     fun `an ISO date lands on the same midnight as a relative one`() {
-        // 2026-08-19 is the day before the fixed "today", so it must equal yesterday exactly --
-        // which is the point of routing ISO dates through the same dayStart function.
+        // 2026-08-19 is the day before the fixed "today", so it must equal yesterday exactly.
         assertEquals(parse("after:yesterday").after, parse("after:2026-08-19").after)
         assertEquals(TODAY_START + DAY, parse("before:2026-08-21").before)
+    }
+
+    @Test
+    fun `an ISO date lands on that date east of UTC too`() {
+        // The regression guard. Local midnight in a positive-offset zone falls on the *previous*
+        // UTC day, so the old implementation -- which recovered a day index by dividing
+        // dayStart(0) by 86,400,000 -- resolved every typed date one day late here while staying
+        // correct in UTC and in the Americas. A fixture pinned to UTC cannot tell the two apart,
+        // which is why this asserts against a zone that is not UTC.
+        assertEquals(
+            KOLKATA.midnightOf(2026, 8, 20),
+            parse("before:2026-08-20", KOLKATA).before
+        )
+        assertEquals(
+            parse("after:yesterday", KOLKATA).after,
+            parse("after:2026-08-19", KOLKATA).after
+        )
+    }
+
+    @Test
+    fun `a date that does not exist is unknown rather than rolled forward`() {
+        // February 31 used to be accepted: the day-of-month check only bounded it at 31, and the
+        // arithmetic below it happily carried the overflow into March.
+        val q = parse("before:2026-02-31")
+        assertNull(q.before)
+        assertEquals(listOf("before:2026-02-31"), q.unknown)
     }
 
     @Test
@@ -192,36 +262,5 @@ class NoteQueryParserTest {
         assertEquals(setOf(NoteFlag.PINNED, NoteFlag.HAS_REMINDER), q.flags)
         assertEquals(NoteScope.ARCHIVE, q.scope)
         assertEquals(TODAY_START - DAY, q.after)
-    }
-}
-
-class EpochDayTest {
-
-    @Test
-    fun `epoch day zero is the epoch`() {
-        assertEquals(0L, epochDayFromCivil(1970, 1, 1))
-    }
-
-    @Test
-    fun `known dates convert correctly`() {
-        assertEquals(1L, epochDayFromCivil(1970, 1, 2))
-        assertEquals(-1L, epochDayFromCivil(1969, 12, 31))
-        assertEquals(19_723L, epochDayFromCivil(2024, 1, 1))
-        // A leap day, which is where naive implementations go wrong.
-        assertEquals(19_782L, epochDayFromCivil(2024, 2, 29))
-        assertEquals(19_783L, epochDayFromCivil(2024, 3, 1))
-    }
-
-    @Test
-    fun `consecutive days differ by one across a century boundary`() {
-        // 1900 was not a leap year and 2000 was; both rules live in the same expression.
-        assertEquals(
-            epochDayFromCivil(1900, 3, 1) - epochDayFromCivil(1900, 2, 28),
-            1L
-        )
-        assertEquals(
-            epochDayFromCivil(2000, 3, 1) - epochDayFromCivil(2000, 2, 29),
-            1L
-        )
     }
 }
