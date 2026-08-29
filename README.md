@@ -93,13 +93,14 @@ Roughly 250 automated checks, arranged so that each one can actually fail:
 | Suite | Covers | Run with |
 |---|---|---|
 | JVM unit (~200) | Sync engine, mappers, repositories, backup, key management | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest` |
+| Minified release APK | R8 + resource shrink; unsigned in CI | `./gradlew :androidApp:assembleRelease` |
 | Instrumented (4) | Database quarantine and encryption migration, on a real device | `./gradlew :composeApp:connectedDebugAndroidTest` |
 | Firestore rules (34) | Security rules against the emulator | `npm run test:rules` |
 | Web unit (263) | Merge logic, conflict resolution, backup parsing, search | `cd web && npm test` |
 | Web sync (6) | The sync layer against a live Firestore, production rules enforced | `cd web && npm run test:sync` |
 | Browser end-to-end (4) | The built bundle in Chromium: boot, auth, note round-trip | `cd web && npm run test:e2e` |
 
-The last three run against Firebase emulators in CI. The instrumented suite needs a connected device, so it runs on demand.
+The last three run against Firebase emulators in CI. Android CI also minifies a release APK on every PR so an R8 keep-rule break cannot wait for a tag. The instrumented suite needs a connected device or emulator.
 
 A note on why the split matters: the unit tests are all pure functions, so they'd happily pass while the app was broken in a browser. The emulator and end-to-end suites exist to cover exactly that gap — a Firebase SDK major upgrade landed cleanly because the browser suite could prove the built bundle still ran.
 
