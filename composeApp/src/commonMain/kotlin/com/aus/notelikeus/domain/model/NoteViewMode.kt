@@ -8,9 +8,10 @@ enum class NoteViewMode(val columns: Int, val compact: Boolean) {
     LIST(columns = 1, compact = false),
     COMPACT(columns = 1, compact = true);
 
-    fun next(): NoteViewMode {
-        val values = entries
-        return values[(ordinal + 1) % values.size]
+    fun next(): NoteViewMode = when (this) {
+        LIST -> GRID_2
+        COMPACT -> LIST
+        else -> COMPACT
     }
 
     companion object {
