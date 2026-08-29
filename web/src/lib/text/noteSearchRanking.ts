@@ -90,8 +90,10 @@ export function byRelevance(notes: Note[], text: string): Note[] {
   if (needles.length === 0) return notes;
 
   const scored = notes.map((note) => ({ note, score: scoreNote(note, needles) }));
-  const pinned = scored.filter((entry) => entry.note.isPinned).toSorted(compareScored);
-  const rest = scored.filter((entry) => !entry.note.isPinned).toSorted(compareScored);
+  const pinned = scored.filter((entry) => entry.note.isPinned);
+  pinned.sort(compareScored);
+  const rest = scored.filter((entry) => !entry.note.isPinned);
+  rest.sort(compareScored);
   return [...pinned, ...rest].map((entry) => entry.note);
 }
 
