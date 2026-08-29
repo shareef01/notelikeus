@@ -4,6 +4,8 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-08-29
+
 ### Fixed
 - Native sign-out now isolates the device: local notes, tombstones, known cloud ids and the
   pending upload queue are cleared so the next Google account cannot inherit them or apply
