@@ -29,8 +29,6 @@ All notable changes to Notelikeus are documented here.
 - Firestore rules type-check `timestamp` and `reminderTimestamp` as `int` rather than the
   looser `number` — both are epoch millis written as integers by every client and read back
   as `Long`, completing the tightening that `localId` received in 1.0.1
-- `@types/node` is a direct web `devDependency` so typecheck no longer relies on a transitive
-  copy arriving by coincidence (F24)
 - README documents that the web client can continue without an account
 
 ## [1.0.1] — 2026-08-17
