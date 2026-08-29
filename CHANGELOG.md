@@ -34,6 +34,11 @@ All notable changes to Notelikeus are documented here.
 - Android CI minifies a release APK on every PR so an R8 keep-rule or resource-shrink
   break cannot wait for a `v*` tag. The AAB and GitHub Release artifacts stay tag-only
 
+### Added
+- A populated Room upgrade from version 1 through current: notes, labels and checklists
+  survive the full chain, `searchText` arrives as null, and attachments / `cloudId` do not.
+  The 9→10 test now calls the migration twice rather than issuing the ALTER itself
+
 ## [1.0.1] — 2026-08-17
 
 ### Changed
