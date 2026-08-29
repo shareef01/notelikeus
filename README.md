@@ -92,7 +92,7 @@ Roughly 250 automated checks, arranged so that each one can actually fail:
 
 | Suite | Covers | Run with |
 |---|---|---|
-| JVM unit (~200) | Sync engine, mappers, repositories, backup, key management | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest` |
+| JVM unit (~200) | Sync engine, mappers, repositories, backup, key management, populated Room upgrades | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest` |
 | Minified release APK | R8 + resource shrink; unsigned in CI | `./gradlew :androidApp:assembleRelease` |
 | Instrumented (4) | Database quarantine and encryption migration, on a real device | `./gradlew :composeApp:connectedDebugAndroidTest` |
 | Firestore rules (34) | Security rules against the emulator | `npm run test:rules` |
