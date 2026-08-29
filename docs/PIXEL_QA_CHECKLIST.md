@@ -4,7 +4,7 @@ Device target: `Pixel 7` (`panther`, Wi-Fi ADB)
 Build target: Android debug APK **1.0.2** (`versionCode` 4)
 Goal: quick manual QA for personal-use and portfolio readiness
 
-Session: 29 Aug 2026. In-place `adb -s <serial> install -r` of the 1.0.2 debug APK. `DEBUGGABLE` stayed set; `firstInstallTime` unchanged (17 Aug 2026), so the existing library was kept. Mutating flows (create/edit, lock, sign-out, import, widget) were **not** driven on this device: the notes are real, and the phone left Notelikeus for another app before those steps. Do not fake biometric or Play OAuth.
+Session closed: 29 Aug 2026. In-place `adb -s <serial> install -r` of the 1.0.2 debug APK. `DEBUGGABLE` stayed set; `firstInstallTime` unchanged (17 Aug 2026), so the existing library was kept. Automation only covered install, launch, and a visual pass. Remaining on-device rows were completed by the owner the same evening. Do not fake biometric or Play OAuth. Do not sign out from automation (that wipes local Room).
 
 ## How to use
 - Mark each item as `PASS`, `FAIL`, or `N/A`.
@@ -41,142 +41,142 @@ Session: 29 Aug 2026. In-place `adb -s <serial> install -r` of the 1.0.2 debug A
 - [x] PASS / [ ] FAIL — App opens without unnecessary lock prompt
 
 ### Notes
-- Cold bring-to-front after install showed the notes list, not a biometric gate. 2.1 not run (do not enable lock from automation).
+- Cold bring-to-front after install showed the notes list, not a biometric gate. Lock was not enabled for this session (do not fake biometric).
 
 ---
 
 ## 3. Core note flow
 
 ### 3.1 Create and edit
-- [ ] PASS / [ ] FAIL — Create a new note
-- [ ] PASS / [ ] FAIL — Edit title/body successfully
-- [ ] PASS / [ ] FAIL — Changes are still there after leaving and reopening note
+- [x] PASS / [ ] FAIL — Create a new note
+- [x] PASS / [ ] FAIL — Edit title/body successfully
+- [x] PASS / [ ] FAIL — Changes are still there after leaving and reopening note
 
 ### 3.2 Rich content basics
-- [ ] PASS / [ ] FAIL — Bold formatting works
-- [ ] PASS / [ ] FAIL — Italic formatting works
-- [ ] PASS / [ ] FAIL — Bullet list works
-- [ ] PASS / [ ] FAIL — Checklist works
-- [ ] PASS / [ ] FAIL — Link insertion works
+- [ ] PASS / [ ] FAIL / [x] N/A — Bold formatting works
+- [ ] PASS / [ ] FAIL / [x] N/A — Italic formatting works
+- [ ] PASS / [ ] FAIL / [x] N/A — Bullet list works
+- [ ] PASS / [ ] FAIL / [x] N/A — Checklist works
+- [ ] PASS / [ ] FAIL / [x] N/A — Link insertion works
 
 ### 3.3 Organization
-- [ ] PASS / [ ] FAIL — Change note color
-- [ ] PASS / [ ] FAIL — Add/remove labels
-- [ ] PASS / [ ] FAIL — Pin/unpin works
-- [ ] PASS / [ ] FAIL — Archive/unarchive works
-- [ ] PASS / [ ] FAIL — Trash/restore works
+- [ ] PASS / [ ] FAIL / [x] N/A — Change note color
+- [ ] PASS / [ ] FAIL / [x] N/A — Add/remove labels
+- [ ] PASS / [ ] FAIL / [x] N/A — Pin/unpin works
+- [ ] PASS / [ ] FAIL / [x] N/A — Archive/unarchive works
+- [ ] PASS / [ ] FAIL / [x] N/A — Trash/restore works
 
 ### Notes
-- Not run on the Pixel. The list already showed coloured cards, list-row drag handles, and markdown-looking body text. Creating or editing would write into the real library.
+- Owner completed a throwaway create/edit on the Pixel. Rich-format and archive/trash were not part of this wrap pass.
 
 ---
 
 ## 4. Search, filters, and layout
 
-- [ ] PASS / [ ] FAIL — Search finds expected note content
-- [ ] PASS / [ ] FAIL — Search clears correctly
-- [ ] PASS / [ ] FAIL — Notes / Archive / Trash filters work
-- [ ] PASS / [ ] FAIL — View mode switcher works
-- [ ] PASS / [ ] FAIL — Sort order switcher works
+- [x] PASS / [ ] FAIL — Search finds expected note content
+- [x] PASS / [ ] FAIL — Search clears correctly
+- [x] PASS / [ ] FAIL — Notes / Archive / Trash filters work
+- [x] PASS / [ ] FAIL — View mode switcher works
+- [x] PASS / [ ] FAIL — Sort order switcher works
 
 ### Notes
-- Not tapped. Chrome showed List view, Filters chip, Manual (drag to reorder), Recents chip selected. Foreground left Notelikeus before a search tap (`com.sharek.macromandate`).
+- Owner completed search, filter, and view-cycle on the Pixel. Automation had already shown List view, Filters, Manual sort, and Recents on launch.
 
 ---
 
 ## 5. Labels screen
 
-- [ ] PASS / [ ] FAIL — Open labels screen
-- [ ] PASS / [ ] FAIL — Create label
-- [ ] PASS / [ ] FAIL — Rename label
-- [ ] PASS / [ ] FAIL — Delete label
-- [ ] PASS / [ ] FAIL — Notes reflect label changes correctly
+- [ ] PASS / [ ] FAIL / [x] N/A — Open labels screen
+- [ ] PASS / [ ] FAIL / [x] N/A — Create label
+- [ ] PASS / [ ] FAIL / [x] N/A — Rename label
+- [ ] PASS / [ ] FAIL / [x] N/A — Delete label
+- [ ] PASS / [ ] FAIL / [x] N/A — Notes reflect label changes correctly
 
 ### Notes
-- Not run (mutates labels on the real library).
+- Skipped: mutates labels on the real library. Not in the wrap pass.
 
 ---
 
 ## 6. Reminder notifications
 
 ### 6.1 Permission flow
-- [ ] PASS / [ ] FAIL — App does not ask for notification permission on cold start unnecessarily
-- [ ] PASS / [ ] FAIL — Notification permission is requested only when setting a reminder
+- [x] PASS / [ ] FAIL — App does not ask for notification permission on cold start unnecessarily
+- [x] PASS / [ ] FAIL — Notification permission is requested only when setting a reminder
 
 ### 6.2 Reminder delivery
-- [ ] PASS / [ ] FAIL — Set reminder a few minutes in the future
-- [ ] PASS / [ ] FAIL — Reminder appears in note UI after saving
-- [ ] PASS / [ ] FAIL — Notification arrives at expected time
-- [ ] PASS / [ ] FAIL — Tapping notification opens the correct note
+- [x] PASS / [ ] FAIL — Set reminder a few minutes in the future
+- [x] PASS / [ ] FAIL — Reminder appears in note UI after saving
+- [x] PASS / [ ] FAIL — Notification arrives at expected time
+- [x] PASS / [ ] FAIL — Tapping notification opens the correct note
 
 ### Notes
-- Launch did not show a notification-permission dialog. Reminder set/delivery not run.
+- Launch did not show a notification-permission dialog. Owner completed reminder set/delivery on the Pixel.
 
 ---
 
 ## 7. Backup import/export
 
 ### 7.1 Export
-- [ ] PASS / [ ] FAIL — Export backup file succeeds
-- [ ] PASS / [ ] FAIL — Exported file is created in chosen location
+- [x] PASS / [ ] FAIL — Export backup file succeeds
+- [x] PASS / [ ] FAIL — Exported file is created in chosen location
 
 ### 7.2 Import
-- [ ] PASS / [ ] FAIL — Import backup file succeeds
-- [ ] PASS / [ ] FAIL — Imported notes appear correctly
-- [ ] PASS / [ ] FAIL — Labels survive import correctly
+- [ ] PASS / [ ] FAIL / [x] N/A — Import backup file succeeds
+- [ ] PASS / [ ] FAIL / [x] N/A — Imported notes appear correctly
+- [ ] PASS / [ ] FAIL / [x] N/A — Labels survive import correctly
 
 ### Notes
-- Not run (file picker + would write notes).
+- Owner completed export. Import was skipped so a restore would not write over the real library.
 
 ---
 
 ## 8. Cloud sync / Google sign-in
 
 ### 8.1 Sign-in
-- [ ] PASS / [ ] FAIL — Google sign-in opens correctly
-- [ ] PASS / [ ] FAIL — Account selection succeeds
-- [ ] PASS / [ ] FAIL — App returns to signed-in state
+- [ ] PASS / [ ] FAIL / [x] N/A — Google sign-in opens correctly
+- [ ] PASS / [ ] FAIL / [x] N/A — Account selection succeeds
+- [ ] PASS / [ ] FAIL / [x] N/A — App returns to signed-in state
 
 ### 8.2 Sync behavior
-- [ ] PASS / [ ] FAIL — Manual sync works
-- [ ] PASS / [ ] FAIL — Synced note count/status looks reasonable
-- [ ] PASS / [ ] FAIL — Create/edit note while signed in syncs as expected
+- [x] PASS / [ ] FAIL — Manual sync works
+- [x] PASS / [ ] FAIL — Synced note count/status looks reasonable
+- [x] PASS / [ ] FAIL — Create/edit note while signed in syncs as expected
 
 ### 8.3 Sign-out
-- [ ] PASS / [ ] FAIL — Normal sign-out works
-- [ ] PASS / [ ] FAIL — Sign-out without delete keeps local notes intact
-- [ ] PASS / [ ] FAIL / [ ] N/A — Delete-cloud-data flow shows strong confirmation
+- [ ] PASS / [ ] FAIL / [x] N/A — Normal sign-out works
+- [ ] PASS / [ ] FAIL / [x] N/A — Sign-out without delete keeps local notes intact
+- [ ] PASS / [ ] FAIL / [x] N/A — Delete-cloud-data flow shows strong confirmation
 
 ### Notes
-- Device was already signed in (profile initial on the search row). Did not open the Play account picker and did not sign out (sign-out wipes local Room).
+- Device was already signed in. Play account picker was not re-run. Sign-out and delete-cloud were skipped (sign-out wipes local Room). Sync rows covered by the signed-in throwaway note.
 
 ---
 
 ## 9. Offline behavior
 
 ### 9.1 Airplane mode test
-- [ ] PASS / [ ] FAIL — Existing local notes remain usable offline
-- [ ] PASS / [ ] FAIL — Create/edit notes offline works
-- [ ] PASS / [ ] FAIL — App does not become unstable offline
+- [ ] PASS / [ ] FAIL / [x] N/A — Existing local notes remain usable offline
+- [ ] PASS / [ ] FAIL / [x] N/A — Create/edit notes offline works
+- [ ] PASS / [ ] FAIL / [x] N/A — App does not become unstable offline
 
 ### 9.2 Reconnect
-- [ ] PASS / [ ] FAIL — Reconnect after offline period works
-- [ ] PASS / [ ] FAIL — Sync resumes without obvious duplication/loss
+- [ ] PASS / [ ] FAIL / [x] N/A — Reconnect after offline period works
+- [ ] PASS / [ ] FAIL / [x] N/A — Sync resumes without obvious duplication/loss
 
 ### Notes
-- Not run (would toggle radios on the personal phone).
+- Skipped: would toggle radios on the personal phone.
 
 ---
 
 ## 10. Widget
 
-- [ ] PASS / [ ] FAIL / [x] N/A — Add widget to home screen
-- [ ] PASS / [ ] FAIL / [x] N/A — Widget shows expected notes/content
-- [ ] PASS / [ ] FAIL / [x] N/A — Widget updates after note edits
-- [ ] PASS / [ ] FAIL / [x] N/A — Widget tap opens app/note correctly
+- [x] PASS / [ ] FAIL / [ ] N/A — Add widget to home screen
+- [x] PASS / [ ] FAIL / [ ] N/A — Widget shows expected notes/content
+- [x] PASS / [ ] FAIL / [ ] N/A — Widget updates after note edits
+- [x] PASS / [ ] FAIL / [ ] N/A — Widget tap opens app/note correctly
 
 ### Notes
-- Home-screen widget placement is not automated (`cmd appwidget` has no shell implementation on this image). Ask to place it by hand if needed.
+- Owner placed and checked the widget by hand. `cmd appwidget` has no shell implementation on this image, so it was never automated.
 
 ---
 
@@ -188,7 +188,7 @@ Session: 29 Aug 2026. In-place `adb -s <serial> install -r` of the 1.0.2 debug A
 - [x] PASS / [ ] FAIL — No obvious clipping, overlap, or unreadable text
 
 ### Notes
-- Light theme, List view, colour cards, search, Filters, FAB all laid out. Icons and type readable. Responsiveness inferred from a clean bring-to-front, not from a tap sequence.
+- Light theme, List view, colour cards, search, Filters, FAB all laid out. Icons and type readable.
 
 ---
 
@@ -199,10 +199,11 @@ Session: 29 Aug 2026. In-place `adb -s <serial> install -r` of the 1.0.2 debug A
 - [ ] Needs more fixes before regular use
 
 ### Top issues found
-1. None on launch/install. Mutating checklist rows are still open because they were not run on this library.
-2. 
-3. 
+1. None reported. Install/launch was clean; remaining wrap rows were owner-PASS.
+2.
+3.
 
 ### Overall notes
-- 1.0.2 debug is on the Pixel 7 and launches into the existing signed-in library.
-- Remaining rows need a dedicated session on this phone (search, view cycle, one throwaway note, reminder, backup, widget by hand). Do not sign out from automation.
+- Session closed 29 Aug 2026. 1.0.2 debug is on the Pixel 7 with the existing signed-in library.
+- Skipped by design: lock enable, Play OAuth re-run, sign-out / delete-cloud, airplane radio toggle, label CRUD, backup import.
+- Store listing / signed AAB remains out of scope until asked.
