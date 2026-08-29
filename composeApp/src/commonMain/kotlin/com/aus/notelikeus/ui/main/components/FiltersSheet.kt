@@ -211,7 +211,10 @@ fun FiltersSheet(
             }
 
             FilterSection(stringResource(Res.string.filter_section_scope)) {
-                NoteScope.entries.forEach { scope ->
+                // Notes / Archive / Trash only, matching the web drawer. `NoteScope.ALL` remains
+                // for `in:all` search; offering it here as "Everywhere" was a fourth view the
+                // web client does not have.
+                listOf(NoteScope.ACTIVE, NoteScope.ARCHIVE, NoteScope.TRASH).forEach { scope ->
                     AppFilterChip(
                         selected = query.scope == scope,
                         onClick = { onQueryChange { it.copy(scope = scope) } },
