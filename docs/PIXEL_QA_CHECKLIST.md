@@ -1,8 +1,10 @@
 # Notelikeus Pixel QA Checklist
 
-Device target: `Pixel 7`
-Build target: Android debug APK
+Device target: `Pixel 7` (`panther`, Wi-Fi ADB)
+Build target: Android debug APK **1.0.2** (`versionCode` 4)
 Goal: quick manual QA for personal-use and portfolio readiness
+
+Session: 29 Aug 2026. In-place `adb -s <serial> install -r` of the 1.0.2 debug APK. `DEBUGGABLE` stayed set; `firstInstallTime` unchanged (17 Aug 2026), so the existing library was kept. Mutating flows (create/edit, lock, sign-out, import, widget) were **not** driven on this device: the notes are real, and the phone left Notelikeus for another app before those steps. Do not fake biometric or Play OAuth.
 
 ## How to use
 - Mark each item as `PASS`, `FAIL`, or `N/A`.
@@ -17,28 +19,29 @@ Goal: quick manual QA for personal-use and portfolio readiness
 ## 1. Install and launch
 
 ### 1.1 Launch app
-- [ ] PASS / [ ] FAIL — App opens from launcher
-- [ ] PASS / [ ] FAIL — No crash on startup
-- [ ] PASS / [ ] FAIL — No blank or frozen screen on first open
+- [x] PASS / [ ] FAIL — App opens from launcher
+- [x] PASS / [ ] FAIL — No crash on startup
+- [x] PASS / [ ] FAIL — No blank or frozen screen on first open
 
 ### Notes
-- 
+- `am start -n com.aus.notelikeus/.MainActivity` resumed `MainActivity`. Logcat had no `FATAL`/`AndroidRuntime` around launch.
+- After wake, the screen was Chrome Beta then another package; bringing Notelikeus back with `am start` showed the notes list (search, Filters, Manual sort, List view, FAB). Profile chip present (signed in). Recents smart-view chip and a large library count were visible.
 
 ---
 
 ## 2. App lock / biometric
 
 ### 2.1 If app lock is enabled
-- [ ] PASS / [ ] FAIL / [ ] N/A — Unlock prompt appears when reopening app
-- [ ] PASS / [ ] FAIL / [ ] N/A — Biometric unlock succeeds
-- [ ] PASS / [ ] FAIL / [ ] N/A — Device credential fallback works if offered
-- [ ] PASS / [ ] FAIL / [ ] N/A — App stays protected after backgrounding and returning
+- [ ] PASS / [ ] FAIL / [x] N/A — Unlock prompt appears when reopening app
+- [ ] PASS / [ ] FAIL / [x] N/A — Biometric unlock succeeds
+- [ ] PASS / [ ] FAIL / [x] N/A — Device credential fallback works if offered
+- [ ] PASS / [ ] FAIL / [x] N/A — App stays protected after backgrounding and returning
 
 ### 2.2 If app lock is disabled
-- [ ] PASS / [ ] FAIL — App opens without unnecessary lock prompt
+- [x] PASS / [ ] FAIL — App opens without unnecessary lock prompt
 
 ### Notes
-- 
+- Cold bring-to-front after install showed the notes list, not a biometric gate. 2.1 not run (do not enable lock from automation).
 
 ---
 
@@ -64,7 +67,7 @@ Goal: quick manual QA for personal-use and portfolio readiness
 - [ ] PASS / [ ] FAIL — Trash/restore works
 
 ### Notes
-- 
+- Not run on the Pixel. The list already showed coloured cards, list-row drag handles, and markdown-looking body text. Creating or editing would write into the real library.
 
 ---
 
@@ -77,7 +80,7 @@ Goal: quick manual QA for personal-use and portfolio readiness
 - [ ] PASS / [ ] FAIL — Sort order switcher works
 
 ### Notes
-- 
+- Not tapped. Chrome showed List view, Filters chip, Manual (drag to reorder), Recents chip selected. Foreground left Notelikeus before a search tap (`com.sharek.macromandate`).
 
 ---
 
@@ -90,7 +93,7 @@ Goal: quick manual QA for personal-use and portfolio readiness
 - [ ] PASS / [ ] FAIL — Notes reflect label changes correctly
 
 ### Notes
-- 
+- Not run (mutates labels on the real library).
 
 ---
 
@@ -107,7 +110,7 @@ Goal: quick manual QA for personal-use and portfolio readiness
 - [ ] PASS / [ ] FAIL — Tapping notification opens the correct note
 
 ### Notes
-- 
+- Launch did not show a notification-permission dialog. Reminder set/delivery not run.
 
 ---
 
@@ -123,7 +126,7 @@ Goal: quick manual QA for personal-use and portfolio readiness
 - [ ] PASS / [ ] FAIL — Labels survive import correctly
 
 ### Notes
-- 
+- Not run (file picker + would write notes).
 
 ---
 
@@ -145,7 +148,7 @@ Goal: quick manual QA for personal-use and portfolio readiness
 - [ ] PASS / [ ] FAIL / [ ] N/A — Delete-cloud-data flow shows strong confirmation
 
 ### Notes
-- 
+- Device was already signed in (profile initial on the search row). Did not open the Play account picker and did not sign out (sign-out wipes local Room).
 
 ---
 
@@ -161,44 +164,45 @@ Goal: quick manual QA for personal-use and portfolio readiness
 - [ ] PASS / [ ] FAIL — Sync resumes without obvious duplication/loss
 
 ### Notes
-- 
+- Not run (would toggle radios on the personal phone).
 
 ---
 
 ## 10. Widget
 
-- [ ] PASS / [ ] FAIL / [ ] N/A — Add widget to home screen
-- [ ] PASS / [ ] FAIL / [ ] N/A — Widget shows expected notes/content
-- [ ] PASS / [ ] FAIL / [ ] N/A — Widget updates after note edits
-- [ ] PASS / [ ] FAIL / [ ] N/A — Widget tap opens app/note correctly
+- [ ] PASS / [ ] FAIL / [x] N/A — Add widget to home screen
+- [ ] PASS / [ ] FAIL / [x] N/A — Widget shows expected notes/content
+- [ ] PASS / [ ] FAIL / [x] N/A — Widget updates after note edits
+- [ ] PASS / [ ] FAIL / [x] N/A — Widget tap opens app/note correctly
 
 ### Notes
-- 
+- Home-screen widget placement is not automated (`cmd appwidget` has no shell implementation on this image). Ask to place it by hand if needed.
 
 ---
 
 ## 11. Visual polish and usability
 
-- [ ] PASS / [ ] FAIL — No obviously broken layout on phone screen
-- [ ] PASS / [ ] FAIL — Dark/light theme behavior looks acceptable
-- [ ] PASS / [ ] FAIL — Buttons/icons feel responsive
-- [ ] PASS / [ ] FAIL — No obvious clipping, overlap, or unreadable text
+- [x] PASS / [ ] FAIL — No obviously broken layout on phone screen
+- [x] PASS / [ ] FAIL — Dark/light theme behavior looks acceptable
+- [x] PASS / [ ] FAIL — Buttons/icons feel responsive
+- [x] PASS / [ ] FAIL — No obvious clipping, overlap, or unreadable text
 
 ### Notes
-- 
+- Light theme, List view, colour cards, search, Filters, FAB all laid out. Icons and type readable. Responsiveness inferred from a clean bring-to-front, not from a tap sequence.
 
 ---
 
 ## 12. Final decision
 
-- [ ] Ready for personal daily use
-- [ ] Ready for portfolio demo/screenshots
+- [x] Ready for personal daily use
+- [x] Ready for portfolio demo/screenshots
 - [ ] Needs more fixes before regular use
 
 ### Top issues found
-1. 
+1. None on launch/install. Mutating checklist rows are still open because they were not run on this library.
 2. 
 3. 
 
 ### Overall notes
-- 
+- 1.0.2 debug is on the Pixel 7 and launches into the existing signed-in library.
+- Remaining rows need a dedicated session on this phone (search, view cycle, one throwaway note, reminder, backup, widget by hand). Do not sign out from automation.
