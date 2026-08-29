@@ -601,3 +601,67 @@ Nothing above is visible to `assembleDebug`, to `lint`, to the unit tests, or to
 green and fails on launch, which is the third time in this project that the only test that would
 have caught something was running the artifact. The reason it was found at all is that the recorded
 justification was checked instead of trusted.
+
+### Re-checked on 2026-08-27, and the fracture has widened
+
+Checked rather than trusted, on the same principle as the paragraph above — this entry's own
+predecessor (D16) was wrong in the comfortable direction, and the catalog has moved since this was
+written (Room 2.8.4, sqlite 2.7.0, AGP 9.3.1).
+
+It still holds, and there is now more of it. Resolving `desktopRuntimeClasspath` on
+`origin/dependabot/gradle/composeLifecycle-2.11.0`:
+
+| Artifact | main | with lifecycle 2.11.0 |
+|---|---|---|
+| `org.jetbrains.compose.runtime:runtime-saveable` | 1.8.2 | **1.11.0** |
+| `org.jetbrains.compose.desktop:desktop-jvm` (carries skiko) | 1.8.2 | 1.8.2 |
+| `androidx.compose.runtime:runtime` | *absent* | **1.11.1** |
+
+The third row is new since this entry was written. The **androidx** Compose runtime — not the
+JetBrains one — is now dragged onto the *desktop* classpath, which is the precise hazard the
+`libs.versions.toml` comment describes for the androidx Compose artifacts: they are Android-first
+and shadow the JetBrains fork on desktop. So 2.11.0 now fractures the line in two directions at
+once rather than one.
+
+#70 was closed on the strength of this rather than left open indefinitely. **Closing it is not a
+decision that the bump is unwanted** — it is that the bump cannot land alone. Whenever the Compose
+Multiplatform line moves off 1.8.x, this goes with it, and the check is the same one: resolve
+`desktopRuntimeClasspath` and confirm the runtime, ui and skiko versions agree before packaging.
+
+---
+
+## D19 — Array elements in `firestore.rules` are left unvalidated, rather than half-validated.
+
+**Decided:** `labels` and `checklist` are checked for type and length and nothing more. The
+per-element check that would say "every entry is a map with the right fields" is not written,
+and index-based approximations of it are deliberately not used either.
+
+**Why:** the rules language has no iteration — no loop, no comprehension, no `all` over a list — so
+the check cannot be expressed. Verified against the emulator rather than assumed: a rule using
+`checklist.all(i, i.text is string)` **denies** a write whose data satisfies it, because the unknown
+method errors and an errored condition evaluates to deny.
+
+Element access by index *does* work — `checklist[0].keys().hasOnly([...])` correctly accepts a
+well-formed element and rejects a malformed one, also confirmed on the emulator. It was rejected on
+its merits: it can only cover indices named literally, so it would validate element 0 and wave
+through elements 1 to 499. That is validation in appearance only, and the appearance is the harm —
+the next person to read the rule would take it at face value and stop looking.
+
+**What actually bounds the risk**, and why the gap is tolerable: only the owner can write to this
+subtree, so a malformed element damages the writer's own note and nobody else's; Firestore's 1 MiB
+document cap bounds total size; and all three clients already read these arrays defensively, coercing
+field by field (`item["text"] as? String ?: ""`, and a label whose `name` is absent is dropped). The
+defensive readers are the real enforcement point. The rules file now says so, so that this is not
+rediscovered as an oversight.
+
+**Cost to reverse:** none, and it becomes free the day the rules language gains iteration. A test —
+`accepts malformed elements inside labels and checklist` — pins the current behaviour, so whoever
+closes the gap properly will see it fail and know to update it.
+
+**Related, and decided the other way:** `tombstones.deletedAt` gained a `> 0` bound in the same pass,
+because that one *is* expressible and the failure it prevents is real — `pruneExpiredTombstones`
+deletes a tombstone once `now - deletedAt >= 180 days`, so a `deletedAt` of 0 is pruned on the first
+sync and the deleted note returns on every other device. The bound is one-sided on purpose: an upper
+bound would reject the write from a device with a fast clock, and a rejected tombstone means the
+deletion never propagates at all.
+

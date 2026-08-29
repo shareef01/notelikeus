@@ -196,15 +196,19 @@ class DesktopTokenStore(
         // Sessions written before this app-specific entropy was introduced were protected without
         // it, and DPAPI will not open them with it. Read those once through the legacy path and
         // re-persist below, so an upgrade does not silently sign the user out.
+        //
+        // Throwable, not Exception, for the same reason persist() catches Throwable: on a
+        // non-Windows JVM loading Crypt32 fails with UnsatisfiedLinkError, which is an Error. This
+        // runs from init, so letting one escape takes down the entire Koin graph and the app never
+        // starts — a worse outcome than the signed-out state every other failure here falls back to.
         var wasLegacyBlob = false
         val decrypted = try {
             String(dpapiUnprotect(raw, SESSION_ENTROPY))
-        } catch (error: Exception) {
+        } catch (error: Throwable) {
             try {
                 String(dpapiUnprotect(raw, null)).also { wasLegacyBlob = true }
-            } catch (legacyError: Exception) {
-                AppLog.warn(TAG, "Session file undecryptable by DPAPI (new and legacy entropy); deleting it", legacyError)
-                tokenFile.delete()
+            } catch (legacyError: Throwable) {
+                AppLog.warn(TAG, "Session file undecryptable by DPAPI (new and legacy entropy); keeping it", legacyError)
                 return
             }
         }
