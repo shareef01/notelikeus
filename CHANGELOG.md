@@ -33,6 +33,8 @@ All notable changes to Notelikeus are documented here.
 - README documents that the web client can continue without an account
 - Android CI minifies a release APK on every PR so an R8 keep-rule or resource-shrink
   break cannot wait for a `v*` tag. The AAB and GitHub Release artifacts stay tag-only
+- Android notes view matches the web: List, Grid and Compact only. The filters sheet's
+  Where row is Notes, Archive and Trash — `in:all` still works from search
 
 ### Added
 - A populated Room upgrade from version 1 through current: notes, labels and checklists
