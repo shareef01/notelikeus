@@ -175,7 +175,7 @@ class NoteSyncEngineTest {
     }
 
     @Test
-    fun `uploadAllNotes ignores known cloud ids left over from another account`() = runTest {
+    fun `uploadAllNotes refuses when lastMergedUserId belongs to another account`() = runTest {
         setup(uid = "second-account")
         stateStore.setLastMergedUserId("first-account")
         stateStore.setKnownCloudIds(setOf(1L))
@@ -185,8 +185,10 @@ class NoteSyncEngineTest {
 
         val result = engine.uploadAllNotes()
 
-        assertTrue(result.isSuccess, "an account switch is not a failed fetch")
-        assertTrue(1L in transport.notes)
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is WrongAccountSyncException)
+        assertTrue(transport.notes.isEmpty(), "must not push leftover local notes under the new uid")
+        assertTrue(transport.syncMetaCalls.isEmpty())
     }
 
     // ---- reconcileUploads account-switch guard ----
@@ -678,20 +680,49 @@ class NoteSyncEngineTest {
     }
 
     @Test
-    fun `downloadAllNotes ignores known cloud ids left over from another account`() = runTest {
+    fun `downloadAllNotes refuses when lastMergedUserId belongs to another account`() = runTest {
         setup(uid = "second-account")
         noteDao.insertNote(
             Note(id = 1L, title = "Mine", content = "", timestamp = 1L, color = 0).toNoteEntity()
         )
-        // State left behind by the previously signed-in account.
         stateStore.setLastMergedUserId("first-account")
         stateStore.setKnownCloudIds(setOf(1L))
+        stateStore.markDeleted(1L, 100L)
+        transport.notes[1L] = CloudNoteRecord(
+            noteId = 1L, serverUpdatedAt = 200L, clientTimestamp = 1L,
+            title = "Bob's note", content = "", timestamp = 1L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList()
+        )
 
         val result = engine.downloadAllNotes()
 
-        assertTrue(result.isSuccess, "an account switch is not a failed fetch")
-        assertEquals(1, noteDao.notes.size, "the other account's ids must not delete these notes")
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is WrongAccountSyncException)
+        assertEquals(1, noteDao.notes.size, "local notes are left for the isolator, not mixed here")
+        assertTrue(1L in transport.notes, "leftover tombstone must not delete the new account's cloud note")
+        assertTrue(1L !in transport.deletedNoteIds)
+    }
+
+    @Test
+    fun `deleteNote refuses leftover deletes for another account`() = runTest {
+        setup(uid = "bob")
+        stateStore.setLastMergedUserId("alice")
+        transport.notes[1L] = CloudNoteRecord(
+            noteId = 1L, serverUpdatedAt = 200L, clientTimestamp = 1L,
+            title = "Bob's note", content = "", timestamp = 1L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList()
+        )
+
+        val result = engine.deleteNote(1L)
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is WrongAccountSyncException)
+        assertFalse(stateStore.isDeleted(1L))
         assertTrue(1L in transport.notes)
+        assertTrue(transport.deletedNoteIds.isEmpty())
+        assertTrue(transport.tombstones.isEmpty())
     }
 
     // ---- deleteAllCloudData ----

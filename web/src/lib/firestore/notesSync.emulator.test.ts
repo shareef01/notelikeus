@@ -156,4 +156,56 @@ describe('notes sync against a real Firestore', () => {
 
     expect(result.merged.find((n) => n.id === '1')?.title).toBe('Remote edit');
   });
+
+  it('uploads a live edit of a note that already has a server stamp', async () => {
+    await upsertNote(USER, note('1', { title: 'First', timestamp: 1_000 }));
+    const remote = (await fetchRemoteNotes(USER))[0];
+    expect(remote.serverUpdatedAt).toBeTypeOf('number');
+
+    await upsertNote(USER, {
+      ...remote,
+      title: 'Edited',
+      timestamp: Date.now(),
+    });
+
+    const after = await fetchRemoteNotes(USER);
+    expect(after).toHaveLength(1);
+    expect(after[0].title).toBe('Edited');
+  });
+
+  it('still writes a live edit whose editor copy never received the resolved stamp', async () => {
+    await upsertNote(USER, note('1', { title: 'First', timestamp: 1_000 }));
+    const remote = (await fetchRemoteNotes(USER))[0];
+    expect(remote.serverUpdatedAt).toBeTypeOf('number');
+
+    await upsertNote(USER, {
+      ...note('1', {
+        title: 'Edited',
+        timestamp: Date.now(),
+        serverUpdatedAt: null,
+      }),
+    });
+
+    const after = await fetchRemoteNotes(USER);
+    expect(after).toHaveLength(1);
+    expect(after[0].title).toBe('Edited');
+  });
+
+  it('does not overwrite a strictly newer remote revision with a stale live save', async () => {
+    await upsertNote(USER, note('1', { title: 'First', timestamp: 1_000 }));
+    const remote = (await fetchRemoteNotes(USER))[0];
+    expect(remote.serverUpdatedAt).toBeTypeOf('number');
+
+    await upsertNote(USER, {
+      ...note('1', {
+        title: 'Stale local',
+        timestamp: 1,
+        serverUpdatedAt: remote.serverUpdatedAt,
+      }),
+    });
+
+    const after = await fetchRemoteNotes(USER);
+    expect(after).toHaveLength(1);
+    expect(after[0].title).toBe('First');
+  });
 });

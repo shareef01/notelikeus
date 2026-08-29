@@ -1,6 +1,7 @@
 package com.aus.notelikeus.data.remote
 
 import android.util.Log
+import com.aus.notelikeus.data.sync.WrongAccountSyncException
 import com.aus.notelikeus.util.AppConfig
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
@@ -106,6 +107,8 @@ class FirebaseSessionManager(
         val detail = listOfNotNull(code, error.message?.takeIf { it.isNotBlank() })
             .joinToString(": ")
         return when {
+            error is WrongAccountSyncException ->
+                error.message ?: "This device still has another account's notes. Sign out and back in."
             error is IllegalStateException && error.message == "Google sign-in required" ->
                 "Sign in with Google to use cloud sync."
             error is FirebaseAuthException && (
