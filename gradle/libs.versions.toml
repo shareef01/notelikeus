@@ -54,7 +54,7 @@ compose-multiplatform = "1.8.2"
 # 1.10 and does exactly that, so bump these together or not at all.
 # JetBrains adaptive tracks androidx-adaptive versions separately; 1.1.x is the CMP 1.8 line.
 composeAdaptive = "1.1.2"
-composeNavigation = "2.9.0-beta03"
+composeNavigation = "2.10.0-alpha02"
 koin = "4.1.1"
 # Koin requests 2.9.1 and this upgrades it; it is not a pin, and it is not what holds the version
 # down. 2.11.0 is what breaks: it depends on compose-runtime 1.11 directly, which wins conflict
