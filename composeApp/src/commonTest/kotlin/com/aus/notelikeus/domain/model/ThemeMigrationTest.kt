@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
  * This is the only part of the overhaul that touches a preference the user already set, so it is
  * pinned value by value rather than in the aggregate. The mapping is permanent, not transitional
  * — nothing rewrites the stored name, so a `FOREST` in DataStore has to keep meaning "dark,
- * green" for as long as the app exists. See DECISIONS.md D2.
+ * green" for as long as the app exists. See docs/DECISIONS.md D2.
  */
 class ThemeMigrationTest {
 
