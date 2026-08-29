@@ -5,6 +5,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -154,7 +156,8 @@ class DatabaseMigrationSchemaTest {
         val helper = FrameworkSQLiteOpenHelperFactory().create(configuration)
         try {
             val db = helper.writableDatabase
-            db.execSQL("ALTER TABLE notes ADD COLUMN searchText TEXT")
+            DatabaseMigrations.MIGRATION_9_10.migrate(db)
+            DatabaseMigrations.MIGRATION_9_10.migrate(db)
 
             db.query("SELECT COUNT(*) FROM notes").use { cursor ->
                 cursor.moveToFirst()
@@ -169,8 +172,9 @@ class DatabaseMigrationSchemaTest {
                 assertEquals(2, cursor.getInt(0))
                 assertEquals(true, cursor.isNull(2))
             }
-            // Idempotency: the guard in the migration is what makes a retry safe, and adding the
-            // column twice is an error SQLite raises rather than ignores.
+            // Idempotency: the guard in the migration is what makes a retry safe. Adding the
+            // column twice is an error SQLite raises rather than ignores, so a second migrate()
+            // must no-op rather than ALTER again.
             db.query("SELECT COUNT(*) FROM pragma_table_info('notes') WHERE name = 'searchText'")
                 .use { cursor ->
                     cursor.moveToFirst()
@@ -180,6 +184,140 @@ class DatabaseMigrationSchemaTest {
             helper.close()
             context.deleteDatabase(dbName)
         }
+    }
+
+    /**
+     * A library that started at version 1, with rows in every table the chain creates, must still
+     * be there at version 10. DatabaseMigrationsTest only asserts start/end version numbers;
+     * MIGRATION_9_10's comment is that ALTER ADD COLUMN must not rebuild `notes` or the CASCADE
+     * on checklists and labels would fire. This is the witness for that, and for PACK-01's
+     * "green CI can miss a populated upgrade" gap.
+     */
+    @Test
+    fun populatedV1survivesUpgradeToCurrent() {
+        val context = RuntimeEnvironment.getApplication()
+        val dbName = "migration-v1-current-${System.nanoTime()}.db"
+
+        val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(dbName)
+            .callback(object : SupportSQLiteOpenHelper.Callback(1) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        """
+                        CREATE TABLE notes (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            title TEXT NOT NULL,
+                            content TEXT NOT NULL,
+                            timestamp INTEGER NOT NULL,
+                            color INTEGER NOT NULL,
+                            isPinned INTEGER NOT NULL,
+                            isArchived INTEGER NOT NULL,
+                            isTrashed INTEGER NOT NULL,
+                            position INTEGER NOT NULL
+                        )
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        "INSERT INTO notes (id, title, content, timestamp, color, isPinned, isArchived, isTrashed, position) " +
+                            "VALUES (1, 'Café', 'milk', 100, 0, 0, 0, 0, 0)"
+                    )
+                    db.execSQL(
+                        "INSERT INTO notes (id, title, content, timestamp, color, isPinned, isArchived, isTrashed, position) " +
+                            "VALUES (2, 'Pinned', 'body', 200, 0, 1, 0, 0, 1)"
+                    )
+                }
+
+                override fun onUpgrade(db: SupportSQLiteDatabase, old: Int, new: Int) = Unit
+            })
+            .build()
+
+        val helper = FrameworkSQLiteOpenHelperFactory().create(configuration)
+        try {
+            val db = helper.writableDatabase
+            for (migration in DatabaseMigrations.ALL) {
+                migration.migrate(db)
+                when (migration.endVersion) {
+                    2 -> {
+                        db.execSQL("INSERT INTO labels (id, name) VALUES (1, 'work')")
+                        db.execSQL("INSERT INTO note_label_cross_ref (noteId, labelId) VALUES (1, 1)")
+                    }
+                    4 -> {
+                        db.execSQL(
+                            "INSERT INTO checklist_items (id, noteId, text, isChecked, position) " +
+                                "VALUES (1, 1, 'buy milk', 0, 0)"
+                        )
+                        db.execSQL(
+                            "INSERT INTO attachments (id, noteId, uri, type) " +
+                                "VALUES (1, 1, 'file:///unused', 'image')"
+                        )
+                    }
+                }
+            }
+
+            db.query("SELECT COUNT(*) FROM notes").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(2, cursor.getInt(0))
+            }
+            db.query("SELECT id, title, isPinned, isLocked, searchText FROM notes ORDER BY id").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(1, cursor.getInt(0))
+                assertEquals("Café", cursor.getString(1))
+                assertEquals(0, cursor.getInt(2))
+                assertEquals(0, cursor.getInt(3))
+                assertTrue(cursor.isNull(4))
+                cursor.moveToNext()
+                assertEquals(2, cursor.getInt(0))
+                assertEquals("Pinned", cursor.getString(1))
+                assertEquals(1, cursor.getInt(2))
+                assertTrue(cursor.isNull(4))
+            }
+
+            assertEquals(
+                listOf(
+                    "id", "title", "content", "timestamp", "color",
+                    "isPinned", "isArchived", "isTrashed", "position",
+                    "isLocked", "reminderTimestamp", "serverUpdatedAt", "searchText"
+                ),
+                columnNames(db, "notes")
+            )
+            assertFalse("cloudId must not survive MIGRATION_6_7", columnNames(db, "notes").contains("cloudId"))
+            assertFalse("attachments must not survive MIGRATION_8_9", tableExists(db, "attachments"))
+
+            db.query("SELECT noteId, labelId FROM note_label_cross_ref").use { cursor ->
+                assertEquals(1, cursor.count)
+                cursor.moveToFirst()
+                assertEquals(1L, cursor.getLong(0))
+                assertEquals(1L, cursor.getLong(1))
+            }
+            db.query("SELECT noteId, text FROM checklist_items").use { cursor ->
+                assertEquals(1, cursor.count)
+                cursor.moveToFirst()
+                assertEquals(1L, cursor.getLong(0))
+                assertEquals("buy milk", cursor.getString(1))
+            }
+        } finally {
+            helper.close()
+            context.deleteDatabase(dbName)
+        }
+    }
+
+    private fun columnNames(db: SupportSQLiteDatabase, table: String): List<String> {
+        val names = mutableListOf<String>()
+        db.query("PRAGMA table_info($table)").use { cursor ->
+            val nameIndex = cursor.getColumnIndex("name")
+            while (cursor.moveToNext()) {
+                names.add(cursor.getString(nameIndex))
+            }
+        }
+        return names
+    }
+
+    private fun tableExists(db: SupportSQLiteDatabase, table: String): Boolean {
+        db.query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '$table'")
+            .use { cursor ->
+                cursor.moveToFirst()
+                return cursor.getInt(0) > 0
+            }
     }
 
 }
