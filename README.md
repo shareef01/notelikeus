@@ -1,6 +1,6 @@
 # Notelikeus
 
-A notes app for **Android**, **Windows**, and the **web** — one product, three real clients, sharing a Kotlin Multiplatform core and a React PWA that speaks the same data model.
+A notes app for **Android**, **Windows**, and the **web** — one product, three real clients, sharing a Kotlin Multiplatform core and a React PWA that speaks the same data model. Current release: **[1.0.2](https://github.com/shareef01/notelikeus/releases/tag/v1.0.2)**.
 
 It started as the app I actually wanted to use: something as quick as Google Keep, that works with no signal and no account, and that doesn't hold my notes hostage in one vendor's cloud. Everything here follows from that — local storage first, sync as an optional layer on top, and a backup format I can read without the app.
 
@@ -13,23 +13,23 @@ It started as the app I actually wanted to use: something as quick as Google Kee
 ### Windows
 
 <p align="center">
-  <img src="screenshots/desktop-notes.png" width="90%" alt="Notelikeus on Windows — pinned notes, date-grouped sections, labels, and a collapsible side rail" />
+  <img src="screenshots/desktop-notes.png" width="90%" alt="Notelikeus on Windows — pinned notes, labels, colour filters, and a collapsible side rail" />
 </p>
 
 ### Web
 
 <p align="center">
-  <img src="screenshots/web-notes.png" width="49%" alt="Web app note grid with sidebar, colour filters, and view-density toggle" />
-  <img src="screenshots/web-editor.png" width="49%" alt="Web app note editor" />
+  <img src="screenshots/web-notes.png" width="49%" alt="Web app note grid with pinned notes, colour and label filters, and List / Grid / Compact toggles" />
+  <img src="screenshots/web-editor.png" width="49%" alt="Web app note editor with rich-text toolbar" />
 </p>
 
 ### Android
 
 <p align="center">
-  <img src="screenshots/android-notes.png" width="24%" alt="Android notes list with colour filters and date grouping" />
-  <img src="screenshots/android-drawer.png" width="24%" alt="Android navigation drawer" />
+  <img src="screenshots/android-notes.png" width="24%" alt="Android notes list with pinned cards, filters, and List / Grid / Compact" />
+  <img src="screenshots/android-drawer.png" width="24%" alt="Android navigation drawer — Notes, Archive, Trash, and smart views" />
   <img src="screenshots/android-editor.png" width="24%" alt="Android note editor with rich-text toolbar" />
-  <img src="screenshots/android-settings.png" width="24%" alt="Android settings — six themes, app lock, and sync controls" />
+  <img src="screenshots/android-settings.png" width="24%" alt="Android settings — System / Light / Dark, accent, AMOLED, and app lock" />
 </p>
 
 ---
@@ -58,7 +58,7 @@ It started as the app I actually wanted to use: something as quick as Google Kee
 | Manual reorder (list view) | ✓ | ✓ | ✓ |
 | Date-grouped sections | ✓ | ✓ | ✓ |
 | Collapsible side rail (persisted) | — (drawer) | ✓ | ✓ |
-| Themes (light, dark, OLED, midnight, forest, auto) | ✓ | ✓ | ✓ |
+| Appearance (System / Light / Dark, AMOLED, accent) | ✓ | ✓ | ✓ |
 | Rich text (bold, italic, links, bullets) | ✓ | ✓ | ✓ |
 | Reminders | System notifications | Tray (missed ones surface at next launch) | Service worker |
 | Encrypted local database | ✓ SQLCipher | — | — |
