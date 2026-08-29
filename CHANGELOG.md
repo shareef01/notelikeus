@@ -31,6 +31,8 @@ All notable changes to Notelikeus are documented here.
   looser `number` — both are epoch millis written as integers by every client and read back
   as `Long`, completing the tightening that `localId` received in 1.0.1
 - README documents that the web client can continue without an account
+- Android CI minifies a release APK on every PR so an R8 keep-rule or resource-shrink
+  break cannot wait for a `v*` tag. The AAB and GitHub Release artifacts stay tag-only
 
 ## [1.0.1] — 2026-08-17
 
