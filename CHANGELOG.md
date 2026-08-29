@@ -16,8 +16,9 @@ All notable changes to Notelikeus are documented here.
   transaction commits, so a mid-loop failure cannot leave a partial library
 - Web backup import uploads before updating the in-memory store, and drops realtime snapshots
   for the duration, so a stale listener cannot wipe the import
-- Web search uses the same token-prefix and diacritic folding as Android and Windows, so the
-  same query over the same notes no longer disagrees across clients
+- Web search uses the same token-prefix, diacritic folding, relevance ranking and typo
+  fallback as Android and Windows, so the same query over the same notes no longer disagrees
+  across clients
 
 ### Security
 - Native markdown links reject `javascript:` / `data:` / other non-http(s)/mailto schemes,
