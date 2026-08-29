@@ -37,6 +37,25 @@ service cloud.firestore {
         && (!('reminderTimestamp' in data)
           || data.reminderTimestamp == null
           || data.reminderTimestamp is int)
+        // Type and length only, and that is the ceiling rather than an oversight.
+        //
+        // The rules language has no iteration: there is no loop, no comprehension, and no `all`
+        // over a list, so "every element of `checklist` is a map with text/isChecked/position"
+        // cannot be written here. Verified against the emulator rather than assumed — a rule using
+        // `checklist.all(i, i.text is string)` denies a write whose data satisfies it, because the
+        // unknown method errors and an errored condition evaluates to deny.
+        //
+        // Element access by index (`checklist[0].keys().hasOnly([...])`) *does* work, and was
+        // deliberately not used: it can only cover indices named literally, so it would validate
+        // element 0 and wave through elements 1..499. That reads like element validation without
+        // being it, which is worse than the honest limit — the next person to look would take the
+        // check at face value.
+        //
+        // What actually bounds this: only the owner can write here (`isOwner`), so the blast radius
+        // of a malformed element is the writer's own note; Firestore's 1 MiB document cap bounds
+        // total size; and all three clients read these arrays defensively, coercing per field
+        // (`item["text"] as? String ?: ""`, `label["name"] as? String` dropped if absent). The
+        // defensive readers are the real enforcement point, not this file.
         && data.labels is list
         && data.labels.size() <= 100
         && data.checklist is list
@@ -86,10 +105,22 @@ service cloud.firestore {
 
       match /tombstones/{noteId} {
         allow read: if isOwner(userId);
+        // `deletedAt` is epoch millis and drives tombstone expiry, so a non-positive value is not a
+        // skewed clock, it is a broken write: `pruneExpiredTombstones` compares it against a
+        // retention window, and 0 or a negative reads as "deleted at or before 1970", which is
+        // immediately expired. The tombstone would then be pruned before it had propagated and the
+        // note would come back on every other device.
+        //
+        // Lower bound only, deliberately. An upper bound ("not more than a day ahead") would reject
+        // the write outright on a device with a fast clock — and a rejected tombstone means the
+        // deletion never propagates at all, which is a worse outcome than storing a skewed one.
+        // Kept as `is number` rather than `is int` for the same reason: it is what three clients
+        // already send and nothing here needs the narrower type.
         allow create, update: if isOwner(userId)
           && request.resource.data.keys().hasOnly(['deletedAt'])
           && request.resource.data.keys().hasAll(['deletedAt'])
-          && request.resource.data.deletedAt is number;
+          && request.resource.data.deletedAt is number
+          && request.resource.data.deletedAt > 0;
         allow delete: if isOwner(userId);
       }
 
