@@ -1,6 +1,6 @@
 # Notelikeus
 
-A notes app for **Android**, **Windows**, and the **web** — one product, three real clients, sharing a Kotlin Multiplatform core and a React PWA that speaks the same data model. Current release: **[1.0.2](https://github.com/shareef01/notelikeus/releases/tag/v1.0.2)**.
+A notes app for **Android**, **Windows**, and the **web** — one product, three real clients, sharing a Kotlin Multiplatform core and a React PWA that speaks the same data model. Current release: **[1.0.3](https://github.com/shareef01/notelikeus/releases/tag/v1.0.3)**.
 
 It started as the app I actually wanted to use: something as quick as Google Keep, that works with no signal and no account, and that doesn't hold my notes hostage in one vendor's cloud. Everything here follows from that — local storage first, sync as an optional layer on top, and a backup format I can read without the app.
 
