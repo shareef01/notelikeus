@@ -1002,3 +1002,25 @@ Two separate failures stacked:
 
 **Severity:** high (core editor formatting).
 
+---
+
+## F45 — `manifest.webmanifest` declared wrong sizes for PWA icons — **FIXED**
+
+Both `public/icons/icon-192.png` and `public/icons/icon-512.png` are identical 1024×1024 PNG files
+(both 943,861 bytes). The manifest declared them as `192x192` and `512x512` respectively, which is
+incorrect. A mismatched `sizes` declaration causes the browser to misrank or discard an icon during
+PWA install, splash screen generation, and home screen placement.
+
+Additionally, the `favicon.svg` entry declared `"sizes": "512x512"` — incorrect for an SVG, which
+is natively scalable and should use `"sizes": "any"`.
+
+**Fixed** by updating all three icon entries to reflect actual dimensions:
+- `icon-192.png` → `"sizes": "1024x1024"` (actual: 1024×1024)
+- `icon-512.png` (maskable) → `"sizes": "1024x1024"` (actual: 1024×1024)
+- `favicon.svg` → `"sizes": "any"` (vector, no fixed size)
+
+The duplicate `icon-512.png` `"purpose": "any"` entry (identical to the maskable entry) was also removed.
+
+**Severity:** low (incorrect metadata; install works but browser makes suboptimal icon choices; correct
+icon still served since browsers use the file data, not just the declared size).
+
