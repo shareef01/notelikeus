@@ -3,6 +3,9 @@ import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { CloseIcon } from '@/components/icons/Icons';
 import { CloudIcon, NotesIcon, SyncIcon } from '@/components/icons/Icons';
 import { useAuthListener } from '@/hooks/useAuth';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import { formatAuthError } from '@/lib/auth/authErrors';
 import {
   createEmailPasswordAccount,
@@ -63,6 +66,10 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
   );
 
   const copy = COPY[mode];
+  const panelRef = useFocusTrap<HTMLDivElement>(true, closeAuthScreen, {
+    closeOnEscape: !mandatory,
+  });
+  useBodyScrollLock(true);
 
   useEffect(() => {
     if (isReady && user) {
@@ -118,13 +125,19 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex min-h-0 flex-col bg-true-surface">
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={copy.title}
+      className="fixed inset-0 z-[60] flex min-h-0 flex-col bg-true-surface"
+    >
       <header className="flex shrink-0 items-center justify-end px-4 pt-safe">
         {mandatory ? null : (
           <button
             type="button"
             onClick={closeAuthScreen}
-            className="rounded-full p-2 text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary"
+            className={`rounded-full p-2 text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary ${CHROME_FOCUS}`}
             aria-label="Close"
           >
             <CloseIcon size={20} />
@@ -156,7 +169,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
                         key={tab}
                         type="button"
                         onClick={() => openAuthScreen(tab)}
-                        className={`rounded-[12px] px-4 py-2.5 text-sm font-semibold transition-colors ${
+                        className={`rounded-[12px] px-4 py-2.5 text-sm font-semibold transition-colors ${CHROME_FOCUS} ${
                           active
                             ? 'bg-true-surface text-brand-primary shadow-sm'
                             : 'text-brand-muted hover:text-brand-secondary'
