@@ -4,6 +4,21 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-08-30
+
+### Fixed
+- **Rich text formatting toolbar:** Fixed dead Bold/Italic actions on mobile web and Android. On web, toolbar actions run on `pointerdown` to prevent blur-to-markdown-preview flip; on Android, toolbar buttons reject focus so body selection remains intact.
+- **Note card headings (D15):** Notes with no title and only body content no longer render the placeholder text "Untitled" as an `<h2>` card heading.
+- **Accessibility & Focus management:** Added full keyboard focus trapping, `aria-modal`, `role="dialog"`, and `Escape` dismiss handling to mobile editor overlays, full-screen labels management, and auth dialogs.
+- **Nested Escape collisions:** Fixed delete confirmation dialog inside editor options sheet dismissing the entire parent sheet upon pressing `Escape`.
+- **Keyboard focus rings:** Standardized visible focus rings across drawer nav buttons, editor chrome controls, filter chips, and settings rows.
+- **Contrast & Theme tokens:** Fixed invisible error state retry buttons on light theme by transitioning hardcoded colors to semantic theme tokens.
+- **Search & Sort harmonization (D14):** Disabled the sort chip during active search queries to reflect relevance ranking.
+- **PWA Manifest:** Corrected declared icon dimensions for high-resolution PNG assets and scalable SVG favicon.
+
+### Changed
+- All project documentation ([`FINDINGS.md`](file:///C:/Users/LENOVO/AndroidStudioProjects/Notelikeus/docs/FINDINGS.md), [`WORKLOG.md`](file:///C:/Users/LENOVO/AndroidStudioProjects/Notelikeus/docs/WORKLOG.md), [`PRIVACY_POLICY.md`](file:///C:/Users/LENOVO/AndroidStudioProjects/Notelikeus/PRIVACY_POLICY.md)) updated with full audit findings (F1–F45).
+
 ## [1.0.2] — 2026-08-29
 
 ### Fixed
