@@ -13,9 +13,10 @@ Final pass after F44 (Bold/Italic toolbar) fix. Re-ran automated suites and push
 - **Android debug APK:** rebuilt with F44 fixes; in-place install on Pixel 7 (`31071FDH2007WT`) — success
 - **Windows desktop:** prior session confirmed `:composeApp:run` launches Notelikeus window
 - **Regression test:** `EditorViewModelTest.applyBold before an existing note loads keeps the formatted text` — guards F44 Android `contentEdited` path
+- **PWA manifest fix (F45):** Corrected declared icon sizes in `manifest.webmanifest` to match actual 1024x1024 pixel dimensions and set `favicon.svg` size to `"any"`.
 
 ### Audit verdict
-**Ready with blocked external/hardware checks.** F28–F44 fixed and validated in automated suites. No open reproducible defects in audited flows. Blocked: live Google OAuth, biometrics, widget placement automation, exhaustive theme/viewport matrix, PWA offline update cycle.
+**Ready with blocked external/hardware checks.** F28–F45 fixed and validated in automated suites. No open reproducible defects in audited flows. Blocked: live Google OAuth, biometrics, widget placement automation, exhaustive theme/viewport matrix, PWA offline update cycle.
 
 ### Manual follow-up for user
 1. **Web:** reload dev server and tap Bold/Italic on mobile-width editor — markers should stay visible in the textarea
