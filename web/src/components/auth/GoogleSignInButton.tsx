@@ -18,10 +18,10 @@ export function GoogleSignInButton({
       type="button"
       onClick={onClick}
       disabled={disabled || loading}
-      className="flex w-full items-center justify-center gap-3 rounded-note border border-brand-outline/50 bg-white px-4 py-3.5 text-sm font-semibold text-[#1f1f1f] shadow-sm transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+      className="flex w-full items-center justify-center gap-3 rounded-note border border-brand-outline/50 bg-true-surface px-4 py-3.5 text-sm font-semibold text-brand-primary shadow-sm transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
     >
       {loading ? (
-        <span className="size-5 animate-spin rounded-full border-2 border-[#1f1f1f]/20 border-t-[#1f1f1f]" />
+        <span className="size-5 animate-spin rounded-full border-2 border-brand-primary/20 border-t-brand-primary" />
       ) : (
         <GoogleIcon size={20} />
       )}

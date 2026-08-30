@@ -9,6 +9,8 @@ interface ResponsiveSheetProps {
   children: ReactNode;
   maxWidthClass?: string;
   maxHeightClass?: string;
+  /** When false, Escape is not handled by this sheet (e.g. nested confirm dialog). */
+  closeOnEscape?: boolean;
 }
 
 /** Bottom sheet on mobile; centered modal on tablet and desktop. */
@@ -19,8 +21,9 @@ export function ResponsiveSheet({
   children,
   maxWidthClass = 'md:max-w-lg',
   maxHeightClass = 'max-h-[92vh] md:max-h-[85vh]',
+  closeOnEscape = true,
 }: ResponsiveSheetProps) {
-  const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
+  const panelRef = useFocusTrap<HTMLDivElement>(open, onClose, { closeOnEscape });
   useBodyScrollLock(open);
 
   if (!open) return null;

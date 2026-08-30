@@ -387,6 +387,7 @@ class EditorViewModel(
     }
 
     private fun applyFormatting(transform: (TextFieldValue) -> TextFieldValue) {
+        contentEdited = true
         _state.update { currentState ->
             val updated = transform(currentState.contentValue)
             currentState.copy(contentValue = updated, content = updated.text)
