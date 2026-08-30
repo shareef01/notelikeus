@@ -48,7 +48,7 @@ export function ChecklistEditor({
             onClick={() => onRemove(item.id)}
             className="flex size-9 shrink-0 items-center justify-center rounded-full opacity-60 transition-[opacity,background-color] hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] hover:opacity-100"
             style={{ color: contentColor }}
-            aria-label="Remove item"
+            aria-label={item.text.trim() ? `Remove ${item.text.trim()}` : 'Remove empty item'}
           >
             <CloseIcon size={18} />
           </button>

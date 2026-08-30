@@ -9,9 +9,14 @@ const FOCUSABLE =
  * to whatever triggered the dialog on close. Mirrors ResponsiveSheet's trap for
  * dialogs that don't use that component's sheet/modal layout.
  */
-export function useFocusTrap<T extends HTMLElement>(open: boolean, onClose: () => void) {
+export function useFocusTrap<T extends HTMLElement>(
+  open: boolean,
+  onClose: () => void,
+  options?: { closeOnEscape?: boolean },
+) {
   const panelRef = useRef<T>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const closeOnEscape = options?.closeOnEscape ?? true;
 
   useEffect(() => {
     if (!open) return;
@@ -23,7 +28,9 @@ export function useFocusTrap<T extends HTMLElement>(open: boolean, onClose: () =
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (!closeOnEscape) return;
         event.preventDefault();
+        event.stopPropagation();
         onClose();
         return;
       }
@@ -48,7 +55,7 @@ export function useFocusTrap<T extends HTMLElement>(open: boolean, onClose: () =
       document.removeEventListener('keydown', onKeyDown);
       previousFocusRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open, onClose, closeOnEscape]);
 
   return panelRef;
 }

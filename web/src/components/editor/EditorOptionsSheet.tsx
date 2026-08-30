@@ -68,7 +68,7 @@ export function EditorOptionsSheet({
 
   return (
     <>
-      <ResponsiveSheet open={open} onClose={onClose} ariaLabel="Note options" maxWidthClass="md:max-w-lg">
+      <ResponsiveSheet open={open} onClose={onClose} ariaLabel="Note options" maxWidthClass="md:max-w-lg" closeOnEscape={!confirmDelete}>
         <section className="px-4 py-2">
           <h3 className="text-chrome-label">Color</h3>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -105,6 +105,7 @@ export function EditorOptionsSheet({
               value={newLabel}
               onChange={(event) => setNewLabel(event.target.value)}
               placeholder="New label"
+              aria-label="New label name"
               className="min-w-0 flex-1 rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
             />
             <button

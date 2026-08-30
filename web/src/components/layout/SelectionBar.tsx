@@ -1,9 +1,7 @@
 import type { ReactNode } from 'react';
 import { ArchiveIcon, CloseIcon, NotesIcon, PinIcon, TrashIcon } from '@/components/icons/Icons';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import type { NoteFilter } from '@/types/note';
-
-const CHROME_FOCUS =
-  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary';
 
 interface SelectionBarProps {
   selectedCount: number;

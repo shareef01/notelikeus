@@ -1,42 +1,46 @@
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
-const PRIVACY_POLICY_BODY = `Sign-in with Google is required to use Notelikeus on the web. Your notes are stored in Firestore under your Google account. This browser may keep a Firestore-managed offline cache for continuity without a connection, and some browsers may fall back to temporary in-memory storage only.
+const PRIVACY_POLICY_BODY = `Notelikeus is an offline-first notes application across Android, Windows (Desktop), and Web. You can use Notelikeus completely offline without creating an account or signing in. This policy describes how the app handles information locally on your device and when you optionally enable cloud sync with Google sign-in.
 
-Data stored on device
-• App preferences: theme and layout
-• Firestore may keep an offline cache in the browser for continuity while signed in
-• Exported backup files are stored only where you choose to save them
+Summary
+• Offline-first by default: On Android, Windows, and Web, notes are stored locally on your device. You can use the full application without creating an account.
+• Optional cloud sync: When you sign in with Google, note text, checklists, and metadata sync to Google Firebase Firestore under your user account.
+• Local data isolation: Signing out clears locally cached notes from the active session so a subsequent user cannot inherit your data.
+• Encryption: Android local databases are encrypted at rest with SQLCipher backed by Android Keystore.
+• Synced cloud notes are not end-to-end encrypted by the app; they rely on Google Cloud / Firebase transport security and Firestore access rules.
+• The app does not include third-party tracking, analytics, or advertising SDKs.
 
-Cloud sync
-• Note text, titles, labels, checklists, colors, and reminders sync to Firebase Firestore under your Google account
-• There is no separate offline-only mode on the web
-• Signing out clears locally cached app data tied to this account so the next account cannot inherit it
+Information stored on your device
+• Android & Windows Desktop: Note titles, body text, colors, checklists, labels, and reminder timestamps in a local database (encrypted on Android). Local app preferences (theme, view mode, app lock status).
+• Web: Note content, checklists, labels, and preferences stored in local browser storage (IndexedDB / localStorage / memory cache). Operates fully as a guest / local-first PWA without requiring Google sign-in. Firestore offline cache for authenticated sessions.
+
+Cloud sync (optional)
+When you choose to sign in with Google and use sync, note content is stored in Google Firebase Firestore under your Google account. Signing out clears locally cached notes on this device so the next account cannot inherit them; cloud data remains until you delete it.
 
 Security
-• Web notes are protected by your Google account, browser profile, and Firestore access rules
-• The web app does not provide end-to-end encryption for synced notes
-• If someone can access your signed-in browser profile or exported backup files, they may be able to read your notes
+• Android: SQLCipher-encrypted Room database. Optional app-wide lock uses device biometric APIs.
+• Windows Desktop & Web: Local storage is bound to the user's OS / browser profile permissions.
+• Cloud security: Firestore security rules restrict read and write operations to the authenticated owner.
 
 Permissions
-• Notifications: used only for note reminders you set (reminders show a generic message, not note text)
-• Storage: used when you export or import backup files
-• Web reminders are best-effort and may be delayed or missed if the browser is fully closed or inactive
+• Internet: Firebase auth and cloud sync
+• Notifications: Deliver reminders you schedule for notes
+• Biometric: Unlock the app when app lock is enabled (Android)
 
 Backups
-• JSON backups are created and restored only when you choose. Backup files are saved where you pick and are your responsibility to protect
-• Backups contain your notes in plain text so they can be restored on Android or web
+JSON backup export/import is manual. Backup files are written to a location you choose. You are responsible for securing copied files.
 
-Links
-• Tapping a link in a note opens it in your browser. Notelikeus does not track link visits
+Links in notes
+Tapping a link opens your default browser. Notelikeus does not track link usage.
 
 Third parties
-• We do not sell your data. We do not use analytics or advertising SDKs in this app
+We do not sell your data. We do not use analytics or advertising SDKs in this app.
 
 Contact
-• For privacy questions, contact the app developer through the store listing or project repository
+For privacy questions, contact the app developer through the store listing or project repository.
 
-Last updated: July 2026`;
+Last updated: August 2026`;
 
 interface PrivacyPolicyDialogProps {
   open: boolean;
