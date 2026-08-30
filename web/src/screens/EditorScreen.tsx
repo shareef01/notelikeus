@@ -21,6 +21,7 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { useShortcuts } from '@/hooks/useShortcuts';
 import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import {
   prefixLinesWithBullet,
   wrapSelection,
@@ -47,7 +48,19 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const editor = useNoteEditor(noteId);
   const { state } = editor;
 
+  const handleBack = useCallback(async () => {
+    await editor.flushSave();
+    closeEditor();
+  }, [closeEditor, editor]);
+
   useShortcuts([
+    {
+      key: 'Escape',
+      allowInInputs: true,
+      action: () => {
+        void handleBack();
+      },
+    },
     {
       key: 'Enter',
       ctrlOrMeta: true,
@@ -131,6 +144,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
         start: result.selectionStart,
         end: result.selectionEnd,
       };
+      setContentFocused(true);
 
       requestAnimationFrame(() => {
         const nextField = contentRef.current;
@@ -147,16 +161,13 @@ export function EditorScreen({ route }: EditorScreenProps) {
     }
   };
 
-  const handleBack = useCallback(async () => {
-    await editor.flushSave();
-    closeEditor();
-  }, [closeEditor, editor]);
-
   const onFloatClose = useCallback(() => {
     void handleBack();
   }, [handleBack]);
 
+  const needsOverlayTrap = !isTabletUp || editorLayout === 'fullscreen';
   const floatPanelRef = useFocusTrap<HTMLDivElement>(isFloatLayout, onFloatClose);
+  const overlayPanelRef = useFocusTrap<HTMLDivElement>(needsOverlayTrap, onFloatClose);
   useBodyScrollLock(isOverlayShell);
 
   const handleDelete = async () => {
@@ -174,7 +185,14 @@ export function EditorScreen({ route }: EditorScreenProps) {
     if (!isTabletUp) {
       return (
         <div className="fixed inset-0 z-40 flex flex-col bg-black/40">
-          <div className="relative flex h-full w-full flex-col" style={surface}>
+          <div
+            ref={overlayPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Note editor"
+            className="relative flex h-full w-full flex-col"
+            style={surface}
+          >
             {children}
           </div>
         </div>
@@ -193,7 +211,14 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
     if (editorLayout === 'fullscreen') {
       return (
-        <div className="fixed inset-0 z-40 flex flex-col" style={surface}>
+        <div
+          ref={overlayPanelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Note editor"
+          className="fixed inset-0 z-40 flex flex-col"
+          style={surface}
+        >
           {children}
         </div>
       );
@@ -232,7 +257,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             key={button.id}
             type="button"
             onClick={() => setEditorLayout(button.id)}
-            className={`flex size-9 items-center justify-center rounded-full transition-[background-color,opacity] ${
+            className={`flex size-9 items-center justify-center rounded-full transition-[background-color,opacity] ${CHROME_FOCUS} ${
               active
                 ? 'bg-[color-mix(in_srgb,currentColor_20%,transparent)] opacity-100'
                 : 'opacity-45 hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] hover:opacity-85'
@@ -258,7 +283,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
         <button
           type="button"
           onClick={() => void handleBack()}
-          className="flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
+          className={`flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] ${CHROME_FOCUS}`}
           aria-label="Back"
         >
           <ArrowBackIcon size={22} />
@@ -269,7 +294,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           <button
             type="button"
             onClick={() => setShowReminderPicker(true)}
-            className="flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
+            className={`flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] ${CHROME_FOCUS}`}
             aria-label="Set reminder"
           >
             {state.reminderTimestamp != null ? (
@@ -281,7 +306,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           <button
             type="button"
             onClick={editor.togglePin}
-            className="flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
+            className={`flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] ${CHROME_FOCUS}`}
             aria-label={state.isPinned ? 'Unpin' : 'Pin'}
           >
             <PinIcon size={20} className={state.isPinned ? 'opacity-100' : 'opacity-55'} />
@@ -289,7 +314,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           <button
             type="button"
             onClick={editor.toggleArchive}
-            className="flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
+            className={`flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] ${CHROME_FOCUS}`}
             aria-label={state.isArchived ? 'Unarchive' : 'Archive'}
           >
             <ArchiveIcon size={20} className={state.isArchived ? 'opacity-100' : 'opacity-55'} />
@@ -423,7 +448,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
                   onClick={() => {
                     focusContentField();
                   }}
-                  className="mt-4 w-full min-h-52 rounded-note text-left transition-opacity hover:opacity-95 sm:min-h-[320px]"
+                  aria-label="Edit note body"
+                  className={`mt-4 w-full min-h-52 rounded-note text-left transition-opacity hover:opacity-95 sm:min-h-[320px] ${CHROME_FOCUS}`}
                 >
                   <MarkdownBody text={state.content} contentColor={contentColor} />
                 </button>
@@ -432,7 +458,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
               <button
                 type="button"
                 onClick={editor.convertContentToChecklist}
-                className="mt-auto pt-8 pb-1 text-left text-sm font-medium opacity-55 transition-opacity hover:opacity-90"
+                className={`mt-auto pt-8 pb-1 text-left text-sm font-medium opacity-55 transition-opacity hover:opacity-90 ${CHROME_FOCUS}`}
                 style={{ color: contentColor }}
               >
                 {state.content.trim() ? 'Convert to checklist' : '+ Add checklist'}

@@ -20,6 +20,11 @@ describe('stripMarkdownForPreview', () => {
   it('leaves unmatched markers alone', () => {
     expect(stripMarkdownForPreview('2 ** 3 = 8')).toBe('2 ** 3 = 8');
   });
+
+  it('does not strip empty marker pairs (toolbar inserts these while typing)', () => {
+    expect(stripMarkdownForPreview('****')).toBe('****');
+    expect(stripMarkdownForPreview('__')).toBe('__');
+  });
 });
 
 describe('wrapSelection', () => {
