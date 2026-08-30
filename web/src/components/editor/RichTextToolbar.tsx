@@ -1,5 +1,5 @@
 import { BoldIcon, BulletListIcon, ChecklistIcon, ItalicIcon, LinkIcon } from '@/components/icons/Icons';
-import type { MouseEventHandler } from 'react';
+import type { PointerEventHandler, ReactNode } from 'react';
 
 interface RichTextToolbarProps {
   contentColor: string;
@@ -21,10 +21,27 @@ export function RichTextToolbar({
   const buttonClass =
     'flex size-9 items-center justify-center rounded-full transition-colors hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)] active:bg-[color-mix(in_srgb,currentColor_18%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current';
 
-  // Keep the textarea focused so selection isn't lost before formatting runs.
-  const keepEditorFocus: MouseEventHandler<HTMLButtonElement> = (event) => {
-    event.preventDefault();
-  };
+  // Run on pointerdown with preventDefault so mobile taps do not blur the textarea
+  // before formatting runs — and so marker-only content (e.g. ****) does not flip the
+  // editor into markdown preview, where an empty bold span is invisible.
+  const onFormatPointerDown =
+    (action: () => void): PointerEventHandler<HTMLButtonElement> =>
+    (event) => {
+      event.preventDefault();
+      action();
+    };
+
+  const formatButton = (label: string, icon: ReactNode, action: () => void) => (
+    <button
+      type="button"
+      className={buttonClass}
+      onPointerDown={onFormatPointerDown(action)}
+      aria-label={label}
+      title={label}
+    >
+      {icon}
+    </button>
+  );
 
   return (
     <div
@@ -33,57 +50,12 @@ export function RichTextToolbar({
       role="toolbar"
       aria-label="Text formatting"
     >
-      <button
-        type="button"
-        className={buttonClass}
-        onMouseDown={keepEditorFocus}
-        onClick={onBold}
-        aria-label="Bold"
-        title="Bold"
-      >
-        <BoldIcon size={18} />
-      </button>
-      <button
-        type="button"
-        className={buttonClass}
-        onMouseDown={keepEditorFocus}
-        onClick={onItalic}
-        aria-label="Italic"
-        title="Italic"
-      >
-        <ItalicIcon size={18} />
-      </button>
-      <button
-        type="button"
-        className={buttonClass}
-        onMouseDown={keepEditorFocus}
-        onClick={onLink}
-        aria-label="Link"
-        title="Link"
-      >
-        <LinkIcon size={18} />
-      </button>
+      {formatButton('Bold', <BoldIcon size={18} />, onBold)}
+      {formatButton('Italic', <ItalicIcon size={18} />, onItalic)}
+      {formatButton('Link', <LinkIcon size={18} />, onLink)}
       <span className="mx-0.5 h-5 w-px shrink-0 bg-current opacity-20" aria-hidden />
-      <button
-        type="button"
-        className={buttonClass}
-        onMouseDown={keepEditorFocus}
-        onClick={onBullet}
-        aria-label="Bullet list"
-        title="Bullet list"
-      >
-        <BulletListIcon size={18} />
-      </button>
-      <button
-        type="button"
-        className={buttonClass}
-        onMouseDown={keepEditorFocus}
-        onClick={onChecklist}
-        aria-label="Checklist"
-        title="Checklist"
-      >
-        <ChecklistIcon size={18} />
-      </button>
+      {formatButton('Bullet list', <BulletListIcon size={18} />, onBullet)}
+      {formatButton('Checklist', <ChecklistIcon size={18} />, onChecklist)}
     </div>
   );
 }

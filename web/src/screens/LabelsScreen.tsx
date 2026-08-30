@@ -1,6 +1,9 @@
 import { useLabelManagement } from '@/hooks/useLabelManagement';
 import { DeleteLabelDialog } from '@/components/labels/DeleteLabelDialog';
 import { CloseIcon, TrashIcon, AddIcon, LabelIcon } from '@/components/icons/Icons';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import { useState } from 'react';
 import type { Label } from '@/types/label';
 
@@ -14,6 +17,8 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
   const [labelToEdit, setLabelToEdit] = useState<Label | null>(null);
   const [editName, setEditName] = useState('');
   const [labelToDelete, setLabelToDelete] = useState<Label | null>(null);
+  const panelRef = useFocusTrap<HTMLDivElement>(true, onClose);
+  useBodyScrollLock(true);
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,14 +41,20 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-true-surface animate-in fade-in duration-300">
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Edit labels"
+      className="fixed inset-0 z-50 flex flex-col bg-true-surface animate-in fade-in duration-300"
+    >
       <header className="border-b border-transparent lg:border-brand-outline/40">
         <div className="mx-auto flex w-full max-w-2xl items-center justify-between px-4 py-4 pt-safe lg:px-0">
           <h2 className="text-xl font-bold tracking-tight text-brand-primary">Edit labels</h2>
           <button
             type="button"
             onClick={onClose}
-            className="flex size-11 items-center justify-center rounded-full hover:bg-brand-primary/5 transition-colors"
+            className={`flex size-11 items-center justify-center rounded-full hover:bg-brand-primary/5 transition-colors ${CHROME_FOCUS}`}
             aria-label="Close"
           >
             <CloseIcon size={24} />
@@ -62,6 +73,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
               value={newLabelName}
               onChange={(e) => setNewLabelName(e.target.value)}
               placeholder="Create new label"
+              aria-label="Create new label"
               className="flex-1 bg-transparent text-lg outline-none placeholder:text-brand-muted/40"
             />
             {newLabelName.trim() ? (
@@ -100,10 +112,12 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
                         onChange={(e) => setEditName(e.target.value)}
                         onBlur={handleUpdate}
                         onKeyDown={(e) => e.key === 'Enter' && handleUpdate()}
+                        aria-label="Edit label name"
                         className="flex-1 border-b border-brand-primary/30 bg-transparent text-base outline-none"
                       />
                     ) : (
                       <button
+                        type="button"
                         onClick={() => handleStartEdit(label)}
                         className="flex-1 truncate text-left text-base text-brand-primary"
                       >
@@ -113,6 +127,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
 
                     <div className="flex items-center gap-1">
                       <button
+                        type="button"
                         onClick={() => setLabelToDelete(label)}
                         className="flex size-10 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-red-500/10 hover:text-red-400"
                         aria-label="Delete label"

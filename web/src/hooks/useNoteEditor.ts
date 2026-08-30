@@ -40,12 +40,28 @@ export function useNoteEditor(noteId: string | 'new' | null) {
   });
   const allLabels = useNoteLabels();
 
-  const [state, setState] = useState<EditorState>(createBlankEditorState());
+  const [state, setState] = useState<EditorState>(() => {
+    if (noteId && noteId !== 'new') {
+      const existing = useNotesStore.getState().notes.find((note) => note.id === noteId);
+      if (existing) {
+        return editorStateFromNote(existing);
+      }
+    }
+    const filterColor = useNotesStore.getState().filters.colorArgb;
+    return createBlankEditorState(
+      filterColor ?? DEFAULT_EDITOR_COLOR,
+      nextNotePosition(),
+    );
+  });
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef(state);
-  const loadedRouteRef = useRef<string | null>(null);
+  const loadedRouteRef = useRef<string | null>(noteId);
   const routeRef = useRef(noteId);
-  const lastContentEditRef = useRef<TextEdit>({ text: '', selectionStart: 0, selectionEnd: 0 });
+  const lastContentEditRef = useRef<TextEdit>({
+    text: state.content,
+    selectionStart: state.content.length,
+    selectionEnd: state.content.length,
+  });
   stateRef.current = state;
 
   const persistNow = useCallback(async () => {
@@ -353,6 +369,11 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       const current = stateRef.current;
       const result = updater(current.content, selectionStart, selectionEnd);
       if (!result) return null;
+      lastContentEditRef.current = {
+        text: result.text,
+        selectionStart: result.selectionStart,
+        selectionEnd: result.selectionEnd,
+      };
       patch((s) => ({ ...s, content: result.text }));
       return result;
     },

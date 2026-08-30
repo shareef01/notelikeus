@@ -19,6 +19,7 @@ interface NoteStaggeredGridProps {
   /** User view preference — drives card min-width + density. */
   viewPreference: ViewColumns;
   filter: NoteFilter;
+  sortOrder?: 'manual' | 'newest' | 'oldest';
   onNoteClick: (note: Note) => void;
   onNoteLongPress: (note: Note) => void;
   selectedNoteIds: string[];
@@ -54,16 +55,36 @@ type BoardItem =
   | { type: 'header'; key: string; title: string }
   | { type: 'note'; key: string; note: Note; index: number };
 
-function buildBoardItems(notes: Note[]): BoardItem[] {
+function buildBoardItems(
+  notes: Note[],
+  sortOrder: 'manual' | 'newest' | 'oldest' = 'manual',
+  searchQuery = '',
+): BoardItem[] {
+  if (notes.length === 0) return [];
+
+  // D14: Mid-search the order is relevance, by design. Every date heading over a relevance-ordered list is arbitrary.
+  if (searchQuery.trim().length > 0) {
+    return notes.map((note, index) => ({ type: 'note', key: note.id, note, index }));
+  }
+
   const items: BoardItem[] = [];
+  const firstUnpinned = notes.findIndex((note) => !note.isPinned);
+  const hasPinned = notes[0]?.isPinned ?? false;
+
   notes.forEach((note, index) => {
     const prev = notes[index - 1];
 
-    if (note.isPinned && index === 0) {
+    if (index === 0 && hasPinned) {
       items.push({ type: 'header', key: 'header-pinned', title: 'Pinned' });
     }
 
-    if (!note.isPinned) {
+    if (sortOrder === 'manual') {
+      // D14: "Others" only earns its place as the counterpart to "Pinned".
+      if (hasPinned && index === firstUnpinned) {
+        items.push({ type: 'header', key: 'header-others', title: 'Others' });
+      }
+    } else if (!note.isPinned) {
+      // Date order (newest or oldest)
       const header = getDateHeader(note.timestamp);
       const prevHeader = prev && !prev.isPinned ? getDateHeader(prev.timestamp) : null;
       if (header !== prevHeader) {
@@ -73,6 +94,7 @@ function buildBoardItems(notes: Note[]): BoardItem[] {
 
     items.push({ type: 'note', key: note.id, note, index });
   });
+
   return items;
 }
 
@@ -80,6 +102,7 @@ export function NoteStaggeredGrid({
   notes,
   viewPreference,
   filter,
+  sortOrder = 'manual',
   onNoteClick,
   onNoteLongPress,
   selectedNoteIds,
@@ -100,7 +123,10 @@ export function NoteStaggeredGrid({
   const swipeEnabled = isPhone && isList && Boolean(listActions) && !selectionMode;
   const canReorder =
     allowReorder && isList && !selectionMode && Boolean(onMoveNote);
-  const boardItems = useMemo(() => buildBoardItems(notes), [notes]);
+  const boardItems = useMemo(
+    () => buildBoardItems(notes, sortOrder, searchQuery),
+    [notes, sortOrder, searchQuery],
+  );
 
   const [draggingIndex, setDraggingIndex] = useState(-1);
   const dragOffsetRef = useRef(0);

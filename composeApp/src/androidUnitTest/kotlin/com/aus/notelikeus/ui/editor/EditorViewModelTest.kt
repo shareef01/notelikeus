@@ -271,6 +271,26 @@ class EditorViewModelTest {
     }
 
     @Test
+    fun `applyBold before an existing note loads keeps the formatted text`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val stored = Note(
+            id = 1L,
+            title = "Stored title",
+            content = "Stored body",
+            timestamp = 0L,
+            color = 0
+        )
+        coEvery { repository.getNoteById(1L) } returns stored
+
+        viewModel = createViewModel(SavedStateHandle(mapOf("noteId" to 1L)))
+        viewModel.onContentValueChange(TextFieldValue("hello", selection = androidx.compose.ui.text.TextRange(0, 5)))
+        viewModel.applyBoldToSelection()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals("**hello**", viewModel.state.value.content)
+    }
+
+    @Test
     fun `convertChecklistToContent joins items into body`() = runTest {
         val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
         viewModel = createViewModel(savedStateHandle)

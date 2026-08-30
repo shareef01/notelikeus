@@ -61,9 +61,12 @@ function NoteCardImpl({
     note.color === 0
       ? { backgroundColor: 'rgba(255,255,255,0.12)', color: contentColor }
       : { backgroundColor: argbToCssAlpha(note.color, 0.1), color: contentColor };
-  const title = note.title || 'Untitled';
   const showBody = note.content.length > 0;
   const previewBody = stripMarkdownForPreview(note.content);
+  // D15: don't render "Untitled" in the card — an empty-title note leads with
+  // its first line of content. Only use it as an a11y fallback when *both* are empty.
+  const title = note.title;
+  const firstBodyLine = previewBody.split('\n')[0]?.trim() ?? '';
   const highlight = (text: string) => highlightSearchText(text, searchQuery);
   const hasReminder =
     note.reminderTimestamp != null && note.reminderTimestamp > Date.now() && !note.isTrashed;
@@ -147,7 +150,7 @@ function NoteCardImpl({
     </div>
   ) : null;
 
-  const openLabel = [title, ...statusParts].join(', ');
+  const openLabel = [title || firstBodyLine || 'Untitled', ...statusParts].join(', ');
 
   return (
     <article
@@ -203,11 +206,13 @@ function NoteCardImpl({
 
           <div className="flex min-w-0 flex-1 items-start gap-3 px-3.5 py-3.5 sm:gap-4 sm:px-4 sm:py-4">
             <div className="min-w-0 flex-1">
-              <h2 className="line-clamp-2 break-words text-note-title tracking-[-0.02em] sm:line-clamp-2">
-                {highlight(title)}
-              </h2>
+              {title ? (
+                <h2 className="line-clamp-2 break-words text-note-title tracking-[-0.02em] sm:line-clamp-2">
+                  {highlight(title)}
+                </h2>
+              ) : null}
               {showBody ? (
-                <p className="mt-2 line-clamp-2 break-words text-note-body opacity-80 sm:mt-2.5 sm:line-clamp-3">
+                <p className={`break-words text-note-body opacity-80 sm:line-clamp-3 ${title ? 'mt-2 line-clamp-2 sm:mt-2.5' : 'line-clamp-3 font-semibold'}`}>
                   {highlight(previewBody)}
                 </p>
               ) : null}
@@ -233,15 +238,20 @@ function NoteCardImpl({
       ) : (
         <>
           <div className="flex items-start gap-2">
-            <h2
-              className={`min-w-0 flex-1 break-words font-semibold tracking-[-0.02em] ${
-                isDense
-                  ? 'line-clamp-2 text-[15px] leading-snug'
-                  : 'line-clamp-3 text-note-title'
-              }`}
-            >
-              {highlight(title)}
-            </h2>
+            {title ? (
+              <h2
+                className={`min-w-0 flex-1 break-words font-semibold tracking-[-0.02em] ${
+                  isDense
+                    ? 'line-clamp-2 text-[15px] leading-snug'
+                    : 'line-clamp-3 text-note-title'
+                }`}
+              >
+                {highlight(title)}
+              </h2>
+            ) : (
+              // Without a title the status cluster still needs a flex sibling to push it right
+              <span className="min-w-0 flex-1" aria-hidden />
+            )}
             <div className="flex shrink-0 flex-col items-end gap-1">
               {statusIcons(isDense ? 13 : 14)}
               <time

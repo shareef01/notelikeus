@@ -4,6 +4,7 @@ import { version } from '../../../package.json';
 import { BrandMark } from '@/components/brand/BrandMark';
 import { ThemePicker } from '@/components/settings/ThemePicker';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import type { ViewColumns } from '@/store/uiStore';
 import type { AccentColor, ThemeBase, ThemePreference } from '@/store/settingsStore';
 import {
@@ -71,7 +72,7 @@ function SettingsRow({
       type={onClick ? 'button' : undefined}
       onClick={disabled ? undefined : onClick}
       disabled={onClick ? disabled : undefined}
-      className={`flex w-full min-h-[3.5rem] items-center gap-3.5 px-4 py-3.5 text-left transition-colors sm:min-h-16 sm:px-5 sm:py-4 ${
+      className={`flex w-full min-h-[3.5rem] items-center gap-3.5 px-4 py-3.5 text-left transition-colors sm:min-h-16 sm:px-5 sm:py-4 ${CHROME_FOCUS} ${
         onClick && !disabled ? 'hover:bg-brand-primary/[0.04] active:bg-brand-primary/[0.07]' : ''
       } ${disabled ? 'opacity-40' : ''}`}
     >
