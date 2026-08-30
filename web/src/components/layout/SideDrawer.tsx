@@ -9,6 +9,7 @@ import {
   TrashIcon,
 } from '@/components/icons/Icons';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import type { NoteFilter } from '@/types/note';
 import type { ReactNode } from 'react';
 
@@ -31,18 +32,11 @@ const NAV_ITEMS: Array<{
   filter: NoteFilter;
   label: string;
   Icon: typeof NotesIcon;
-  iconClass: string;
-  barClass: string;
 }> = [
-  { filter: 'active', label: 'Notes', Icon: NotesIcon, iconClass: 'text-sky-400', barClass: 'bg-sky-400' },
-  { filter: 'archived', label: 'Archive', Icon: ArchiveIcon, iconClass: 'text-amber-400', barClass: 'bg-amber-400' },
-  { filter: 'trashed', label: 'Trash', Icon: TrashIcon, iconClass: 'text-rose-400', barClass: 'bg-rose-400' },
+  { filter: 'active', label: 'Notes', Icon: NotesIcon },
+  { filter: 'archived', label: 'Archive', Icon: ArchiveIcon },
+  { filter: 'trashed', label: 'Trash', Icon: TrashIcon },
 ];
-
-const MANAGE_ITEMS = {
-  labels: { iconClass: 'text-violet-400', barClass: 'bg-violet-400' },
-  settings: { iconClass: 'text-teal-400', barClass: 'bg-teal-400' },
-} as const;
 
 function NavButton({
   active = false,
@@ -51,8 +45,6 @@ function NavButton({
   label,
   trailing,
   ariaCurrent,
-  iconClass,
-  barClass,
   collapsed = false,
 }: {
   active?: boolean;
@@ -61,8 +53,6 @@ function NavButton({
   label: string;
   trailing?: ReactNode;
   ariaCurrent?: 'page';
-  iconClass: string;
-  barClass: string;
   collapsed?: boolean;
 }) {
   return (
@@ -72,7 +62,7 @@ function NavButton({
       aria-current={ariaCurrent}
       aria-label={collapsed ? label : undefined}
       title={collapsed ? label : undefined}
-      className={`group relative flex w-full items-center gap-3 rounded-xl text-left text-sm leading-5 tracking-tight transition-colors ${
+      className={`group relative flex w-full items-center gap-3 rounded-xl text-left text-sm leading-5 tracking-tight transition-colors ${CHROME_FOCUS} ${
         collapsed
           ? 'min-h-11 justify-center px-0 py-2.5'
           : 'min-h-11 py-2.5 pl-3 pr-2.5'
@@ -84,13 +74,13 @@ function NavButton({
     >
       {!collapsed && active ? (
         <span
-          className={`absolute inset-y-2.5 left-0 w-0.5 rounded-full ${barClass}`}
+          className="absolute inset-y-2.5 left-0 w-0.5 rounded-full bg-brand-primary"
           aria-hidden
         />
       ) : null}
       <span
-        className={`flex shrink-0 items-center justify-center transition-opacity ${iconClass} ${
-          active ? 'opacity-100' : 'opacity-85 group-hover:opacity-100'
+        className={`flex shrink-0 items-center justify-center transition-colors ${
+          active ? 'text-brand-primary' : 'text-brand-muted group-hover:text-brand-primary'
         } ${collapsed ? 'size-6' : 'size-6'}`}
       >
         {icon}
@@ -193,7 +183,7 @@ export function SideDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 md:hidden"
+              className={`flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 md:hidden ${CHROME_FOCUS}`}
               aria-label="Close menu"
             >
               <CloseIcon size={20} />
@@ -206,7 +196,7 @@ export function SideDrawer({
           showCollapsed ? 'gap-3 md:px-1.5' : 'gap-5 md:px-3'
         }`}>
           <NavSection title={showCollapsed ? undefined : undefined}>
-            {NAV_ITEMS.map(({ filter, label, Icon, iconClass, barClass }) => {
+            {NAV_ITEMS.map(({ filter, label, Icon }) => {
               const active = currentFilter === filter;
               const count = navCounts?.[filter];
               return (
@@ -214,14 +204,12 @@ export function SideDrawer({
                   key={filter}
                   active={active}
                   collapsed={showCollapsed}
-                  iconClass={iconClass}
-                  barClass={barClass}
                   ariaCurrent={active ? 'page' : undefined}
                   onClick={() => {
                     onNavigate(filter);
                     onClose();
                   }}
-                  icon={<Icon size={showCollapsed ? 22 : 22} />}
+                  icon={<Icon size={22} />}
                   label={label}
                   trailing={
                     !showCollapsed && count != null && count > 0 ? (
@@ -238,8 +226,6 @@ export function SideDrawer({
               {onEditLabels ? (
                 <NavButton
                   collapsed={showCollapsed}
-                  iconClass={MANAGE_ITEMS.labels.iconClass}
-                  barClass={MANAGE_ITEMS.labels.barClass}
                   onClick={() => {
                     onEditLabels();
                     onClose();
@@ -251,8 +237,6 @@ export function SideDrawer({
               {onOpenSettings ? (
                 <NavButton
                   collapsed={showCollapsed}
-                  iconClass={MANAGE_ITEMS.settings.iconClass}
-                  barClass={MANAGE_ITEMS.settings.barClass}
                   onClick={() => {
                     onOpenSettings();
                     onClose();
@@ -271,7 +255,7 @@ export function SideDrawer({
             <button
               type="button"
               onClick={onToggleCollapse}
-              className={`group flex w-full items-center rounded-xl border border-brand-secondary/25 bg-brand-primary/[0.06] font-medium text-brand-primary/85 transition-colors hover:border-brand-secondary/45 hover:bg-brand-primary/[0.1] hover:text-brand-primary ${
+              className={`group flex w-full items-center rounded-xl border border-brand-secondary/25 bg-brand-primary/[0.06] font-medium text-brand-primary/85 transition-colors hover:border-brand-secondary/45 hover:bg-brand-primary/[0.1] hover:text-brand-primary ${CHROME_FOCUS} ${
                 showCollapsed
                   ? 'min-h-11 justify-center py-2.5'
                   : 'min-h-11 gap-2.5 py-2.5 pl-3 pr-2.5'

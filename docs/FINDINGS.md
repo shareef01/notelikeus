@@ -800,3 +800,205 @@ bad. It now keeps the file — consistent with `preserveUnreadablePassphraseFile
 path, which never delete what they only failed to read. Nothing is lost by keeping it: the next
 successful `save()` overwrites the file wholesale.
 
+---
+
+## F28 — Web Editor `Escape` key shortcut bypassed pending saves and raced unmount — **FIXED**
+
+In `web/src/screens/MainScreen.tsx`, the global `Escape` shortcut had `allowInInputs: false` (default)
+and called `useUiStore.getState().closeEditor()`. When editing a note's title or body, pressing
+`Escape` was ignored while focused or bypassed `editor.flushSave()` when triggered, dropping pending
+debounced edits upon subsequent reload in Playwright browser E2E tests (`note-lifecycle.spec.ts:106`).
+`EditorScreen.tsx` also only trapped `Escape` on `isFloatLayout`.
+
+**Fixed** by registering an `Escape` shortcut with `allowInInputs: true` inside `EditorScreen.tsx`
+bound directly to `handleBack()` (which flushes `flushSave()`), and updating `MainScreen.tsx` so it
+does not close the editor asynchronously when `EditorScreen` is active. Verified by 100% pass on all
+Playwright browser E2E tests.
+
+---
+
+## F29 — Web note grid emitted date grouping headers under manual and search sorts (Decision D14 violation) — **FIXED**
+
+`web/src/components/notes/NoteStaggeredGrid.tsx` emitted date headers (`getDateHeader(note.timestamp)`)
+across all views including manual and search, violating Decision D14 and diverging from Kotlin's
+`NoteSections.kt`.
+
+**Fixed** by updating `buildBoardItems` in `NoteStaggeredGrid.tsx` to omit date headers on search
+relevance and manual sorts, showing only `Pinned` and `Others` under manual sort when pinned notes exist.
+
+---
+
+## F30 — `PRIVACY_POLICY.md` falsely stated web client requires Google sign-in — **FIXED**
+
+`PRIVACY_POLICY.md` claimed web requires Google sign-in and only keeps notes in the cloud, while the
+web client fully supports accountless offline guest storage and local backups.
+
+**Fixed** by updating `PRIVACY_POLICY.md` to accurately disclose accountless local-first operation
+across all three platforms (Android, Windows, Web).
+
+---
+
+## F31 — Web editor opened blank / new note when clicking an existing note card — **FIXED**
+
+When clicking an existing note in the web client, `useNoteEditor` initialized `useState<EditorState>(createBlankEditorState())` synchronously on initial render, deferring the lookup of existing note title/content to an asynchronous `useEffect`. Furthermore, `<EditorScreen />` was rendered in `MainScreen.tsx` and `App.tsx` without an explicit `key` attribute (`key={noteId}`), causing React to reuse stale component instances and retain blank / empty editor state when transitioning between editor routes.
+
+**Fixed**:
+1. `useNoteEditor`: Synchronously initialized `useState<EditorState>(() => ...)` from `useNotesStore.getState().notes` when `noteId && noteId !== 'new'`, ensuring the existing note's title, body, color, checklist, and timestamps render immediately on the initial mount frame without layout flash or stale state.
+2. Initialized `loadedRouteRef.current` to `noteId` and `lastContentEditRef.current` with the note content.
+3. Added explicit keys to all `<EditorScreen />` render sites in `MainScreen.tsx` (`key={dockedEditor.mode === 'new' ? 'new' : dockedEditor.noteId}` and `key={overlayEditor.mode === 'new' ? 'new' : overlayEditor.noteId}`) and `App.tsx` (`key="new"` and `key={editorNoteId}`).
+4. Added unit tests in `useNoteEditor.test.ts` covering note loading, state mapping, and route transitions.
+5. Rebuilt web bundle and deployed to live production on Firebase Hosting (`https://notelike.web.app`).
+
+
+
+## F32 — `SideDrawer.tsx` had TypeScript errors: stale `iconClass`/`barClass` destructuring and undefined `MANAGE_ITEMS` — **FIXED**
+
+`SideDrawer.tsx` was destructuring `iconClass` and `barClass` from `NAV_ITEMS` map (whose type definition
+`{ filter: NoteFilter; label: string; Icon: typeof NotesIcon }` never included those fields), and
+passing them as props to `NavButton` which likewise does not accept them. Additionally, the `Manage`
+section NavButtons for "Edit labels" and "Settings" referenced `MANAGE_ITEMS.labels.iconClass` and
+`MANAGE_ITEMS.settings.iconClass` — a constant that does not exist anywhere in the file.
+
+**Effect:** TypeScript typecheck (`npm run typecheck`) exited with code 1 with 8 type errors. The runtime was
+not affected because TypeScript erasure means these ghost props are silently ignored, but the presence of
+errors would have masked any real type regressions and blocked strict CI enforcement.
+
+**Root cause:** residue from a past refactoring that removed the `iconClass`/`barClass` styling system
+and the `MANAGE_ITEMS` constant from the SideDrawer without cleaning up all the consumption sites.
+
+**Fixed** by removing the stale destructured bindings from `NAV_ITEMS.map(...)` and removing the
+`iconClass`/`barClass` props from all three `NavButton` call sites, plus the two undefined `MANAGE_ITEMS`
+references. `npm run typecheck` now exits 0 with no errors.
+
+**Severity:** medium (CI gate broken; runtime correct but opaque to future regressions).
+
+---
+
+## F33 — `NoteCard` displayed "Untitled" as the card heading for empty-title notes, violating Decision D15 — **FIXED**
+
+`NoteCard.tsx` set `const title = note.title || 'Untitled'` and rendered it unconditionally in the
+`<h2>` for all three density modes (list, grid, dense). Decision D15 explicitly states the title text
+is not rendered when the title is empty; "Untitled" is only the honest accessibility label when **both**
+title and content are empty.
+
+**Effect:** A note with no title but with body text showed "Untitled" as the bold card heading, while
+the actual content was suppressed below. The user sees a heading that isn't there and misses the first
+line of their note.
+
+**Fixed:**
+1. Changed `const title = note.title` (empty string when blank, never the word "Untitled").
+2. Added `const firstBodyLine = previewBody.split('\n')[0]?.trim() ?? ''` for the visual fallback.
+3. In **list layout**: wrapped the `<h2>` in `{title ? ... : null}`, and changed the body `<p>` to
+   add `font-semibold` + remove the top margin when there is no title (first-line-as-heading styling).
+4. In **grid/dense layout**: wrapped the `<h2>` in `{title ? ... : null}`, and added an
+   `aria-hidden` flex sibling spacer when no title so the status-icon cluster stays right-aligned.
+5. Updated the accessibility label to `title || firstBodyLine || 'Untitled'` — "Untitled" only
+   appears in the a11y tree when the note is completely blank, per D15.
+
+**Severity:** medium (intentional product decision violated, every note with content-only displayed wrong).
+
+---
+
+## F34 — `LabelsScreen.tsx` had buttons without `type="button"` and an unlabelled edit input — **FIXED**
+
+The "edit label" trigger button and the "delete label" button inside `LabelsScreen.tsx` both lacked
+`type="button"`. Without an explicit type, HTML defaults to `type="submit"`. While not a runtime
+crash here (neither button is inside a `<form>`), this is a correctness issue and would cause problems
+if the component structure ever gains a wrapping form.
+
+Additionally, the inline edit input shown when renaming a label had no `aria-label`, making it
+inaccessible to screen readers.
+
+**Fixed:** Added `type="button"` to the label-click and label-delete buttons, and added
+`aria-label="Edit label name"` to the inline edit input.
+
+**Severity:** low (a11y + best-practice; no user-visible regression).
+
+---
+
+## F35 — In-app privacy dialog still claimed Google sign-in was required on web — **FIXED**
+
+`PrivacyPolicyDialog.tsx` body text still said *"Sign-in with Google is required"* and *"There is no separate offline-only mode on the web"*, while `PRIVACY_POLICY.md` was corrected in F30 and the app supports guest/local-first operation.
+
+**Fixed** by rewriting `PRIVACY_POLICY_BODY` to match the August 2026 policy: offline-first on all platforms, optional cloud sync, guest web operation.
+
+---
+
+## F36 — Mobile and fullscreen editor overlays had no focus trap — **FIXED**
+
+`EditorScreen.tsx` applied `useFocusTrap` only to the float layout. Phone editor (`!isTabletUp`) and tablet fullscreen used `fixed inset-0` overlays without `role="dialog"`, `aria-modal`, or focus trapping — Tab reached the notes list behind the editor.
+
+**Fixed** by adding `overlayPanelRef = useFocusTrap(...)` for `needsOverlayTrap` (`!isTabletUp || editorLayout === 'fullscreen'`) and attaching it to those shells with dialog semantics.
+
+---
+
+## F37 — Labels screen overlay had no focus trap or Escape close — **FIXED**
+
+`LabelsScreen.tsx` was a full-screen overlay without `useFocusTrap`, `useBodyScrollLock`, or `role="dialog"`. Tab could escape to the main UI; only the close icon dismissed it.
+
+**Fixed** with focus trap, body scroll lock, `role="dialog"`, `aria-modal`, and Escape via the shared trap.
+
+---
+
+## F38 — Delete confirm Escape closed the entire options sheet — **FIXED**
+
+`EditorOptionsSheet.tsx` nested a delete confirm dialog inside `ResponsiveSheet`. Both registered document `Escape` listeners; the sheet trap called `onClose()` and dismissed the whole sheet instead of canceling delete only.
+
+**Fixed** by adding `closeOnEscape` to `useFocusTrap` / `ResponsiveSheet` and passing `closeOnEscape={!confirmDelete}` to the sheet. Regression tests in `useFocusTrap.test.ts`.
+
+---
+
+## F39 — Sort chip appeared functional during search but did not change order (D14) — **FIXED**
+
+While search text is active, results are relevance-ranked regardless of sort. Cycling sort still updated the chip label and showed a toast, but note order did not change — a dead control.
+
+**Fixed** by disabling the sort chip during active search (`sortDisabled` on `FilterRow`, label shows *Relevance*).
+
+---
+
+## F40 — Notes error Retry button used hard-coded white on light theme — **FIXED**
+
+`MainScreen.tsx` error state used `text-red-300`, `bg-white/10`, `text-white/80` on `bg-true-surface` — near-invisible in light theme.
+
+**Fixed** with theme tokens (`text-red-500`, `border-brand-outline`, `bg-brand-primary/10`, `text-brand-primary`).
+
+---
+
+## F41 — Checklist remove buttons and several form inputs lacked accessible names — **FIXED**
+
+`ChecklistEditor.tsx` remove buttons all announced *"Remove item"* (Kotlin F18 fixed this on Android). Link URL, new-label, and create-label inputs had placeholder-only labels.
+
+**Fixed**: per-item remove labels (`Remove ${text}` / *Remove empty item*), `aria-label` on link URL, new label, and create-label inputs.
+
+**Severity:** low–medium (accessibility).
+
+---
+
+## F42 — Auth overlay lacked focus trap; Google sign-in button ignored theme — **FIXED**
+
+Optional auth overlay (`AuthScreen` with `mandatory={false}`) had no focus trap — Tab reached the notes UI underneath. `GoogleSignInButton` always used `bg-white` / `#1f1f1f`, jarring on dark auth screens.
+
+**Fixed**: focus trap + dialog semantics on auth overlay (`closeOnEscape: !mandatory`); Google button uses theme tokens (`bg-true-surface`, `text-brand-primary`).
+
+---
+
+## F43 — Keyboard focus rings missing on drawer, editor chrome, filter chips, and settings rows — **FIXED**
+
+Many interactive controls in `SideDrawer`, `EditorScreen`, `FilterRow`, `ProfileSheet`, `LabelsScreen`, and `AuthScreen` had no visible `focus-visible` outline, making keyboard navigation hard to follow. `TopBar` and `SelectionBar` already had a local constant; the rest did not.
+
+**Fixed** by extracting `CHROME_FOCUS` to `web/src/lib/ui/focusStyles.ts` and applying it across drawer nav buttons, editor header/actions, filter chips, settings rows, auth tabs, and the markdown preview toggle (which also gained `aria-label="Edit note body"`).
+
+**Severity:** low (accessibility polish).
+
+---
+
+## F44 — Bold and Italic toolbar buttons appeared dead on web and Android — **FIXED**
+
+Two separate failures stacked:
+
+**Web (especially mobile):** Toolbar buttons used `click` + `mousedown preventDefault`, which does not stop touch from blurring the textarea before formatting ran. When formatting did insert `****` / `__`, blur flipped the editor into markdown preview mode (`contentFocused` false + non-empty content), hiding the markers from the user's working view. Fix: run actions on `pointerdown` with `preventDefault`, and force `setContentFocused(true)` after applying format. Sync `lastContentEditRef` in `applyContentFormatting`.
+
+**Android:** Toolbar `IconButton`s took focus from the body field, collapsing selection before `applyFormatting` read `contentValue`. Fix: `focusProperties { canFocus = false }` on all toolbar buttons. Also set `contentEdited = true` in `applyFormatting` so an in-flight note load cannot overwrite a format applied before load completed.
+
+**Severity:** high (core editor formatting).
+
