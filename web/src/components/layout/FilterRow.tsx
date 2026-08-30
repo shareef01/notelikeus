@@ -2,6 +2,7 @@ import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
 import { SortIcon } from '@/components/icons/Icons';
 import type { Label } from '@/types/label';
 import type { ReactNode } from 'react';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 
 interface FilterChipProps {
   label: string;
@@ -25,7 +26,7 @@ function FilterChip({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`filter-chip shrink-0 gap-1.5 ${compact ? 'min-h-9 px-3 text-xs sm:px-3.5' : ''} ${
+      className={`filter-chip shrink-0 gap-1.5 ${CHROME_FOCUS} ${compact ? 'min-h-9 px-3 text-xs sm:px-3.5' : ''} ${
         selected ? 'filter-chip-active' : 'filter-chip-inactive'
       } ${disabled ? 'cursor-default opacity-70' : 'cursor-pointer'}`}
     >
@@ -44,6 +45,8 @@ const SORT_LABELS = {
 interface FilterRowProps {
   sortOrder: 'manual' | 'newest' | 'oldest';
   onSortOrderCycle: () => void;
+  /** When true, search overrides sort order (D14 relevance) — sort chip is disabled. */
+  sortDisabled?: boolean;
   selectedColor: number | null;
   onColorSelect: (color: number | null) => void;
   labels: Label[];
@@ -56,6 +59,7 @@ interface FilterRowProps {
 export function FilterRow({
   sortOrder,
   onSortOrderCycle,
+  sortDisabled = false,
   selectedColor,
   onColorSelect,
   labels,
@@ -69,8 +73,9 @@ export function FilterRow({
       <div className="flex items-center gap-2.5 overflow-x-auto px-3 py-1.5 scrollbar-none sm:px-4 lg:px-6">
         <FilterChip
           compact
-          label={SORT_LABELS[sortOrder]}
+          label={sortDisabled ? 'Relevance' : SORT_LABELS[sortOrder]}
           onClick={onSortOrderCycle}
+          disabled={sortDisabled}
           leading={<SortIcon size={14} className="opacity-80" />}
         />
 

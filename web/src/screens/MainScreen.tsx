@@ -300,7 +300,6 @@ export function MainScreen() {
       key: 'Escape',
       action: () => {
         if (editorRoute.mode !== 'closed') {
-          useUiStore.getState().closeEditor();
           return;
         }
         if (selectionMode) clearSelection();
@@ -418,11 +417,11 @@ export function MainScreen() {
 
             {error ? (
               <div className="px-4 py-6 text-center">
-                <p className="text-sm text-red-300 mb-3">{error}</p>
+                <p className="text-sm text-red-500 dark:text-red-400 mb-3">{error}</p>
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
-                  className="rounded-full bg-white/10 px-4 py-2 text-sm text-white/80 hover:bg-white/20 transition-colors"
+                  className="rounded-full border border-brand-outline/50 bg-brand-primary/10 px-4 py-2 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
                 >
                   Retry
                 </button>
@@ -470,10 +469,11 @@ export function MainScreen() {
                   <SearchNotice query={filters.searchQuery ?? ''} />
                 ) : null}
                 <NoteStaggeredGrid
-                notes={filteredNotes}
-                viewPreference={viewColumns}
-                filter={filters.filter}
-                onNoteClick={handleNoteClick}
+                  notes={filteredNotes}
+                  viewPreference={viewColumns}
+                  filter={filters.filter}
+                  sortOrder={filters.sortOrder ?? 'manual'}
+                  onNoteClick={handleNoteClick}
                 onNoteLongPress={handleNoteLongPress}
                 selectedNoteIds={selectedNoteIds}
                 selectionMode={selectionMode}
@@ -533,7 +533,10 @@ export function MainScreen() {
               allowClearData={false}
               onDismiss={() => useUiStore.getState().closeEditor()}
             >
-              <EditorScreen route={dockedEditor} />
+              <EditorScreen
+                key={dockedEditor.mode === 'new' ? 'new' : dockedEditor.noteId}
+                route={dockedEditor}
+              />
             </ErrorBoundary>
           </div>
         ) : null}
@@ -544,7 +547,10 @@ export function MainScreen() {
             allowClearData={false}
             onDismiss={() => useUiStore.getState().closeEditor()}
           >
-            <EditorScreen route={overlayEditor} />
+            <EditorScreen
+              key={overlayEditor.mode === 'new' ? 'new' : overlayEditor.noteId}
+              route={overlayEditor}
+            />
           </ErrorBoundary>
         ) : null}
       </div>

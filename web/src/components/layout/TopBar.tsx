@@ -2,13 +2,11 @@ import { FilterRow } from '@/components/layout/FilterRow';
 import { SelectionBar } from '@/components/layout/SelectionBar';
 import { ViewModeToggle } from '@/components/layout/ViewModeToggle';
 import { AddIcon, CloseIcon, MenuIcon, SettingsIcon } from '@/components/icons/Icons';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import type { ViewColumns } from '@/store/uiStore';
 import type { Label } from '@/types/label';
 import type { NoteFilter } from '@/types/note';
 import { useState, useRef, type RefObject } from 'react';
-
-const CHROME_FOCUS =
-  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary';
 
 const SEARCH_PLACEHOLDERS: Record<NoteFilter, string> = {
   active: 'Search notes',
@@ -220,6 +218,7 @@ export function TopBar({
           <FilterRow
             sortOrder={sortOrder}
             onSortOrderCycle={onSortOrderCycle}
+            sortDisabled={searchQuery.trim().length > 0}
             selectedColor={selectedColor}
             onColorSelect={onColorSelect}
             labels={labels}

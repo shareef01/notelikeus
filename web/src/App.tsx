@@ -164,9 +164,9 @@ export default function App() {
         >
           <Suspense fallback={null}>
             {editorMode === 'new' ? (
-              <EditorScreen route={{ mode: 'new' }} />
+              <EditorScreen key="new" route={{ mode: 'new' }} />
             ) : editorNoteId ? (
-              <EditorScreen route={{ mode: 'edit', noteId: editorNoteId }} />
+              <EditorScreen key={editorNoteId} route={{ mode: 'edit', noteId: editorNoteId }} />
             ) : null}
           </Suspense>
         </ErrorBoundary>

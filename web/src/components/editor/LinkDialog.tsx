@@ -32,6 +32,7 @@ export function LinkDialog({ open, onCancel, onConfirm }: LinkDialogProps) {
           value={url}
           onChange={(event) => setUrl(event.target.value)}
           placeholder="https://example.com"
+          aria-label="Link URL"
           className="mt-4 w-full rounded-note border border-brand-outline/50 bg-transparent px-4 py-3 text-sm text-brand-primary outline-none focus:border-brand-primary/50"
         />
         <div className="mt-5 flex justify-end gap-2">

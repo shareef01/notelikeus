@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
@@ -56,23 +57,38 @@ fun RichTextToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
-            IconButton(onClick = onBoldClick) {
+            IconButton(
+                onClick = onBoldClick,
+                modifier = Modifier.focusProperties { canFocus = false },
+            ) {
                 Icon(Icons.Default.FormatBold, contentDescription = stringResource(Res.string.format_bold), tint = contentColor)
             }
-            IconButton(onClick = onItalicClick) {
+            IconButton(
+                onClick = onItalicClick,
+                modifier = Modifier.focusProperties { canFocus = false },
+            ) {
                 Icon(Icons.Default.FormatItalic, contentDescription = stringResource(Res.string.format_italic), tint = contentColor)
             }
-            IconButton(onClick = onLinkClick) {
+            IconButton(
+                onClick = onLinkClick,
+                modifier = Modifier.focusProperties { canFocus = false },
+            ) {
                 Icon(Icons.Default.Link, contentDescription = stringResource(Res.string.format_link), tint = contentColor)
             }
             VerticalDivider(
                 modifier = Modifier.height(Size.iconLarge).padding(horizontal = Spacing.xs),
                 color = contentColor.copy(alpha = NoteEmphasis.Decorative)
             )
-            IconButton(onClick = onListClick) {
+            IconButton(
+                onClick = onListClick,
+                modifier = Modifier.focusProperties { canFocus = false },
+            ) {
                 Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = stringResource(Res.string.format_list), tint = contentColor)
             }
-            IconButton(onClick = onChecklistClick) {
+            IconButton(
+                onClick = onChecklistClick,
+                modifier = Modifier.focusProperties { canFocus = false },
+            ) {
                 Icon(Icons.Default.Checklist, contentDescription = stringResource(Res.string.format_checklist), tint = contentColor)
             }
         }

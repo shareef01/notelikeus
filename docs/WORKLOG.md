@@ -3,6 +3,153 @@
 Running record of completed work sessions. Newest first. Granular history lives in git;
 this file captures the *what and why* across a whole session.
 
+## 2026-08-30 — Audit closure (Session 6)
+
+Final pass after F44 (Bold/Italic toolbar) fix. Re-ran automated suites and pushed the F44 build to the physical Pixel 7.
+
+### Verification this session
+- **Web unit tests:** 32 files, **271/271** passing
+- **KMP unit + desktop tests:** BUILD SUCCESSFUL
+- **Android debug APK:** rebuilt with F44 fixes; in-place install on Pixel 7 (`31071FDH2007WT`) — success
+- **Windows desktop:** prior session confirmed `:composeApp:run` launches Notelikeus window
+- **Regression test:** `EditorViewModelTest.applyBold before an existing note loads keeps the formatted text` — guards F44 Android `contentEdited` path
+
+### Audit verdict
+**Ready with blocked external/hardware checks.** F28–F44 fixed and validated in automated suites. No open reproducible defects in audited flows. Blocked: live Google OAuth, biometrics, widget placement automation, exhaustive theme/viewport matrix, PWA offline update cycle.
+
+### Manual follow-up for user
+1. **Web:** reload dev server and tap Bold/Italic on mobile-width editor — markers should stay visible in the textarea
+2. **Android (Pixel 7):** open any note, select text, tap Bold — body should show `**…**` without reverting
+3. **Commit** when ready — all changes remain uncommitted on `main`
+
+---
+
+## 2026-08-30 — Full UI/UX audit continuation (Session 3)
+
+Continuation of the comprehensive UI/UX audit. Built on Session 2 fixes (F28–F34) and extended
+coverage with additional web defects, accessibility repairs, and full automated validation.
+
+### Issues Found & Fixed (F35–F41)
+1. **Privacy dialog stale copy (F35):** `PrivacyPolicyDialog.tsx` still claimed Google sign-in was required on web. Rewrote body to match `PRIVACY_POLICY.md` (offline-first, optional sync).
+2. **Editor focus traps (F36):** Mobile and fullscreen editor overlays lacked focus trap and dialog semantics. Added `overlayPanelRef` with `role="dialog"` / `aria-modal`.
+3. **Labels screen accessibility (F37):** `LabelsScreen` had no focus trap, scroll lock, or Escape. Added shared trap + dialog semantics.
+4. **Nested Escape in options sheet (F38):** Delete confirm Escape dismissed entire sheet. Added `closeOnEscape` option to `useFocusTrap` / `ResponsiveSheet`; regression tests in `useFocusTrap.test.ts`.
+5. **Dead sort chip during search (F39):** Sort chip cycled but order stayed relevance-ranked. Disabled chip, shows "Relevance" while search active (D14).
+6. **Error Retry contrast (F40):** Hard-coded white retry button invisible in light theme. Theme-token styling.
+7. **A11y labels (F41):** Per-item checklist remove labels; aria-labels on link URL and label inputs.
+
+### Validation Matrix
+- **TypeScript typecheck:** 0 errors
+- **Web lint:** 0 errors (warnings only, pre-existing)
+- **Web unit tests:** 32 files, 270/270 passing (added `useFocusTrap.test.ts`)
+- **Web production build:** success
+- **Web sync tests:** 9/9 passing
+- **Playwright E2E:** 4/4 passing
+- **Firestore rules:** 37/37 passing
+- **KMP unit + desktop tests:** BUILD SUCCESSFUL
+- **Android debug + release APK:** BUILD SUCCESSFUL
+
+### Blocked (environment)
+- **Browser visual QA (Cursor browser MCP):** MCP server unavailable this session; web flows verified via Playwright E2E against built bundle.
+- **Android emulator:** `emulator-5554` reported offline; no on-device runtime verification.
+- **Windows desktop visual QA:** Not launched this session (prior sessions verified packaged app).
+
+---
+
+## 2026-08-30 — Audit continuation: focus-visible + runtime checks (Session 4)
+
+### Issues Found & Fixed (F43)
+1. **Missing keyboard focus rings (F43):** Drawer, editor chrome, filter chips, settings rows, auth tabs, and markdown preview toggle lacked visible `focus-visible` styling. Extracted shared `CHROME_FOCUS` to `web/src/lib/ui/focusStyles.ts` and applied across components. Markdown preview button gained `aria-label="Edit note body"`.
+
+### Runtime verification this session
+- **Windows desktop:** `:composeApp:run` launched successfully — two `java` processes with `MainWindowTitle = Notelikeus` confirmed.
+- **Playwright E2E:** Re-ran after `npx playwright install chromium` — **4/4 passing**.
+- **Web unit tests:** **270/270** passing after focus-style changes.
+- **Android emulator:** Cold start attempted (`Medium_Phone_API_36.1`); prior `emulator-5554` remained offline. Device QA still blocked.
+
+---
+
+## 2026-08-30 — On-device Android verification (Session 5)
+
+Physical **Pixel 7** (`31071FDH2007WT`, Android 16) connected after adb restart.
+
+### Verified on device
+- In-place debug **1.0.2** install (`install -r`) — success; `firstInstallTime` unchanged (Aug 17), library preserved.
+- Cold launch — `MainActivity` top resumed, no FATAL in logcat.
+- Notes list — search bar, Filters, Manual reorder handles, FAB, signed-in profile chip, note cards render.
+- Read-only search — typed `test2`, list filtered (verified via screencap in temp; not committed — contains personal notes).
+- **Instrumentation:** `:composeApp:connectedDebugAndroidTest` — **4/4 passed** on Pixel 7 (offline emulator skipped).
+
+### Still not exercised on device (per PIXEL_QA_CHECKLIST / safety rules)
+- Biometric app lock (do not fake)
+- Google OAuth sign-in flow (do not fake)
+- Sign-out (destructive to local session)
+- Widget home-screen placement (automation unsolved)
+
+---
+
+## 2026-08-30 — Web React Component Layer Audit (Session 2)
+
+Continuation of the UI/UX + functional audit. This session completed the one gap the
+previous audit explicitly flagged: **"Never audited: web React components."**
+
+### What was audited
+- All 4 web screens (`MainScreen`, `EditorScreen`, `LabelsScreen`, `AuthScreen`)
+- All layout components (`SideDrawer`, `TopBar`, `FilterRow`, `SelectionBar`, `ViewModeToggle`, `InstallPrompt`, `OfflineBanner`, `ResponsiveSheet`)
+- All note components (`NoteCard`, `NoteStaggeredGrid`, `SwipeableNoteCard`, `NoteStaggeredGrid`, section headers)
+- All editor components (`ChecklistEditor`, `EditorBottomBar`, `EditorOptionsSheet`, `LinkDialog`, `MarkdownPreview`, `ReminderPickerDialog`, `RichTextToolbar`)
+- All settings components (`ProfileSheet`, `ThemePicker`, `PrivacyPolicyDialog`, `SignOutDialog`)
+- All stores (`uiStore`, `settingsStore`, `notesStore`, `authStore`, `toastStore`, `tombstoneStore`, `labelRegistryStore`)
+- All hooks (`useNoteEditor`, `useNotes`, `useNoteActions`, `useAccountActions`, `useShortcuts`, `useAuth`, `useCloudSync`, `useLongPress`, `useFocusTrap`, `useBodyScrollLock`, `useMediaQuery`, `useVisualViewportBottomInset`, `useEffectiveColumns`)
+
+### Issues Found & Fixed (F32–F34)
+1. **TypeScript errors in SideDrawer (F32):** `SideDrawer.tsx` destructured `iconClass` and `barClass` that don't exist on `NAV_ITEMS` type, and referenced an undefined `MANAGE_ITEMS` constant, producing 8 TS2339/TS2304/TS2322 typecheck errors. `npm run typecheck` was exiting 1. Fixed by removing the stale bindings from all three `NavButton` call sites.
+2. **D15 violation in NoteCard (F33):** `NoteCard.tsx` used `note.title || 'Untitled'` as the displayed `<h2>` heading across all density modes, showing "Untitled" in the card when the note has body text but no title. Decision D15 mandates the text "Untitled" is not composed when the title is empty. Fixed: empty-title notes now either omit the `<h2>` (with the body acting as the visual lead) or show the first body line prominently. Accessibility label uses `title || firstBodyLine || 'Untitled'` (only shows "Untitled" when truly blank).
+3. **Missing `type="button"` and `aria-label` in LabelsScreen (F34):** Label edit and delete buttons lacked `type="button"` (default is `type="submit"`); inline edit input had no `aria-label`. Fixed.
+
+### Validation Matrix
+- **TypeScript typecheck:** 0 errors (`npm run typecheck` exits 0).
+- **Web unit tests:** 31 test files, 268/268 passing (`npm test`).
+- **Firestore rules:** 37/37 passing (`npm run test:rules`).
+- **KMP unit + desktop tests:** BUILD SUCCESSFUL, all UP-TO-DATE (`:composeApp:testDebugUnitTest :composeApp:desktopTest`).
+- **Android debug APK:** BUILD SUCCESSFUL (`:androidApp:assembleDebug`).
+- **Web production build:** `npm run build` exits 0, bundle generated.
+- **Lint:** 0 errors (warnings only, pre-existing).
+
+### No regressions introduced
+All 268 unit tests green after every fix. TypeScript clean. Build clean.
+
+
+
+- **Playwright E2E Escape Shortcut Fix (F28)**: Added `Escape` shortcut handler with `allowInInputs: true` inside `web/src/screens/EditorScreen.tsx` calling `handleBack()`, ensuring `editor.flushSave()` resolves before closing the route.
+- **Section Headers Harmonization (F29)**: Aligned `buildBoardItems` in `web/src/components/notes/NoteStaggeredGrid.tsx` with Decision D14; date headers now only appear when sorting by date (`newest`/`oldest`).
+- **Privacy Policy Update (F30)**: Updated `PRIVACY_POLICY.md` to document accountless, local-first offline operation across Android, Windows Desktop, and Web.
+- **Web Note Opening Fix (F31)**: Fixed existing notes opening as blank / new notes by making `useNoteEditor` synchronously initialize state from `useNotesStore` on first render and adding explicit `key={noteId}` to all `<EditorScreen />` render sites in `MainScreen.tsx` and `App.tsx`.
+- **Multiplatform Test Suite Pass**: All 31 web test files (268 unit tests), 9 sync emulator tests, 4 browser E2E tests, 37 Firestore security rules tests, and 200+ KMP/Desktop unit tests passed at 100%.
+- **Windows Desktop Distribution**: Packaged native MSI installer (`Notelikeus-1.0.0.msi`) with bundled modular JLink JRE via WiX Toolset.
+- **Android Production Packaging**: Built Google Play App Bundle (`androidApp-release.aab`) and minified release APK with full R8 shrinking.
+- **Live Firebase Deployment**: Deployed production web bundle and Firestore security rules to Firebase live cloud (`https://notelike.web.app`).
+
+### Key Issues Found & Resolved
+1. **Web Editor `Escape` / Save Race in Playwright E2E Tests (F28):**
+   `Escape` key pressed inside active editor inputs was either dropped or closed the editor before flushing pending debounced saves, causing edit data loss upon subsequent browser reload. Resolved by binding `Escape` with `allowInInputs: true` inside `EditorScreen.tsx` to `handleBack()` (which flushes `editor.flushSave()`), ensuring 100% pass on all 4 Playwright browser E2E test suites.
+2. **Section Heading Parity with Decision D14 (F29):**
+   Web `NoteStaggeredGrid.tsx` was generating date headers across manual and search views. Aligned with `NoteSections.kt` and Decision D14: suppress headers on search relevance, only show `Pinned`/`Others` under manual sort when pinned notes exist, and group by date under date-sorted modes.
+3. **Privacy Disclosures Alignment (F30):**
+   Updated `PRIVACY_POLICY.md` to accurately disclose offline-first, accountless guest storage on Web, aligning documentation with the actual implementation.
+4. **Web Editor Blank Note on Card Click (F31):**
+   `useNoteEditor` initialized `useState<EditorState>(createBlankEditorState())` on mount, causing an initial render pass with a blank note before `useEffect` ran, while `<EditorScreen />` lacked `key={noteId}` in `MainScreen.tsx` and `App.tsx`, causing React component reuse issues when transitioning between routes. Resolved with synchronous state initialization from store and explicit `key` props.
+
+### Validation Matrix
+- **KMP Unit & Desktop Tests:** All JVM and Desktop unit tests passing (`:composeApp:testDebugUnitTest :composeApp:desktopTest`).
+- **Android APK Assembly:** Debug & Release APKs compiled and verified with R8 minification and resource shrinking.
+- **Firestore Rules:** 37/37 tests passing against emulator (`npm run test:rules`).
+- **Web Unit Tests:** 31 test files, 268/268 tests passing (`npm test`).
+- **Web Sync Tests:** 9/9 sync invariant tests passing against emulator (`npm run test:sync`).
+- **Web E2E Tests:** 4/4 Playwright browser tests passing (`npm run test:e2e`).
+
+---
+
 ## 2026-08-18 — Data-loss hunt, then the visual pass
 
 29 commits, `d743f89`..`b927c9a`. 304 tests (was 245). All four CI workflows green.
