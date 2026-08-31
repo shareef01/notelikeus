@@ -100,6 +100,40 @@ class EditorViewModel(
         loadNote()
     }
 
+    fun setInitialContent(title: String?, content: String?) {
+        if (noteId != null) return
+        val t = title?.trim() ?: ""
+        val c = content?.trim() ?: ""
+        if (t.isEmpty() && c.isEmpty()) return
+        if (t.isNotEmpty()) titleEdited = true
+        if (c.isNotEmpty()) contentEdited = true
+        _state.update { current ->
+            current.copy(
+                title = if (current.title.isEmpty()) t else current.title,
+                content = if (current.content.isEmpty()) c else current.content,
+                contentValue = if (current.content.isEmpty()) TextFieldValue(c) else current.contentValue
+            )
+        }
+        triggerAutosave()
+    }
+
+    fun formatForSharing(): String {
+        val s = _state.value
+        val sb = StringBuilder()
+        if (s.title.isNotBlank()) {
+            sb.append(s.title.trim()).append("\n\n")
+        }
+        if (s.checklist.isNotEmpty()) {
+            s.checklist.forEach { item ->
+                val mark = if (item.isChecked) "[x]" else "[ ]"
+                sb.append("- ").append(mark).append(" ").append(item.text).append("\n")
+            }
+        } else if (s.content.isNotBlank()) {
+            sb.append(s.content.trim())
+        }
+        return sb.toString().trim()
+    }
+
     private fun loadNote() {
         loadSettingsAndNote()
         loadLabels()

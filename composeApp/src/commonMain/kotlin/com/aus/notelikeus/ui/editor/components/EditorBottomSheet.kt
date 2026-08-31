@@ -41,6 +41,7 @@ fun EditorBottomSheet(
     onLabelToggle: (Label) -> Unit,
     onCreateLabel: (String) -> Unit,
     onDeleteNote: () -> Unit,
+    onShareNote: () -> Unit,
     onDismiss: () -> Unit,
     isChecklist: Boolean = false,
     onConvertToChecklist: () -> Unit = {},
@@ -190,6 +191,25 @@ fun EditorBottomSheet(
 
             // Actions
             SettingsSectionHeader(title = stringResource(Res.string.section_actions))
+
+            ListItem(
+                headlineContent = {
+                    Text(stringResource(Res.string.action_share))
+                },
+                leadingContent = {
+                    Icon(
+                        Icons.Default.Share,
+                        contentDescription = null,
+                        modifier = Modifier.size(Size.iconLarge)
+                    )
+                },
+                modifier = Modifier.clickable(role = Role.Button) {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onShareNote()
+                    onDismiss()
+                },
+                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)
+            )
 
             ListItem(
                 headlineContent = {

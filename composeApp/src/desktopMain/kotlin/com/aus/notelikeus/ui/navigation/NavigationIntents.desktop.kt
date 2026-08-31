@@ -9,3 +9,5 @@ actual object InternalNavigationToken {
 actual fun extractEditorNoteId(intent: Any?): Long? = null
 
 actual fun intentRequestsNewNote(intent: Any?): Boolean = false
+
+actual fun extractSharedText(intent: Any?): Pair<String?, String?>? = null
