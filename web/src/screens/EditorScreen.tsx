@@ -38,6 +38,26 @@ interface EditorScreenProps {
   route: Exclude<EditorRoute, { mode: 'closed' }>;
 }
 
+function formatNoteForSharing(
+  title: string,
+  content: string,
+  checklist: Array<{ text: string; isChecked: boolean }>,
+): string {
+  const parts: string[] = [];
+  if (title.trim()) {
+    parts.push(title.trim());
+  }
+  if (checklist && checklist.length > 0) {
+    const listLines = checklist.map(
+      (item) => `- [${item.isChecked ? 'x' : ' '}] ${item.text}`,
+    );
+    parts.push(listLines.join('\n'));
+  } else if (content.trim()) {
+    parts.push(content.trim());
+  }
+  return parts.join('\n\n').trim();
+}
+
 export function EditorScreen({ route }: EditorScreenProps) {
   const noteId = route.mode === 'new' ? 'new' : route.noteId;
   const closeEditor = useUiStore((s) => s.closeEditor);
@@ -173,6 +193,43 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const handleDelete = async () => {
     await editor.trashNote();
     closeEditor();
+  };
+
+  const handleShareNote = async () => {
+    const text = formatNoteForSharing(state.title, state.content, state.checklist);
+    if (!text) return;
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: state.title || 'Note',
+          text,
+        });
+        return;
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+      }
+    }
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      useToastStore.getState().show('Note copied to clipboard');
+    }
+  };
+
+  const handleExportMarkdown = () => {
+    const text = formatNoteForSharing(state.title, state.content, state.checklist);
+    if (!text) return;
+    const safeTitle = (state.title || 'note').replace(/[^a-z0-9-_]/gi, '_').toLowerCase() || 'note';
+    const filename = `${safeTitle}.md`;
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    useToastStore.getState().show(`Exported ${filename}`);
   };
 
   const layoutButtons: { id: EditorLayout; label: string; icon: ReactNode }[] = [
@@ -493,6 +550,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
         reminderTimestamp={state.reminderTimestamp}
         onReminderChange={editor.setReminderTimestamp}
         onDeleteNote={() => void handleDelete()}
+        onShareNote={() => void handleShareNote()}
+        onExportMarkdown={handleExportMarkdown}
       />
       <LinkDialog
         open={showLinkDialog}

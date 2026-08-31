@@ -20,6 +20,7 @@ import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.platform.ForegroundActivityTracker
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.ui.navigation.extractEditorNoteId
+import com.aus.notelikeus.ui.navigation.extractSharedText
 import com.aus.notelikeus.ui.navigation.intentRequestsNewNote
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -38,6 +39,8 @@ class MainActivity : FragmentActivity() {
     private val settingsRepository: SettingsRepository by inject()
     private var pendingNoteId by mutableStateOf<Long?>(null)
     private var pendingCreateNote by mutableStateOf(false)
+    private var pendingSharedTitle by mutableStateOf<String?>(null)
+    private var pendingSharedContent by mutableStateOf<String?>(null)
     // mutableLongStateOf, not mutableStateOf: this is a counter bumped on every deep link and
     // every widget tap, and the generic version boxes a java.lang.Long on each one.
     private var navigationRequest by mutableLongStateOf(0L)
@@ -50,8 +53,11 @@ class MainActivity : FragmentActivity() {
             !AppStartup.isReady.value
         }
         super.onCreate(savedInstanceState)
+        val shared = extractSharedText(intent)
+        pendingSharedTitle = shared?.first
+        pendingSharedContent = shared?.second
         pendingNoteId = extractEditorNoteId(intent)
-        pendingCreateNote = intentRequestsNewNote(intent)
+        pendingCreateNote = intentRequestsNewNote(intent) || shared != null
         navigationRequest++
         enableEdgeToEdge()
         // Credential Manager needs an Activity to host its sign-in sheet; the helper is a
@@ -98,6 +104,12 @@ class MainActivity : FragmentActivity() {
                     },
                     pendingNoteId = pendingNoteId,
                     pendingCreateNote = pendingCreateNote,
+                    pendingSharedTitle = pendingSharedTitle,
+                    pendingSharedContent = pendingSharedContent,
+                    onConsumeSharedContent = {
+                        pendingSharedTitle = null
+                        pendingSharedContent = null
+                    },
                     navigationRequest = navigationRequest
                 )
 
@@ -154,8 +166,11 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        val shared = extractSharedText(intent)
+        pendingSharedTitle = shared?.first
+        pendingSharedContent = shared?.second
         pendingNoteId = extractEditorNoteId(intent)
-        pendingCreateNote = intentRequestsNewNote(intent)
+        pendingCreateNote = intentRequestsNewNote(intent) || shared != null
         navigationRequest++
     }
 
