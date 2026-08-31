@@ -1,6 +1,6 @@
 import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
 import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';
-import { TrashIcon, AddIcon } from '@/components/icons/Icons';
+import { TrashIcon, AddIcon, ShareIcon, DownloadIcon } from '@/components/icons/Icons';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { Label } from '@/types/label';
 import { useState } from 'react';
@@ -33,6 +33,8 @@ interface EditorOptionsSheetProps {
   reminderTimestamp: number | null;
   onReminderChange: (timestamp: number | null) => void;
   onDeleteNote: () => void;
+  onShareNote?: () => void;
+  onExportMarkdown?: () => void;
 }
 
 export function EditorOptionsSheet({
@@ -47,6 +49,8 @@ export function EditorOptionsSheet({
   reminderTimestamp,
   onReminderChange,
   onDeleteNote,
+  onShareNote,
+  onExportMarkdown,
 }: EditorOptionsSheetProps) {
   const [newLabel, setNewLabel] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -178,6 +182,28 @@ export function EditorOptionsSheet({
         </section>
 
         <section className="mt-4 border-t border-brand-outline/60">
+          <button
+            type="button"
+            onClick={() => {
+              onShareNote?.();
+              onClose();
+            }}
+            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-brand-primary transition-colors hover:bg-brand-primary/5"
+          >
+            <ShareIcon size={24} className="text-brand-muted" />
+            Share note
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onExportMarkdown?.();
+              onClose();
+            }}
+            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-brand-primary transition-colors hover:bg-brand-primary/5"
+          >
+            <DownloadIcon size={24} className="text-brand-muted" />
+            Download as Markdown (.md)
+          </button>
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
