@@ -1,6 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" rx="8" fill="#000000"/>
-  <rect x="7" y="8" width="3" height="16" rx="1.5" fill="#F2F2F2"/>
-  <rect x="13" y="8" width="3" height="16" rx="1.5" fill="#F2F2F2"/>
-  <rect x="19" y="8" width="3" height="16" rx="1.5" fill="#F2F2F2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" fill="none">
+  <rect width="108" height="108" rx="24" fill="#000000"/>
+  <!-- Five vertical stripes — brand mark -->
+  <rect x="30" y="18" width="6.5" height="72" fill="#B8B8B8"/>
+  <rect x="40.75" y="18" width="6.5" height="72" fill="#E8E8E8"/>
+  <rect x="51.5" y="18" width="6.5" height="72" fill="#FFFFFF"/>
+  <rect x="62.25" y="18" width="6.5" height="72" fill="#E8E8E8"/>
+  <rect x="73" y="18" width="6.5" height="72" fill="#B8B8B8"/>
 </svg>
