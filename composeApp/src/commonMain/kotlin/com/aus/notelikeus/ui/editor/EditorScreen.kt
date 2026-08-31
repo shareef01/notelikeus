@@ -63,6 +63,8 @@ import com.aus.notelikeus.ui.components.AppSnackbar
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
 import com.aus.notelikeus.ui.components.ConfirmDialog
+import com.aus.notelikeus.util.rememberPlatformShare
+import com.aus.notelikeus.util.AppConfig
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.ui.semantics.Role
 
@@ -146,6 +148,8 @@ fun EditorScreen(
     val noteSaveFailedMsg = stringResource(Res.string.note_save_failed)
     val noteDeleteFailedMsg = stringResource(Res.string.note_delete_failed)
     val reminderRemovedMsg = stringResource(Res.string.reminder_removed_confirmation)
+    val noteCopiedMsg = stringResource(Res.string.note_copied_to_clipboard)
+    val platformShare = rememberPlatformShare()
 
     fun scheduleReminderIfAllowed(millis: Long) {
         viewModel.setReminder(millis)
@@ -425,6 +429,15 @@ fun EditorScreen(
                             onStageUndo(snapshot, UndoAction.TRASH, noteTrashedMsg)
                         }
                         onBack()
+                    }
+                },
+                onShareNote = {
+                    val sharedText = viewModel.formatForSharing()
+                    if (sharedText.isNotBlank()) {
+                        platformShare.shareText(state.title.takeIf { it.isNotBlank() }, sharedText)
+                        if (AppConfig.isDesktop) {
+                            scope.launch { snackbarHostState.showSnackbar(noteCopiedMsg) }
+                        }
                     }
                 },
                 onDismiss = { showBottomSheet = false },
