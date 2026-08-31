@@ -1,0 +1,39 @@
+# Core Application & Entrypoints
+HSPLcom/aus/notelikeus/NotelikeusApp;-><init>()V
+HSPLcom/aus/notelikeus/NotelikeusApp;->onCreate()V
+HSPLcom/aus/notelikeus/AppStartup;-><clinit>()V
+HSPLcom/aus/notelikeus/AppStartup;->markReady()V
+HSPLcom/aus/notelikeus/AppStartup;->isReady()Lkotlinx/coroutines/flow/StateFlow;
+HSPLcom/aus/notelikeus/MainActivity;-><init>()V
+HSPLcom/aus/notelikeus/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSPLcom/aus/notelikeus/MainActivity;->applySecureFlagWhileAppLockEnabled()V
+
+# Compose Root & Navigation
+HSPLcom/aus/notelikeus/AppKt;->App(Landroidx/compose/material3/windowsizeclass/WindowSizeClass;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function1;Ljava/lang/Long;ZJLandroidx/compose/runtime/Composer;II)V
+HSPLcom/aus/notelikeus/ui/navigation/NavigationIntents_androidKt;->extractEditorNoteId(Ljava/lang/Object;)Ljava/lang/Long;
+HSPLcom/aus/notelikeus/ui/navigation/NavigationIntents_androidKt;->intentRequestsNewNote(Ljava/lang/Object;)Z
+HSPLcom/aus/notelikeus/ui/navigation/InternalNavigationToken;->init(Ljava/lang/Object;)V
+HSPLcom/aus/notelikeus/ui/navigation/InternalNavigationToken;->matches(Ljava/lang/Object;)Z
+
+# Dependency Injection
+HSPLcom/aus/notelikeus/di/KoinKt;->initKoin(Lkotlin/jvm/functions/Function1;)Lorg/koin/core/KoinApplication;
+HSPLcom/aus/notelikeus/di/PlatformModuleKt;->getPlatformModule()Lorg/koin/core/module/Module;
+
+# Database & Key Manager & Migrator
+HSPLcom/aus/notelikeus/data/local/NotelikeusDatabase;-><init>()V
+HSPLcom/aus/notelikeus/data/local/DatabaseBuilder_commonKt;->warmUp(Lcom/aus/notelikeus/data/local/NotelikeusDatabase;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+HSPLcom/aus/notelikeus/data/local/DatabaseKeyManager;-><init>(Landroid/content/Context;)V
+HSPLcom/aus/notelikeus/data/local/DatabaseKeyManager;->getPassphrase()[B
+HSPLcom/aus/notelikeus/data/local/PlaintextDatabaseMigrator;->migrateToEncryptedIfNeeded(Landroid/content/Context;Ljava/lang/String;[B)V
+HSPLcom/aus/notelikeus/data/local/DatabaseMigrations;-><clinit>()V
+HSPLnet/zetetic/database/sqlcipher/SupportOpenHelperFactory;-><init>([B)V
+
+# Repositories & ViewModels
+HSPLcom/aus/notelikeus/data/repository/NoteRepositoryImpl;-><init>(Lcom/aus/notelikeus/data/local/dao/NoteDao;Lcom/aus/notelikeus/data/local/dao/LabelDao;Lcom/aus/notelikeus/domain/platform/ReminderManager;Lcom/aus/notelikeus/domain/platform/PlatformWidgetManager;Lcom/aus/notelikeus/domain/platform/SyncCoordinator;Lcom/aus/notelikeus/data/sync/LocalAccountIsolator;Lcom/aus/notelikeus/data/local/NotelikeusDatabase;)V
+HSPLcom/aus/notelikeus/data/repository/SettingsRepositoryImpl;-><init>(Landroidx/datastore/core/DataStore;Lkotlinx/coroutines/CoroutineDispatcher;)V
+HSPLcom/aus/notelikeus/ui/main/MainViewModel;-><init>(Lcom/aus/notelikeus/domain/repository/NoteRepository;Lcom/aus/notelikeus/domain/repository/SettingsRepository;Lcom/aus/notelikeus/domain/platform/SyncCoordinator;Lcom/aus/notelikeus/domain/repository/SyncManager;Lcom/aus/notelikeus/data/backup/NoteBackupExporter;Lcom/aus/notelikeus/data/backup/NoteBackupImporter;)V
+HSPLcom/aus/notelikeus/ui/main/MainScreenKt;->MainScreen(Lcom/aus/notelikeus/ui/main/MainViewModel;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/material3/windowsizeclass/WindowSizeClass;Landroidx/compose/runtime/Composer;II)V
+
+# Theme Tokens & Rendering
+HSPLcom/aus/notelikeus/ui/theme/ThemeKt;->NotelikeusTheme(Lcom/aus/notelikeus/domain/model/AppTheme;ZZLkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
+HSPLcom/aus/notelikeus/ui/theme/ColorKt;-><clinit>()V
