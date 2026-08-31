@@ -1,6 +1,7 @@
 [versions]
 agp = "9.3.2"
 coreKtx = "1.19.0"
+coreSplashScreen = "1.0.1"
 junit = "4.13.2"
 # Instrumented tests only (composeApp androidInstrumentedTest). The quarantine path in
 # PlaintextDatabaseMigrator runs real SQLCipher, whose native libraries do not exist off-device,
@@ -66,6 +67,7 @@ work = "2.11.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "coreSplashScreen" }
 androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 androidx-datastore-preferences-android = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }

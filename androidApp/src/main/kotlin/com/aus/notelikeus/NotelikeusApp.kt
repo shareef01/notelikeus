@@ -127,16 +127,11 @@ class NotelikeusApp : Application(), Configuration.Provider, AppFunctionConfigur
             } finally {
                 AppStartup.markReady()
             }
+            NotificationChannels.createReminderChannel(this@NotelikeusApp)
+            scheduleReconciliationSync()
         }
 
         InternalNavigationToken.init(this)
-        // App Check is not installed here yet. The web client sends tokens (see web/src/lib/
-        // firebase.ts); Android does not, so enabling enforcement in the Firebase console today
-        // would lock out this app while the web app kept working. Wiring it needs the Play
-        // Integrity provider for release plus the debug provider for debug builds, and a device
-        // to verify against — see audit finding 12.
-        NotificationChannels.createReminderChannel(this)
-        scheduleReconciliationSync()
     }
 
     private fun scheduleReconciliationSync() {
