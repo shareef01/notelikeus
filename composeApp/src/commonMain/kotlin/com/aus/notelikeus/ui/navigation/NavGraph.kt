@@ -66,7 +66,10 @@ fun NavGraph(
     onRequestAppUnlock: (onSuccess: () -> Unit) -> Unit = {},
     onAppLockEnabled: () -> Unit = {},
     onExportBackup: () -> Unit = {},
-    onImportBackup: () -> Unit = {}
+    onImportBackup: () -> Unit = {},
+    pendingSharedTitle: String? = null,
+    pendingSharedContent: String? = null,
+    onConsumeSharedContent: () -> Unit = {}
 ) {
     NavHost(
         navController = navController,
@@ -150,7 +153,13 @@ fun NavGraph(
                 ?.takeIf { it != Int.MIN_VALUE }
 
             val viewModel: EditorViewModel = koinViewModel()
-            LaunchedEffect(noteId, initialColor) { viewModel.setRouteArgs(noteId, initialColor) }
+            LaunchedEffect(noteId, initialColor) {
+                viewModel.setRouteArgs(noteId, initialColor)
+                if (noteId == null && (pendingSharedTitle != null || pendingSharedContent != null)) {
+                    viewModel.setInitialContent(pendingSharedTitle, pendingSharedContent)
+                    onConsumeSharedContent()
+                }
+            }
             EditorScreen(
                 viewModel = viewModel,
                 onBack = {

@@ -19,3 +19,5 @@ const val EXTRA_INTERNAL_NAV = "com.aus.notelikeus.INTERNAL_NAV"
 expect fun extractEditorNoteId(intent: Any?): Long?
 
 expect fun intentRequestsNewNote(intent: Any?): Boolean
+
+expect fun extractSharedText(intent: Any?): Pair<String?, String?>?
