@@ -40,6 +40,9 @@ fun App(
     onSidebarCollapsedChange: (Boolean) -> Unit = {},
     pendingNoteId: Long? = null,
     pendingCreateNote: Boolean = false,
+    pendingSharedTitle: String? = null,
+    pendingSharedContent: String? = null,
+    onConsumeSharedContent: () -> Unit = {},
     navigationRequest: Long = 0L,
     /**
      * Window chrome drawn above the app content. Desktop passes its custom title bar here rather
@@ -105,6 +108,9 @@ fun App(
                         onSidebarCollapsedChange = onSidebarCollapsedChange,
                         pendingNoteId = pendingNoteId,
                         pendingCreateNote = pendingCreateNote,
+                        pendingSharedTitle = pendingSharedTitle,
+                        pendingSharedContent = pendingSharedContent,
+                        onConsumeSharedContent = onConsumeSharedContent,
                         navigationRequest = navigationRequest,
                         isUnlocked = isUnlocked,
                         onUnlocked = { isUnlocked = true },
@@ -130,6 +136,9 @@ private fun AppContent(
     onSidebarCollapsedChange: (Boolean) -> Unit,
     pendingNoteId: Long?,
     pendingCreateNote: Boolean,
+    pendingSharedTitle: String?,
+    pendingSharedContent: String?,
+    onConsumeSharedContent: () -> Unit,
     navigationRequest: Long,
     isUnlocked: Boolean,
     onUnlocked: () -> Unit,
@@ -229,7 +238,10 @@ private fun AppContent(
                         },
                         onAppLockEnabled = onUnlocked,
                         onExportBackup = { onExportBackup(viewModel) },
-                        onImportBackup = { onImportBackup(viewModel) }
+                        onImportBackup = { onImportBackup(viewModel) },
+                        pendingSharedTitle = pendingSharedTitle,
+                        pendingSharedContent = pendingSharedContent,
+                        onConsumeSharedContent = onConsumeSharedContent
                     )
 
                     if (!isUnlocked) {

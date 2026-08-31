@@ -48,6 +48,8 @@
     <string name="action_ok">OK</string>
     <string name="action_remove">Remove</string>
     <string name="action_undo">Undo</string>
+    <string name="action_share">Share note</string>
+    <string name="note_copied_to_clipboard">Note copied to clipboard</string>
 
     <!-- Export / Import -->
     <string name="export_success">Backup exported</string>

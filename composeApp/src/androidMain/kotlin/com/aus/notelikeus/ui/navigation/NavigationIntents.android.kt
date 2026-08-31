@@ -39,8 +39,20 @@ actual fun extractEditorNoteId(intent: Any?): Long? {
 
 actual fun intentRequestsNewNote(intent: Any?): Boolean {
     val i = intent as? Intent ?: return false
+    if (i.action == Intent.ACTION_SEND && i.type == "text/plain") return true
     if (!InternalNavigationToken.matches(i)) return false
     return i.getBooleanExtra("createNote", false)
+}
+
+actual fun extractSharedText(intent: Any?): Pair<String?, String?>? {
+    val i = intent as? Intent ?: return null
+    if (i.action != Intent.ACTION_SEND || i.type != "text/plain") return null
+    val subject = i.getStringExtra(Intent.EXTRA_SUBJECT)
+        ?: i.getCharSequenceExtra(Intent.EXTRA_TITLE)?.toString()
+    val text = i.getStringExtra(Intent.EXTRA_TEXT)
+        ?: i.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+    if (subject.isNullOrBlank() && text.isNullOrBlank()) return null
+    return Pair(subject?.takeIf { it.isNotBlank() }, text?.takeIf { it.isNotBlank() })
 }
 
 fun Intent.markInternalNavigation(): Intent =
