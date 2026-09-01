@@ -7,7 +7,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.aus.notelikeus.ui.theme.BrandMarkIcon
 
@@ -16,7 +16,7 @@ fun DesktopAboutDialog(
     onDismiss: () -> Unit,
     version: String
 ) {
-    Dialog(
+    DialogWindow(
         onCloseRequest = onDismiss,
         state = rememberDialogState(width = 450.dp, height = 350.dp),
         title = "About Notelikeus"

@@ -41,9 +41,10 @@ firebase-debug.log
 ui-debug.log
 database-debug.log
 
-# Agent tool metadata (contains prompt/topic text)
+# Local agent / tool metadata
 .reasonix/
 .artifacts/
-
-# Reasonix session config
+.claude/
+.agents/
 reasonix.toml
+skills-lock.json
