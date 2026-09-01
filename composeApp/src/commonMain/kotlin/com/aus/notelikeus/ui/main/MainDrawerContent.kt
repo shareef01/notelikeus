@@ -6,10 +6,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.semantics.Role
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Lightbulb
@@ -246,7 +248,10 @@ internal fun MainDrawerContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
                         shape = RoundedCornerShape(Spacing.md)
                     )
-                    .clickable {
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = if (collapsed) "Expand sidebar" else "Collapse sidebar"
+                    ) {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         onSidebarCollapsedChange(!collapsed)
                     }
@@ -255,7 +260,7 @@ internal fun MainDrawerContent(
                 horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.Start
             ) {
                 Icon(
-                    imageVector = Icons.Default.KeyboardArrowLeft,
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                     contentDescription = if (collapsed) "Expand sidebar" else "Collapse sidebar",
                     tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                     modifier = Modifier
