@@ -1,10 +1,4 @@
-# Remap all commit author variants and co-author emails so GitHub
-# attributes everything to shareef01 on the contributors list.
+# Canonical contributor mappings for shareef01
 shareef01 <shareef.q13@gmail.com> shareef01 <48938419+shareef01@users.noreply.github.com>
 shareef01 <shareef.q13@gmail.com> shareef.q13 <shareef.q13@gmail.com>
 shareef01 <shareef.q13@gmail.com> <48938419+shareef01@users.noreply.github.com>
-shareef01 <shareef.q13@gmail.com> Cursor <cursoragent@cursor.com>
-shareef01 <shareef.q13@gmail.com> Claude Opus 4.8 <noreply@anthropic.com>
-shareef01 <shareef.q13@gmail.com> Claude Sonnet 5 <noreply@anthropic.com>
-shareef01 <shareef.q13@gmail.com> <cursoragent@cursor.com>
-shareef01 <shareef.q13@gmail.com> <noreply@anthropic.com>
