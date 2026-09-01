@@ -128,7 +128,7 @@ fun MainTopAppBar(
     onClearFilters: () -> Unit = {},
     listScrolled: Boolean = false,
     searchFocusRequester: androidx.compose.ui.focus.FocusRequester? = null,
-    showMenuIcon: Boolean = true, // Added to hide on Desktop
+    showMenuIcon: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
