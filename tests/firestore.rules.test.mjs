@@ -406,4 +406,41 @@ describe('firestore.rules', () => {
       updateDoc(noteRef(alice, 'alice', 'note-1'), { content: 'x'.repeat(100001) }),
     );
   });
+
+  it('rejects notes with oversized title (> 2000 chars)', async () => {
+    const alice = authed('alice');
+    await assertFails(
+      setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ title: 't'.repeat(2001) })),
+    );
+  });
+
+  it('rejects notes with oversized checklist (> 500 items)', async () => {
+    const alice = authed('alice');
+    const hugeChecklist = Array.from({ length: 501 }, (_, i) => ({
+      text: `item-${i}`,
+      isChecked: false,
+      position: i,
+    }));
+    await assertFails(
+      setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ checklist: hugeChecklist })),
+    );
+  });
+
+  it('rejects notes with oversized attachments (> 50 items)', async () => {
+    const alice = authed('alice');
+    const hugeAttachments = Array.from({ length: 51 }, (_, i) => ({
+      id: `att-${i}`,
+      fileName: `file-${i}.txt`,
+    }));
+    await assertFails(
+      setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ attachments: hugeAttachments })),
+    );
+  });
+
+  it('rejects non-boolean boolean fields in note document', async () => {
+    const alice = authed('alice');
+    await assertFails(setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ isPinned: 'true' })));
+    await assertFails(setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ isArchived: 1 })));
+    await assertFails(setDoc(noteRef(alice, 'alice', 'note-1'), validNote({ isTrashed: 0 })));
+  });
 });

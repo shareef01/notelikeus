@@ -2,6 +2,12 @@
   "name": "notelikeus-firebase",
   "private": true,
   "type": "module",
+  "author": "shareef01",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shareef01/notelikeus.git"
+  },
+  "homepage": "https://notelike.web.app",
   "scripts": {
     "test:rules": "firebase emulators:exec --only firestore \"vitest run tests/firestore.rules.test.mjs\""
   },
