@@ -21,7 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 
 /**
@@ -44,7 +44,7 @@ fun DesktopBiometricPrompt(
     @Suppress("UNUSED_PARAMETER") onSuccess: () -> Unit,
     onCancel: () -> Unit
 ) {
-    Dialog(
+    DialogWindow(
         onCloseRequest = onCancel,
         state = rememberDialogState(width = 400.dp, height = 260.dp),
         title = title
