@@ -47,8 +47,7 @@ function Step($name, [scriptblock]$body) {
     }
 }
 
-# Gradle needs a JDK. Prefer JAVA_HOME; fall back to Android Studio's bundled JBR
-# (this machine has no java on PATH otherwise -- see .claude/skills/run-app/SKILL.md).
+# Gradle needs a JDK. Prefer JAVA_HOME; fall back to Android Studio's bundled JBR.
 if (-not $env:JAVA_HOME) {
     $jbr = "$env:ProgramFiles\Android\Android Studio\jbr"
     if (Test-Path "$jbr\bin\java.exe") {
