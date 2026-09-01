@@ -40,9 +40,11 @@ import { useNoteActions } from '@/screens/main/useNoteActions';
 
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { useShortcuts } from '@/hooks/useShortcuts';
-import { EditorScreen } from '@/screens/EditorScreen';
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+const EditorScreen = lazy(() =>
+  import('@/screens/EditorScreen').then((module) => ({ default: module.EditorScreen })),
+);
 
 
 
@@ -533,10 +535,12 @@ export function MainScreen() {
               allowClearData={false}
               onDismiss={() => useUiStore.getState().closeEditor()}
             >
-              <EditorScreen
-                key={dockedEditor.mode === 'new' ? 'new' : dockedEditor.noteId}
-                route={dockedEditor}
-              />
+              <Suspense fallback={null}>
+                <EditorScreen
+                  key={dockedEditor.mode === 'new' ? 'new' : dockedEditor.noteId}
+                  route={dockedEditor}
+                />
+              </Suspense>
             </ErrorBoundary>
           </div>
         ) : null}
@@ -547,10 +551,12 @@ export function MainScreen() {
             allowClearData={false}
             onDismiss={() => useUiStore.getState().closeEditor()}
           >
-            <EditorScreen
-              key={overlayEditor.mode === 'new' ? 'new' : overlayEditor.noteId}
-              route={overlayEditor}
-            />
+            <Suspense fallback={null}>
+              <EditorScreen
+                key={overlayEditor.mode === 'new' ? 'new' : overlayEditor.noteId}
+                route={overlayEditor}
+              />
+            </Suspense>
           </ErrorBoundary>
         ) : null}
       </div>

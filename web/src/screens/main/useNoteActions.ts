@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import {
   archiveNoteById,
   emptyTrash,
@@ -50,142 +51,178 @@ export function useNoteActions({
   closeEmptyTrashConfirm,
   closeBulkDeleteConfirm,
 }: NoteActionsDeps) {
-  const archiveNote = (note: Note) =>
-    runNoteAction('Archive', async () => {
-      const previous = { ...note };
-      await archiveNoteById(note.id);
-      showUndoToast({
-        message: 'Note archived',
-        revert: () => saveNote(previous),
-      });
-    });
+  const archiveNote = useCallback(
+    (note: Note) =>
+      runNoteAction('Archive', async () => {
+        const previous = { ...note };
+        await archiveNoteById(note.id);
+        showUndoToast({
+          message: 'Note archived',
+          revert: () => saveNote(previous),
+        });
+      }),
+    [],
+  );
 
-  const trashNote = (note: Note) =>
-    runNoteAction('Move to trash', async () => {
-      const previous = { ...note };
-      await trashNoteById(note.id);
-      showUndoToast({
-        message: 'Note moved to trash',
-        revert: () => saveNote(previous),
-      });
-    });
+  const trashNote = useCallback(
+    (note: Note) =>
+      runNoteAction('Move to trash', async () => {
+        const previous = { ...note };
+        await trashNoteById(note.id);
+        showUndoToast({
+          message: 'Note moved to trash',
+          revert: () => saveNote(previous),
+        });
+      }),
+    [],
+  );
 
-  const restoreNote = (note: Note) =>
-    runNoteAction('Restore', async () => {
-      await restoreNoteById(note.id);
-      useToastStore.getState().show('Note restored');
-    });
+  const restoreNote = useCallback(
+    (note: Note) =>
+      runNoteAction('Restore', async () => {
+        await restoreNoteById(note.id);
+        useToastStore.getState().show('Note restored');
+      }),
+    [],
+  );
 
-  const permanentlyDeleteNote = (note: Note) =>
-    runNoteAction('Delete', async () => {
-      const previous = { ...note };
-      await removeNote(note.id);
-      showUndoToast({
-        message: 'Note deleted permanently',
-        revert: () => restorePermanentlyDeletedNote(previous),
-      });
-    });
+  const permanentlyDeleteNote = useCallback(
+    (note: Note) =>
+      runNoteAction('Delete', async () => {
+        const previous = { ...note };
+        await removeNote(note.id);
+        showUndoToast({
+          message: 'Note deleted permanently',
+          revert: () => restorePermanentlyDeletedNote(previous),
+        });
+      }),
+    [],
+  );
 
-  const emptyTheTrash = () =>
-    runNoteAction('Empty trash', async () => {
-      closeEmptyTrashConfirm();
-      const trashedSnapshots = notes.filter((note) => note.isTrashed).map((note) => ({ ...note }));
-      const count = await emptyTrash();
-      if (count === 0) {
-        useToastStore.getState().show('Trash is already empty');
-        return;
-      }
-      showUndoToast({
-        message: `Deleted ${plural(count)} permanently`,
-        revert: async () => {
-          await Promise.all(trashedSnapshots.map((note) => restorePermanentlyDeletedNote(note)));
-        },
-      });
-    });
+  const emptyTheTrash = useCallback(
+    () =>
+      runNoteAction('Empty trash', async () => {
+        closeEmptyTrashConfirm();
+        const trashedSnapshots = notes.filter((note) => note.isTrashed).map((note) => ({ ...note }));
+        const count = await emptyTrash();
+        if (count === 0) {
+          useToastStore.getState().show('Trash is already empty');
+          return;
+        }
+        showUndoToast({
+          message: `Deleted ${plural(count)} permanently`,
+          revert: async () => {
+            await Promise.all(trashedSnapshots.map((note) => restorePermanentlyDeletedNote(note)));
+          },
+        });
+      }),
+    [closeEmptyTrashConfirm, notes],
+  );
 
-  const bulkPinToggle = () =>
-    runNoteAction('Pin', async () => {
-      const snapshots = getSelectedSnapshots();
-      if (snapshots.length === 0) return;
-      const pin = !selectionAllPinned;
-      await Promise.all(
-        snapshots.map((note) => saveNote({ ...note, isPinned: pin, timestamp: Date.now() })),
-      );
-      clearSelection();
-      useToastStore
-        .getState()
-        .show(`${plural(snapshots.length)} ${pin ? 'pinned' : 'unpinned'}`);
-    });
+  const bulkPinToggle = useCallback(
+    () =>
+      runNoteAction('Pin', async () => {
+        const snapshots = getSelectedSnapshots();
+        if (snapshots.length === 0) return;
+        const pin = !selectionAllPinned;
+        await Promise.all(
+          snapshots.map((note) => saveNote({ ...note, isPinned: pin, timestamp: Date.now() })),
+        );
+        clearSelection();
+        useToastStore
+          .getState()
+          .show(`${plural(snapshots.length)} ${pin ? 'pinned' : 'unpinned'}`);
+      }),
+    [clearSelection, getSelectedSnapshots, selectionAllPinned],
+  );
 
-  const bulkArchive = () =>
-    runNoteAction('Archive', async () => {
-      const snapshots = getSelectedSnapshots();
-      if (snapshots.length === 0) return;
-      await Promise.all(snapshots.map((note) => archiveNoteById(note.id)));
-      clearSelection();
-      showUndoToast({
-        message: `${plural(snapshots.length)} archived`,
-        revert: async () => {
-          await Promise.all(snapshots.map((note) => saveNote(note)));
-        },
-      });
-    });
+  const bulkArchive = useCallback(
+    () =>
+      runNoteAction('Archive', async () => {
+        const snapshots = getSelectedSnapshots();
+        if (snapshots.length === 0) return;
+        await Promise.all(snapshots.map((note) => archiveNoteById(note.id)));
+        clearSelection();
+        showUndoToast({
+          message: `${plural(snapshots.length)} archived`,
+          revert: async () => {
+            await Promise.all(snapshots.map((note) => saveNote(note)));
+          },
+        });
+      }),
+    [clearSelection, getSelectedSnapshots],
+  );
 
-  const bulkTrash = () =>
-    runNoteAction('Move to trash', async () => {
-      const snapshots = getSelectedSnapshots();
-      if (snapshots.length === 0) return;
-      await Promise.all(snapshots.map((note) => trashNoteById(note.id)));
-      clearSelection();
-      showUndoToast({
-        message: `${plural(snapshots.length)} moved to trash`,
-        revert: async () => {
-          await Promise.all(snapshots.map((note) => saveNote(note)));
-        },
-      });
-    });
+  const bulkTrash = useCallback(
+    () =>
+      runNoteAction('Move to trash', async () => {
+        const snapshots = getSelectedSnapshots();
+        if (snapshots.length === 0) return;
+        await Promise.all(snapshots.map((note) => trashNoteById(note.id)));
+        clearSelection();
+        showUndoToast({
+          message: `${plural(snapshots.length)} moved to trash`,
+          revert: async () => {
+            await Promise.all(snapshots.map((note) => saveNote(note)));
+          },
+        });
+      }),
+    [clearSelection, getSelectedSnapshots],
+  );
 
-  const bulkRestore = () =>
-    runNoteAction('Restore', async () => {
-      const snapshots = getSelectedSnapshots();
-      if (snapshots.length === 0) return;
-      await Promise.all(snapshots.map((note) => restoreNoteById(note.id)));
-      clearSelection();
-      useToastStore.getState().show(`${plural(snapshots.length)} restored`);
-    });
+  const bulkRestore = useCallback(
+    () =>
+      runNoteAction('Restore', async () => {
+        const snapshots = getSelectedSnapshots();
+        if (snapshots.length === 0) return;
+        await Promise.all(snapshots.map((note) => restoreNoteById(note.id)));
+        clearSelection();
+        useToastStore.getState().show(`${plural(snapshots.length)} restored`);
+      }),
+    [clearSelection, getSelectedSnapshots],
+  );
 
-  const bulkPermanentDelete = () =>
-    runNoteAction('Delete', async () => {
-      closeBulkDeleteConfirm();
-      const snapshots = getSelectedSnapshots();
-      if (snapshots.length === 0) return;
-      await Promise.all(snapshots.map((note) => removeNote(note.id)));
-      clearSelection();
-      showUndoToast({
-        message: `${plural(snapshots.length)} deleted permanently`,
-        revert: async () => {
-          await Promise.all(snapshots.map((note) => restorePermanentlyDeletedNote(note)));
-        },
-      });
-    });
+  const bulkPermanentDelete = useCallback(
+    () =>
+      runNoteAction('Delete', async () => {
+        closeBulkDeleteConfirm();
+        const snapshots = getSelectedSnapshots();
+        if (snapshots.length === 0) return;
+        await Promise.all(snapshots.map((note) => removeNote(note.id)));
+        clearSelection();
+        showUndoToast({
+          message: `${plural(snapshots.length)} deleted permanently`,
+          revert: async () => {
+            await Promise.all(snapshots.map((note) => restorePermanentlyDeletedNote(note)));
+          },
+        });
+      }),
+    [clearSelection, closeBulkDeleteConfirm, getSelectedSnapshots],
+  );
 
   /**
    * Reordering is two steps by design: the drag previews into the store on every move so the list
    * follows the finger, and only the drop persists. Writing on each move would be a Firestore
    * commit per pixel of travel.
    */
-  const moveNote = (fromIndex: number, toIndex: number) => {
-    const reordered = previewMoveNote(notes, filteredNotes, fromIndex, toIndex);
-    if (reordered) {
-      useNotesStore.getState().setNotes(reordered);
-    }
-  };
+  const moveNote = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      const reordered = previewMoveNote(notes, filteredNotes, fromIndex, toIndex);
+      if (reordered) {
+        useNotesStore.getState().setNotes(reordered);
+      }
+    },
+    [filteredNotes, notes],
+  );
 
-  const reorderComplete = () => {
-    void runNoteAction('Reorder', async () => {
-      await commitNotePositions(useNotesStore.getState().notes);
-    });
-  };
+  const reorderComplete = useCallback(
+    () => {
+      void runNoteAction('Reorder', async () => {
+        await commitNotePositions(useNotesStore.getState().notes);
+      });
+    },
+    [],
+  );
 
   return {
     archiveNote,

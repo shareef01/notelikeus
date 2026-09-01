@@ -23,6 +23,7 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE isTrashed = 1 ORDER BY timestamp DESC")
     fun getTrashedNotes(): Flow<List<NoteWithLabels>>
 
+    @Transaction
     @Query("SELECT * FROM notes WHERE id = :id")
     suspend fun getNoteById(id: Long): NoteWithLabels?
 
