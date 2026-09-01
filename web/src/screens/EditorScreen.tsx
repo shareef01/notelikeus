@@ -34,6 +34,16 @@ import { useToastStore } from '@/store/toastStore';
 import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
+const EDITOR_LAYOUTS: {
+  id: EditorLayout;
+  label: string;
+  icon: typeof FloatWindowIcon;
+}[] = [
+  { id: 'float', label: 'Float note', icon: FloatWindowIcon },
+  { id: 'dock', label: 'Dock note', icon: DockIcon },
+  { id: 'fullscreen', label: 'Full screen', icon: FullscreenIcon },
+];
+
 interface EditorScreenProps {
   route: Exclude<EditorRoute, { mode: 'closed' }>;
 }
@@ -232,12 +242,6 @@ export function EditorScreen({ route }: EditorScreenProps) {
     useToastStore.getState().show(`Exported ${filename}`);
   };
 
-  const layoutButtons: { id: EditorLayout; label: string; icon: ReactNode }[] = [
-    { id: 'float', label: 'Float note', icon: <FloatWindowIcon size={16} /> },
-    { id: 'dock', label: 'Dock note', icon: <DockIcon size={16} /> },
-    { id: 'fullscreen', label: 'Full screen', icon: <FullscreenIcon size={16} /> },
-  ];
-
   const editorShell = (children: ReactNode) => {
     if (!isTabletUp) {
       return (
@@ -303,27 +307,29 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
   const layoutControls = isTabletUp ? (
     <div
-      className="mr-1 flex h-9 items-center gap-0.5 rounded-full border border-[color-mix(in_srgb,currentColor_15%,transparent)] bg-[color-mix(in_srgb,currentColor_7%,transparent)] p-1"
-      role="group"
+      className="flex h-9 shrink-0 items-center gap-0.5 rounded-full border border-[color-mix(in_srgb,currentColor_12%,transparent)] bg-[color-mix(in_srgb,currentColor_8%,transparent)] p-0.5"
+      role="radiogroup"
       aria-label="Editor layout"
     >
-      {layoutButtons.map((button) => {
+      {EDITOR_LAYOUTS.map((button) => {
         const active = editorLayout === button.id;
+        const Icon = button.icon;
         return (
           <button
             key={button.id}
             type="button"
+            role="radio"
+            aria-checked={active}
             onClick={() => setEditorLayout(button.id)}
-            className={`flex size-9 items-center justify-center rounded-full transition-[background-color,opacity] ${CHROME_FOCUS} ${
+            className={`flex size-8 items-center justify-center rounded-full transition-[background-color,opacity] duration-150 ${CHROME_FOCUS} ${
               active
-                ? 'bg-[color-mix(in_srgb,currentColor_20%,transparent)] opacity-100'
-                : 'opacity-45 hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] hover:opacity-85'
+                ? 'bg-[color-mix(in_srgb,currentColor_18%,transparent)] opacity-100'
+                : 'opacity-60 hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] hover:opacity-80'
             }`}
             aria-label={button.label}
-            aria-pressed={active}
             title={button.label}
           >
-            {button.icon}
+            <Icon size={16} />
           </button>
         );
       })}
