@@ -143,7 +143,9 @@ The Firebase values in `.env.example` are placeholders — point it at your own 
 
 ---
 
-Built and maintained for my own daily use. It's a real app rather than a demo, which is the interesting part and also the reason some of it is more careful than a side project strictly needs to be.
+## Maintainer
+
+Maintained by [@shareef01](https://github.com/shareef01).
 
 ## License
 
