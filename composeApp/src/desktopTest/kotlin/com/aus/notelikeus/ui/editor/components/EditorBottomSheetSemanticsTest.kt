@@ -42,6 +42,7 @@ class EditorBottomSheetSemanticsTest {
                 onLabelToggle = onToggle,
                 onCreateLabel = {},
                 onDeleteNote = {},
+                onShareNote = {},
                 onDismiss = {}
             )
         }
