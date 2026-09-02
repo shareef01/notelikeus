@@ -1,5 +1,7 @@
 package com.aus.notelikeus.data.sync
 
+import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.attachments.attachmentsKey
 import com.aus.notelikeus.data.migration.AccountUidBridge
 import com.aus.notelikeus.data.local.dao.LabelDao
 import com.aus.notelikeus.data.local.dao.NoteDao
@@ -68,7 +70,8 @@ class NoteSyncEngine(
      * [reconcileUploads], whose correctness is entirely about reading it before the note snapshot
      * rather than after — a property no assertion on the result can express.
      */
-    private val now: () -> Long = { DateUtils.currentTimeMillis() }
+    private val now: () -> Long = { DateUtils.currentTimeMillis() },
+    private val attachmentSync: AttachmentSyncService? = null,
 ) {
     private val accountUidBridge = accountUidBridge ?: AccountUidBridge(syncStateStore)
 
@@ -122,11 +125,17 @@ class NoteSyncEngine(
             }
 
             if (toPush.isNotEmpty()) {
-                val serverTimestamps = transport.putNotes(uid, toPush)
-                uploaded = toPush.size
+                val syncedNotes = attachmentSync?.syncNotesAttachments(toPush) ?: toPush
+                val serverTimestamps = transport.putNotes(uid, syncedNotes)
+                uploaded = syncedNotes.size
                 for ((noteId, resolvedTs) in serverTimestamps) {
                     if (resolvedTs != null) {
                         noteDao.updateServerTimestamp(noteId, resolvedTs)
+                    }
+                }
+                for (note in syncedNotes) {
+                    if (note.attachments.isNotEmpty()) {
+                        noteDao.updateNote(note.toNoteEntity())
                     }
                 }
             }
@@ -248,6 +257,10 @@ class NoteSyncEngine(
         return runCatching {
             val uid = uidProvider().getOrThrow()
             requireCurrentAccount(uid)
+            val note = noteDao.getNoteById(noteId)?.toNote()
+            if (note != null) {
+                attachmentSync?.deleteAttachmentsForNote(noteId, note.attachments)
+            }
             val deletedAt = now()
             syncStateStore.markDeleted(noteId, deletedAt)
             transport.writeTombstone(uid, noteId, deletedAt)
@@ -374,6 +387,8 @@ class NoteSyncEngine(
 
             putNotes(uid, toPushBack)
 
+            attachmentSync?.hydrateAllNotes()
+
             syncStateStore.setKnownCloudIds(cloudNoteIds)
             pruneExpiredTombstones(uid, cloudNoteIds, cloudTombstones)
             transport.writeSyncMeta(uid, noteDao.getCloudEligibleNoteCount(), platform)
@@ -462,6 +477,9 @@ class NoteSyncEngine(
         if (cloud.labels.map { it.name }.sorted() != local.labels.map { it.name }.sorted()) {
             return false
         }
+        if (attachmentsKey(cloud.attachments) != attachmentsKey(local.attachments)) {
+            return false
+        }
         return cloud.checklist.checklistKey() == local.checklist.checklistKey()
     }
 
@@ -475,10 +493,16 @@ class NoteSyncEngine(
     /** Uploads [notes] in one transport call and records the server timestamps it returns. */
     private suspend fun putNotes(uid: String, notes: List<Note>) {
         if (notes.isEmpty()) return
-        val timestamps = transport.putNotes(uid, notes)
+        val syncedNotes = attachmentSync?.syncNotesAttachments(notes) ?: notes
+        val timestamps = transport.putNotes(uid, syncedNotes)
         for ((noteId, resolved) in timestamps) {
             if (resolved != null) {
                 noteDao.updateServerTimestamp(noteId, resolved)
+            }
+        }
+        for (note in syncedNotes) {
+            if (note.attachments.isNotEmpty()) {
+                noteDao.updateNote(note.toNoteEntity())
             }
         }
     }

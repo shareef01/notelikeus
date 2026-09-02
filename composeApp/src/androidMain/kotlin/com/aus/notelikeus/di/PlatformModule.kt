@@ -29,7 +29,9 @@ import com.aus.notelikeus.data.remote.SupabaseNoteTransport
 import com.aus.notelikeus.data.remote.SupabaseSessionAccessTokenProvider
 import com.aus.notelikeus.data.remote.SupabaseSessionManager
 import com.aus.notelikeus.data.remote.SupabaseSessionStore
-import com.aus.notelikeus.data.remote.AttachmentBlobTransport
+import com.aus.notelikeus.data.attachments.AndroidAttachmentLocalStorage
+import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
+import com.aus.notelikeus.data.attachments.AttachmentSyncService
 import com.aus.notelikeus.data.remote.NoopAttachmentBlobTransport
 import com.aus.notelikeus.data.remote.R2AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.SupabaseAttachmentMetadata
@@ -115,6 +117,7 @@ actual val platformModule = module {
             get<FirebaseSessionManager>()
         }
     }
+    single<AttachmentLocalStorage> { AndroidAttachmentLocalStorage(get()) }
     single<AttachmentBlobTransport> {
         if (
             BackendConfig.remoteBackend == RemoteBackend.SUPABASE &&
@@ -134,6 +137,25 @@ actual val platformModule = module {
         } else {
             NoopAttachmentBlobTransport()
         }
+    }
+    single {
+        val metadata = if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
+            SupabaseAttachmentMetadata(
+                AndroidSupabaseRpcClient(
+                    supabaseUrl = BackendConfig.supabaseUrl,
+                    anonKey = BackendConfig.supabaseAnonKey,
+                    accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+                ),
+            )
+        } else {
+            null
+        }
+        AttachmentSyncService(
+            blobTransport = get(),
+            metadata = metadata,
+            localStorage = get(),
+            noteDao = get(),
+        )
     }
     single<CloudNoteTransport> {
         if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
@@ -178,7 +200,8 @@ actual val platformModule = module {
                 database.useWriterConnection { transactor ->
                     transactor.immediateTransaction { block() }
                 }
-            }
+            },
+            attachmentSync = get(),
         )
     }
     

@@ -353,6 +353,10 @@
     <string name="cd_unchecked">Unchecked</string>
     <string name="format_checklist">Checklist</string>
     <string name="format_link">Link</string>
+    <string name="format_image">Add image</string>
+    <string name="cd_attachment">Attachment image</string>
+    <string name="cd_remove_attachment">Remove attachment</string>
+    <string name="image_load_failed">Image failed to load</string>
     <string name="link_dialog_title">Add link</string>
     <string name="link_url_hint">https://example.com</string>
 </resources>

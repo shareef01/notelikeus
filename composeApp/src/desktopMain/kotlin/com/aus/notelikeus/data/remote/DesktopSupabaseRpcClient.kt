@@ -3,6 +3,7 @@ package com.aus.notelikeus.data.remote
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import java.net.URI
@@ -24,6 +25,9 @@ class DesktopSupabaseRpcClient(
     private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun callRpc(functionName: String, body: JsonObject): JsonObject =
+        callRpcElement(functionName, body).jsonObject
+
+    override suspend fun callRpcElement(functionName: String, body: JsonObject): JsonElement =
         withContext(Dispatchers.IO) {
             val token = accessTokenProvider.accessToken()
                 ?: throw SupabaseTransportException(functionName, 401, "missing access token")
@@ -43,8 +47,7 @@ class DesktopSupabaseRpcClient(
                 throw SupabaseTransportException(functionName, code, response.body())
             }
 
-            val parsed = json.parseToJsonElement(response.body())
-            parsed.jsonObject
+            json.parseToJsonElement(response.body())
         }
 
     private companion object {

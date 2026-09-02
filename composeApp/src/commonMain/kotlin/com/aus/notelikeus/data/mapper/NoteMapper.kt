@@ -1,5 +1,7 @@
 package com.aus.notelikeus.data.mapper
 
+import com.aus.notelikeus.data.attachments.decodeAttachments
+import com.aus.notelikeus.data.attachments.encodeAttachments
 import com.aus.notelikeus.data.local.entity.*
 import com.aus.notelikeus.data.local.model.NoteWithLabels
 import com.aus.notelikeus.domain.model.*
@@ -7,7 +9,7 @@ import com.aus.notelikeus.domain.query.buildSearchText
 
 fun NoteEntity.toNote(
     labels: List<Label> = emptyList(),
-    checklist: List<ChecklistItem> = emptyList()
+    checklist: List<ChecklistItem> = emptyList(),
 ): Note {
     return Note(
         id = if (id == 0L) null else id,
@@ -22,9 +24,9 @@ fun NoteEntity.toNote(
         reminderTimestamp = reminderTimestamp,
         serverUpdatedAt = serverUpdatedAt,
         labels = labels,
-        attachments = emptyList(),
+        attachments = decodeAttachments(attachmentsJson),
         checklist = checklist,
-        searchText = searchText
+        searchText = searchText,
     )
 }
 
@@ -41,14 +43,13 @@ fun Note.toNoteEntity(): NoteEntity {
         position = position,
         reminderTimestamp = reminderTimestamp,
         serverUpdatedAt = serverUpdatedAt,
-        // Folded here rather than at any call site, because this is the single place a Note
-        // becomes a row -- so the column cannot go stale relative to the fields it summarises.
         searchText = buildSearchText(
             title = title,
             content = content,
             checklistTexts = checklist.map { it.text },
-            labelNames = labels.map { it.name }
-        )
+            labelNames = labels.map { it.name },
+        ),
+        attachmentsJson = encodeAttachments(attachments),
     )
 }
 

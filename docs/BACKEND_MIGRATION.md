@@ -1,7 +1,7 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
-**Status:** Phases 0–11 on branch `migration/supabase-r2` (Firebase remains production backend).  
-**Last updated:** 2026-09-02 (Phase 11 retirement readiness; cutover not authorized)
+**Status:** Phases 0–12 on branch `migration/supabase-r2` (Firebase remains production backend).  
+**Last updated:** 2026-09-02 (Phase 12 Kotlin attachment UI; cutover not authorized)
 
 This document tracks the phased migration away from Firebase. Phases 0–11 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet. Firebase Auth, Firestore, and Firebase Hosting remain the live backend.
 
@@ -123,6 +123,7 @@ These behaviors must be preserved in Supabase:
 | **9 — Attachment UI + sync** | COMPLETE LOCALLY | Web editor image picker + R2 upload on save + Supabase metadata hydration on pull |
 | **10 — Cloudflare Pages** | COMPLETE LOCALLY | `_headers`/`_redirects` parity + Pages CI verify; Firebase Hosting still production |
 | **11 — Firebase retirement readiness** | COMPLETE LOCALLY | Cutover runbook, production override flags (off by default), account wipe RPC, ops backup export. **Firebase not removed.** |
+| **12 — Kotlin attachment UI + sync** | COMPLETE LOCALLY | Android/Desktop editor image picker + preview strip; `attachmentsJson` Room column; `AttachmentSyncService` wired into `NoteSyncEngine` + editor save path (dev flags) |
 
 ---
 
@@ -479,6 +480,8 @@ Unchanged — Android/Desktop continue pull-on-sync via `SupabaseNoteTransport` 
 
 - Unchanged UI (attachments remain empty in editor). Blob transport from Phase 8 is ready for a follow-up Kotlin UI phase.
 
+**Superseded by Phase 12** — see below.
+
 ### Limitations (Phase 9 scope)
 
 - **Web only** — Android/Desktop editor still saves `attachments = []`
@@ -569,7 +572,45 @@ Users import that file in-app (existing backup import + Phase 6 client migration
 - **Firebase SDKs retained** — Auth, Firestore, Hosting, rules tests still in CI
 - **No bulk server-side import into Supabase** — backup JSON + client import only
 - **R2 blob cleanup is best-effort** — Postgres wipe is authoritative
-- **Kotlin attachment UI** — still Web-only (Phase 9)
+- **Kotlin attachment UI** — implemented in Phase 12 (Web-only before that)
+
+---
+
+## Phase 12 — Kotlin attachment UI + sync (dev-only)
+
+**Goal:** Mirror Web Phase 9 on Android and Desktop when R2 dev flags are enabled.
+
+### Domain + persistence
+
+- `Attachment` model aligned with Web (`id: String`, `storagePath` with `pending:` / `r2:` / `file:` prefixes)
+- Room migration `MIGRATION_10_11`: `notes.attachmentsJson` column (JSON metadata; binaries in local files or R2)
+
+### Sync
+
+- `AttachmentSyncService` — merge/hydrate/upload/delete (mirrors `web/src/lib/attachments/attachmentSyncService.ts`)
+- `SupabaseAttachmentMetadata.listUserAttachments()` RPC
+- `NoteSyncEngine` hooks: hydrate after download, upload before push, delete on note removal; `sameContent()` compares attachment keys
+
+### Editor UI
+
+- `AttachmentImageStrip` + platform image picker (Android `PickVisualMedia`, Desktop file dialog)
+- Image button on `RichTextToolbar` when `isR2AttachmentsEnabled()`
+- `EditorViewModel` persists attachment metadata and uploads pending blobs on save
+
+### Dev flags
+
+Same as Phases 8–9:
+
+| Platform | Env |
+|----------|-----|
+| Kotlin | `NOTELIKEUS_REMOTE_BACKEND=supabase` + `NOTELIKEUS_ATTACHMENTS_WORKER_URL` |
+
+### Limitations (Phase 12 scope)
+
+- **Dev flag only** — Firebase remains production default
+- **Images only** — 10 MB cap; images MIME types only
+- **Backup export** — attachments still omitted from JSON backup (unchanged)
+- **Note list thumbnails** — not yet added (Web has a11y hint only)
 
 ---
 
@@ -665,7 +706,7 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 
 ### Continue command
 
-Phase 11 is the last implementation phase on this branch. Remaining work is owner-operated cutover, not further code phases.
+Phase 12 is the last implementation phase on this branch. Remaining work is owner-operated cutover, not further code phases.
 
 ```
 Do not start Firebase retirement in production. Review docs/BACKEND_MIGRATION.md Phase 11 runbook first.
