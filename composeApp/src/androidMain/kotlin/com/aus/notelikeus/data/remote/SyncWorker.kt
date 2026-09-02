@@ -13,7 +13,7 @@ class SyncWorker(
     workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams), KoinComponent {
     private val syncEngine: NoteSyncEngine by inject()
-    private val firebaseSessionManager: FirebaseSessionManager by inject()
+    private val sessionManager: CloudSessionManager by inject()
 
     override suspend fun doWork(): ListenableWorker.Result {
         val noteId = inputData.getLong(KEY_NOTE_ID, -1L)
@@ -24,7 +24,7 @@ class SyncWorker(
         if (noteId == -1L) return ListenableWorker.Result.failure()
 
         // Stale work from a prior Firebase session — do not touch the current user's cloud.
-        val currentUid = firebaseSessionManager.getCurrentAccount().userId
+        val currentUid = sessionManager.getCurrentAccount().userId
         if (expectedUid.isNullOrBlank() || expectedUid != currentUid) {
             return ListenableWorker.Result.success()
         }

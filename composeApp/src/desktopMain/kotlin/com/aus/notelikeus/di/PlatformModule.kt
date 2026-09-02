@@ -9,11 +9,17 @@ import com.aus.notelikeus.data.local.SETTINGS_DATASTORE_FILENAME
 import com.aus.notelikeus.data.local.createDataStore
 import com.aus.notelikeus.data.local.getDatabaseBuilder
 import com.aus.notelikeus.data.remote.BackendConfig
-import com.aus.notelikeus.data.remote.DevSupabaseAccessTokenProvider
+import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.remote.DesktopFirestoreTransport
 import com.aus.notelikeus.data.remote.DesktopSupabaseRpcClient
 import com.aus.notelikeus.data.remote.RemoteBackend
+import com.aus.notelikeus.data.remote.SupabaseAccessTokenProvider
+import com.aus.notelikeus.data.remote.SupabaseAuthApi
 import com.aus.notelikeus.data.remote.SupabaseNoteTransport
+import com.aus.notelikeus.data.remote.SupabaseSessionAccessTokenProvider
+import com.aus.notelikeus.data.remote.SupabaseSessionManager
+import com.aus.notelikeus.data.remote.SupabaseSessionStore
+import com.aus.notelikeus.platform.DesktopSessionManager
 import com.aus.notelikeus.data.sync.CloudNoteTransport
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
@@ -82,13 +88,19 @@ actual val platformModule = module {
         )
     }
 
+    single { SupabaseSessionStore() }
+    single { SupabaseAuthApi(BackendConfig.supabaseUrl, BackendConfig.supabaseAnonKey) }
+    single { SupabaseSessionManager(get(), get()) }
+    single<SupabaseAccessTokenProvider> { SupabaseSessionAccessTokenProvider(get(), get()) }
+    single<CloudSessionManager> { DesktopSessionManager(get(), get()) }
+
     single<CloudNoteTransport> {
         if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
             SupabaseNoteTransport(
                 DesktopSupabaseRpcClient(
                     supabaseUrl = BackendConfig.supabaseUrl,
                     anonKey = BackendConfig.supabaseAnonKey,
-                    accessTokenProvider = DevSupabaseAccessTokenProvider(),
+                    accessTokenProvider = get<SupabaseAccessTokenProvider>(),
                 ),
             )
         } else {
@@ -106,18 +118,14 @@ actual val platformModule = module {
     }
 
     single {
-        val tokenStore = get<DesktopTokenStore>()
+        val sessionManager = get<CloudSessionManager>()
         val database = get<NotelikeusDatabase>()
         NoteSyncEngine(
             transport = get<CloudNoteTransport>(),
             noteDao = get(),
             labelDao = get(),
             syncStateStore = get<NoteSyncStateStore>(),
-            uidProvider = {
-                val uid = tokenStore.uid()
-                if (uid != null) Result.success(uid)
-                else Result.failure(IllegalStateException("Not signed in"))
-            },
+            uidProvider = { sessionManager.ensureSignedIn() },
             platform = "desktop",
             runInTransaction = { block ->
                 database.useWriterConnection { transactor ->
@@ -129,7 +137,7 @@ actual val platformModule = module {
 
     single { LocalAccountIsolator(get(), get(), get()) }
     single<SyncManager> {
-        DesktopSyncManager(get<NoteSyncEngine>(), get<DesktopTokenStore>(), get<LocalAccountIsolator>())
+        DesktopSyncManager(get<NoteSyncEngine>(), get<CloudSessionManager>(), get<LocalAccountIsolator>())
     }
 
     single<GoogleSignInHelper> {
@@ -137,7 +145,9 @@ actual val platformModule = module {
             oauthClientId = DesktopOAuthConfig.CLIENT_ID,
             oauthClientSecret = DesktopOAuthConfig.clientSecret(),
             firebaseApiKey = DesktopOAuthConfig.FIREBASE_API_KEY,
-            tokenStore = get()
+            tokenStore = get(),
+            supabaseAuthApi = get(),
+            supabaseSessionStore = get(),
         )
     }
 }

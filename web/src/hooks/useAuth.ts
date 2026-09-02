@@ -1,61 +1,67 @@
 import { useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { getFirebaseAuth, initFirebase } from '@/lib/firebase';
-import type { User } from 'firebase/auth';
-import { useAuthStore } from '@/store/authStore';
+import { initFirebase } from '@/lib/firebase';
+import type { AuthUser } from '@/lib/auth/authUser';
+import { initFirebaseAuthListener } from '@/lib/auth/firebaseAuthListener';
 import { completeGoogleRedirectSignIn } from '@/lib/auth/googleAuth';
 import { formatAuthError } from '@/lib/auth/authErrors';
 import { clearLocalUserData } from '@/lib/bootstrap';
-import { useToastStore } from '@/store/toastStore';
+import {
+  completeSupabaseOAuthRedirect,
+  initSupabaseAuthListener,
+} from '@/lib/auth/supabaseAuth';
+import { useAuthStore } from '@/store/authStore';
 import { forgetSignedIn, rememberSignedIn } from '@/lib/auth/sessionHint';
+import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
+import { useToastStore } from '@/store/toastStore';
 
-/** Mount once in App — registers the only Firebase auth listener. */
+function handleAuthUser(nextUser: AuthUser | null): void {
+  if (nextUser) {
+    if (useAuthStore.getState().guestMode) {
+      clearLocalUserData();
+      useAuthStore.getState().exitGuestMode();
+    }
+    rememberSignedIn();
+  } else {
+    forgetSignedIn();
+  }
+  useAuthStore.setState((state) => {
+    if (state.user?.uid === nextUser?.uid && state.isReady) {
+      return state;
+    }
+    return { user: nextUser, isReady: true };
+  });
+}
+
+/** Mount once in App — registers the only auth listener (Firebase or Supabase). */
 export function useAuthSync() {
   useEffect(() => {
+    if (isSupabaseBackendEnabled()) {
+      void completeSupabaseOAuthRedirect().catch((error) => {
+        useToastStore.getState().show(formatAuthError(error), 'error');
+      });
+      const unsubscribe = initSupabaseAuthListener(handleAuthUser);
+      return unsubscribe;
+    }
+
     try {
       initFirebase();
     } catch (error) {
-      // Ready-but-signed-out keeps the app usable, so this is the only trace of a
-      // misconfigured/blocked Firebase left for whoever has to explain why sign-in never works.
       console.error('[Notelikeus] Firebase init failed; auth is unavailable:', error);
       useAuthStore.getState().setReady(true);
       return;
     }
 
-    // Surfaces errors from a signInWithRedirect fallback (see googleAuth.ts) that
-    // completes after the page reloads — onAuthStateChanged below still picks up
-    // a successful result on its own, this only catches a failed redirect attempt.
     void completeGoogleRedirectSignIn().catch((error) => {
       useToastStore.getState().show(formatAuthError(error), 'error');
     });
 
-    const auth = getFirebaseAuth();
-    return onAuthStateChanged(auth, (nextUser) => {
-      if (nextUser) {
-        // Leaving guest mode: guest notes and tombstones are in-session throwaways, so they must
-        // not leak into the account — a guest tombstone could suppress a real cloud note (or the
-        // in-memory guest mirror could get mixed into the account's first merge).
-        if (useAuthStore.getState().guestMode) {
-          clearLocalUserData();
-          useAuthStore.getState().exitGuestMode();
-        }
-        rememberSignedIn();
-      } else {
-        forgetSignedIn();
-      }
-      useAuthStore.setState((state) => {
-        if (state.user?.uid === nextUser?.uid && state.isReady) {
-          return state;
-        }
-        return { user: nextUser, isReady: true };
-      });
-    });
+    return initFirebaseAuthListener(handleAuthUser);
   }, []);
 }
 
 /** Read auth state. Does not register listeners. */
 export function useAuthListener(): {
-  user: User | null;
+  user: AuthUser | null;
   userId: string | null;
   isReady: boolean;
   isGuest: boolean;

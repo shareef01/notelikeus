@@ -27,7 +27,6 @@ import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { createEmptyNote } from '@/types/note';
-import type { User } from 'firebase/auth';
 
 function makeNote() {
   return createEmptyNote({ id: '1', localId: 1, timestamp: 1, title: 'Note', content: 'Body' });
@@ -42,7 +41,7 @@ describe('saveNote', () => {
   });
 
   it('saves locally and uploads to Firestore when signed in', async () => {
-    useAuthStore.getState().setUser({ uid: 'user-1' } as User);
+    useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
 
     await saveNote(makeNote());
 
@@ -62,7 +61,7 @@ describe('saveNote', () => {
   });
 
   it('skips no-op saves for an unchanged note', async () => {
-    useAuthStore.getState().setUser({ uid: 'user-1' } as User);
+    useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
     const note = makeNote();
 
     await saveNote(note);
@@ -95,7 +94,7 @@ describe('restorePermanentlyDeletedNote', () => {
   });
 
   it('deletes the cloud tombstone and re-uploads to Firestore when signed in', async () => {
-    useAuthStore.getState().setUser({ uid: 'user-1' } as User);
+    useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
     const note = makeNote();
     await removeNote(note.id);
     expect(remoteMocks.deleteNote).toHaveBeenCalledWith('user-1', note.id);
@@ -112,7 +111,7 @@ describe('restorePermanentlyDeletedNote', () => {
   });
 
   it('clears the cloud tombstone before upserting so it cannot be re-suppressed', async () => {
-    useAuthStore.getState().setUser({ uid: 'user-1' } as User);
+    useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
     const note = makeNote();
 
     await restorePermanentlyDeletedNote(note);

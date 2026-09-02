@@ -1,6 +1,6 @@
 package com.aus.notelikeus.platform
 
-import com.aus.notelikeus.data.remote.FirebaseSessionManager
+import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.runTimedSync
@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 class AndroidSyncManager(
-    private val sessionManager: FirebaseSessionManager,
+    private val sessionManager: CloudSessionManager,
     private val syncEngine: NoteSyncEngine,
     private val isolator: LocalAccountIsolator,
 ) : SyncManager {

@@ -1,9 +1,9 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
-**Status:** Phases 0–4 on branch `migration/supabase-r2` (Firebase remains production backend).  
-**Last updated:** 2025-09-02 (Phase 4 Supabase remote adapter)
+**Status:** Phases 0–5 on branch `migration/supabase-r2` (Firebase remains production backend).  
+**Last updated:** 2025-09-02 (Phase 5 Supabase Auth)
 
-This document tracks the phased migration away from Firebase. Phases 0–4 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
+This document tracks the phased migration away from Firebase. Phases 0–5 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
 
 **Git:** Work is committed on `migration/supabase-r2`, not `main`. `main` remains the known Firebase-only baseline until this branch is merged.
 
@@ -65,7 +65,7 @@ Conflict resolution uses **server-assigned** `serverUpdatedAt`, not client `time
 
 | Category | Examples | Phase |
 |----------|----------|-------|
-| AUTH | `FirebaseAuth`, `GoogleAuthProvider`, `useAuthStore` | Future Phase 5 |
+| AUTH | `FirebaseAuth`, `GoogleAuthProvider`, `useAuthStore` | Phase 5 (dev flag); Firebase default in prod |
 | REMOTE DATA | `FirestoreNoteTransport`, `notesRepository.ts`, `onSnapshot` | Phase 1 abstracted; Firebase still default |
 | LOCAL CACHE | Firestore persistent cache (Web legacy); now IndexedDB primary | Phase 2 |
 | HOSTING | `firebase.json`, `firebase deploy` | Future Phase 10 |
@@ -116,7 +116,7 @@ These behaviors must be preserved in Supabase:
 | **2 — Web local-first** | COMPLETE LOCALLY | IndexedDB repository; signed-in hydration; guest persistence; account namespace |
 | **3 — Local Supabase** | COMPLETE LOCALLY | `supabase/` schema, RLS, revision RPCs, pgTAP tests |
 | **4 — Supabase remote adapter** | COMPLETE LOCALLY | Dev-flagged `RemoteNotesDataSource` + `CloudNoteTransport`; Firebase default |
-| 5 — Supabase Auth | NOT STARTED | |
+| **5 — Supabase Auth** | COMPLETE LOCALLY | Dev-flagged auth on Web + Kotlin; Firebase default |
 | 6 — User data migration | NOT STARTED | |
 | 7 — Realtime optimization | NOT STARTED | |
 | 8 — Attachments + R2 | NOT STARTED | See `archive/attachments-feature/` |
@@ -280,8 +280,9 @@ VITE_SUPABASE_ANON_KEY=<local anon key from supabase start>
 NOTELIKEUS_REMOTE_BACKEND=supabase
 NOTELIKEUS_SUPABASE_URL=http://127.0.0.1:54321
 NOTELIKEUS_SUPABASE_ANON_KEY=<anon key>
-NOTELIKEUS_SUPABASE_ACCESS_TOKEN=<user JWT from Supabase Auth>
 ```
+
+`NOTELIKEUS_SUPABASE_ACCESS_TOKEN` is no longer required when Phase 5 Supabase auth is active (session manager supplies JWT).
 
 `BackendConfig.remoteBackend` is `SUPABASE` only when `NOTELIKEUS_REMOTE_BACKEND=supabase` **and** `AppConfig.isDebug`.
 
@@ -293,10 +294,55 @@ composeApp/.../data/remote/SupabaseNoteTransport.kt
 composeApp/.../data/remote/SupabaseRpcClient.kt
 composeApp/.../data/remote/DesktopSupabaseRpcClient.kt (desktop)
 composeApp/.../data/remote/AndroidSupabaseRpcClient.kt (android)
-composeApp/.../data/remote/DevSupabaseAccessTokenProvider.kt
+composeApp/.../data/remote/SupabaseSessionAccessTokenProvider.kt
 ```
 
 Platform DI (`PlatformModule`) selects `SupabaseNoteTransport` vs Firestore transport based on `BackendConfig`.
+
+---
+
+## Phase 5 — Supabase Auth (dev-only)
+
+**Firebase remains the production default.** Supabase Auth is wired behind the same dev flags as Phase 4. Manual JWT env vars (`NOTELIKEUS_SUPABASE_ACCESS_TOKEN`) are no longer required when Supabase auth is active.
+
+### Web dev flag
+
+Same as Phase 4 (`VITE_REMOTE_BACKEND=supabase`). Auth routes through:
+
+- `web/src/lib/auth/authUser.ts` — platform-agnostic `AuthUser`
+- `web/src/lib/auth/supabaseAuth.ts` — Supabase session listener, Google OAuth, email/password
+- `web/src/lib/auth/firebaseAuthListener.ts` — extracted Firebase listener (default)
+- `web/src/hooks/useAuth.ts`, `googleAuth.ts`, `emailAuth.ts` — route by `isSupabaseBackendEnabled()`
+- `web/src/store/authStore.ts` — stores `AuthUser` instead of Firebase `User`
+
+Supabase client uses `detectSessionInUrl: true` for OAuth redirect handling on `http://127.0.0.1:5173`.
+
+### Kotlin dev flag
+
+Same as Phase 4 (`NOTELIKEUS_REMOTE_BACKEND=supabase` + debug build). Auth routes through:
+
+- `CloudSessionManager` interface — shared session contract
+- `FirebaseSessionManager` — default (implements `CloudSessionManager`)
+- `SupabaseSessionManager` + `SupabaseAuthApi` — Google ID token exchange, email/password, token refresh
+- `SupabaseSessionAccessTokenProvider` — supplies JWT to `SupabaseNoteTransport` (replaces manual token env)
+- `AndroidSyncManager`, `DesktopSyncManager`, `CloudNoteSyncCoordinator`, `SyncWorker` — use `CloudSessionManager`
+
+### Local Supabase Google OAuth
+
+Set before `supabase start`:
+
+```bash
+SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=<Web OAuth client id>
+SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<Web OAuth client secret>
+```
+
+`supabase/config.toml` enables `[auth.external.google]` with `skip_nonce_check = true` for local dev. `site_url` and redirect URLs include Vite dev port `5173`.
+
+### Limitations (Phase 5 scope)
+
+- **No user data migration** — Firebase UID ≠ Supabase UUID; Phase 6 maps ownership
+- **Supabase sign-out with delete cloud data** — not implemented on Web (throws)
+- **Anonymous/guest** — unchanged; guest mode remains local-only
 
 ---
 
@@ -358,14 +404,14 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 | Kotlin unit (Android + desktop) | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest` | **PASS** |
 | Android release build | `./gradlew :androidApp:assembleRelease` | **PASS** |
 | Web typecheck | `cd web && npm run typecheck` | **PASS** |
-| Web unit | `cd web && npm test` | **PASS** (282/282, includes Phase 4 mapper/registry tests) |
+| Web unit | `cd web && npm test` | **PASS** (283/283, includes Phase 4–5 auth mapper tests) |
 | Web build / sync / E2E | `npm run build`, `test:sync`, `test:e2e` | **PASS** |
 | Supabase start | `npm run supabase:start` | **BLOCKED locally** — Docker Desktop installed but virtualization not enabled in BIOS |
 | Supabase db reset | `npm run supabase:reset` | **NOT EXECUTED locally** (blocked on Docker) |
 | Supabase pgTAP | `npm run supabase:test` | **NOT EXECUTED locally** (blocked on Docker) |
 | Supabase CI (GitHub Actions) | `.github/workflows/supabase.yml` | **PASS** — [run 33579075312](https://github.com/shareef01/notelikeus/actions/runs/33579075312) on `migration/supabase-r2` (4 pgTAP files, all green) |
 
-**Phase 4 gate:** Complete. **Phase 5 gate:** Supabase Auth (Google OAuth) before production cutover.
+**Phase 5 gate:** Complete. **Phase 6 gate:** Firebase UID → Supabase UUID user data migration.
 
 **Firebase remains the production backend.** No production Supabase/Cloudflare resources were created or modified.
 
@@ -381,17 +427,16 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 
 ---
 
-## Owner actions before Phase 5
+## Owner actions before Phase 6
 
-1. Review Phase 4 adapter code and dev-flag wiring.
-2. Create a **staging** Supabase project (not production) when ready.
-3. Configure Google OAuth in Supabase dashboard (staging only).
-4. Approve Phase 5 scope: Supabase Auth replacing Firebase Auth behind the same dev flag.
+1. Review Phase 5 auth wiring and dev-flag behavior.
+2. Test end-to-end sign-in + sync against local Supabase (requires Docker + Google OAuth env).
+3. Approve Phase 6 scope: map Firebase UIDs to Supabase UUIDs and migrate user note data.
 
 ### Continue command
 
 ```
-Continue Notelikeus backend migration with Phase 5 only. Review docs/BACKEND_MIGRATION.md first and do not proceed to Phase 6.
+Continue Notelikeus backend migration with Phase 6 only. Review docs/BACKEND_MIGRATION.md first.
 ```
 
 ---

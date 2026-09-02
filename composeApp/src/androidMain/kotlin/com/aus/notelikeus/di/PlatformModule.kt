@@ -20,10 +20,15 @@ import com.aus.notelikeus.data.remote.SharedPrefsNoteSyncStateStore
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
 import com.aus.notelikeus.data.remote.AndroidSupabaseRpcClient
 import com.aus.notelikeus.data.remote.BackendConfig
-import com.aus.notelikeus.data.remote.DevSupabaseAccessTokenProvider
+import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.remote.FirestoreNoteTransport
 import com.aus.notelikeus.data.remote.RemoteBackend
+import com.aus.notelikeus.data.remote.SupabaseAccessTokenProvider
+import com.aus.notelikeus.data.remote.SupabaseAuthApi
 import com.aus.notelikeus.data.remote.SupabaseNoteTransport
+import com.aus.notelikeus.data.remote.SupabaseSessionAccessTokenProvider
+import com.aus.notelikeus.data.remote.SupabaseSessionManager
+import com.aus.notelikeus.data.remote.SupabaseSessionStore
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.NoteSyncStateStore
@@ -93,13 +98,24 @@ actual val platformModule = module {
     single { FirebaseAuth.getInstance() }
     single { FirebaseFirestore.getInstance() }
     single { FirebaseSessionManager(get(), get()) }
+    single { SupabaseSessionStore() }
+    single { SupabaseAuthApi(BackendConfig.supabaseUrl, BackendConfig.supabaseAnonKey) }
+    single { SupabaseSessionManager(get(), get()) }
+    single<SupabaseAccessTokenProvider> { SupabaseSessionAccessTokenProvider(get(), get()) }
+    single<CloudSessionManager> {
+        if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
+            get<SupabaseSessionManager>()
+        } else {
+            get<FirebaseSessionManager>()
+        }
+    }
     single<CloudNoteTransport> {
         if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
             SupabaseNoteTransport(
                 AndroidSupabaseRpcClient(
                     supabaseUrl = BackendConfig.supabaseUrl,
                     anonKey = BackendConfig.supabaseAnonKey,
-                    accessTokenProvider = DevSupabaseAccessTokenProvider(),
+                    accessTokenProvider = get<SupabaseAccessTokenProvider>(),
                 ),
             )
         } else {
@@ -107,14 +123,14 @@ actual val platformModule = module {
         }
     }
     single {
-        val sessionManager = get<FirebaseSessionManager>()
+        val sessionManager = get<CloudSessionManager>()
         val database = get<NotelikeusDatabase>()
         NoteSyncEngine(
             transport = get<CloudNoteTransport>(),
             noteDao = get(),
             labelDao = get(),
             syncStateStore = get<SharedPrefsNoteSyncStateStore>(),
-            uidProvider = { sessionManager.ensureGoogleSignedIn() },
+            uidProvider = { sessionManager.ensureSignedIn() },
             runInTransaction = { block ->
                 database.useWriterConnection { transactor ->
                     transactor.immediateTransaction { block() }
