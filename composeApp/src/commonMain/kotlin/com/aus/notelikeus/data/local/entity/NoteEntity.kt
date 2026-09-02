@@ -38,5 +38,10 @@ data class NoteEntity(
      * Local only. It is derived data, so it is not in the backup format and not in the cloud
      * document; each client folds for itself.
      */
-    val searchText: String? = null
+    val searchText: String? = null,
+    /**
+     * JSON-encoded [com.aus.notelikeus.domain.model.Attachment] metadata (local + sync).
+     * Null or blank means no attachments.
+     */
+    val attachmentsJson: String? = null,
 )

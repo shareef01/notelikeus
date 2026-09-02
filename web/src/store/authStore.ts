@@ -1,12 +1,12 @@
 import { create } from 'zustand';
-import type { User } from 'firebase/auth';
+import type { AuthUser } from '@/lib/auth/authUser';
 
 interface AuthState {
-  user: User | null;
+  user: AuthUser | null;
   isReady: boolean;
   /** Try-out mode: app shell renders without an account, notes live in memory only. */
   guestMode: boolean;
-  setUser: (user: User | null) => void;
+  setUser: (user: AuthUser | null) => void;
   setReady: (ready: boolean) => void;
   enterGuestMode: () => void;
   exitGuestMode: () => void;

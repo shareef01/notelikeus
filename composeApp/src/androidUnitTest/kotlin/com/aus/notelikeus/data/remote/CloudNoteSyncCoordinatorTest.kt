@@ -18,7 +18,7 @@ import org.junit.Test
 class CloudNoteSyncCoordinatorTest {
 
     private lateinit var syncEngine: NoteSyncEngine
-    private lateinit var firebaseSessionManager: FirebaseSessionManager
+    private lateinit var sessionManager: CloudSessionManager
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var workManager: WorkManager
     private lateinit var coordinator: CloudNoteSyncCoordinator
@@ -26,12 +26,12 @@ class CloudNoteSyncCoordinatorTest {
     @Before
     fun setup() {
         syncEngine = mockk(relaxed = true)
-        firebaseSessionManager = mockk()
+        sessionManager = mockk()
         settingsRepository = mockk()
         workManager = mockk(relaxed = true)
         coordinator = CloudNoteSyncCoordinator(
             syncEngine,
-            firebaseSessionManager,
+            sessionManager,
             settingsRepository,
             workManager,
             mockk(relaxed = true)
@@ -41,7 +41,7 @@ class CloudNoteSyncCoordinatorTest {
     @Test
     fun `flush enqueues upload work when auto sync and Google account are enabled`() = runTest {
         every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(true)
-        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+        every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "uid",
             email = "user@example.com",
             isGoogleAccount = true,
@@ -59,7 +59,7 @@ class CloudNoteSyncCoordinatorTest {
     @Test
     fun `flush skips enqueue when auto sync is disabled`() = runTest {
         every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(false)
-        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+        every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "uid",
             email = "user@example.com",
             isGoogleAccount = true,
@@ -77,7 +77,7 @@ class CloudNoteSyncCoordinatorTest {
     @Test
     fun `flush skips enqueue when not signed in with Google`() = runTest {
         every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(true)
-        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+        every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "anon",
             email = null,
             isGoogleAccount = false,
@@ -95,7 +95,7 @@ class CloudNoteSyncCoordinatorTest {
     @Test
     fun `flush enqueues delete work for pending note`() = runTest {
         every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(true)
-        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+        every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "uid",
             email = "user@example.com",
             isGoogleAccount = true,
@@ -113,7 +113,7 @@ class CloudNoteSyncCoordinatorTest {
     @Test
     fun `flush enqueues restore work carrying the restore flag`() = runTest {
         every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(true)
-        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+        every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "uid",
             email = "user@example.com",
             isGoogleAccount = true,
@@ -135,7 +135,7 @@ class CloudNoteSyncCoordinatorTest {
     @Test
     fun `scheduleRestore supersedes a pending delete for the same note`() = runTest {
         every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(true)
-        every { firebaseSessionManager.getCurrentAccount() } returns FirebaseAccount(
+        every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "uid",
             email = "user@example.com",
             isGoogleAccount = true,
