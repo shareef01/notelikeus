@@ -32,6 +32,7 @@ import com.aus.notelikeus.data.remote.SupabaseSessionStore
 import com.aus.notelikeus.data.attachments.AndroidAttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.remote.AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.NoopAttachmentBlobTransport
 import com.aus.notelikeus.data.remote.R2AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.SupabaseAttachmentMetadata
