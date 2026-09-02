@@ -1,5 +1,7 @@
 package com.aus.notelikeus.platform
 
+import com.aus.notelikeus.data.remote.BackendConfig
+import com.aus.notelikeus.data.remote.RemoteBackend
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppLog
 import com.sun.net.httpserver.HttpServer
@@ -42,7 +44,9 @@ class DesktopGoogleSignInHelper(
     private val oauthClientId: String,
     private val oauthClientSecret: String,
     private val firebaseApiKey: String,
-    private val tokenStore: DesktopTokenStore
+    private val tokenStore: DesktopTokenStore,
+    private val supabaseAuthApi: com.aus.notelikeus.data.remote.SupabaseAuthApi,
+    private val supabaseSessionStore: com.aus.notelikeus.data.remote.SupabaseSessionStore,
 ) : GoogleSignInHelper {
 
     private val httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build()
@@ -81,7 +85,13 @@ class DesktopGoogleSignInHelper(
                     IllegalStateException("Google did not return an ID token")
                 )
 
-            // Step 3: exchange the Google ID token for a Firebase session
+            // Step 3: exchange the Google ID token for a cloud session
+            if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
+                val session = supabaseAuthApi.signInWithGoogleIdToken(googleIdToken)
+                supabaseSessionStore.save(session)
+                return@withContext Result.success(session.accessToken)
+            }
+
             val firebaseResponse = exchangeGoogleTokenForFirebase(googleIdToken)
             val firebaseIdToken = firebaseResponse["idToken"]?.jsonPrimitive?.content
                 ?: return@withContext Result.failure(

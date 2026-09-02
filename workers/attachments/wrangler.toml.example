@@ -1,0 +1,11 @@
+name = "notelikeus-attachments"
+main = "src/index.ts"
+compatibility_date = "2025-09-02"
+
+[[r2_buckets]]
+binding = "ATTACHMENTS_BUCKET"
+bucket_name = "notelikeus-attachments-dev"
+
+[vars]
+SUPABASE_URL = "http://127.0.0.1:54321"
+# Set via `wrangler secret put SUPABASE_ANON_KEY` in real deployments.

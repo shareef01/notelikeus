@@ -73,6 +73,7 @@ function NoteCardImpl({
   const showStatusCluster = !isSelected && (note.isPinned || hasReminder);
   const checkedCount = note.checklist.filter((item) => item.isChecked).length;
   const showChecklist = note.checklist.length > 0;
+  const showAttachments = note.attachments.length > 0;
   const showLabels = note.labels.length > 0;
   const labelLimit = isDense ? 1 : isList ? 3 : 2;
   const timeLabel = formatListTimestamp(note.timestamp);
@@ -89,6 +90,7 @@ function NoteCardImpl({
   const statusParts = [
     note.isPinned ? 'Pinned' : null,
     hasReminder ? 'Reminder set' : null,
+    showAttachments ? 'Has image' : null,
     isSelected ? 'Selected' : null,
   ].filter(Boolean);
 

@@ -482,3 +482,13 @@ export function DownloadIcon({ className, size = 24 }: IconProps) {
     />
   );
 }
+
+export function ImageIcon({ className, size = 24 }: IconProps) {
+  return (
+    <StrokedIcon className={className} size={size}>
+      <rect x="4.5" y="6.5" width="15" height="11" rx="2" />
+      <path d="M8.5 11.5 11 14l2.5-2.5L17.5 15" />
+      <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none" />
+    </StrokedIcon>
+  );
+}

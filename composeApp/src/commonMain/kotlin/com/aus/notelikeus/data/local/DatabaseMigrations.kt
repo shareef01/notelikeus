@@ -181,6 +181,14 @@ object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_10_11 = object : RoomMigration(10, 11) {
+        override fun migrate(connection: SQLiteConnection) {
+            if (!connection.hasColumn("notes", "attachmentsJson")) {
+                connection.execSQL("ALTER TABLE notes ADD COLUMN attachmentsJson TEXT")
+            }
+        }
+    }
+
     val ALL = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -190,6 +198,7 @@ object DatabaseMigrations {
         MIGRATION_6_7,
         MIGRATION_7_8,
         MIGRATION_8_9,
-        MIGRATION_9_10
+        MIGRATION_9_10,
+        MIGRATION_10_11,
     )
 }

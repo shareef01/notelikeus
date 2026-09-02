@@ -16,6 +16,16 @@ import type { Label } from '@/types/label';
 import { allocateLocalNoteId } from '@/types/note';
 import { labelFromName } from '@/types/label';
 import { processSmartText, type TextEdit } from '@/lib/text/smartTextProcessor';
+import {
+  createAttachmentId,
+  MAX_ATTACHMENT_BYTES,
+  pendingStoragePath,
+} from '@/lib/attachments/attachmentPaths';
+import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
+import { getAttachmentBlobStore } from '@/lib/attachments/attachmentBlobStoreRegistry';
+import { releasePendingAttachment, storePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
+import { revokeAttachmentPreviewUrl } from '@/lib/attachments/attachmentPreviewCache';
+import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const AUTOSAVE_MS = 1000;
@@ -26,7 +36,12 @@ function nextNotePosition(): number {
 }
 
 function isNoteEmpty(state: EditorState): boolean {
-  return !state.title.trim() && !state.content.trim() && state.checklist.length === 0;
+  return (
+    !state.title.trim() &&
+    !state.content.trim() &&
+    state.checklist.length === 0 &&
+    state.attachments.length === 0
+  );
 }
 
 export function useNoteEditor(noteId: string | 'new' | null) {
@@ -102,6 +117,10 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         id,
         localId,
         position: working.position || nextNotePosition(),
+        attachments: working.attachments.map((attachment) => ({
+          ...attachment,
+          noteId: localId,
+        })),
       };
     }
 
@@ -357,6 +376,53 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       patch((s) => ({ ...s, reminderTimestamp }));
     },
     clearReminder: () => patch((s) => ({ ...s, reminderTimestamp: null })),
+    addAttachment: (file: File) => {
+      if (!isR2AttachmentsEnabled()) {
+        useToastStore.getState().show('Attachments are not enabled', 'error');
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        useToastStore.getState().show('Only images are supported', 'error');
+        return;
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        useToastStore.getState().show('Image must be under 10 MB', 'error');
+        return;
+      }
+      const attachmentId = createAttachmentId();
+      storePendingAttachment(attachmentId, file, file.type);
+      patch((s) => ({
+        ...s,
+        attachments: [
+          ...s.attachments,
+          {
+            id: attachmentId,
+            noteId: s.localId ?? 0,
+            storagePath: pendingStoragePath(attachmentId),
+            type: 'image',
+            mimeType: file.type,
+            sizeBytes: file.size,
+          },
+        ],
+      }));
+    },
+    removeAttachment: (attachmentId: string) => {
+      const current = stateRef.current;
+      const removed = current.attachments.find((attachment) => attachment.id === attachmentId);
+      if (removed && current.id && !isPendingAttachment(removed.storagePath)) {
+        void getAttachmentBlobStore()
+          .delete(current.id, attachmentId)
+          .catch(() => {});
+      }
+      releasePendingAttachment(attachmentId);
+      if (current.id) {
+        revokeAttachmentPreviewUrl(current.id, attachmentId);
+      }
+      patch((s) => ({
+        ...s,
+        attachments: s.attachments.filter((attachment) => attachment.id !== attachmentId),
+      }));
+    },
     applyContentFormatting: (
       updater: (
         text: string,
