@@ -8,7 +8,12 @@ import com.aus.notelikeus.data.local.NotelikeusDatabase
 import com.aus.notelikeus.data.local.SETTINGS_DATASTORE_FILENAME
 import com.aus.notelikeus.data.local.createDataStore
 import com.aus.notelikeus.data.local.getDatabaseBuilder
+import com.aus.notelikeus.data.remote.BackendConfig
+import com.aus.notelikeus.data.remote.DevSupabaseAccessTokenProvider
 import com.aus.notelikeus.data.remote.DesktopFirestoreTransport
+import com.aus.notelikeus.data.remote.DesktopSupabaseRpcClient
+import com.aus.notelikeus.data.remote.RemoteBackend
+import com.aus.notelikeus.data.remote.SupabaseNoteTransport
 import com.aus.notelikeus.data.sync.CloudNoteTransport
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
@@ -78,13 +83,21 @@ actual val platformModule = module {
     }
 
     single<CloudNoteTransport> {
-        val tokenStore = get<DesktopTokenStore>()
-        DesktopFirestoreTransport(
-            firebaseProject = "notelikeus",
-            // validIdToken(), not idToken(): refreshes a token that is about to expire instead of
-            // letting every request 401 an hour after sign-in.
-            idTokenProvider = { tokenStore.validIdToken() }
-        )
+        if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
+            SupabaseNoteTransport(
+                DesktopSupabaseRpcClient(
+                    supabaseUrl = BackendConfig.supabaseUrl,
+                    anonKey = BackendConfig.supabaseAnonKey,
+                    accessTokenProvider = DevSupabaseAccessTokenProvider(),
+                ),
+            )
+        } else {
+            val tokenStore = get<DesktopTokenStore>()
+            DesktopFirestoreTransport(
+                firebaseProject = "notelikeus",
+                idTokenProvider = { tokenStore.validIdToken() },
+            )
+        }
     }
 
     single<NoteSyncStateStore> {

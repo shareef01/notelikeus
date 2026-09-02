@@ -1,6 +1,6 @@
 import { putNotes } from '@/lib/local/notesLocalRepository';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
-import { getRemoteNotesDataSource } from '@/lib/remote/firebaseRemoteNotesDataSource';
+import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegistry';
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';

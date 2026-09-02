@@ -2,7 +2,7 @@ import { deleteCloudTombstone } from '@/lib/firestore/tombstones';
 import { deleteNote as deleteLocalIndexedDbNote, putNote } from '@/lib/local/notesLocalRepository';
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import { notesEqual } from '@/lib/notes/noteEquality';
-import { getRemoteNotesDataSource } from '@/lib/remote/firebaseRemoteNotesDataSource';
+import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegistry';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';

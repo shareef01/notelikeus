@@ -4,7 +4,7 @@ import {
   putNotes,
   setOwnerMeta,
 } from '@/lib/local/notesLocalRepository';
-import { getRemoteNotesDataSource } from '@/lib/remote/firebaseRemoteNotesDataSource';
+import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegistry';
 import { useNotesStore } from '@/store/notesStore';
 import type { Note } from '@/types/note';
 

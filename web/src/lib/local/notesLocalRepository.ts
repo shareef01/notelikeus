@@ -6,6 +6,10 @@ export interface LocalOwnerMeta {
   ownerId: string;
   firebaseHydrated: boolean;
   hydratedAt: number | null;
+  /** Supabase pull_changes cursor (Phase 4+). */
+  lastRemoteRevision?: number;
+  /** Per-note server revision for apply_note_change base_revision. */
+  noteRevisions?: Record<string, number>;
 }
 
 interface StoredNoteRecord {
@@ -96,7 +100,12 @@ export async function getOwnerMeta(ownerId: string): Promise<LocalOwnerMeta | nu
 
 export async function setOwnerMeta(
   ownerId: string,
-  patch: Partial<Pick<LocalOwnerMeta, 'firebaseHydrated' | 'hydratedAt'>>,
+  patch: Partial<
+    Pick<
+      LocalOwnerMeta,
+      'firebaseHydrated' | 'hydratedAt' | 'lastRemoteRevision' | 'noteRevisions'
+    >
+  >,
 ): Promise<void> {
   const existing = (await getOwnerMeta(ownerId)) ?? {
     ownerId,

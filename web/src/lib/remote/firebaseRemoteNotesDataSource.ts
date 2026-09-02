@@ -30,17 +30,3 @@ export const firebaseRemoteNotesDataSource: RemoteNotesDataSource = {
   },
 };
 
-let activeDataSource: RemoteNotesDataSource = firebaseRemoteNotesDataSource;
-
-export function getRemoteNotesDataSource(): RemoteNotesDataSource {
-  return activeDataSource;
-}
-
-/** Test-only hook for future Supabase adapter parity tests. */
-export function setRemoteNotesDataSourceForTests(source: RemoteNotesDataSource): void {
-  activeDataSource = source;
-}
-
-export function resetRemoteNotesDataSourceForTests(): void {
-  activeDataSource = firebaseRemoteNotesDataSource;
-}

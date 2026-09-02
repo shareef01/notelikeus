@@ -1,9 +1,9 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
-**Status:** Phases 0–3 checkpoint on branch `migration/supabase-r2` (Firebase remains production backend).  
-**Last updated:** 2025-09-02 (safety review + git checkpoint)
+**Status:** Phases 0–4 on branch `migration/supabase-r2` (Firebase remains production backend).  
+**Last updated:** 2025-09-02 (Phase 4 Supabase remote adapter)
 
-This document tracks the phased migration away from Firebase. Only Phases 0–3 are implemented in this checkpoint; production cutover is **not** authorized yet.
+This document tracks the phased migration away from Firebase. Phases 0–4 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
 
 **Git:** Work is committed on `migration/supabase-r2`, not `main`. `main` remains the known Firebase-only baseline until this branch is merged.
 
@@ -115,7 +115,7 @@ These behaviors must be preserved in Supabase:
 | **1 — Backend abstractions** | COMPLETE LOCALLY | Kotlin `CloudNoteTransport` (pre-existing); Web `RemoteNotesDataSource`; contract tests |
 | **2 — Web local-first** | COMPLETE LOCALLY | IndexedDB repository; signed-in hydration; guest persistence; account namespace |
 | **3 — Local Supabase** | COMPLETE LOCALLY | `supabase/` schema, RLS, revision RPCs, pgTAP tests |
-| 4 — Supabase remote adapter | NOT STARTED | Behind dev flag; Firebase remains default |
+| **4 — Supabase remote adapter** | COMPLETE LOCALLY | Dev-flagged `RemoteNotesDataSource` + `CloudNoteTransport`; Firebase default |
 | 5 — Supabase Auth | NOT STARTED | |
 | 6 — User data migration | NOT STARTED | |
 | 7 — Realtime optimization | NOT STARTED | |
@@ -131,15 +131,17 @@ These behaviors must be preserved in Supabase:
 `CloudNoteTransport` already existed. Added shared contract tests:
 
 - `composeApp/src/commonTest/.../CloudNoteTransportContractTest.kt`
-- Runs against `FakeCloudNoteTransport`; Firestore/Supabase adapters to be added in Phase 4.
+- Runs against `FakeCloudNoteTransport`; Firestore/Supabase adapters added in Phase 4 (`SupabaseNoteTransport`).
 
 ### Web
 
 - `web/src/lib/remote/remoteNotesDataSource.ts` — interface
 - `web/src/lib/remote/firebaseRemoteNotesDataSource.ts` — Firebase implementation (default)
-- `noteActions.ts`, `notesSyncService.ts` route remote I/O through the abstraction
+- `web/src/lib/remote/remoteNotesDataSourceRegistry.ts` — selects backend via dev flag
+- `web/src/lib/supabase/supabaseRemoteNotesDataSource.ts` — Supabase RPC adapter (Phase 4)
+- `noteActions.ts`, `notesSyncService.ts` route remote I/O through the registry
 
-Firebase behavior unchanged; tests updated.
+Firebase behavior unchanged in production; Supabase requires dev flag + session JWT.
 
 ---
 
@@ -248,6 +250,56 @@ package.json  (supabase scripts)
 
 ---
 
+## Phase 4 — Supabase remote adapter (dev-only)
+
+**Firebase remains the production default.** Supabase adapters are wired behind development-only flags and require a Supabase JWT (Phase 5 will integrate sign-in).
+
+### Web dev flag
+
+Set in `web/.env` (never in production builds):
+
+```bash
+VITE_REMOTE_BACKEND=supabase
+VITE_SUPABASE_URL=http://127.0.0.1:54321
+VITE_SUPABASE_ANON_KEY=<local anon key from supabase start>
+```
+
+`isSupabaseBackendEnabled()` returns `false` in production builds unless `VITE_E2E` is set.
+
+### Web adapter behavior
+
+- **Writes:** `apply_note_change` / `apply_note_delete` RPCs (revision-based OCC)
+- **Reads:** `fetch_full_snapshot` + polling `pull_changes` (5s interval until Phase 7 realtime)
+- **Revision state:** stored in IndexedDB owner meta (`lastRemoteRevision`, `noteRevisions`)
+- **Empty-cloud guard:** preserved in `syncNotesWithCloud`
+- **Auth:** requires active Supabase session; errors clearly if missing
+
+### Kotlin dev flag
+
+```bash
+NOTELIKEUS_REMOTE_BACKEND=supabase
+NOTELIKEUS_SUPABASE_URL=http://127.0.0.1:54321
+NOTELIKEUS_SUPABASE_ANON_KEY=<anon key>
+NOTELIKEUS_SUPABASE_ACCESS_TOKEN=<user JWT from Supabase Auth>
+```
+
+`BackendConfig.remoteBackend` is `SUPABASE` only when `NOTELIKEUS_REMOTE_BACKEND=supabase` **and** `AppConfig.isDebug`.
+
+### Kotlin files
+
+```
+composeApp/.../data/remote/BackendConfig.kt
+composeApp/.../data/remote/SupabaseNoteTransport.kt
+composeApp/.../data/remote/SupabaseRpcClient.kt
+composeApp/.../data/remote/DesktopSupabaseRpcClient.kt (desktop)
+composeApp/.../data/remote/AndroidSupabaseRpcClient.kt (android)
+composeApp/.../data/remote/DevSupabaseAccessTokenProvider.kt
+```
+
+Platform DI (`PlatformModule`) selects `SupabaseNoteTransport` vs Firestore transport based on `BackendConfig`.
+
+---
+
 ## Phase 2/3 safety review (pre–Phase 4 gate)
 
 ### Web logout vs account switch
@@ -306,14 +358,14 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 | Kotlin unit (Android + desktop) | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest` | **PASS** |
 | Android release build | `./gradlew :androidApp:assembleRelease` | **PASS** |
 | Web typecheck | `cd web && npm run typecheck` | **PASS** |
-| Web unit | `cd web && npm test` | **PASS** (276/276, includes `bootstrap.test.ts`) |
+| Web unit | `cd web && npm test` | **PASS** (282/282, includes Phase 4 mapper/registry tests) |
 | Web build / sync / E2E | `npm run build`, `test:sync`, `test:e2e` | **PASS** |
 | Supabase start | `npm run supabase:start` | **BLOCKED locally** — Docker Desktop installed but virtualization not enabled in BIOS |
 | Supabase db reset | `npm run supabase:reset` | **NOT EXECUTED locally** (blocked on Docker) |
 | Supabase pgTAP | `npm run supabase:test` | **NOT EXECUTED locally** (blocked on Docker) |
 | Supabase CI (GitHub Actions) | `.github/workflows/supabase.yml` | **PASS** — [run 33579075312](https://github.com/shareef01/notelikeus/actions/runs/33579075312) on `migration/supabase-r2` (4 pgTAP files, all green) |
 
-**Phase 4 gate:** Supabase `reset` + `test` is **green via GitHub Actions**. Local Docker remains optional.
+**Phase 4 gate:** Complete. **Phase 5 gate:** Supabase Auth (Google OAuth) before production cutover.
 
 **Firebase remains the production backend.** No production Supabase/Cloudflare resources were created or modified.
 
@@ -329,24 +381,17 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 
 ---
 
-## Owner actions before Phase 4
+## Owner actions before Phase 5
 
-1. Review this document and local Supabase schema.
-2. ~~Run pgTAP tests~~ — **done** via GitHub Actions on `migration/supabase-r2` (commit `4502f70`). Local run still optional if Docker/virtualization is enabled:
-   ```bash
-   npm run supabase:start
-   npm run supabase:reset
-   npm run supabase:test
-   ```
-   Or re-run **Supabase CI** from GitHub Actions on any push to `supabase/**`.
-3. Create a **staging** Supabase project (not production) when ready — **do not** link production clients yet.
-4. Configure Google OAuth in Supabase dashboard (staging only) — production auth remains Firebase until Phase 5.
-5. Approve Phase 4 scope: Supabase `RemoteNotesDataSource` / `CloudNoteTransport` behind a **development-only** feature flag.
+1. Review Phase 4 adapter code and dev-flag wiring.
+2. Create a **staging** Supabase project (not production) when ready.
+3. Configure Google OAuth in Supabase dashboard (staging only).
+4. Approve Phase 5 scope: Supabase Auth replacing Firebase Auth behind the same dev flag.
 
 ### Continue command
 
 ```
-Continue Notelikeus backend migration with Phase 4 only. Review docs/BACKEND_MIGRATION.md first and do not proceed to Phase 5.
+Continue Notelikeus backend migration with Phase 5 only. Review docs/BACKEND_MIGRATION.md first and do not proceed to Phase 6.
 ```
 
 ---

@@ -7,7 +7,7 @@ const { remoteMocks } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@/lib/remote/firebaseRemoteNotesDataSource', () => ({
+vi.mock('@/lib/remote/remoteNotesDataSourceRegistry', () => ({
   getRemoteNotesDataSource: () => remoteMocks,
 }));
 
