@@ -53,6 +53,6 @@ describe('notesLocalRepository', () => {
     await replaceAllNotes(GUEST_OWNER_ID, [makeNote('9', 9), makeNote('10', 10)]);
 
     const notes = await listNotes(GUEST_OWNER_ID);
-    expect([...notes.map((note) => note.id)].sort()).toEqual(['10', '9']);
+    expect(notes.map((note) => note.id).toSorted()).toEqual(['10', '9']);
   });
 });

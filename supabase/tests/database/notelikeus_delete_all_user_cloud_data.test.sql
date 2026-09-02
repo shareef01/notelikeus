@@ -1,5 +1,5 @@
 begin;
-select plan(8);
+select plan(9);
 
 select tests.create_supabase_user('wipe_a@notelikeus.test');
 select tests.create_supabase_user('wipe_b@notelikeus.test');

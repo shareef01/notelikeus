@@ -44,14 +44,14 @@ select throws_ok(
 select tests.authenticate_as('attach_a@notelikeus.test');
 select results_eq(
   $$ select jsonb_array_length(public.list_note_attachments('note-1')) $$,
-  ARRAY[1::bigint],
+  ARRAY[1],
   'user A sees registered attachment'
 );
 
 select tests.authenticate_as('attach_b@notelikeus.test');
 select results_eq(
   $$ select jsonb_array_length(public.list_note_attachments('note-1')) $$,
-  ARRAY[0::bigint],
+  ARRAY[0],
   'user B cannot list user A attachments'
 );
 

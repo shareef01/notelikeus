@@ -22,7 +22,7 @@ select lives_ok(
 
 select results_eq(
   $$ select jsonb_array_length(public.list_user_attachments()) $$,
-  ARRAY[1::bigint],
+  ARRAY[1],
   'list_user_attachments returns active attachments'
 );
 
