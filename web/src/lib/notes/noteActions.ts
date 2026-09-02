@@ -1,4 +1,9 @@
 import { deleteCloudTombstone } from '@/lib/firestore/tombstones';
+import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
+import {
+  deleteAttachmentsForNote,
+  syncNoteAttachments,
+} from '@/lib/attachments/attachmentSyncService';
 import { deleteNote as deleteLocalIndexedDbNote, putNote } from '@/lib/local/notesLocalRepository';
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import { notesEqual } from '@/lib/notes/noteEquality';
@@ -30,11 +35,22 @@ function withTimestamp(note: Note, patch: Partial<Note>): Note {
   return { ...note, ...patch, timestamp: Date.now() };
 }
 
-/** Save locally and optionally push to Firestore — no React hooks. */
+/** Save locally and optionally push to Firestore when signed in — no React hooks. */
 export async function saveNote(note: Note): Promise<void> {
   const existing = getNote(note.id);
-  if (existing && notesEqual(existing, note)) return;
-  await pushNote(note);
+  let toSave = note;
+  if (isR2AttachmentsEnabled()) {
+    toSave = await syncNoteAttachments(note);
+    if (existing) {
+      const nextIds = new Set(toSave.attachments.map((attachment) => attachment.id));
+      const removed = existing.attachments.filter(
+        (attachment) => !nextIds.has(attachment.id),
+      );
+      await deleteAttachmentsForNote(note.id, removed);
+    }
+  }
+  if (existing && notesEqual(existing, toSave)) return;
+  await pushNote(toSave);
 }
 
 /** Remove locally and from Firestore when signed in. Tombstoned so a later cloud
@@ -43,9 +59,13 @@ export async function saveNote(note: Note): Promise<void> {
  * tombstone: guest notes live in IndexedDB only, so a persisted tombstone could
  * later suppress an unrelated real cloud note that happens to reuse the same id. */
 export async function removeNote(noteId: string): Promise<void> {
+  const existing = getNote(noteId);
   const isGuest = useAuthStore.getState().guestMode;
   if (!isGuest) {
     useTombstoneStore.getState().markDeleted(noteId);
+  }
+  if (existing) {
+    await deleteAttachmentsForNote(noteId, existing.attachments);
   }
   useNotesStore.getState().removeLocalNote(noteId);
   const ownerId = resolveOwnerId();

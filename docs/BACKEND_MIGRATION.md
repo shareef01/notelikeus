@@ -1,9 +1,9 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
-**Status:** Phases 0–8 on branch `migration/supabase-r2` (Firebase remains production backend).  
-**Last updated:** 2025-09-02 (Phase 8 Attachments + R2 scaffolding)
+**Status:** Phases 0–9 on branch `migration/supabase-r2` (Firebase remains production backend).  
+**Last updated:** 2025-09-02 (Phase 9 attachment UI + sync wiring)
 
-This document tracks the phased migration away from Firebase. Phases 0–8 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
+This document tracks the phased migration away from Firebase. Phases 0–9 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
 
 **Git:** Work is committed on `migration/supabase-r2`, not `main`. `main` remains the known Firebase-only baseline until this branch is merged.
 
@@ -120,7 +120,8 @@ These behaviors must be preserved in Supabase:
 | **6 — User data migration** | COMPLETE LOCALLY | Firebase uid ↔ Supabase uuid linking; IndexedDB namespace + optional cloud import |
 | **7 — Realtime optimization** | COMPLETE LOCALLY | Web Supabase Realtime + debounced pull_changes; slow polling fallback |
 | **8 — Attachments + R2** | COMPLETE LOCALLY | `note_attachments` metadata + R2 Worker scaffold + client blob transport (no UI yet) |
-| 9–11 — UI, Pages, Firebase retirement | NOT STARTED | |
+| **9 — Attachment UI + sync** | COMPLETE LOCALLY | Web editor image picker + R2 upload on save + Supabase metadata hydration on pull |
+| 10–11 — Pages, Firebase retirement | NOT STARTED | |
 
 ---
 
@@ -455,6 +456,36 @@ Unchanged — Android/Desktop continue pull-on-sync via `SupabaseNoteTransport` 
 
 ---
 
+## Phase 9 — Attachment UI + sync wiring (Web)
+
+**Goal:** Restore image attachments in the Web editor when R2 is enabled; upload blobs on save and hydrate metadata from Supabase on sync.
+
+### Supabase
+
+- Migration `20250902050000_list_user_attachments.sql` — `list_user_attachments()` RPC for bulk hydration
+- pgTAP: `notelikeus_list_user_attachments.test.sql`
+
+### Web
+
+- `AttachmentImageStrip` in editor; image button on `RichTextToolbar` when `isR2AttachmentsEnabled()`
+- `attachmentSyncService` — pending blob store, upload on `saveNote`, delete on remove/trash, merge on pull
+- `attachmentPreviewCache` — object URLs for pending + downloaded R2 blobs
+- `supabaseSyncEngine` hydrates attachments after snapshot/incremental pull
+- `NoteCard` exposes “Has image” in accessibility label when attachments present
+- Note equality includes attachment metadata
+
+### Kotlin
+
+- Unchanged UI (attachments remain empty in editor). Blob transport from Phase 8 is ready for a follow-up Kotlin UI phase.
+
+### Limitations (Phase 9 scope)
+
+- **Web only** — Android/Desktop editor still saves `attachments = []`
+- **Images only** — 10 MB cap; no video or generic files yet
+- **Requires Phase 8 dev flags** — Supabase backend + attachments worker URL
+
+---
+
 ## Phase 2/3 safety review (pre–Phase 4 gate)
 
 ### Web logout vs account switch
@@ -520,7 +551,7 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 | Supabase pgTAP | `npm run supabase:test` | **NOT EXECUTED locally** (blocked on Docker) |
 | Supabase CI (GitHub Actions) | `.github/workflows/supabase.yml` | **PASS** — [run 33579075312](https://github.com/shareef01/notelikeus/actions/runs/33579075312) on `migration/supabase-r2` (4 pgTAP files, all green) |
 
-**Phase 8 gate:** Complete. **Phase 9 gate:** Restore attachment UI + sync wiring.
+**Phase 9 gate:** Complete. **Phase 10 gate:** Pages / hosting migration.
 
 **Firebase remains the production backend.** No production Supabase/Cloudflare resources were created or modified.
 
@@ -536,16 +567,16 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 
 ---
 
-## Owner actions before Phase 9
+## Owner actions before Phase 10
 
-1. Review Phase 8 attachment metadata RPCs and object-key namespace rules.
-2. Deploy or run locally: `workers/attachments` with R2 bucket + Supabase JWT validation.
-3. Approve Phase 9 scope: restore attachment picker/UI and wire blob transport into note sync.
+1. Exercise Web attachment add/remove/sync on local Supabase + R2 worker.
+2. Decide whether Kotlin editor attachment UI should land before or after hosting migration.
+3. Approve Phase 10 scope: Firebase Hosting → Cloudflare Pages (or defer).
 
 ### Continue command
 
 ```
-Continue Notelikeus backend migration with Phase 9 only. Review docs/BACKEND_MIGRATION.md first.
+Continue Notelikeus backend migration with Phase 10 only. Review docs/BACKEND_MIGRATION.md first.
 ```
 
 ---

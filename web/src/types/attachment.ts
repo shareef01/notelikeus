@@ -1,6 +1,6 @@
 /**
  * Attachment metadata — mirrors Android Attachment model.
- * Binary payload lives in Firebase Storage (`storagePath`).
+ * Binary payload lives in object storage (`storagePath`: `r2:` or `pending:` prefix on Web).
  */
 export interface Attachment {
   id: string;

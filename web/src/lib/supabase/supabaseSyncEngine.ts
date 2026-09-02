@@ -14,6 +14,7 @@ import {
 } from '@/lib/supabase/supabaseNoteMapper';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
+import { hydrateNotesWithAttachments } from '@/lib/attachments/attachmentSyncService';
 
 export interface ApplyNoteResult {
   status?: string;
@@ -63,6 +64,7 @@ export async function fetchSnapshotNotes(): Promise<{
   if (error) throw error;
   const snapshot = (data ?? {}) as SnapshotResult;
   const notes = (snapshot.notes ?? []).map((row) => supabaseNoteToNote(row));
+  const hydratedNotes = await hydrateNotesWithAttachments(notes);
   const tombstones = parseTombstoneMap(snapshot.tombstones ?? []);
   const noteRevisions: Record<string, number> = {};
   let maxRevision = 0;
@@ -77,7 +79,7 @@ export async function fetchSnapshotNotes(): Promise<{
       maxRevision = Math.max(maxRevision, row.revision);
     }
   }
-  return { notes, tombstones, noteRevisions, maxRevision };
+  return { notes: hydratedNotes, tombstones, noteRevisions, maxRevision };
 }
 
 export async function applyNoteChange(
@@ -171,6 +173,14 @@ export async function pullIncrementalChanges(
     await saveRevisionState(userId, state);
 
     if (!payload.has_more) break;
+  }
+
+  if (changed) {
+    const hydrated = await hydrateNotesWithAttachments(Array.from(notesById.values()));
+    notesById.clear();
+    for (const note of hydrated) {
+      notesById.set(note.id, note);
+    }
   }
 
   return changed;
