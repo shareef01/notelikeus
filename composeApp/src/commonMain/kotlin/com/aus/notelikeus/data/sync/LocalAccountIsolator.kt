@@ -1,5 +1,6 @@
 package com.aus.notelikeus.data.sync
 
+import com.aus.notelikeus.data.migration.AccountUidBridge
 import com.aus.notelikeus.domain.platform.SyncCoordinator
 import com.aus.notelikeus.domain.repository.NoteRepository
 
@@ -15,6 +16,7 @@ class LocalAccountIsolator(
     private val noteRepository: NoteRepository,
     private val syncStateStore: NoteSyncStateStore,
     private val syncCoordinator: SyncCoordinator,
+    private val accountUidBridge: AccountUidBridge = AccountUidBridge(syncStateStore),
 ) {
     suspend fun isolate() {
         // Cancel in-flight workers before dropping rows they would otherwise upload as the new uid.
@@ -25,7 +27,7 @@ class LocalAccountIsolator(
 
     suspend fun isolateIfAccountChanged(incomingUid: String) {
         val last = syncStateStore.lastMergedUserId()
-        if (last != null && last != incomingUid) {
+        if (last != null && !accountUidBridge.accountsMatch(last, incomingUid)) {
             isolate()
         }
     }

@@ -1,5 +1,10 @@
 import { getFirebaseAuth, initFirebase } from '@/lib/firebase';
 import {
+  createEmailPasswordAccountSupabase,
+  signInWithEmailPasswordSupabase,
+} from '@/lib/auth/supabaseAuth';
+import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
+import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
 } from 'firebase/auth';
@@ -29,6 +34,10 @@ export async function signInWithEmailPassword(email: string, password: string): 
   if (!isTestLoginEnabled()) {
     throw new Error('Email/password sign-in is only available in development');
   }
+  if (isSupabaseBackendEnabled()) {
+    await signInWithEmailPasswordSupabase(email, password);
+    return;
+  }
   initFirebase();
   await signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
 }
@@ -39,6 +48,10 @@ export async function createEmailPasswordAccount(
 ): Promise<void> {
   if (!isTestLoginEnabled()) {
     throw new Error('Email/password sign-in is only available in development');
+  }
+  if (isSupabaseBackendEnabled()) {
+    await createEmailPasswordAccountSupabase(email, password);
+    return;
   }
   initFirebase();
   const auth = getFirebaseAuth();

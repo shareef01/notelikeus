@@ -18,7 +18,7 @@ private const val DEBOUNCE_MS = 2_000L
 
 class CloudNoteSyncCoordinator(
     private val syncEngine: NoteSyncEngine,
-    private val firebaseSessionManager: FirebaseSessionManager,
+    private val sessionManager: CloudSessionManager,
     private val settingsRepository: SettingsRepository,
     private val workManager: WorkManager,
     private val pendingStore: PendingCloudSyncStore
@@ -93,7 +93,7 @@ class CloudNoteSyncCoordinator(
 
     private suspend fun flushPendingChanges() {
         if (!settingsRepository.isCloudAutoSyncEnabled.first()) return
-        if (!firebaseSessionManager.getCurrentAccount().isGoogleAccount) return
+        if (!sessionManager.getCurrentAccount().isGoogleAccount) return
 
         val uploads = pendingUploads.toList()
         val deletes = pendingDeletes.toList()
@@ -117,7 +117,7 @@ class CloudNoteSyncCoordinator(
     }
 
     private fun enqueueSyncWork(noteId: Long, isDelete: Boolean, isRestore: Boolean = false) {
-        val expectedUid = firebaseSessionManager.getCurrentAccount().userId ?: return
+        val expectedUid = sessionManager.getCurrentAccount().userId ?: return
 
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)

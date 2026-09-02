@@ -9,6 +9,7 @@ import {
   PinIcon,
 } from '@/components/icons/Icons';
 import { ChecklistEditor } from '@/components/editor/ChecklistEditor';
+import { AttachmentImageStrip } from '@/components/editor/AttachmentImageStrip';
 import { EditorBottomBar } from '@/components/editor/EditorBottomBar';
 import { EditorOptionsSheet } from '@/components/editor/EditorOptionsSheet';
 import { LinkDialog } from '@/components/editor/LinkDialog';
@@ -16,6 +17,7 @@ import { MarkdownBody } from '@/components/editor/MarkdownPreview';
 import { ReminderPickerDialog } from '@/components/editor/ReminderPickerDialog';
 import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
 import { useNoteEditor } from '@/hooks/useNoteEditor';
+import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
@@ -97,7 +99,10 @@ export function EditorScreen({ route }: EditorScreenProps) {
       allowInInputs: true,
       action: () => {
         const isEmpty =
-          !state.title.trim() && !state.content.trim() && state.checklist.length === 0;
+          !state.title.trim() &&
+          !state.content.trim() &&
+          state.checklist.length === 0 &&
+          state.attachments.length === 0;
         if (isEmpty) return;
         void editor.flushSave();
         useToastStore.getState().show('Note saved');
@@ -109,7 +114,9 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const [showReminderPicker, setShowReminderPicker] = useState(false);
   const [contentFocused, setContentFocused] = useState(true);
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const selectionRef = useRef({ start: 0, end: 0 });
+  const attachmentsEnabled = isR2AttachmentsEnabled();
   const isDarkPalette = useNotePaletteDark();
   const surface = noteSurfaceStyle(state.color, { solid: true, isDarkPalette });
   const contentColor =
@@ -431,6 +438,15 @@ export function EditorScreen({ route }: EditorScreenProps) {
             </div>
           ) : null}
 
+          {state.attachments.length > 0 ? (
+            <AttachmentImageStrip
+              noteId={state.id ?? 'draft'}
+              attachments={state.attachments}
+              contentColor={contentColor}
+              onRemove={editor.removeAttachment}
+            />
+          ) : null}
+
           {hasChecklist ? (
             <ChecklistEditor
               items={state.checklist}
@@ -460,6 +476,25 @@ export function EditorScreen({ route }: EditorScreenProps) {
                 onLink={() => {
                   rememberSelection();
                   setShowLinkDialog(true);
+                }}
+                onAddImage={
+                  attachmentsEnabled
+                    ? () => {
+                        fileInputRef.current?.click();
+                      }
+                    : undefined
+                }
+              />
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = '';
+                  if (file) editor.addAttachment(file);
                 }}
               />
 

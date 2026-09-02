@@ -6,6 +6,13 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.attachments.MAX_ATTACHMENT_BYTES
+import com.aus.notelikeus.data.attachments.createAttachmentId
+import com.aus.notelikeus.data.attachments.isR2AttachmentsEnabled
+import com.aus.notelikeus.data.attachments.pendingStoragePath
+import com.aus.notelikeus.data.attachments.PendingAttachmentStore
+import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
@@ -36,6 +43,7 @@ data class EditorState(
     val labels: List<Label> = emptyList(),
     val allLabels: List<Label> = emptyList(),
     val checklist: List<ChecklistItem> = emptyList(),
+    val attachments: List<Attachment> = emptyList(),
     val timestamp: Long = DateUtils.currentTimeMillis(),
     val position: Int = 0,
     val isNoteLoaded: Boolean = false,
@@ -47,7 +55,8 @@ data class EditorState(
 class EditorViewModel(
     private val repository: NoteRepository,
     private val reminderManager: ReminderManager,
-    private val savedStateHandle: SavedStateHandle
+    private val savedStateHandle: SavedStateHandle,
+    private val attachmentSync: AttachmentSyncService? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(EditorState())
@@ -77,8 +86,10 @@ class EditorViewModel(
     private var contentEdited = false
     private var checklistEdited = false
     private var colorEdited = false
+    private var attachmentsEdited = false
+    private val removedAttachments = mutableListOf<Attachment>()
     private val userHasEdited: Boolean
-        get() = titleEdited || contentEdited || checklistEdited || colorEdited
+        get() = titleEdited || contentEdited || checklistEdited || colorEdited || attachmentsEdited
 
     init {
         loadNote()
@@ -177,6 +188,7 @@ class EditorViewModel(
                             labels = note.labels,
                             allLabels = current.allLabels, // Preserve loaded labels
                             checklist = note.checklist.sortedWith(compareBy({ it.isChecked }, { it.position })),
+                            attachments = note.attachments,
                             timestamp = note.timestamp,
                             position = note.position,
                             isNoteLoaded = true,
@@ -190,6 +202,7 @@ class EditorViewModel(
                             contentValue =
                                 if (contentEdited) current.contentValue else loaded.contentValue,
                             checklist = if (checklistEdited) current.checklist else loaded.checklist,
+                            attachments = if (attachmentsEdited) current.attachments else loaded.attachments,
                             color = if (colorEdited) current.color else loaded.color
                         )
                     }
@@ -290,9 +303,43 @@ class EditorViewModel(
             position = state.position,
             reminderTimestamp = state.reminderTimestamp,
             labels = state.labels,
-            attachments = emptyList(),
+            attachments = state.attachments,
             checklist = state.checklist
         )
+    }
+
+    fun isAttachmentsEnabled(): Boolean = isR2AttachmentsEnabled()
+
+    fun addAttachment(bytes: ByteArray, mimeType: String) {
+        if (!isR2AttachmentsEnabled()) return
+        if (bytes.size > MAX_ATTACHMENT_BYTES) return
+        if (!mimeType.startsWith("image/")) return
+        attachmentsEdited = true
+        val attachmentId = createAttachmentId()
+        PendingAttachmentStore.put(attachmentId, bytes, mimeType)
+        val noteId = _state.value.id ?: 0L
+        val attachment = Attachment(
+            id = attachmentId,
+            noteId = noteId,
+            storagePath = pendingStoragePath(attachmentId),
+            type = "image",
+            mimeType = mimeType,
+            sizeBytes = bytes.size.toLong(),
+        )
+        _state.update { it.copy(attachments = it.attachments + attachment) }
+        triggerAutosave()
+    }
+
+    fun removeAttachment(attachment: Attachment) {
+        attachmentsEdited = true
+        removedAttachments.add(attachment)
+        _state.update { it.copy(attachments = it.attachments.filterNot { item -> item.id == attachment.id }) }
+        triggerAutosave()
+    }
+
+    suspend fun loadAttachmentPreview(attachment: Attachment): ByteArray? {
+        attachmentSync?.readAttachmentBytes(attachment)?.let { return it }
+        return null
     }
 
     /**
@@ -305,7 +352,11 @@ class EditorViewModel(
      */
     private suspend fun persistNote(): Long? = saveMutex.withLock {
         val currentState = _state.value
-        if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) {
+        if (currentState.title.isEmpty() &&
+            currentState.content.isEmpty() &&
+            currentState.checklist.isEmpty() &&
+            currentState.attachments.isEmpty()
+        ) {
             return@withLock null
         }
 
@@ -315,20 +366,36 @@ class EditorViewModel(
             currentState.position
         }
         val updatedTimestamp = DateUtils.currentTimeMillis()
-        val note = buildNoteFromState(currentState).copy(
+        var note = buildNoteFromState(currentState).copy(
             position = position,
-            timestamp = updatedTimestamp
+            timestamp = updatedTimestamp,
         )
         val savedId = if (note.id == null) {
-            val newId = repository.insertNoteWithResult(note)
-            _state.update { it.copy(id = newId, position = position, timestamp = updatedTimestamp) }
+            val draftForInsert = note.copy(
+                attachments = note.attachments.map { it.copy(noteId = 0L) },
+            )
+            val newId = repository.insertNoteWithResult(draftForInsert)
+            note = note.copy(
+                id = newId,
+                attachments = note.attachments.map { it.copy(noteId = newId) },
+            )
+            note = attachmentSync?.syncNoteAttachments(note) ?: note
+            repository.updateNote(note)
+            _state.update { it.copy(id = newId, position = position, timestamp = updatedTimestamp, attachments = note.attachments) }
             newId
         } else {
+            note = note.copy(attachments = note.attachments.map { it.copy(noteId = note.id!!) })
+            note = attachmentSync?.syncNoteAttachments(note) ?: note
             repository.updateNote(note)
-            _state.update { it.copy(timestamp = updatedTimestamp) }
+            _state.update { it.copy(timestamp = updatedTimestamp, attachments = note.attachments) }
             note.id
         }
-        syncReminder(savedId, _state.value)
+        val noteIdForCleanup = savedId ?: note.id
+        if (noteIdForCleanup != null && removedAttachments.isNotEmpty()) {
+            attachmentSync?.deleteAttachmentsForNote(noteIdForCleanup, removedAttachments.toList())
+            removedAttachments.clear()
+        }
+        syncReminder(savedId ?: return@withLock null, _state.value)
         return savedId
     }
 

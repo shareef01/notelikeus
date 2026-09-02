@@ -1,4 +1,4 @@
-import { BoldIcon, BulletListIcon, ChecklistIcon, ItalicIcon, LinkIcon } from '@/components/icons/Icons';
+import { BoldIcon, BulletListIcon, ChecklistIcon, ImageIcon, ItalicIcon, LinkIcon } from '@/components/icons/Icons';
 import type { PointerEventHandler, ReactNode } from 'react';
 
 interface RichTextToolbarProps {
@@ -8,6 +8,7 @@ interface RichTextToolbarProps {
   onBullet: () => void;
   onChecklist: () => void;
   onLink: () => void;
+  onAddImage?: () => void;
 }
 
 export function RichTextToolbar({
@@ -17,6 +18,7 @@ export function RichTextToolbar({
   onBullet,
   onChecklist,
   onLink,
+  onAddImage,
 }: RichTextToolbarProps) {
   const buttonClass =
     'flex size-9 items-center justify-center rounded-full transition-colors hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)] active:bg-[color-mix(in_srgb,currentColor_18%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current';
@@ -56,6 +58,12 @@ export function RichTextToolbar({
       <span className="mx-0.5 h-5 w-px shrink-0 bg-current opacity-20" aria-hidden />
       {formatButton('Bullet list', <BulletListIcon size={18} />, onBullet)}
       {formatButton('Checklist', <ChecklistIcon size={18} />, onChecklist)}
+      {onAddImage ? (
+        <>
+          <span className="mx-0.5 h-5 w-px shrink-0 bg-current opacity-20" aria-hidden />
+          {formatButton('Add image', <ImageIcon size={18} />, onAddImage)}
+        </>
+      ) : null}
     </div>
   );
 }
