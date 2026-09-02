@@ -308,12 +308,12 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 | Web typecheck | `cd web && npm run typecheck` | **PASS** |
 | Web unit | `cd web && npm test` | **PASS** (276/276, includes `bootstrap.test.ts`) |
 | Web build / sync / E2E | `npm run build`, `test:sync`, `test:e2e` | **PASS** |
-| Supabase start | `npm run supabase:start` | **BLOCKED** — Docker Desktop installed but daemon not ready (first-run/WSL2 setup required) |
-| Supabase db reset | `npm run supabase:reset` | **NOT EXECUTED** (blocked on Docker) |
-| Supabase pgTAP | `npm run supabase:test` | **NOT EXECUTED** (blocked on Docker) |
-| Supabase CI (GitHub Actions) | `.github/workflows/supabase.yml` | **PENDING** — runs on push/PR when `supabase/**` changes; use this when local Docker is unavailable |
+| Supabase start | `npm run supabase:start` | **BLOCKED locally** — Docker Desktop installed but virtualization not enabled in BIOS |
+| Supabase db reset | `npm run supabase:reset` | **NOT EXECUTED locally** (blocked on Docker) |
+| Supabase pgTAP | `npm run supabase:test` | **NOT EXECUTED locally** (blocked on Docker) |
+| Supabase CI (GitHub Actions) | `.github/workflows/supabase.yml` | **PASS** — [run 33579075312](https://github.com/shareef01/notelikeus/actions/runs/33579075312) on `migration/supabase-r2` (4 pgTAP files, all green) |
 
-**Phase 4 gate:** Supabase `reset` + `test` must be **green** (locally or via GitHub Actions) before starting Phase 4.
+**Phase 4 gate:** Supabase `reset` + `test` is **green via GitHub Actions**. Local Docker remains optional.
 
 **Firebase remains the production backend.** No production Supabase/Cloudflare resources were created or modified.
 
@@ -332,13 +332,13 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 ## Owner actions before Phase 4
 
 1. Review this document and local Supabase schema.
-2. Run pgTAP tests — either locally (Docker) or via GitHub Actions after pushing `migration/supabase-r2`:
+2. ~~Run pgTAP tests~~ — **done** via GitHub Actions on `migration/supabase-r2` (commit `4502f70`). Local run still optional if Docker/virtualization is enabled:
    ```bash
    npm run supabase:start
    npm run supabase:reset
    npm run supabase:test
    ```
-   Or push the branch and check the **Supabase CI** workflow in GitHub Actions.
+   Or re-run **Supabase CI** from GitHub Actions on any push to `supabase/**`.
 3. Create a **staging** Supabase project (not production) when ready — **do not** link production clients yet.
 4. Configure Google OAuth in Supabase dashboard (staging only) — production auth remains Firebase until Phase 5.
 5. Approve Phase 4 scope: Supabase `RemoteNotesDataSource` / `CloudNoteTransport` behind a **development-only** feature flag.
