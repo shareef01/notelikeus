@@ -24,7 +24,7 @@ select tests.authenticate_as('user_a@notelikeus.test');
 select results_eq(
   $$ select (public.apply_note_change(
       '42'::text, 42::bigint, null::bigint,
-      'Hello'::text, 'Body'::text, 1000::bigint, 4278190080::integer,
+      'Hello'::text, 'Body'::text, 1000::bigint, (-14474606)::integer,
       false, false, false, 0::integer, null::bigint,
       '[]'::jsonb, '[]'::jsonb
     )->>'status') $$,

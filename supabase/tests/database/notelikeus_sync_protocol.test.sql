@@ -1,5 +1,5 @@
 begin;
-select plan(18);
+select plan(20);
 
 select setval('public.sync_revision_seq', 10000, true);
 
@@ -82,14 +82,15 @@ select results_eq(
   'delete revision is 10003'
 );
 
--- pull after 10001 returns update + delete revisions
+-- pull after 10001 returns delete tombstone (intermediate update row is gone after delete)
 select ok(
-  (
-    select count(*) = 2
+  exists (
+    select 1
     from jsonb_array_elements(public.pull_changes(10001, 100)->'changes') elem
-    where (elem->>'revision') in ('10002', '10003')
+    where elem->>'type' = 'tombstone'
+      and (elem->>'revision')::bigint = 10003
   ),
-  'pull_changes after 10001 returns update and delete revisions'
+  'pull_changes after 10001 returns delete tombstone revision'
 );
 
 -- stale device cannot resurrect deleted note (create path)
@@ -132,6 +133,7 @@ select results_eq(
 );
 
 -- direct revision / owner forgery blocked by mutation guard
+select set_config('notelikeus.sync_mutation', '', true);
 select throws_ok(
   $$ insert into public.notes (
       note_id, local_id, owner_id, revision, title, content, client_timestamp, color
