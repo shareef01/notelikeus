@@ -48,10 +48,12 @@ import com.aus.notelikeus.ui.main.UndoAction
 import com.aus.notelikeus.util.AppLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import com.aus.notelikeus.ui.editor.components.AttachmentImageStrip
 import com.aus.notelikeus.ui.editor.components.ChecklistUI
 import com.aus.notelikeus.ui.editor.components.EditorBottomBar
 import com.aus.notelikeus.ui.editor.components.EditorBottomSheet
 import com.aus.notelikeus.ui.editor.components.RichTextToolbar
+import com.aus.notelikeus.ui.editor.rememberAttachmentImagePicker
 import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
@@ -92,6 +94,10 @@ fun EditorScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val undoLabel = stringResource(Res.string.action_undo)
+    val attachmentsEnabled = viewModel.isAttachmentsEnabled()
+    val pickAttachment = rememberAttachmentImagePicker(attachmentsEnabled) { bytes, mimeType ->
+        viewModel.addAttachment(bytes, mimeType)
+    }
     val isDarkPalette = isNoteColorDarkTheme()
     val displayColorArgb = noteColorForTheme(state.color, isDarkPalette)
     val noteColor = if (displayColorArgb == 0) {
@@ -353,6 +359,12 @@ fun EditorScreen(
                     }
 
                     Spacer(modifier = Modifier.height(Size.iconSmall))
+                    AttachmentImageStrip(
+                        attachments = state.attachments,
+                        contentColor = contentColor,
+                        loadPreviewBytes = { attachment -> viewModel.loadAttachmentPreview(attachment) },
+                        onRemove = { viewModel.removeAttachment(it) },
+                    )
                     if (state.checklist.isEmpty()) {
                         RichTextToolbar(
                             onBoldClick = { viewModel.applyBoldToSelection() },
@@ -360,6 +372,7 @@ fun EditorScreen(
                             onListClick = { viewModel.applyBulletListToSelection() },
                             onChecklistClick = { viewModel.convertContentToChecklist() },
                             onLinkClick = { showLinkDialog = true },
+                            onAddImageClick = if (attachmentsEnabled) pickAttachment else null,
                             contentColor = contentColor,
                             // A wash of the note's own content colour, so the toolbar reads as
                             // part of the note rather than a panel floating over it.

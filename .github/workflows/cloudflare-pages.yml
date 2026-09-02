@@ -1,0 +1,108 @@
+name: Cloudflare Pages CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master, migration/supabase-r2]
+    paths:
+      - 'web/**'
+      - 'cloudflare/**'
+      - 'firebase.json'
+      - '.github/workflows/cloudflare-pages.yml'
+  pull_request:
+    branches: [main, master, migration/supabase-r2]
+    paths:
+      - 'web/**'
+      - 'cloudflare/**'
+      - 'firebase.json'
+      - '.github/workflows/cloudflare-pages.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-pages-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Lint and test
+        working-directory: web
+        run: npm run lint && npm test
+
+      - name: Build static bundle
+        working-directory: web
+        run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: placeholder
+          VITE_FIREBASE_AUTH_DOMAIN: placeholder.firebaseapp.com
+          VITE_FIREBASE_PROJECT_ID: placeholder
+          VITE_FIREBASE_STORAGE_BUCKET: placeholder.appspot.com
+          VITE_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
+          VITE_FIREBASE_APP_ID: 1:000000000000:web:placeholder
+          VITE_FIREBASE_GOOGLE_CLIENT_ID: placeholder.apps.googleusercontent.com
+
+      - name: Verify Pages artifacts
+        run: node web/scripts/verifyPagesArtifacts.mjs
+
+      - name: Verify header parity with Firebase Hosting
+        run: node cloudflare/scripts/verify-headers-parity.mjs
+
+  deploy-preview:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/migration/supabase-r2'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build static bundle
+        working-directory: web
+        run: npm ci && npm run build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_FIREBASE_GOOGLE_CLIENT_ID }}
+
+      - name: Deploy to Cloudflare Pages (dev preview)
+        uses: cloudflare/wrangler-action@4bea050a0a830575b2b1f999e528f1cb4f7e219 # v3.14.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy web/dist --project-name=notelikeus-dev

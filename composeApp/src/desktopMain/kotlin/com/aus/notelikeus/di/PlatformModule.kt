@@ -8,8 +8,28 @@ import com.aus.notelikeus.data.local.NotelikeusDatabase
 import com.aus.notelikeus.data.local.SETTINGS_DATASTORE_FILENAME
 import com.aus.notelikeus.data.local.createDataStore
 import com.aus.notelikeus.data.local.getDatabaseBuilder
+import com.aus.notelikeus.data.remote.BackendConfig
+import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.remote.DesktopFirestoreTransport
+import com.aus.notelikeus.data.remote.DesktopSupabaseRpcClient
+import com.aus.notelikeus.data.remote.RemoteBackend
+import com.aus.notelikeus.data.remote.SupabaseAccessTokenProvider
+import com.aus.notelikeus.data.remote.SupabaseAuthApi
+import com.aus.notelikeus.data.remote.SupabaseNoteTransport
+import com.aus.notelikeus.data.remote.SupabaseSessionAccessTokenProvider
+import com.aus.notelikeus.data.remote.SupabaseSessionManager
+import com.aus.notelikeus.data.remote.SupabaseSessionStore
+import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
+import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.attachments.DesktopAttachmentLocalStorage
+import com.aus.notelikeus.data.remote.AttachmentBlobTransport
+import com.aus.notelikeus.data.remote.NoopAttachmentBlobTransport
+import com.aus.notelikeus.data.remote.R2AttachmentBlobTransport
+import com.aus.notelikeus.data.remote.SupabaseAttachmentMetadata
+import com.aus.notelikeus.platform.DesktopSessionManager
 import com.aus.notelikeus.data.sync.CloudNoteTransport
+import com.aus.notelikeus.data.migration.AccountUidBridge
+import com.aus.notelikeus.data.migration.FirebaseSupabaseAccountLinker
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.NoteSyncStateStore
@@ -77,14 +97,69 @@ actual val platformModule = module {
         )
     }
 
-    single<CloudNoteTransport> {
-        val tokenStore = get<DesktopTokenStore>()
-        DesktopFirestoreTransport(
-            firebaseProject = "notelikeus",
-            // validIdToken(), not idToken(): refreshes a token that is about to expire instead of
-            // letting every request 401 an hour after sign-in.
-            idTokenProvider = { tokenStore.validIdToken() }
+    single { SupabaseSessionStore() }
+    single { SupabaseAuthApi(BackendConfig.supabaseUrl, BackendConfig.supabaseAnonKey) }
+    single { SupabaseSessionManager(get(), get()) }
+    single<SupabaseAccessTokenProvider> { SupabaseSessionAccessTokenProvider(get(), get()) }
+    single<CloudSessionManager> { DesktopSessionManager(get(), get()) }
+
+    single<AttachmentLocalStorage> { DesktopAttachmentLocalStorage() }
+    single<AttachmentBlobTransport> {
+        if (
+            BackendConfig.remoteBackend == RemoteBackend.SUPABASE &&
+            BackendConfig.attachmentsWorkerUrl.isNotEmpty()
+        ) {
+            val rpcClient = DesktopSupabaseRpcClient(
+                supabaseUrl = BackendConfig.supabaseUrl,
+                anonKey = BackendConfig.supabaseAnonKey,
+                accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+            )
+            R2AttachmentBlobTransport(
+                workerBaseUrl = BackendConfig.attachmentsWorkerUrl,
+                accessTokenProvider = get(),
+                metadata = SupabaseAttachmentMetadata(rpcClient),
+                ownerIdProvider = { get<SupabaseSessionManager>().ensureSignedIn().getOrThrow() },
+            )
+        } else {
+            NoopAttachmentBlobTransport()
+        }
+    }
+    single {
+        val metadata = if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
+            SupabaseAttachmentMetadata(
+                DesktopSupabaseRpcClient(
+                    supabaseUrl = BackendConfig.supabaseUrl,
+                    anonKey = BackendConfig.supabaseAnonKey,
+                    accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+                ),
+            )
+        } else {
+            null
+        }
+        AttachmentSyncService(
+            blobTransport = get(),
+            metadata = metadata,
+            localStorage = get(),
+            noteDao = get(),
         )
+    }
+
+    single<CloudNoteTransport> {
+        if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
+            SupabaseNoteTransport(
+                DesktopSupabaseRpcClient(
+                    supabaseUrl = BackendConfig.supabaseUrl,
+                    anonKey = BackendConfig.supabaseAnonKey,
+                    accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+                ),
+            )
+        } else {
+            val tokenStore = get<DesktopTokenStore>()
+            DesktopFirestoreTransport(
+                firebaseProject = "notelikeus",
+                idTokenProvider = { tokenStore.validIdToken() },
+            )
+        }
     }
 
     single<NoteSyncStateStore> {
@@ -92,31 +167,51 @@ actual val platformModule = module {
         DesktopNoteSyncStateStore(get())
     }
 
+    single { AccountUidBridge(get()) }
     single {
-        val tokenStore = get<DesktopTokenStore>()
+        FirebaseSupabaseAccountLinker(
+            remoteBackend = BackendConfig.remoteBackend,
+            accountUidBridge = get(),
+            syncStateStore = get<NoteSyncStateStore>(),
+            supabaseRpc = if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
+                DesktopSupabaseRpcClient(
+                    supabaseUrl = BackendConfig.supabaseUrl,
+                    anonKey = BackendConfig.supabaseAnonKey,
+                    accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+                )
+            } else {
+                null
+            },
+        )
+    }
+
+    single {
+        val sessionManager = get<CloudSessionManager>()
         val database = get<NotelikeusDatabase>()
         NoteSyncEngine(
             transport = get<CloudNoteTransport>(),
             noteDao = get(),
             labelDao = get(),
             syncStateStore = get<NoteSyncStateStore>(),
-            uidProvider = {
-                val uid = tokenStore.uid()
-                if (uid != null) Result.success(uid)
-                else Result.failure(IllegalStateException("Not signed in"))
-            },
+            uidProvider = { sessionManager.ensureSignedIn() },
             platform = "desktop",
             runInTransaction = { block ->
                 database.useWriterConnection { transactor ->
                     transactor.immediateTransaction { block() }
                 }
-            }
+            },
+            attachmentSync = get(),
         )
     }
 
     single { LocalAccountIsolator(get(), get(), get()) }
     single<SyncManager> {
-        DesktopSyncManager(get<NoteSyncEngine>(), get<DesktopTokenStore>(), get<LocalAccountIsolator>())
+        DesktopSyncManager(
+            get<NoteSyncEngine>(),
+            get<CloudSessionManager>(),
+            get<LocalAccountIsolator>(),
+            get<FirebaseSupabaseAccountLinker>(),
+        )
     }
 
     single<GoogleSignInHelper> {
@@ -124,7 +219,9 @@ actual val platformModule = module {
             oauthClientId = DesktopOAuthConfig.CLIENT_ID,
             oauthClientSecret = DesktopOAuthConfig.clientSecret(),
             firebaseApiKey = DesktopOAuthConfig.FIREBASE_API_KEY,
-            tokenStore = get()
+            tokenStore = get(),
+            supabaseAuthApi = get(),
+            supabaseSessionStore = get(),
         )
     }
 }

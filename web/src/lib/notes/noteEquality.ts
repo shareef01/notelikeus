@@ -1,3 +1,4 @@
+import { attachmentsKey } from '@/lib/attachments/attachmentPaths';
 import type { Note } from '@/types/note';
 
 function checklistKey(note: Note): string {
@@ -23,6 +24,7 @@ export function noteContentKey(note: Note): string {
     note.title,
     note.content,
     labelsKey(note),
+    attachmentsKey(note.attachments),
     checklistKey(note),
   ].join('\u001f');
 }
