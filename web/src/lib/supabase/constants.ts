@@ -4,5 +4,8 @@ export const DEFAULT_LOCAL_SUPABASE_ANON_KEY =
 
 export const DEFAULT_LOCAL_SUPABASE_URL = 'http://127.0.0.1:54321';
 
-/** Poll interval for Supabase pull_changes when realtime is not wired yet (Phase 7). */
-export const SUPABASE_PULL_INTERVAL_MS = 5_000;
+/** Debounce window before pulling after a realtime postgres_changes burst. */
+export const SUPABASE_PULL_DEBOUNCE_MS = 300;
+
+/** Slow polling fallback when the Realtime channel is unavailable. */
+export const SUPABASE_PULL_FALLBACK_MS = 30_000;

@@ -1,9 +1,9 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
-**Status:** Phases 0–6 on branch `migration/supabase-r2` (Firebase remains production backend).  
-**Last updated:** 2025-09-02 (Phase 6 user data migration)
+**Status:** Phases 0–7 on branch `migration/supabase-r2` (Firebase remains production backend).  
+**Last updated:** 2025-09-02 (Phase 7 Supabase Realtime)
 
-This document tracks the phased migration away from Firebase. Phases 0–6 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
+This document tracks the phased migration away from Firebase. Phases 0–7 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
 
 **Git:** Work is committed on `migration/supabase-r2`, not `main`. `main` remains the known Firebase-only baseline until this branch is merged.
 
@@ -118,7 +118,7 @@ These behaviors must be preserved in Supabase:
 | **4 — Supabase remote adapter** | COMPLETE LOCALLY | Dev-flagged `RemoteNotesDataSource` + `CloudNoteTransport`; Firebase default |
 | **5 — Supabase Auth** | COMPLETE LOCALLY | Dev-flagged auth on Web + Kotlin; Firebase default |
 | **6 — User data migration** | COMPLETE LOCALLY | Firebase uid ↔ Supabase uuid linking; IndexedDB namespace + optional cloud import |
-| 7 — Realtime optimization | NOT STARTED | |
+| **7 — Realtime optimization** | COMPLETE LOCALLY | Web Supabase Realtime + debounced pull_changes; slow polling fallback |
 | 8 — Attachments + R2 | NOT STARTED | See `archive/attachments-feature/` |
 | 9–11 — UI, Pages, Firebase retirement | NOT STARTED | |
 
@@ -269,7 +269,7 @@ VITE_SUPABASE_ANON_KEY=<local anon key from supabase start>
 ### Web adapter behavior
 
 - **Writes:** `apply_note_change` / `apply_note_delete` RPCs (revision-based OCC)
-- **Reads:** `fetch_full_snapshot` + polling `pull_changes` (5s interval until Phase 7 realtime)
+- **Reads:** `fetch_full_snapshot` + Realtime `postgres_changes` on `notes` / `note_tombstones` triggering debounced `pull_changes` (30s polling fallback when channel unavailable)
 - **Revision state:** stored in IndexedDB owner meta (`lastRemoteRevision`, `noteRevisions`)
 - **Empty-cloud guard:** preserved in `syncNotesWithCloud`
 - **Auth:** requires active Supabase session; errors clearly if missing
@@ -382,6 +382,33 @@ Account-switch detection uses `accountsMatch()` so a linked Firebase→Supabase 
 
 ---
 
+## Phase 7 — Realtime optimization (dev-only)
+
+Replaces the 5s `pull_changes` polling loop with Supabase Realtime on Web.
+
+### Supabase publication
+
+Migration `20250902030000_realtime_publication.sql` adds `notes` and `note_tombstones` to the `supabase_realtime` publication. RLS still filters events per authenticated subscriber.
+
+### Web behavior
+
+- `subscribeSupabaseNoteRealtime()` — `postgres_changes` on both tables, filtered by `owner_id`
+- On change: debounced `pull_changes` (300ms) with `has_more` pagination
+- Fallback: 30s polling only when the Realtime channel errors or times out
+- Shared pull/snapshot logic extracted to `supabaseSyncEngine.ts`
+
+### Kotlin
+
+Unchanged — Android/Desktop continue pull-on-sync via `SupabaseNoteTransport` RPCs (no background listener). Realtime is a Web concern until a dedicated Kotlin transport phase.
+
+### Limitations (Phase 7 scope)
+
+- **Web only** — Kotlin platforms sync on user action / WorkManager, not continuous polling
+- **Requires Realtime enabled** — local `supabase/config.toml` has `[realtime] enabled = true`
+- **Dev flag only** — production Web still uses Firebase `onSnapshot`
+
+---
+
 ## Phase 2/3 safety review (pre–Phase 4 gate)
 
 ### Web logout vs account switch
@@ -447,7 +474,7 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 | Supabase pgTAP | `npm run supabase:test` | **NOT EXECUTED locally** (blocked on Docker) |
 | Supabase CI (GitHub Actions) | `.github/workflows/supabase.yml` | **PASS** — [run 33579075312](https://github.com/shareef01/notelikeus/actions/runs/33579075312) on `migration/supabase-r2` (4 pgTAP files, all green) |
 
-**Phase 6 gate:** Complete. **Phase 7 gate:** Realtime optimization (Supabase polling → realtime).
+**Phase 7 gate:** Complete. **Phase 8 gate:** Attachments + Cloudflare R2.
 
 **Firebase remains the production backend.** No production Supabase/Cloudflare resources were created or modified.
 
@@ -463,16 +490,16 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 
 ---
 
-## Owner actions before Phase 7
+## Owner actions before Phase 8
 
-1. Review Phase 6 uid linking and namespace migration behavior.
-2. Test Firebase → Supabase sign-in on a device with existing Firebase notes (local + cloud).
-3. Approve Phase 7 scope: Supabase realtime subscriptions replacing polling.
+1. Review Phase 7 Realtime wiring and fallback behavior.
+2. Verify multi-tab / multi-device note updates on local Supabase (requires Docker).
+3. Approve Phase 8 scope: attachment storage on Cloudflare R2.
 
 ### Continue command
 
 ```
-Continue Notelikeus backend migration with Phase 7 only. Review docs/BACKEND_MIGRATION.md first.
+Continue Notelikeus backend migration with Phase 8 only. Review docs/BACKEND_MIGRATION.md first.
 ```
 
 ---
