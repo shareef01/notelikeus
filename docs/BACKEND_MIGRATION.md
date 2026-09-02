@@ -1,9 +1,9 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
-**Status:** Phases 0–7 on branch `migration/supabase-r2` (Firebase remains production backend).  
-**Last updated:** 2025-09-02 (Phase 7 Supabase Realtime)
+**Status:** Phases 0–8 on branch `migration/supabase-r2` (Firebase remains production backend).  
+**Last updated:** 2025-09-02 (Phase 8 Attachments + R2 scaffolding)
 
-This document tracks the phased migration away from Firebase. Phases 0–7 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
+This document tracks the phased migration away from Firebase. Phases 0–8 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
 
 **Git:** Work is committed on `migration/supabase-r2`, not `main`. `main` remains the known Firebase-only baseline until this branch is merged.
 
@@ -119,7 +119,7 @@ These behaviors must be preserved in Supabase:
 | **5 — Supabase Auth** | COMPLETE LOCALLY | Dev-flagged auth on Web + Kotlin; Firebase default |
 | **6 — User data migration** | COMPLETE LOCALLY | Firebase uid ↔ Supabase uuid linking; IndexedDB namespace + optional cloud import |
 | **7 — Realtime optimization** | COMPLETE LOCALLY | Web Supabase Realtime + debounced pull_changes; slow polling fallback |
-| 8 — Attachments + R2 | NOT STARTED | See `archive/attachments-feature/` |
+| **8 — Attachments + R2** | COMPLETE LOCALLY | `note_attachments` metadata + R2 Worker scaffold + client blob transport (no UI yet) |
 | 9–11 — UI, Pages, Firebase retirement | NOT STARTED | |
 
 ---
@@ -409,6 +409,52 @@ Unchanged — Android/Desktop continue pull-on-sync via `SupabaseNoteTransport` 
 
 ---
 
+## Phase 8 — Attachments + Cloudflare R2 (scaffolding)
+
+**Goal:** Store attachment binaries in Cloudflare R2 behind the same dev flags as Supabase; register metadata in Postgres. **No editor UI** — that is Phase 9.
+
+### Supabase
+
+- Migration `20250902040000_note_attachments.sql` — `note_attachments` table, owner RLS, RPCs:
+  - `register_note_attachment` — validates `object_key` matches `owners/{auth.uid()}/notes/{note_id}/{attachment_id}`
+  - `list_note_attachments`, `delete_note_attachment` (soft delete)
+  - `expected_attachment_object_key` helper
+- pgTAP: `notelikeus_note_attachments.test.sql`
+
+### Cloudflare Worker (`workers/attachments/`)
+
+- `PUT/GET/DELETE /v1/attachments/{noteId}/{attachmentId}` — proxies to R2 bucket binding
+- Auth: validates Supabase session via `/auth/v1/user`
+- `wrangler.toml.example` for local `wrangler dev`
+- Unit tests: `workers/attachments/src/objectKey.test.ts` (`npm run test:attachments-worker`)
+
+### Web
+
+- `web/src/lib/attachments/` — `AttachmentBlobStore` registry, R2 implementation, Supabase metadata RPCs
+- Enabled when `VITE_REMOTE_BACKEND=supabase` **and** `VITE_ATTACHMENTS_WORKER_URL` is set
+- Default: `noopAttachmentBlobStore` (throws if called)
+
+### Kotlin
+
+- `AttachmentBlobTransport` + `R2AttachmentBlobTransport` / `NoopAttachmentBlobTransport`
+- `AttachmentObjectKey`, `SupabaseAttachmentMetadata`
+- Wired in `PlatformModule` when `NOTELIKEUS_REMOTE_BACKEND=supabase` and `NOTELIKEUS_ATTACHMENTS_WORKER_URL` is set
+
+### Dev flags
+
+| Platform | Env |
+|----------|-----|
+| Web | `VITE_ATTACHMENTS_WORKER_URL=http://127.0.0.1:8787` |
+| Kotlin | `NOTELIKEUS_ATTACHMENTS_WORKER_URL=http://127.0.0.1:8787` |
+
+### Limitations (Phase 8 scope)
+
+- **No UI** — notes still persist with `attachments: []`; see `archive/attachments-feature/` for prior Firebase Storage UI
+- **No sync pipeline wiring** — blob transport is injectable but not called from `NoteSyncEngine` yet
+- **Worker/R2 not deployed** — scaffold only; local dev requires `wrangler dev` + R2 bucket
+
+---
+
 ## Phase 2/3 safety review (pre–Phase 4 gate)
 
 ### Web logout vs account switch
@@ -474,7 +520,7 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 | Supabase pgTAP | `npm run supabase:test` | **NOT EXECUTED locally** (blocked on Docker) |
 | Supabase CI (GitHub Actions) | `.github/workflows/supabase.yml` | **PASS** — [run 33579075312](https://github.com/shareef01/notelikeus/actions/runs/33579075312) on `migration/supabase-r2` (4 pgTAP files, all green) |
 
-**Phase 7 gate:** Complete. **Phase 8 gate:** Attachments + Cloudflare R2.
+**Phase 8 gate:** Complete. **Phase 9 gate:** Restore attachment UI + sync wiring.
 
 **Firebase remains the production backend.** No production Supabase/Cloudflare resources were created or modified.
 
@@ -490,16 +536,16 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 
 ---
 
-## Owner actions before Phase 8
+## Owner actions before Phase 9
 
-1. Review Phase 7 Realtime wiring and fallback behavior.
-2. Verify multi-tab / multi-device note updates on local Supabase (requires Docker).
-3. Approve Phase 8 scope: attachment storage on Cloudflare R2.
+1. Review Phase 8 attachment metadata RPCs and object-key namespace rules.
+2. Deploy or run locally: `workers/attachments` with R2 bucket + Supabase JWT validation.
+3. Approve Phase 9 scope: restore attachment picker/UI and wire blob transport into note sync.
 
 ### Continue command
 
 ```
-Continue Notelikeus backend migration with Phase 8 only. Review docs/BACKEND_MIGRATION.md first.
+Continue Notelikeus backend migration with Phase 9 only. Review docs/BACKEND_MIGRATION.md first.
 ```
 
 ---

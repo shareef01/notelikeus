@@ -19,6 +19,10 @@ import com.aus.notelikeus.data.remote.SupabaseNoteTransport
 import com.aus.notelikeus.data.remote.SupabaseSessionAccessTokenProvider
 import com.aus.notelikeus.data.remote.SupabaseSessionManager
 import com.aus.notelikeus.data.remote.SupabaseSessionStore
+import com.aus.notelikeus.data.remote.AttachmentBlobTransport
+import com.aus.notelikeus.data.remote.NoopAttachmentBlobTransport
+import com.aus.notelikeus.data.remote.R2AttachmentBlobTransport
+import com.aus.notelikeus.data.remote.SupabaseAttachmentMetadata
 import com.aus.notelikeus.platform.DesktopSessionManager
 import com.aus.notelikeus.data.sync.CloudNoteTransport
 import com.aus.notelikeus.data.migration.AccountUidBridge
@@ -95,6 +99,27 @@ actual val platformModule = module {
     single { SupabaseSessionManager(get(), get()) }
     single<SupabaseAccessTokenProvider> { SupabaseSessionAccessTokenProvider(get(), get()) }
     single<CloudSessionManager> { DesktopSessionManager(get(), get()) }
+
+    single<AttachmentBlobTransport> {
+        if (
+            BackendConfig.remoteBackend == RemoteBackend.SUPABASE &&
+            BackendConfig.attachmentsWorkerUrl.isNotEmpty()
+        ) {
+            val rpcClient = DesktopSupabaseRpcClient(
+                supabaseUrl = BackendConfig.supabaseUrl,
+                anonKey = BackendConfig.supabaseAnonKey,
+                accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+            )
+            R2AttachmentBlobTransport(
+                workerBaseUrl = BackendConfig.attachmentsWorkerUrl,
+                accessTokenProvider = get(),
+                metadata = SupabaseAttachmentMetadata(rpcClient),
+                ownerIdProvider = { get<SupabaseSessionManager>().ensureSignedIn().getOrThrow() },
+            )
+        } else {
+            NoopAttachmentBlobTransport()
+        }
+    }
 
     single<CloudNoteTransport> {
         if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {

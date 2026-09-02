@@ -27,6 +27,8 @@ interface ImportMetaEnv {
   readonly VITE_REMOTE_BACKEND?: string;
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
+  /** Dev-only: Cloudflare Worker base URL for attachment blobs (Phase 8). */
+  readonly VITE_ATTACHMENTS_WORKER_URL?: string;
 }
 
 interface ImportMeta {

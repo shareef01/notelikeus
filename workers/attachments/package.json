@@ -1,0 +1,14 @@
+{
+  "name": "@notelikeus/attachments-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250525.0",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.11"
+  }
+}

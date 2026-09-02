@@ -21,4 +21,7 @@ actual object BackendConfig {
     actual val supabaseAnonKey: String
         get() = System.getenv("NOTELIKEUS_SUPABASE_ANON_KEY")?.trim()?.takeIf { it.isNotEmpty() }
             ?: DEFAULT_LOCAL_SUPABASE_ANON_KEY
+
+    actual val attachmentsWorkerUrl: String
+        get() = System.getenv("NOTELIKEUS_ATTACHMENTS_WORKER_URL")?.trim().orEmpty()
 }
