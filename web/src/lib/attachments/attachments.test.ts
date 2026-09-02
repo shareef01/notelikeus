@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildAttachmentObjectKey,
   isAttachmentObjectKeyForOwner,
+  parseAttachmentObjectKey,
 } from '@/lib/attachments/attachmentObjectKey';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import {
@@ -24,6 +25,16 @@ describe('attachmentObjectKey', () => {
     const key = buildAttachmentObjectKey(ownerId, 'note-1', 'att-1');
     expect(isAttachmentObjectKeyForOwner(key, ownerId)).toBe(true);
     expect(isAttachmentObjectKeyForOwner(key, 'other')).toBe(false);
+  });
+
+  it('parses owner/note/attachment segments', () => {
+    const key = buildAttachmentObjectKey(ownerId, 'note-1', 'att-1');
+    expect(parseAttachmentObjectKey(key)).toEqual({
+      ownerId,
+      noteId: 'note-1',
+      attachmentId: 'att-1',
+    });
+    expect(parseAttachmentObjectKey('owners/x/notes/bad')).toBeNull();
   });
 });
 

@@ -23,10 +23,12 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_AUTH_EMULATOR_PORT?: string;
   /** Set by the e2e build so an emulator host is honoured in an otherwise production build. */
   readonly VITE_E2E?: string;
-  /** Dev-only: `supabase` selects the Supabase remote adapter (Phase 4). */
+  /** `supabase` selects the Supabase remote adapter. Production still defaults to Firebase. */
   readonly VITE_REMOTE_BACKEND?: string;
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
+  /** Explicit cutover flag. Production Supabase also requires a non-localhost URL. */
+  readonly VITE_ALLOW_SUPABASE_PRODUCTION?: string;
   /** Dev-only: Cloudflare Worker base URL for attachment blobs (Phase 8). */
   readonly VITE_ATTACHMENTS_WORKER_URL?: string;
 }

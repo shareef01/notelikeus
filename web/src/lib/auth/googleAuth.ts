@@ -4,6 +4,7 @@ import { stopNotesRealtimeSync } from '@/lib/notes/notesSyncService';
 import { getFirebaseAuth, initFirebase, purgeFirestoreCache } from '@/lib/firebase';
 import { signInWithGoogleSupabase, signOutSupabase } from '@/lib/auth/supabaseAuth';
 import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
+import { deleteAllSupabaseCloudData } from '@/lib/supabase/deleteAllUserCloudData';
 import {
   GoogleAuthProvider,
   getRedirectResult,
@@ -51,7 +52,7 @@ export async function completeGoogleRedirectSignIn(): Promise<void> {
 export async function signOutGoogle(options: { deleteCloudData?: boolean } = {}): Promise<void> {
   if (isSupabaseBackendEnabled()) {
     if (options.deleteCloudData) {
-      throw new Error('Delete cloud data is not available for the Supabase dev backend yet.');
+      await deleteAllSupabaseCloudData();
     }
     await signOutSupabase();
     return;

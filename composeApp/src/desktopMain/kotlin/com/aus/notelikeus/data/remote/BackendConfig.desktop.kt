@@ -8,7 +8,14 @@ private const val DEFAULT_LOCAL_SUPABASE_ANON_KEY =
 
 actual object BackendConfig {
     actual val remoteBackend: RemoteBackend
-        get() = if (AppConfig.isDebug && System.getenv("NOTELIKEUS_REMOTE_BACKEND") == "supabase") {
+        get() = if (
+            isSupabaseRemoteSelected(
+                isDebug = AppConfig.isDebug,
+                remoteBackendEnv = System.getenv("NOTELIKEUS_REMOTE_BACKEND"),
+                allowProductionEnv = System.getenv("NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION"),
+                supabaseUrl = supabaseUrl,
+            )
+        ) {
             RemoteBackend.SUPABASE
         } else {
             RemoteBackend.FIREBASE

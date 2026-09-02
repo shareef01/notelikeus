@@ -386,14 +386,10 @@ class NoteSyncEngine(
     suspend fun deleteAllCloudData(): Result<Int> {
         return runCatching {
             val uid = uidProvider().getOrThrow()
-            val records = transport.fetchNotes(uid)
-            val noteIds = records.map { it.noteId }
-            transport.deleteNotes(uid, noteIds)
-            val tombstones = transport.fetchTombstones(uid)
-            transport.deleteTombstones(uid, tombstones.keys.toList())
-            transport.deleteSyncMeta(uid)
+            val noteCount = transport.fetchNotes(uid).size
+            transport.deleteAllOwnedCloudData(uid)
             syncStateStore.clear()
-            noteIds.size
+            noteCount
         }
     }
 

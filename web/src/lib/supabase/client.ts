@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { resolveSupabaseBackendEnabled } from '@/lib/supabase/backendFlag';
 import {
   DEFAULT_LOCAL_SUPABASE_ANON_KEY,
   DEFAULT_LOCAL_SUPABASE_URL,
@@ -15,12 +16,19 @@ export function loadSupabaseAnonKey(): string {
 }
 
 /**
- * Dev-only flag. Production builds always use Firebase regardless of env.
- * Phase 5 will wire Supabase Auth; until then the client must already hold a session JWT.
+ * Firebase remains the production default.
+ * Supabase is selected in development when `VITE_REMOTE_BACKEND=supabase`.
+ * A production cutover build also needs `VITE_ALLOW_SUPABASE_PRODUCTION=true`
+ * and a non-localhost `VITE_SUPABASE_URL` — ordinary users cannot switch backends.
  */
 export function isSupabaseBackendEnabled(): boolean {
-  if (import.meta.env.PROD && !import.meta.env.VITE_E2E) return false;
-  return import.meta.env.VITE_REMOTE_BACKEND === 'supabase';
+  return resolveSupabaseBackendEnabled({
+    isProd: import.meta.env.PROD,
+    isE2e: Boolean(import.meta.env.VITE_E2E),
+    remoteBackend: import.meta.env.VITE_REMOTE_BACKEND,
+    allowProduction: import.meta.env.VITE_ALLOW_SUPABASE_PRODUCTION,
+    supabaseUrl: loadSupabaseUrl(),
+  });
 }
 
 export function getSupabaseClient(): SupabaseClient {

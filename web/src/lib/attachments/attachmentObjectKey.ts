@@ -25,6 +25,20 @@ export function isAttachmentObjectKeyForOwner(objectKey: string, ownerId: string
   return NOTE_ID_PATTERN.test(noteId) && ATTACHMENT_ID_PATTERN.test(attachmentId);
 }
 
+export function parseAttachmentObjectKey(
+  objectKey: string,
+): { ownerId: string; noteId: string; attachmentId: string } | null {
+  const match = /^owners\/([^/]+)\/notes\/([^/]+)\/([^/]+)$/.exec(objectKey.trim());
+  if (!match) return null;
+  const ownerId = match[1];
+  const noteId = match[2];
+  const attachmentId = match[3];
+  if (!NOTE_ID_PATTERN.test(noteId) || !ATTACHMENT_ID_PATTERN.test(attachmentId)) {
+    return null;
+  }
+  return { ownerId, noteId, attachmentId };
+}
+
 export function attachmentWorkerPath(noteId: string, attachmentId: string): string {
   return `/v1/attachments/${encodeURIComponent(noteId.trim())}/${encodeURIComponent(attachmentId.trim())}`;
 }

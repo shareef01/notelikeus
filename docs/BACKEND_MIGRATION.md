@@ -1,9 +1,9 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
-**Status:** Phases 0–10 on branch `migration/supabase-r2` (Firebase remains production backend).  
-**Last updated:** 2025-09-02 (Phase 10 Cloudflare Pages scaffold)
+**Status:** Phases 0–11 on branch `migration/supabase-r2` (Firebase remains production backend).  
+**Last updated:** 2026-09-02 (Phase 11 retirement readiness; cutover not authorized)
 
-This document tracks the phased migration away from Firebase. Phases 0–10 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
+This document tracks the phased migration away from Firebase. Phases 0–11 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet. Firebase Auth, Firestore, and Firebase Hosting remain the live backend.
 
 **Git:** Work is committed on `migration/supabase-r2`, not `main`. `main` remains the known Firebase-only baseline until this branch is merged.
 
@@ -122,7 +122,7 @@ These behaviors must be preserved in Supabase:
 | **8 — Attachments + R2** | COMPLETE LOCALLY | `note_attachments` metadata + R2 Worker scaffold + client blob transport (no UI yet) |
 | **9 — Attachment UI + sync** | COMPLETE LOCALLY | Web editor image picker + R2 upload on save + Supabase metadata hydration on pull |
 | **10 — Cloudflare Pages** | COMPLETE LOCALLY | `_headers`/`_redirects` parity + Pages CI verify; Firebase Hosting still production |
-| 11 — Firebase retirement | NOT STARTED | |
+| **11 — Firebase retirement readiness** | COMPLETE LOCALLY | Cutover runbook, production override flags (off by default), account wipe RPC, ops backup export. **Firebase not removed.** |
 
 ---
 
@@ -343,8 +343,8 @@ SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<Web OAuth client secret>
 ### Limitations (Phase 5 scope)
 
 - **No user data migration** — Firebase UID ≠ Supabase UUID; Phase 6 maps ownership
-- **Supabase sign-out with delete cloud data** — not implemented on Web (throws)
 - **Anonymous/guest** — unchanged; guest mode remains local-only
+- **Sign-out + delete cloud data** — implemented in Phase 11 via `delete_all_user_cloud_data`
 
 ---
 
@@ -511,7 +511,65 @@ Unchanged — Android/Desktop continue pull-on-sync via `SupabaseNoteTransport` 
 ### Production
 
 - **Unchanged** — `npm run deploy` still targets Firebase Hosting (`notelike.web.app`)
-- README / package `homepage` URLs unchanged until Phase 11 cutover
+- README / package `homepage` URLs unchanged until an authorized cutover
+
+---
+
+## Phase 11 — Firebase retirement readiness (not cutover)
+
+**Firebase remains the production backend.** This phase prepares a reversible cutover. It does **not** remove Firebase dependencies, change README/privacy production claims, or deploy.
+
+Firebase can only be retired after: Supabase sync, auth, and migration proven on all platforms; a migration window for existing users; RLS/backup/IndexedDB verified; then a gradual removal. Those owner-operated steps are listed below. Code in this phase only makes them possible.
+
+### Account wipe (sign out and delete cloud data)
+
+- Migration `20250902060000_delete_all_user_cloud_data.sql`
+  - `delete_all_user_cloud_data()` RPC — authenticated caller only; `SECURITY INVOKER`; mutation guard
+  - Deletes the caller's notes, tombstones, attachment metadata, `sync_meta`, and `firebase_uid_mappings`
+  - Returns `attachment_object_keys` so the client can best-effort DELETE R2 blobs while the JWT is still valid
+  - pgTAP: `notelikeus_delete_all_user_cloud_data.test.sql` (anon denied; A/B isolation; idempotent)
+- Web: `deleteAllSupabaseCloudData()` from `signOutGoogle({ deleteCloudData: true })`
+- Kotlin: `CloudNoteTransport.deleteAllOwnedCloudData`; `SupabaseNoteTransport` calls the RPC
+
+### Production override (off by default)
+
+Ordinary production users cannot switch backends.
+
+| Platform | Cutover build requirements |
+|----------|----------------------------|
+| Web | `VITE_REMOTE_BACKEND=supabase` **and** `VITE_ALLOW_SUPABASE_PRODUCTION=true` **and** non-localhost `VITE_SUPABASE_URL` |
+| Kotlin | `NOTELIKEUS_REMOTE_BACKEND=supabase` **and** `NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION=true` **and** non-localhost `NOTELIKEUS_SUPABASE_URL` |
+
+Debug/dev builds still enable Supabase from `VITE_REMOTE_BACKEND` / `NOTELIKEUS_REMOTE_BACKEND` alone (including local Docker). Production builds without the allow flag stay on Firebase even if other `VITE_SUPABASE_*` values are present.
+
+### Ops export (offline)
+
+`scripts/ops/export-firestore-user.mjs` converts a **local** Firestore notes dump into the existing backup JSON (version 3). It does not contact production.
+
+```bash
+npm run test:ops-export
+node scripts/ops/export-firestore-user.mjs --input dump.json --out backup.json
+```
+
+Users import that file in-app (existing backup import + Phase 6 client migration). Bulk server-side write into production Supabase is still not provided.
+
+### Cutover runbook (owner-operated; do not run from this branch automatically)
+
+1. Provision a **staging** Supabase project and attach Cloudflare R2 + Pages `notelikeus-dev`. Do not point production clients at it.
+2. Run pgTAP + web/Kotlin suites against staging; complete a migration window on a test account (Firebase dump → backup JSON → Supabase sign-in import).
+3. Ship a client that still defaults to Firebase, with the override flags available for an internal cutover build.
+4. Give existing users a documented backup/export window.
+5. Only after that window: build Web/Android/Desktop with the production override flags, switch `npm run deploy` / hosting to Cloudflare Pages, update README and `PRIVACY_POLICY.md` to describe Supabase/R2.
+6. Keep Firebase Auth/Firestore readable (not deleted) until the migration window is over and rollback is no longer needed.
+7. Remove Firebase dependencies, rules, indexes, emulator config, and Hosting only after the window closes. Preserve git history.
+
+### Limitations (Phase 11 scope)
+
+- **No production cutover** — flags default off; Firebase Hosting URL unchanged
+- **Firebase SDKs retained** — Auth, Firestore, Hosting, rules tests still in CI
+- **No bulk server-side import into Supabase** — backup JSON + client import only
+- **R2 blob cleanup is best-effort** — Postgres wipe is authoritative
+- **Kotlin attachment UI** — still Web-only (Phase 9)
 
 ---
 
@@ -580,7 +638,7 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 | Supabase pgTAP | `npm run supabase:test` | **NOT EXECUTED locally** (blocked on Docker) |
 | Supabase CI (GitHub Actions) | `.github/workflows/supabase.yml` | **PASS** — [run 33579075312](https://github.com/shareef01/notelikeus/actions/runs/33579075312) on `migration/supabase-r2` (4 pgTAP files, all green) |
 
-**Phase 10 gate:** Complete. **Phase 11 gate:** Firebase retirement / production cutover.
+**Phase 11 gate:** Retirement *readiness* complete. Production cutover remains owner-authorized.
 
 **Firebase remains the production backend.** No production Supabase/Cloudflare resources were created or modified.
 
@@ -596,22 +654,28 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 
 ---
 
-## Owner actions before Phase 11
+## Owner actions before production cutover
 
 1. Create Cloudflare Pages project `notelikeus-dev` and run a manual `workflow_dispatch` deploy.
-2. Register the Pages preview URL in Firebase/Google OAuth redirect allowlists if testing auth there.
-3. Approve Phase 11 scope: production cutover and Firebase retirement plan.
+2. Register the Pages preview URL in Google OAuth redirect allowlists.
+3. Create a **staging** Supabase project (not production) and run `supabase db push` from `supabase/migrations`.
+4. Complete a test-account migration window (backup export → Supabase import) on Web, Android, and Desktop.
+5. Approve flipping `VITE_ALLOW_SUPABASE_PRODUCTION` / `NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION` for a dedicated cutover build.
+6. After the user migration window: update README, privacy policy, and `npm run deploy` target. Only then remove Firebase.
 
 ### Continue command
 
+Phase 11 is the last implementation phase on this branch. Remaining work is owner-operated cutover, not further code phases.
+
 ```
-Continue Notelikeus backend migration with Phase 11 only. Review docs/BACKEND_MIGRATION.md first.
+Do not start Firebase retirement in production. Review docs/BACKEND_MIGRATION.md Phase 11 runbook first.
 ```
 
 ---
 
 ## Rollback
 
-- Phases 0–3 are additive; Firebase remains default.
+- Phases 0–11 are additive; Firebase remains default until a cutover build sets the explicit allow flags.
 - Revert Web local-first by restoring pre-Phase-2 sync paths (not recommended once users rely on IndexedDB).
 - Delete `supabase/` directory to remove local backend scaffold (no production impact).
+- A cutover build is rolled back by shipping a Firebase-default client (omit the allow flags). Do not delete Firebase until rollback is no longer needed.

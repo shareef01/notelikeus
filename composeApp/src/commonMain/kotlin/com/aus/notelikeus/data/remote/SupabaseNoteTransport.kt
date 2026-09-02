@@ -120,7 +120,7 @@ class SupabaseNoteTransport(
     }
 
     override suspend fun deleteTombstones(uid: String, noteIds: List<Long>) {
-        // Tombstone cleanup is server-managed during Phase 4.
+        // Individual tombstone cleanup is server-managed; account wipe uses deleteAllOwnedCloudData.
     }
 
     override suspend fun writeSyncMeta(uid: String, noteCount: Int, platform: String) {
@@ -128,7 +128,12 @@ class SupabaseNoteTransport(
     }
 
     override suspend fun deleteSyncMeta(uid: String) {
-        // No-op for Phase 4.
+        // Covered by delete_all_user_cloud_data during account wipe.
+    }
+
+    override suspend fun deleteAllOwnedCloudData(uid: String) {
+        rpc.callRpc("delete_all_user_cloud_data", buildJsonObject { })
+        revisions.remove(uid)
     }
 
     private fun Note.toRpcArgs(baseRevision: Long?): JsonObject = buildJsonObject {
