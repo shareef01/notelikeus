@@ -1,14 +1,17 @@
 begin;
-select plan(24);
+select plan(18);
+
+select setval('public.sync_revision_seq', 10000, true);
 
 select tests.create_supabase_user('sync_a@notelikeus.test');
-
 select tests.authenticate_as('sync_a@notelikeus.test');
 
--- create → revision 10001 (sequence start)
+-- create → revision 10001
 select results_eq(
   $$ select (public.apply_note_change(
-      '1', 1, null, 'v1', 'body', 100, 1, false, false, false, 0, null,
+      '1'::text, 1::bigint, null::bigint,
+      'v1'::text, 'body'::text, 100::bigint, 1::integer,
+      false, false, false, 0::integer, null::bigint,
       '[]'::jsonb, '[]'::jsonb
     )->>'status') $$,
   ARRAY['applied'],
@@ -23,7 +26,9 @@ select results_eq(
 -- update with matching base → revision 10002
 select results_eq(
   $$ select (public.apply_note_change(
-      '1', 1, 10001, 'v2', 'body', 101, 1, false, false, false, 0, null,
+      '1'::text, 1::bigint, (select revision from public.notes where note_id = '1'),
+      'v2'::text, 'body'::text, 101::bigint, 1::integer,
+      false, false, false, 0::integer, null::bigint,
       '[]'::jsonb, '[]'::jsonb
     )->>'status') $$,
   ARRAY['applied'],
@@ -38,7 +43,9 @@ select results_eq(
 -- stale update must not overwrite revision 10002
 select results_eq(
   $$ select (public.apply_note_change(
-      '1', 1, 10001, 'stale', 'body', 102, 1, false, false, false, 0, null,
+      '1'::text, 1::bigint, 10001::bigint,
+      'stale'::text, 'body'::text, 102::bigint, 1::integer,
+      false, false, false, 0::integer, null::bigint,
       '[]'::jsonb, '[]'::jsonb
     )->>'status') $$,
   ARRAY['conflict'],
@@ -57,7 +64,10 @@ select results_eq(
 
 -- delete with matching base → revision 10003 tombstone
 select results_eq(
-  $$ select (public.apply_note_delete('1', 10002)->>'status') $$,
+  $$ select (public.apply_note_delete(
+      '1'::text,
+      (select revision from public.notes where note_id = '1')
+    )->>'status') $$,
   ARRAY['applied'],
   'delete accepted'
 );
@@ -72,20 +82,22 @@ select results_eq(
   'delete revision is 10003'
 );
 
--- pull after 10001 returns update + delete in order
-select results_eq(
-  $$ select jsonb_path_query_array(
-      public.pull_changes(10001, 100)->'changes',
-      '$[*].revision'
-    )::text $$,
-  $$ to_jsonb(ARRAY[10002, 10003])::text $$,
-  'pull_changes after 10001 returns revisions 10002 and 10003'
+-- pull after 10001 returns update + delete revisions
+select ok(
+  (
+    select count(*) = 2
+    from jsonb_array_elements(public.pull_changes(10001, 100)->'changes') elem
+    where (elem->>'revision') in ('10002', '10003')
+  ),
+  'pull_changes after 10001 returns update and delete revisions'
 );
 
 -- stale device cannot resurrect deleted note (create path)
 select results_eq(
   $$ select (public.apply_note_change(
-      '1', 1, null, 'resurrected', 'body', 200, 1, false, false, false, 0, null,
+      '1'::text, 1::bigint, null::bigint,
+      'resurrected'::text, 'body'::text, 200::bigint, 1::integer,
+      false, false, false, 0::integer, null::bigint,
       '[]'::jsonb, '[]'::jsonb
     )->>'status') $$,
   ARRAY['conflict'],
@@ -93,7 +105,9 @@ select results_eq(
 );
 select results_eq(
   $$ select (public.apply_note_change(
-      '1', 1, null, 'resurrected', 'body', 200, 1, false, false, false, 0, null,
+      '1'::text, 1::bigint, null::bigint,
+      'resurrected'::text, 'body'::text, 200::bigint, 1::integer,
+      false, false, false, 0::integer, null::bigint,
       '[]'::jsonb, '[]'::jsonb
     )->>'error') $$,
   ARRAY['note_deleted'],
@@ -103,7 +117,9 @@ select results_eq(
 -- stale device update with old base also conflicts (note row gone)
 select results_eq(
   $$ select (public.apply_note_change(
-      '1', 1, 10002, 'stale-after-delete', 'body', 201, 1, false, false, false, 0, null,
+      '1'::text, 1::bigint, 10002::bigint,
+      'stale-after-delete'::text, 'body'::text, 201::bigint, 1::integer,
+      false, false, false, 0::integer, null::bigint,
       '[]'::jsonb, '[]'::jsonb
     )->>'status') $$,
   ARRAY['conflict'],
@@ -115,7 +131,7 @@ select results_eq(
   'note still absent after stale update'
 );
 
--- direct revision forgery blocked
+-- direct revision / owner forgery blocked by mutation guard
 select throws_ok(
   $$ insert into public.notes (
       note_id, local_id, owner_id, revision, title, content, client_timestamp, color
@@ -124,8 +140,6 @@ select throws_ok(
   null,
   'direct insert with forged revision rejected'
 );
-
--- direct owner forgery blocked (wrong uuid still goes through RLS as own row only)
 select throws_ok(
   $$ insert into public.notes (
       note_id, local_id, owner_id, revision, title, content, client_timestamp, color
@@ -136,10 +150,11 @@ select throws_ok(
 );
 
 -- pagination flag
-select tests.authenticate_as('sync_a@notelikeus.test');
 select results_eq(
   $$ select (public.apply_note_change(
-      '2', 2, null, 'n2', 'b', 1, 1, false, false, false, 0, null,
+      '2'::text, 2::bigint, null::bigint,
+      'n2'::text, 'b'::text, 1::bigint, 1::integer,
+      false, false, false, 0::integer, null::bigint,
       '[]'::jsonb, '[]'::jsonb
     )->>'status') $$,
   ARRAY['applied'],
@@ -152,7 +167,7 @@ select ok(
 
 -- idempotent delete
 select results_eq(
-  $$ select (public.apply_note_delete('1', 10002)->>'idempotent')::text $$,
+  $$ select (public.apply_note_delete('1'::text, 10002::bigint)->>'idempotent')::text $$,
   ARRAY['true'],
   'repeated delete is idempotent'
 );

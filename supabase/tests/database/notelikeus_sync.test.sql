@@ -1,5 +1,5 @@
 begin;
-select plan(10);
+select plan(13);
 
 select has_sequence('public', 'sync_revision_seq', 'sync revision sequence exists');
 select has_table('public', 'notes', 'notes table exists');
@@ -23,9 +23,9 @@ select tests.create_supabase_user('user_a@notelikeus.test');
 select tests.authenticate_as('user_a@notelikeus.test');
 select results_eq(
   $$ select (public.apply_note_change(
-      '42', 42, null,
-      'Hello', 'Body', 1000, 4278190080,
-      false, false, false, 0, null,
+      '42'::text, 42::bigint, null::bigint,
+      'Hello'::text, 'Body'::text, 1000::bigint, 4278190080::integer,
+      false, false, false, 0::integer, null::bigint,
       '[]'::jsonb, '[]'::jsonb
     )->>'status') $$,
   ARRAY['applied'],

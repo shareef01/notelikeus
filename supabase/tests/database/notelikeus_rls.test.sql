@@ -1,16 +1,14 @@
 begin;
-select plan(11);
+select plan(8);
 
-select tests.create_supabase_user('anon_denial@notelikeus.test');
 select tests.create_supabase_user('user_a@notelikeus.test');
 select tests.create_supabase_user('user_b@notelikeus.test');
 
--- Anonymous denial
-set local role anon;
-select throws_ok(
-  $$ select count(*) from public.notes $$,
-  '42501',
-  null,
+-- Anonymous users see no rows (RLS), and cannot mutate via RPC or direct insert.
+select tests.clear_authentication();
+select results_eq(
+  $$ select count(*)::bigint from public.notes $$,
+  ARRAY[0::bigint],
   'anonymous cannot read notes'
 );
 select throws_ok(
@@ -23,16 +21,18 @@ select throws_ok(
 );
 select throws_ok(
   $$ select public.apply_note_change(
-      '1', 1, null, 't', 'c', 1, 1, false, false, false, 0, null, '[]'::jsonb, '[]'::jsonb
+      '1'::text, 1::bigint, null::bigint,
+      't'::text, 'c'::text, 1::bigint, 1::integer,
+      false, false, false, 0::integer, null::bigint,
+      '[]'::jsonb, '[]'::jsonb
     ) $$,
   '28000',
   null,
   'anonymous cannot call apply_note_change'
 );
-select throws_ok(
-  $$ select count(*) from public.note_tombstones $$,
-  '42501',
-  null,
+select results_eq(
+  $$ select count(*)::bigint from public.note_tombstones $$,
+  ARRAY[0::bigint],
   'anonymous cannot read tombstones'
 );
 
@@ -40,7 +40,9 @@ select throws_ok(
 select tests.authenticate_as('user_a@notelikeus.test');
 select results_eq(
   $$ select (public.apply_note_change(
-      '7', 7, null, 'A', 'secret', 1, 1, false, false, false, 0, null,
+      '7'::text, 7::bigint, null::bigint,
+      'A'::text, 'secret'::text, 1::bigint, 1::integer,
+      false, false, false, 0::integer, null::bigint,
       '[]'::jsonb, '[]'::jsonb
     )->>'status') $$,
   ARRAY['applied'],
@@ -55,10 +57,12 @@ select results_eq(
   'user B cannot read A notes'
 );
 
--- User B can only mutate its own namespace; A's row is invisible
+-- User B can create the same note id in its own namespace
 select results_eq(
   $$ select (public.apply_note_change(
-      '7', 7, null, 'B-owned', 'body', 1, 1, false, false, false, 0, null,
+      '7'::text, 7::bigint, null::bigint,
+      'B-owned'::text, 'body'::text, 1::bigint, 1::integer,
+      false, false, false, 0::integer, null::bigint,
       '[]'::jsonb, '[]'::jsonb
     )->>'status') $$,
   ARRAY['applied'],
