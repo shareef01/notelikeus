@@ -18,7 +18,26 @@ import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.data.remote.SharedPrefsNoteSyncStateStore
 import com.aus.notelikeus.data.remote.FirebaseSessionManager
+import com.aus.notelikeus.data.remote.AndroidSupabaseRpcClient
+import com.aus.notelikeus.data.remote.BackendConfig
+import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.remote.FirestoreNoteTransport
+import com.aus.notelikeus.data.remote.RemoteBackend
+import com.aus.notelikeus.data.remote.SupabaseAccessTokenProvider
+import com.aus.notelikeus.data.remote.SupabaseAuthApi
+import com.aus.notelikeus.data.remote.SupabaseNoteTransport
+import com.aus.notelikeus.data.remote.SupabaseSessionAccessTokenProvider
+import com.aus.notelikeus.data.remote.SupabaseSessionManager
+import com.aus.notelikeus.data.remote.SupabaseSessionStore
+import com.aus.notelikeus.data.attachments.AndroidAttachmentLocalStorage
+import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
+import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.remote.AttachmentBlobTransport
+import com.aus.notelikeus.data.remote.NoopAttachmentBlobTransport
+import com.aus.notelikeus.data.remote.R2AttachmentBlobTransport
+import com.aus.notelikeus.data.remote.SupabaseAttachmentMetadata
+import com.aus.notelikeus.data.migration.AccountUidBridge
+import com.aus.notelikeus.data.migration.FirebaseSupabaseAccountLinker
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.NoteSyncStateStore
@@ -88,21 +107,102 @@ actual val platformModule = module {
     single { FirebaseAuth.getInstance() }
     single { FirebaseFirestore.getInstance() }
     single { FirebaseSessionManager(get(), get()) }
-    single<CloudNoteTransport> { FirestoreNoteTransport(get()) }
+    single { SupabaseSessionStore() }
+    single { SupabaseAuthApi(BackendConfig.supabaseUrl, BackendConfig.supabaseAnonKey) }
+    single { SupabaseSessionManager(get(), get()) }
+    single<SupabaseAccessTokenProvider> { SupabaseSessionAccessTokenProvider(get(), get()) }
+    single<CloudSessionManager> {
+        if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
+            get<SupabaseSessionManager>()
+        } else {
+            get<FirebaseSessionManager>()
+        }
+    }
+    single<AttachmentLocalStorage> { AndroidAttachmentLocalStorage(get()) }
+    single<AttachmentBlobTransport> {
+        if (
+            BackendConfig.remoteBackend == RemoteBackend.SUPABASE &&
+            BackendConfig.attachmentsWorkerUrl.isNotEmpty()
+        ) {
+            val rpcClient = AndroidSupabaseRpcClient(
+                supabaseUrl = BackendConfig.supabaseUrl,
+                anonKey = BackendConfig.supabaseAnonKey,
+                accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+            )
+            R2AttachmentBlobTransport(
+                workerBaseUrl = BackendConfig.attachmentsWorkerUrl,
+                accessTokenProvider = get(),
+                metadata = SupabaseAttachmentMetadata(rpcClient),
+                ownerIdProvider = { get<SupabaseSessionManager>().ensureSignedIn().getOrThrow() },
+            )
+        } else {
+            NoopAttachmentBlobTransport()
+        }
+    }
     single {
-        val sessionManager = get<FirebaseSessionManager>()
+        val metadata = if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
+            SupabaseAttachmentMetadata(
+                AndroidSupabaseRpcClient(
+                    supabaseUrl = BackendConfig.supabaseUrl,
+                    anonKey = BackendConfig.supabaseAnonKey,
+                    accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+                ),
+            )
+        } else {
+            null
+        }
+        AttachmentSyncService(
+            blobTransport = get(),
+            metadata = metadata,
+            localStorage = get(),
+            noteDao = get(),
+        )
+    }
+    single<CloudNoteTransport> {
+        if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
+            SupabaseNoteTransport(
+                AndroidSupabaseRpcClient(
+                    supabaseUrl = BackendConfig.supabaseUrl,
+                    anonKey = BackendConfig.supabaseAnonKey,
+                    accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+                ),
+            )
+        } else {
+            FirestoreNoteTransport(get())
+        }
+    }
+    single { AccountUidBridge(get()) }
+    single {
+        FirebaseSupabaseAccountLinker(
+            remoteBackend = BackendConfig.remoteBackend,
+            accountUidBridge = get(),
+            syncStateStore = get<NoteSyncStateStore>(),
+            supabaseRpc = if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
+                AndroidSupabaseRpcClient(
+                    supabaseUrl = BackendConfig.supabaseUrl,
+                    anonKey = BackendConfig.supabaseAnonKey,
+                    accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+                )
+            } else {
+                null
+            },
+        )
+    }
+    single {
+        val sessionManager = get<CloudSessionManager>()
         val database = get<NotelikeusDatabase>()
         NoteSyncEngine(
             transport = get<CloudNoteTransport>(),
             noteDao = get(),
             labelDao = get(),
             syncStateStore = get<SharedPrefsNoteSyncStateStore>(),
-            uidProvider = { sessionManager.ensureGoogleSignedIn() },
+            uidProvider = { sessionManager.ensureSignedIn() },
             runInTransaction = { block ->
                 database.useWriterConnection { transactor ->
                     transactor.immediateTransaction { block() }
                 }
-            }
+            },
+            attachmentSync = get(),
         )
     }
     
@@ -110,7 +210,7 @@ actual val platformModule = module {
     single { PendingCloudSyncStore(get()) }
     single<SyncCoordinator> { CloudNoteSyncCoordinator(get(), get(), get(), get(), get()) }
     single { LocalAccountIsolator(get(), get(), get()) }
-    single<SyncManager> { AndroidSyncManager(get(), get(), get()) }
+    single<SyncManager> { AndroidSyncManager(get(), get(), get(), get()) }
 
     single<GoogleSignInHelper> {
         AndroidGoogleSignInHelper(

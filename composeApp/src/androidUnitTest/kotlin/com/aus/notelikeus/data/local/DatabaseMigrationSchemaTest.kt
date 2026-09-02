@@ -188,7 +188,7 @@ class DatabaseMigrationSchemaTest {
 
     /**
      * A library that started at version 1, with rows in every table the chain creates, must still
-     * be there at version 10. DatabaseMigrationsTest only asserts start/end version numbers;
+     * be there at version 11. DatabaseMigrationsTest only asserts start/end version numbers;
      * MIGRATION_9_10's comment is that ALTER ADD COLUMN must not rebuild `notes` or the CASCADE
      * on checklists and labels would fire. This is the witness for that, and for PACK-01's
      * "green CI can miss a populated upgrade" gap.
@@ -276,7 +276,8 @@ class DatabaseMigrationSchemaTest {
                 listOf(
                     "id", "title", "content", "timestamp", "color",
                     "isPinned", "isArchived", "isTrashed", "position",
-                    "isLocked", "reminderTimestamp", "serverUpdatedAt", "searchText"
+                    "isLocked", "reminderTimestamp", "serverUpdatedAt", "searchText",
+                    "attachmentsJson"
                 ),
                 columnNames(db, "notes")
             )

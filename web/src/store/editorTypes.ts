@@ -1,6 +1,7 @@
 import type { ChecklistItem } from '@/types/checklist';
 import type { Label } from '@/types/label';
 import type { Note } from '@/types/note';
+import type { Attachment } from '@/types/attachment';
 
 export interface EditorState {
   id: string | null;
@@ -13,6 +14,7 @@ export interface EditorState {
   isTrashed: boolean;
   reminderTimestamp: number | null;
   labels: Label[];
+  attachments: Attachment[];
   checklist: ChecklistItem[];
   timestamp: number;
   /** Carried through unedited so saving an already-synced note doesn't lose its sync history —
@@ -28,7 +30,9 @@ export const DEFAULT_EDITOR_COLOR = 0; // Use theme background by default to pre
 
 export function buildNoteFromEditor(state: EditorState): Note | null {
   if (!state.id || state.localId == null) return null;
-  if (!state.title.trim() && !state.content.trim() && state.checklist.length === 0) return null;
+  if (!state.title.trim() && !state.content.trim() && state.checklist.length === 0 && state.attachments.length === 0) {
+    return null;
+  }
 
   return {
     id: state.id,
@@ -44,7 +48,7 @@ export function buildNoteFromEditor(state: EditorState): Note | null {
     reminderTimestamp: state.reminderTimestamp,
     serverUpdatedAt: state.serverUpdatedAt,
     labels: state.labels,
-    attachments: [],
+    attachments: state.attachments,
     checklist: state.checklist,
   };
 }
@@ -61,6 +65,7 @@ export function editorStateFromNote(note: Note): EditorState {
     isTrashed: note.isTrashed,
     reminderTimestamp: note.reminderTimestamp,
     labels: note.labels,
+    attachments: [...note.attachments],
     checklist: [...note.checklist].sort((a, b) => {
       if (a.isChecked !== b.isChecked) return a.isChecked ? 1 : -1;
       return a.position - b.position;
@@ -86,6 +91,7 @@ export function createBlankEditorState(color = DEFAULT_EDITOR_COLOR, position = 
     isTrashed: false,
     reminderTimestamp: null,
     labels: [],
+    attachments: [],
     checklist: [],
     timestamp: Date.now(),
     serverUpdatedAt: null,

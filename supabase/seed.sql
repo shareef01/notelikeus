@@ -1,0 +1,2 @@
+-- Local-only synthetic fixtures. Auth users are created by pgTAP tests.
+-- This seed intentionally stays empty until Phase 4 client wiring.

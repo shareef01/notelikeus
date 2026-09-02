@@ -27,6 +27,7 @@ fun RichTextToolbar(
     onListClick: () -> Unit,
     onChecklistClick: () -> Unit,
     onLinkClick: () -> Unit,
+    onAddImageClick: (() -> Unit)? = null,
     contentColor: Color,
     surfaceColor: Color = MaterialTheme.colorScheme.surfaceVariant,
     modifier: Modifier = Modifier
@@ -90,6 +91,14 @@ fun RichTextToolbar(
                 modifier = Modifier.focusProperties { canFocus = false },
             ) {
                 Icon(Icons.Default.Checklist, contentDescription = stringResource(Res.string.format_checklist), tint = contentColor)
+            }
+            if (onAddImageClick != null) {
+                IconButton(
+                    onClick = onAddImageClick,
+                    modifier = Modifier.focusProperties { canFocus = false },
+                ) {
+                    Icon(Icons.Default.Image, contentDescription = stringResource(Res.string.format_image), tint = contentColor)
+                }
             }
         }
     }

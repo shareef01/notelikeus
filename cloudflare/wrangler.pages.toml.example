@@ -1,0 +1,12 @@
+# Cloudflare Pages — dev/preview scaffold (Firebase Hosting remains production).
+# Copy to wrangler.toml and set account_id after creating a Pages project.
+#
+#   npx wrangler pages project create notelikeus-dev
+#   cd web && npm run build
+#   npx wrangler pages deploy dist --project-name=notelikeus-dev
+
+name = "notelikeus-web"
+pages_build_output_dir = "../web/dist"
+compatibility_date = "2025-09-02"
+
+# account_id = "<your-cloudflare-account-id>"

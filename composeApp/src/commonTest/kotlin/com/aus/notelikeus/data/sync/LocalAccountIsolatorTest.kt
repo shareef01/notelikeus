@@ -62,6 +62,21 @@ class LocalAccountIsolatorTest {
     }
 
     @Test
+    fun `isolateIfAccountChanged is a no-op when firebase uid links to supabase uuid`() = runTest {
+        val repository = FakeNoteRepository()
+        val stateStore = FakeNoteSyncStateStore()
+        repository.addNote(Note(id = 1L, title = "Keep", content = "", timestamp = 1L, color = 0))
+        stateStore.setLastMergedUserId("firebaseUid28charsabcdefghij")
+        stateStore.setLinkedFirebaseUid("firebaseUid28charsabcdefghij")
+
+        val isolator = LocalAccountIsolator(repository, stateStore, RecordingSyncCoordinator())
+        isolator.isolateIfAccountChanged("11111111-2222-4333-8444-555555555555")
+
+        assertEquals(1, repository.getCloudEligibleNoteCount())
+        assertTrue(repository.clearedAll.isEmpty())
+    }
+
+    @Test
     fun `isolateIfAccountChanged wipes when a different account signs in`() = runTest {
         val repository = FakeNoteRepository()
         val stateStore = FakeNoteSyncStateStore()
