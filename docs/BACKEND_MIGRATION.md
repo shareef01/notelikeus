@@ -311,8 +311,9 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 | Supabase start | `npm run supabase:start` | **BLOCKED** — Docker Desktop installed but daemon not ready (first-run/WSL2 setup required) |
 | Supabase db reset | `npm run supabase:reset` | **NOT EXECUTED** (blocked on Docker) |
 | Supabase pgTAP | `npm run supabase:test` | **NOT EXECUTED** (blocked on Docker) |
+| Supabase CI (GitHub Actions) | `.github/workflows/supabase.yml` | **PENDING** — runs on push/PR when `supabase/**` changes; use this when local Docker is unavailable |
 
-**Phase 4 gate:** Supabase `reset` + `test` must be **green** before starting Phase 4.
+**Phase 4 gate:** Supabase `reset` + `test` must be **green** (locally or via GitHub Actions) before starting Phase 4.
 
 **Firebase remains the production backend.** No production Supabase/Cloudflare resources were created or modified.
 
@@ -323,7 +324,7 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 1. **Web offline + Firestore cache** — Firestore SDK cache still initialized; IndexedDB is now primary for UI. Phase 4 should evaluate whether to reduce Firestore persistence reliance.
 2. **Revision vs serverUpdatedAt** — Kotlin/Web still use timestamp conflict model against Firebase; Supabase adapter must map revision protocol without weakening empty-cloud guards.
 3. **Firebase UID ≠ Supabase UUID** — account migration (Phase 6) must map ownership explicitly.
-4. **pgTAP / Docker** — local Supabase requires Docker; CI wiring deferred.
+4. **pgTAP / Docker** — local Supabase requires Docker; use **GitHub Actions** (`.github/workflows/supabase.yml`) when local virtualization is unavailable.
 5. **Direct table RLS vs RPC-only writes** — Phase 4 adapter should prefer RPCs; consider tightening direct `UPDATE` on `revision` columns.
 
 ---
@@ -331,15 +332,16 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 ## Owner actions before Phase 4
 
 1. Review this document and local Supabase schema.
-2. Install Docker Desktop (or compatible engine) for `supabase start`.
-3. Run locally:
+2. Run pgTAP tests — either locally (Docker) or via GitHub Actions after pushing `migration/supabase-r2`:
    ```bash
+   npm run supabase:start
    npm run supabase:reset
    npm run supabase:test
    ```
-4. Create a **staging** Supabase project (not production) when ready — **do not** link production clients yet.
-5. Configure Google OAuth in Supabase dashboard (staging only) — production auth remains Firebase until Phase 5.
-6. Approve Phase 4 scope: Supabase `RemoteNotesDataSource` / `CloudNoteTransport` behind a **development-only** feature flag.
+   Or push the branch and check the **Supabase CI** workflow in GitHub Actions.
+3. Create a **staging** Supabase project (not production) when ready — **do not** link production clients yet.
+4. Configure Google OAuth in Supabase dashboard (staging only) — production auth remains Firebase until Phase 5.
+5. Approve Phase 4 scope: Supabase `RemoteNotesDataSource` / `CloudNoteTransport` behind a **development-only** feature flag.
 
 ### Continue command
 
