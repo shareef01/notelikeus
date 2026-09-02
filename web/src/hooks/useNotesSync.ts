@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { clearLocalUserData } from '@/lib/bootstrap';
+import { clearLocalUserDataForAccountSwitch } from '@/lib/bootstrap';
+import { hydrateIndexedDbFromFirebase, loadLocalNotesIntoStore } from '@/lib/local/hydrateFromRemote';
 import { migrateLegacyLocalNotes } from '@/lib/notes/legacyLocalMigration';
 import {
   loadLastMergedUserId,
@@ -10,11 +11,9 @@ import { useAuthStore, selectUserId } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
 
 /**
- * Notes are Firestore-only now (see notesStore.ts). "Launch" sync is this: as soon as a user is
- * signed in, subscribe the realtime listener, which Firestore serves from its persistent local
- * cache instantly and then reconciles against the server. There is no separate "exit" sync to
- * run — every edit already writes straight to Firestore (see noteActions.ts), so nothing is ever
- * left batched up waiting for the app to close.
+ * Signed-in notes sync: IndexedDB is the durable local store; Firebase is the remote backend.
+ * On first sign-in for an owner namespace, hydrate IndexedDB from a full Firebase snapshot,
+ * then attach the realtime listener which mirrors remote changes back into IndexedDB.
  */
 export function useNotesSync(enabled: boolean) {
   const userId = useAuthStore(selectUserId);
@@ -42,7 +41,7 @@ export function useNotesSync(enabled: boolean) {
           // notes before touching this one, or they could leak into this account's Firestore
           // data or suppress/resurrect its notes. This also resets `notes`/`filters`, matching
           // the reset a clean sign-out already does.
-          clearLocalUserData();
+          clearLocalUserDataForAccountSwitch(lastMerged);
         } else {
           // Not a switch — just nothing loaded into the in-memory mirror yet this mount (first
           // load, or a page reload). Clear only the display, not the persisted filter/sort
@@ -53,8 +52,12 @@ export function useNotesSync(enabled: boolean) {
 
         await migrateLegacyLocalNotes(userId);
         if (cancelled) return;
+        await hydrateIndexedDbFromFirebase(userId);
+        if (cancelled) return;
         saveLastMergedUserId(userId);
         bootstrappedRef.current = userId;
+      } else {
+        await loadLocalNotesIntoStore(userId);
       }
       startNotesRealtimeSync(userId);
     };

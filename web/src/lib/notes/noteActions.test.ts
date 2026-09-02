@@ -1,7 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/firestore/notesRepository', () => ({
-  upsertNote: vi.fn().mockResolvedValue(undefined),
+const { remoteMocks } = vi.hoisted(() => ({
+  remoteMocks: {
+    upsertNote: vi.fn().mockResolvedValue(undefined),
+    deleteNote: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock('@/lib/remote/firebaseRemoteNotesDataSource', () => ({
+  getRemoteNotesDataSource: () => remoteMocks,
+}));
+
+vi.mock('@/lib/local/notesLocalRepository', () => ({
+  putNote: vi.fn().mockResolvedValue(undefined),
   deleteNote: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -9,8 +20,8 @@ vi.mock('@/lib/firestore/tombstones', () => ({
   deleteCloudTombstone: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { deleteNote, upsertNote } from '@/lib/firestore/notesRepository';
 import { deleteCloudTombstone } from '@/lib/firestore/tombstones';
+import { putNote } from '@/lib/local/notesLocalRepository';
 import { removeNote, restorePermanentlyDeletedNote, saveNote } from '@/lib/notes/noteActions';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
@@ -35,14 +46,18 @@ describe('saveNote', () => {
 
     await saveNote(makeNote());
 
-    expect(upsertNote).toHaveBeenCalledWith('user-1', expect.objectContaining({ id: '1' }));
+    expect(remoteMocks.upsertNote).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ id: '1' }),
+    );
+    expect(putNote).toHaveBeenCalled();
     expect(useNotesStore.getState().notes.some((note) => note.id === '1')).toBe(true);
   });
 
   it('saves locally only when signed out', async () => {
     await saveNote(makeNote());
 
-    expect(upsertNote).not.toHaveBeenCalled();
+    expect(remoteMocks.upsertNote).not.toHaveBeenCalled();
     expect(useNotesStore.getState().notes.some((note) => note.id === '1')).toBe(true);
   });
 
@@ -53,7 +68,7 @@ describe('saveNote', () => {
     await saveNote(note);
     await saveNote(note);
 
-    expect(upsertNote).toHaveBeenCalledTimes(1);
+    expect(remoteMocks.upsertNote).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -76,19 +91,22 @@ describe('restorePermanentlyDeletedNote', () => {
     expect(useTombstoneStore.getState().isDeleted(note.id)).toBe(false);
     expect(useNotesStore.getState().notes.some((entry) => entry.id === note.id)).toBe(true);
     expect(deleteCloudTombstone).not.toHaveBeenCalled();
-    expect(upsertNote).not.toHaveBeenCalled();
+    expect(remoteMocks.upsertNote).not.toHaveBeenCalled();
   });
 
   it('deletes the cloud tombstone and re-uploads to Firestore when signed in', async () => {
     useAuthStore.getState().setUser({ uid: 'user-1' } as User);
     const note = makeNote();
     await removeNote(note.id);
-    expect(deleteNote).toHaveBeenCalledWith('user-1', note.id);
+    expect(remoteMocks.deleteNote).toHaveBeenCalledWith('user-1', note.id);
 
     await restorePermanentlyDeletedNote(note);
 
     expect(deleteCloudTombstone).toHaveBeenCalledWith('user-1', note.id);
-    expect(upsertNote).toHaveBeenCalledWith('user-1', expect.objectContaining({ id: '1' }));
+    expect(remoteMocks.upsertNote).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ id: '1' }),
+    );
     expect(useTombstoneStore.getState().isDeleted(note.id)).toBe(false);
     expect(useNotesStore.getState().notes.some((entry) => entry.id === note.id)).toBe(true);
   });
@@ -100,7 +118,7 @@ describe('restorePermanentlyDeletedNote', () => {
     await restorePermanentlyDeletedNote(note);
 
     const tombstoneCallOrder = vi.mocked(deleteCloudTombstone).mock.invocationCallOrder[0];
-    const upsertCallOrder = vi.mocked(upsertNote).mock.invocationCallOrder[0];
+    const upsertCallOrder = vi.mocked(remoteMocks.upsertNote).mock.invocationCallOrder[0];
     expect(tombstoneCallOrder).toBeLessThan(upsertCallOrder);
   });
 });
@@ -123,6 +141,6 @@ describe('removeNote', () => {
 
     expect(useNotesStore.getState().notes.some((entry) => entry.id === note.id)).toBe(false);
     expect(useTombstoneStore.getState().isDeleted(note.id)).toBe(false);
-    expect(deleteNote).not.toHaveBeenCalled();
+    expect(remoteMocks.deleteNote).not.toHaveBeenCalled();
   });
 });

@@ -1,9 +1,9 @@
-import { deleteNote, subscribeToNotes, syncNotesWithCloud } from '@/lib/firestore/notesRepository';
+import { putNotes } from '@/lib/local/notesLocalRepository';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
+import { getRemoteNotesDataSource } from '@/lib/remote/firebaseRemoteNotesDataSource';
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
-import type { Unsubscribe } from 'firebase/firestore';
 
 /** Notes deleted on this device must never come back from a stale/racy cloud copy.
  * Splits remote notes into what's safe to show and what to purge from the cloud. */
@@ -23,12 +23,12 @@ function purgeStaleCloudDocs(userId: string, staleIds: string[]): void {
   // Fire-and-forget on purpose: the tombstone already keeps these notes out of the UI, and the
   // next snapshot retries the purge. Logging is all that stops a permanently failing delete
   // (rules change, revoked access) from being invisible.
-  void Promise.all(staleIds.map((id) => deleteNote(userId, id))).catch((error: unknown) => {
+  void Promise.all(staleIds.map((id) => getRemoteNotesDataSource().deleteNote(userId, id))).catch((error: unknown) => {
     console.warn('[Notelikeus] Purging tombstoned cloud notes failed:', error);
   });
 }
 
-let unsubscribeRealtime: Unsubscribe | null = null;
+let unsubscribeRealtime: (() => void) | null = null;
 let realtimeUserId: string | null = null;
 /** Import holds snapshots so a stale listener cannot wipe notes that have not been uploaded yet. */
 let realtimeApplyPaused = false;
@@ -45,15 +45,21 @@ export function resumeRealtimeSnapshots(): void {
   realtimeApplyPaused = false;
 }
 
-function applyNotes(incoming: Note[]) {
+function applyNotes(userId: string, incoming: Note[]) {
   const current = useNotesStore.getState().notes;
   if (notesContentEqual(current, incoming)) {
     if (useNotesStore.getState().status !== 'ready') {
       useNotesStore.getState().setStatus('ready');
     }
+    void putNotes(userId, incoming).catch((error: unknown) => {
+      console.warn('[Notelikeus] IndexedDB mirror write failed:', error);
+    });
     return;
   }
   useNotesStore.getState().setNotes(incoming);
+  void putNotes(userId, incoming).catch((error: unknown) => {
+    console.warn('[Notelikeus] IndexedDB mirror write failed:', error);
+  });
 }
 
 let reconcileInFlight: Promise<void> | null = null;
@@ -94,13 +100,17 @@ async function reconcileNow(userId: string): Promise<void> {
   reconcileInFlight = (async () => {
     try {
       const localNotes = useNotesStore.getState().notes;
-      const result = await syncNotesWithCloud(userId, localNotes, knownRemoteIds);
+      const result = await getRemoteNotesDataSource().syncNotesWithCloud(
+        userId,
+        localNotes,
+        knownRemoteIds,
+      );
       // Signed out, or switched to a different account, while this was in flight — applying a
       // stale result now would repopulate a store that clearLocalUserData() already cleared.
       if (reconcileUserId !== userId) return;
       trackRemoteIds(result.remoteIds);
       const isDeleted = useTombstoneStore.getState().isDeleted;
-      applyNotes(result.merged.filter((note) => !isDeleted(note.id)));
+      applyNotes(userId, result.merged.filter((note) => !isDeleted(note.id)));
     } catch (error) {
       if (reconcileUserId !== userId) return;
       lastReconcileStartedAt = 0; // allow immediate retry on the next trigger
@@ -142,12 +152,9 @@ function detachReconciliationTriggers() {
 }
 
 /**
- * The single Firestore listener for this user's notes — module-level, never per-component.
- * Firestore is the source of truth: every snapshot fully replaces local state rather than
- * merging against it, matching the "sync automatically" design (no separate offline store to
- * reconcile against). Firestore's own persistent local cache (see lib/firebase.ts) still serves
- * the last snapshot instantly and queues writes while genuinely offline; `reconcileNow` above is
- * the backstop for when that queued write turns out to have been stale by the time it flushed.
+ * Remote Firebase snapshots update IndexedDB first (via applyNotes), then the in-memory UI store.
+ * IndexedDB is the web client's durable local database; Firestore remains the remote backend
+ * during migration Phases 1–3.
  */
 export function startNotesRealtimeSync(userId: string): void {
   if (realtimeUserId === userId && unsubscribeRealtime) {
@@ -159,7 +166,8 @@ export function startNotesRealtimeSync(userId: string): void {
   realtimeUserId = userId;
   attachReconciliationTriggers(userId);
 
-  unsubscribeRealtime = subscribeToNotes(
+  const remote = getRemoteNotesDataSource();
+  unsubscribeRealtime = remote.subscribeToNotes(
     userId,
     (remoteNotes) => {
       if (realtimeApplyPaused) return;
@@ -185,7 +193,7 @@ export function startNotesRealtimeSync(userId: string): void {
       }
 
       lastSnapshotAppliedAt = Date.now();
-      applyNotes(live);
+      applyNotes(userId, live);
     },
     (error) => {
       useNotesStore.getState().setError(error.message);

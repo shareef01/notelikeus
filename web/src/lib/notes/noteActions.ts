@@ -1,16 +1,25 @@
-import { deleteNote, upsertNote } from '@/lib/firestore/notesRepository';
 import { deleteCloudTombstone } from '@/lib/firestore/tombstones';
+import { deleteNote as deleteLocalIndexedDbNote, putNote } from '@/lib/local/notesLocalRepository';
+import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import { notesEqual } from '@/lib/notes/noteEquality';
+import { getRemoteNotesDataSource } from '@/lib/remote/firebaseRemoteNotesDataSource';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 
+async function persistLocalNote(note: Note): Promise<void> {
+  const ownerId = resolveOwnerId();
+  if (!ownerId) return;
+  await putNote(ownerId, note);
+}
+
 async function pushNote(note: Note): Promise<void> {
   useNotesStore.getState().upsertLocalNote(note);
+  await persistLocalNote(note);
   const userId = useAuthStore.getState().user?.uid;
   if (!userId) return;
-  await upsertNote(userId, note);
+  await getRemoteNotesDataSource().upsertNote(userId, note);
 }
 
 function getNote(noteId: string): Note | undefined {
@@ -31,17 +40,21 @@ export async function saveNote(note: Note): Promise<void> {
 /** Remove locally and from Firestore when signed in. Tombstoned so a later cloud
  * merge can never resurrect it, even if the remote delete below fails or a stale
  * copy exists from before this device last synced. Guest-mode deletes skip the
- * tombstone: guest notes are in-memory only, so a persisted tombstone could later
- * suppress an unrelated real cloud note that happens to reuse the same id. */
+ * tombstone: guest notes live in IndexedDB only, so a persisted tombstone could
+ * later suppress an unrelated real cloud note that happens to reuse the same id. */
 export async function removeNote(noteId: string): Promise<void> {
   const isGuest = useAuthStore.getState().guestMode;
   if (!isGuest) {
     useTombstoneStore.getState().markDeleted(noteId);
   }
   useNotesStore.getState().removeLocalNote(noteId);
+  const ownerId = resolveOwnerId();
+  if (ownerId) {
+    await deleteLocalIndexedDbNote(ownerId, noteId);
+  }
   const userId = useAuthStore.getState().user?.uid;
   if (!userId) return;
-  await deleteNote(userId, noteId);
+  await getRemoteNotesDataSource().deleteNote(userId, noteId);
 }
 
 export async function trashNoteById(noteId: string): Promise<Note | null> {
@@ -93,7 +106,8 @@ export async function restorePermanentlyDeletedNote(note: Note): Promise<void> {
   }
   useTombstoneStore.getState().clearIds([note.id]);
   useNotesStore.getState().upsertLocalNote(note);
+  await persistLocalNote(note);
   if (userId) {
-    await upsertNote(userId, note);
+    await getRemoteNotesDataSource().upsertNote(userId, note);
   }
 }

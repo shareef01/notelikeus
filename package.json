@@ -9,12 +9,17 @@
   },
   "homepage": "https://notelike.web.app",
   "scripts": {
-    "test:rules": "firebase emulators:exec --only firestore \"vitest run tests/firestore.rules.test.mjs\""
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run tests/firestore.rules.test.mjs\"",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:reset": "supabase db reset",
+    "supabase:test": "supabase test db"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
     "firebase": "^12.18.0",
     "firebase-tools": "^15.28.1",
+    "supabase": "^2.67.1",
     "vitest": "^4.1.11"
   },
   "overrides": {

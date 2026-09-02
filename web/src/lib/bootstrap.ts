@@ -1,3 +1,4 @@
+import { clearOwner } from '@/lib/local/notesLocalRepository';
 import { isFirebaseConfigured } from '@/lib/config';
 import { initFirebase } from '@/lib/firebase';
 import { LEGACY_NOTES_STORAGE_KEY } from '@/lib/notes/legacyLocalMigration';
@@ -123,7 +124,7 @@ export function clearPersistedAppData(): void {
   }
 }
 
-/** Clears in-memory + persisted labels/tombstones so the next account cannot inherit them. */
+/** Clears in-memory UI state and persisted tombstones/labels. IndexedDB notes are intentionally preserved so offline edits can survive sign-out and re-login under the same account namespace. */
 export function clearLocalUserData(): void {
   useNotesStore.getState().reset();
   useLabelRegistryStore.getState().reset();
@@ -136,6 +137,18 @@ export function clearLocalUserData(): void {
       // ignore
     }
   }
+}
+
+/**
+ * Account switch only: clear session state and wipe the prior account's IndexedDB namespace so
+ * the next account cannot read it. Normal sign-out must NOT call this — unsynced offline edits
+ * must remain in IndexedDB until the same account signs in again and syncs.
+ */
+export function clearLocalUserDataForAccountSwitch(previousOwnerId: string): void {
+  clearLocalUserData();
+  void clearOwner(previousOwnerId).catch((error: unknown) => {
+    console.warn('[Notelikeus] Failed to clear IndexedDB owner namespace:', error);
+  });
 }
 
 /** Runs once before the app shell renders. Never blocks forever. */

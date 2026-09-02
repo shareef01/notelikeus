@@ -28,11 +28,8 @@ const defaultFilters: NoteQueryFilters = {
 };
 
 /**
- * Notes themselves are not persisted: Firestore is the sole source of truth (see
- * notesSyncService.ts). `notes` is just the in-memory mirror the UI reads from — populated by
- * the realtime listener on launch, kept live while the app is open, and empty again on the next
- * cold start until that listener delivers its first snapshot. Only `filters` (the UI's last
- * sort/view preference) is persisted, under its own storage key so it survives reloads.
+ * In-memory UI mirror of notes. Durable storage lives in IndexedDB (see notesLocalRepository.ts)
+ * for guest and signed-in sessions; filters alone are persisted via localStorage.
  */
 export const useNotesStore = create<NotesState>()(
   persist(
