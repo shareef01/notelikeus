@@ -29,6 +29,8 @@ import com.aus.notelikeus.data.remote.SupabaseNoteTransport
 import com.aus.notelikeus.data.remote.SupabaseSessionAccessTokenProvider
 import com.aus.notelikeus.data.remote.SupabaseSessionManager
 import com.aus.notelikeus.data.remote.SupabaseSessionStore
+import com.aus.notelikeus.data.migration.AccountUidBridge
+import com.aus.notelikeus.data.migration.FirebaseSupabaseAccountLinker
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.NoteSyncStateStore
@@ -122,6 +124,23 @@ actual val platformModule = module {
             FirestoreNoteTransport(get())
         }
     }
+    single { AccountUidBridge(get()) }
+    single {
+        FirebaseSupabaseAccountLinker(
+            remoteBackend = BackendConfig.remoteBackend,
+            accountUidBridge = get(),
+            syncStateStore = get<NoteSyncStateStore>(),
+            supabaseRpc = if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
+                AndroidSupabaseRpcClient(
+                    supabaseUrl = BackendConfig.supabaseUrl,
+                    anonKey = BackendConfig.supabaseAnonKey,
+                    accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+                )
+            } else {
+                null
+            },
+        )
+    }
     single {
         val sessionManager = get<CloudSessionManager>()
         val database = get<NotelikeusDatabase>()
@@ -143,7 +162,7 @@ actual val platformModule = module {
     single { PendingCloudSyncStore(get()) }
     single<SyncCoordinator> { CloudNoteSyncCoordinator(get(), get(), get(), get(), get()) }
     single { LocalAccountIsolator(get(), get(), get()) }
-    single<SyncManager> { AndroidSyncManager(get(), get(), get()) }
+    single<SyncManager> { AndroidSyncManager(get(), get(), get(), get()) }
 
     single<GoogleSignInHelper> {
         AndroidGoogleSignInHelper(

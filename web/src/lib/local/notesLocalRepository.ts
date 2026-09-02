@@ -4,12 +4,22 @@ import type { Note } from '@/types/note';
 
 export interface LocalOwnerMeta {
   ownerId: string;
+  /** Legacy alias kept for existing IndexedDB rows. */
   firebaseHydrated: boolean;
+  /** Phase 4+: remote snapshot hydration complete for this owner. */
+  remoteHydrated?: boolean;
   hydratedAt: number | null;
   /** Supabase pull_changes cursor (Phase 4+). */
   lastRemoteRevision?: number;
   /** Per-note server revision for apply_note_change base_revision. */
   noteRevisions?: Record<string, number>;
+  /** Phase 6: IndexedDB namespace migrated from Firebase uid. */
+  firebaseNamespaceMigrated?: boolean;
+  migratedFromOwnerId?: string;
+  migratedAt?: number;
+  /** Phase 6: Firebase cloud snapshot imported into Supabase. */
+  firebaseCloudImported?: boolean;
+  firebaseCloudImportedAt?: number;
 }
 
 interface StoredNoteRecord {
@@ -103,7 +113,9 @@ export async function setOwnerMeta(
   patch: Partial<
     Pick<
       LocalOwnerMeta,
-      'firebaseHydrated' | 'hydratedAt' | 'lastRemoteRevision' | 'noteRevisions'
+      'firebaseHydrated' | 'remoteHydrated' | 'hydratedAt' | 'lastRemoteRevision' | 'noteRevisions'
+      | 'firebaseNamespaceMigrated' | 'migratedFromOwnerId' | 'migratedAt'
+      | 'firebaseCloudImported' | 'firebaseCloudImportedAt'
     >
   >,
 ): Promise<void> {

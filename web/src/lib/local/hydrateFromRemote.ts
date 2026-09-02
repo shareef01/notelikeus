@@ -19,13 +19,13 @@ export async function loadLocalNotesIntoStore(ownerId: string): Promise<Note[]> 
 }
 
 /**
- * First signed-in session for this owner: pull an authoritative Firebase snapshot,
- * populate IndexedDB, then mirror into the UI store. Idempotent once `firebaseHydrated`
+ * First signed-in session for this owner: pull an authoritative remote snapshot,
+ * populate IndexedDB, then mirror into the UI store. Idempotent once `remoteHydrated`
  * is set for the owner.
  */
-export async function hydrateIndexedDbFromFirebase(userId: string): Promise<void> {
+export async function hydrateIndexedDbFromRemote(userId: string): Promise<void> {
   const meta = await getOwnerMeta(userId);
-  if (meta?.firebaseHydrated) {
+  if (meta?.remoteHydrated ?? meta?.firebaseHydrated) {
     await loadLocalNotesIntoStore(userId);
     return;
   }
@@ -33,6 +33,15 @@ export async function hydrateIndexedDbFromFirebase(userId: string): Promise<void
   const remote = getRemoteNotesDataSource();
   const snapshot = await remote.fetchAllNotes(userId);
   await putNotes(userId, snapshot);
-  await setOwnerMeta(userId, { firebaseHydrated: true, hydratedAt: Date.now() });
+  await setOwnerMeta(userId, {
+    remoteHydrated: true,
+    firebaseHydrated: true,
+    hydratedAt: Date.now(),
+  });
   useNotesStore.getState().setNotes(snapshot);
+}
+
+/** @deprecated Use hydrateIndexedDbFromRemote */
+export async function hydrateIndexedDbFromFirebase(userId: string): Promise<void> {
+  return hydrateIndexedDbFromRemote(userId);
 }

@@ -11,11 +11,15 @@ import {
 } from '@/lib/auth/supabaseAuth';
 import { useAuthStore } from '@/store/authStore';
 import { forgetSignedIn, rememberSignedIn } from '@/lib/auth/sessionHint';
+import { rememberKnownFirebaseUid } from '@/lib/migration/firebaseSupabaseMigration';
 import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
 import { useToastStore } from '@/store/toastStore';
 
 function handleAuthUser(nextUser: AuthUser | null): void {
   if (nextUser) {
+    if (!isSupabaseBackendEnabled()) {
+      rememberKnownFirebaseUid(nextUser.uid);
+    }
     if (useAuthStore.getState().guestMode) {
       clearLocalUserData();
       useAuthStore.getState().exitGuestMode();

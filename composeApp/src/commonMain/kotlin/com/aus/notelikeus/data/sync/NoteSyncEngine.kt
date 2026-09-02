@@ -1,5 +1,6 @@
 package com.aus.notelikeus.data.sync
 
+import com.aus.notelikeus.data.migration.AccountUidBridge
 import com.aus.notelikeus.data.local.dao.LabelDao
 import com.aus.notelikeus.data.local.dao.NoteDao
 import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
@@ -61,6 +62,7 @@ class NoteSyncEngine(
      * modules supply the real Room [androidx.room.immediateTransaction] wrapper.
      */
     private val runInTransaction: suspend (suspend () -> Unit) -> Unit = { block -> block() },
+    accountUidBridge: AccountUidBridge? = null,
     /**
      * Wall clock, injectable so tests can observe *when* the engine reads it. That matters for
      * [reconcileUploads], whose correctness is entirely about reading it before the note snapshot
@@ -68,6 +70,7 @@ class NoteSyncEngine(
      */
     private val now: () -> Long = { DateUtils.currentTimeMillis() }
 ) {
+    private val accountUidBridge = accountUidBridge ?: AccountUidBridge(syncStateStore)
 
     suspend fun uploadAllNotes(): Result<Int> {
         return runCatching {
@@ -95,7 +98,7 @@ class NoteSyncEngine(
             // made on another device. A transport that fails open (Android's Firestore get() falls
             // back to an empty cached snapshot rather than throwing) makes that reachable, so refuse
             // the sync instead; the next successful one reconciles normally.
-            if (syncStateStore.lastMergedUserId() == uid) {
+            if (accountUidBridge.isSameAccountAsLastMerge(uid)) {
                 val knownCloudIds = syncStateStore.knownCloudIds()
                 if (remoteRecords.isEmpty() && knownCloudIds.isNotEmpty()) {
                     throw SuspectEmptyCloudException(knownCloudIds.size)
@@ -136,7 +139,7 @@ class NoteSyncEngine(
     suspend fun reconcileUploads(): Result<Int> {
         return runCatching {
             val uid = uidProvider().getOrThrow()
-            if (syncStateStore.lastMergedUserId() != uid) {
+            if (!accountUidBridge.isSameAccountAsLastMerge(uid)) {
                 return@runCatching 0
             }
             // Both marks are taken before anything is read, and the ordering matters. `highWater`
@@ -286,7 +289,7 @@ class NoteSyncEngine(
             // knownCloudIds belongs to whichever account last completed a download. Carrying it
             // across an account switch would read the new account's (legitimately empty) cloud as
             // "the previous account's notes were deleted" and remove them from this device.
-            val isSameAccountAsLastMerge = syncStateStore.lastMergedUserId() == uid
+            val isSameAccountAsLastMerge = accountUidBridge.isSameAccountAsLastMerge(uid)
             val previouslyKnownCloudIds =
                 if (isSameAccountAsLastMerge) syncStateStore.knownCloudIds() else emptySet()
 
@@ -400,7 +403,7 @@ class NoteSyncEngine(
      */
     private fun requireCurrentAccount(uid: String) {
         val last = syncStateStore.lastMergedUserId()
-        if (last != null && last != uid) {
+        if (last != null && !accountUidBridge.accountsMatch(last, uid)) {
             throw WrongAccountSyncException(lastMergedUserId = last, currentUserId = uid)
         }
     }

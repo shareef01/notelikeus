@@ -1,9 +1,9 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
-**Status:** Phases 0–5 on branch `migration/supabase-r2` (Firebase remains production backend).  
-**Last updated:** 2025-09-02 (Phase 5 Supabase Auth)
+**Status:** Phases 0–6 on branch `migration/supabase-r2` (Firebase remains production backend).  
+**Last updated:** 2025-09-02 (Phase 6 user data migration)
 
-This document tracks the phased migration away from Firebase. Phases 0–5 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
+This document tracks the phased migration away from Firebase. Phases 0–6 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
 
 **Git:** Work is committed on `migration/supabase-r2`, not `main`. `main` remains the known Firebase-only baseline until this branch is merged.
 
@@ -117,7 +117,7 @@ These behaviors must be preserved in Supabase:
 | **3 — Local Supabase** | COMPLETE LOCALLY | `supabase/` schema, RLS, revision RPCs, pgTAP tests |
 | **4 — Supabase remote adapter** | COMPLETE LOCALLY | Dev-flagged `RemoteNotesDataSource` + `CloudNoteTransport`; Firebase default |
 | **5 — Supabase Auth** | COMPLETE LOCALLY | Dev-flagged auth on Web + Kotlin; Firebase default |
-| 6 — User data migration | NOT STARTED | |
+| **6 — User data migration** | COMPLETE LOCALLY | Firebase uid ↔ Supabase uuid linking; IndexedDB namespace + optional cloud import |
 | 7 — Realtime optimization | NOT STARTED | |
 | 8 — Attachments + R2 | NOT STARTED | See `archive/attachments-feature/` |
 | 9–11 — UI, Pages, Firebase retirement | NOT STARTED | |
@@ -346,6 +346,42 @@ SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<Web OAuth client secret>
 
 ---
 
+## Phase 6 — User data migration (dev-only)
+
+Maps legacy Firebase Auth UIDs to Supabase `auth.users.id` so account-switch guards and IndexedDB owner namespaces survive the backend transition.
+
+### Supabase schema
+
+- `firebase_uid_mappings` table (`firebase_uid` → `owner_id`)
+- `link_firebase_uid(p_firebase_uid)` RPC — idempotent, per-user
+- `get_linked_firebase_uid()` RPC — read back linked uid
+
+### Web behavior
+
+On Supabase sign-in (`ensureFirebaseSupabaseMigration`):
+
+1. Resolve candidate Firebase uid (`lastMergedUserId`, local link, server mapping, or active Firebase session)
+2. Call `link_firebase_uid` RPC + persist local link
+3. Migrate IndexedDB namespace (`migrateOwnerNamespace`) from Firebase uid → Supabase uuid
+4. Optionally import Firebase cloud notes/tombstones when Supabase is empty and Firebase session is available
+
+Account-switch detection uses `accountsMatch()` so a linked Firebase→Supabase transition does not wipe local data.
+
+### Kotlin behavior
+
+- `AccountUidBridge` — treats linked Firebase uid and Supabase uuid as the same account
+- `FirebaseSupabaseAccountLinker` — runs after Supabase sign-in; links uids and calls RPC
+- `LocalAccountIsolator` / `NoteSyncEngine` — use `accountsMatch` instead of raw uid equality
+- `NoteSyncStateStore` — stores `linkedFirebaseUid` for persistence across restarts
+
+### Limitations (Phase 6 scope)
+
+- **Dev flag only** — same as Phases 4–5; production still uses Firebase
+- **Cloud import requires Firebase session** — Web can pull from Firestore only when Firebase Auth is still active
+- **No bulk server-side Firestore export** — one-user client-driven import; ops migration tooling deferred
+
+---
+
 ## Phase 2/3 safety review (pre–Phase 4 gate)
 
 ### Web logout vs account switch
@@ -411,7 +447,7 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 | Supabase pgTAP | `npm run supabase:test` | **NOT EXECUTED locally** (blocked on Docker) |
 | Supabase CI (GitHub Actions) | `.github/workflows/supabase.yml` | **PASS** — [run 33579075312](https://github.com/shareef01/notelikeus/actions/runs/33579075312) on `migration/supabase-r2` (4 pgTAP files, all green) |
 
-**Phase 5 gate:** Complete. **Phase 6 gate:** Firebase UID → Supabase UUID user data migration.
+**Phase 6 gate:** Complete. **Phase 7 gate:** Realtime optimization (Supabase polling → realtime).
 
 **Firebase remains the production backend.** No production Supabase/Cloudflare resources were created or modified.
 
@@ -427,16 +463,16 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 
 ---
 
-## Owner actions before Phase 6
+## Owner actions before Phase 7
 
-1. Review Phase 5 auth wiring and dev-flag behavior.
-2. Test end-to-end sign-in + sync against local Supabase (requires Docker + Google OAuth env).
-3. Approve Phase 6 scope: map Firebase UIDs to Supabase UUIDs and migrate user note data.
+1. Review Phase 6 uid linking and namespace migration behavior.
+2. Test Firebase → Supabase sign-in on a device with existing Firebase notes (local + cloud).
+3. Approve Phase 7 scope: Supabase realtime subscriptions replacing polling.
 
 ### Continue command
 
 ```
-Continue Notelikeus backend migration with Phase 6 only. Review docs/BACKEND_MIGRATION.md first.
+Continue Notelikeus backend migration with Phase 7 only. Review docs/BACKEND_MIGRATION.md first.
 ```
 
 ---
