@@ -26,10 +26,20 @@ data class FirebaseAccount(
 class FirebaseSessionManager(
     private val auth: FirebaseAuth,
     private val firestore: FirebaseFirestore
-) {
-    fun getCurrentAccount(): FirebaseAccount = auth.currentUser.toAccount()
+) : CloudSessionManager {
+    fun getFirebaseAccount(): FirebaseAccount = auth.currentUser.toAccount()
 
-    suspend fun signInWithGoogle(idToken: String): Result<Unit> {
+    override fun getCurrentAccount(): CloudSessionAccount {
+        val account = getFirebaseAccount()
+        return CloudSessionAccount(
+            userId = account.userId,
+            email = account.email,
+            isGoogleAccount = account.isGoogleAccount,
+            isAnonymous = account.isAnonymous,
+        )
+    }
+
+    override suspend fun signInWithGoogle(idToken: String): Result<Unit> {
         return try {
             val credential = GoogleAuthProvider.getCredential(idToken, null)
             auth.signInWithCredential(credential).await()
@@ -39,7 +49,7 @@ class FirebaseSessionManager(
         }
     }
 
-    suspend fun signInWithEmailPassword(
+    override suspend fun signInWithEmailPassword(
         email: String,
         password: String,
         createAccount: Boolean
@@ -59,7 +69,7 @@ class FirebaseSessionManager(
         }
     }
 
-    suspend fun signOut(): Result<Unit> {
+    override suspend fun signOut(): Result<Unit> {
         return try {
             auth.signOut()
             Result.success(Unit)
@@ -68,13 +78,17 @@ class FirebaseSessionManager(
         }
     }
 
-    suspend fun ensureGoogleSignedIn(): Result<String> {
+    override suspend fun ensureSignedIn(): Result<String> {
         val account = getCurrentAccount()
         if (!account.isGoogleAccount) {
             return Result.failure(IllegalStateException("Google sign-in required"))
         }
         return Result.success(account.userId ?: error("Sign-in returned no user"))
     }
+
+    suspend fun ensureGoogleSignedIn(): Result<String> = ensureSignedIn()
+
+    override fun diagnose(error: Throwable): String = diagnoseFirebase(error)
 
     suspend fun verifyConnection(): Result<Unit> {
         return try {
@@ -93,12 +107,12 @@ class FirebaseSessionManager(
                 .await()
             Result.success(Unit)
         } catch (error: Throwable) {
-            Log.e(TAG, diagnose(error), error)
+            Log.e(TAG, diagnoseFirebase(error), error)
             Result.failure(error)
         }
     }
 
-    fun diagnose(error: Throwable): String {
+    private fun diagnoseFirebase(error: Throwable): String {
         val code = when (error) {
             is FirebaseAuthException -> error.errorCode
             is FirebaseFirestoreException -> error.code.name

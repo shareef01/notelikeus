@@ -1,4 +1,5 @@
 import { useAuthListener, useAuthSync } from '@/hooks/useAuth';
+import { useGuestLocalNotesBootstrap } from '@/hooks/useGuestLocalNotesBootstrap';
 import { useNotesSync } from '@/hooks/useNotesSync';
 import { isFirebaseConfigured } from '@/lib/config';
 import { MainScreen } from '@/screens/MainScreen';
@@ -52,6 +53,7 @@ export default function App() {
 
   useAuthSync();
   useNotesSync(firebaseReady);
+  useGuestLocalNotesBootstrap(firebaseReady);
 
   useEffect(() => {
     if (authReady) {

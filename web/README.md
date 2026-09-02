@@ -37,11 +37,27 @@ every client config. The web API key is referrer-restricted to this app's domain
 | `npm run test:sync` | sync layer against a real Firestore emulator, production rules enforced |
 | `npm run test:e2e` | builds the app, boots emulators, runs Playwright/Chromium against it |
 | `npm run deploy` | **lint + tests + build**, then `firebase deploy --only hosting,firestore:rules` |
+| `npm run verify:pages` | After `npm run build`, checks `dist/_headers` + `dist/_redirects` for Cloudflare Pages |
 
 `deploy` is deliberately self-gating: it refuses to ship a tree that fails the quick local
 checks. The emulator-backed suites (`test:sync`, `test:e2e`) are not part of it — run them
 yourself around risky changes (Firebase upgrades, sync logic), or use
 `scripts/ci-local.ps1` at the root, which runs the whole CI matrix locally.
+
+### Cloudflare Pages (migration branch, dev preview)
+
+Production still ships to **Firebase Hosting** (`notelike.web.app`). On `migration/supabase-r2`,
+`web/public/_headers` and `web/public/_redirects` mirror `firebase.json` security headers and add
+Supabase/R2 `connect-src` allowances for backend migration previews.
+
+```bash
+cd web && npm run build
+npx wrangler pages deploy dist --project-name=notelikeus-dev
+```
+
+Repo root: `npm run pages:verify` builds and checks header parity with `firebase.json`.
+Optional CI deploy: GitHub Actions → **Cloudflare Pages CI** → **Run workflow** (requires
+`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and web `VITE_*` secrets).
 
 E2e builds (`--mode e2e`) use `.env.e2e`, which points Firebase at local emulators with a fake
 API key and enables the email/password test login — they can never reach a real project.
