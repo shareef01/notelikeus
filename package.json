@@ -14,7 +14,8 @@
     "supabase:stop": "supabase stop",
     "supabase:reset": "supabase db reset",
     "supabase:test": "supabase test db",
-    "test:attachments-worker": "npm --prefix workers/attachments test"
+    "test:attachments-worker": "npm --prefix workers/attachments test",
+    "pages:verify": "npm --prefix web run build && node web/scripts/verifyPagesArtifacts.mjs && node cloudflare/scripts/verify-headers-parity.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

@@ -1,9 +1,9 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
-**Status:** Phases 0–9 on branch `migration/supabase-r2` (Firebase remains production backend).  
-**Last updated:** 2025-09-02 (Phase 9 attachment UI + sync wiring)
+**Status:** Phases 0–10 on branch `migration/supabase-r2` (Firebase remains production backend).  
+**Last updated:** 2025-09-02 (Phase 10 Cloudflare Pages scaffold)
 
-This document tracks the phased migration away from Firebase. Phases 0–9 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
+This document tracks the phased migration away from Firebase. Phases 0–10 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet.
 
 **Git:** Work is committed on `migration/supabase-r2`, not `main`. `main` remains the known Firebase-only baseline until this branch is merged.
 
@@ -68,7 +68,7 @@ Conflict resolution uses **server-assigned** `serverUpdatedAt`, not client `time
 | AUTH | `FirebaseAuth`, `GoogleAuthProvider`, `useAuthStore` | Phase 5 (dev flag); Firebase default in prod |
 | REMOTE DATA | `FirestoreNoteTransport`, `notesRepository.ts`, `onSnapshot` | Phase 1 abstracted; Firebase still default |
 | LOCAL CACHE | Firestore persistent cache (Web legacy); now IndexedDB primary | Phase 2 |
-| HOSTING | `firebase.json`, `firebase deploy` | Future Phase 10 |
+| HOSTING | `firebase.json`, `firebase deploy` | Phase 10 scaffold; Firebase still production |
 | TESTING | Rules emulator, `notesSync.emulator.test.ts`, Playwright e2e | Retained |
 | CI | `scripts/ci-local.ps1`, `npm run test:rules` | Retained |
 | CONFIG | `google-services.json`, env Firebase keys | Unchanged |
@@ -121,7 +121,8 @@ These behaviors must be preserved in Supabase:
 | **7 — Realtime optimization** | COMPLETE LOCALLY | Web Supabase Realtime + debounced pull_changes; slow polling fallback |
 | **8 — Attachments + R2** | COMPLETE LOCALLY | `note_attachments` metadata + R2 Worker scaffold + client blob transport (no UI yet) |
 | **9 — Attachment UI + sync** | COMPLETE LOCALLY | Web editor image picker + R2 upload on save + Supabase metadata hydration on pull |
-| 10–11 — Pages, Firebase retirement | NOT STARTED | |
+| **10 — Cloudflare Pages** | COMPLETE LOCALLY | `_headers`/`_redirects` parity + Pages CI verify; Firebase Hosting still production |
+| 11 — Firebase retirement | NOT STARTED | |
 
 ---
 
@@ -486,6 +487,34 @@ Unchanged — Android/Desktop continue pull-on-sync via `SupabaseNoteTransport` 
 
 ---
 
+## Phase 10 — Cloudflare Pages (hosting scaffold)
+
+**Goal:** Prepare Cloudflare Pages deployment for the Web PWA without cutting over production from Firebase Hosting.
+
+### Static artifacts (`web/public/`)
+
+- `_redirects` — SPA fallback (`/* /index.html 200`)
+- `_headers` — security headers matching `firebase.json` plus migration `connect-src` for Supabase + Workers
+
+### Tooling
+
+- `web/scripts/verifyPagesArtifacts.mjs` — ensures `_headers` / `_redirects` land in `web/dist` after build
+- `cloudflare/scripts/verify-headers-parity.mjs` — Pages headers are a superset of Firebase Hosting
+- `cloudflare/wrangler.pages.toml.example` — Wrangler Pages project template
+- Root: `npm run pages:verify`
+
+### CI
+
+- `.github/workflows/cloudflare-pages.yml` — lint, test, build, verify artifacts on every push
+- Optional `workflow_dispatch` deploy to `notelikeus-dev` Pages project when Cloudflare + `VITE_*` secrets are configured
+
+### Production
+
+- **Unchanged** — `npm run deploy` still targets Firebase Hosting (`notelike.web.app`)
+- README / package `homepage` URLs unchanged until Phase 11 cutover
+
+---
+
 ## Phase 2/3 safety review (pre–Phase 4 gate)
 
 ### Web logout vs account switch
@@ -551,7 +580,7 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 | Supabase pgTAP | `npm run supabase:test` | **NOT EXECUTED locally** (blocked on Docker) |
 | Supabase CI (GitHub Actions) | `.github/workflows/supabase.yml` | **PASS** — [run 33579075312](https://github.com/shareef01/notelikeus/actions/runs/33579075312) on `migration/supabase-r2` (4 pgTAP files, all green) |
 
-**Phase 9 gate:** Complete. **Phase 10 gate:** Pages / hosting migration.
+**Phase 10 gate:** Complete. **Phase 11 gate:** Firebase retirement / production cutover.
 
 **Firebase remains the production backend.** No production Supabase/Cloudflare resources were created or modified.
 
@@ -567,16 +596,16 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 
 ---
 
-## Owner actions before Phase 10
+## Owner actions before Phase 11
 
-1. Exercise Web attachment add/remove/sync on local Supabase + R2 worker.
-2. Decide whether Kotlin editor attachment UI should land before or after hosting migration.
-3. Approve Phase 10 scope: Firebase Hosting → Cloudflare Pages (or defer).
+1. Create Cloudflare Pages project `notelikeus-dev` and run a manual `workflow_dispatch` deploy.
+2. Register the Pages preview URL in Firebase/Google OAuth redirect allowlists if testing auth there.
+3. Approve Phase 11 scope: production cutover and Firebase retirement plan.
 
 ### Continue command
 
 ```
-Continue Notelikeus backend migration with Phase 10 only. Review docs/BACKEND_MIGRATION.md first.
+Continue Notelikeus backend migration with Phase 11 only. Review docs/BACKEND_MIGRATION.md first.
 ```
 
 ---
