@@ -2,6 +2,9 @@ import { clearLocalUserData } from '@/lib/bootstrap';
 import { deleteAllCloudData } from '@/lib/firestore/notesRepository';
 import { stopNotesRealtimeSync } from '@/lib/notes/notesSyncService';
 import { getFirebaseAuth, initFirebase, purgeFirestoreCache } from '@/lib/firebase';
+import { signInWithGoogleSupabase, signOutSupabase } from '@/lib/auth/supabaseAuth';
+import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
+import { deleteAllSupabaseCloudData } from '@/lib/supabase/deleteAllUserCloudData';
 import {
   GoogleAuthProvider,
   getRedirectResult,
@@ -21,6 +24,10 @@ const REDIRECT_FALLBACK_CODES = new Set([
 ]);
 
 export async function signInWithGoogle(): Promise<void> {
+  if (isSupabaseBackendEnabled()) {
+    await signInWithGoogleSupabase();
+    return;
+  }
   initFirebase();
   const auth = getFirebaseAuth();
   const provider = new GoogleAuthProvider();
@@ -43,6 +50,13 @@ export async function completeGoogleRedirectSignIn(): Promise<void> {
 }
 
 export async function signOutGoogle(options: { deleteCloudData?: boolean } = {}): Promise<void> {
+  if (isSupabaseBackendEnabled()) {
+    if (options.deleteCloudData) {
+      await deleteAllSupabaseCloudData();
+    }
+    await signOutSupabase();
+    return;
+  }
   initFirebase();
   const auth = getFirebaseAuth();
   const userId = auth.currentUser?.uid;

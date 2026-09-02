@@ -1,5 +1,8 @@
 package com.aus.notelikeus.data.sync
 
+import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.attachments.attachmentsKey
+import com.aus.notelikeus.data.migration.AccountUidBridge
 import com.aus.notelikeus.data.local.dao.LabelDao
 import com.aus.notelikeus.data.local.dao.NoteDao
 import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
@@ -61,13 +64,16 @@ class NoteSyncEngine(
      * modules supply the real Room [androidx.room.immediateTransaction] wrapper.
      */
     private val runInTransaction: suspend (suspend () -> Unit) -> Unit = { block -> block() },
+    accountUidBridge: AccountUidBridge? = null,
     /**
      * Wall clock, injectable so tests can observe *when* the engine reads it. That matters for
      * [reconcileUploads], whose correctness is entirely about reading it before the note snapshot
      * rather than after — a property no assertion on the result can express.
      */
-    private val now: () -> Long = { DateUtils.currentTimeMillis() }
+    private val now: () -> Long = { DateUtils.currentTimeMillis() },
+    private val attachmentSync: AttachmentSyncService? = null,
 ) {
+    private val accountUidBridge = accountUidBridge ?: AccountUidBridge(syncStateStore)
 
     suspend fun uploadAllNotes(): Result<Int> {
         return runCatching {
@@ -95,7 +101,7 @@ class NoteSyncEngine(
             // made on another device. A transport that fails open (Android's Firestore get() falls
             // back to an empty cached snapshot rather than throwing) makes that reachable, so refuse
             // the sync instead; the next successful one reconciles normally.
-            if (syncStateStore.lastMergedUserId() == uid) {
+            if (accountUidBridge.isSameAccountAsLastMerge(uid)) {
                 val knownCloudIds = syncStateStore.knownCloudIds()
                 if (remoteRecords.isEmpty() && knownCloudIds.isNotEmpty()) {
                     throw SuspectEmptyCloudException(knownCloudIds.size)
@@ -119,11 +125,17 @@ class NoteSyncEngine(
             }
 
             if (toPush.isNotEmpty()) {
-                val serverTimestamps = transport.putNotes(uid, toPush)
-                uploaded = toPush.size
+                val syncedNotes = attachmentSync?.syncNotesAttachments(toPush) ?: toPush
+                val serverTimestamps = transport.putNotes(uid, syncedNotes)
+                uploaded = syncedNotes.size
                 for ((noteId, resolvedTs) in serverTimestamps) {
                     if (resolvedTs != null) {
                         noteDao.updateServerTimestamp(noteId, resolvedTs)
+                    }
+                }
+                for (note in syncedNotes) {
+                    if (note.attachments.isNotEmpty()) {
+                        noteDao.updateNote(note.toNoteEntity())
                     }
                 }
             }
@@ -136,7 +148,7 @@ class NoteSyncEngine(
     suspend fun reconcileUploads(): Result<Int> {
         return runCatching {
             val uid = uidProvider().getOrThrow()
-            if (syncStateStore.lastMergedUserId() != uid) {
+            if (!accountUidBridge.isSameAccountAsLastMerge(uid)) {
                 return@runCatching 0
             }
             // Both marks are taken before anything is read, and the ordering matters. `highWater`
@@ -245,6 +257,10 @@ class NoteSyncEngine(
         return runCatching {
             val uid = uidProvider().getOrThrow()
             requireCurrentAccount(uid)
+            val note = noteDao.getNoteById(noteId)?.toNote()
+            if (note != null) {
+                attachmentSync?.deleteAttachmentsForNote(noteId, note.attachments)
+            }
             val deletedAt = now()
             syncStateStore.markDeleted(noteId, deletedAt)
             transport.writeTombstone(uid, noteId, deletedAt)
@@ -286,7 +302,7 @@ class NoteSyncEngine(
             // knownCloudIds belongs to whichever account last completed a download. Carrying it
             // across an account switch would read the new account's (legitimately empty) cloud as
             // "the previous account's notes were deleted" and remove them from this device.
-            val isSameAccountAsLastMerge = syncStateStore.lastMergedUserId() == uid
+            val isSameAccountAsLastMerge = accountUidBridge.isSameAccountAsLastMerge(uid)
             val previouslyKnownCloudIds =
                 if (isSameAccountAsLastMerge) syncStateStore.knownCloudIds() else emptySet()
 
@@ -371,6 +387,8 @@ class NoteSyncEngine(
 
             putNotes(uid, toPushBack)
 
+            attachmentSync?.hydrateAllNotes()
+
             syncStateStore.setKnownCloudIds(cloudNoteIds)
             pruneExpiredTombstones(uid, cloudNoteIds, cloudTombstones)
             transport.writeSyncMeta(uid, noteDao.getCloudEligibleNoteCount(), platform)
@@ -383,14 +401,10 @@ class NoteSyncEngine(
     suspend fun deleteAllCloudData(): Result<Int> {
         return runCatching {
             val uid = uidProvider().getOrThrow()
-            val records = transport.fetchNotes(uid)
-            val noteIds = records.map { it.noteId }
-            transport.deleteNotes(uid, noteIds)
-            val tombstones = transport.fetchTombstones(uid)
-            transport.deleteTombstones(uid, tombstones.keys.toList())
-            transport.deleteSyncMeta(uid)
+            val noteCount = transport.fetchNotes(uid).size
+            transport.deleteAllOwnedCloudData(uid)
             syncStateStore.clear()
-            noteIds.size
+            noteCount
         }
     }
 
@@ -400,7 +414,7 @@ class NoteSyncEngine(
      */
     private fun requireCurrentAccount(uid: String) {
         val last = syncStateStore.lastMergedUserId()
-        if (last != null && last != uid) {
+        if (last != null && !accountUidBridge.accountsMatch(last, uid)) {
             throw WrongAccountSyncException(lastMergedUserId = last, currentUserId = uid)
         }
     }
@@ -463,6 +477,9 @@ class NoteSyncEngine(
         if (cloud.labels.map { it.name }.sorted() != local.labels.map { it.name }.sorted()) {
             return false
         }
+        if (attachmentsKey(cloud.attachments) != attachmentsKey(local.attachments)) {
+            return false
+        }
         return cloud.checklist.checklistKey() == local.checklist.checklistKey()
     }
 
@@ -476,10 +493,16 @@ class NoteSyncEngine(
     /** Uploads [notes] in one transport call and records the server timestamps it returns. */
     private suspend fun putNotes(uid: String, notes: List<Note>) {
         if (notes.isEmpty()) return
-        val timestamps = transport.putNotes(uid, notes)
+        val syncedNotes = attachmentSync?.syncNotesAttachments(notes) ?: notes
+        val timestamps = transport.putNotes(uid, syncedNotes)
         for ((noteId, resolved) in timestamps) {
             if (resolved != null) {
                 noteDao.updateServerTimestamp(noteId, resolved)
+            }
+        }
+        for (note in syncedNotes) {
+            if (note.attachments.isNotEmpty()) {
+                noteDao.updateNote(note.toNoteEntity())
             }
         }
     }

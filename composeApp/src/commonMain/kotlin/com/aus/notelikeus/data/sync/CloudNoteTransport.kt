@@ -55,4 +55,17 @@ interface CloudNoteTransport {
 
     /** Deletes sync metadata. */
     suspend fun deleteSyncMeta(uid: String)
+
+    /**
+     * Wipes every cloud row for [uid] (notes, tombstones, sync meta).
+     * Used by "sign out and delete cloud data". Transports that can do this in one RPC
+     * should override; the default walks the existing fetch/delete methods.
+     */
+    suspend fun deleteAllOwnedCloudData(uid: String) {
+        val records = fetchNotes(uid)
+        deleteNotes(uid, records.map { it.noteId })
+        val tombstones = fetchTombstones(uid)
+        deleteTombstones(uid, tombstones.keys.toList())
+        deleteSyncMeta(uid)
+    }
 }

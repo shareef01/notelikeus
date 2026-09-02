@@ -147,6 +147,22 @@ class SharedPrefsNoteSyncStateStore(
         prefs.edit().putString(KEY_LAST_MERGED_USER_ID, userId).apply()
     }
 
+    override fun linkedFirebaseUid(): String? =
+        prefs.getString(KEY_LINKED_FIREBASE_UID, null)?.takeIf { it.isNotBlank() }
+
+    override fun setLinkedFirebaseUid(userId: String?) {
+        prefs.edit().apply {
+            if (userId.isNullOrBlank()) remove(KEY_LINKED_FIREBASE_UID) else putString(KEY_LINKED_FIREBASE_UID, userId)
+        }.apply()
+    }
+
+    override fun isFirebaseSupabaseCloudMigrated(): Boolean =
+        prefs.getBoolean(KEY_FIREBASE_CLOUD_MIGRATED, false)
+
+    override fun setFirebaseSupabaseCloudMigrated(migrated: Boolean) {
+        prefs.edit().putBoolean(KEY_FIREBASE_CLOUD_MIGRATED, migrated).apply()
+    }
+
     override fun clear() {
         prefs.edit().clear().apply()
     }
@@ -168,6 +184,8 @@ class SharedPrefsNoteSyncStateStore(
         private const val KEY_KNOWN_CLOUD = "known_cloud_ids"
         private const val KEY_RESTORED = "restored_ids"
         private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
+        private const val KEY_LINKED_FIREBASE_UID = "linked_firebase_uid"
+        private const val KEY_FIREBASE_CLOUD_MIGRATED = "firebase_supabase_cloud_migrated"
         private const val KEY_LAST_RECONCILED = "last_reconciled_at"
     }
 }
