@@ -29,6 +29,11 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_ANON_KEY?: string;
   /** Explicit cutover flag. Production Supabase also requires a non-localhost URL. */
   readonly VITE_ALLOW_SUPABASE_PRODUCTION?: string;
+  /**
+   * Staging Pages only. Enables Supabase in a production Vite build when the
+   * page is served from `*.pages.dev`. Never set this on Firebase Hosting.
+   */
+  readonly VITE_ALLOW_SUPABASE_STAGING?: string;
   /** Dev-only: Cloudflare Worker base URL for attachment blobs (Phase 8). */
   readonly VITE_ATTACHMENTS_WORKER_URL?: string;
 }

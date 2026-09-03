@@ -5,7 +5,8 @@
 # Required environment variables:
 #   SUPABASE_ACCESS_TOKEN   — personal access token (Account → Access Tokens)
 #   SUPABASE_PROJECT_REF    — staging project ref (subdomain before .supabase.co)
-#   SUPABASE_ANON_KEY       — Project Settings → API → anon public key
+#   SUPABASE_ANON_KEY       — optional if SUPABASE_ACCESS_TOKEN can list keys;
+#                             must be the anon *public* JWT (eyJ…), never sb_secret_…
 #   CLOUDFLARE_API_TOKEN    — Workers + R2 edit (or run `wrangler login` first)
 #   CLOUDFLARE_ACCOUNT_ID   — Cloudflare dashboard → account id
 #
@@ -51,7 +52,67 @@ run() {
   fi
 }
 
+# Like run(), but logs a label instead of argv so tokens/passwords stay out of output.
+run_logged() {
+  local label="$1"
+  shift
+  if [[ "${DRY_RUN:-}" == "1" ]]; then
+    info "[dry-run] $label"
+  else
+    info "$label"
+    "$@"
+  fi
+}
+
+# Resolves a browser-safe anon JWT (role=anon, eyJ…). The Cursor/env secret named
+# SUPABASE_ANON_KEY is often a new sb_secret_ key, which GoTrue rejects in the browser
+# with "Forbidden use of secret API key in browser".
+resolve_browser_anon_key() {
+  require_env SUPABASE_ACCESS_TOKEN
+  require_env SUPABASE_PROJECT_REF
+  if [[ "${DRY_RUN:-}" == "1" ]]; then
+    info "[dry-run] resolve browser-safe anon JWT from Management API"
+    return
+  fi
+  local json resolved
+  set +e
+  json="$(curl -fsS \
+    -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+    -H "User-Agent: notelikeus-setup-staging/1.0" \
+    -H "Accept: application/json" \
+    "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/api-keys" 2>/dev/null)"
+  local curl_status=$?
+  set -e
+  if [[ "$curl_status" -eq 0 ]]; then
+    resolved="$(printf '%s' "$json" | python3 -c '
+import json, sys
+keys = json.load(sys.stdin)
+if not isinstance(keys, list):
+    raise SystemExit("unexpected api-keys payload")
+anon = next((k.get("api_key") or k.get("key") or "" for k in keys if k.get("name") == "anon"), "")
+if not anon.startswith("eyJ"):
+    raise SystemExit("Management API did not return a JWT anon public key")
+print(anon)
+')"
+  fi
+  if [[ -z "${resolved:-}" && "${SUPABASE_ANON_KEY:-}" == eyJ* ]]; then
+    info "Management API key lookup failed; using SUPABASE_ANON_KEY (JWT)"
+    return
+  fi
+  if [[ -z "${resolved:-}" ]]; then
+    red "Could not resolve a browser-safe anon JWT. Set SUPABASE_ANON_KEY to the Project Settings → API anon public key (eyJ…), not a secret key."
+    exit 1
+  fi
+  if [[ -n "${SUPABASE_ANON_KEY:-}" && "${SUPABASE_ANON_KEY}" != "${resolved}" ]]; then
+    info "Using Management API anon JWT (len=${#resolved}); ignoring SUPABASE_ANON_KEY (not browser-safe)"
+  else
+    info "Resolved browser-safe anon JWT (len=${#resolved})"
+  fi
+  SUPABASE_ANON_KEY="$resolved"
+}
+
 print_manual_steps() {
+  local pages_origin="https://notelikeus-dev.pages.dev"
   cat <<EOF
 
 Manual dashboard steps (agent cannot complete these via CLI):
@@ -63,17 +124,28 @@ Supabase Auth → Providers → Google:
   4. Auth → URL configuration → Redirect URLs, add:
        ${STAGING_WEB_ORIGIN}/**
        ${STAGING_WEB_ORIGIN}
+       ${pages_origin}/**
+       ${pages_origin}
 
 Supabase Auth → URL configuration:
-  - Site URL: ${STAGING_WEB_ORIGIN}
+  - Site URL: ${STAGING_WEB_ORIGIN}  (keep localhost for Vite smoke)
+  - Also allow ${pages_origin} as a Redirect URL
 
-Google Cloud Console → OAuth client → Authorized redirect URIs, add:
+Google Cloud Console → Web OAuth client:
+  Authorized JavaScript origins:
+  - ${pages_origin}
+  - ${STAGING_WEB_ORIGIN}
+  Authorized redirect URIs:
   - https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/callback
+  - https://notelikeus.firebaseapp.com/__/auth/handler
 
 Smoke test (after copying web/.env.staging → web/.env):
   cd web && npm run dev
   - Sign in with Google
   - Create a note, add an image attachment, confirm sync
+
+Pages staging deploy (does not cut over production):
+  npm run deploy:staging-pages
 
 Migration rehearsal (test Firebase account only):
   node scripts/ops/export-firestore-user.mjs --input dump.json --out backup.json
@@ -86,11 +158,11 @@ EOF
 if [[ "${SKIP_SUPABASE:-}" != "1" ]]; then
   require_env SUPABASE_ACCESS_TOKEN
   require_env SUPABASE_PROJECT_REF
-  require_env SUPABASE_ANON_KEY
 fi
 
 if [[ "${SKIP_CLOUDFLARE:-}" != "1" ]]; then
   require_env CLOUDFLARE_ACCOUNT_ID
+  require_env SUPABASE_PROJECT_REF
   if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]] && ! npx wrangler whoami >/dev/null 2>&1; then
     red "Set CLOUDFLARE_API_TOKEN or run: npx wrangler login"
     exit 1
@@ -98,28 +170,78 @@ if [[ "${SKIP_CLOUDFLARE:-}" != "1" ]]; then
 fi
 
 export SUPABASE_ACCESS_TOKEN
+resolve_browser_anon_key
 
 if [[ "${SKIP_SUPABASE:-}" != "1" ]]; then
   info "Supabase: authenticate and link staging project ${SUPABASE_PROJECT_REF}"
-  run npx supabase login --token "$SUPABASE_ACCESS_TOKEN"
+  run_logged "npx supabase login --token [redacted]" npx supabase login --token "$SUPABASE_ACCESS_TOKEN"
 
-  link_args=(link --project-ref "$SUPABASE_PROJECT_REF")
+  link_args=(link --project-ref "$SUPABASE_PROJECT_REF" --yes)
   if [[ -n "${SUPABASE_DB_PASSWORD:-}" ]]; then
     link_args+=(--password "$SUPABASE_DB_PASSWORD")
   fi
-  run npx supabase "${link_args[@]}"
+  run_logged "npx supabase link --project-ref ${SUPABASE_PROJECT_REF} --yes [--password redacted]" npx supabase "${link_args[@]}"
 
   info "Supabase: push migrations from supabase/migrations/"
-  run npx supabase db push
+  run npx supabase db push --yes
 
   green "Supabase staging schema applied at ${SUPABASE_URL}"
 fi
 
-WORKER_URL=""
+# Preserve a caller-supplied WORKER_URL (e.g. SKIP_CLOUDFLARE=1 with the live worker).
+WORKER_URL="${WORKER_URL:-}"
+
+write_env_staging() {
+  if [[ "${DRY_RUN:-}" == "1" ]]; then
+    info "[dry-run] write web/.env.staging"
+    return
+  fi
+  if [[ -z "${WORKER_URL:-}" && -f "$ROOT/web/.env.staging" ]]; then
+    WORKER_URL="$(sed -n 's/^VITE_ATTACHMENTS_WORKER_URL=//p' "$ROOT/web/.env.staging" | head -1 || true)"
+  fi
+  cat > "$ROOT/web/.env.staging" <<EOF
+# Staging — copy to web/.env for local smoke tests. NOT for production deploy.
+VITE_REMOTE_BACKEND=supabase
+VITE_SUPABASE_URL=${SUPABASE_URL}
+VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+VITE_ATTACHMENTS_WORKER_URL=${WORKER_URL:-http://127.0.0.1:8787}
+
+# Keep Firebase vars if you need side-by-side comparison (from web/.env.example):
+# VITE_FIREBASE_API_KEY=...
+# VITE_FIREBASE_GOOGLE_CLIENT_ID=...  (required for Supabase Google OAuth locally)
+EOF
+  green "Wrote web/.env.staging (copy to web/.env)"
+}
+
+if [[ "${SKIP_SUPABASE:-}" != "1" ]]; then
+  write_env_staging
+fi
 
 if [[ "${SKIP_CLOUDFLARE:-}" != "1" ]]; then
   info "Cloudflare: ensure R2 bucket ${R2_BUCKET}"
-  run npx wrangler r2 bucket create "$R2_BUCKET" 2>/dev/null || info "R2 bucket may already exist (continuing)"
+  if [[ "${DRY_RUN:-}" == "1" ]]; then
+    info "[dry-run] npx wrangler r2 bucket create ${R2_BUCKET}"
+  else
+    set +e
+    bucket_out="$(npx wrangler r2 bucket create "$R2_BUCKET" 2>&1)"
+    bucket_status=$?
+    set -e
+    printf '%s\n' "$bucket_out"
+    if [[ "$bucket_status" -ne 0 ]]; then
+      if echo "$bucket_out" | grep -q '10042'; then
+        red "R2 is not enabled on this Cloudflare account (API 10042)."
+        red "Enable it in the dashboard: Storage & databases → R2 → Overview → complete the checkout flow."
+        red "Then re-run: SKIP_SUPABASE=1 npm run setup:staging"
+        exit 1
+      fi
+      if echo "$bucket_out" | grep -qi 'already exists'; then
+        info "R2 bucket already exists (continuing)"
+      else
+        red "Failed to create R2 bucket ${R2_BUCKET}"
+        exit 1
+      fi
+    fi
+  fi
 
   info "Cloudflare: write ${WORKER_DIR}/wrangler.toml"
   if [[ "${DRY_RUN:-}" != "1" ]]; then
@@ -135,6 +257,8 @@ bucket_name = "${R2_BUCKET}"
 
 [vars]
 SUPABASE_URL = "${SUPABASE_URL}"
+# localhost and *.pages.dev are allowed in worker CORS; add extras here if needed.
+# ALLOWED_ORIGINS = "${STAGING_WEB_ORIGIN}"
 EOF
   fi
 
@@ -144,35 +268,23 @@ EOF
     info "[dry-run] npx wrangler deploy (in ${WORKER_DIR})"
     WORKER_URL="https://notelikeus-attachments.<account>.workers.dev"
   else
+    deploy_log="$(mktemp)"
     (
       cd "$WORKER_DIR"
       printf '%s' "$SUPABASE_ANON_KEY" | npx wrangler secret put SUPABASE_ANON_KEY
-      deploy_out="$(npx wrangler deploy 2>&1)"
-      echo "$deploy_out"
-      WORKER_URL="$(echo "$deploy_out" | sed -n 's/.*https:\/\/[^ ]*workers\.dev.*/\0/p' | head -1 | tr -d '[:space:]')"
-      if [[ -z "$WORKER_URL" ]]; then
-        WORKER_URL="$(npx wrangler deployments list 2>/dev/null | head -5 || true)"
-        info "Could not parse worker URL from deploy output; check Cloudflare dashboard."
-      fi
+      # Stream logs and keep a copy so we can parse the workers.dev URL.
+      npx wrangler deploy | tee "$deploy_log"
     )
+    WORKER_URL="$(sed -n 's/.*\(https:\/\/[^[:space:]]*workers\.dev\).*/\1/p' "$deploy_log" | head -1 || true)"
+    rm -f "$deploy_log"
+    if [[ -z "$WORKER_URL" ]]; then
+      info "Could not parse worker URL from deploy output; check Cloudflare dashboard."
+    fi
   fi
 
+  write_env_staging
+
   green "Attachments worker deployed${WORKER_URL:+ → ${WORKER_URL}}"
-fi
-
-if [[ "${SKIP_SUPABASE:-}" != "1" && "${DRY_RUN:-}" != "1" ]]; then
-  cat > "$ROOT/web/.env.staging" <<EOF
-# Staging — copy to web/.env for local smoke tests. NOT for production deploy.
-VITE_REMOTE_BACKEND=supabase
-VITE_SUPABASE_URL=${SUPABASE_URL}
-VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-VITE_ATTACHMENTS_WORKER_URL=${WORKER_URL:-http://127.0.0.1:8787}
-
-# Keep Firebase vars if you need side-by-side comparison (from web/.env.example):
-# VITE_FIREBASE_API_KEY=...
-# VITE_FIREBASE_GOOGLE_CLIENT_ID=...  (required for Supabase Google OAuth locally)
-EOF
-  green "Wrote web/.env.staging (copy to web/.env)"
 fi
 
 print_manual_steps

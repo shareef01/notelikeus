@@ -1,7 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-vi.mock('@/lib/firestore/notesRepository', () => ({
-  uploadAllNotes: vi.fn().mockResolvedValue(1),
+const { remoteMocks } = vi.hoisted(() => ({
+  remoteMocks: {
+    uploadAllNotes: vi.fn().mockResolvedValue(1),
+  },
+}));
+
+vi.mock('@/lib/remote/remoteNotesDataSourceRegistry', () => ({
+  getRemoteNotesDataSource: () => remoteMocks,
 }));
 
 vi.mock('@/lib/notes/notesSyncService', () => ({
@@ -9,7 +15,6 @@ vi.mock('@/lib/notes/notesSyncService', () => ({
   resumeRealtimeSnapshots: vi.fn(),
 }));
 
-import { uploadAllNotes } from '@/lib/firestore/notesRepository';
 import {
   pauseRealtimeSnapshots,
   resumeRealtimeSnapshots,
@@ -31,7 +36,7 @@ describe('commitImportedNotes', () => {
   it('uploads before writing the store when signed in', async () => {
     const order: string[] = [];
     vi.mocked(pauseRealtimeSnapshots).mockImplementation(() => order.push('pause'));
-    vi.mocked(uploadAllNotes).mockImplementation(async () => {
+    vi.mocked(remoteMocks.uploadAllNotes).mockImplementation(async () => {
       order.push('upload');
       expect(useNotesStore.getState().notes).toEqual([]);
       return 1;
@@ -42,13 +47,13 @@ describe('commitImportedNotes', () => {
     const uploaded = await commitImportedNotes(merged, 1, 'user-1');
 
     expect(uploaded).toBe(true);
-    expect(uploadAllNotes).toHaveBeenCalledWith('user-1', merged);
+    expect(remoteMocks.uploadAllNotes).toHaveBeenCalledWith('user-1', merged);
     expect(useNotesStore.getState().notes).toEqual(merged);
     expect(order).toEqual(['pause', 'upload', 'resume']);
   });
 
   it('does not write the store if the upload fails', async () => {
-    vi.mocked(uploadAllNotes).mockRejectedValueOnce(new Error('offline'));
+    vi.mocked(remoteMocks.uploadAllNotes).mockRejectedValueOnce(new Error('offline'));
 
     await expect(commitImportedNotes([note('1')], 1, 'user-1')).rejects.toThrow('offline');
 
@@ -61,7 +66,7 @@ describe('commitImportedNotes', () => {
     const uploaded = await commitImportedNotes(merged, 1, undefined);
 
     expect(uploaded).toBe(false);
-    expect(uploadAllNotes).not.toHaveBeenCalled();
+    expect(remoteMocks.uploadAllNotes).not.toHaveBeenCalled();
     expect(useNotesStore.getState().notes).toEqual(merged);
   });
 });

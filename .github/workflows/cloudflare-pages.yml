@@ -2,15 +2,23 @@ name: Cloudflare Pages CI
 
 on:
   workflow_dispatch:
+    inputs:
+      backend:
+        description: Remote backend for this Pages preview. firebase is the default. supabase-staging never sets production cutover flags.
+        type: choice
+        options:
+          - firebase
+          - supabase-staging
+        default: firebase
   push:
-    branches: [main, master, migration/supabase-r2]
+    branches: [main, master]
     paths:
       - 'web/**'
       - 'cloudflare/**'
       - 'firebase.json'
       - '.github/workflows/cloudflare-pages.yml'
   pull_request:
-    branches: [main, master, migration/supabase-r2]
+    branches: [main, master]
     paths:
       - 'web/**'
       - 'cloudflare/**'
@@ -67,9 +75,7 @@ jobs:
         run: node cloudflare/scripts/verify-headers-parity.mjs
 
   deploy-preview:
-    if: >-
-      github.event_name == 'workflow_dispatch' &&
-      github.ref == 'refs/heads/migration/supabase-r2'
+    if: github.event_name == 'workflow_dispatch'
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -80,6 +86,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require staging secrets
+        if: github.event.inputs.backend == 'supabase-staging'
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
+        run: |
+          missing=0
+          for name in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY VITE_ATTACHMENTS_WORKER_URL; do
+            if [ -z "${!name}" ]; then
+              echo "Missing GitHub secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Add those secrets, or run locally: npm run deploy:staging-pages"
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -99,6 +124,11 @@ jobs:
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_FIREBASE_GOOGLE_CLIENT_ID }}
+          VITE_REMOTE_BACKEND: ${{ github.event.inputs.backend == 'supabase-staging' && 'supabase' || '' }}
+          VITE_ALLOW_SUPABASE_STAGING: ${{ github.event.inputs.backend == 'supabase-staging' && 'true' || '' }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
 
       - name: Deploy to Cloudflare Pages (dev preview)
         uses: cloudflare/wrangler-action@4bea050a0a830575b2b1f999e528f1cb4f7e219 # v3.14.0

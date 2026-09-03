@@ -2,6 +2,7 @@ import {
   deleteNote,
   subscribeToNotes,
   syncNotesWithCloud,
+  uploadAllNotes,
   upsertNote,
 } from '@/lib/firestore/notesRepository';
 import { fetchAllNotes } from '@/lib/remote/firebaseNotesFetch';
@@ -23,6 +24,10 @@ export const firebaseRemoteNotesDataSource: RemoteNotesDataSource = {
 
   deleteNote(userId, noteId) {
     return deleteNote(userId, noteId);
+  },
+
+  uploadAllNotes(userId, notes) {
+    return uploadAllNotes(userId, notes);
   },
 
   syncNotesWithCloud(userId, localNotes, previouslyKnownCloudIds) {

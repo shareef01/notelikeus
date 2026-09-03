@@ -1,0 +1,37 @@
+{
+  "version": 3,
+  "exportedAt": 1788407068351,
+  "app": "Notelikeus",
+  "appVersion": "1.0.0 (ops-export)",
+  "sourceUid": "rehearsal-firebase-uid",
+  "labels": [
+    {
+      "id": "label-rehearsal",
+      "name": "rehearsal"
+    }
+  ],
+  "notes": [
+    {
+      "id": 101,
+      "title": "Migration rehearsal",
+      "content": "Imported from a Firestore dump via export-firestore-user.",
+      "timestamp": 1788400000000,
+      "color": -14474606,
+      "isPinned": true,
+      "isArchived": false,
+      "isTrashed": false,
+      "position": 0,
+      "labels": [
+        "rehearsal"
+      ],
+      "checklist": [
+        {
+          "text": "export dump",
+          "isChecked": true,
+          "position": 0
+        }
+      ],
+      "serverUpdatedAt": 1788400000000
+    }
+  ]
+}
