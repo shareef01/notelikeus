@@ -203,26 +203,17 @@ EOF
     info "[dry-run] npx wrangler deploy (in ${WORKER_DIR})"
     WORKER_URL="https://notelikeus-attachments.<account>.workers.dev"
   else
+    deploy_log="$(mktemp)"
     (
       cd "$WORKER_DIR"
       printf '%s' "$SUPABASE_ANON_KEY" | npx wrangler secret put SUPABASE_ANON_KEY
-      # Stream deploy logs; do not hide failures inside a captured subshell.
-      npx wrangler deploy
+      # Stream logs and keep a copy so we can parse the workers.dev URL.
+      npx wrangler deploy | tee "$deploy_log"
     )
-    WORKER_URL="$(cd "$WORKER_DIR" && npx wrangler deployments list --json 2>/dev/null | python3 -c '
-import json,sys
-try:
-    data=json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-items=data if isinstance(data,list) else data.get("deployments",[])
-if items:
-    url=(items[0].get("url") or items[0].get("deployment_url") or "")
-    if url:
-        print(url)
-' || true)"
+    WORKER_URL="$(sed -n 's/.*\(https:\/\/[^[:space:]]*workers\.dev\).*/\1/p' "$deploy_log" | head -1 || true)"
+    rm -f "$deploy_log"
     if [[ -z "$WORKER_URL" ]]; then
-      info "Could not parse worker URL from deployments list; check Cloudflare dashboard."
+      info "Could not parse worker URL from deploy output; check Cloudflare dashboard."
     fi
   fi
 
