@@ -112,6 +112,7 @@ print(anon)
 }
 
 print_manual_steps() {
+  local pages_origin="https://notelikeus-dev.pages.dev"
   cat <<EOF
 
 Manual dashboard steps (agent cannot complete these via CLI):
@@ -123,17 +124,28 @@ Supabase Auth → Providers → Google:
   4. Auth → URL configuration → Redirect URLs, add:
        ${STAGING_WEB_ORIGIN}/**
        ${STAGING_WEB_ORIGIN}
+       ${pages_origin}/**
+       ${pages_origin}
 
 Supabase Auth → URL configuration:
-  - Site URL: ${STAGING_WEB_ORIGIN}
+  - Site URL: ${STAGING_WEB_ORIGIN}  (keep localhost for Vite smoke)
+  - Also allow ${pages_origin} as a Redirect URL
 
-Google Cloud Console → OAuth client → Authorized redirect URIs, add:
+Google Cloud Console → Web OAuth client:
+  Authorized JavaScript origins:
+  - ${pages_origin}
+  - ${STAGING_WEB_ORIGIN}
+  Authorized redirect URIs:
   - https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/callback
+  - https://notelikeus.firebaseapp.com/__/auth/handler
 
 Smoke test (after copying web/.env.staging → web/.env):
   cd web && npm run dev
   - Sign in with Google
   - Create a note, add an image attachment, confirm sync
+
+Pages staging deploy (does not cut over production):
+  npm run deploy:staging-pages
 
 Migration rehearsal (test Firebase account only):
   node scripts/ops/export-firestore-user.mjs --input dump.json --out backup.json
