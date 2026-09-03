@@ -1,4 +1,5 @@
 import { resolveAuthenticatedUserId, type WorkerEnv } from './auth';
+import { withAttachmentCors } from './cors';
 import { buildAttachmentObjectKey, parseAttachmentPath } from './objectKey';
 
 export type { WorkerEnv };
@@ -63,6 +64,13 @@ async function deleteAttachment(env: WorkerEnv, objectKey: string): Promise<Resp
 
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
-    return handleAttachmentRequest(request, env);
+    if (request.method === 'OPTIONS') {
+      return withAttachmentCors(request, new Response(null, { status: 204 }), env.ALLOWED_ORIGINS);
+    }
+    return withAttachmentCors(
+      request,
+      await handleAttachmentRequest(request, env),
+      env.ALLOWED_ORIGINS,
+    );
   },
 };
