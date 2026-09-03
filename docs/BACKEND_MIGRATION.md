@@ -709,6 +709,8 @@ Owner-operated staging only. **Do not** set `VITE_ALLOW_SUPABASE_PRODUCTION`.
 | Pages staging flag | `VITE_ALLOW_SUPABASE_STAGING` enables Supabase only on `*.pages.dev` (never on `notelike.web.app`) |
 | Smoke test (local Vite + staging Supabase) | Signed in, note **staging smoke**, PNG upload; `list_user_attachments` returned 1 row |
 
+Kotlin **debug** builds can point at the same staging stack with `NOTELIKEUS_REMOTE_BACKEND=supabase` plus URL/anon/worker values from `web/.env.staging`. Do not set `NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION`. Desktop honors those env vars when launched from a shell; Android `System.getenv` is usually empty on-device, so the Web import rehearsal is the supported path until debug BuildConfig wiring exists.
+
 Bootstrap: `npm run setup:staging` (`scripts/ops/setup-staging.sh`).
 
 ## Owner actions before production cutover
