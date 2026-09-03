@@ -135,6 +135,18 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     useTombstoneStore.getState().markDeleted(noteId);
   },
 
+  async uploadAllNotes(userId, notes) {
+    await ensureSupabaseAuthenticated();
+    let uploaded = 0;
+    for (const note of notes) {
+      if (!isCloudSyncEligible(note)) continue;
+      if (useTombstoneStore.getState().isDeleted(note.id)) continue;
+      await this.upsertNote(userId, note);
+      uploaded += 1;
+    }
+    return uploaded;
+  },
+
   async syncNotesWithCloud(userId, localNotes, previouslyKnownCloudIds) {
     await ensureSupabaseAuthenticated();
     const { notes: remoteNotes, tombstones, noteRevisions, maxRevision } =
