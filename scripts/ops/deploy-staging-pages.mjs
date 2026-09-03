@@ -91,10 +91,7 @@ function main() {
   run('npm', ['run', 'build'], { cwd: WEB, env: buildEnv });
   run('node', [resolve(WEB, 'scripts/verifyPagesArtifacts.mjs')], { env: {} });
 
-  // Pages project production branch is `main` → https://notelikeus-dev.pages.dev
-  // (staging site). Other git branches become preview aliases and leave that
-  // URL on the previous Firebase-default bundle.
-  console.log('Deploying to Cloudflare Pages project notelikeus-dev (production alias)…');
+  console.log('Deploying to Cloudflare Pages project notelikeus-dev (Production alias)…');
   run(
     'npx',
     [
@@ -103,7 +100,10 @@ function main() {
       'deploy',
       'web/dist',
       '--project-name=notelikeus-dev',
+      // Without this, wrangler uses the current git branch and creates a Preview
+      // URL instead of updating https://notelikeus-dev.pages.dev/
       '--branch=main',
+      '--commit-dirty=true',
     ],
     { env: {} },
   );

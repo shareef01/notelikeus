@@ -1,7 +1,7 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
 **Status:** Phases 0–12 on `main`; staging bootstrap live. Firebase remains the production backend.  
-**Last updated:** 2026-09-03 (Pages staging bundle on notelikeus-dev.pages.dev)
+**Last updated:** 2026-09-03 (Pages `notelikeus-dev` serving staging Supabase)
 
 This document tracks the phased migration away from Firebase. Phases 0–12 are on `main`. Production cutover is **not** authorized. Firebase Auth, Firestore, and Firebase Hosting (`notelike.web.app`) remain the live backend.
 
@@ -705,7 +705,7 @@ Owner-operated staging only. **Do not** set `VITE_ALLOW_SUPABASE_PRODUCTION`.
 | Supabase project `notelikeus-staging` | Migrations applied; Google provider enabled from the existing Firebase Web client |
 | R2 bucket `notelikeus-attachments-dev` | Created |
 | Worker `notelikeus-attachments` | Redeployed with Pages CORS — https://notelikeus-attachments.error-endpoint.workers.dev |
-| Cloudflare Pages `notelikeus-dev` | **Live staging bundle** — https://notelikeus-dev.pages.dev/ (`VITE_REMOTE_BACKEND=supabase` + `VITE_ALLOW_SUPABASE_STAGING`; Hosting remains `notelike.web.app`) |
+| Cloudflare Pages `notelikeus-dev` | **Live staging (Supabase)** — https://notelikeus-dev.pages.dev/ (`VITE_ALLOW_SUPABASE_STAGING`; Hosting remains `notelike.web.app`) |
 | Pages staging flag | `VITE_ALLOW_SUPABASE_STAGING` enables Supabase only on `*.pages.dev` (never on `notelike.web.app`) |
 | Smoke test (local Vite + staging Supabase) | Signed in, note **staging smoke**, PNG upload; `list_user_attachments` returned 1 row |
 
@@ -719,14 +719,14 @@ Bootstrap: `npm run setup:staging` (`scripts/ops/setup-staging.sh`).
    - ~~Browser API key HTTP referrers~~ **Done** — `https://notelikeus-dev.pages.dev/*` and `https://*.notelikeus-dev.pages.dev/*`
    - Still add `https://notelikeus-dev.pages.dev` to the Web OAuth client's **Authorized JavaScript origins** (Google Cloud Console; no public API). Needed for Supabase Google sign-in on Pages; Firebase popup already uses `notelikeus.firebaseapp.com`.
 3. ~~Create a **staging** Supabase project and `supabase db push`.~~ **Done** (`notelikeus-staging`)
-4. ~~Deploy a **Pages staging** bundle (Supabase, not production cutover).~~ **Done** — `npm run deploy:staging-pages` published https://notelikeus-dev.pages.dev/ with `VITE_ALLOW_SUPABASE_STAGING` (runtime-gated to `*.pages.dev`). Never set `VITE_ALLOW_SUPABASE_PRODUCTION`. Auth redirect URLs include `https://notelikeus-dev.pages.dev` and `https://notelikeus-dev.pages.dev/**` (localhost:5173 kept).
+4. ~~Deploy a **Pages staging** bundle (Supabase, not production cutover).~~ **Done** — https://notelikeus-dev.pages.dev/ uses `VITE_ALLOW_SUPABASE_STAGING` (runtime-gated to `*.pages.dev`). `npm run deploy:staging-pages` passes `--branch=main` so Wrangler updates the Production alias. Auth redirect URLs include `https://notelikeus-dev.pages.dev` and `https://notelikeus-dev.pages.dev/**` (localhost:5173 kept). Never set `VITE_ALLOW_SUPABASE_PRODUCTION`.
 5. Complete a test-account migration window (backup export → Supabase import) on Web, Android, and Desktop.
 6. Approve flipping `VITE_ALLOW_SUPABASE_PRODUCTION` / `NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION` for a dedicated cutover build.
 7. After the user migration window: update README, privacy policy, and `npm run deploy` target. Only then remove Firebase.
 
 ### Continue command
 
-Remaining work: add `https://notelikeus-dev.pages.dev` to the Web OAuth client's **Authorized JavaScript origins** (Google Cloud Console; no public API), then a test-account Google sign-in + migration rehearsal on Pages. Do not start production Firebase retirement.
+Remaining work: add `https://notelikeus-dev.pages.dev` to the Web OAuth client's **Authorized JavaScript origins** if Google sign-in on Pages fails, then a test-account backup import rehearsal. Do not start production Firebase retirement.
 
 ```
 Do not start Firebase retirement in production. Review docs/BACKEND_MIGRATION.md Live staging first.
