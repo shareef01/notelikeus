@@ -14,6 +14,7 @@
     "supabase:stop": "supabase stop",
     "supabase:reset": "supabase db reset",
     "supabase:test": "supabase test db",
+    "setup:staging": "bash scripts/ops/setup-staging.sh",
     "test:attachments-worker": "npm --prefix workers/attachments test",
     "pages:verify": "npm --prefix web run build && node web/scripts/verifyPagesArtifacts.mjs && node cloudflare/scripts/verify-headers-parity.mjs",
     "ops:export-firestore-user": "node scripts/ops/export-firestore-user.mjs",

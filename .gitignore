@@ -35,6 +35,8 @@ web/dist/
 web/.env
 /node_modules/
 workers/**/node_modules/
+workers/attachments/wrangler.toml
+web/.env.staging
 
 # Firebase emulator artefacts
 firestore-debug.log
