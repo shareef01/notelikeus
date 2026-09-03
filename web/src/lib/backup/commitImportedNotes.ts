@@ -1,14 +1,14 @@
-import { uploadAllNotes } from '@/lib/firestore/notesRepository';
 import {
   pauseRealtimeSnapshots,
   resumeRealtimeSnapshots,
 } from '@/lib/notes/notesSyncService';
+import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegistry';
 import { useNotesStore } from '@/store/notesStore';
 import type { Note } from '@/types/note';
 
 /**
- * Commits an import to the in-memory store — and to Firestore when signed in — without letting
- * a realtime snapshot of the *pre-import* cloud replace the merged library first.
+ * Commits an import to the in-memory store — and to the active remote when signed in —
+ * without letting a realtime snapshot of the *pre-import* cloud replace the merged library first.
  *
  * Upload runs before `setNotes` so the next snapshot already contains the new ids. Snapshots
  * that arrive during the upload are dropped rather than applied.
@@ -29,7 +29,7 @@ export async function commitImportedNotes(
   pauseRealtimeSnapshots();
   try {
     if (userId) {
-      await uploadAllNotes(userId, merged);
+      await getRemoteNotesDataSource().uploadAllNotes(userId, merged);
       useNotesStore.getState().setNotes(merged);
       return true;
     }
