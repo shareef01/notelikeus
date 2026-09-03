@@ -36,6 +36,7 @@ web/.env
 /node_modules/
 workers/**/node_modules/
 workers/attachments/wrangler.toml
+.wrangler/
 web/.env.staging
 scripts/ops/fixtures/backup.rehearsal.json
 
