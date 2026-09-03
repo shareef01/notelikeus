@@ -24,6 +24,9 @@ export interface RemoteNotesDataSource {
 
   deleteNote(userId: string, noteId: string): Promise<void>;
 
+  /** Backup import / bulk recovery. Returns how many notes were sent to the cloud. */
+  uploadAllNotes(userId: string, notes: Note[]): Promise<number>;
+
   syncNotesWithCloud(
     userId: string,
     localNotes: Note[],

@@ -19,7 +19,8 @@ export function loadSupabaseAnonKey(): string {
  * Firebase remains the production default.
  * Supabase is selected in development when `VITE_REMOTE_BACKEND=supabase`.
  * A production cutover build also needs `VITE_ALLOW_SUPABASE_PRODUCTION=true`
- * and a non-localhost `VITE_SUPABASE_URL` — ordinary users cannot switch backends.
+ * and a non-localhost `VITE_SUPABASE_URL`. A Pages staging build may set
+ * `VITE_ALLOW_SUPABASE_STAGING=true` instead (runtime-gated to `*.pages.dev`).
  */
 export function isSupabaseBackendEnabled(): boolean {
   return resolveSupabaseBackendEnabled({
@@ -27,7 +28,9 @@ export function isSupabaseBackendEnabled(): boolean {
     isE2e: Boolean(import.meta.env.VITE_E2E),
     remoteBackend: import.meta.env.VITE_REMOTE_BACKEND,
     allowProduction: import.meta.env.VITE_ALLOW_SUPABASE_PRODUCTION,
+    allowStaging: import.meta.env.VITE_ALLOW_SUPABASE_STAGING,
     supabaseUrl: loadSupabaseUrl(),
+    hostname: typeof window !== 'undefined' ? window.location.hostname : '',
   });
 }
 
