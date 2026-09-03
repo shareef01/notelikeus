@@ -73,7 +73,12 @@ function main() {
   );
   requireKeys(
     staging,
-    ['VITE_REMOTE_BACKEND', 'VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'],
+    [
+      'VITE_REMOTE_BACKEND',
+      'VITE_SUPABASE_URL',
+      'VITE_SUPABASE_ANON_KEY',
+      'VITE_ATTACHMENTS_WORKER_URL',
+    ],
     'web/.env.staging',
   );
   if (staging.VITE_REMOTE_BACKEND !== 'supabase') {

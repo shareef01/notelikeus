@@ -20,7 +20,7 @@
     "pages:verify": "npm --prefix web run build && node web/scripts/verifyPagesArtifacts.mjs && node cloudflare/scripts/verify-headers-parity.mjs",
     "ops:export-firestore-user": "node scripts/ops/export-firestore-user.mjs",
     "rehearse:staging-import": "node scripts/ops/rehearse-staging-import.mjs",
-    "test:ops-export": "node --test scripts/ops/firestoreToBackup.test.mjs"
+    "test:ops-export": "node --test scripts/ops/firestoreToBackup.test.mjs scripts/ops/rehearse-staging-import.test.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

@@ -18,7 +18,6 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const { createClient } = createRequire(resolve(ROOT, 'web/package.json'))('@supabase/supabase-js');
 const STAGING_ENV = resolve(ROOT, 'web/.env.staging');
 const DUMP = resolve(ROOT, 'scripts/ops/fixtures/firestore-user-dump.json');
 const BACKUP = resolve(ROOT, 'scripts/ops/fixtures/backup.rehearsal.json');
@@ -51,7 +50,7 @@ function runExport() {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-function rpcArgsFromBackupNote(note) {
+export function rpcArgsFromBackupNote(note) {
   const localId = Number(note.id ?? note.localId);
   const labels = Array.isArray(note.labels)
     ? note.labels.map((entry) =>
@@ -74,6 +73,22 @@ function rpcArgsFromBackupNote(note) {
     p_labels: labels.filter((row) => row.name),
     p_checklist: Array.isArray(note.checklist) ? note.checklist : [],
   };
+}
+
+/** apply_note_change returns status "applied" (see supabase migrations). */
+export function assertApplyNoteChangeAccepted(rpcData) {
+  const status = typeof rpcData === 'object' && rpcData ? rpcData.status : rpcData;
+  if (status === 'conflict') {
+    throw new Error(`apply_note_change conflict: ${JSON.stringify(rpcData)}`);
+  }
+  if (status !== 'applied' && status !== 'ok' && status !== undefined) {
+    throw new Error(`apply_note_change rejected: ${JSON.stringify(rpcData)}`);
+  }
+}
+
+function loadCreateClient() {
+  const { createClient } = createRequire(resolve(ROOT, 'web/package.json'))('@supabase/supabase-js');
+  return createClient;
 }
 
 async function main() {
@@ -102,6 +117,7 @@ async function main() {
     throw new Error('Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in web/.env.staging');
   }
 
+  const createClient = loadCreateClient();
   const supabase = createClient(staging.VITE_SUPABASE_URL, staging.VITE_SUPABASE_ANON_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -116,10 +132,7 @@ async function main() {
       rpcArgsFromBackupNote(note),
     );
     if (rpcError) throw rpcError;
-    const status = typeof rpcData === 'object' && rpcData ? rpcData.status : rpcData;
-    if (status !== 'ok' && status !== undefined) {
-      throw new Error(`apply_note_change rejected: ${JSON.stringify(rpcData)}`);
-    }
+    assertApplyNoteChangeAccepted(rpcData);
     imported += 1;
   }
 
@@ -136,7 +149,11 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+const isCli =
+  Boolean(process.argv[1]) && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+if (isCli) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}
