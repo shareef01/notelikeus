@@ -713,8 +713,9 @@ Bootstrap: `npm run setup:staging` (`scripts/ops/setup-staging.sh`).
 
 1. ~~Create Cloudflare Pages project `notelikeus-dev` and deploy a preview.~~ **Done** — https://notelikeus-dev.pages.dev/
 2. Register Pages URLs in Google OAuth / Firebase authorized domains:
-   - `https://notelikeus-dev.pages.dev`
-   - `https://*.notelikeus-dev.pages.dev` (preview deployments)
+   - ~~`notelikeus-dev.pages.dev` added to Firebase Auth authorized domains~~ **Done**
+   - ~~Browser API key HTTP referrers~~ **Done** — `https://notelikeus-dev.pages.dev/*` and `https://*.notelikeus-dev.pages.dev/*`
+   - Still add Google Cloud OAuth **Authorized JavaScript origins** if the next error is `redirect_uri_mismatch`
 3. ~~Create a **staging** Supabase project and `supabase db push`.~~ **Done** (`notelikeus-staging`)
 4. Complete a test-account migration window (backup export → Supabase import) on Web, Android, and Desktop.
 5. Approve flipping `VITE_ALLOW_SUPABASE_PRODUCTION` / `NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION` for a dedicated cutover build.
