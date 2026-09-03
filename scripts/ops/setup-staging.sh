@@ -51,6 +51,18 @@ run() {
   fi
 }
 
+# Like run(), but logs a label instead of argv so tokens/passwords stay out of output.
+run_logged() {
+  local label="$1"
+  shift
+  if [[ "${DRY_RUN:-}" == "1" ]]; then
+    info "[dry-run] $label"
+  else
+    info "$label"
+    "$@"
+  fi
+}
+
 print_manual_steps() {
   cat <<EOF
 
@@ -101,16 +113,16 @@ export SUPABASE_ACCESS_TOKEN
 
 if [[ "${SKIP_SUPABASE:-}" != "1" ]]; then
   info "Supabase: authenticate and link staging project ${SUPABASE_PROJECT_REF}"
-  run npx supabase login --token "$SUPABASE_ACCESS_TOKEN"
+  run_logged "npx supabase login --token [redacted]" npx supabase login --token "$SUPABASE_ACCESS_TOKEN"
 
-  link_args=(link --project-ref "$SUPABASE_PROJECT_REF")
+  link_args=(link --project-ref "$SUPABASE_PROJECT_REF" --yes)
   if [[ -n "${SUPABASE_DB_PASSWORD:-}" ]]; then
     link_args+=(--password "$SUPABASE_DB_PASSWORD")
   fi
-  run npx supabase "${link_args[@]}"
+  run_logged "npx supabase link --project-ref ${SUPABASE_PROJECT_REF} --yes [--password redacted]" npx supabase "${link_args[@]}"
 
   info "Supabase: push migrations from supabase/migrations/"
-  run npx supabase db push
+  run npx supabase db push --yes
 
   green "Supabase staging schema applied at ${SUPABASE_URL}"
 fi
