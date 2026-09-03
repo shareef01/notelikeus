@@ -8,4 +8,6 @@ bucket_name = "notelikeus-attachments-dev"
 
 [vars]
 SUPABASE_URL = "http://127.0.0.1:54321"
+# Optional comma-separated extra Origins (localhost and *.pages.dev are always allowed).
+# ALLOWED_ORIGINS = "https://notes.example.com"
 # Set via `wrangler secret put SUPABASE_ANON_KEY` in real deployments.

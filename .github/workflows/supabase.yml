@@ -2,7 +2,7 @@ name: Supabase CI
 
 on:
   push:
-    branches: [main, master, migration/supabase-r2]
+    branches: [main, master]
     paths:
       - 'supabase/**'
       - 'package.json'
