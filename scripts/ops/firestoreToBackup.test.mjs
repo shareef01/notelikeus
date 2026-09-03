@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -5,6 +8,8 @@ import {
   buildBackupPayload,
   firestoreDocToBackupNote,
 } from './firestoreToBackup.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 test('maps Firestore note docs into backup DTOs', () => {
   const note = firestoreDocToBackupNote('42', {
@@ -33,4 +38,19 @@ test('builds importable backup JSON', () => {
   assert.equal(payload.sourceUid, 'firebase-uid');
   assert.equal(payload.exportedAt, 99);
   assert.equal(payload.notes.length, 1);
+});
+
+test('fixture dump maps to a version-3 backup', () => {
+  const dump = JSON.parse(
+    readFileSync(resolve(HERE, 'fixtures/firestore-user-dump.json'), 'utf8'),
+  );
+  const notes = dump.notes.map((doc) => {
+    const { id, ...data } = doc;
+    return firestoreDocToBackupNote(String(id), data);
+  });
+  const payload = buildBackupPayload(dump.uid, notes, 1);
+  assert.equal(payload.version, BACKUP_VERSION);
+  assert.equal(payload.notes.length, 1);
+  assert.equal(payload.notes[0].title, 'Migration rehearsal');
+  assert.equal(payload.labels[0].name, 'rehearsal');
 });
