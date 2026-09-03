@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isLocalSupabaseUrl,
+  isPagesDevHost,
   resolveSupabaseBackendEnabled,
 } from '@/lib/supabase/backendFlag';
 
@@ -15,6 +16,15 @@ describe('isLocalSupabaseUrl', () => {
 
   it('accepts hosted project URLs', () => {
     expect(isLocalSupabaseUrl('https://abcd.supabase.co')).toBe(false);
+  });
+});
+
+describe('isPagesDevHost', () => {
+  it('matches Pages hosts only', () => {
+    expect(isPagesDevHost('notelikeus-dev.pages.dev')).toBe(true);
+    expect(isPagesDevHost('abc.notelikeus-dev.pages.dev')).toBe(true);
+    expect(isPagesDevHost('notelike.web.app')).toBe(false);
+    expect(isPagesDevHost('pages.dev.evil.example')).toBe(false);
   });
 });
 
@@ -81,5 +91,34 @@ describe('resolveSupabaseBackendEnabled', () => {
         supabaseUrl: 'http://127.0.0.1:54321',
       }),
     ).toBe(true);
+  });
+
+  it('allows a Pages staging build only on pages.dev hosts', () => {
+    const staging = {
+      isProd: true,
+      isE2e: false,
+      remoteBackend: 'supabase',
+      allowStaging: 'true',
+      supabaseUrl: hosted,
+    };
+    expect(
+      resolveSupabaseBackendEnabled({
+        ...staging,
+        hostname: 'notelikeus-dev.pages.dev',
+      }),
+    ).toBe(true);
+    expect(
+      resolveSupabaseBackendEnabled({
+        ...staging,
+        hostname: '7c3e5ca7.notelikeus-dev.pages.dev',
+      }),
+    ).toBe(true);
+    expect(
+      resolveSupabaseBackendEnabled({
+        ...staging,
+        hostname: 'notelike.web.app',
+      }),
+    ).toBe(false);
+    expect(resolveSupabaseBackendEnabled(staging)).toBe(false);
   });
 });
