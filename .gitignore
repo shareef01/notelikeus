@@ -37,6 +37,7 @@ web/.env
 workers/**/node_modules/
 workers/attachments/wrangler.toml
 web/.env.staging
+scripts/ops/fixtures/backup.rehearsal.json
 
 # Firebase emulator artefacts
 firestore-debug.log
