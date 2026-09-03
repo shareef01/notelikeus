@@ -244,6 +244,8 @@ bucket_name = "${R2_BUCKET}"
 
 [vars]
 SUPABASE_URL = "${SUPABASE_URL}"
+# localhost and *.pages.dev are allowed in worker CORS; add extras here if needed.
+# ALLOWED_ORIGINS = "${STAGING_WEB_ORIGIN}"
 EOF
   fi
 
