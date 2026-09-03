@@ -188,7 +188,8 @@ if [[ "${SKIP_SUPABASE:-}" != "1" ]]; then
   green "Supabase staging schema applied at ${SUPABASE_URL}"
 fi
 
-WORKER_URL=""
+# Preserve a caller-supplied WORKER_URL (e.g. SKIP_CLOUDFLARE=1 with the live worker).
+WORKER_URL="${WORKER_URL:-}"
 
 write_env_staging() {
   if [[ "${DRY_RUN:-}" == "1" ]]; then
