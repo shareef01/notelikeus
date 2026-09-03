@@ -19,6 +19,7 @@
     "test:attachments-worker": "npm --prefix workers/attachments test",
     "pages:verify": "npm --prefix web run build && node web/scripts/verifyPagesArtifacts.mjs && node cloudflare/scripts/verify-headers-parity.mjs",
     "ops:export-firestore-user": "node scripts/ops/export-firestore-user.mjs",
+    "rehearse:staging-import": "node scripts/ops/rehearse-staging-import.mjs",
     "test:ops-export": "node --test scripts/ops/firestoreToBackup.test.mjs"
   },
   "devDependencies": {

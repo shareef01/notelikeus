@@ -1,0 +1,19 @@
+{
+  "uid": "rehearsal-firebase-uid",
+  "notes": [
+    {
+      "id": "101",
+      "title": "Migration rehearsal",
+      "content": "Imported from a Firestore dump via export-firestore-user.",
+      "timestamp": 1788400000000,
+      "color": -14474606,
+      "isPinned": true,
+      "isArchived": false,
+      "isTrashed": false,
+      "position": 0,
+      "labels": [{ "name": "rehearsal" }],
+      "checklist": [{ "text": "export dump", "isChecked": true, "position": 0 }],
+      "serverUpdatedAt": { "seconds": 1788400000, "nanoseconds": 0 }
+    }
+  ]
+}
