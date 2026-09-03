@@ -9,6 +9,9 @@
  *
  * Usage:
  *   npm run deploy:staging-pages
+ *
+ * Deploys to the Pages project's production branch (`main`) so
+ * https://notelikeus-dev.pages.dev updates. That URL is staging, not Firebase Hosting.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -88,10 +91,20 @@ function main() {
   run('npm', ['run', 'build'], { cwd: WEB, env: buildEnv });
   run('node', [resolve(WEB, 'scripts/verifyPagesArtifacts.mjs')], { env: {} });
 
-  console.log('Deploying to Cloudflare Pages project notelikeus-dev…');
+  // Pages project production branch is `main` → https://notelikeus-dev.pages.dev
+  // (staging site). Other git branches become preview aliases and leave that
+  // URL on the previous Firebase-default bundle.
+  console.log('Deploying to Cloudflare Pages project notelikeus-dev (production alias)…');
   run(
     'npx',
-    ['wrangler', 'pages', 'deploy', 'web/dist', '--project-name=notelikeus-dev'],
+    [
+      'wrangler',
+      'pages',
+      'deploy',
+      'web/dist',
+      '--project-name=notelikeus-dev',
+      '--branch=main',
+    ],
     { env: {} },
   );
   console.log(
