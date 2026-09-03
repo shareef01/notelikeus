@@ -65,8 +65,12 @@ async function deleteAttachment(env: WorkerEnv, objectKey: string): Promise<Resp
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     if (request.method === 'OPTIONS') {
-      return withAttachmentCors(request, new Response(null, { status: 204 }));
+      return withAttachmentCors(request, new Response(null, { status: 204 }), env.ALLOWED_ORIGINS);
     }
-    return withAttachmentCors(request, await handleAttachmentRequest(request, env));
+    return withAttachmentCors(
+      request,
+      await handleAttachmentRequest(request, env),
+      env.ALLOWED_ORIGINS,
+    );
   },
 };

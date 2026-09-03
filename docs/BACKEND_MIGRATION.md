@@ -1,11 +1,11 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
-**Status:** Phases 0–12 on branch `migration/supabase-r2` (Firebase remains production backend).  
-**Last updated:** 2026-09-02 (Phase 12 Kotlin attachment UI; cutover not authorized)
+**Status:** Phases 0–12 on `main`; staging bootstrap live. Firebase remains the production backend.  
+**Last updated:** 2026-09-03 (Cloudflare Pages `notelikeus-dev` + staging CORS)
 
-This document tracks the phased migration away from Firebase. Phases 0–11 are implemented on `migration/supabase-r2`; production cutover is **not** authorized yet. Firebase Auth, Firestore, and Firebase Hosting remain the live backend.
+This document tracks the phased migration away from Firebase. Phases 0–12 are on `main`. Production cutover is **not** authorized. Firebase Auth, Firestore, and Firebase Hosting (`notelike.web.app`) remain the live backend.
 
-**Git:** Work is committed on `migration/supabase-r2`, not `main`. `main` remains the known Firebase-only baseline until this branch is merged.
+**Git:** Merged via #145 / #146. Staging ops continue on `cursor/run-staging-setup-2354` ([PR #147](https://github.com/shareef01/notelikeus/pull/147)).
 
 ---
 
@@ -681,7 +681,7 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 
 **Phase 11 gate:** Retirement *readiness* complete. Production cutover remains owner-authorized.
 
-**Firebase remains the production backend.** No production Supabase/Cloudflare resources were created or modified.
+**Firebase remains the production backend.** Staging (not production) Supabase + R2 + Pages now exist; see Live staging below.
 
 ---
 
@@ -695,21 +695,37 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 
 ---
 
+## Live staging (2026-09-03)
+
+Owner-operated staging only. **Do not** set `VITE_ALLOW_SUPABASE_PRODUCTION`.
+
+| Resource | Status |
+|----------|--------|
+| Supabase project `notelikeus-staging` | Migrations applied; Google provider enabled from the existing Firebase Web client |
+| R2 bucket `notelikeus-attachments-dev` | Created |
+| Worker `notelikeus-attachments` | Deployed; localhost CORS plus `*.pages.dev` in source (redeploy worker to pick up Pages CORS) |
+| Cloudflare Pages `notelikeus-dev` | **Live** — https://notelikeus-dev.pages.dev/ (Firebase-default preview; Hosting remains `notelike.web.app`) |
+| Smoke test (local Vite + staging Supabase) | Signed in, note **staging smoke**, PNG upload; `list_user_attachments` returned 1 row |
+
+Bootstrap: `npm run setup:staging` (`scripts/ops/setup-staging.sh`).
+
 ## Owner actions before production cutover
 
-1. Create Cloudflare Pages project `notelikeus-dev` and run a manual `workflow_dispatch` deploy.
-2. Register the Pages preview URL in Google OAuth redirect allowlists.
-3. Create a **staging** Supabase project (not production) and run `supabase db push` from `supabase/migrations`.
+1. ~~Create Cloudflare Pages project `notelikeus-dev` and deploy a preview.~~ **Done** — https://notelikeus-dev.pages.dev/
+2. Register Pages URLs in Google OAuth / Firebase authorized domains:
+   - `https://notelikeus-dev.pages.dev`
+   - `https://*.notelikeus-dev.pages.dev` (preview deployments)
+3. ~~Create a **staging** Supabase project and `supabase db push`.~~ **Done** (`notelikeus-staging`)
 4. Complete a test-account migration window (backup export → Supabase import) on Web, Android, and Desktop.
 5. Approve flipping `VITE_ALLOW_SUPABASE_PRODUCTION` / `NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION` for a dedicated cutover build.
 6. After the user migration window: update README, privacy policy, and `npm run deploy` target. Only then remove Firebase.
 
 ### Continue command
 
-Phase 12 is the last implementation phase on this branch. Remaining work is owner-operated cutover, not further code phases.
+Remaining work is owner-operated: OAuth allowlists for Pages, then a test-account migration rehearsal. Do not start production Firebase retirement.
 
 ```
-Do not start Firebase retirement in production. Review docs/BACKEND_MIGRATION.md Phase 11 runbook first.
+Do not start Firebase retirement in production. Review docs/BACKEND_MIGRATION.md Live staging first.
 ```
 
 ---
