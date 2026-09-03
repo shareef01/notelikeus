@@ -103,6 +103,8 @@ fi
 
 if [[ "${SKIP_CLOUDFLARE:-}" != "1" ]]; then
   require_env CLOUDFLARE_ACCOUNT_ID
+  require_env SUPABASE_PROJECT_REF
+  require_env SUPABASE_ANON_KEY
   if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]] && ! npx wrangler whoami >/dev/null 2>&1; then
     red "Set CLOUDFLARE_API_TOKEN or run: npx wrangler login"
     exit 1
@@ -129,9 +131,54 @@ fi
 
 WORKER_URL=""
 
+write_env_staging() {
+  if [[ "${DRY_RUN:-}" == "1" ]]; then
+    info "[dry-run] write web/.env.staging"
+    return
+  fi
+  cat > "$ROOT/web/.env.staging" <<EOF
+# Staging — copy to web/.env for local smoke tests. NOT for production deploy.
+VITE_REMOTE_BACKEND=supabase
+VITE_SUPABASE_URL=${SUPABASE_URL}
+VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+VITE_ATTACHMENTS_WORKER_URL=${WORKER_URL:-http://127.0.0.1:8787}
+
+# Keep Firebase vars if you need side-by-side comparison (from web/.env.example):
+# VITE_FIREBASE_API_KEY=...
+# VITE_FIREBASE_GOOGLE_CLIENT_ID=...  (required for Supabase Google OAuth locally)
+EOF
+  green "Wrote web/.env.staging (copy to web/.env)"
+}
+
+if [[ "${SKIP_SUPABASE:-}" != "1" ]]; then
+  write_env_staging
+fi
+
 if [[ "${SKIP_CLOUDFLARE:-}" != "1" ]]; then
   info "Cloudflare: ensure R2 bucket ${R2_BUCKET}"
-  run npx wrangler r2 bucket create "$R2_BUCKET" 2>/dev/null || info "R2 bucket may already exist (continuing)"
+  if [[ "${DRY_RUN:-}" == "1" ]]; then
+    info "[dry-run] npx wrangler r2 bucket create ${R2_BUCKET}"
+  else
+    set +e
+    bucket_out="$(npx wrangler r2 bucket create "$R2_BUCKET" 2>&1)"
+    bucket_status=$?
+    set -e
+    printf '%s\n' "$bucket_out"
+    if [[ "$bucket_status" -ne 0 ]]; then
+      if echo "$bucket_out" | grep -q '10042'; then
+        red "R2 is not enabled on this Cloudflare account (API 10042)."
+        red "Enable it in the dashboard: Storage & databases → R2 → Overview → complete the checkout flow."
+        red "Then re-run: SKIP_SUPABASE=1 npm run setup:staging"
+        exit 1
+      fi
+      if echo "$bucket_out" | grep -qi 'already exists'; then
+        info "R2 bucket already exists (continuing)"
+      else
+        red "Failed to create R2 bucket ${R2_BUCKET}"
+        exit 1
+      fi
+    fi
+  fi
 
   info "Cloudflare: write ${WORKER_DIR}/wrangler.toml"
   if [[ "${DRY_RUN:-}" != "1" ]]; then
@@ -159,32 +206,29 @@ EOF
     (
       cd "$WORKER_DIR"
       printf '%s' "$SUPABASE_ANON_KEY" | npx wrangler secret put SUPABASE_ANON_KEY
-      deploy_out="$(npx wrangler deploy 2>&1)"
-      echo "$deploy_out"
-      WORKER_URL="$(echo "$deploy_out" | sed -n 's/.*https:\/\/[^ ]*workers\.dev.*/\0/p' | head -1 | tr -d '[:space:]')"
-      if [[ -z "$WORKER_URL" ]]; then
-        WORKER_URL="$(npx wrangler deployments list 2>/dev/null | head -5 || true)"
-        info "Could not parse worker URL from deploy output; check Cloudflare dashboard."
-      fi
+      # Stream deploy logs; do not hide failures inside a captured subshell.
+      npx wrangler deploy
     )
+    WORKER_URL="$(cd "$WORKER_DIR" && npx wrangler deployments list --json 2>/dev/null | python3 -c '
+import json,sys
+try:
+    data=json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+items=data if isinstance(data,list) else data.get("deployments",[])
+if items:
+    url=(items[0].get("url") or items[0].get("deployment_url") or "")
+    if url:
+        print(url)
+' || true)"
+    if [[ -z "$WORKER_URL" ]]; then
+      info "Could not parse worker URL from deployments list; check Cloudflare dashboard."
+    fi
   fi
 
+  write_env_staging
+
   green "Attachments worker deployed${WORKER_URL:+ → ${WORKER_URL}}"
-fi
-
-if [[ "${SKIP_SUPABASE:-}" != "1" && "${DRY_RUN:-}" != "1" ]]; then
-  cat > "$ROOT/web/.env.staging" <<EOF
-# Staging — copy to web/.env for local smoke tests. NOT for production deploy.
-VITE_REMOTE_BACKEND=supabase
-VITE_SUPABASE_URL=${SUPABASE_URL}
-VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-VITE_ATTACHMENTS_WORKER_URL=${WORKER_URL:-http://127.0.0.1:8787}
-
-# Keep Firebase vars if you need side-by-side comparison (from web/.env.example):
-# VITE_FIREBASE_API_KEY=...
-# VITE_FIREBASE_GOOGLE_CLIENT_ID=...  (required for Supabase Google OAuth locally)
-EOF
-  green "Wrote web/.env.staging (copy to web/.env)"
 fi
 
 print_manual_steps
