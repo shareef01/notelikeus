@@ -705,10 +705,10 @@ Owner-operated staging only. **Do not** set `VITE_ALLOW_SUPABASE_PRODUCTION`.
 | Supabase project `notelikeus-staging` | Migrations applied; Google provider enabled from the existing Firebase Web client |
 | R2 bucket `notelikeus-attachments-dev` | Created |
 | Worker `notelikeus-attachments` | Redeployed with Pages CORS — https://notelikeus-attachments.error-endpoint.workers.dev |
-| Cloudflare Pages `notelikeus-dev` | **Live staging (Supabase)** — https://notelikeus-dev.pages.dev/ (`VITE_ALLOW_SUPABASE_STAGING`; Hosting remains `notelike.web.app`). Production alias must include the backup-import-through-active-remote fix (`commitImportedNotes` → `getRemoteNotesDataSource().uploadAllNotes`). `npm run deploy:staging-pages` requires `VITE_ATTACHMENTS_WORKER_URL`. |
+| Cloudflare Pages `notelikeus-dev` | **Live staging (Supabase)** — https://notelikeus-dev.pages.dev/ (`VITE_ALLOW_SUPABASE_STAGING`; Hosting remains `notelike.web.app`). Production alias redeployed 2026-09-03 (`fd7dcfba`, source `900e976`) via `npm run deploy:staging-pages --branch=main`. Bundle calls `getRemoteNotesDataSource().uploadAllNotes` and includes `https://notelikeus-attachments.error-endpoint.workers.dev`. |
 | Pages staging flag | `VITE_ALLOW_SUPABASE_STAGING` enables Supabase only on `*.pages.dev` (never on `notelike.web.app`) |
 | Smoke test (local Vite + staging Supabase) | Signed in, note **staging smoke**, PNG upload; `list_user_attachments` returned 1 row |
-| Ops rehearsal RPC | `npm run rehearse:staging-import` accepts `apply_note_change` status `applied`. Optional email/password import via `REHEARSAL_EMAIL` / `REHEARSAL_PASSWORD` (does not replace owner Google UI import). |
+| Ops rehearsal RPC | **Done** (cloud continuation) — `npm run rehearse:staging-import` with a dedicated staging email user imported 1 note; `fetch_full_snapshot` returned 1. Does **not** replace the owner Google UI import. |
 
 Kotlin **debug** builds can point at the same staging stack with `NOTELIKEUS_REMOTE_BACKEND=supabase` plus URL/anon/worker values from `web/.env.staging`. Do not set `NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION`. Desktop honors those env vars when launched from a shell; Android `System.getenv` is usually empty on-device, so the Web import rehearsal is the supported path until debug BuildConfig wiring exists.
 
@@ -727,8 +727,9 @@ Bootstrap: `npm run setup:staging` (`scripts/ops/setup-staging.sh`).
 4. ~~Deploy a **Pages staging** bundle (Supabase, not production cutover).~~ **Done** — https://notelikeus-dev.pages.dev/ uses `VITE_ALLOW_SUPABASE_STAGING` (runtime-gated to `*.pages.dev`). `npm run deploy:staging-pages` passes `--branch=main` so Wrangler updates the Production alias. Auth redirect URLs include `https://notelikeus-dev.pages.dev` and `https://notelikeus-dev.pages.dev/**` (localhost:5173 kept). Never set `VITE_ALLOW_SUPABASE_PRODUCTION`.
 5. Test-account migration rehearsal:
   - ~~Ops dump → backup JSON~~ **Done** — `npm run rehearse:staging-import` / `scripts/ops/fixtures/backup.rehearsal.example.json` (RPC path treats `apply_note_change` status as `applied`)
-  - ~~Backup import uses the active remote (Supabase on Pages)~~ **Done** in `commitImportedNotes` — **redeploy Pages** so https://notelikeus-dev.pages.dev/ is not stuck on `7979b68` (that revision still uploaded imports to Firestore)
-  - **Owner:** sign in with Google on https://notelikeus-dev.pages.dev/, then Profile → Import backup with the example JSON. Repeat on Android/Desktop staging builds when convenient. This is the remaining owner-gated step; it cannot be completed from Cloud Agent.
+  - ~~Backup import uses the active remote (Supabase on Pages)~~ **Done** in `commitImportedNotes`. Pages production alias redeployed so https://notelikeus-dev.pages.dev/ serves that path.
+  - ~~Ops RPC import against staging~~ **Done** from Cloud Agent (1 note / snapshot 1) without owner Google login.
+  - **Owner:** sign in with Google on https://notelikeus-dev.pages.dev/, then Profile → Import backup with the example JSON. Repeat on Android/Desktop staging builds when convenient. This is the remaining owner-gated step.
 6. Approve flipping `VITE_ALLOW_SUPABASE_PRODUCTION` / `NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION` for a dedicated cutover build.
 7. After the user migration window: update README, privacy policy, and `npm run deploy` target. Only then remove Firebase.
 
