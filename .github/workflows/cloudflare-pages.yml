@@ -3,14 +3,14 @@ name: Cloudflare Pages CI
 on:
   workflow_dispatch:
   push:
-    branches: [main, master, migration/supabase-r2]
+    branches: [main, master]
     paths:
       - 'web/**'
       - 'cloudflare/**'
       - 'firebase.json'
       - '.github/workflows/cloudflare-pages.yml'
   pull_request:
-    branches: [main, master, migration/supabase-r2]
+    branches: [main, master]
     paths:
       - 'web/**'
       - 'cloudflare/**'
@@ -67,9 +67,7 @@ jobs:
         run: node cloudflare/scripts/verify-headers-parity.mjs
 
   deploy-preview:
-    if: >-
-      github.event_name == 'workflow_dispatch' &&
-      github.ref == 'refs/heads/migration/supabase-r2'
+    if: github.event_name == 'workflow_dispatch'
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
