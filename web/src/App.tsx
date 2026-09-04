@@ -2,6 +2,7 @@ import { useAuthListener, useAuthSync } from '@/hooks/useAuth';
 import { useGuestLocalNotesBootstrap } from '@/hooks/useGuestLocalNotesBootstrap';
 import { useNotesSync } from '@/hooks/useNotesSync';
 import { isFirebaseConfigured } from '@/lib/config';
+import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
 import { MainScreen } from '@/screens/MainScreen';
 import { ThemeApplier } from '@/components/theme/ThemeApplier';
 import { AppSplash } from '@/components/boot/AppSplash';
@@ -23,7 +24,8 @@ const LabelsScreen = lazy(() =>
   import('@/screens/LabelsScreen').then((module) => ({ default: module.LabelsScreen })),
 );
 
-const firebaseReady = isFirebaseConfigured();
+// Sync runs once the *selected* backend is configured, not only when Firebase is.
+const remoteReady = isSupabaseBackendEnabled() || isFirebaseConfigured();
 
 export default function App() {
   const editorMode = useUiStore((s) => s.editorRoute.mode);
@@ -52,8 +54,8 @@ export default function App() {
   const assumeSignedIn = !authReady && hadSession;
 
   useAuthSync();
-  useNotesSync(firebaseReady);
-  useGuestLocalNotesBootstrap(firebaseReady);
+  useNotesSync(remoteReady);
+  useGuestLocalNotesBootstrap(remoteReady);
 
   useEffect(() => {
     if (authReady) {
@@ -98,7 +100,7 @@ export default function App() {
   // shell's dark background.
   const themeApplier = <ThemeApplier />;
 
-  if (!firebaseReady) {
+  if (!remoteReady) {
     return (
       <div className="flex min-h-full items-center justify-center bg-true-surface p-6">
         {themeApplier}

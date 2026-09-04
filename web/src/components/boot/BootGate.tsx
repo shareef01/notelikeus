@@ -29,6 +29,12 @@ function describeBootError(error: unknown): BootErrorDetails {
           help: 'Check your web Firebase environment values. This usually means web/.env is missing or incomplete for this build.',
           canClearData: false,
         };
+      case 'supabase-config':
+        return {
+          message: error.message,
+          help: 'Check the Supabase values for this build. This usually means web/.env.staging is missing VITE_SUPABASE_URL or a public VITE_SUPABASE_ANON_KEY (the eyJ… anon JWT, never an sb_… secret key).',
+          canClearData: false,
+        };
       case 'firebase-init':
         return {
           message: error.message,
