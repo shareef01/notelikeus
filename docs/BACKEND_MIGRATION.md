@@ -1,7 +1,7 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
 **Status:** Phases 0–12 on `main`; staging bootstrap live. Firebase remains the production backend.  
-**Last updated:** 2026-09-03 (Pages staging live; backup import uses Supabase; OAuth probe passed)
+**Last updated:** 2026-09-04 (migration audit: schema reproduced from zero, RLS/grant/RPC adversarial suite run, four staging defects fixed)
 
 This document tracks the phased migration away from Firebase. Phases 0–12 are on `main`. Production cutover is **not** authorized. Firebase Auth, Firestore, and Firebase Hosting (`notelike.web.app`) remain the live backend.
 
@@ -713,6 +713,93 @@ Kotlin **debug** builds can point at the same staging stack with `NOTELIKEUS_REM
 
 Bootstrap: `npm run setup:staging` (`scripts/ops/setup-staging.sh`).
 
+---
+
+## Migration audit (2026-09-04)
+
+An independent audit re-derived this tracker from source, SQL and runtime behaviour rather than
+from the phase table. Method and results below; the phase statuses above are unchanged except
+where a finding contradicted them.
+
+### What was actually executed
+
+Docker was unavailable, so `supabase start` / `supabase db reset` could not run. Instead a local
+PostgreSQL 16 was given the Supabase platform bootstrap the CLI would have produced — the `anon` /
+`authenticated` / `service_role` / `authenticator` roles, an `auth` schema with `auth.users` and
+`auth.uid()`/`auth.role()`/`auth.jwt()` reading `request.jwt.claims`, the `supabase_realtime`
+publication, and Supabase's `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES/FUNCTIONS/SEQUENCES
+TO anon, authenticated, service_role`. Every PostgREST request was emulated as one transaction
+with `SET LOCAL ROLE` plus the caller's JWT claims.
+
+| Check | Result |
+| --- | --- |
+| All migrations apply to a virgin database, in order | **PASS** (8/8, repeated after each change) |
+| pgTAP suite (`supabase/tests/database`) | **PASS** — 77/77 assertions |
+| Cross-user reads/writes on `notes`, tombstones, `sync_meta`, attachments, uid mappings | **PASS** — zero rows and zero mutations leaked in either direction |
+| Anonymous role against every table and RPC | **PASS** — nothing readable, nothing callable |
+| Direct-table forgery of `revision` / `owner_id` on `notes` and `note_tombstones` | **PASS** — blocked by `sync_mutation_guard` |
+| Revision monotonicity across create/create/update/delete | **PASS** — strictly ascending, globally unique |
+| `pull_changes` paging over 1 200 changes at `limit 100` | **PASS** — 10 rounds, 1 000 changes, no duplicates, no gaps, converged to the correct 800-note live set |
+| Conflict matrix (stale base, recreate-over-live, resurrect-after-delete, idempotent delete, unknown note, id/local_id mismatch) | **PASS** — no implicit resurrection on any path |
+| `fetch_full_snapshot` size at 800 notes / 200 tombstones | 267 kB (≈ 3.3 MB projected at 10 000 notes) |
+| Secret scan of HEAD and full history | **CLEAN** — every hit is a placeholder, a comment, or a Postgres role name |
+| Web unit / typecheck / lint | **PASS** — 327/327, clean, 0 errors |
+| Attachments Worker | **PASS** — 24/24 (was 9, none covering the handler) |
+| Ops scripts (`test:ops-export`) | **PASS** — 3/3 |
+| Kotlin desktop unit tests | **PASS** — 316/316 |
+| Android unit tests / release APK | **NOT RUN** — no Android SDK in the audit environment; CI (`android.yml`) is the authority |
+
+### Defects found and fixed
+
+See `20250904000000_mapping_and_attachment_guards.sql` and the commit that introduced it.
+
+1. **Firebase uid ownership was never proven (data/identity, fixed).** `ensureFirebaseSupabaseMigration`
+   resolved its candidate Firebase uid from `lastMergedUserId` and a remembered-uid key, both of
+   which survive sign-out. On a shared browser profile the next Supabase account resolved the
+   *previous* user's uid, called `link_firebase_uid` with it, and adopted that uid's IndexedDB
+   namespace. Because `firebase_uid` is the mapping table's primary key, this also permanently
+   locked the real owner out of linking. A claim now requires a live Firebase session for that
+   uid. Regression tests fail against the pre-fix implementation.
+2. **`firebase_uid_mappings` and `note_attachments` had no mutation guard (fixed).** Their RLS
+   write policies let an authenticated PostgREST client insert rows directly, skipping the
+   "already linked to another account" check and the `object_key` owner-namespace check. The
+   latter, with the global `note_attachments_object_key_unique`, let one account squat another's
+   future object key and permanently break their attachment registration. Both were reproduced
+   against the pre-migration schema and are now blocked.
+3. **The mutation guard leaked for the rest of the transaction (fixed).** `set_config(..., is_local)`
+   is transaction-scoped, so any transaction that called an RPC could then write the guarded tables
+   directly. Not reachable through PostgREST — one RPC call is one transaction — but it silently
+   breaks any caller that mixes an RPC with a direct-write assertion, pgTAP files included. Every
+   mutating RPC now brackets the window.
+4. **`REVOKE ... FROM PUBLIC` never removed `anon`'s EXECUTE (fixed).** Supabase grants the Data
+   API roles explicitly through `ALTER DEFAULT PRIVILEGES`, *in addition to* Postgres' own PUBLIC
+   default, so revoking one leaves the other. `anon` held EXECUTE on every RPC; the function bodies
+   still refused it, so nothing leaked, but the grant table did not say so. Both are revoked now
+   and the anon pgTAP assertions move from `28000` to `42501`.
+5. **The Worker had no server-side upload limits (fixed).** `putAttachment` called
+   `request.arrayBuffer()` with no size cap and no content-type check. The editors' 10 MB cap is a
+   UX affordance: the Worker is reachable directly with any Supabase access token. Uploads are now
+   streamed against a 10 MB limit, restricted to image types, and served with `nosniff`.
+6. **A secret `sb_…` key could reach the browser bundle (fixed).** The ops scripts reject them, but
+   a hand-edited `web/.env.staging` was inlined by `import.meta.env` unchecked. The backend
+   selector now refuses to enable Supabase unless the anon key is a public JWT.
+7. **`idempotent` was read off the wrong branch (fixed).** `apply_note_delete` answers an
+   already-tombstoned note with `{status: 'applied', idempotent: true}`; the web client looked for
+   `idempotent` inside its `status === 'conflict'` branch, so the cleanup was unreachable and a
+   stale revision was left behind. Same family as the rehearsal script expecting `"ok"` (#148).
+
+### Open findings — not fixed here
+
+| Finding | Severity | Why it was left |
+| --- | --- | --- |
+| `link_firebase_uid` still accepts any uid server-side. The client now proves ownership, but the RPC cannot. Proving it server-side means verifying a Firebase ID token (an Edge Function against Google's public keys) — a design decision, not a patch. Until then a determined caller can still squat an unlinked uid and lock its owner out. | P2 | Needs an owner decision; see **Cutover gate** below |
+| `SupabaseNoteTransport.revisions` is an in-memory map with no persistence, so after a cold start `deleteNote()` finds no base revision and silently skips the RPC. The next full `syncWithCloud` re-issues it (`fetchNotes` repopulates the map first), so deletes converge — but late. Web persists the same state in IndexedDB. | P2 | Kotlin sync change; larger than this audit's scope |
+| `bootstrap.ts` throws `BootFailure` and calls `initFirebase()` unconditionally, so a Supabase-selected build still cannot boot without full Firebase web config. Loud, not silent — but it is a cutover blocker, and it means "Supabase staging" is not exercising a Firebase-free client. | P2 | Decoupling belongs with the cutover |
+| Desktop `readLocalProperty` (PR #149) scans up to six parent directories of the process CWD for `local.properties` and reads the Supabase URL/key/worker URL from it regardless of `isDebug`. `remoteBackend` is still `isDebug`-gated, so a packaged build stays on Firebase — but a cutover build would take its endpoint from a directory scan. | P2 | Belongs to #149 |
+| `note_attachments` is not in the realtime publication, so an attachment added on one client is not signalled to another until a note change or the 30 s fallback. | P3 | Behavioural gap, not a defect |
+| `nextLocalNoteIdAfter` returns `Math.max(maxId + 1, Date.now() * 1000 + rand)` ≈ 1.8e15 today, safely inside `Number.MAX_SAFE_INTEGER` (9.007e15, reached around year 2255). Backup import re-allocates ids rather than trusting the file, so a hostile `localId` cannot poison the allocator. `local_id` is `BIGINT`, and a value above 2^53-1 does lose precision in `JSON.parse` — verified — but nothing generates one. | P4 | Not reachable; recorded so it is not re-derived |
+| `docs/STAGING_HANDOFF.md` (PR #152, draft) describes `user_notes`, `upsert_user_notes`, `list_user_notes` and `import_user_backup`. **None of these exist** in `supabase/migrations`, the web client, the Kotlin client or the ops scripts. The real schema is `notes` / `note_tombstones` / `sync_meta` with `apply_note_change` / `apply_note_delete` / `pull_changes` / `fetch_full_snapshot`. The document, not the architecture, is wrong. | P3 | #152 owns that file |
+
 ## Owner actions before production cutover
 
 1. ~~Create Cloudflare Pages project `notelikeus-dev` and deploy a preview.~~ **Done** — https://notelikeus-dev.pages.dev/
@@ -736,6 +823,40 @@ Remaining work: sign in with Google on https://notelikeus-dev.pages.dev/ and imp
 ```
 Do not start Firebase retirement in production. Review docs/BACKEND_MIGRATION.md Live staging first.
 ```
+
+---
+
+## Cutover gate
+
+Production cutover is **not** authorized. These are the conditions that would let the owner decide.
+Ticked items were established by the 2026-09-04 audit; the rest are owner-gated or unfinished.
+
+- [x] Fresh Supabase database reproduces from `supabase/migrations` alone, with no manual SQL
+- [x] No cross-user read or write survives RLS on any table (A/B and anonymous, executed)
+- [x] Direct PostgREST writes cannot bypass the revision protocol or the RPC invariants
+- [x] RPC grants match what the function bodies enforce
+- [x] Conflict, tombstone and no-resurrection semantics verified
+- [x] `pull_changes` pagination verified past one page (1 200 changes)
+- [x] Empty-cloud guard present on the Web reconcile path
+- [x] Worker rejects unauthenticated, cross-user and oversized requests (tested)
+- [x] Production-isolation guards tested (Firebase host, lookalike hosts, missing flags, secret key)
+- [x] No credential in HEAD or git history
+- [ ] **Firebase uid ownership proven server-side** — the client proves it; `link_firebase_uid` does not
+- [ ] Web Google sign-in completed on `notelikeus-dev.pages.dev` (a 302 to accounts.google.com is not a sign-in)
+- [ ] Web backup import completed on staging, verified after reload and re-login
+- [ ] Attachment import verified end-to-end (bytes in R2, metadata row, image renders after reload)
+- [ ] Android staging debug build proven on-device (blocked on #149)
+- [ ] Desktop staging build proven
+- [ ] Web / Android / Desktop convergence on one staging account
+- [ ] Offline reconciliation and account switching proven on each client
+- [ ] Kotlin revision state persisted across process restarts
+- [ ] Web boots without Firebase config
+- [ ] PWA service-worker behaviour across a backend change modelled
+- [ ] Rollback plan reviewed by the owner
+- [ ] **Owner explicitly authorizes cutover**
+
+Until the last box is ticked by the owner, do not set `VITE_ALLOW_SUPABASE_PRODUCTION` or
+`NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION`, repoint `notelike.web.app`, or remove any Firebase code.
 
 ---
 
