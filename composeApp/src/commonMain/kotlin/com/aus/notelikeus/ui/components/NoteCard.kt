@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
+import com.aus.notelikeus.data.attachments.firstImageAttachment
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.editor.RichTextParser
 import com.aus.notelikeus.ui.theme.AppType
@@ -294,7 +295,9 @@ fun NoteCard(
     val selectedLabel = stringResource(Res.string.cd_selected)
     val pinnedLabel = stringResource(Res.string.pinned_short)
     val reminderLabel = stringResource(Res.string.cd_reminder_set)
+    val hasImageLabel = stringResource(Res.string.cd_has_image)
     val untitledLabel = stringResource(Res.string.untitled)
+    val thumbnailAttachment = firstImageAttachment(note.attachments)
     val noteDescription = when {
         note.title.isNotBlank() -> note.title
         note.content.isNotBlank() -> note.content.lineSequence().first()
@@ -309,6 +312,10 @@ fun NoteCard(
         if (note.reminderTimestamp != null) {
             append(", ")
             append(reminderLabel)
+        }
+        if (thumbnailAttachment != null) {
+            append(", ")
+            append(hasImageLabel)
         }
         if (isSelected) {
             append(", ")
@@ -402,6 +409,14 @@ fun NoteCard(
                     // rendered the colour it appeared to stand for, and Grid and List disagreed
                     // about what it meant. The tinted container carries the colour in every
                     // layout now; see docs/DECISIONS.md D1.
+                    if (thumbnailAttachment != null) {
+                        NoteCardThumbnail(
+                            attachment = thumbnailAttachment,
+                            listStyle = true,
+                            compact = compact,
+                        )
+                        Spacer(modifier = Modifier.width(Spacing.md))
+                    }
                     Column(modifier = Modifier.weight(1f)) {
                         if (note.title.isNotEmpty()) {
                             Text(
@@ -470,6 +485,14 @@ fun NoteCard(
                     bottom = if (compact) Spacing.lg else NoteCardContentPadding
                 )
             ) {
+                if (thumbnailAttachment != null) {
+                    NoteCardThumbnail(
+                        attachment = thumbnailAttachment,
+                        listStyle = false,
+                        compact = compact,
+                    )
+                    Spacer(modifier = Modifier.height(if (compact) Spacing.sm else Spacing.md))
+                }
                 // Title row: title on the left, status/selection + timestamp on the right,
                 // matching the web card's header block.
                 Row(

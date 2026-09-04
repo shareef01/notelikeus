@@ -13,6 +13,8 @@ import type { Note } from '@/types/note';
 import { noteSurfaceStyle } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { argbToCssAlpha } from '@/theme/colors';
+import { NoteCardThumbnail } from '@/components/notes/NoteCardThumbnail';
+import { firstImageAttachment } from '@/lib/attachments/attachmentPaths';
 import { memo, type PointerEventHandler, type ReactNode } from 'react';
 
 export interface NoteReorderHandleProps {
@@ -74,6 +76,7 @@ function NoteCardImpl({
   const checkedCount = note.checklist.filter((item) => item.isChecked).length;
   const showChecklist = note.checklist.length > 0;
   const showAttachments = note.attachments.length > 0;
+  const thumbnailAttachment = firstImageAttachment(note.attachments);
   const showLabels = note.labels.length > 0;
   const labelLimit = isDense ? 1 : isList ? 3 : 2;
   const timeLabel = formatListTimestamp(note.timestamp);
@@ -207,6 +210,13 @@ function NoteCardImpl({
           />
 
           <div className="flex min-w-0 flex-1 items-start gap-3 px-3.5 py-3.5 sm:gap-4 sm:px-4 sm:py-4">
+            {thumbnailAttachment ? (
+              <NoteCardThumbnail
+                noteId={note.id}
+                attachment={thumbnailAttachment}
+                density={density}
+              />
+            ) : null}
             <div className="min-w-0 flex-1">
               {title ? (
                 <h2 className="line-clamp-2 break-words text-note-title tracking-[-0.02em] sm:line-clamp-2">
@@ -239,7 +249,14 @@ function NoteCardImpl({
         </>
       ) : (
         <>
-          <div className="flex items-start gap-2">
+          {thumbnailAttachment ? (
+            <NoteCardThumbnail
+              noteId={note.id}
+              attachment={thumbnailAttachment}
+              density={density}
+            />
+          ) : null}
+          <div className={`flex items-start gap-2 ${thumbnailAttachment ? 'mt-3' : ''}`}>
             {title ? (
               <h2
                 className={`min-w-0 flex-1 break-words font-semibold tracking-[-0.02em] ${

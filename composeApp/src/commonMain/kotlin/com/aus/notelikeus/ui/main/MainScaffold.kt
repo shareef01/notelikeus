@@ -32,6 +32,7 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,8 +42,10 @@ import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
+import com.aus.notelikeus.data.attachments.AttachmentSyncService
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.ui.components.AppSnackbar
+import com.aus.notelikeus.ui.components.LocalAttachmentPreviewLoader
 import com.aus.notelikeus.ui.components.NoteStaggeredGrid
 import com.aus.notelikeus.ui.components.NotesEmptyState
 import com.aus.notelikeus.ui.main.components.MainTopAppBar
@@ -55,6 +58,7 @@ import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Elevation
 import com.aus.notelikeus.ui.theme.Size
@@ -370,7 +374,13 @@ internal fun MainScaffold(
                         }
                     val resolvedColumns = adaptiveColumns
                         ?: if (isExpanded && state.viewMode.columns > 2) 2 else state.viewMode.columns
+                    val attachmentSync = koinInject<AttachmentSyncService>()
 
+                    CompositionLocalProvider(
+                        LocalAttachmentPreviewLoader provides { attachment ->
+                            attachmentSync.readAttachmentBytes(attachment)
+                        },
+                    ) {
                     NoteStaggeredGrid(
                         notes = filteredNotes,
                         selectedNotes = state.selectedNotes,
@@ -450,6 +460,7 @@ internal fun MainScaffold(
                             bottom = gridBottomPadding
                         )
                     )
+                    }
                 }
             }
         }

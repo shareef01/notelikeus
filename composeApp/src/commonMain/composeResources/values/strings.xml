@@ -355,6 +355,7 @@
     <string name="format_link">Link</string>
     <string name="format_image">Add image</string>
     <string name="cd_attachment">Attachment image</string>
+    <string name="cd_has_image">Has image</string>
     <string name="cd_remove_attachment">Remove attachment</string>
     <string name="image_load_failed">Image failed to load</string>
     <string name="link_dialog_title">Add link</string>
