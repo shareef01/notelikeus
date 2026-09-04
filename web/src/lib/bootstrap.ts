@@ -3,6 +3,10 @@ import { isFirebaseConfigured } from '@/lib/config';
 import { initFirebase } from '@/lib/firebase';
 import { LEGACY_NOTES_STORAGE_KEY } from '@/lib/notes/legacyLocalMigration';
 import { LAST_MERGED_USER_STORAGE_KEY } from '@/lib/notes/lastMergedUser';
+import {
+  FIREBASE_SUPABASE_LINK_STORAGE_KEY,
+  KNOWN_FIREBASE_UID_STORAGE_KEY,
+} from '@/lib/migration/accountIdentity';
 import { forgetSignedIn, SESSION_HINT_STORAGE_KEY } from '@/lib/auth/sessionHint';
 import { ensureReminderSync } from '@/lib/reminders/reminderSync';
 import { useLabelRegistryStore } from '@/store/labelRegistryStore';
@@ -50,6 +54,11 @@ const USER_DATA_STORAGE_KEYS = [
   'notelikeus-deleted-notes',
   'notelikeus-lock-key',
   SESSION_HINT_STORAGE_KEY,
+  // Firebase→Supabase identity breadcrumbs. Without these the previous user's Firebase uid
+  // outlives the wipe, and the next Supabase account on this browser profile resolves it as its
+  // own migration candidate — claiming a stranger's Firebase identity.
+  FIREBASE_SUPABASE_LINK_STORAGE_KEY,
+  KNOWN_FIREBASE_UID_STORAGE_KEY,
 ] as const;
 
 const REHYDRATE_TIMEOUT_MS = 8_000;

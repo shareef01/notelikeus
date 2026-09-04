@@ -1,0 +1,64 @@
+name: Attachments Worker CI
+
+# The R2 attachments Worker is the authorization boundary for attachment bytes: it derives the R2
+# object key from the bearer token's user id, and it is the only place upload size and content-type
+# limits are enforced (the editors' 10 MB cap is a UX affordance — the Worker is reachable directly
+# with any Supabase access token). Its tests, and the ops scripts that drive the staging rehearsal,
+# ran in no workflow before this one.
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'workers/**'
+      - 'scripts/ops/**'
+      - 'package.json'
+      - '.github/workflows/attachments-worker.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'workers/**'
+      - 'scripts/ops/**'
+      - 'package.json'
+      - '.github/workflows/attachments-worker.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: attachments-worker-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: workers/attachments/package-lock.json
+
+      - name: Install worker dependencies
+        working-directory: workers/attachments
+        run: npm ci
+
+      - name: Typecheck worker
+        working-directory: workers/attachments
+        run: npm run typecheck
+
+      - name: Test worker (auth, owner isolation, upload limits)
+        working-directory: workers/attachments
+        run: npm test
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Test ops migration scripts
+        run: npm run test:ops-export
