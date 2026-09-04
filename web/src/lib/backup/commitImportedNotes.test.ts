@@ -15,6 +15,10 @@ vi.mock('@/lib/notes/notesSyncService', () => ({
   resumeRealtimeSnapshots: vi.fn(),
 }));
 
+vi.mock('@/lib/attachments/attachmentSyncService', () => ({
+  syncNoteAttachments: vi.fn(async (note: unknown) => note),
+}));
+
 import {
   pauseRealtimeSnapshots,
   resumeRealtimeSnapshots,

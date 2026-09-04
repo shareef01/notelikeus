@@ -9,7 +9,8 @@ import kotlinx.serialization.json.Json
 class NoteBackupExporter(
     private val repository: NoteRepository,
     private val appName: String,
-    private val appVersion: String
+    private val appVersion: String,
+    private val attachmentReader: AttachmentBackupReader? = null,
 ) {
 
     private val json = Json {
@@ -33,7 +34,7 @@ class NoteBackupExporter(
         return json.encodeToString(backupData)
     }
 
-    private fun Note.toDto() = NoteBackupDto(
+    private suspend fun Note.toDto() = NoteBackupDto(
         id = id,
         title = title,
         content = content,
@@ -45,7 +46,8 @@ class NoteBackupExporter(
         position = position,
         reminderTimestamp = reminderTimestamp,
         labels = labels.map { it.name },
-        checklist = checklist.map { ChecklistItemBackupDto(it.text, it.isChecked, it.position) }
+        checklist = checklist.map { ChecklistItemBackupDto(it.text, it.isChecked, it.position) },
+        attachments = attachmentsToBackupDtos(attachments, attachmentReader),
     )
 
     companion object {

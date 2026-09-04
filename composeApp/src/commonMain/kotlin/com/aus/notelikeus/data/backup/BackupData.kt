@@ -1,6 +1,7 @@
 package com.aus.notelikeus.data.backup
 
 import com.aus.notelikeus.domain.model.Label
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -26,7 +27,19 @@ data class NoteBackupDto(
     val position: Int = 0,
     val reminderTimestamp: Long? = null,
     val labels: List<String> = emptyList(),
-    val checklist: List<ChecklistItemBackupDto> = emptyList()
+    val checklist: List<ChecklistItemBackupDto> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val attachments: List<AttachmentBackupDto> = emptyList(),
+)
+
+@Serializable
+data class AttachmentBackupDto(
+    val id: String? = null,
+    val type: String = "image",
+    val mimeType: String? = null,
+    val sizeBytes: Long? = null,
+    val dataBase64: String,
+    val extension: String? = null,
 )
 
 @Serializable

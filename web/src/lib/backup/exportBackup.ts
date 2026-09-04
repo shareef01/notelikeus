@@ -1,9 +1,10 @@
 import type { Note } from '@/types/note';
 import { BACKUP_VERSION } from '@/lib/backup/constants';
+import { attachmentsToBackupDtos } from '@/lib/backup/backupAttachments';
 import { collectUniqueLabels } from '@/types/label';
 
 /** Plain backup DTO — mirrors Android NoteBackupExporter, no Firestore write sentinels. */
-function noteToBackupMap(note: Note): Record<string, unknown> {
+export async function noteToBackupMap(note: Note): Promise<Record<string, unknown>> {
   const payload: Record<string, unknown> = {
     id: note.localId,
     title: note.title,
@@ -27,19 +28,27 @@ function noteToBackupMap(note: Note): Record<string, unknown> {
   if (note.serverUpdatedAt != null) {
     payload.serverUpdatedAt = note.serverUpdatedAt;
   }
+  const attachments = await attachmentsToBackupDtos(note);
+  if (attachments.length > 0) {
+    payload.attachments = attachments;
+  }
   return payload;
 }
 
-export function exportNotesBackup(notes: Note[]): void {
+export async function buildNotesBackupPayload(notes: Note[]): Promise<Record<string, unknown>> {
   const labels = collectUniqueLabels(notes);
-  const payload = {
+  return {
     version: BACKUP_VERSION,
     exportedAt: Date.now(),
     app: 'Notelikeus',
     appVersion: '1.0.0 (web)',
     labels: labels.map((label) => ({ id: label.id, name: label.name })),
-    notes: notes.map(noteToBackupMap),
+    notes: await Promise.all(notes.map(noteToBackupMap)),
   };
+}
+
+export async function exportNotesBackup(notes: Note[]): Promise<void> {
+  const payload = await buildNotesBackupPayload(notes);
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');

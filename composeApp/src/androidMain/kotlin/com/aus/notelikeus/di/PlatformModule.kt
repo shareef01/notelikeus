@@ -13,6 +13,7 @@ import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.domain.platform.SyncCoordinator
 import com.aus.notelikeus.platform.AndroidWidgetManager
 import com.aus.notelikeus.platform.ForegroundActivityTracker
+import com.aus.notelikeus.data.backup.AttachmentBackupReader
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.domain.repository.NoteRepository
@@ -95,10 +96,13 @@ actual val platformModule = module {
         NoteBackupExporter(
             repository = get<NoteRepository>(),
             appName = context.getString(com.aus.notelikeus.shared.R.string.app_name),
-            appVersion = com.aus.notelikeus.util.AppConfig.versionName
+            appVersion = com.aus.notelikeus.util.AppConfig.versionName,
+            attachmentReader = AttachmentBackupReader { attachment ->
+                get<AttachmentSyncService>().readAttachmentBytes(attachment)
+            },
         )
     }
-    single { NoteBackupImporter(get<NoteRepository>()) }
+    single { NoteBackupImporter(get<NoteRepository>(), get<AttachmentLocalStorage>()) }
     single { SharedPrefsNoteSyncStateStore(get()) }
     single<NoteSyncStateStore> { get<SharedPrefsNoteSyncStateStore>() }
     single { androidx.work.WorkManager.getInstance(get<android.content.Context>()) }

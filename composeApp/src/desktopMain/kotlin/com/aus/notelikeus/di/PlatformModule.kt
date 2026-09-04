@@ -1,6 +1,7 @@
 package com.aus.notelikeus.di
 
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.aus.notelikeus.data.backup.AttachmentBackupReader
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.data.local.DatabaseMigrations
@@ -87,8 +88,17 @@ actual val platformModule = module {
     single<PendingSyncStore> { DesktopPendingSyncStore(get()) }
     single<SyncCoordinator> { DesktopSyncCoordinator(get(), get()) }
 
-    single { NoteBackupExporter(get<NoteRepository>(), "Notelikeus", AppConfig.versionName) }
-    single { NoteBackupImporter(get<NoteRepository>()) }
+    single {
+        NoteBackupExporter(
+            repository = get<NoteRepository>(),
+            appName = "Notelikeus",
+            appVersion = AppConfig.versionName,
+            attachmentReader = AttachmentBackupReader { attachment ->
+                get<AttachmentSyncService>().readAttachmentBytes(attachment)
+            },
+        )
+    }
+    single { NoteBackupImporter(get<NoteRepository>(), get<AttachmentLocalStorage>()) }
 
     // Cloud sync — real implementations
     single {

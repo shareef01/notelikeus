@@ -3,6 +3,9 @@ import { BACKUP_VERSION } from '@/lib/backup/constants';
 import { exportNotesBackup } from '@/lib/backup/exportBackup';
 import { importNotesFromBackup } from '@/lib/backup/importBackup';
 import { labelFromName } from '@/types/label';
+import { bytesToBase64 } from '@/lib/backup/backupAttachments';
+import { clearPendingAttachmentsForTests, storePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
+import { pendingStoragePath } from '@/lib/attachments/attachmentPaths';
 import { createEmptyNote, type Note } from '@/types/note';
 
 let exported: string;
@@ -39,28 +42,29 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  clearPendingAttachmentsForTests();
 });
 
-function exportPayload(notes: Note[]) {
-  exportNotesBackup(notes);
+async function exportPayload(notes: Note[]) {
+  await exportNotesBackup(notes);
   return JSON.parse(exported);
 }
 
 describe('exportNotesBackup', () => {
-  it('downloads a dated json file and releases the blob url', () => {
-    exportNotesBackup([note('1')]);
+  it('downloads a dated json file and releases the blob url', async () => {
+    await exportNotesBackup([note('1')]);
     expect(clicks).toBe(1);
     expect(revoked).toEqual(['blob:mock']);
   });
 
-  it('writes the current backup version and app metadata', () => {
-    const payload = exportPayload([note('1')]);
+  it('writes the current backup version and app metadata', async () => {
+    const payload = await exportPayload([note('1')]);
     expect(payload).toMatchObject({ version: BACKUP_VERSION, app: 'Notelikeus' });
     expect(typeof payload.exportedAt).toBe('number');
   });
 
-  it('serializes notes with the Android field names', () => {
-    const payload = exportPayload([
+  it('serializes notes with the Android field names', async () => {
+    const payload = await exportPayload([
       note('7', {
         title: 'groceries',
         content: 'milk',
@@ -83,26 +87,26 @@ describe('exportNotesBackup', () => {
     expect(payload.notes[0].checklist[0]).not.toHaveProperty('id');
   });
 
-  it('omits null reminder and server timestamps but keeps real ones', () => {
-    const plain = exportPayload([note('1')]).notes[0];
+  it('omits null reminder and server timestamps but keeps real ones', async () => {
+    const plain = (await exportPayload([note('1')])).notes[0];
     expect(plain).not.toHaveProperty('reminderTimestamp');
     expect(plain).not.toHaveProperty('serverUpdatedAt');
 
-    const stamped = exportPayload([note('1', { reminderTimestamp: 111, serverUpdatedAt: 222 })])
+    const stamped = (await exportPayload([note('1', { reminderTimestamp: 111, serverUpdatedAt: 222 })]))
       .notes[0];
     expect(stamped).toMatchObject({ reminderTimestamp: 111, serverUpdatedAt: 222 });
   });
 
-  it('collects labels once, case-insensitively, sorted by name', () => {
-    const payload = exportPayload([
+  it('collects labels once, case-insensitively, sorted by name', async () => {
+    const payload = await exportPayload([
       note('1', { labels: [labelFromName('Work')] }),
       note('2', { labels: [labelFromName('work'), labelFromName('Home')] }),
     ]);
     expect(payload.labels.map((l: { name: string }) => l.name)).toEqual(['Home', 'work']);
   });
 
-  it('round-trips through the importer', () => {
-    const payload = exportPayload([
+  it('round-trips through the importer', async () => {
+    const payload = await exportPayload([
       note('7', {
         title: 'groceries',
         content: 'milk',
@@ -118,6 +122,39 @@ describe('exportNotesBackup', () => {
       content: 'milk',
       labels: [{ name: 'Home' }],
       checklist: [{ text: 'bread', isChecked: true, position: 0 }],
+    });
+  });
+
+  it('embeds pending image bytes and restores them on import', async () => {
+    const png = new Uint8Array([137, 80, 78, 71]);
+    storePendingAttachment('att-1', new Blob([png], { type: 'image/png' }), 'image/png');
+    const payload = await exportPayload([
+      note('3', {
+        title: 'Photo',
+        attachments: [
+          {
+            id: 'att-1',
+            noteId: 3,
+            storagePath: pendingStoragePath('att-1'),
+            type: 'image',
+            mimeType: 'image/png',
+            sizeBytes: png.byteLength,
+          },
+        ],
+      }),
+    ]);
+    expect(payload.notes[0].attachments[0]).toMatchObject({
+      id: 'att-1',
+      mimeType: 'image/png',
+      dataBase64: bytesToBase64(png),
+    });
+
+    clearPendingAttachmentsForTests();
+    const { merged } = importNotesFromBackup(payload, []);
+    expect(merged[0].attachments[0]).toMatchObject({
+      id: 'att-1',
+      mimeType: 'image/png',
+      storagePath: pendingStoragePath('att-1'),
     });
   });
 });

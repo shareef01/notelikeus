@@ -1,5 +1,6 @@
 package com.aus.notelikeus.data.backup
 
+import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
@@ -47,7 +48,7 @@ class NoteBackupExporterTest {
     }
 
     @Test
-    fun `createJson omits attachments`() = runTest {
+    fun `createJson omits empty attachments`() = runTest {
         val note = Note(
             id = 1L,
             title = "Photo note",
@@ -63,5 +64,44 @@ class NoteBackupExporterTest {
             .getJSONObject(0)
 
         assertFalse(noteJson.has("attachments"))
+    }
+
+    @Test
+    fun `createJson embeds readable image bytes`() = runTest {
+        val note = Note(
+            id = 1L,
+            title = "Photo note",
+            content = "",
+            timestamp = 1000L,
+            color = 0,
+            attachments = listOf(
+                Attachment(
+                    id = "att-1",
+                    noteId = 1L,
+                    storagePath = "file:/tmp/a.png",
+                    type = "image",
+                    mimeType = "image/png",
+                    sizeBytes = 3,
+                ),
+            ),
+        )
+        val exporting = NoteBackupExporter(
+            repository,
+            "Notelikeus",
+            "1.0.0",
+            attachmentReader = AttachmentBackupReader { byteArrayOf(1, 2, 3) },
+        )
+        coEvery { repository.getAllNotesForBackup() } returns listOf(note)
+        coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
+
+        val attachments = JSONObject(exporting.createJson())
+            .getJSONArray("notes")
+            .getJSONObject(0)
+            .getJSONArray("attachments")
+
+        assertEquals(1, attachments.length())
+        assertEquals("att-1", attachments.getJSONObject(0).getString("id"))
+        assertEquals("image/png", attachments.getJSONObject(0).getString("mimeType"))
+        assertTrue(attachments.getJSONObject(0).getString("dataBase64").isNotEmpty())
     }
 }

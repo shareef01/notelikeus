@@ -75,6 +75,22 @@ describe('importNotesFromBackup', () => {
     expect(merged[0].title).toBe('Real');
   });
 
+  it('ignores legacy version-2 attachment bytes', () => {
+    const { merged } = importNotesFromBackup(
+      {
+        version: 2,
+        notes: [
+          {
+            title: 'Old photo',
+            attachments: [{ type: 'image', dataBase64: 'AQID', extension: 'png' }],
+          },
+        ],
+      },
+      [],
+    );
+    expect(merged[0].attachments).toEqual([]);
+  });
+
   it('rejects a backup newer than this build understands', () => {
     expect(() => importNotesFromBackup({ version: 99, notes: [] }, [])).toThrow(
       /Unsupported backup version/,
