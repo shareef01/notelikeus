@@ -969,6 +969,107 @@ Until the last box is ticked by the owner, do not set `VITE_ALLOW_SUPABASE_PRODU
 
 ---
 
+## Runbook — enabling verified Firebase uid linking on staging
+
+Owner-operated. Nothing here touches production: Firebase Auth, Firestore and
+`notelike.web.app` are untouched, and no cutover flag is set at any point.
+
+**Never paste a secret into a chat, an issue, or a committed file.** `SUPABASE_SERVICE_ROLE_KEY`
+goes straight from your clipboard into `wrangler secret put`, which stores it in Cloudflare. It
+bypasses RLS — treat it like a database password.
+
+### 0. Prerequisites
+
+| Value | Where it comes from | Secret? |
+| --- | --- | --- |
+| `SUPABASE_PROJECT_REF` | Supabase → Project Settings → General | Treat as sensitive |
+| `SUPABASE_DB_PASSWORD` | Supabase → Project Settings → Database | **Yes** |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → `service_role` | **Yes** |
+| `FIREBASE_PROJECT_ID` | `.firebaserc` → `notelikeus` | No — ships in every web build |
+
+### 1. Get on the branch
+
+```bash
+git fetch origin
+git checkout claude/firebase-supabase-migration-audit-f55yye
+```
+
+The two new migrations exist only here until the branch merges.
+
+### 2. Push the schema change
+
+```bash
+npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+npx supabase migration list      # confirm 20250904000000 / 20250904010000 are pending
+npx supabase db push
+```
+
+Applying these to a populated database was rehearsed against a Supabase-equivalent copy seeded on
+the old schema: notes, labels, checklists, tombstones, attachment metadata and both uid mappings
+came through unchanged, and sync kept working. Existing mappings are marked `verified = false`,
+which is correct — none of them was ever proven.
+
+### 3. Configure and redeploy the Worker
+
+`workers/attachments/wrangler.toml` is gitignored. Add to its `[vars]`:
+
+```toml
+FIREBASE_PROJECT_ID = "notelikeus"
+```
+
+Then, from `workers/attachments/`:
+
+```bash
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY   # paste when prompted; never echo it
+npx wrangler deploy
+```
+
+Leaving either unset is a valid posture: the route answers 501 and clients fall back to unverified
+claims, which are not exclusive and lock nobody out.
+
+### 4. Redeploy Pages staging
+
+```bash
+npm run deploy:staging-pages
+```
+
+The web client only sends a Firebase ID token when a live Firebase session can mint one.
+
+### 5. Verify
+
+Sign in at https://notelikeus-dev.pages.dev/ with Google, then in the browser console:
+
+```js
+await (await import('/src/lib/migration/supabaseUidLink.ts')).fetchFirebaseUidLink()
+```
+
+or run in the Supabase SQL editor:
+
+```sql
+select owner_id, firebase_uid, verified from public.firebase_uid_mappings;
+```
+
+`verified = true` means the Worker checked a real Firebase ID token against Google's keys.
+`verified = false` means the route was unreachable or no Firebase session was present — the link
+still works, it is simply not exclusive.
+
+Worker health, without a session:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  "$WORKER_URL/v1/identity/firebase-link" -d '{}'
+# 401 = deployed and requiring auth (expected)
+# 404 = old build still live — redeploy
+```
+
+### Rollback
+
+Redeploy the previous Worker version from the Cloudflare dashboard, or
+`npx wrangler secret delete SUPABASE_SERVICE_ROLE_KEY` — the route reverts to 501 and clients fall
+back to unverified claims. The schema change needs no rollback: it only widens what is allowed.
+
+---
+
 ## Rollback
 
 - Phases 0–11 are additive; Firebase remains default until a cutover build sets the explicit allow flags.
