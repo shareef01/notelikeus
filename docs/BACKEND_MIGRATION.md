@@ -1,11 +1,13 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
 **Status:** Phases 0–12 on `main`; staging bootstrap live. Firebase remains the production backend.  
-**Last updated:** 2026-09-04 (Android debug BuildConfig + desktop local.properties for staging)
+**Last updated:** 2026-09-04 (#149 merged; staging handoff for successor agents)
 
 This document tracks the phased migration away from Firebase. Phases 0–12 are on `main`. Production cutover is **not** authorized. Firebase Auth, Firestore, and Firebase Hosting (`notelike.web.app`) remain the live backend.
 
-**Git:** Phases 0–12 and Pages staging are on `main` (#145–#147). Kotlin debug staging wiring is additive; Firebase remains the production default.
+**Successor agents:** read [`docs/STAGING_HANDOFF.md`](STAGING_HANDOFF.md) before changing staging, opening overlapping PRs, or asking the owner to click anything. That file is the detailed live inventory, env names, open-PR map, pitfalls, and continue prompts.
+
+**Git:** Phases 0–12 and Pages staging are on `main` (#145–#147). Kotlin debug staging wiring landed in #149. Open follow-ups: #148 (Pages/RPC), #150 (backup attachments), #151 (list thumbnails; ready). Those three conflict with `main` after #149 — rebase before merge.
 
 ---
 
@@ -696,9 +698,9 @@ Separate `notes` + `note_tombstones` tables with RPC-only mutations:
 
 ---
 
-## Live staging (2026-09-03)
+## Live staging (2026-09-04)
 
-Owner-operated staging only. **Do not** set `VITE_ALLOW_SUPABASE_PRODUCTION`.
+Owner-operated staging only. **Do not** set `VITE_ALLOW_SUPABASE_PRODUCTION`. Full agent context: [`docs/STAGING_HANDOFF.md`](STAGING_HANDOFF.md).
 
 | Resource | Status |
 |----------|--------|
