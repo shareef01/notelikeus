@@ -743,7 +743,7 @@ with `SET LOCAL ROLE` plus the caller's JWT claims.
 | Conflict matrix (stale base, recreate-over-live, resurrect-after-delete, idempotent delete, unknown note, id/local_id mismatch) | **PASS** — no implicit resurrection on any path |
 | `fetch_full_snapshot` size at 800 notes / 200 tombstones | 267 kB (≈ 3.3 MB projected at 10 000 notes) |
 | Secret scan of HEAD and full history | **CLEAN** — every hit is a placeholder, a comment, or a Postgres role name |
-| Web unit / typecheck / lint | **PASS** — 333/333, clean, 0 errors |
+| Web unit / typecheck / lint / build | **PASS** — 340/340, clean, 0 errors, bundle builds |
 | Attachments Worker | **PASS** — 24/24 (was 9, none covering the handler) |
 | Ops scripts (`test:ops-export`) | **PASS** — 3/3 |
 | Kotlin desktop unit tests | **PASS** — 322/322 |
@@ -801,7 +801,17 @@ See `20250904000000_mapping_and_attachment_guards.sql` and the commit that intro
    ordering. It now refreshes once per batch, retries a revision conflict against the revision the
    server reports, and clears the cached revision on the idempotent answer (which carries no
    `revision`, so the old cleanup never ran).
-9. **`idempotent` was read off the wrong branch (fixed).** `apply_note_delete` answers an
+9. **Boot required Firebase even when Supabase was selected (P2, fixed).** `bootstrap.ts` threw
+   `BootFailure` on missing Firebase config and called `initFirebase()` unconditionally, and
+   `App.tsx` gated sync on `isFirebaseConfigured()`. A Supabase build could not start without full
+   Firebase web config — a cutover blocker, and the reason Pages staging never exercised a
+   Firebase-free client. Boot now requires whichever backend the build selected, and validates the
+   Supabase URL and anon key when that is Supabase. Firebase is still initialised on a Supabase
+   build that carries the config, because the Phase 6 bridge reads the live Firebase session to
+   prove uid ownership; a failure there is no longer fatal. **Production behaviour is unchanged**:
+   `isSupabaseBackendEnabled()` is false in production unless an owner-authorised cutover build
+   sets the allow flag, and tests pin both sides of that.
+10. **`idempotent` was read off the wrong branch (fixed).** `apply_note_delete` answers an
    already-tombstoned note with `{status: 'applied', idempotent: true}`; the web client looked for
    `idempotent` inside its `status === 'conflict'` branch, so the cleanup was unreachable and a
    stale revision was left behind. Same family as the rehearsal script expecting `"ok"` (#148).
@@ -811,7 +821,6 @@ See `20250904000000_mapping_and_attachment_guards.sql` and the commit that intro
 | Finding | Severity | Why it was left |
 | --- | --- | --- |
 | `link_firebase_uid` still accepts any uid server-side. The client now proves ownership, but the RPC cannot. Proving it server-side means verifying a Firebase ID token (an Edge Function against Google's public keys) — a design decision, not a patch. Until then a determined caller can still squat an unlinked uid and lock its owner out. | P2 | Needs an owner decision; see **Cutover gate** below |
-| `bootstrap.ts` throws `BootFailure` and calls `initFirebase()` unconditionally, so a Supabase-selected build still cannot boot without full Firebase web config. Loud, not silent — but it is a cutover blocker, and it means "Supabase staging" is not exercising a Firebase-free client. | P2 | Decoupling belongs with the cutover |
 | Desktop `readLocalProperty` (PR #149) scans up to six parent directories of the process CWD for `local.properties` and reads the Supabase URL/key/worker URL from it regardless of `isDebug`. `remoteBackend` is still `isDebug`-gated, so a packaged build stays on Firebase — but a cutover build would take its endpoint from a directory scan. | P2 | Belongs to #149 |
 | `note_attachments` is not in the realtime publication, so an attachment added on one client is not signalled to another until a note change or the 30 s fallback. | P3 | Behavioural gap, not a defect |
 | `nextLocalNoteIdAfter` returns `Math.max(maxId + 1, Date.now() * 1000 + rand)` ≈ 1.8e15 today, safely inside `Number.MAX_SAFE_INTEGER` (9.007e15, reached around year 2255). Backup import re-allocates ids rather than trusting the file, so a hostile `localId` cannot poison the allocator. `local_id` is `BIGINT`, and a value above 2^53-1 does lose precision in `JSON.parse` — verified — but nothing generates one. | P4 | Not reachable; recorded so it is not re-derived |
@@ -867,7 +876,7 @@ Ticked items were established by the 2026-09-04 audit; the rest are owner-gated 
 - [ ] Web / Android / Desktop convergence on one staging account
 - [ ] Offline reconciliation and account switching proven on each client
 - [x] Kotlin deletes reach the server without a prior download in the same process
-- [ ] Web boots without Firebase config
+- [x] Web boots without Firebase config when Supabase is the selected backend
 - [ ] PWA service-worker behaviour across a backend change modelled
 - [ ] Rollback plan reviewed by the owner
 - [ ] **Owner explicitly authorizes cutover**
