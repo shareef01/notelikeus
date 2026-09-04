@@ -186,6 +186,9 @@ actual val platformModule = module {
             } else {
                 null
             },
+            // Android can see the live Firebase session directly, so a breadcrumb-sourced uid can
+            // be corroborated rather than refused.
+            firebaseSession = { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid },
         )
     }
     single {
