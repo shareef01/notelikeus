@@ -7,7 +7,7 @@ This document tracks the phased migration away from Firebase. Phases 0–12 are 
 
 **Successor agents:** read [`docs/STAGING_HANDOFF.md`](STAGING_HANDOFF.md) before changing staging, opening overlapping PRs, or asking the owner to click anything. That file is the detailed live inventory, env names, open-PR map, pitfalls, and continue prompts.
 
-**Git:** Phases 0–12 and Pages staging are on `main` (#145–#147). Kotlin debug staging wiring landed in #149. Open follow-ups: #148 (Pages/RPC; still conflicts), #150 (backup attachments; rebased), #151 (list thumbnails; rebased, ready).
+**Git:** Phases 0–12 and Pages staging are on `main` (#145–#147). Kotlin debug staging wiring landed in #149. Open follow-ups: #148 (Pages/RPC; still conflicts), #150 (backup attachments; rebased, CI green), #151 (list thumbnails; rebased, ready; firestore-rules timed out).
 
 ---
 

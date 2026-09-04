@@ -333,7 +333,7 @@ After this merge, #148 / #150 / #151 went dirty against `main`. **#150 and #151 
 https://github.com/shareef01/notelikeus/pull/150  
 Branch: `cursor/backup-attachments-2354`  
 Tip: `6f1bf84` (rebased onto `548a3b8`).  
-Status: **ready for review**, MERGEABLE after rebase. CI will re-run on the new tip.
+Status: **ready for review**, MERGEABLE, **CLEAN**. All 10 CI checks green on `6f1bf84`.
 
 What it does:
 
@@ -351,7 +351,7 @@ This is the missing piece if the owner’s rehearsal backup includes images.
 https://github.com/shareef01/notelikeus/pull/151  
 Branch: `cursor/note-list-thumbnails-2354`  
 Tip: `801f764` (rebased onto `548a3b8`; previous green tip was `0c7d3c2`).  
-Status: **ready for review**, MERGEABLE after rebase. CI will re-run on the new tip.
+Status: **ready for review**, MERGEABLE. After rebase, Android/Web/Desktop/Pages passed. Firebase `firestore-rules` **timed out at 15m** on `801f764` (the same job passed on the pre-rebase tip `0c7d3c2`). Treat as a flaky timeout, not a thumbnail-code failure.
 
 What it does:
 
@@ -469,7 +469,7 @@ Only after 9.1 (and ideally 9.2):
 
 Priority order. Stop if the user only asked for a status doc.
 
-1. **#150 and #151 are rebased onto `548a3b8` and mergeable.** Wait for CI on the new tips (`6f1bf84`, `801f764`). #148 (other agent) is still CONFLICTING — leave that branch unless asked to rebase it.
+1. **#150 is rebased, CI-green, and mergeable** (`6f1bf84`). **#151 is rebased and mergeable** (`801f764`) but Firebase `firestore-rules` timed out at 15m on the new tip; other checks passed. #148 (other agent) is still CONFLICTING — leave that branch unless asked to rebase it.
 2. **#151 is ready** (was green on `0c7d3c2`; rebased to `801f764`).
 3. Keep `docs/ANDROID_STAGING.md` on `main`; do not duplicate it here except as a pointer.
 4. If the owner reports a Pages / import bug: fix on a **new** `cursor/<name>-2354` branch from latest `origin/main`.
@@ -551,7 +551,7 @@ If the user says **continue the migration**:
 Do not start Firebase retirement in production.
 Read docs/STAGING_HANDOFF.md and docs/BACKEND_MIGRATION.md Live staging.
 Check open PRs #148 #150 #151 before overlapping them (#149 already merged).
-#150 and #151 are rebased onto 548a3b8. #148 still conflicts. Next implementable work is wait for their CI or fix whatever the owner reports from https://notelikeus-dev.pages.dev/ Google + Import backup.
+#150 is rebased, CI-green, mergeable (6f1bf84). #151 is rebased (801f764); firestore-rules timed out at 15m. #148 still conflicts. Next implementable work is land #150 or fix whatever the owner reports from https://notelikeus-dev.pages.dev/ Google + Import backup.
 Android/desktop debug staging: npm run kotlin:staging-properties + rebuild; see docs/ANDROID_STAGING.md.
 Never set VITE_ALLOW_SUPABASE_PRODUCTION or NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION.
 ```
@@ -580,4 +580,4 @@ When you change live staging (new Worker URL, new Pages project, new PR, owner c
 2. Update this file (detail).
 3. Do not paste secrets.
 
-Last updated from Cloud Agent `bc-e9906a91-59df-4bbb-8bd0-a48c480d2354` against `origin/main` `548a3b8` (#149 merged). Open PRs: #148 (still CONFLICTING), #150 (`6f1bf84`, rebased), #151 (`801f764`, rebased).
+Last updated from Cloud Agent `bc-e9906a91-59df-4bbb-8bd0-a48c480d2354` against `origin/main` `548a3b8` (#149 merged). Open PRs: #148 (still CONFLICTING), #150 (`6f1bf84`, CI green), #151 (`801f764`, firestore-rules timeout).
