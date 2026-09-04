@@ -950,7 +950,7 @@ Ticked items were established by the 2026-09-04 audit; the rest are owner-gated 
 - [x] Production-isolation guards tested (Firebase host, lookalike hosts, missing flags, secret key)
 - [x] No credential in HEAD or git history
 - [x] **Firebase uid ownership proven server-side** — Firebase ID token verified in the Worker; squatting no longer locks anyone out
-- [ ] Owner sets `FIREBASE_PROJECT_ID` + `SUPABASE_SERVICE_ROLE_KEY` on the staging Worker and confirms a verified link end-to-end
+- [x] Owner set `FIREBASE_PROJECT_ID` + `SUPABASE_SERVICE_ROLE_KEY` on the staging Worker; a verified link was confirmed end to end (see above)
 - [ ] Web Google sign-in completed on `notelikeus-dev.pages.dev` (a 302 to accounts.google.com is not a sign-in)
 - [ ] Web backup import completed on staging, verified after reload and re-login
 - [ ] Attachment import verified end-to-end (bytes in R2, metadata row, image renders after reload)
@@ -1101,6 +1101,45 @@ Verified afterwards that nothing persisted: no test users, note/attachment count
 these two were inserted with `version` and `name` only (`statements` is nullable, and
 `migration list` reads `version`). A later `db push` from a machine with Postgres access will see
 both as applied and skip them; `db diff` may be less informative for these two.
+
+### Firebase uid ownership — proven end to end on staging, 2026-09-04
+
+The invariant is no longer an inference from unit tests. A real Google identity, a real Firebase ID
+token, the deployed Worker, and the live staging database completed the whole chain.
+
+**Why it could not be tested on Pages.** Firebase Auth sessions are per-origin. On
+`notelikeus-dev.pages.dev` there is no Firebase session and no way to create one — when Supabase is
+the selected backend the app's sign-in routes to Supabase — so `resolveFirebaseUid` finds nothing
+and the bridge exits before calling the Worker. A fresh sign-in there is not a migrating user. The
+path only exists in the real cutover shape: one origin that *was* Firebase and is now Supabase.
+
+**How it was reproduced.** `localhost:5173` was used as that single origin, in two phases against
+the same browser profile:
+
+1. dev server with no `VITE_REMOTE_BACKEND` → Firebase backend → Google sign-in. Confirmed on disk:
+   Firefox wrote `firebaseLocalStorageDb`, `firebase-heartbeat-database` and a Firestore cache for
+   that origin.
+2. dev server restarted with the staging Supabase env, **browser storage untouched** → Google
+   sign-in again. `resolveFirebaseUid` took its first branch, `source: 'firebase-session'`.
+
+**Evidence.**
+
+| Source | Observation |
+| --- | --- |
+| Worker log tail | `OPTIONS` then `POST /v1/identity/firebase-link`, 23:20:29 local |
+| `firebase_uid_mappings` | one row, `verified = true`, `linked_at` 21:20:30 UTC — one second after the POST |
+| Row identifiers | `owner_id` and `firebase_uid` match the values the client had recorded locally |
+| Client console | no `Skipping Firebase→Supabase link`, no `verification failed` — neither refusal path fired |
+
+`verified` can only be set by `link_verified_firebase_uid`, which only `service_role` may execute
+and which no anon or authenticated PostgREST session can reach. So the true value is itself proof
+that the Worker verified an RS256 Firebase ID token against Google's published keys, with
+`aud`/`iss` pinned to the `notelikeus` project, before writing.
+
+**A dead end worth recording.** An earlier attempt cleared all IndexedDB between the two sign-ins to
+force the migration to re-run. That destroys the Firebase session, which lives in IndexedDB — so the
+bridge correctly found nothing and never called the Worker. The correct reset is to delete only the
+app's `notelikeus-notes` database and leave `firebaseLocalStorageDb` alone.
 
 ### Rollback
 
