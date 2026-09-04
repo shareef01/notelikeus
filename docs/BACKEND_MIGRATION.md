@@ -1054,9 +1054,53 @@ Worker health, without a session:
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' -X POST \
   "$WORKER_URL/v1/identity/firebase-link" -d '{}'
-# 401 = deployed and requiring auth (expected)
-# 404 = old build still live — redeploy
+# 401 = the Worker is up and demanding a Supabase session
 ```
+
+That check cannot tell a new build from an old one: `handleAttachmentRequest` resolves the bearer
+token *before* it looks at the path, so an unauthenticated request to any path — including one the
+old build never had — answers 401. Confirm the deployment from `npx wrangler deploy` output or the
+Cloudflare dashboard, or by signing in and watching for `verified = true` below.
+
+### Applied to staging — 2026-09-04
+
+Both migrations are live on the staging project, and the security model has now been exercised
+against real Supabase rather than the local equivalent.
+
+Raw Postgres is unreachable from the audit sandbox (TCP 5432/6543 time out under the network
+policy), so `supabase db push` could not run there. The migrations went through the Management API's
+HTTPS query endpoint instead, as one `BEGIN … COMMIT`, together with their
+`supabase_migrations.schema_migrations` rows. It was rehearsed first as `BEGIN … ROLLBACK` — the
+full payload executed cleanly against the live schema and left nothing behind (`verified` column
+absent, no tracking rows) — and only then re-run with `COMMIT`.
+
+| Check | Result |
+| --- | --- |
+| Migrations tracked | 9/9, including both `20250904*` |
+| Schema objects | `verified` column, 2 new guard triggers, 5 new functions, partial unique index |
+| Existing data | 2 notes, 1 attachment, 0 mappings — unchanged |
+| `anon` EXECUTE on any public function | false |
+| `anon` on `sync_revision_seq` | false |
+| `link_verified_firebase_uid` | anon ✗, authenticated ✗, service_role ✓ |
+
+Eight adversarial cases then ran against the live project, each in its own rolled-back transaction,
+and all eight held:
+
+1. An unproven claim on another user's uid is accepted but not exclusive
+2. The real owner can still claim a uid someone else squatted — the lockout is gone
+3. `authenticated` cannot call `link_verified_firebase_uid` (42501)
+4. `authenticated` cannot set `verified` by direct write (mutation guard)
+5. B cannot read A's notes
+6. Direct `INSERT` into `notes` is blocked
+7. Direct `INSERT` into `note_attachments` is blocked (the guard added by `20250904000000`)
+8. `register_note_attachment` refuses an object key outside the caller's namespace
+
+Verified afterwards that nothing persisted: no test users, note/attachment counts unchanged.
+
+**Deviation to note.** `db push` normally records a `statements` array alongside each tracking row;
+these two were inserted with `version` and `name` only (`statements` is nullable, and
+`migration list` reads `version`). A later `db push` from a machine with Postgres access will see
+both as applied and skip them; `db diff` may be less informative for these two.
 
 ### Rollback
 
