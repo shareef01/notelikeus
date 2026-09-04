@@ -7,6 +7,7 @@ const { firebaseMocks, supabaseMocks, linkMocks, importMocks } = vi.hoisted(() =
   linkMocks: {
     linkFirebaseUidOnServer: vi.fn().mockResolvedValue(undefined),
     fetchLinkedFirebaseUidFromServer: vi.fn().mockResolvedValue(null),
+    linkVerifiedFirebaseUid: vi.fn().mockResolvedValue(false),
   },
   importMocks: {
     supabaseCloudIsEmpty: vi.fn().mockResolvedValue(false),
@@ -19,7 +20,12 @@ const { firebaseMocks, supabaseMocks, linkMocks, importMocks } = vi.hoisted(() =
 
 vi.mock('firebase/auth', () => ({
   getAuth: () => ({
-    currentUser: firebaseMocks.currentUid ? { uid: firebaseMocks.currentUid } : null,
+    currentUser: firebaseMocks.currentUid
+      ? {
+          uid: firebaseMocks.currentUid,
+          getIdToken: async () => `id-token-for-${firebaseMocks.currentUid}`,
+        }
+      : null,
   }),
 }));
 vi.mock('@/lib/firebase', () => ({ initFirebase: vi.fn() }));
@@ -59,6 +65,7 @@ describe('ensureFirebaseSupabaseMigration — Firebase uid ownership', () => {
     firebaseMocks.currentUid = null;
     supabaseMocks.enabled = true;
     linkMocks.fetchLinkedFirebaseUidFromServer.mockResolvedValue(null);
+    linkMocks.linkVerifiedFirebaseUid.mockResolvedValue(false);
     importMocks.supabaseCloudIsEmpty.mockResolvedValue(false);
     await resetNotesDatabaseForTests();
     indexedDB.deleteDatabase(NOTES_DB_NAME);
@@ -120,5 +127,61 @@ describe('ensureFirebaseSupabaseMigration — Firebase uid ownership', () => {
     await ensureFirebaseSupabaseMigration(ALICE_SUPABASE_UUID);
 
     expect(importMocks.importFirebaseCloudToSupabase).not.toHaveBeenCalled();
+  });
+});
+
+describe('ensureFirebaseSupabaseMigration — proving the claim', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    firebaseMocks.currentUid = null;
+    supabaseMocks.enabled = true;
+    linkMocks.fetchLinkedFirebaseUidFromServer.mockResolvedValue(null);
+    linkMocks.linkVerifiedFirebaseUid.mockResolvedValue(false);
+    importMocks.supabaseCloudIsEmpty.mockResolvedValue(false);
+    await resetNotesDatabaseForTests();
+    indexedDB.deleteDatabase(NOTES_DB_NAME);
+    await resetNotesDatabaseForTests();
+  });
+
+  it('sends a Firebase ID token for proof when a live session can supply one', async () => {
+    firebaseMocks.currentUid = ALICE_FIREBASE_UID;
+    linkMocks.linkVerifiedFirebaseUid.mockResolvedValue(true);
+
+    await ensureFirebaseSupabaseMigration(ALICE_SUPABASE_UUID);
+
+    expect(linkMocks.linkVerifiedFirebaseUid).toHaveBeenCalledWith(
+      `id-token-for-${ALICE_FIREBASE_UID}`,
+    );
+    // Proven, so the unverified assertion is not also written.
+    expect(linkMocks.linkFirebaseUidOnServer).not.toHaveBeenCalled();
+  });
+
+  it('falls back to an unverified claim when the Worker cannot verify', async () => {
+    firebaseMocks.currentUid = ALICE_FIREBASE_UID;
+    linkMocks.linkVerifiedFirebaseUid.mockResolvedValue(false);
+
+    await ensureFirebaseSupabaseMigration(ALICE_SUPABASE_UUID);
+
+    expect(linkMocks.linkFirebaseUidOnServer).toHaveBeenCalledWith(ALICE_FIREBASE_UID);
+  });
+
+  it('falls back to an unverified claim when verification throws', async () => {
+    firebaseMocks.currentUid = ALICE_FIREBASE_UID;
+    linkMocks.linkVerifiedFirebaseUid.mockRejectedValue(new Error('worker down'));
+
+    await ensureFirebaseSupabaseMigration(ALICE_SUPABASE_UUID);
+
+    expect(linkMocks.linkFirebaseUidOnServer).toHaveBeenCalledWith(ALICE_FIREBASE_UID);
+  });
+
+  it('does not attempt proof without a live Firebase session for that uid', async () => {
+    linkMocks.fetchLinkedFirebaseUidFromServer.mockResolvedValue(ALICE_FIREBASE_UID);
+    firebaseMocks.currentUid = null;
+
+    await ensureFirebaseSupabaseMigration(ALICE_SUPABASE_UUID);
+
+    expect(linkMocks.linkVerifiedFirebaseUid).not.toHaveBeenCalled();
+    expect(linkMocks.linkFirebaseUidOnServer).toHaveBeenCalledWith(ALICE_FIREBASE_UID);
   });
 });

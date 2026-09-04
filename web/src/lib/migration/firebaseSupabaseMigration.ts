@@ -16,6 +16,7 @@ import { migrateOwnerNamespace } from '@/lib/migration/ownerNamespaceMigration';
 import {
   fetchLinkedFirebaseUidFromServer,
   linkFirebaseUidOnServer,
+  linkVerifiedFirebaseUid,
 } from '@/lib/migration/supabaseUidLink';
 import { loadLastMergedUserId, saveLastMergedUserId } from '@/lib/notes/lastMergedUser';
 import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
@@ -28,6 +29,24 @@ export function activeFirebaseUid(): string | null {
     return getAuth().currentUser?.uid ?? null;
   } catch {
     // Firebase unavailable in this build/session.
+    return null;
+  }
+}
+
+/**
+ * A Firebase ID token for the live session, or null when there is none.
+ *
+ * This is the evidence the server needs: the local session object is not transferable, but the ID
+ * token is signed by Google for this project and names the uid in its `sub`.
+ */
+async function activeFirebaseIdToken(expectedUid: string): Promise<string | null> {
+  if (!isFirebaseConfigured()) return null;
+  try {
+    initFirebase();
+    const user = getAuth().currentUser;
+    if (!user || user.uid !== expectedUid) return null;
+    return await user.getIdToken();
+  } catch {
     return null;
   }
 }
@@ -139,10 +158,23 @@ export async function ensureFirebaseSupabaseMigration(supabaseUid: string): Prom
     linkedAt: Date.now(),
   });
 
+  // Prove the claim when the evidence is to hand. A verified link is the only exclusive kind, so
+  // this is also how a real owner reclaims a uid another account merely asserted. Falling back to
+  // the unverified claim is safe: it is not exclusive, and it locks nobody out.
+  let proven = false;
   try {
-    await linkFirebaseUidOnServer(firebaseUid);
+    const idToken = await activeFirebaseIdToken(firebaseUid);
+    if (idToken) proven = await linkVerifiedFirebaseUid(idToken);
   } catch (error) {
-    console.warn('[Notelikeus] Supabase link_firebase_uid failed:', error);
+    console.warn('[Notelikeus] Firebase uid verification failed:', error);
+  }
+
+  if (!proven) {
+    try {
+      await linkFirebaseUidOnServer(firebaseUid);
+    } catch (error) {
+      console.warn('[Notelikeus] Supabase link_firebase_uid failed:', error);
+    }
   }
 
   if (!meta?.firebaseNamespaceMigrated) {
