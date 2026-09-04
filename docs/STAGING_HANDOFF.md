@@ -326,14 +326,14 @@ What landed on `main`:
 - Docs: `docs/ANDROID_STAGING.md` (now on `main`).
 - Helper: `firstNonBlank` in `SupabaseBackendSelection.kt`.
 
-After this merge, #148 / #150 / #151 are **CONFLICTING** with `main` (they all edited `docs/BACKEND_MIGRATION.md`). Rebase those branches onto `548a3b8` before merging them.
+After this merge, #148 / #150 / #151 went dirty against `main`. **#150 and #151 were rebased onto `548a3b8`.** #148 (other agent) is still CONFLICTING.
 
 ### 7.3 Open — PR #150 backup attachments
 
 https://github.com/shareef01/notelikeus/pull/150  
 Branch: `cursor/backup-attachments-2354`  
-Tip: `047b168`  
-Status: **ready for review**, but **CONFLICTING** with `main` after #149. Rebase onto `548a3b8` before merge.
+Tip: `6f1bf84` (rebased onto `548a3b8`).  
+Status: **ready for review**, MERGEABLE after rebase. CI will re-run on the new tip.
 
 What it does:
 
@@ -350,8 +350,8 @@ This is the missing piece if the owner’s rehearsal backup includes images.
 
 https://github.com/shareef01/notelikeus/pull/151  
 Branch: `cursor/note-list-thumbnails-2354`  
-Tip: `0c7d3c2`  
-Status: **ready for review**. All 10 CI checks were green on `0c7d3c2`, but the PR is **CONFLICTING** with `main` after #149. Rebase onto `548a3b8` before merge.
+Tip: `801f764` (rebased onto `548a3b8`; previous green tip was `0c7d3c2`).  
+Status: **ready for review**, MERGEABLE after rebase. CI will re-run on the new tip.
 
 What it does:
 
@@ -378,7 +378,7 @@ What it does:
 - Ignore Wrangler local state.
 - Docs: recorded Pages redeploy + email-user RPC rehearsal.
 
-Independent feature-wise of #150–#151. All three remaining PRs touch `docs/BACKEND_MIGRATION.md` and are dirty against `main` after #149. Rebase onto `548a3b8` one at a time.
+Independent feature-wise of #150–#151. #150 and #151 were rebased onto `548a3b8`. This branch still needs a rebase (other agent owns it).
 
 ---
 
@@ -469,8 +469,8 @@ Only after 9.1 (and ideally 9.2):
 
 Priority order. Stop if the user only asked for a status doc.
 
-1. **Rebase #148, #150, and #151 onto `origin/main` (`548a3b8`).** All three are CONFLICTING after #149. Prefer rebasing `BACKEND_MIGRATION.md` so Live staging keeps the #149 Android/`local.properties` paragraph plus `docs/ANDROID_STAGING.md` pointer.
-2. **#151 is ready** (CI was green on `0c7d3c2`) but must be rebased before merge.
+1. **#150 and #151 are rebased onto `548a3b8` and mergeable.** Wait for CI on the new tips (`6f1bf84`, `801f764`). #148 (other agent) is still CONFLICTING — leave that branch unless asked to rebase it.
+2. **#151 is ready** (was green on `0c7d3c2`; rebased to `801f764`).
 3. Keep `docs/ANDROID_STAGING.md` on `main`; do not duplicate it here except as a pointer.
 4. If the owner reports a Pages / import bug: fix on a **new** `cursor/<name>-2354` branch from latest `origin/main`.
 5. Small hardening that is still in-scope:
@@ -528,7 +528,7 @@ Desktop add-note control: `aria-label="New note"` (the FAB is `md:hidden` on lar
 9. **Do not use `gcloud iap oauth-clients`** to add the Supabase redirect. Use the Google Cloud Console on the existing Web client (already done).
 10. **Cloud Agent Google login cannot finish.** Use an admin email user + Playwright for smoke; leave real Google to the owner.
 11. **Handoff of a Cloud Agent chat does not copy VM `.env`.** Desktop Cursor opens the conversation, not the pod secrets. Re-run `setup:staging` in the new environment.
-12. **#148 / #150 / #151 all edit `BACKEND_MIGRATION.md` and are dirty against `main` after #149.** Rebase before merge. This handoff file should stay a single-purpose doc so later PRs can link it instead of rewriting the same paragraph.
+12. **`BACKEND_MIGRATION.md` is a conflict magnet.** #150 and #151 were rebased after #149; #148 is still dirty. This handoff file should stay a single-purpose doc so later PRs can link it instead of rewriting the same paragraph.
 
 ---
 
@@ -551,7 +551,7 @@ If the user says **continue the migration**:
 Do not start Firebase retirement in production.
 Read docs/STAGING_HANDOFF.md and docs/BACKEND_MIGRATION.md Live staging.
 Check open PRs #148 #150 #151 before overlapping them (#149 already merged).
-Next implementable work is rebase those three onto origin/main (548a3b8) or fix whatever the owner reports from https://notelikeus-dev.pages.dev/ Google + Import backup.
+#150 and #151 are rebased onto 548a3b8. #148 still conflicts. Next implementable work is wait for their CI or fix whatever the owner reports from https://notelikeus-dev.pages.dev/ Google + Import backup.
 Android/desktop debug staging: npm run kotlin:staging-properties + rebuild; see docs/ANDROID_STAGING.md.
 Never set VITE_ALLOW_SUPABASE_PRODUCTION or NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION.
 ```
@@ -580,4 +580,4 @@ When you change live staging (new Worker URL, new Pages project, new PR, owner c
 2. Update this file (detail).
 3. Do not paste secrets.
 
-Last updated from Cloud Agent `bc-e9906a91-59df-4bbb-8bd0-a48c480d2354` against `origin/main` `548a3b8` (#149 merged). Open PRs: #148, #150, #151 — all CONFLICTING with `main`; rebase before merge.
+Last updated from Cloud Agent `bc-e9906a91-59df-4bbb-8bd0-a48c480d2354` against `origin/main` `548a3b8` (#149 merged). Open PRs: #148 (still CONFLICTING), #150 (`6f1bf84`, rebased), #151 (`801f764`, rebased).
