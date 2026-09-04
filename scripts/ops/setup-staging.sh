@@ -14,6 +14,9 @@
 #   SUPABASE_DB_PASSWORD    — database password (avoids interactive prompt on link)
 #   STAGING_WEB_ORIGIN      — Pages preview origin for OAuth redirects (default: http://localhost:5173)
 #   SKIP_CLOUDFLARE=1       — only push Supabase migrations
+#   FIREBASE_PROJECT_ID     — optional; enables verified Firebase uid linking in the worker
+#   SUPABASE_SERVICE_ROLE_KEY — optional; same. Bypasses RLS, so it is never written to any file
+#                             here — it goes straight to `wrangler secret put`.
 #   SKIP_SUPABASE=1         — only deploy Cloudflare worker (wrangler.toml must exist)
 #   DRY_RUN=1               — print planned steps without mutating remote state
 #
@@ -257,6 +260,11 @@ bucket_name = "${R2_BUCKET}"
 
 [vars]
 SUPABASE_URL = "${SUPABASE_URL}"
+# Firebase project whose ID tokens may prove ownership of a legacy uid. Not a secret (it ships in
+# every web build), but load-bearing: without it a validly signed token from any Firebase project
+# would verify. Leave unset to disable verified linking — clients fall back to an unverified claim,
+# which is not exclusive and locks nobody out.
+FIREBASE_PROJECT_ID = "${FIREBASE_PROJECT_ID:-}"
 # localhost and *.pages.dev are allowed in worker CORS; add extras here if needed.
 # ALLOWED_ORIGINS = "${STAGING_WEB_ORIGIN}"
 EOF
@@ -265,6 +273,11 @@ EOF
   info "Cloudflare: deploy attachments worker"
   if [[ "${DRY_RUN:-}" == "1" ]]; then
     info "[dry-run] wrangler secret put SUPABASE_ANON_KEY (in ${WORKER_DIR})"
+    if [[ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
+      info "[dry-run] wrangler secret put SUPABASE_SERVICE_ROLE_KEY (in ${WORKER_DIR})"
+    else
+      info "[dry-run] SUPABASE_SERVICE_ROLE_KEY unset — verified Firebase uid linking stays off"
+    fi
     info "[dry-run] npx wrangler deploy (in ${WORKER_DIR})"
     WORKER_URL="https://notelikeus-attachments.<account>.workers.dev"
   else
@@ -272,6 +285,12 @@ EOF
     (
       cd "$WORKER_DIR"
       printf '%s' "$SUPABASE_ANON_KEY" | npx wrangler secret put SUPABASE_ANON_KEY
+      # Optional: lets the worker call link_verified_firebase_uid after checking a Firebase ID
+      # token. This key bypasses RLS, so it is only set when the operator supplies it deliberately;
+      # without it the route answers 501 and clients keep using unverified (non-exclusive) claims.
+      if [[ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
+        printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+      fi
       # Stream logs and keep a copy so we can parse the workers.dev URL.
       npx wrangler deploy | tee "$deploy_log"
     )

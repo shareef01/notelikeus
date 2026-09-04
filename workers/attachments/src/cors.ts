@@ -1,5 +1,5 @@
 const ALLOWED_HEADERS = 'Authorization, Content-Type';
-const ALLOWED_METHODS = 'GET, PUT, DELETE, OPTIONS';
+const ALLOWED_METHODS = 'GET, POST, PUT, DELETE, OPTIONS';
 
 function extraOriginsFromEnv(allowedOrigins: string | undefined): string[] {
   return (allowedOrigins ?? '')
