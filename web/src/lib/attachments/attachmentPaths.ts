@@ -36,6 +36,13 @@ export function attachmentFromMetadata(
   };
 }
 
+export function firstImageAttachment(attachments: Attachment[]): Attachment | undefined {
+  return attachments.find((attachment) => {
+    const mime = attachment.mimeType?.toLowerCase() ?? '';
+    return attachment.type === 'image' || mime.startsWith('image/');
+  });
+}
+
 export function attachmentsKey(attachments: Attachment[]): string {
   return attachments
     .map(

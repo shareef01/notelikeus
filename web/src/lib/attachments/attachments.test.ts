@@ -4,6 +4,7 @@ import {
   isAttachmentObjectKeyForOwner,
   parseAttachmentObjectKey,
 } from '@/lib/attachments/attachmentObjectKey';
+import { firstImageAttachment } from '@/lib/attachments/attachmentPaths';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import {
   getAttachmentBlobStore,
@@ -57,6 +58,22 @@ describe('attachmentBlobStoreRegistry', () => {
     };
     setAttachmentBlobStoreForTests(custom);
     expect(getAttachmentBlobStore()).toBe(custom);
+  });
+});
+
+describe('firstImageAttachment', () => {
+  it('returns the first image and skips other types', () => {
+    expect(
+      firstImageAttachment([
+        { id: 'doc', noteId: 1, storagePath: 'pending:doc', type: 'file', mimeType: 'application/pdf' },
+        { id: 'pic', noteId: 1, storagePath: 'pending:pic', type: 'image', mimeType: 'image/png' },
+      ])?.id,
+    ).toBe('pic');
+    expect(
+      firstImageAttachment([
+        { id: 'doc', noteId: 1, storagePath: 'pending:doc', type: 'file', mimeType: 'application/pdf' },
+      ]),
+    ).toBeUndefined();
   });
 });
 

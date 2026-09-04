@@ -49,6 +49,14 @@ class AttachmentPathsTest {
     }
 
     @Test
+    fun firstImageAttachmentSkipsNonImages() {
+        val pdf = Attachment("doc", 1L, pendingStoragePath("doc"), "file", "application/pdf", 10)
+        val png = Attachment("pic", 1L, pendingStoragePath("pic"), "image", "image/png", 10)
+        assertEquals(png, firstImageAttachment(listOf(pdf, png)))
+        assertEquals(null, firstImageAttachment(listOf(pdf)))
+    }
+
+    @Test
     fun attachmentsKeyDetectsMetadataChanges() {
         val a = Attachment("1", 1L, pendingStoragePath("1"), "image", "image/png", 10)
         val b = a.copy(sizeBytes = 11)

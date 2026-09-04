@@ -69,6 +69,12 @@ fun mergeAttachmentsIntoNotes(
     }
 }
 
+fun firstImageAttachment(attachments: List<Attachment>): Attachment? =
+    attachments.firstOrNull { attachment ->
+        val mime = attachment.mimeType?.lowercase().orEmpty()
+        attachment.type.equals("image", ignoreCase = true) || mime.startsWith("image/")
+    }
+
 fun attachmentsKey(attachments: List<Attachment>): String =
     attachments
         .map { "${it.id}:${it.storagePath}:${it.mimeType.orEmpty()}:${it.sizeBytes ?: ""}" }
