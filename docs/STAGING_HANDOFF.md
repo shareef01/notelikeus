@@ -353,7 +353,7 @@ This is the missing piece if the owner’s rehearsal backup includes images.
 https://github.com/shareef01/notelikeus/pull/151  
 Branch: `cursor/note-list-thumbnails-2354`  
 Tip: `0c7d3c2`  
-Status: **draft** when last checked. MERGEABLE. Android `build` job was still pending; other CI jobs were green.
+Status: **ready for review**. MERGEABLE. All 10 CI checks green on `0c7d3c2` (Android `build` included).
 
 What it does:
 
@@ -470,7 +470,7 @@ Only after 9.1 (and ideally 9.2):
 Priority order. Stop if the user only asked for a status doc.
 
 1. **Land or rebase #148–#151.** They are independent features. `BACKEND_MIGRATION.md` will conflict. Merge one, rebase the others.
-2. **Mark #151 ready** once the Android `build` CI job is green.
+2. **#151 is ready** (CI green on `0c7d3c2`). Leave it unless review asks for changes.
 3. If #149 lands: keep `docs/ANDROID_STAGING.md`; do not duplicate it here except as a pointer.
 4. If the owner reports a Pages / import bug: fix on a **new** `cursor/<name>-2354` branch from latest `origin/main`.
 5. Small hardening that is still in-scope:
@@ -579,4 +579,4 @@ When you change live staging (new Worker URL, new Pages project, new PR, owner c
 2. Update this file (detail).
 3. Do not paste secrets.
 
-Last updated from Cloud Agent `bc-e9906a91-59df-4bbb-8bd0-a48c480d2354` against `origin/main` `92c750a`, with open PRs #148–#151 as listed above.
+Last updated from Cloud Agent `bc-e9906a91-59df-4bbb-8bd0-a48c480d2354` against `origin/main` `92c750a`, with open PRs #148–#151 as listed above. #151 marked ready after CI went green on `0c7d3c2`.
