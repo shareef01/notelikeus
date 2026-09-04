@@ -14,6 +14,11 @@ export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const ALLOWED_ATTACHMENT_MIME_TYPES: readonly string[] = [
   'image/png',
   'image/jpeg',
+  // Non-standard, but real: the backup format's allowlist accepts it on both Web and Kotlin
+  // (`backupAttachments.ts`, `BackupAttachments.kt`). Omitting it here meant a backup carrying
+  // `image/jpg` imported fine, stored a pending blob, and was then refused 415 on upload — the
+  // note would import "successfully" with its image silently gone.
+  'image/jpg',
   'image/webp',
   'image/gif',
   'image/heic',
