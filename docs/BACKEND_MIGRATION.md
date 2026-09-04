@@ -733,8 +733,8 @@ with `SET LOCAL ROLE` plus the caller's JWT claims.
 
 | Check | Result |
 | --- | --- |
-| All migrations apply to a virgin database, in order | **PASS** (8/8, repeated after each change) |
-| pgTAP suite (`supabase/tests/database`) | **PASS** — 77/77 assertions |
+| All migrations apply to a virgin database, in order | **PASS** (9/9, repeated after each change) |
+| pgTAP suite (`supabase/tests/database`) | **PASS** — 94/94 assertions |
 | Cross-user reads/writes on `notes`, tombstones, `sync_meta`, attachments, uid mappings | **PASS** — zero rows and zero mutations leaked in either direction |
 | Anonymous role against every table and RPC | **PASS** — nothing readable, nothing callable |
 | Direct-table forgery of `revision` / `owner_id` on `notes` and `note_tombstones` | **PASS** — blocked by `sync_mutation_guard` |
@@ -743,8 +743,8 @@ with `SET LOCAL ROLE` plus the caller's JWT claims.
 | Conflict matrix (stale base, recreate-over-live, resurrect-after-delete, idempotent delete, unknown note, id/local_id mismatch) | **PASS** — no implicit resurrection on any path |
 | `fetch_full_snapshot` size at 800 notes / 200 tombstones | 267 kB (≈ 3.3 MB projected at 10 000 notes) |
 | Secret scan of HEAD and full history | **CLEAN** — every hit is a placeholder, a comment, or a Postgres role name |
-| Web unit / typecheck / lint / build | **PASS** — 340/340, clean, 0 errors, bundle builds |
-| Attachments Worker | **PASS** — 24/24 (was 9, none covering the handler) |
+| Web unit / typecheck / lint / build | **PASS** — 344/344, clean, 0 errors, bundle builds |
+| Attachments Worker | **PASS** — 57/57 (was 9, none covering the handler) |
 | Ops scripts (`test:ops-export`) | **PASS** — 3/3 |
 | Kotlin desktop unit tests | **PASS** — 322/322 |
 | Android unit tests / release APK | **NOT RUN** — no Android SDK in the audit environment; CI (`android.yml`) is the authority |
@@ -816,11 +816,49 @@ See `20250904000000_mapping_and_attachment_guards.sql` and the commit that intro
    `idempotent` inside its `status === 'conflict'` branch, so the cleanup was unreachable and a
    stale revision was left behind. Same family as the rehearsal script expecting `"ok"` (#148).
 
+### Firebase uid ownership — resolved (owner-authorised, 2026-09-04)
+
+The audit's one open security item. `link_firebase_uid` accepted any uid from any authenticated
+session, and `firebase_uid` was the table's primary key, so the first account to name a uid held it
+forever — a durable denial-of-migration against a named victim. (The `EXISTS` guard inside the RPC
+never caught that: it runs SECURITY INVOKER under RLS and cannot see another owner's row. The unique
+violation was doing the work.)
+
+The fix separates a **claim** from a **proof**:
+
+| | Written by | Exclusive? | Effect of a squatter |
+| --- | --- | --- | --- |
+| Claim (`verified = false`) | `link_firebase_uid`, any authenticated session | **No** | None — the real owner can still claim, and still prove |
+| Proof (`verified = true`) | `link_verified_firebase_uid`, `service_role` only | **Yes** | Displaces unproven claims on the same uid |
+
+A proof is recorded only after a Firebase ID token has been verified: RS256 signature checked
+against Google's published certificates, `aud`/`iss` pinned to the configured Firebase project,
+`exp`/`iat`/`auth_time` checked with 60s skew, and the uid taken from the token's `sub` — never from
+the request body. That runs in the existing attachments Worker
+(`workers/attachments/src/firebaseIdToken.ts`), which already validates Supabase access tokens, so
+both halves of the identity are checked in one place: *this Supabase user* and *this Firebase user*
+are the same person, right now.
+
+Verification is optional. Without `FIREBASE_PROJECT_ID` and `SUPABASE_SERVICE_ROLE_KEY` the route
+answers 501 and clients fall back to an unverified claim — which is no longer exclusive, so the
+lockout is gone either way. The service-role key bypasses RLS and widens what a Worker compromise
+would reach; it is scoped to that one RPC, never written to a file, and set only when the operator
+supplies it.
+
+**Tested:** 16 pgTAP assertions for the claim/proof model (squatting, displacement, two-proof
+conflict, RLS-blind exclusivity, provenance across re-linking) and 33 Worker tests for the verifier
+and route — algorithm confusion (`alg: none`, HS256), wrong-project tokens, forged signatures,
+post-signing payload swaps, expiry and skew, unknown key ids, malformed input, and Google being
+unreachable. The privileged RPC is never called unless a token actually verified.
+
+**Residual:** an attacker can still write an unverified claim naming someone else's uid. It is not
+exclusive, confers no server-side access, and is displaced the moment the real owner proves
+ownership — but it is a row they caused. Rate limiting on the Worker is not implemented.
+
 ### Open findings — not fixed here
 
 | Finding | Severity | Why it was left |
 | --- | --- | --- |
-| `link_firebase_uid` still accepts any uid server-side. The client now proves ownership, but the RPC cannot. Proving it server-side means verifying a Firebase ID token (an Edge Function against Google's public keys) — a design decision, not a patch. Until then a determined caller can still squat an unlinked uid and lock its owner out. | P2 | Needs an owner decision; see **Cutover gate** below |
 | Desktop `readLocalProperty` (PR #149) scans up to six parent directories of the process CWD for `local.properties` and reads the Supabase URL/key/worker URL from it regardless of `isDebug`. `remoteBackend` is still `isDebug`-gated, so a packaged build stays on Firebase — but a cutover build would take its endpoint from a directory scan. | P2 | Belongs to #149 |
 | `note_attachments` is not in the realtime publication, so an attachment added on one client is not signalled to another until a note change or the 30 s fallback. | P3 | Behavioural gap, not a defect |
 | `nextLocalNoteIdAfter` returns `Math.max(maxId + 1, Date.now() * 1000 + rand)` ≈ 1.8e15 today, safely inside `Number.MAX_SAFE_INTEGER` (9.007e15, reached around year 2255). Backup import re-allocates ids rather than trusting the file, so a hostile `localId` cannot poison the allocator. `local_id` is `BIGINT`, and a value above 2^53-1 does lose precision in `JSON.parse` — verified — but nothing generates one. | P4 | Not reachable; recorded so it is not re-derived |
@@ -867,7 +905,8 @@ Ticked items were established by the 2026-09-04 audit; the rest are owner-gated 
 - [x] Worker rejects unauthenticated, cross-user and oversized requests (tested)
 - [x] Production-isolation guards tested (Firebase host, lookalike hosts, missing flags, secret key)
 - [x] No credential in HEAD or git history
-- [ ] **Firebase uid ownership proven server-side** — the client proves it; `link_firebase_uid` does not
+- [x] **Firebase uid ownership proven server-side** — Firebase ID token verified in the Worker; squatting no longer locks anyone out
+- [ ] Owner sets `FIREBASE_PROJECT_ID` + `SUPABASE_SERVICE_ROLE_KEY` on the staging Worker and confirms a verified link end-to-end
 - [ ] Web Google sign-in completed on `notelikeus-dev.pages.dev` (a 302 to accounts.google.com is not a sign-in)
 - [ ] Web backup import completed on staging, verified after reload and re-login
 - [ ] Attachment import verified end-to-end (bytes in R2, metadata row, image renders after reload)
