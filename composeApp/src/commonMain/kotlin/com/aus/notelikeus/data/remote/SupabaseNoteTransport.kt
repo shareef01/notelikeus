@@ -86,9 +86,24 @@ class SupabaseNoteTransport(
     }
 
     override suspend fun deleteNotes(uid: String, noteIds: List<Long>) {
+        // The revision map lives only in this instance, so a delete issued before the first
+        // download of the process — NoteSyncEngine.deleteNote() goes straight here — had no base
+        // revision and was dropped without reaching the server. The note stayed in the cloud and
+        // came back on the next device that synced. Fetching once recovers the revisions the map
+        // would have held; only the full-sync path used to populate it, and only by luck of
+        // ordering.
+        var refreshed = false
         for (noteId in noteIds) {
-            val baseRevision = revisionMap(uid)[noteId]
+            var baseRevision = revisionMap(uid)[noteId]
+            if (baseRevision == null && !refreshed) {
+                refreshed = true
+                runCatching { fetchNotes(uid) }
+                baseRevision = revisionMap(uid)[noteId]
+            }
+            // Still unknown after a refresh: the note is not on the server, so there is nothing to
+            // tombstone. apply_note_delete would answer note_not_found.
             if (baseRevision == null) continue
+
             val response = rpc.callRpc(
                 "apply_note_delete",
                 buildJsonObject {
@@ -97,8 +112,29 @@ class SupabaseNoteTransport(
                 },
             )
             when (response.stringField("status")) {
-                "applied" -> {
-                    response.longId("revision")?.let { revisionMap(uid).remove(noteId) }
+                // Covers the idempotent answer too, which carries no revision — keying the cleanup
+                // on `revision` left a stale entry behind for an already-tombstoned note.
+                "applied" -> revisionMap(uid).remove(noteId)
+                // Another device moved the note on. Take the revision the server reported and
+                // retry once, so a concurrent edit does not leave the delete unapplied forever.
+                "conflict" -> {
+                    val current = response["current"]?.jsonObject?.longId("revision")
+                    if (current != null && current != baseRevision) {
+                        val retry = rpc.callRpc(
+                            "apply_note_delete",
+                            buildJsonObject {
+                                put("p_note_id", JsonPrimitive(noteId.toString()))
+                                put("p_base_revision", JsonPrimitive(current))
+                            },
+                        )
+                        if (retry.stringField("status") == "applied") {
+                            revisionMap(uid).remove(noteId)
+                        } else {
+                            revisionMap(uid)[noteId] = current
+                        }
+                    } else {
+                        revisionMap(uid).remove(noteId)
+                    }
                 }
             }
         }
