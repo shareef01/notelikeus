@@ -743,10 +743,10 @@ with `SET LOCAL ROLE` plus the caller's JWT claims.
 | Conflict matrix (stale base, recreate-over-live, resurrect-after-delete, idempotent delete, unknown note, id/local_id mismatch) | **PASS** — no implicit resurrection on any path |
 | `fetch_full_snapshot` size at 800 notes / 200 tombstones | 267 kB (≈ 3.3 MB projected at 10 000 notes) |
 | Secret scan of HEAD and full history | **CLEAN** — every hit is a placeholder, a comment, or a Postgres role name |
-| Web unit / typecheck / lint | **PASS** — 327/327, clean, 0 errors |
+| Web unit / typecheck / lint | **PASS** — 333/333, clean, 0 errors |
 | Attachments Worker | **PASS** — 24/24 (was 9, none covering the handler) |
 | Ops scripts (`test:ops-export`) | **PASS** — 3/3 |
-| Kotlin desktop unit tests | **PASS** — 316/316 |
+| Kotlin desktop unit tests | **PASS** — 322/322 |
 | Android unit tests / release APK | **NOT RUN** — no Android SDK in the audit environment; CI (`android.yml`) is the authority |
 
 ### Defects found and fixed
@@ -783,7 +783,25 @@ See `20250904000000_mapping_and_attachment_guards.sql` and the commit that intro
 6. **A secret `sb_…` key could reach the browser bundle (fixed).** The ops scripts reject them, but
    a hand-edited `web/.env.staging` was inlined by `import.meta.env` unchecked. The backend
    selector now refuses to enable Supabase unless the anon key is a public JWT.
-7. **`idempotent` was read off the wrong branch (fixed).** `apply_note_delete` answers an
+7. **An empty cloud snapshot hid a migrated library (P1, fixed).** `syncNotesWithCloud` refuses to
+   reconcile an empty cloud against known ids, but it is keyed on `previouslyKnownCloudIds`, which
+   is empty for an account that has never synced — so it did not cover the case that actually
+   happens during migration. `ensureFirebaseSupabaseMigration` moves the user's library into the
+   Supabase owner namespace *before* anything is uploaded, so the first `fetch_full_snapshot`
+   legitimately answers with zero notes. Both `hydrateIndexedDbFromRemote` and the realtime
+   `onData` handler then called `setNotes([])`. IndexedDB survived (`putNotes` is additive, so
+   nothing was destroyed), but the in-memory store is what the upload path reads as "local notes",
+   so the library was invisible *and* never pushed — and it re-blanked on every subsequent load.
+   An empty snapshot no longer replaces a library the device still holds; a library emptied by
+   deletion still applies, because tombstoned notes do not count as held.
+8. **Kotlin deletes were dropped on a cold start (P2, fixed).** `SupabaseNoteTransport.revisions`
+   is per-instance and never persisted, and `NoteSyncEngine.deleteNote()` calls the transport
+   directly with no download first — so `deleteNotes` found no base revision and returned without
+   calling the RPC at all. Only the full-sync path repopulated the map, and only by luck of
+   ordering. It now refreshes once per batch, retries a revision conflict against the revision the
+   server reports, and clears the cached revision on the idempotent answer (which carries no
+   `revision`, so the old cleanup never ran).
+9. **`idempotent` was read off the wrong branch (fixed).** `apply_note_delete` answers an
    already-tombstoned note with `{status: 'applied', idempotent: true}`; the web client looked for
    `idempotent` inside its `status === 'conflict'` branch, so the cleanup was unreachable and a
    stale revision was left behind. Same family as the rehearsal script expecting `"ok"` (#148).
@@ -793,7 +811,6 @@ See `20250904000000_mapping_and_attachment_guards.sql` and the commit that intro
 | Finding | Severity | Why it was left |
 | --- | --- | --- |
 | `link_firebase_uid` still accepts any uid server-side. The client now proves ownership, but the RPC cannot. Proving it server-side means verifying a Firebase ID token (an Edge Function against Google's public keys) — a design decision, not a patch. Until then a determined caller can still squat an unlinked uid and lock its owner out. | P2 | Needs an owner decision; see **Cutover gate** below |
-| `SupabaseNoteTransport.revisions` is an in-memory map with no persistence, so after a cold start `deleteNote()` finds no base revision and silently skips the RPC. The next full `syncWithCloud` re-issues it (`fetchNotes` repopulates the map first), so deletes converge — but late. Web persists the same state in IndexedDB. | P2 | Kotlin sync change; larger than this audit's scope |
 | `bootstrap.ts` throws `BootFailure` and calls `initFirebase()` unconditionally, so a Supabase-selected build still cannot boot without full Firebase web config. Loud, not silent — but it is a cutover blocker, and it means "Supabase staging" is not exercising a Firebase-free client. | P2 | Decoupling belongs with the cutover |
 | Desktop `readLocalProperty` (PR #149) scans up to six parent directories of the process CWD for `local.properties` and reads the Supabase URL/key/worker URL from it regardless of `isDebug`. `remoteBackend` is still `isDebug`-gated, so a packaged build stays on Firebase — but a cutover build would take its endpoint from a directory scan. | P2 | Belongs to #149 |
 | `note_attachments` is not in the realtime publication, so an attachment added on one client is not signalled to another until a note change or the 30 s fallback. | P3 | Behavioural gap, not a defect |
@@ -837,7 +854,7 @@ Ticked items were established by the 2026-09-04 audit; the rest are owner-gated 
 - [x] RPC grants match what the function bodies enforce
 - [x] Conflict, tombstone and no-resurrection semantics verified
 - [x] `pull_changes` pagination verified past one page (1 200 changes)
-- [x] Empty-cloud guard present on the Web reconcile path
+- [x] Empty cloud never replaces a library the device still holds (reconcile, hydrate, realtime)
 - [x] Worker rejects unauthenticated, cross-user and oversized requests (tested)
 - [x] Production-isolation guards tested (Firebase host, lookalike hosts, missing flags, secret key)
 - [x] No credential in HEAD or git history
@@ -849,7 +866,7 @@ Ticked items were established by the 2026-09-04 audit; the rest are owner-gated 
 - [ ] Desktop staging build proven
 - [ ] Web / Android / Desktop convergence on one staging account
 - [ ] Offline reconciliation and account switching proven on each client
-- [ ] Kotlin revision state persisted across process restarts
+- [x] Kotlin deletes reach the server without a prior download in the same process
 - [ ] Web boots without Firebase config
 - [ ] PWA service-worker behaviour across a backend change modelled
 - [ ] Rollback plan reviewed by the owner

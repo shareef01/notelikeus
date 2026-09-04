@@ -62,6 +62,12 @@ function applyNotes(userId: string, incoming: Note[]) {
   });
 }
 
+/** Whether the in-memory store still holds notes that have not been deleted on this device. */
+function storeHoldsLiveNotes(): boolean {
+  const isDeleted = useTombstoneStore.getState().isDeleted;
+  return useNotesStore.getState().notes.some((note) => !isDeleted(note.id));
+}
+
 let reconcileInFlight: Promise<void> | null = null;
 let lastReconcileStartedAt = 0;
 let lastSnapshotAppliedAt = 0;
@@ -193,6 +199,15 @@ export function startNotesRealtimeSync(userId: string): void {
       }
 
       lastSnapshotAppliedAt = Date.now();
+
+      // Same rule as the delete-on-absence guard above, for the notes themselves: an empty
+      // snapshot must not replace a library this device is still holding. That happens for real
+      // during a Firebase→Supabase migration, where local notes exist under the Supabase owner id
+      // before the first upload. Blanking the store would also empty what reconcileNow() reads as
+      // "local notes", so the pending notes would never be uploaded. Notes already tombstoned do
+      // not count as held — deleting the last note must still leave an empty library.
+      if (live.length === 0 && storeHoldsLiveNotes()) return;
+
       applyNotes(userId, live);
     },
     (error) => {
