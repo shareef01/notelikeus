@@ -26,7 +26,9 @@ select throws_ok(
       false, false, false, 0::integer, null::bigint,
       '[]'::jsonb, '[]'::jsonb
     ) $$,
-  '28000',
+  -- 42501, not 28000: since 20250904000000 anon has no EXECUTE grant, so PostgREST is
+  -- refused before the function body's own 'not authenticated' check can run.
+  '42501',
   null,
   'anonymous cannot call apply_note_change'
 );

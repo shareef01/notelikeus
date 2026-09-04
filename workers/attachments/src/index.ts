@@ -1,5 +1,13 @@
 import { resolveAuthenticatedUserId, type WorkerEnv } from './auth';
 import { withAttachmentCors } from './cors';
+import {
+  AttachmentTooLargeError,
+  declaredContentLength,
+  isAllowedAttachmentMimeType,
+  MAX_ATTACHMENT_BYTES,
+  normalizeMimeType,
+  readBodyWithinLimit,
+} from './limits';
 import { buildAttachmentObjectKey, parseAttachmentPath } from './objectKey';
 
 export type { WorkerEnv };
@@ -38,8 +46,29 @@ async function putAttachment(
   env: WorkerEnv,
   objectKey: string,
 ): Promise<Response> {
-  const body = await request.arrayBuffer();
-  const mimeType = request.headers.get('Content-Type')?.trim() || 'application/octet-stream';
+  const contentType = request.headers.get('Content-Type');
+  if (!isAllowedAttachmentMimeType(contentType)) {
+    return new Response('Unsupported Media Type', { status: 415 });
+  }
+
+  // Refuse a declared oversize before reading a byte; the streaming read below is what catches a
+  // caller that lies about, or omits, Content-Length.
+  const declared = declaredContentLength(request.headers.get('Content-Length'));
+  if (declared != null && declared > MAX_ATTACHMENT_BYTES) {
+    return new Response('Payload Too Large', { status: 413 });
+  }
+
+  let body: Uint8Array;
+  try {
+    body = await readBodyWithinLimit(request.body, MAX_ATTACHMENT_BYTES);
+  } catch (error) {
+    if (error instanceof AttachmentTooLargeError) {
+      return new Response('Payload Too Large', { status: 413 });
+    }
+    throw error;
+  }
+
+  const mimeType = normalizeMimeType(contentType);
   await env.ATTACHMENTS_BUCKET.put(objectKey, body, {
     httpMetadata: { contentType: mimeType },
   });
@@ -54,6 +83,10 @@ async function getAttachment(env: WorkerEnv, objectKey: string): Promise<Respons
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set('etag', object.httpEtag);
+  // Stored bytes are user-supplied. Never let a browser sniff them into something executable,
+  // and never let one render in this Worker's origin.
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('Content-Disposition', 'attachment');
   return new Response(object.body, { headers });
 }
 

@@ -65,7 +65,9 @@ select results_eq(
 select tests.clear_authentication();
 select throws_ok(
   $$ select public.register_note_attachment('att-2', 'note-1', 'owners/x/notes/note-1/att-2', 'image/png', 1) $$,
-  '28000',
+  -- 42501, not 28000: since 20250904000000 anon has no EXECUTE grant, so PostgREST is
+  -- refused before the function body's own 'not authenticated' check can run.
+  '42501',
   null,
   'anonymous cannot register attachments'
 );
