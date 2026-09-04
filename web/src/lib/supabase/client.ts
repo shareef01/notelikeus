@@ -30,6 +30,7 @@ export function isSupabaseBackendEnabled(): boolean {
     allowProduction: import.meta.env.VITE_ALLOW_SUPABASE_PRODUCTION,
     allowStaging: import.meta.env.VITE_ALLOW_SUPABASE_STAGING,
     supabaseUrl: loadSupabaseUrl(),
+    anonKey: loadSupabaseAnonKey(),
     hostname: typeof window !== 'undefined' ? window.location.hostname : '',
   });
 }
