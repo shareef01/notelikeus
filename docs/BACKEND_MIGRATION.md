@@ -1219,6 +1219,40 @@ consistent with "no session yet" rather than a defect.
 install the staging build, at the owner's explicit instruction, with `allowBackup="false"` making an
 adb backup impossible. Notes already in Firestore are unaffected.
 
+### Desktop staging — blocked by a Google OAuth audience mismatch, 2026-09-05
+
+Launched with `./gradlew :composeApp:run --no-daemon` (no-daemon so the `NOTELIKEUS_*` exports reach
+the app; a reused daemon does not inherit them) against the staging Supabase project.
+
+**Backend selection works.** The app started, chose Supabase, and reached Supabase Auth — the error
+it surfaced is a Supabase error, not a Firebase one. That confirms the desktop env-var path.
+
+**Sign-in fails**, with a precise cause:
+
+```
+Supabase RPC auth failed: HTTP 400
+{"error":"invalid request",
+ "error_description":"Unacceptable audience in id_token: [<desktop client id>]"}
+```
+
+The chain: desktop signs in with `DesktopOAuthConfig.CLIENT_ID` — a Desktop/installed-app OAuth
+client hardcoded in `PlatformModule.kt` — so Google issues an `id_token` whose `aud` is that client.
+`SupabaseAuthApi` posts it to `/auth/v1/token?grant_type=id_token`, and Supabase rejects it because
+that audience is not among the client IDs configured for its Google provider.
+
+**Why Android works and desktop does not.** The staging Google provider was enabled from the
+existing Firebase *web* client, and the Android app requests its `id_token` against that same web
+client. Desktop is the only client using its own OAuth identity, so it is the only one rejected.
+
+**Fix — configuration, not code.** In Supabase → Authentication → Providers → Google, add the
+desktop client id to **Authorized Client IDs** (a comma-separated list of additional accepted
+audiences). That field exists for exactly this case: native and desktop clients using
+`grant_type=id_token`. No code change is needed, and nothing about the desktop client id is secret —
+it already ships compiled into the desktop application.
+
+**This recurs at cutover.** Production Supabase will need the same entry, or desktop users cannot
+sign in after the switch. It belongs on the cutover checklist, not just the staging one.
+
 ### Rollback
 
 Redeploy the previous Worker version from the Cloudflare dashboard, or
