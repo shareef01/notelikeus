@@ -29,14 +29,24 @@ plugins {
  * non-confidential (RFC 8252 — PKCE is what secures this flow), so that is the accepted trade;
  * what matters is that it stays out of version control.
  */
+fun localOrEnv(envName: String, propertyName: String): String {
+    System.getenv(envName)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+    val file = rootProject.file("local.properties")
+    if (!file.exists()) return ""
+    return Properties()
+        .apply { file.inputStream().use { stream -> load(stream) } }
+        .getProperty(propertyName)
+        ?.trim()
+        .orEmpty()
+}
+
+fun quotedBuildConfig(value: String): String {
+    val escaped = value.replace("\\", "\\\\").replace("\"", "\\\"")
+    return "\"$escaped\""
+}
+
 val oauthClientSecret: String =
-    System.getenv("NOTELIKEUS_OAUTH_CLIENT_SECRET")
-        ?: rootProject.file("local.properties").takeIf { it.exists() }?.let { file ->
-            Properties()
-                .apply { file.inputStream().use { stream -> load(stream) } }
-                .getProperty("notelikeus.oauthClientSecret")
-        }
-        ?: ""
+    localOrEnv("NOTELIKEUS_OAUTH_CLIENT_SECRET", "notelikeus.oauthClientSecret")
 
 val generateDesktopSecrets by tasks.registering {
     val outputDir = layout.buildDirectory.dir("generated/desktopSecrets/kotlin")
@@ -218,6 +228,39 @@ android {
         minSdk = 26
         // Instrumented tests run on a device because SQLCipher's native libraries only exist there.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Empty on release / CI so Play and unsigned release APKs stay on Firebase.
+        buildConfigField("String", "NOTELIKEUS_REMOTE_BACKEND", "\"\"")
+        buildConfigField("String", "NOTELIKEUS_SUPABASE_URL", "\"\"")
+        buildConfigField("String", "NOTELIKEUS_SUPABASE_ANON_KEY", "\"\"")
+        buildConfigField("String", "NOTELIKEUS_ATTACHMENTS_WORKER_URL", "\"\"")
+    }
+    buildTypes {
+        getByName("debug") {
+            // Device processes do not see shell env vars. Bake gitignored local.properties
+            // (or NOTELIKEUS_* env at compile time) into debug BuildConfig only.
+            buildConfigField(
+                "String",
+                "NOTELIKEUS_REMOTE_BACKEND",
+                quotedBuildConfig(localOrEnv("NOTELIKEUS_REMOTE_BACKEND", "notelikeus.remoteBackend")),
+            )
+            buildConfigField(
+                "String",
+                "NOTELIKEUS_SUPABASE_URL",
+                quotedBuildConfig(localOrEnv("NOTELIKEUS_SUPABASE_URL", "notelikeus.supabaseUrl")),
+            )
+            buildConfigField(
+                "String",
+                "NOTELIKEUS_SUPABASE_ANON_KEY",
+                quotedBuildConfig(localOrEnv("NOTELIKEUS_SUPABASE_ANON_KEY", "notelikeus.supabaseAnonKey")),
+            )
+            buildConfigField(
+                "String",
+                "NOTELIKEUS_ATTACHMENTS_WORKER_URL",
+                quotedBuildConfig(
+                    localOrEnv("NOTELIKEUS_ATTACHMENTS_WORKER_URL", "notelikeus.attachmentsWorkerUrl"),
+                ),
+            )
+        }
     }
     buildFeatures {
         buildConfig = true
