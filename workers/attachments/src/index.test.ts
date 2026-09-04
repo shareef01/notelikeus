@@ -213,6 +213,20 @@ describe('attachment worker upload limits', () => {
     expect(bucket.objects.size).toBe(0);
   });
 
+  it('accepts every MIME type the backup format can produce', async () => {
+    // The backup allowlist and this one must agree, or an imported image is dropped at upload.
+    for (const contentType of ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']) {
+      const response = await handleAttachmentRequest(
+        request('PUT', `/v1/attachments/1/${contentType.replace(/\W/g, '')}`, USER_A, {
+          body: new Uint8Array([1]),
+          headers: { 'Content-Type': contentType },
+        }),
+        env,
+      );
+      expect(response.status, contentType).toBe(200);
+    }
+  });
+
   it('rejects an upload with no content type at all', async () => {
     const response = await handleAttachmentRequest(
       request('PUT', '/v1/attachments/1/x', USER_A, { body: new Uint8Array([1]) }),
