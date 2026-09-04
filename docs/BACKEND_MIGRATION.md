@@ -747,7 +747,7 @@ with `SET LOCAL ROLE` plus the caller's JWT claims.
 | Attachments Worker | **PASS** — 58/58 (was 9, none covering the handler) |
 | Ops scripts (`test:ops-export`) | **PASS** — 3/3 |
 | Kotlin desktop unit tests | **PASS** — 330/330 |
-| Android unit tests / release APK | **NOT RUN** — no Android SDK in the audit environment; CI (`android.yml`) is the authority |
+| Android unit tests | **PASS** — 407 (composeApp 390, androidApp 17), 0 failures, run on the owner's machine with the SDK present |
 
 ### Defects found and fixed
 
@@ -954,7 +954,7 @@ Ticked items were established by the 2026-09-04 audit; the rest are owner-gated 
 - [ ] Web Google sign-in completed on `notelikeus-dev.pages.dev` (a 302 to accounts.google.com is not a sign-in)
 - [ ] Web backup import completed on staging, verified after reload and re-login
 - [ ] Attachment import verified end-to-end (bytes in R2, metadata row, image renders after reload)
-- [ ] Android staging debug build proven on-device (blocked on #149)
+- [ ] Android staging debug build proven on-device (blocked on #149; release isolation now verified, see above)
 - [ ] Desktop staging build proven
 - [ ] Web / Android / Desktop convergence on one staging account
 - [ ] Offline reconciliation and account switching proven on each client
@@ -1140,6 +1140,35 @@ that the Worker verified an RS256 Firebase ID token against Google's published k
 force the migration to re-run. That destroys the Firebase session, which lives in IndexedDB — so the
 bridge correctly found nothing and never called the Worker. The correct reset is to delete only the
 app's `notelikeus-notes` database and leave `firebaseLocalStorageDb` alone.
+
+### PR #149 release isolation — verified, 2026-09-04
+
+The safety property this PR rests on had never been checked: debug builds bake staging Supabase
+values into `BuildConfig`, so a release build must not. Nothing in CI asserts it — `android.yml`
+runs `assembleRelease` but inspects nothing.
+
+Tested against the PR head in an isolated worktree, with real staging values in `local.properties`
+— the exact state of an operator who has run `npm run kotlin:staging-properties`:
+
+| BuildConfig field | debug | release |
+| --- | --- | --- |
+| `NOTELIKEUS_REMOTE_BACKEND` | `"supabase"` | `""` |
+| `NOTELIKEUS_SUPABASE_URL` | staging URL | `""` |
+| `NOTELIKEUS_SUPABASE_ANON_KEY` | staging anon JWT | `""` |
+| `NOTELIKEUS_ATTACHMENTS_WORKER_URL` | staging Worker | `""` |
+
+Empty is sufficient, not merely tidy. `firstNonBlank` discards empty strings, so `remoteBackendEnv`
+resolves to null, and `isSupabaseRemoteSelected` returns false on its first line — Firebase.
+
+There is a second, independent guard: the production allow flag is read **only** from
+`System.getenv`, on both Android and desktop. It is never a `BuildConfig` field and never read from
+`local.properties`, so it cannot be baked into an APK at all. `write-kotlin-staging-properties.mjs`
+additionally refuses to write it. A release APK therefore has no route to Supabase even if every
+other value were present.
+
+**Recommendation unchanged:** merge after #148. The isolation property holds; what is still missing
+is a CI assertion so it cannot regress silently. A test that generates both variants' `BuildConfig`
+and asserts the release fields are empty would close that.
 
 ### Rollback
 
