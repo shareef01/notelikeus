@@ -38,6 +38,21 @@ export async function hydrateIndexedDbFromRemote(userId: string): Promise<void> 
     firebaseHydrated: true,
     hydratedAt: Date.now(),
   });
+
+  // An empty snapshot is not authoritative over a populated local namespace. A Firebase→Supabase
+  // migration puts the user's whole library under the Supabase owner id *before* anything is
+  // uploaded, so the first snapshot legitimately answers with zero notes; the same shape appears
+  // when the wrong account is signed in. Showing the local notes keeps them on screen and keeps
+  // them in the in-memory store, which is what the upload path reads — blanking it here would
+  // strand them in IndexedDB, invisible and never pushed.
+  if (snapshot.length === 0) {
+    const local = await listNotes(userId);
+    if (local.length > 0) {
+      useNotesStore.getState().setNotes(local);
+      return;
+    }
+  }
+
   useNotesStore.getState().setNotes(snapshot);
 }
 
