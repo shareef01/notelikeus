@@ -1,5 +1,7 @@
 import { clearOwner } from '@/lib/local/notesLocalRepository';
 import { isFirebaseConfigured } from '@/lib/config';
+import { isSupabaseBackendEnabled, loadSupabaseAnonKey, loadSupabaseUrl } from '@/lib/supabase/client';
+import { isBrowserSafeSupabaseKey } from '@/lib/supabase/backendFlag';
 import { initFirebase } from '@/lib/firebase';
 import { LEGACY_NOTES_STORAGE_KEY } from '@/lib/notes/legacyLocalMigration';
 import { LAST_MERGED_USER_STORAGE_KEY } from '@/lib/notes/lastMergedUser';
@@ -15,7 +17,12 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { useUiStore } from '@/store/uiStore';
 
-export type BootFailureCode = 'storage' | 'firebase-config' | 'firebase-init' | 'unknown';
+export type BootFailureCode =
+  | 'storage'
+  | 'firebase-config'
+  | 'firebase-init'
+  | 'supabase-config'
+  | 'unknown';
 
 export class BootFailure extends Error {
   readonly code: BootFailureCode;
@@ -182,6 +189,38 @@ export async function bootstrapApp(): Promise<void> {
   }
 
   ensureReminderSync();
+
+  // Boot requires the backend this build actually selected. Firebase is still the default, so in
+  // production this is the same check it always was — `isSupabaseBackendEnabled()` is false there
+  // unless an owner-authorised cutover build sets the allow flag. Requiring Firebase
+  // unconditionally meant a Supabase build could not start without full Firebase web config, which
+  // is a cutover blocker and kept staging from ever exercising a Firebase-free client.
+  if (isSupabaseBackendEnabled()) {
+    if (!isBrowserSafeSupabaseKey(loadSupabaseAnonKey())) {
+      throw new BootFailure(
+        'Supabase anon key is missing or is not a public key for this web build.',
+        'supabase-config',
+      );
+    }
+    if (!loadSupabaseUrl().trim()) {
+      throw new BootFailure(
+        'Supabase URL is not configured for this web build.',
+        'supabase-config',
+      );
+    }
+    // Firebase stays optional here but is still initialised when present: the Phase 6 migration
+    // bridge reads the live Firebase session to prove ownership of a legacy uid, and a staging
+    // build that carries Firebase config should keep that path working. A failure is not fatal —
+    // Supabase is the selected backend.
+    if (isFirebaseConfigured()) {
+      try {
+        initFirebase();
+      } catch (error) {
+        console.warn('[Notelikeus] Firebase init failed; continuing on Supabase:', error);
+      }
+    }
+    return;
+  }
 
   if (!isFirebaseConfigured()) {
     throw new BootFailure(
