@@ -126,7 +126,7 @@ interface ProfileSheetProps {
   userEmail: string | null;
   syncStatus: string;
   syncedNoteCount: number;
-  onExportBackup: () => void;
+  onExportBackup: () => void | Promise<void>;
   onImportBackup: () => void;
   onPrivacyPolicy: () => void;
   onSignIn: () => void;

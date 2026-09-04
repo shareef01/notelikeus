@@ -46,9 +46,9 @@ export function useAccountActions({
     }
   };
 
-  const exportBackup = () => {
+  const exportBackup = async () => {
     try {
-      exportNotesBackup(notes);
+      await exportNotesBackup(notes);
       toast('Backup exported');
     } catch (error) {
       toast(messageOf(error, 'Export failed'), 'error');

@@ -86,6 +86,44 @@ class NoteBackupRoundtripTest {
     }
 
     @Test
+    fun `import restores version 3 attachment bytes`() = runTest {
+        val encoded = encodeAttachmentBytes(byteArrayOf(9, 8, 7))
+        val json = JSONObject().apply {
+            put("version", 3)
+            put("notes", org.json.JSONArray().apply {
+                put(JSONObject().apply {
+                    put("title", "Image")
+                    put("content", "")
+                    put("timestamp", 1L)
+                    put("color", 0)
+                    put("attachments", org.json.JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("id", "att-new")
+                            put("type", "image")
+                            put("mimeType", "image/png")
+                            put("dataBase64", encoded)
+                            put("extension", "png")
+                        })
+                    })
+                })
+            })
+        }.toString()
+
+        stubImportRepository()
+        coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
+        coEvery { repository.getNextNotePosition() } returns 0
+
+        importer.importFromJson(json)
+
+        val captured = slot<Note>()
+        coVerify { repository.insertNoteWithoutSync(capture(captured)) }
+        assertEquals(1, captured.captured.attachments.size)
+        assertEquals("att-new", captured.captured.attachments[0].id)
+        assertEquals("image/png", captured.captured.attachments[0].mimeType)
+        com.aus.notelikeus.data.attachments.PendingAttachmentStore.clear()
+    }
+
+    @Test
     fun `exported json preserves pinned and checklist fields`() = runTest {
         val note = Note(
             id = 1L,

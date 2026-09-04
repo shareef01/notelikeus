@@ -2,6 +2,7 @@ import type { FirestoreNoteDocument } from '@/lib/mappers/noteCloudMapper';
 import { cloudMapToNote } from '@/lib/mappers/noteCloudMapper';
 import { createEmptyNote, nextLocalNoteIdAfter, type Note } from '@/types/note';
 import { labelFromName } from '@/types/label';
+import { attachmentsFromBackupDtos } from '@/lib/backup/backupAttachments';
 import {
   BACKUP_VERSION,
   MAX_BACKUP_FILE_BYTES,
@@ -61,6 +62,7 @@ function noteFromBackupEntry(
   localId: number,
   position: number,
   labelResolver: (name: string) => ReturnType<typeof labelFromName>,
+  backupVersion: number,
 ): Note | null {
   if (!entry || typeof entry !== 'object') return null;
 
@@ -92,7 +94,11 @@ function noteFromBackupEntry(
     checklist: mapped.checklist
       .slice(0, MAX_NOTE_CHECKLIST_ITEMS)
       .map((item) => ({ ...item, text: item.text.slice(0, MAX_NOTE_TITLE_CHARS) })),
-    attachments: [],
+    attachments: attachmentsFromBackupDtos(
+      (data as { attachments?: unknown }).attachments,
+      localId,
+      backupVersion,
+    ),
   });
 }
 
@@ -148,7 +154,7 @@ export function importNotesFromBackup(json: unknown, existingNotes: Note[]): {
     const localId = nextLocalNoteIdAfter(runningMaxId);
     runningMaxId = localId;
     const position = basePosition + imported.length;
-    const note = noteFromBackupEntry(entry, localId, position, resolveLabel);
+    const note = noteFromBackupEntry(entry, localId, position, resolveLabel, version);
     if (!note) continue;
     imported.push(note);
   }

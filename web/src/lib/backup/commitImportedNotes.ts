@@ -1,3 +1,4 @@
+import { syncNoteAttachments } from '@/lib/attachments/attachmentSyncService';
 import {
   pauseRealtimeSnapshots,
   resumeRealtimeSnapshots,
@@ -29,8 +30,12 @@ export async function commitImportedNotes(
   pauseRealtimeSnapshots();
   try {
     if (userId) {
-      await getRemoteNotesDataSource().uploadAllNotes(userId, merged);
-      useNotesStore.getState().setNotes(merged);
+      const prepared: Note[] = [];
+      for (const note of merged) {
+        prepared.push(await syncNoteAttachments(note));
+      }
+      await getRemoteNotesDataSource().uploadAllNotes(userId, prepared);
+      useNotesStore.getState().setNotes(prepared);
       return true;
     }
     useNotesStore.getState().setNotes(merged);

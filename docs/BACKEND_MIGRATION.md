@@ -1,7 +1,7 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
 **Status:** Phases 0–12 on `main`; staging bootstrap live. Firebase remains the production backend.  
-**Last updated:** 2026-09-04 (Android debug BuildConfig + desktop local.properties for staging)
+**Last updated:** 2026-09-04 (#149 on main; backup JSON embeds image attachments)
 
 This document tracks the phased migration away from Firebase. Phases 0–12 are on `main`. Production cutover is **not** authorized. Firebase Auth, Firestore, and Firebase Hosting (`notelike.web.app`) remain the live backend.
 
@@ -610,7 +610,7 @@ Same as Phases 8–9:
 
 - **Dev flag only** — Firebase remains production default
 - **Images only** — 10 MB cap; images MIME types only
-- **Backup export** — attachments still omitted from JSON backup (unchanged)
+- **Backup export** — version 3 JSON now embeds image bytes (`dataBase64`) when the client can read them; version 2 files still drop attachments
 - **Note list thumbnails** — not yet added (Web has a11y hint only)
 
 ---

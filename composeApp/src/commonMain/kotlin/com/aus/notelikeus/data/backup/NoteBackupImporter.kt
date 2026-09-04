@@ -1,5 +1,6 @@
 package com.aus.notelikeus.data.backup
 
+import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
@@ -8,7 +9,8 @@ import com.aus.notelikeus.util.DateUtils
 import kotlinx.serialization.json.Json
 
 class NoteBackupImporter(
-    private val repository: NoteRepository
+    private val repository: NoteRepository,
+    private val localStorage: AttachmentLocalStorage? = null,
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -93,7 +95,12 @@ class NoteBackupImporter(
                         position = basePosition + notesImported,
                         reminderTimestamp = reminderTimestamp,
                         labels = resolvedLabels,
-                        attachments = emptyList(),
+                        attachments = attachmentsFromBackupDtos(
+                            noteDto.attachments,
+                            noteId = 0L,
+                            backupVersion = backupData.version,
+                            localStorage = localStorage,
+                        ),
                         checklist = checklist
                     )
 
@@ -127,12 +134,17 @@ class NoteBackupImporter(
             if (noteDto.checklist.size > MAX_NOTE_CHECKLIST) {
                 return BackupImportResult.InvalidFormat("Note has too many checklist items (max $MAX_NOTE_CHECKLIST)")
             }
+            if (noteDto.attachments.size > MAX_NOTE_BACKUP_ATTACHMENTS) {
+                return BackupImportResult.InvalidFormat(
+                    "Note has too many attachments (max $MAX_NOTE_BACKUP_ATTACHMENTS)",
+                )
+            }
         }
         return null
     }
 
     companion object {
-        const val MAX_BACKUP_CHARS = 10 * 1024 * 1024
+        const val MAX_BACKUP_CHARS = 50 * 1024 * 1024
         const val MAX_BACKUP_NOTES = 5_000
         const val MAX_BACKUP_LABELS = 2_000
         const val MAX_NOTE_LABELS = 100

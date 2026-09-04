@@ -46,7 +46,7 @@ interface MainDialogsProps {
   syncStatus: React.ComponentProps<typeof ProfileSheet>['syncStatus'];
   syncedNoteCount: number;
 
-  onExportBackup: () => void;
+  onExportBackup: () => void | Promise<void>;
   onImportBackup: () => void;
   onSignIn: () => void;
   onSignUp: () => void;
