@@ -91,8 +91,8 @@ Production Hosting stays on Firebase (`notelike.web.app`). Staging web is a **se
 
 - `NOTELIKEUS_REMOTE_BACKEND=supabase`
 - debug builds: that is enough (release still requires the production-allow flag **and** a non-localhost URL).
-- Android **debug** `BuildConfig` fields must be baked at compile time. Device `System.getenv` is empty. That wiring is in open PR #149, not on `main` yet.
-- Desktop `./gradlew run` can read `local.properties` at runtime (also #149).
+- Android **debug** `BuildConfig` fields must be baked at compile time. Device `System.getenv` is empty. That wiring **landed in #149** (`548a3b8` on `main`). Run `npm run kotlin:staging-properties` then rebuild debug. See `docs/ANDROID_STAGING.md`.
+- Desktop `./gradlew run` reads the same `local.properties` at runtime (`LocalProperties.kt`, also #149).
 
 If those flags are missing, clients stay on Firebase.
 
@@ -106,7 +106,7 @@ If those flags are missing, clients stay on Firebase.
 
 ## 3. Phase status on `origin/main`
 
-`origin/main` tip when this file was written: **`92c750a`** (merge of PR **#147**).
+`origin/main` tip when this file was last updated: **`548a3b8`** (merge of PR **#149**, which itself sat on `92c750a` / #147).
 
 | Phase | Status | Meaning |
 | --- | --- | --- |
@@ -116,9 +116,9 @@ If those flags are missing, clients stay on Firebase.
 | 3 Auth adapter | done | Google + email on staging |
 | 4 Notes CRUD | done | RPCs used by web/Kotlin |
 | 5 Attachments Worker + R2 | done | Staging Worker live |
-| 6 Kotlin/Android adapter | done on `main` | Runtime env only; **debug BuildConfig is #149** |
+| 6 Kotlin/Android adapter | done on `main` | Debug `BuildConfig` from `local.properties` (#149) |
 | 7 Web adapter | done | Vite + Pages staging gate |
-| 8 Desktop adapter | done on `main` | Runtime env only; **local.properties is #149** |
+| 8 Desktop adapter | done on `main` | `local.properties` at runtime (#149) |
 | 9 Backup import | done | Web Profile → Import backup; fixture exists |
 | 10 Staging cutover | **in progress** | Pages + Worker + project live; **owner Google rehearsal still open** |
 | 11 Production cutover | **not started** | Forbidden |
@@ -216,7 +216,7 @@ Rules:
 
 - Web + Android/Desktop **clients** must use the JWT (`eyJ…`).
 - Never put an `sb_…` key in `VITE_SUPABASE_ANON_KEY` or `NOTELIKEUS_SUPABASE_ANON_KEY`.
-- `scripts/ops/write-kotlin-staging-properties.mjs` (PR #149) refuses `sb_…` keys and production-allow flags.
+- `scripts/ops/write-kotlin-staging-properties.mjs` (on `main` via #149) refuses `sb_…` keys and production-allow flags.
 - Never print the JWT.
 
 ### 5.3 Gitignored generated files
@@ -225,7 +225,7 @@ Rules:
 | --- | --- | --- |
 | `web/.env.staging` | `npm run setup:staging` | Vite staging + Pages deploy |
 | `workers/attachments/wrangler.toml` | same | Worker deploy |
-| `local.properties` | `setup-staging.sh` and/or `npm run kotlin:staging-properties` (#149) | Android `BuildConfig` + desktop runtime |
+| `local.properties` | `setup-staging.sh` and/or `npm run kotlin:staging-properties` | Android `BuildConfig` + desktop runtime |
 
 `web/.env` / `.env.local` are also local. Restart Vite after changing them.
 
@@ -273,7 +273,7 @@ Do not redo these as if they failed.
 | `npm run rehearse:staging-import` | pass on later agent | Imported 1 note for the **email** user (not the owner’s Google account). PR #148 accepts RPC status `applied`. |
 | Owner Google sign-in on Pages | **not done** | Blocker for calling staging “rehearsed” |
 | Owner Profile → Import backup on Pages | **not done** | Same |
-| Android / desktop staging debug Google + import | **not done** | Needs #149 merged or applied locally, then a debug rebuild |
+| Android / desktop staging debug Google + import | **not done** | #149 is on `main`. Owner still needs `npm run kotlin:staging-properties`, a debug rebuild, Google sign-in, and import. |
 
 Rehearsal fixture (safe to commit, no secrets):
 
@@ -285,7 +285,7 @@ Commands:
 npm run setup:staging
 npm run deploy:staging-pages
 npm run rehearse:staging-import
-npm run kotlin:staging-properties   # PR #149 only
+npm run kotlin:staging-properties   # on main via #149
 ```
 
 ---
@@ -311,31 +311,29 @@ Included:
 - Worker CORS + OPTIONS
 - Tracker **Live staging** section
 
-### 7.2 Open — PR #149 Android / desktop staging properties
+### 7.2 Merged — PR #149 Android / desktop staging properties
 
-https://github.com/shareef01/notelikeus/pull/149  
-Branch: `cursor/android-staging-buildconfig-2354`  
-Tip: `1e71a2e`  
-CI: green when last checked. Marked **ready for review**. MERGEABLE.
+https://github.com/shareef01/notelikeus/pull/149 — merge commit `548a3b8` (2026-09-04).  
+Branch: `cursor/android-staging-buildconfig-2354` (merged).
 
-What it does:
+What landed on `main`:
 
 - Android **debug** `BuildConfig` fields from gitignored `local.properties` / `NOTELIKEUS_*` at **compile time**.
 - Release `BuildConfig` fields stay empty → Firebase.
 - Desktop `./gradlew run` reads the same `local.properties` via `LocalProperties.kt`.
 - `npm run kotlin:staging-properties` → `scripts/ops/write-kotlin-staging-properties.mjs` copies from `web/.env.staging`.
 - `setup-staging.sh` also merges Kotlin keys into `local.properties`.
-- Docs: `docs/ANDROID_STAGING.md` (exists only on this branch, not on `main`).
+- Docs: `docs/ANDROID_STAGING.md` (now on `main`).
 - Helper: `firstNonBlank` in `SupabaseBackendSelection.kt`.
 
-Without this PR, an Android device debug APK cannot see staging env vars.
+After this merge, #148 / #150 / #151 are **CONFLICTING** with `main` (they all edited `docs/BACKEND_MIGRATION.md`). Rebase those branches onto `548a3b8` before merging them.
 
 ### 7.3 Open — PR #150 backup attachments
 
 https://github.com/shareef01/notelikeus/pull/150  
 Branch: `cursor/backup-attachments-2354`  
 Tip: `047b168`  
-CI: green when last checked. Marked **ready for review**. MERGEABLE.
+Status: **ready for review**, but **CONFLICTING** with `main` after #149. Rebase onto `548a3b8` before merge.
 
 What it does:
 
@@ -353,7 +351,7 @@ This is the missing piece if the owner’s rehearsal backup includes images.
 https://github.com/shareef01/notelikeus/pull/151  
 Branch: `cursor/note-list-thumbnails-2354`  
 Tip: `0c7d3c2`  
-Status: **ready for review**. MERGEABLE. All 10 CI checks green on `0c7d3c2` (Android `build` included).
+Status: **ready for review**. All 10 CI checks were green on `0c7d3c2`, but the PR is **CONFLICTING** with `main` after #149. Rebase onto `548a3b8` before merge.
 
 What it does:
 
@@ -371,7 +369,7 @@ https://github.com/shareef01/notelikeus/pull/148
 Branch: `cursor/redeploy-staging-import-3683`  
 Other agent: `bc-476ec657-c1f8-445f-ab72-3c578c4c3683`  
 Tip: `9d8c486`  
-OPEN, MERGEABLE.
+OPEN, **CONFLICTING** with `main` after #149. Other agent owns this branch.
 
 What it does:
 
@@ -380,7 +378,7 @@ What it does:
 - Ignore Wrangler local state.
 - Docs: recorded Pages redeploy + email-user RPC rehearsal.
 
-Independent of #149–#151. **Merge-conflict risk:** all four PRs touch `docs/BACKEND_MIGRATION.md`. Land them one at a time and rebase the rest.
+Independent feature-wise of #150–#151. All three remaining PRs touch `docs/BACKEND_MIGRATION.md` and are dirty against `main` after #149. Rebase onto `548a3b8` one at a time.
 
 ---
 
@@ -392,11 +390,11 @@ Independent of #149–#151. **Merge-conflict risk:** all four PRs touch `docs/BA
 | --- | --- |
 | `docs/BACKEND_MIGRATION.md` | Phase tracker + Live staging |
 | `docs/STAGING_HANDOFF.md` | This file |
-| `docs/ANDROID_STAGING.md` | Android debug steps (**#149 only**) |
+| `docs/ANDROID_STAGING.md` | Android / desktop debug staging steps (on `main` via #149) |
 | `scripts/ops/setup-staging.sh` | Bootstrap staging |
 | `scripts/ops/deploy-staging-pages.sh` | Pages production alias |
 | `scripts/ops/rehearse-staging-import.mjs` | RPC import smoke |
-| `scripts/ops/write-kotlin-staging-properties.mjs` | `#149` → `local.properties` |
+| `scripts/ops/write-kotlin-staging-properties.mjs` | copies `.env.staging` → `local.properties` |
 | `scripts/ops/fixtures/backup.rehearsal.example.json` | Owner import fixture |
 | `supabase/migrations/` | Schema / RLS / RPCs |
 | `workers/attachments/` | R2 Worker |
@@ -416,8 +414,8 @@ Independent of #149–#151. **Merge-conflict risk:** all four PRs touch `docs/BA
 
 | Path | Role |
 | --- | --- |
-| `composeApp/.../data/remote/SupabaseBackendSelection.kt` | Flag gate + `firstNonBlank` (#149) |
-| `composeApp/.../data/remote/LocalProperties.kt` | Desktop runtime (#149) |
+| `composeApp/.../data/remote/SupabaseBackendSelection.kt` | Flag gate + `firstNonBlank` |
+| `composeApp/.../data/remote/LocalProperties.kt` | Desktop runtime (`local.properties`) |
 | `composeApp/.../data/backup/BackupAttachments.kt` | Version 3 blobs (#150) |
 | `composeApp/.../ui/notes/NoteCardThumbnail.kt` | List thumbnails (#151) |
 
@@ -427,7 +425,7 @@ Independent of #149–#151. **Merge-conflict risk:** all four PRs touch `docs/BA
 - `deploy:staging-pages`
 - `rehearse:staging-import`
 - `dev:staging`
-- `kotlin:staging-properties` (#149)
+- `kotlin:staging-properties`
 
 ---
 
@@ -443,13 +441,15 @@ A Cloud Agent VM cannot complete Google password / 2FA. Do not pretend Playwrigh
 4. Use `scripts/ops/fixtures/backup.rehearsal.example.json` (or a real export).
 5. Confirm the note(s) appear and, if #150 is merged and the backup has images, that images survive.
 
-### 9.2 Android / desktop (after #149 is available)
+### 9.2 Android / desktop (wiring is on `main` via #149)
 
 1. `npm run setup:staging` (or ensure `web/.env.staging` exists).
-2. `npm run kotlin:staging-properties`.
+2. `npm run kotlin:staging-properties` (writes gitignored `local.properties`).
 3. Rebuild a **debug** Android APK / run desktop `./gradlew run`.
 4. Sign in with Google.
 5. Repeat import.
+
+Full steps: `docs/ANDROID_STAGING.md`.
 
 Release / Play builds must stay on Firebase.
 
@@ -469,9 +469,9 @@ Only after 9.1 (and ideally 9.2):
 
 Priority order. Stop if the user only asked for a status doc.
 
-1. **Land or rebase #148–#151.** They are independent features. `BACKEND_MIGRATION.md` will conflict. Merge one, rebase the others.
-2. **#151 is ready** (CI green on `0c7d3c2`). Leave it unless review asks for changes.
-3. If #149 lands: keep `docs/ANDROID_STAGING.md`; do not duplicate it here except as a pointer.
+1. **Rebase #148, #150, and #151 onto `origin/main` (`548a3b8`).** All three are CONFLICTING after #149. Prefer rebasing `BACKEND_MIGRATION.md` so Live staging keeps the #149 Android/`local.properties` paragraph plus `docs/ANDROID_STAGING.md` pointer.
+2. **#151 is ready** (CI was green on `0c7d3c2`) but must be rebased before merge.
+3. Keep `docs/ANDROID_STAGING.md` on `main`; do not duplicate it here except as a pointer.
 4. If the owner reports a Pages / import bug: fix on a **new** `cursor/<name>-2354` branch from latest `origin/main`.
 5. Small hardening that is still in-scope:
    - Keep worker CORS current if a new staging hostname appears.
@@ -489,7 +489,7 @@ Out of scope unless asked: new product features unrelated to staging (editors, s
 # from repo root, with the env names in §5.1 already injected
 npm run setup:staging
 # writes web/.env.staging + workers/attachments/wrangler.toml
-# #149 also writes Kotlin keys into local.properties
+# also writes Kotlin keys into local.properties
 
 # web
 npm run dev:staging
@@ -502,7 +502,7 @@ npm run deploy:staging-pages
 npm run rehearse:staging-import
 ```
 
-Android / desktop after #149:
+Android / desktop:
 
 ```bash
 npm run kotlin:staging-properties
@@ -520,7 +520,7 @@ Desktop add-note control: `aria-label="New note"` (the FAB is `md:hidden` on lar
 1. **`SUPABASE_ANON_KEY` is often `sb_…`.** Using it in the browser fails closed. Always resolve the anon JWT.
 2. **`isFirebaseConfigured` still requires `VITE_FIREBASE_APP_ID`.** Staging env can include public Firebase config while `VITE_REMOTE_BACKEND=supabase`.
 3. **Pages staging allow is hostname-gated** to `*.pages.dev`. Copying the same flag onto Firebase Hosting will not switch production to Supabase (good). Forgetting the flag on Pages will leave the staging site on Firebase (bad for rehearsal).
-4. **Android device env is empty.** Without #149, debug APKs ignore `NOTELIKEUS_*`.
+4. **Android device env is empty.** Debug APKs only see staging if `local.properties` was present at compile time (`npm run kotlin:staging-properties`). See `docs/ANDROID_STAGING.md`.
 5. **Release Kotlin fields must stay empty.** That is what keeps Play/desktop release on Firebase.
 6. **Email users need `email_confirm: true`** if `mailer_autoconfirm` is false.
 7. **Worker CORS** must include the browser origin. Native Android does not care.
@@ -528,7 +528,7 @@ Desktop add-note control: `aria-label="New note"` (the FAB is `md:hidden` on lar
 9. **Do not use `gcloud iap oauth-clients`** to add the Supabase redirect. Use the Google Cloud Console on the existing Web client (already done).
 10. **Cloud Agent Google login cannot finish.** Use an admin email user + Playwright for smoke; leave real Google to the owner.
 11. **Handoff of a Cloud Agent chat does not copy VM `.env`.** Desktop Cursor opens the conversation, not the pod secrets. Re-run `setup:staging` in the new environment.
-12. **Four open PRs all edit `BACKEND_MIGRATION.md`.** Expect conflicts. This handoff file should stay a single-purpose doc so later PRs can link it instead of rewriting the same paragraph four times.
+12. **#148 / #150 / #151 all edit `BACKEND_MIGRATION.md` and are dirty against `main` after #149.** Rebase before merge. This handoff file should stay a single-purpose doc so later PRs can link it instead of rewriting the same paragraph.
 
 ---
 
@@ -550,8 +550,9 @@ If the user says **continue the migration**:
 ```
 Do not start Firebase retirement in production.
 Read docs/STAGING_HANDOFF.md and docs/BACKEND_MIGRATION.md Live staging.
-Check open PRs #148 #149 #150 #151 before overlapping them.
-Next implementable work is rebase/land those PRs or fix whatever the owner reports from https://notelikeus-dev.pages.dev/ Google + Import backup.
+Check open PRs #148 #150 #151 before overlapping them (#149 already merged).
+Next implementable work is rebase those three onto origin/main (548a3b8) or fix whatever the owner reports from https://notelikeus-dev.pages.dev/ Google + Import backup.
+Android/desktop debug staging: npm run kotlin:staging-properties + rebuild; see docs/ANDROID_STAGING.md.
 Never set VITE_ALLOW_SUPABASE_PRODUCTION or NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION.
 ```
 
@@ -579,4 +580,4 @@ When you change live staging (new Worker URL, new Pages project, new PR, owner c
 2. Update this file (detail).
 3. Do not paste secrets.
 
-Last updated from Cloud Agent `bc-e9906a91-59df-4bbb-8bd0-a48c480d2354` against `origin/main` `92c750a`, with open PRs #148–#151 as listed above. #151 marked ready after CI went green on `0c7d3c2`.
+Last updated from Cloud Agent `bc-e9906a91-59df-4bbb-8bd0-a48c480d2354` against `origin/main` `548a3b8` (#149 merged). Open PRs: #148, #150, #151 — all CONFLICTING with `main`; rebase before merge.
