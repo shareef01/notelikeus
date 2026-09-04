@@ -744,9 +744,9 @@ with `SET LOCAL ROLE` plus the caller's JWT claims.
 | `fetch_full_snapshot` size at 800 notes / 200 tombstones | 267 kB (≈ 3.3 MB projected at 10 000 notes) |
 | Secret scan of HEAD and full history | **CLEAN** — every hit is a placeholder, a comment, or a Postgres role name |
 | Web unit / typecheck / lint / build | **PASS** — 344/344, clean, 0 errors, bundle builds |
-| Attachments Worker | **PASS** — 57/57 (was 9, none covering the handler) |
+| Attachments Worker | **PASS** — 58/58 (was 9, none covering the handler) |
 | Ops scripts (`test:ops-export`) | **PASS** — 3/3 |
-| Kotlin desktop unit tests | **PASS** — 322/322 |
+| Kotlin desktop unit tests | **PASS** — 330/330 |
 | Android unit tests / release APK | **NOT RUN** — no Android SDK in the audit environment; CI (`android.yml`) is the authority |
 
 ### Defects found and fixed
@@ -855,12 +855,56 @@ unreachable. The privileged RPC is never called unless a token actually verified
 exclusive, confers no server-side access, and is displaced the moment the real owner proves
 ownership — but it is a row they caused. Rate limiting on the Worker is not implemented.
 
+### PR #150 (backup attachments) — review
+
+Reviewed against `origin/main`. The design is right: images are embedded as `dataBase64` under the
+existing `version: 3` (older v3 clients ignore the field, so it is genuinely backward compatible),
+restored as **pending** attachments so the existing `attachmentSyncService` uploads them to R2 on
+save, MIME-allowlisted and size-capped in both directions, and capped at 20 attachments per note on
+both Web and Kotlin. Recommend merging after #148 and #149.
+
+Three things worth addressing, none of them blocking:
+
+1. **MIME allowlist mismatch — fixed here.** #150 accepts `image/jpg` (non-standard, but real) on
+   both platforms; the Worker's allowlist did not. A backup carrying `image/jpg` would import
+   cleanly, store a pending blob, and then be refused **415** on upload — a note importing
+   "successfully" with its image silently gone, which is exactly the cross-layer failure chain the
+   audit brief warns about. `image/jpg` is now accepted by the Worker, with a test asserting the
+   two allowlists agree.
+2. **Memory on a 50 MB import.** `MAX_BACKUP_FILE_BYTES` goes 10 MB → 50 MB. Base64 costs ~33%, so
+   a 50 MB file carries ~37 MB of binary, and import holds the JSON string, the decoded bytes and
+   the Blob copies at once — plausibly 150 MB+ peak. Fine on desktop; a real OOM risk on mobile
+   Safari. Worth a streaming or per-note-batched decode before the cap is raised again.
+3. **The pending blob store is unbounded and never evicted.** `pendingAttachmentStore` is a
+   module-level `Map` drained only by a successful upload. `attachmentsFromBackupDtos` populates it
+   from inside `importNotesFromBackup` — a synchronous, pure-looking function — so a parse that is
+   later abandoned (the upload throws, so `commitImportedNotes` never calls `setNotes`) leaves the
+   blobs resident until reload. At 10 MB per image that adds up.
+
+### Tombstone retention — audited, no change made
+
+`note_tombstones` is never pruned server-side. Nothing in `supabase/migrations` deletes a tombstone
+except `delete_all_user_cloud_data`, and `SupabaseNoteTransport.deleteTombstones` is deliberately a
+no-op. Kotlin's local `TOMBSTONE_TTL_MS` (180 days) prunes only the device's own copy.
+
+That is the safe direction and it should stay: because a tombstone is never removed, a device that
+has been offline for longer than any TTL still learns the note was deleted, so deleted notes cannot
+resurrect. The cost is unbounded growth — one row per deleted note per user, forever — at roughly
+100 bytes a row, which is slow enough not to matter for a long time (an 800-note/200-tombstone
+account snapshots at 267 kB).
+
+Pruning would need a safe watermark: a tombstone can only be dropped once every device that could
+resurrect the note has certainly seen it, and nothing currently tracks per-device sync progress.
+Inventing one without that tracking would trade unbounded growth for silent data resurrection, so
+this is recorded rather than "fixed".
+
 ### Open findings — not fixed here
 
 | Finding | Severity | Why it was left |
 | --- | --- | --- |
-| Desktop `readLocalProperty` (PR #149) scans up to six parent directories of the process CWD for `local.properties` and reads the Supabase URL/key/worker URL from it regardless of `isDebug`. `remoteBackend` is still `isDebug`-gated, so a packaged build stays on Firebase — but a cutover build would take its endpoint from a directory scan. | P2 | Belongs to #149 |
+| Kotlin does not upload a verified Firebase uid link — it only writes unverified (non-exclusive) claims. The ownership *gate* is now shared with Web, so no Kotlin client claims a uid it cannot corroborate; what is missing is the proof upload, which needs a Firebase ID token and an HTTP call on two platform targets that cannot be exercised in this environment. | P3 | Needs Android/desktop runtime verification |
 | `note_attachments` is not in the realtime publication, so an attachment added on one client is not signalled to another until a note change or the 30 s fallback. | P3 | Behavioural gap, not a defect |
+| Desktop `readLocalProperty` (PR #149) scans up to six parent directories of the process CWD for `local.properties` and reads the Supabase URL/key/worker URL from it regardless of `isDebug`. `remoteBackend` is still `isDebug`-gated, so a packaged build stays on Firebase — but a cutover build would take its endpoint from a directory scan. | P2 | Belongs to #149 |
 | `nextLocalNoteIdAfter` returns `Math.max(maxId + 1, Date.now() * 1000 + rand)` ≈ 1.8e15 today, safely inside `Number.MAX_SAFE_INTEGER` (9.007e15, reached around year 2255). Backup import re-allocates ids rather than trusting the file, so a hostile `localId` cannot poison the allocator. `local_id` is `BIGINT`, and a value above 2^53-1 does lose precision in `JSON.parse` — verified — but nothing generates one. | P4 | Not reachable; recorded so it is not re-derived |
 | `docs/STAGING_HANDOFF.md` (PR #152, draft) describes `user_notes`, `upsert_user_notes`, `list_user_notes` and `import_user_backup`. **None of these exist** in `supabase/migrations`, the web client, the Kotlin client or the ops scripts. The real schema is `notes` / `note_tombstones` / `sync_meta` with `apply_note_change` / `apply_note_delete` / `pull_changes` / `fetch_full_snapshot`. The document, not the architecture, is wrong. | P3 | #152 owns that file |
 
