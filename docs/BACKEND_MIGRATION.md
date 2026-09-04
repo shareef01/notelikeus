@@ -1,11 +1,11 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
 **Status:** Phases 0–12 on `main`; staging bootstrap live. Firebase remains the production backend.  
-**Last updated:** 2026-09-03 (Pages staging live; backup import uses Supabase; OAuth probe passed)
+**Last updated:** 2026-09-04 (Android debug BuildConfig + desktop local.properties for staging)
 
 This document tracks the phased migration away from Firebase. Phases 0–12 are on `main`. Production cutover is **not** authorized. Firebase Auth, Firestore, and Firebase Hosting (`notelike.web.app`) remain the live backend.
 
-**Git:** Merged via #145 / #146. Staging ops continue on `cursor/run-staging-setup-2354` ([PR #147](https://github.com/shareef01/notelikeus/pull/147)).
+**Git:** Phases 0–12 and Pages staging are on `main` (#145–#147). Kotlin debug staging wiring is additive; Firebase remains the production default.
 
 ---
 
@@ -709,7 +709,7 @@ Owner-operated staging only. **Do not** set `VITE_ALLOW_SUPABASE_PRODUCTION`.
 | Pages staging flag | `VITE_ALLOW_SUPABASE_STAGING` enables Supabase only on `*.pages.dev` (never on `notelike.web.app`) |
 | Smoke test (local Vite + staging Supabase) | Signed in, note **staging smoke**, PNG upload; `list_user_attachments` returned 1 row |
 
-Kotlin **debug** builds can point at the same staging stack with `NOTELIKEUS_REMOTE_BACKEND=supabase` plus URL/anon/worker values from `web/.env.staging`. Do not set `NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION`. Desktop honors those env vars when launched from a shell; Android `System.getenv` is usually empty on-device, so the Web import rehearsal is the supported path until debug BuildConfig wiring exists.
+Kotlin **debug** builds can point at the same staging stack. Run `npm run kotlin:staging-properties` to copy `web/.env.staging` into gitignored `local.properties`. Android debug `BuildConfig` bakes those keys (device processes do not see shell env); desktop `./gradlew run` reads the same file at runtime. Release APKs keep empty BuildConfig fields and stay on Firebase. Do not set `NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION`. See `docs/ANDROID_STAGING.md`.
 
 Bootstrap: `npm run setup:staging` (`scripts/ops/setup-staging.sh`).
 
@@ -725,13 +725,13 @@ Bootstrap: `npm run setup:staging` (`scripts/ops/setup-staging.sh`).
 5. Test-account migration rehearsal:
    - ~~Ops dump → backup JSON~~ **Done** — `npm run rehearse:staging-import` / `scripts/ops/fixtures/backup.rehearsal.example.json`
    - ~~Backup import uses the active remote (Supabase on Pages)~~ **Done** in `commitImportedNotes`
-   - **Owner:** sign in with Google on https://notelikeus-dev.pages.dev/, then Profile → Import backup with the example JSON. Repeat on Android/Desktop staging builds when convenient.
+   - **Owner:** sign in with Google on https://notelikeus-dev.pages.dev/, then Profile → Import backup with the example JSON. Repeat on Android/Desktop debug staging builds (`npm run kotlin:staging-properties`, see `docs/ANDROID_STAGING.md`) when convenient.
 6. Approve flipping `VITE_ALLOW_SUPABASE_PRODUCTION` / `NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION` for a dedicated cutover build.
 7. After the user migration window: update README, privacy policy, and `npm run deploy` target. Only then remove Firebase.
 
 ### Continue command
 
-Remaining work: sign in with Google on https://notelikeus-dev.pages.dev/ and import `scripts/ops/fixtures/backup.rehearsal.example.json` (Profile → Import backup). Repeat on Android/Desktop when you have those staging builds. Do not start production Firebase retirement.
+Remaining work: sign in with Google on https://notelikeus-dev.pages.dev/ and import `scripts/ops/fixtures/backup.rehearsal.example.json` (Profile → Import backup). For Android/Desktop debug, run `npm run kotlin:staging-properties` then rebuild/restart and repeat the import. Do not start production Firebase retirement.
 
 ```
 Do not start Firebase retirement in production. Review docs/BACKEND_MIGRATION.md Live staging first.
