@@ -1037,13 +1037,9 @@ The web client only sends a Firebase ID token when a live Firebase session can m
 
 ### 5. Verify
 
-Sign in at https://notelikeus-dev.pages.dev/ with Google, then in the browser console:
-
-```js
-await (await import('/src/lib/migration/supabaseUidLink.ts')).fetchFirebaseUidLink()
-```
-
-or run in the Supabase SQL editor:
+Sign in at https://notelikeus-dev.pages.dev/ with Google, then run in the Supabase SQL editor
+(the browser console cannot reach the module directly — a production Vite build has no source
+paths, and the Supabase client is not exposed globally):
 
 ```sql
 select owner_id, firebase_uid, verified from public.firebase_uid_mappings;
