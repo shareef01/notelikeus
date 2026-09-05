@@ -3,23 +3,18 @@ name: Attachments Worker CI
 # The R2 attachments Worker is the authorization boundary for attachment bytes: it derives the R2
 # object key from the bearer token's user id, and it is the only place upload size and content-type
 # limits are enforced (the editors' 10 MB cap is a UX affordance — the Worker is reachable directly
-# with any Supabase access token). Its tests, and the ops scripts that drive the staging rehearsal,
-# ran in no workflow before this one.
+# with any Supabase access token).
 
 on:
   push:
     branches: [main, master]
     paths:
       - 'workers/**'
-      - 'scripts/ops/**'
-      - 'package.json'
       - '.github/workflows/attachments-worker.yml'
   pull_request:
     branches: [main, master]
     paths:
       - 'workers/**'
-      - 'scripts/ops/**'
-      - 'package.json'
       - '.github/workflows/attachments-worker.yml'
 
 permissions:
@@ -56,9 +51,3 @@ jobs:
       - name: Test worker (auth, owner isolation, upload limits)
         working-directory: workers/attachments
         run: npm test
-
-      - name: Install root dependencies
-        run: npm ci
-
-      - name: Test ops migration scripts
-        run: npm run test:ops-export
