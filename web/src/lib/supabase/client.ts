@@ -31,7 +31,10 @@ export function getSupabaseClient(): SupabaseClient {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
+        // Manual exchange in completeSupabaseOAuthRedirect(). Leaving this true
+        // races that call: createClient starts _initialize() which also consumes
+        // ?code=, so the PKCE grant can be used twice and the second attempt fails.
+        detectSessionInUrl: false,
         flowType: 'pkce',
       },
     });
