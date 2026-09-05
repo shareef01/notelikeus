@@ -13,14 +13,14 @@ class LocalPropertiesTest {
         try {
             root.resolve("local.properties").writeText(
                 """
-                notelikeus.remoteBackend=supabase
-                notelikeus.supabaseUrl=
+                notelikeus.supabaseUrl=https://example.supabase.co
+                notelikeus.supabaseAnonKey=
                 leftover.oauth=keep-me
                 """.trimIndent(),
             )
             val nested = root.resolve("composeApp").apply { mkdirs() }
-            assertEquals("supabase", readLocalProperty("notelikeus.remoteBackend", nested))
-            assertNull(readLocalProperty("notelikeus.supabaseUrl", nested))
+            assertEquals("https://example.supabase.co", readLocalProperty("notelikeus.supabaseUrl", nested))
+            assertNull(readLocalProperty("notelikeus.supabaseAnonKey", nested))
             assertEquals("keep-me", readLocalProperty("leftover.oauth", nested))
             assertNull(readLocalProperty("missing.key", nested))
         } finally {

@@ -17,9 +17,7 @@ import kotlinx.serialization.json.longOrNull
 
 /**
  * Supabase revision-RPC adapter for [CloudNoteTransport].
- *
- * Dev-only: enabled when [BackendConfig.remoteBackend] is [RemoteBackend.SUPABASE].
- * Requires a Supabase JWT via [SupabaseAccessTokenProvider] (wired in Phase 5).
+ * Requires a Supabase JWT via [SupabaseAccessTokenProvider].
  */
 class SupabaseNoteTransport(
     private val rpc: SupabaseRpcClient,

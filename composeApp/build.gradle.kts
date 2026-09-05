@@ -45,31 +45,6 @@ fun quotedBuildConfig(value: String): String {
     return "\"$escaped\""
 }
 
-/**
- * Environment only — never `local.properties`.
- *
- * A cutover build is a deliberate, one-off act, so the values that make one must come from the
- * build environment and nowhere else. `local.properties` is written by
- * `scripts/ops/write-kotlin-staging-properties.mjs` for everyday staging work; if it could also
- * turn a release build into a cutover build, an ordinary `assembleRelease` on a developer machine
- * that happens to have staging keys would silently ship users onto Supabase.
- */
-fun envOnly(name: String): String = System.getenv(name)?.trim().orEmpty()
-
-/**
- * True only when this build was explicitly asked to be a production cutover.
- *
- * Gates every Supabase field baked into the *release* variant. Absent — which is every ordinary
- * build, every CI run and every Play release — the release fields stay empty and
- * `isSupabaseRemoteSelected` returns false on its first line, so the app is on Firebase.
- */
-val isSupabaseCutoverBuild: Boolean =
-    envOnly("NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION").equals("true", ignoreCase = true) ||
-        envOnly("NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION") == "1"
-
-/** A release-variant value, present only in a cutover build. */
-fun cutoverOnly(envName: String): String = if (isSupabaseCutoverBuild) envOnly(envName) else ""
-
 val oauthClientSecret: String =
     localOrEnv("NOTELIKEUS_OAUTH_CLIENT_SECRET", "notelikeus.oauthClientSecret")
 
@@ -182,14 +157,10 @@ kotlin {
                 implementation(libs.koin.android)
                 implementation(libs.androidx.biometric)
                 implementation(libs.androidx.datastore.preferences.android)
-                implementation(project.dependencies.platform(libs.firebase.bom))
-                implementation(libs.firebase.auth)
-                implementation(libs.firebase.firestore)
-                implementation(libs.firebase.appcheck.playintegrity)
-                implementation(libs.kotlinx.coroutines.play.services)
                 implementation(libs.androidx.credentials)
                 implementation(libs.androidx.credentials.play.services.auth)
                 implementation(libs.google.identity.googleid)
+                implementation(libs.play.services.base)
                 implementation(libs.androidx.work.runtime.ktx)
                 implementation(libs.sqlcipher.android)
                 implementation(libs.androidx.security.crypto)
@@ -253,55 +224,31 @@ android {
         minSdk = 26
         // Instrumented tests run on a device because SQLCipher's native libraries only exist there.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Empty on release / CI so Play and unsigned release APKs stay on Firebase.
-        buildConfigField("String", "NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION", "\"\"")
-        buildConfigField("String", "NOTELIKEUS_REMOTE_BACKEND", "\"\"")
         buildConfigField("String", "NOTELIKEUS_SUPABASE_URL", "\"\"")
         buildConfigField("String", "NOTELIKEUS_SUPABASE_ANON_KEY", "\"\"")
         buildConfigField("String", "NOTELIKEUS_ATTACHMENTS_WORKER_URL", "\"\"")
     }
     buildTypes {
         getByName("release") {
-            // Production cutover. Empty unless NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION is set in the
-            // build environment, so an ordinary assembleRelease — CI, Play, a developer machine
-            // with staging keys in local.properties — still ships on Firebase.
-            buildConfigField(
-                "String",
-                "NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION",
-                quotedBuildConfig(if (isSupabaseCutoverBuild) "true" else ""),
-            )
-            buildConfigField(
-                "String",
-                "NOTELIKEUS_REMOTE_BACKEND",
-                quotedBuildConfig(cutoverOnly("NOTELIKEUS_REMOTE_BACKEND")),
-            )
             buildConfigField(
                 "String",
                 "NOTELIKEUS_SUPABASE_URL",
-                quotedBuildConfig(cutoverOnly("NOTELIKEUS_SUPABASE_URL")),
+                quotedBuildConfig(localOrEnv("NOTELIKEUS_SUPABASE_URL", "notelikeus.supabaseUrl")),
             )
             buildConfigField(
                 "String",
                 "NOTELIKEUS_SUPABASE_ANON_KEY",
-                quotedBuildConfig(cutoverOnly("NOTELIKEUS_SUPABASE_ANON_KEY")),
+                quotedBuildConfig(localOrEnv("NOTELIKEUS_SUPABASE_ANON_KEY", "notelikeus.supabaseAnonKey")),
             )
             buildConfigField(
                 "String",
                 "NOTELIKEUS_ATTACHMENTS_WORKER_URL",
-                quotedBuildConfig(cutoverOnly("NOTELIKEUS_ATTACHMENTS_WORKER_URL")),
+                quotedBuildConfig(
+                    localOrEnv("NOTELIKEUS_ATTACHMENTS_WORKER_URL", "notelikeus.attachmentsWorkerUrl"),
+                ),
             )
         }
         getByName("debug") {
-            // Debug never carries the production allow flag: isDebug already enables Supabase, and
-            // baking it here would let a debug artifact behave like a cutover build.
-            buildConfigField("String", "NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION", "\"\"")
-            // Device processes do not see shell env vars. Bake gitignored local.properties
-            // (or NOTELIKEUS_* env at compile time) into debug BuildConfig only.
-            buildConfigField(
-                "String",
-                "NOTELIKEUS_REMOTE_BACKEND",
-                quotedBuildConfig(localOrEnv("NOTELIKEUS_REMOTE_BACKEND", "notelikeus.remoteBackend")),
-            )
             buildConfigField(
                 "String",
                 "NOTELIKEUS_SUPABASE_URL",
@@ -327,9 +274,6 @@ android {
 
     testOptions {
         unitTests {
-            // Robolectric otherwise runs against a stub manifest, so Firebase's component discovery
-            // finds no registrars and FirebaseFirestore.getInstance() fails with "Firestore
-            // component is not present" — which is what FirestoreNoteTransportEmulatorTest needs.
             isIncludeAndroidResources = true
         }
     }
@@ -359,7 +303,7 @@ compose.desktop {
             // `./gradlew run` — which has the whole JDK on hand — stays green. Verified by
             // diffing `runtime/release` in the generated app image with and without this block.
             modules(
-                "java.net.http",    // HttpClient: Firestore transport, token refresh, sign-in
+                "java.net.http",    // HttpClient: Supabase RPC, token refresh, sign-in
                 "jdk.unsupported",  // sun.misc.Unsafe, via datastore-protobuf
                 "java.naming",      // reached from the TLS stack
                 // AppConfig.isDebug asks the RuntimeMXBean whether a JDWP agent is attached.

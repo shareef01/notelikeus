@@ -1,52 +1,13 @@
--- Regression tests for 20250904000000_mapping_and_attachment_guards.sql.
+-- Regression tests for attachment mutation guards.
 --
--- Before that migration, `firebase_uid_mappings` and `note_attachments` carried permissive RLS
--- write policies and no mutation guard, so an authenticated PostgREST client could write them
--- directly and skip the invariants that only exist inside their RPCs. Each attack below is one
--- that actually succeeded against the pre-migration schema.
+-- Authenticated PostgREST clients must not write note_attachments directly and skip the
+-- invariants that only exist inside register_note_attachment / delete_note_attachment.
 
 begin;
-select plan(12);
+select plan(7);
 
 select tests.create_supabase_user('guard_a@notelikeus.test');
 select tests.create_supabase_user('guard_b@notelikeus.test');
-
--- ---------------------------------------------------------------------------
--- firebase_uid_mappings: the RPC is the only way in.
--- ---------------------------------------------------------------------------
-select tests.authenticate_as('guard_b@notelikeus.test');
-
-select throws_ok(
-  $$ insert into public.firebase_uid_mappings (firebase_uid, owner_id)
-     values ('victim_firebase_uid', tests.get_supabase_uid('guard_b@notelikeus.test')) $$,
-  '42501',
-  null,
-  'direct insert into firebase_uid_mappings is blocked'
-);
-select is(
-  public.link_firebase_uid('guard_b_uid')->>'firebase_uid',
-  'guard_b_uid',
-  'link_firebase_uid still writes the mapping through the guard'
-);
--- UPDATE/DELETE need a row to match, or the BEFORE ROW trigger never fires and the assertion
--- would pass for the wrong reason. The mapping above is that row.
-select throws_ok(
-  $$ update public.firebase_uid_mappings set firebase_uid = 'other' $$,
-  '42501',
-  null,
-  'direct update of firebase_uid_mappings is blocked'
-);
-select throws_ok(
-  $$ delete from public.firebase_uid_mappings $$,
-  '42501',
-  null,
-  'direct delete of firebase_uid_mappings is blocked'
-);
-select is(
-  public.link_firebase_uid('guard_b_uid_relinked')->>'firebase_uid',
-  'guard_b_uid_relinked',
-  'relinking the caller''s own mapping still works'
-);
 
 -- ---------------------------------------------------------------------------
 -- note_attachments: the object_key namespace check cannot be bypassed.
@@ -103,8 +64,6 @@ select is(
 
 -- ---------------------------------------------------------------------------
 -- Grants: anonymous callers are refused before the function body runs.
--- Supabase's ALTER DEFAULT PRIVILEGES grants anon EXECUTE explicitly, so the original
--- `REVOKE ... FROM PUBLIC` alone never removed it.
 -- ---------------------------------------------------------------------------
 select is(
   bool_or(has_function_privilege('anon', p.oid, 'EXECUTE')),

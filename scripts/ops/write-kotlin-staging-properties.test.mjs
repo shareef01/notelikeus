@@ -10,11 +10,9 @@ import {
 
 const SAMPLE_ENV = `
 # Staging — copy to web/.env
-VITE_REMOTE_BACKEND=supabase
 VITE_SUPABASE_URL=https://example.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example
 VITE_ATTACHMENTS_WORKER_URL=https://notelikeus-attachments.example.workers.dev
-VITE_ALLOW_SUPABASE_PRODUCTION=true
 `;
 
 test('parses quoted env and ignores comments', () => {
@@ -29,7 +27,6 @@ VITE_SUPABASE_ANON_KEY='eyJexample'
 
 test('maps staging env and ignores production allow flags', () => {
   const updates = stagingPropertiesFromEnv(parseDotEnv(SAMPLE_ENV));
-  assert.equal(updates['notelikeus.remoteBackend'], 'supabase');
   assert.equal(updates['notelikeus.supabaseUrl'], 'https://example.supabase.co');
   assert.equal(
     updates['notelikeus.attachmentsWorkerUrl'],
@@ -64,7 +61,7 @@ test('merges without dropping oauth secret or adding allow-production', () => {
   const existing = [
     'sdk.dir=/opt/android-sdk',
     'notelikeus.oauthClientSecret=keep-me',
-    'notelikeus.remoteBackend=firebase',
+    'notelikeus.supabaseUrl=https://keep.example',
     '',
   ].join('\n');
   const next = writeKotlinStagingProperties({
@@ -73,7 +70,7 @@ test('merges without dropping oauth secret or adding allow-production', () => {
   });
   assert.match(next, /sdk\.dir=\/opt\/android-sdk/);
   assert.match(next, /notelikeus\.oauthClientSecret=keep-me/);
-  assert.match(next, /notelikeus\.remoteBackend=supabase/);
+  assert.match(next, /notelikeus\.supabaseUrl=https:\/\/example\.supabase\.co/);
   assert.doesNotMatch(next, /allowSupabaseProduction/);
   assert.doesNotMatch(next, /ALLOW_SUPABASE_PRODUCTION/);
 });

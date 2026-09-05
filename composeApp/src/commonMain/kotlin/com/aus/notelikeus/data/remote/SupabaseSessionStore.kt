@@ -1,11 +1,17 @@
 package com.aus.notelikeus.data.remote
 
-class SupabaseSessionStore {
+class SupabaseSessionStore(
+    private val persistence: SupabaseSessionPersistence = InMemorySupabaseSessionPersistence(),
+) {
     @Volatile private var accessToken: String? = null
     @Volatile private var refreshToken: String? = null
     @Volatile private var userId: String? = null
     @Volatile private var email: String? = null
     @Volatile private var expiresAtEpochMs: Long = 0L
+
+    init {
+        persistence.load()?.let { restore(it) }
+    }
 
     fun hasSession(): Boolean = accessToken != null
 
@@ -21,11 +27,8 @@ class SupabaseSessionStore {
     )
 
     fun save(session: SupabaseAuthSession) {
-        accessToken = session.accessToken
-        refreshToken = session.refreshToken
-        userId = session.userId
-        email = session.email
-        expiresAtEpochMs = session.expiresAtEpochMs
+        restore(session)
+        persistence.save(session)
     }
 
     suspend fun validAccessToken(refresh: suspend (String) -> SupabaseAuthSession): String? {
@@ -47,6 +50,15 @@ class SupabaseSessionStore {
         userId = null
         email = null
         expiresAtEpochMs = 0L
+        persistence.clear()
+    }
+
+    private fun restore(session: SupabaseAuthSession) {
+        accessToken = session.accessToken
+        refreshToken = session.refreshToken
+        userId = session.userId
+        email = session.email
+        expiresAtEpochMs = session.expiresAtEpochMs
     }
 
     private companion object {

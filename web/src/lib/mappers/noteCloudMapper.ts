@@ -1,10 +1,13 @@
-import { serverTimestamp, Timestamp, type FieldValue } from 'firebase/firestore';
 import type { ChecklistItem } from '@/types/checklist';
 import type { Label } from '@/types/label';
 import type { Note } from '@/types/note';
 import { labelFromName } from '@/types/label';
 import { isCloudSyncEligible } from '@/types/note';
 
+/**
+ * Portable note document used by JSON backups and historical cloud maps.
+ * Not a Firebase SDK type.
+ */
 export interface FirestoreNoteDocument {
   localId?: number;
   title?: string;
@@ -17,13 +20,8 @@ export interface FirestoreNoteDocument {
   position?: number;
   isLocked?: boolean;
   reminderTimestamp?: number | null;
-  /**
-   * Server-assigned, not client-set — Firestore resolves the `serverTimestamp()` sentinel to
-   * its own commit time, which is what makes cross-device conflict resolution immune to a
-   * device's clock being wrong. Rules additionally enforce this is exactly request.time, so a
-   * client cannot forge it. `FieldValue` on write (the sentinel), `Timestamp` on read (resolved).
-   */
-  serverUpdatedAt?: FieldValue | Timestamp;
+  /** Epoch millis, or a `{ seconds, nanoseconds }` blob from older backups. */
+  serverUpdatedAt?: number | { seconds?: number; nanoseconds?: number } | null;
   labels?: Array<{ name?: string }>;
   checklist?: Array<{
     text?: string;
@@ -39,33 +37,14 @@ export interface FirestoreNoteDocument {
 }
 
 /**
- * Field readers that never trust the input's type. Cloud documents are type-checked by
- * firestore.rules, but this same mapper parses backup files, which are arbitrary user JSON —
- * a non-string title would otherwise reach the store and throw on the next search or render.
- * Mirrors Android's `Map<String, Any?>.toCloudNote` (`as? String ?: ""`).
+ * Field readers that never trust the input's type. This mapper parses backup files, which are
+ * arbitrary user JSON — a non-string title would otherwise reach the store and throw on the next
+ * search or render. Mirrors Android's `Map<String, Any?>.toCloudNote`.
  */
 function asString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
 
-/**
- * Coerces to a whole number, for the fields Firestore stores as `int`.
- *
- * `localId`, `color`, `position` and both timestamps are integers everywhere else in the system:
- * Kotlin types them `Long`/`Int`, the desktop transport writes explicit `integerValue`, and
- * `firestore.rules` type-checks them with `is int`. JavaScript has one number type, so nothing on
- * this side enforced it — the previous helper accepted any finite value, and a note carrying `1.5`
- * in one of those fields imports happily and is then **rejected by the rules on every write**.
- * The note survives locally and silently never syncs, which is the worst shape a failure takes.
- *
- * Backups are user-editable JSON and import routes through `cloudMapToNote`, so this is reachable
- * without a malicious actor — a hand-edited or third-party-generated file is enough.
- *
- * Truncates rather than rejects: the magnitude is the meaningful part and dropping a fractional
- * remainder keeps the note usable, where discarding the field would lose real data. It matches
- * what `serverUpdatedAt` already does a few lines below, flooring sub-millisecond precision so
- * both platforms agree on one number.
- */
 function asInteger(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
   return Math.trunc(value);
@@ -79,6 +58,15 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+function serverUpdatedAtToMillis(value: FirestoreNoteDocument['serverUpdatedAt']): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+  if (value && typeof value === 'object' && typeof value.seconds === 'number') {
+    const nanos = typeof value.nanoseconds === 'number' ? value.nanoseconds : 0;
+    return value.seconds * 1000 + Math.floor(nanos / 1_000_000);
+  }
+  return null;
+}
+
 function checklistToCloudMap(item: ChecklistItem): Record<string, unknown> {
   return {
     text: item.text,
@@ -87,7 +75,7 @@ function checklistToCloudMap(item: ChecklistItem): Record<string, unknown> {
   };
 }
 
-/** Serializes a note to the Android-compatible Firestore map. */
+/** Serializes a note to the Android-compatible cloud/backup map. */
 export function noteToCloudMap(note: Note): FirestoreNoteDocument {
   const payload: FirestoreNoteDocument = {
     localId: note.localId,
@@ -99,11 +87,9 @@ export function noteToCloudMap(note: Note): FirestoreNoteDocument {
     isArchived: note.isArchived,
     isTrashed: note.isTrashed,
     position: note.position,
-    // Note locking is gone, but older clients and the deployed rules still expect the field.
-    // Writing a constant keeps this build compatible with both without a deploy ordering rule.
     isLocked: false,
     reminderTimestamp: note.reminderTimestamp,
-    serverUpdatedAt: serverTimestamp(),
+    serverUpdatedAt: note.serverUpdatedAt ?? null,
     labels: note.labels.map((label) => ({ name: label.name })),
     checklist: note.checklist.map(checklistToCloudMap),
   };
@@ -125,8 +111,6 @@ export function cloudMapToNote(
   data: FirestoreNoteDocument,
   resolveLabel: (name: string) => Label = (name) => labelFromName(name),
 ): Note {
-  // Number.isInteger, not isFinite: a document literally named "1.5" would otherwise become a
-  // fractional localId, which is the same rules rejection by another route.
   const parsedId = Number(documentId);
   const hasNumericId = Number.isInteger(parsedId) && parsedId > 0;
   const localId = hasNumericId ? parsedId : asInteger(data.localId, Date.now());
@@ -177,12 +161,7 @@ export function cloudMapToNote(
       typeof data.reminderTimestamp === 'number' && Number.isFinite(data.reminderTimestamp)
         ? Math.trunc(data.reminderTimestamp)
         : null,
-    // Not `.toMillis()`: it keeps the sub-millisecond fraction (float division), while Android's
-    // equivalent conversion floors it (integer division) — same commit, two different numbers
-    // otherwise. Flooring on both sides is the coarsest representation both platforms agree on.
-    serverUpdatedAt: data.serverUpdatedAt instanceof Timestamp
-      ? data.serverUpdatedAt.seconds * 1000 + Math.floor(data.serverUpdatedAt.nanoseconds / 1_000_000)
-      : null,
+    serverUpdatedAt: serverUpdatedAtToMillis(data.serverUpdatedAt),
     labels,
     attachments,
     checklist,

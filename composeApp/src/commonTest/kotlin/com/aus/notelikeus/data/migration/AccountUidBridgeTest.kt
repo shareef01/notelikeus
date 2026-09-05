@@ -7,17 +7,11 @@ import kotlin.test.assertTrue
 
 class AccountUidBridgeTest {
 
-  @Test
-  fun linkedFirebaseUidAndSupabaseUuidAreSameAccount() {
-    val store = FakeNoteSyncStateStore()
-    val bridge = AccountUidBridge(store)
-    val firebaseUid = "firebaseUid28charsabcdefghij"
-    val supabaseUid = "11111111-2222-4333-8444-555555555555"
-
-    bridge.linkAccounts(firebaseUid, supabaseUid)
-
-    assertTrue(bridge.accountsMatch(firebaseUid, supabaseUid))
-    assertTrue(bridge.accountsMatch(supabaseUid, firebaseUid))
-    assertFalse(bridge.accountsMatch("other-user", supabaseUid))
-  }
+    @Test
+    fun equalIdsAreTheSameAccount() {
+        val bridge = AccountUidBridge(FakeNoteSyncStateStore())
+        assertTrue(bridge.accountsMatch(null, "alice"))
+        assertTrue(bridge.accountsMatch("alice", "alice"))
+        assertFalse(bridge.accountsMatch("alice", "bob"))
+    }
 }

@@ -1,4 +1,4 @@
-import { deleteCloudTombstone } from '@/lib/firestore/tombstones';
+import { deleteCloudTombstone } from '@/lib/notes/tombstones';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import {
   deleteAttachmentsForNote,
@@ -35,7 +35,7 @@ function withTimestamp(note: Note, patch: Partial<Note>): Note {
   return { ...note, ...patch, timestamp: Date.now() };
 }
 
-/** Save locally and optionally push to Firestore when signed in — no React hooks. */
+/** Save locally and optionally push to the cloud when signed in — no React hooks. */
 export async function saveNote(note: Note): Promise<void> {
   const existing = getNote(note.id);
   let toSave = note;
@@ -53,7 +53,7 @@ export async function saveNote(note: Note): Promise<void> {
   await pushNote(toSave);
 }
 
-/** Remove locally and from Firestore when signed in. Tombstoned so a later cloud
+/** Remove locally and from the cloud when signed in. Tombstoned so a later cloud
  * merge can never resurrect it, even if the remote delete below fails or a stale
  * copy exists from before this device last synced. Guest-mode deletes skip the
  * tombstone: guest notes live in IndexedDB only, so a persisted tombstone could

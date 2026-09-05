@@ -1,6 +1,5 @@
 package com.aus.notelikeus.platform
 
-import com.aus.notelikeus.data.migration.FirebaseSupabaseAccountLinker
 import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
@@ -18,7 +17,6 @@ class DesktopSyncManager(
     private val syncEngine: NoteSyncEngine,
     private val sessionManager: CloudSessionManager,
     private val isolator: LocalAccountIsolator,
-    private val accountLinker: FirebaseSupabaseAccountLinker,
 ) : SyncManager {
 
     private val _syncStatus = MutableStateFlow(CloudSyncStatus.Offline)
@@ -51,7 +49,6 @@ class DesktopSyncManager(
     private suspend fun onSignedIn() {
         refreshAccount()
         val uid = sessionManager.getCurrentAccount().userId ?: return
-        accountLinker.linkAfterSupabaseSignIn(uid)
         isolator.isolateIfAccountChanged(uid)
     }
 

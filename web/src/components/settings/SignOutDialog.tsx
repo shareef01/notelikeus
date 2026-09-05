@@ -55,7 +55,7 @@ export function SignOutDialog({
         <>
           <h4 className="text-lg font-semibold text-red-300">Delete cloud data and sign out?</h4>
           <p className="mt-2 text-sm text-brand-muted">
-            This permanently deletes your synced notes from Firestore for this Google account.
+            This permanently deletes your synced notes from Notelikeus cloud for this account.
             It does not just remove this device. This action cannot be undone unless you have a
             backup or another copy elsewhere.
           </p>

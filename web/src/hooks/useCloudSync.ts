@@ -5,10 +5,8 @@ import { useNotesStore } from '@/store/notesStore';
 export type CloudSyncStatus = 'unknown' | 'synced' | 'offline';
 
 /**
- * Read-only sync status for the settings screen. There is nothing to trigger here anymore —
- * every note save/delete writes straight to Firestore (see noteActions.ts) and the realtime
- * listener (see useNotesSync.ts) keeps this device's view live. `notes.length` doubles as the
- * "synced count" because, once signed in, `notes` IS the Firestore collection.
+ * Read-only sync status for the settings screen. Note saves write locally then to Supabase
+ * (see noteActions.ts); Realtime (see useNotesSync.ts) wakes an authoritative pull.
  */
 export function useCloudSync() {
   const { userId, user, isGuest } = useAuthListener();

@@ -13,9 +13,7 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
-    // Emulator-backed tests need a running Firestore, so they are not part of the default run.
-    // `npm run test:sync` starts the emulator and runs them via vitest.emulator.config.ts.
-    exclude: ['**/node_modules/**', '**/dist/**', 'src/**/*.emulator.test.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**'],
     // happy-dom ships no IndexedDB, which is where the locked-note key lives.
     setupFiles: ['./src/test/setup.ts'],
     coverage: {
@@ -35,7 +33,7 @@ export default defineConfig({
       filename: 'sw.ts',
       registerType: 'autoUpdate',
       // main.tsx registers via `virtual:pwa-register`. Pinned to null so the plugin can never
-      // fall back to injecting an inline registration script — the CSP in firebase.json has no
+      // fall back to injecting an inline registration script — Pages CSP has no
       // 'unsafe-inline' in script-src, and an injected inline script would be blocked.
       injectRegister: null,
       includeAssets: ['favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
@@ -97,7 +95,7 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
-          if (id.includes('firebase')) return 'firebase';
+          if (id.includes('@supabase')) return 'supabase';
           if (id.includes('react-dom') || id.includes('react/') || id.includes('scheduler')) {
             return 'react-vendor';
           }

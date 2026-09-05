@@ -8,13 +8,6 @@ bucket_name = "notelikeus-attachments-dev"
 
 [vars]
 SUPABASE_URL = "http://127.0.0.1:54321"
-# Firebase project whose ID tokens may prove ownership of a legacy Firebase uid. Not a secret, but
-# load-bearing — without it, a validly signed token from any Firebase project would verify.
-# FIREBASE_PROJECT_ID = "notelikeus"
 # Optional comma-separated extra Origins (localhost and *.pages.dev are always allowed).
 # ALLOWED_ORIGINS = "https://notes.example.com"
 # Set via `wrangler secret put SUPABASE_ANON_KEY` in real deployments.
-# Set via `wrangler secret put SUPABASE_SERVICE_ROLE_KEY` to enable verified Firebase uid linking.
-# Used only to call link_verified_firebase_uid after a Firebase ID token has been checked. It
-# bypasses RLS, so leaving it unset is a valid posture: the route answers 501 and clients fall back
-# to unverified claims, which are not exclusive and lock nobody out.

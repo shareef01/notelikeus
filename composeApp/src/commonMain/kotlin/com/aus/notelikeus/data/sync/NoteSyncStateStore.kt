@@ -77,16 +77,6 @@ interface NoteSyncStateStore {
 
     fun setLastMergedUserId(userId: String)
 
-    /** Legacy Firebase Auth uid linked to the current Supabase account (Phase 6). */
-    fun linkedFirebaseUid(): String?
-
-    fun setLinkedFirebaseUid(userId: String?)
-
-    /** True after Firebase cloud data was imported into Supabase for this device. */
-    fun isFirebaseSupabaseCloudMigrated(): Boolean
-
-    fun setFirebaseSupabaseCloudMigrated(migrated: Boolean)
-
     /** Wipes all stored state (used on sign-out). */
     fun clear()
 

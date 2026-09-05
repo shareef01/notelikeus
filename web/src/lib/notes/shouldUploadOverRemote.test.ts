@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldUploadOverRemote } from '@/lib/firestore/notesRepository';
+import { shouldUploadOverRemote } from '@/lib/notes/remoteMerge';
 import { createEmptyNote, type Note } from '@/types/note';
 
 function note(partial: Partial<Note> & Pick<Note, 'id' | 'localId'>): Note {
@@ -25,9 +25,6 @@ describe('shouldUploadOverRemote', () => {
   });
 
   it('refuses to overwrite a confirmed-synced remote with an untrusted local timestamp', () => {
-    // Simulates an imported backup file: cloudMapToNote never resolves a plain JSON value into
-    // a real serverUpdatedAt, so an imported note's serverUpdatedAt is always null even if its
-    // `timestamp` field was hand-edited to look far newer than the real remote copy.
     const importedFromBackup = note({
       id: '1',
       localId: 1,
@@ -45,9 +42,6 @@ describe('shouldUploadOverRemote', () => {
   });
 
   it('does not re-upload when both sides are the same confirmed revision', () => {
-    // The steady state after any successful sync: local notes come from the same cloud mapper
-    // fetchRemoteNotes uses, so the stamps match exactly. Returning true here made
-    // syncNotesWithCloud rewrite every note in the library on every reconcile.
     const local = note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500 });
     const remote = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });
     expect(shouldUploadOverRemote(local, remote)).toBe(false);
@@ -60,7 +54,6 @@ describe('shouldUploadOverRemote', () => {
   });
 
   it('uploads an equal-stamp local edit whose client timestamp is newer', () => {
-    // Room and the web editor keep serverUpdatedAt through a local save and only bump timestamp.
     const local = note({ id: '1', localId: 1, timestamp: 30, serverUpdatedAt: 500 });
     const remote = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });
     expect(shouldUploadOverRemote(local, remote)).toBe(true);

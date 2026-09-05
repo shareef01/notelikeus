@@ -7,7 +7,7 @@ import { searchNotes } from '@/types/note';
 import { collectUniqueLabels } from '@/types/label';
 import { useAuthListener } from '@/hooks/useAuth';
 
-/** Read notes state and actions. Does not subscribe to Firestore — use `useNotesSync` once in App. */
+/** Read notes state and actions. Does not subscribe to remote sync — use `useNotesSync` once in App. */
 export function useNotes() {
   const { userId, isReady: authReady } = useAuthListener();
   const notes = useNotesStore((state) => state.notes);
