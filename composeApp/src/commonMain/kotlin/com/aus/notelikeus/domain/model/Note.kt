@@ -25,11 +25,11 @@ data class Note(
     val position: Int = 0,
     val reminderTimestamp: Long? = null,
     /**
-     * Firestore's server-assigned commit time (epoch millis) as of the last time this device
+     * Server-assigned commit time (epoch millis) as of the last time this device
      * observed a write to this note in the cloud — either its own upload or a download. Null
      * until the note has synced at least once under this scheme. Used instead of [timestamp]
-     * (a client clock, spoofable and skew-prone across devices) to decide which copy wins a
-     * sync conflict; see NoteSyncEngine.kt.
+     * (a client clock, spoofable and skew-prone across devices) as a display/conflict hint
+     * alongside the authoritative server revision; see NoteSyncEngine.kt.
      */
     val serverUpdatedAt: Long? = null,
     val labels: List<Label> = emptyList(),

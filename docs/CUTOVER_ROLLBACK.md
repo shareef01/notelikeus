@@ -1,8 +1,17 @@
 # Production cutover — rollback plan
 
-Written 2026-09-05, before any cutover. Covers what to do if Supabase has to be abandoned after
-production is switched. Read it before flipping anything: two of the constraints below cannot be
-fixed after the fact.
+**Status: SUPERSEDED — 2026-09-05**
+
+Firebase is no longer a runtime fallback. Rollback to Firebase is not supported in source.
+If a new Supabase project is misconfigured, fix or replace that project; do not re-enable Firebase.
+
+See `docs/BACKEND_ARCHITECTURE.md`.
+
+---
+
+The remainder of this file is historical.
+
+
 
 ## What a cutover actually changes
 

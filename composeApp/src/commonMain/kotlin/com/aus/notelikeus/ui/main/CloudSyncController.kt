@@ -155,7 +155,7 @@ internal class CloudSyncController(
      * Sign-out failures are surfaced rather than dropped, because the only way
      * [SyncManager.signOut] fails is the one that matters: `deleteCloudData` was asked for and the
      * cloud delete did not happen,
-     * so the session is deliberately still alive and the notes are still in Firestore. Silently
+     * so the session is deliberately still alive and the notes are still in the cloud. Silently
      * swallowing that left the user looking at a signed-in app with no explanation.
      */
     fun signOutFromCloud(deleteCloudData: Boolean = false) {

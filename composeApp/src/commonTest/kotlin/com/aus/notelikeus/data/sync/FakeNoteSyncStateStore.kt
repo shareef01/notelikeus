@@ -10,8 +10,6 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
     private val knownCloud = mutableSetOf<Long>()
     private var reconciledAt: Long = 0L
     private var mergedUserId: String? = null
-    private var linkedFirebaseUid: String? = null
-    private var firebaseCloudMigrated: Boolean = false
     var currentTime: Long = 1_000_000L
 
     override fun markDeleted(noteId: Long, deletedAt: Long) {
@@ -74,26 +72,12 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
         mergedUserId = userId
     }
 
-    override fun linkedFirebaseUid(): String? = linkedFirebaseUid
-
-    override fun setLinkedFirebaseUid(userId: String?) {
-        linkedFirebaseUid = userId
-    }
-
-    override fun isFirebaseSupabaseCloudMigrated(): Boolean = firebaseCloudMigrated
-
-    override fun setFirebaseSupabaseCloudMigrated(migrated: Boolean) {
-        firebaseCloudMigrated = migrated
-    }
-
     override fun clear() {
         deleted.clear()
         restored.clear()
         knownCloud.clear()
         reconciledAt = 0L
         mergedUserId = null
-        linkedFirebaseUid = null
-        firebaseCloudMigrated = false
     }
 
     override fun currentTimeMillis(): Long = currentTime

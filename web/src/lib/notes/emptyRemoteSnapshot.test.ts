@@ -35,7 +35,7 @@ function note(id: string): Note {
 }
 
 /**
- * A Firebase→Supabase migration lands local notes in the Supabase owner namespace before anything
+ * A first signed-in session can land local notes in the owner namespace before anything
  * has been uploaded, so the very first `fetch_full_snapshot` legitimately answers with zero notes
  * while IndexedDB holds the user's whole library. The same shape occurs when the wrong account is
  * signed in, or when a backend/RLS problem answers successfully but empty.

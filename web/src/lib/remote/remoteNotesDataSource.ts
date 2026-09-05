@@ -7,9 +7,7 @@ export interface RemoteNotesSnapshot {
 
 /**
  * Platform-agnostic remote note transport for the web sync layer.
- *
- * Firebase is the default implementation during migration (Phase 1–3).
- * Supabase will implement the same contract in Phase 4.
+ * The production implementation is Supabase RPC + Realtime.
  */
 export interface RemoteNotesDataSource {
   subscribeToNotes(
