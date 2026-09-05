@@ -5,5 +5,5 @@ export const NOTES_DB_VERSION = 1;
 export const NOTES_STORE = 'notes';
 export const META_STORE = 'meta';
 
-/** Namespace for guest-mode notes — never used as a Firebase uid. */
+/** Namespace for guest-mode notes — never used as a cloud user id. */
 export const GUEST_OWNER_ID = '__guest__';

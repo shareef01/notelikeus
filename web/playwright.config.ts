@@ -1,15 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * End-to-end suite. Runs the real app in a real browser against the Firebase emulators.
+ * End-to-end suite. Runs the real app in a real browser against local Supabase.
  *
- * This exists to answer the one question no other suite can: whether the Firebase SDK actually
- * works in a browser. The unit suite is pure functions, and the emulator sync suite runs under
- * Node — neither loads the production bundle, so neither would catch a bundling or browser-runtime
- * regression from an SDK upgrade.
- *
- * `npm run test:e2e` builds the app, starts the emulators, and serves the build. The dev server is
- * deliberately not used: bundling differences are part of what this is checking.
+ * `npm run test:e2e` refuses a non-localhost Supabase URL, builds the app with `--mode e2e`,
+ * and serves that bundle. Start `npm run supabase:start` first.
  */
 export default defineConfig({
   testDir: './e2e',

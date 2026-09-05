@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <!--
-      The CSP lives in firebase.json's hosting headers, not here. Two policies are enforced as
+      The CSP lives in web/public/_headers (Cloudflare Pages), not here. Two policies are enforced as
       their intersection, so a duplicate that drifts silently tightens the real one; and
       frame-ancestors is ignored in a meta tag anyway (X-Frame-Options: DENY covers it).
     -->

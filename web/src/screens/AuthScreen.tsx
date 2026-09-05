@@ -13,7 +13,6 @@ import {
   testLoginBuildEnabled,
 } from '@/lib/auth/emailAuth';
 import { signInWithGoogle } from '@/lib/auth/googleAuth';
-import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
 import { useUiStore, type AuthMode } from '@/store/uiStore';
@@ -342,7 +341,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
 
           <p className="mt-6 pb-8 text-center text-xs leading-relaxed text-brand-muted/80">
             By continuing, you agree that notes you choose to sync are stored in your{' '}
-            {isSupabaseBackendEnabled() ? 'Notelikeus cloud' : 'Firebase'} account under your
+            Notelikeus cloud account under your
             signed-in identity.
           </p>
         </div>

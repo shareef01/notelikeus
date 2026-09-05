@@ -23,7 +23,7 @@ class SyncWorker(
 
         if (noteId == -1L) return ListenableWorker.Result.failure()
 
-        // Stale work from a prior Firebase session — do not touch the current user's cloud.
+        // Stale work from a prior session — do not touch the current user's cloud.
         val currentUid = sessionManager.getCurrentAccount().userId
         if (expectedUid.isNullOrBlank() || expectedUid != currentUid) {
             return ListenableWorker.Result.success()

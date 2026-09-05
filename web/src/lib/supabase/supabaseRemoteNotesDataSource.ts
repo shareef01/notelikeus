@@ -1,7 +1,7 @@
 import {
   mergeRemoteNotes,
   shouldUploadOverRemote,
-} from '@/lib/firestore/notesRepository';
+} from '@/lib/notes/remoteMerge';
 import { subscribeSupabaseNoteRealtime } from '@/lib/supabase/supabaseRealtimeSync';
 import {
   loadRevisionState,

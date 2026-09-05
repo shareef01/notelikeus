@@ -2,27 +2,17 @@ name: Cloudflare Pages CI
 
 on:
   workflow_dispatch:
-    inputs:
-      backend:
-        description: Remote backend for this Pages preview. firebase is the default. supabase-staging never sets production cutover flags.
-        type: choice
-        options:
-          - firebase
-          - supabase-staging
-        default: firebase
   push:
     branches: [main, master]
     paths:
       - 'web/**'
       - 'cloudflare/**'
-      - 'firebase.json'
       - '.github/workflows/cloudflare-pages.yml'
   pull_request:
     branches: [main, master]
     paths:
       - 'web/**'
       - 'cloudflare/**'
-      - 'firebase.json'
       - '.github/workflows/cloudflare-pages.yml'
 
 permissions:
@@ -60,18 +50,13 @@ jobs:
         working-directory: web
         run: npm run build
         env:
-          VITE_FIREBASE_API_KEY: placeholder
-          VITE_FIREBASE_AUTH_DOMAIN: placeholder.firebaseapp.com
-          VITE_FIREBASE_PROJECT_ID: placeholder
-          VITE_FIREBASE_STORAGE_BUCKET: placeholder.appspot.com
-          VITE_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
-          VITE_FIREBASE_APP_ID: 1:000000000000:web:placeholder
-          VITE_FIREBASE_GOOGLE_CLIENT_ID: placeholder.apps.googleusercontent.com
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiJ9.payload.signature
 
       - name: Verify Pages artifacts
         run: node web/scripts/verifyPagesArtifacts.mjs
 
-      - name: Verify header parity with Firebase Hosting
+      - name: Verify security headers
         run: node cloudflare/scripts/verify-headers-parity.mjs
 
   deploy-preview:
@@ -87,15 +72,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Require staging secrets
-        if: github.event.inputs.backend == 'supabase-staging'
+      - name: Require Pages secrets
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
         run: |
           missing=0
-          for name in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY VITE_ATTACHMENTS_WORKER_URL; do
+          for name in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY; do
             if [ -z "${!name}" ]; then
               echo "Missing GitHub secret: $name"
               missing=1
@@ -117,15 +101,6 @@ jobs:
         working-directory: web
         run: npm ci && npm run build
         env:
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-          VITE_FIREBASE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_FIREBASE_GOOGLE_CLIENT_ID }}
-          VITE_REMOTE_BACKEND: ${{ github.event.inputs.backend == 'supabase-staging' && 'supabase' || '' }}
-          VITE_ALLOW_SUPABASE_STAGING: ${{ github.event.inputs.backend == 'supabase-staging' && 'true' || '' }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}

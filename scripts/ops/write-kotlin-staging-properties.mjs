@@ -12,7 +12,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, '../..');
 
 export const STAGING_PROPERTY_KEYS = {
-  remoteBackend: 'notelikeus.remoteBackend',
   supabaseUrl: 'notelikeus.supabaseUrl',
   supabaseAnonKey: 'notelikeus.supabaseAnonKey',
   attachmentsWorkerUrl: 'notelikeus.attachmentsWorkerUrl',
@@ -63,7 +62,6 @@ export function stagingPropertiesFromEnv(env) {
     throw new Error('web/.env.staging is missing VITE_ATTACHMENTS_WORKER_URL');
   }
   return {
-    [STAGING_PROPERTY_KEYS.remoteBackend]: env.VITE_REMOTE_BACKEND?.trim() || 'supabase',
     [STAGING_PROPERTY_KEYS.supabaseUrl]: url,
     [STAGING_PROPERTY_KEYS.supabaseAnonKey]: anon,
     [STAGING_PROPERTY_KEYS.attachmentsWorkerUrl]: worker,
@@ -130,9 +128,9 @@ function main() {
   });
   writeFileSync(propertiesPath, next);
   console.log(
-    'Updated gitignored local.properties with Kotlin staging keys (debug Android BuildConfig / desktop).',
+    'Updated gitignored local.properties with Kotlin staging keys (Android BuildConfig / desktop).',
   );
-  console.log('Do not set NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION. Rebuild the Android debug APK.');
+  console.log('Rebuild the Android APK after changing these keys.');
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
