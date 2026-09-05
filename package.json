@@ -15,12 +15,14 @@
     "supabase:reset": "supabase db reset",
     "supabase:test": "supabase test db",
     "setup:staging": "bash scripts/ops/setup-staging.sh",
+    "kotlin:staging-properties": "node scripts/ops/write-kotlin-staging-properties.mjs",
+    "test:kotlin-staging-properties": "node --test scripts/ops/write-kotlin-staging-properties.test.mjs",
     "deploy:staging-pages": "node scripts/ops/deploy-staging-pages.mjs",
     "test:attachments-worker": "npm --prefix workers/attachments test",
     "pages:verify": "npm --prefix web run build && node web/scripts/verifyPagesArtifacts.mjs && node cloudflare/scripts/verify-headers-parity.mjs",
     "ops:export-firestore-user": "node scripts/ops/export-firestore-user.mjs",
     "rehearse:staging-import": "node scripts/ops/rehearse-staging-import.mjs",
-    "test:ops-export": "node --test scripts/ops/firestoreToBackup.test.mjs"
+    "test:ops-export": "node --test scripts/ops/firestoreToBackup.test.mjs scripts/ops/write-kotlin-staging-properties.test.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
