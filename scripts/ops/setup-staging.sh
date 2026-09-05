@@ -287,4 +287,4 @@ fi
 
 print_manual_steps
 
-green "Staging bootstrap complete (Firebase remains production default)."
+green "Staging bootstrap complete (Supabase is the only backend)."
