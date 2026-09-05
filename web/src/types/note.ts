@@ -6,11 +6,11 @@ import { byRelevance, fuzzyMatches } from '@/lib/text/noteSearchRanking';
 import { buildSearchText, noteMatchesSearchQuery, searchTokens } from '@/lib/text/searchText';
 
 /**
- * Canonical note model — field names match Android Room + Firestore cloud map.
+ * Canonical note model — field names match Android Room and the cloud map.
  * `timestamp` is the client-set edit clock, shown to the user and used for display sort order.
  */
 export interface Note {
-  /** Firestore document id (string form of Android localId). */
+  /** Note id (string form of Android localId). */
   id: string;
   /** Numeric local id shared with Android (`localId` in cloud documents). */
   localId: number;

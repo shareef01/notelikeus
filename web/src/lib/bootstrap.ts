@@ -1,14 +1,8 @@
 import { clearOwner } from '@/lib/local/notesLocalRepository';
-import { isFirebaseConfigured } from '@/lib/config';
 import { isSupabaseBackendEnabled, loadSupabaseAnonKey, loadSupabaseUrl } from '@/lib/supabase/client';
 import { isBrowserSafeSupabaseKey } from '@/lib/supabase/backendFlag';
-import { initFirebase } from '@/lib/firebase';
 import { LEGACY_NOTES_STORAGE_KEY } from '@/lib/notes/legacyLocalMigration';
 import { LAST_MERGED_USER_STORAGE_KEY } from '@/lib/notes/lastMergedUser';
-import {
-  FIREBASE_SUPABASE_LINK_STORAGE_KEY,
-  KNOWN_FIREBASE_UID_STORAGE_KEY,
-} from '@/lib/migration/accountIdentity';
 import { forgetSignedIn, SESSION_HINT_STORAGE_KEY } from '@/lib/auth/sessionHint';
 import { ensureReminderSync } from '@/lib/reminders/reminderSync';
 import { useLabelRegistryStore } from '@/store/labelRegistryStore';
@@ -17,12 +11,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { useUiStore } from '@/store/uiStore';
 
-export type BootFailureCode =
-  | 'storage'
-  | 'firebase-config'
-  | 'firebase-init'
-  | 'supabase-config'
-  | 'unknown';
+export type BootFailureCode = 'storage' | 'supabase-config' | 'unknown';
 
 export class BootFailure extends Error {
   readonly code: BootFailureCode;
@@ -50,9 +39,7 @@ const STORAGE_KEYS = [
 
 /**
  * User-owned data — cleared on sign-out / account switch. Settings/UI/filter prefs stay, since
- * those aren't per-account. `LEGACY_NOTES_STORAGE_KEY` is included defensively: if a not-yet-
- * migrated user (see legacyLocalMigration.ts) switches accounts before migration ran, this stops
- * their old local notes from being pushed into the next account's Firestore data.
+ * those aren't per-account.
  */
 const USER_DATA_STORAGE_KEYS = [
   LEGACY_NOTES_STORAGE_KEY,
@@ -61,11 +48,6 @@ const USER_DATA_STORAGE_KEYS = [
   'notelikeus-deleted-notes',
   'notelikeus-lock-key',
   SESSION_HINT_STORAGE_KEY,
-  // Firebase→Supabase identity breadcrumbs. Without these the previous user's Firebase uid
-  // outlives the wipe, and the next Supabase account on this browser profile resolves it as its
-  // own migration candidate — claiming a stranger's Firebase identity.
-  FIREBASE_SUPABASE_LINK_STORAGE_KEY,
-  KNOWN_FIREBASE_UID_STORAGE_KEY,
 ] as const;
 
 const REHYDRATE_TIMEOUT_MS = 8_000;
@@ -96,8 +78,6 @@ function requireRehydrate(promise: Promise<void>, ms: number, label: string): Pr
 }
 
 async function rehydrateStores(): Promise<void> {
-  // Tombstones/labels must finish before the Firestore listener starts, or a stale/empty
-  // tombstone set could let a just-deleted note flash back in from the first snapshot.
   await Promise.all([
     requireRehydrate(
       Promise.resolve(useNotesStore.persist.rehydrate()),
@@ -174,7 +154,6 @@ export async function bootstrapApp(): Promise<void> {
   } catch (error) {
     console.error('[Notelikeus] Rehydrate failed, clearing persisted data:', error);
     clearPersistedAppData();
-    // Second attempt: if storage is corrupt/hung, start from empty in-memory state.
     try {
       await rehydrateStores();
     } catch (retryError) {
@@ -190,53 +169,16 @@ export async function bootstrapApp(): Promise<void> {
 
   ensureReminderSync();
 
-  // Boot requires the backend this build actually selected. Firebase is still the default, so in
-  // production this is the same check it always was — `isSupabaseBackendEnabled()` is false there
-  // unless an owner-authorised cutover build sets the allow flag. Requiring Firebase
-  // unconditionally meant a Supabase build could not start without full Firebase web config, which
-  // is a cutover blocker and kept staging from ever exercising a Firebase-free client.
-  if (isSupabaseBackendEnabled()) {
-    if (!isBrowserSafeSupabaseKey(loadSupabaseAnonKey())) {
-      throw new BootFailure(
-        'Supabase anon key is missing or is not a public key for this web build.',
-        'supabase-config',
-      );
-    }
-    if (!loadSupabaseUrl().trim()) {
-      throw new BootFailure(
-        'Supabase URL is not configured for this web build.',
-        'supabase-config',
-      );
-    }
-    // Firebase stays optional here but is still initialised when present: the Phase 6 migration
-    // bridge reads the live Firebase session to prove ownership of a legacy uid, and a staging
-    // build that carries Firebase config should keep that path working. A failure is not fatal —
-    // Supabase is the selected backend.
-    if (isFirebaseConfigured()) {
-      try {
-        initFirebase();
-      } catch (error) {
-        console.warn('[Notelikeus] Firebase init failed; continuing on Supabase:', error);
-      }
-    }
-    return;
-  }
-
-  if (!isFirebaseConfigured()) {
+  if (!isBrowserSafeSupabaseKey(loadSupabaseAnonKey()) || !loadSupabaseUrl().trim()) {
     throw new BootFailure(
-      'Firebase is not configured for this web build.',
-      'firebase-config',
+      'Supabase is not configured for this web build.',
+      'supabase-config',
     );
   }
-
-  try {
-    initFirebase();
-  } catch (error) {
-    console.error('[Notelikeus] Firebase init failed:', error);
-    const message = error instanceof Error ? error.message : 'Firebase failed to initialize';
-    const code = message.includes('Missing required environment variable')
-      ? 'firebase-config'
-      : 'firebase-init';
-    throw new BootFailure(message, code, error);
+  if (!isSupabaseBackendEnabled()) {
+    throw new BootFailure(
+      'This production build needs VITE_SUPABASE_URL pointing at a hosted Supabase project.',
+      'supabase-config',
+    );
   }
 }

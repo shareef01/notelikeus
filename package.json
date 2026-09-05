@@ -1,5 +1,5 @@
 {
-  "name": "notelikeus-firebase",
+  "name": "notelikeus",
   "private": true,
   "type": "module",
   "author": "shareef01",
@@ -7,9 +7,8 @@
     "type": "git",
     "url": "https://github.com/shareef01/notelikeus.git"
   },
-  "homepage": "https://notelike.web.app",
+  "homepage": "https://github.com/shareef01/notelikeus",
   "scripts": {
-    "test:rules": "firebase emulators:exec --only firestore \"vitest run tests/firestore.rules.test.mjs\"",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "supabase:reset": "supabase db reset",
@@ -19,20 +18,9 @@
     "test:kotlin-staging-properties": "node --test scripts/ops/write-kotlin-staging-properties.test.mjs",
     "deploy:staging-pages": "node scripts/ops/deploy-staging-pages.mjs",
     "test:attachments-worker": "npm --prefix workers/attachments test",
-    "pages:verify": "npm --prefix web run build && node web/scripts/verifyPagesArtifacts.mjs && node cloudflare/scripts/verify-headers-parity.mjs",
-    "ops:export-firestore-user": "node scripts/ops/export-firestore-user.mjs",
-    "rehearse:staging-import": "node scripts/ops/rehearse-staging-import.mjs",
-    "test:ops-export": "node --test scripts/ops/firestoreToBackup.test.mjs scripts/ops/write-kotlin-staging-properties.test.mjs"
+    "pages:verify": "npm --prefix web run build && node web/scripts/verifyPagesArtifacts.mjs && node cloudflare/scripts/verify-headers-parity.mjs"
   },
   "devDependencies": {
-    "@firebase/rules-unit-testing": "^5.0.2",
-    "firebase": "^12.18.0",
-    "firebase-tools": "^15.28.1",
-    "supabase": "^2.67.1",
-    "vitest": "^4.1.11"
-  },
-  "overrides": {
-    "uuid": "^11.1.1",
-    "@opentelemetry/core": "^2.8.0"
+    "supabase": "^2.67.1"
   }
 }

@@ -1,7 +1,6 @@
 import { useAuthListener, useAuthSync } from '@/hooks/useAuth';
 import { useGuestLocalNotesBootstrap } from '@/hooks/useGuestLocalNotesBootstrap';
 import { useNotesSync } from '@/hooks/useNotesSync';
-import { isFirebaseConfigured } from '@/lib/config';
 import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
 import { MainScreen } from '@/screens/MainScreen';
 import { ThemeApplier } from '@/components/theme/ThemeApplier';
@@ -24,8 +23,7 @@ const LabelsScreen = lazy(() =>
   import('@/screens/LabelsScreen').then((module) => ({ default: module.LabelsScreen })),
 );
 
-// Sync runs once the *selected* backend is configured, not only when Firebase is.
-const remoteReady = isSupabaseBackendEnabled() || isFirebaseConfigured();
+const remoteReady = isSupabaseBackendEnabled();
 
 export default function App() {
   const editorMode = useUiStore((s) => s.editorRoute.mode);
@@ -42,15 +40,8 @@ export default function App() {
   const { user, isReady: authReady, isGuest } = useAuthListener();
   const isTabletUp = useIsTabletUp();
   const [authTimedOut, setAuthTimedOut] = useState(false);
-  // Read once, so it cannot flip mid-render as auth resolves.
   const [hadSession] = useState(hadSessionLastLoad);
 
-  // Firebase restores its session asynchronously, so authReady is false for a moment on every
-  // load. This hint lets someone who was signed in last time get the app shell immediately
-  // instead of a full-screen "checking sign-in" gate on every refresh — notes themselves still
-  // populate a moment later once auth resolves and the Firestore listener attaches (from
-  // Firestore's own persistent local cache, near-instant on a return visit). If auth then
-  // resolves to no user, the sign-in screen takes over.
   const assumeSignedIn = !authReady && hadSession;
 
   useAuthSync();
@@ -74,8 +65,6 @@ export default function App() {
       return;
     }
     const noteId = params.get('note');
-    // Note ids are the string form of the numeric localId (Firestore doc ids). Anything else
-    // (e.g. a hand-edited URL) is not a note and opening it would silently mint a phantom note.
     if (noteId && /^\d+$/.test(noteId)) {
       openNote(noteId);
       window.history.replaceState({}, '', window.location.pathname);
@@ -94,10 +83,6 @@ export default function App() {
     return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
   }, [openNote]);
 
-  // Mounted above every early return below: it renders nothing and only sets the theme class on
-  // <html>. Sitting under the `!user` return meant the loading and sign-in screens — the first
-  // thing anyone sees — ran with no theme class, falling back to :root's light palette on the
-  // shell's dark background.
   const themeApplier = <ThemeApplier />;
 
   if (!remoteReady) {
@@ -105,16 +90,13 @@ export default function App() {
       <div className="flex min-h-full items-center justify-center bg-true-surface p-6">
         {themeApplier}
         <p className="max-w-md rounded-note border border-amber-900/50 bg-amber-950/30 px-4 py-3 text-center text-sm text-amber-200">
-          Copy web/.env.example to web/.env and set VITE_FIREBASE_APP_ID from Firebase Console.
+          Copy web/.env.example to web/.env and set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
         </p>
       </div>
     );
   }
 
   if (!isGuest && !authReady && !hadSession) {
-    // Same splash the boot screen shows, so a first visit reads as one continuous "Loading…"
-    // rather than a third differently-styled screen. The timeout affordance only appears if
-    // auth genuinely stalls.
     return (
       <>
         {themeApplier}
@@ -142,9 +124,6 @@ export default function App() {
     return (
       <>
         {themeApplier}
-        {/* Splash, not null, while the AuthScreen chunk loads — otherwise the shell flashes
-            blank on a first visit, and on an expired session flashes blank between the notes
-            we optimistically showed and this gate. */}
         <ErrorBoundary allowClearData={false}>
           <Suspense fallback={<AppSplash />}>
             <AuthScreen mode="signin" mandatory />

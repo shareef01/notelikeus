@@ -100,7 +100,7 @@ data class NoteColorRole(
  * Pure, so the contrast test can enumerate the whole palette without a composition. The
  * foreground comes from [getContentColor], which measures both candidates rather than
  * thresholding luminance — which matters because `color` is a bare ARGB int in both the backup
- * format and the Firestore document, so a container here can be any value at all.
+ * format and the cloud document, so a container here can be any value at all.
  */
 fun noteColorRole(container: Color): NoteColorRole =
     NoteColorRole(container = container, onContainer = container.getContentColor())

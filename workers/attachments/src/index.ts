@@ -1,6 +1,5 @@
 import { resolveAuthenticatedUserId, type WorkerEnv } from './auth';
 import { withAttachmentCors } from './cors';
-import { FIREBASE_LINK_PATH, handleFirebaseLinkRequest } from './firebaseLink';
 import {
   AttachmentTooLargeError,
   declaredContentLength,
@@ -23,11 +22,6 @@ export async function handleAttachmentRequest(
   }
 
   const url = new URL(request.url);
-
-  // Identity proof shares the Worker's Supabase-token check, so it lives behind the same 401.
-  if (url.pathname === FIREBASE_LINK_PATH) {
-    return handleFirebaseLinkRequest(request, env, userId);
-  }
 
   const parsed = parseAttachmentPath(url.pathname);
   if (!parsed) {
