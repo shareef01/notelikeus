@@ -2,13 +2,13 @@
 
 **Date:** 2026-09-05  
 **Branch:** `cutover/supabase-canonical`  
-**HEAD:** `22bc939` plus local audit fixes (OAuth PKCE race, stale staging copy)  
-**Draft PR:** https://github.com/shareef01/notelikeus/pull/153  
+**HEAD:** `820e616` (`cutover/supabase-canonical`)  
+**PR:** https://github.com/shareef01/notelikeus/pull/153  
 **Mandate:** Supabase is the sole backend. Legacy Firebase users and Firestore data are abandoned.
 
 ## Verdict
 
-**Ship with nits** for source merge. **Not ready to cut production traffic** until the owner finishes hosted-project bootstrap (`supabase db push`, Google OAuth, Pages/Worker env, custom-domain CORS).
+**Ship with nits** for source merge. Staging schema, Pages, Worker, and Auth redirect URLs are live. **Google sign-in still needs a human Google account** (OAuth reaches `accounts.google.com` for `*.supabase.co`; this agent has no Google password). Do not cut a custom production domain until `ALLOWED_ORIGINS` and store-build keys are set.
 
 The working tree is Supabase-only at runtime. Dual-backend flags, Firebase SDKs, Hosting, App Check, and the UID-bridge table/RPCs are gone. Remaining Firebase strings are historical names, archive, or stale docs — not a live second backend.
 
@@ -38,12 +38,9 @@ None in source. Production **traffic** is still blocked on owner infra (see Owne
 
 ### High
 
-1. **Hosted schema has not been pushed.** Migrations exist and CI can rebuild them, but this repo is not linked and `supabase db push` was not run. A Pages/Worker stack pointed at an empty or pre-cutover project will fail Auth/RPC/RLS.  
-   Path: `supabase/migrations/` (apply with `supabase link` + `supabase db push`).
+1. **Hosted schema pushed** on the staging project (`notelikeus-staging`). Only `20260905000000_remove_firebase_compatibility.sql` was pending; it applied. `firebase_uid_mappings` is gone.
 
-2. **Android/Desktop release fails open to local demo Supabase.** Empty `BuildConfig` / missing `local.properties` falls back to `http://127.0.0.1:54321` and the well-known CLI demo anon JWT. Web production **fails closed**. A Play/MSI build assembled without hosted keys would silently target loopback.  
-   Paths: `composeApp/src/androidMain/kotlin/com/aus/notelikeus/data/remote/BackendConfig.android.kt`, `composeApp/src/desktopMain/kotlin/com/aus/notelikeus/data/remote/BackendConfig.desktop.kt`, `composeApp/build.gradle.kts`.  
-   Kotlin already has `isLocalSupabaseUrl()` and does not use it for release gating.
+2. **Android/Desktop release fail-closed** (`820e616`). Empty hosted config no longer falls back to `127.0.0.1:54321` in release; debug still uses CLI defaults. Store builds must still bake `NOTELIKEUS_SUPABASE_*`.
 
 3. **Stale runbooks still describe Firebase as production.** `docs/CUTOVER_ROLLBACK.md` is bannered SUPERSEDED but still tells an operator to `firebase deploy --only hosting` and flip deleted allow-flags. `docs/BACKEND_MIGRATION.md` is a thousand-line dual-backend diary. Following either after merge is an ops incident.  
    Paths: `docs/CUTOVER_ROLLBACK.md`, `docs/BACKEND_MIGRATION.md`.
@@ -178,18 +175,21 @@ No `service_role`, `sb_secret_`, or private key is tracked.
 - `scripts/ops/setup-staging.sh` — success line no longer says Firebase is the production default.
 - `scripts/ops/write-kotlin-staging-properties.mjs` — comment no longer claims a Firebase default.
 
-## Owner actions (still required)
+## Owner actions
 
-1. Create/select a **new** Supabase project. Do not migrate Firebase users.
-2. `supabase link` + `supabase db push` (all migrations including `20260905000000_remove_firebase_compatibility.sql`).
-3. Enable Google provider; add redirect URLs for localhost, `https://notelikeus-dev.pages.dev`, and the production domain.
-4. Confirm Realtime publication on `notes` and `note_tombstones`.
-5. R2 bucket + Worker secrets (`SUPABASE_URL`, `SUPABASE_ANON_KEY`). Set `ALLOWED_ORIGINS` before attaching a custom domain.
-6. Pages env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, optional `VITE_ATTACHMENTS_WORKER_URL`.
-7. Bake hosted keys into any Play/MSI build (`NOTELIKEUS_SUPABASE_*` / `local.properties`). Do not ship the localhost fallback.
-8. Mark `docs/BACKEND_MIGRATION.md` / rollback body as do-not-follow, or delete after the team has read this file.
-9. Delete leftover `VITE_FIREBASE_*` from the local `web/.env`.
-10. Merge PR #153 only when the above is scheduled; source is mergeable, infra is not.
+**Done**
+1. Staging Supabase project linked; `db push` applied the Firebase-compat drop.
+2. Google redirect URLs for `https://notelikeus-dev.pages.dev/**` and `http://localhost:5173/**` (OAuth 302s to Google; no `redirect_uri_mismatch`).
+3. Pages staging + R2 Worker deployed.
+4. Native release fail-closed (`820e616`).
+
+**Still required**
+1. Complete **Sign in with Google** on https://notelikeus-dev.pages.dev/ with a real Google account (agent cannot enter the password).
+2. Bake hosted keys into any Play/MSI build (`NOTELIKEUS_SUPABASE_*` / `local.properties`).
+3. Set Worker `ALLOWED_ORIGINS` before a custom domain.
+4. Optional GitHub secrets so Actions can deploy Pages.
+5. Delete leftover `VITE_FIREBASE_*` from local `web/.env`.
+6. Merge [PR #153](https://github.com/shareef01/notelikeus/pull/153) when ready (CI green, not a draft).
 
 ## Preserved correctness (still true)
 
