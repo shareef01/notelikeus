@@ -1,23 +1,26 @@
 package com.aus.notelikeus.data.remote
 
+import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.readLocalProperty
-
-private const val DEFAULT_LOCAL_SUPABASE_URL = "http://127.0.0.1:54321"
-private const val DEFAULT_LOCAL_SUPABASE_ANON_KEY =
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0"
 
 actual object BackendConfig {
     actual val supabaseUrl: String
-        get() = firstNonBlank(
-            System.getenv("NOTELIKEUS_SUPABASE_URL"),
-            readLocalProperty("notelikeus.supabaseUrl"),
-        ) ?: DEFAULT_LOCAL_SUPABASE_URL
+        get() = resolveSupabaseUrl(
+            firstNonBlank(
+                System.getenv("NOTELIKEUS_SUPABASE_URL"),
+                readLocalProperty("notelikeus.supabaseUrl"),
+            ),
+            allowLocalFallback = AppConfig.isDebug,
+        )
 
     actual val supabaseAnonKey: String
-        get() = firstNonBlank(
-            System.getenv("NOTELIKEUS_SUPABASE_ANON_KEY"),
-            readLocalProperty("notelikeus.supabaseAnonKey"),
-        ) ?: DEFAULT_LOCAL_SUPABASE_ANON_KEY
+        get() = resolveSupabaseAnonKey(
+            firstNonBlank(
+                System.getenv("NOTELIKEUS_SUPABASE_ANON_KEY"),
+                readLocalProperty("notelikeus.supabaseAnonKey"),
+            ),
+            allowLocalFallback = AppConfig.isDebug,
+        )
 
     actual val attachmentsWorkerUrl: String
         get() = firstNonBlank(
