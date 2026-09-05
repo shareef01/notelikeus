@@ -42,6 +42,12 @@ class DesktopSyncManager(
     private val _pendingEvent = MutableStateFlow<CloudSyncEvent?>(null)
     override val pendingEvent: StateFlow<CloudSyncEvent?> = _pendingEvent.asStateFlow()
 
+    override suspend fun completeExternalSignIn(): Result<Unit> = runCatching {
+        // The helper already exchanged the Google token and saved the session; everything that
+        // normally follows a sign-in still has to run.
+        onSignedIn()
+    }
+
     private suspend fun onSignedIn() {
         refreshAccount()
         val uid = sessionManager.getCurrentAccount().userId ?: return
