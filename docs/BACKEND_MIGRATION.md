@@ -957,7 +957,7 @@ Ticked items were established by the 2026-09-04 audit; the rest are owner-gated 
 - [x] Android staging proven on-device (Pixel 7 / Android 16): auth, sync, and attachment upload/download through the Worker
 - [ ] Desktop staging build proven
 - [ ] Web / Android / Desktop convergence on one staging account
-- [ ] Offline reconciliation and account switching proven on each client
+- [x] Offline reconciliation proven on Android hardware (account switching still untested)
 - [x] Kotlin deletes reach the server without a prior download in the same process
 - [x] Web boots without Firebase config when Supabase is the selected backend
 - [ ] PWA service-worker behaviour across a backend change modelled
@@ -1252,6 +1252,36 @@ it already ships compiled into the desktop application.
 
 **This recurs at cutover.** Production Supabase will need the same entry, or desktop users cannot
 sign in after the switch. It belongs on the cutover checklist, not just the staging one.
+
+### Offline reconciliation — verified on hardware, 2026-09-05
+
+Run against the Pixel 7 with the staging build, driven over adb.
+
+| Step | Observed |
+| --- | --- |
+| Airplane mode on, Wi-Fi and data disabled | staging Supabase unreachable from the device (ping fails) |
+| Create a note while offline | `offline-reconcile-test` saved and listed — the local-first write needs no network |
+| Restore connectivity | online within ~5s |
+| App foregrounded | `SyncWorker` → **SUCCESS**, tagged `cloud_note_sync` |
+
+No stuck failure state, no duplicated worker, nothing lost. The note written with no network
+survived the transition and the first sync after reconnect succeeded.
+
+### Supabase provider settings that only surface at first real sign-in
+
+Three separate Google-provider issues appeared during staging, each invisible until a client
+actually attempted to authenticate, and each returning an opaque HTTP 400. They will recur on the
+production project unless replicated:
+
+| Symptom | Cause | Resolution |
+| --- | --- | --- |
+| `Unacceptable audience in id_token` | Desktop uses its own OAuth client; only the web client was registered | Add the desktop client id to the provider's client-id list |
+| `Bad ID token` (no nonce sent) | GoTrue verifies the nonce; the desktop flow sent none | Send a nonce (done in code — no project setting needed) |
+| `Bad ID token` (plain nonce sent) | GoTrue hashes the nonce it is given and compares against the token claim | Send `SHA-256(nonce)` hex to Google, the plain value to Supabase |
+
+Android was unaffected throughout: its ID token carries the **web** client as audience and sends no
+nonce, so only desktop exercised any of these paths. That is worth remembering — a client working
+is not evidence that the provider is correctly configured for the others.
 
 ### Rollback
 
