@@ -71,9 +71,10 @@ class DesktopGoogleSignInHelper(
             val codeVerifier = generateCodeVerifier()
             val codeChallenge = generateCodeChallenge(codeVerifier)
             val state = generateState()
+            val nonce = generateNonce()
 
             // Step 1: open browser and capture the auth code via loopback
-            val (authCode, redirectUri) = captureAuthCode(codeChallenge, state)
+            val (authCode, redirectUri) = captureAuthCode(codeChallenge, state, nonce)
                 ?: return@withContext Result.failure(
                     IllegalStateException("Sign-in was cancelled or timed out")
                 )
@@ -87,7 +88,7 @@ class DesktopGoogleSignInHelper(
 
             // Step 3: exchange the Google ID token for a cloud session
             if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
-                val session = supabaseAuthApi.signInWithGoogleIdToken(googleIdToken)
+                val session = supabaseAuthApi.signInWithGoogleIdToken(googleIdToken, nonce)
                 supabaseSessionStore.save(session)
                 return@withContext Result.success(session.accessToken)
             }
@@ -131,6 +132,21 @@ class DesktopGoogleSignInHelper(
      * the user's app to the attacker's account. PKCE does not cover this: it prevents an
      * intercepted code from being redeemed, not an injected one from being accepted.
      */
+    /**
+     * OIDC nonce (OpenID Connect Core §3.1.2.1), echoed by Google into the ID token's `nonce`
+     * claim.
+     *
+     * Supabase verifies it on `grant_type=id_token` and rejects a token whose nonce it was not
+     * given — that is the `Bad ID token` this flow used to hit. Sending one is why the project no
+     * longer has to disable the check, which would otherwise let a captured ID token be replayed
+     * until it expired.
+     */
+    private fun generateNonce(): String {
+        val bytes = ByteArray(32)
+        SecureRandom().nextBytes(bytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    }
+
     private fun generateState(): String {
         val bytes = ByteArray(32)
         SecureRandom().nextBytes(bytes)
@@ -141,7 +157,8 @@ class DesktopGoogleSignInHelper(
 
     private suspend fun captureAuthCode(
         codeChallenge: String,
-        expectedState: String
+        expectedState: String,
+        nonce: String
     ): Pair<String, String>? {
         return withTimeoutOrNull(120_000L) {
             suspendCancellableCoroutine { cont ->
@@ -193,7 +210,7 @@ class DesktopGoogleSignInHelper(
                 cont.invokeOnCancellation { runCatching { server.stop(0) } }
 
                 // Open the browser
-                val authUrl = buildOAuthUrl(redirectUri, codeChallenge, expectedState)
+                val authUrl = buildOAuthUrl(redirectUri, codeChallenge, expectedState, nonce)
                 try {
                     if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                         Desktop.getDesktop().browse(URI(authUrl))
@@ -248,7 +265,8 @@ class DesktopGoogleSignInHelper(
     private fun buildOAuthUrl(
         redirectUri: String,
         codeChallenge: String,
-        state: String
+        state: String,
+        nonce: String
     ): String {
         val params = mapOf(
             "client_id" to oauthClientId,
@@ -258,6 +276,7 @@ class DesktopGoogleSignInHelper(
             "state" to state,
             "code_challenge" to codeChallenge,
             "code_challenge_method" to "S256",
+            "nonce" to nonce,
             "access_type" to "offline",
             "prompt" to "consent"
         )
