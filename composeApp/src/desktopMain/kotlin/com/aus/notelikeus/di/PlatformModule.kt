@@ -11,9 +11,8 @@ import com.aus.notelikeus.data.local.getDatabaseBuilder
 import com.aus.notelikeus.data.remote.BackendConfig
 import com.aus.notelikeus.util.readLocalProperty
 import com.aus.notelikeus.data.remote.CloudSessionManager
-import com.aus.notelikeus.data.remote.DesktopFirestoreTransport
 import com.aus.notelikeus.data.remote.DesktopSupabaseRpcClient
-import com.aus.notelikeus.data.remote.RemoteBackend
+import com.aus.notelikeus.data.remote.DesktopSupabaseSessionPersistence
 import com.aus.notelikeus.data.remote.SupabaseAccessTokenProvider
 import com.aus.notelikeus.data.remote.SupabaseAuthApi
 import com.aus.notelikeus.data.remote.SupabaseNoteTransport
@@ -27,10 +26,8 @@ import com.aus.notelikeus.data.remote.AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.NoopAttachmentBlobTransport
 import com.aus.notelikeus.data.remote.R2AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.SupabaseAttachmentMetadata
-import com.aus.notelikeus.platform.DesktopSessionManager
 import com.aus.notelikeus.data.sync.CloudNoteTransport
 import com.aus.notelikeus.data.migration.AccountUidBridge
-import com.aus.notelikeus.data.migration.FirebaseSupabaseAccountLinker
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.NoteSyncStateStore
@@ -44,7 +41,6 @@ import com.aus.notelikeus.platform.DesktopGoogleSignInHelper
 import com.aus.notelikeus.platform.DesktopReminderManager
 import com.aus.notelikeus.platform.DesktopSyncCoordinator
 import com.aus.notelikeus.platform.DesktopSyncManager
-import com.aus.notelikeus.platform.DesktopTokenStore
 import com.aus.notelikeus.platform.DesktopWidgetManager
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
@@ -90,26 +86,20 @@ actual val platformModule = module {
     single { NoteBackupExporter(get<NoteRepository>(), "Notelikeus", AppConfig.versionName) }
     single { NoteBackupImporter(get<NoteRepository>()) }
 
-    // Cloud sync — real implementations
+    // Cloud sync
     single {
-        DesktopTokenStore(
-            dataDir = DesktopPathProvider.getDataDirectory(),
-            firebaseApiKey = DesktopOAuthConfig.FIREBASE_API_KEY
+        SupabaseSessionStore(
+            DesktopSupabaseSessionPersistence(DesktopPathProvider.getDataDirectory()),
         )
     }
-
-    single { SupabaseSessionStore() }
     single { SupabaseAuthApi(BackendConfig.supabaseUrl, BackendConfig.supabaseAnonKey) }
     single { SupabaseSessionManager(get(), get()) }
     single<SupabaseAccessTokenProvider> { SupabaseSessionAccessTokenProvider(get(), get()) }
-    single<CloudSessionManager> { DesktopSessionManager(get(), get()) }
+    single<CloudSessionManager> { get<SupabaseSessionManager>() }
 
     single<AttachmentLocalStorage> { DesktopAttachmentLocalStorage() }
     single<AttachmentBlobTransport> {
-        if (
-            BackendConfig.remoteBackend == RemoteBackend.SUPABASE &&
-            BackendConfig.attachmentsWorkerUrl.isNotEmpty()
-        ) {
+        if (BackendConfig.attachmentsWorkerUrl.isNotEmpty()) {
             val rpcClient = DesktopSupabaseRpcClient(
                 supabaseUrl = BackendConfig.supabaseUrl,
                 anonKey = BackendConfig.supabaseAnonKey,
@@ -126,65 +116,35 @@ actual val platformModule = module {
         }
     }
     single {
-        val metadata = if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
-            SupabaseAttachmentMetadata(
+        AttachmentSyncService(
+            blobTransport = get(),
+            metadata = SupabaseAttachmentMetadata(
                 DesktopSupabaseRpcClient(
                     supabaseUrl = BackendConfig.supabaseUrl,
                     anonKey = BackendConfig.supabaseAnonKey,
                     accessTokenProvider = get<SupabaseAccessTokenProvider>(),
                 ),
-            )
-        } else {
-            null
-        }
-        AttachmentSyncService(
-            blobTransport = get(),
-            metadata = metadata,
+            ),
             localStorage = get(),
             noteDao = get(),
         )
     }
 
     single<CloudNoteTransport> {
-        if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
-            SupabaseNoteTransport(
-                DesktopSupabaseRpcClient(
-                    supabaseUrl = BackendConfig.supabaseUrl,
-                    anonKey = BackendConfig.supabaseAnonKey,
-                    accessTokenProvider = get<SupabaseAccessTokenProvider>(),
-                ),
-            )
-        } else {
-            val tokenStore = get<DesktopTokenStore>()
-            DesktopFirestoreTransport(
-                firebaseProject = "notelikeus",
-                idTokenProvider = { tokenStore.validIdToken() },
-            )
-        }
+        SupabaseNoteTransport(
+            DesktopSupabaseRpcClient(
+                supabaseUrl = BackendConfig.supabaseUrl,
+                anonKey = BackendConfig.supabaseAnonKey,
+                accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+            ),
+        )
     }
 
     single<NoteSyncStateStore> {
-        // DataStore-backed sync state store for desktop
         DesktopNoteSyncStateStore(get())
     }
 
     single { AccountUidBridge(get()) }
-    single {
-        FirebaseSupabaseAccountLinker(
-            remoteBackend = BackendConfig.remoteBackend,
-            accountUidBridge = get(),
-            syncStateStore = get<NoteSyncStateStore>(),
-            supabaseRpc = if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
-                DesktopSupabaseRpcClient(
-                    supabaseUrl = BackendConfig.supabaseUrl,
-                    anonKey = BackendConfig.supabaseAnonKey,
-                    accessTokenProvider = get<SupabaseAccessTokenProvider>(),
-                )
-            } else {
-                null
-            },
-        )
-    }
 
     single {
         val sessionManager = get<CloudSessionManager>()
@@ -211,7 +171,6 @@ actual val platformModule = module {
             get<NoteSyncEngine>(),
             get<CloudSessionManager>(),
             get<LocalAccountIsolator>(),
-            get<FirebaseSupabaseAccountLinker>(),
         )
     }
 
@@ -219,8 +178,6 @@ actual val platformModule = module {
         DesktopGoogleSignInHelper(
             oauthClientId = DesktopOAuthConfig.CLIENT_ID,
             oauthClientSecret = DesktopOAuthConfig.clientSecret(),
-            firebaseApiKey = DesktopOAuthConfig.FIREBASE_API_KEY,
-            tokenStore = get(),
             supabaseAuthApi = get(),
             supabaseSessionStore = get(),
         )
@@ -228,10 +185,9 @@ actual val platformModule = module {
 }
 
 /**
- * Google/Firebase client configuration for the desktop build.
+ * Google OAuth client configuration for the desktop build.
  *
- * The client ID and Firebase API key identify the project and are public by design — they ship in
- * every client and are visible in `google-services.json` and the web bundle.
+ * The client ID identifies the project and is public by design.
  *
  * The OAuth client secret is different. Google classes installed-app secrets as non-confidential
  * (RFC 8252: PKCE is what actually secures this flow, and it is enabled above), but a secret
@@ -242,15 +198,9 @@ actual val platformModule = module {
  *  2. `notelikeus.oauthClientSecret` in the repo's gitignored `local.properties`, which is the
  *     ergonomic path for day-to-day development — same pattern the project already uses for
  *     `signing.properties`.
- *  3. [DesktopSecrets], generated at build time from the same two sources. An installed app has
- *     neither an env var nor a checked-out `local.properties`, so without this a packaged build
- *     could never sign in. Runtime sources come first so a build can still be overridden without
- *     recompiling.
+ *  3. [DesktopSecrets], generated at build time from the same two sources.
  *
- * Empty means desktop sign-in is simply not configured, and
- * [com.aus.notelikeus.platform.DesktopGoogleSignInHelper] says so up front rather than letting
- * Google answer with an opaque `client_secret is missing` 400 after the user has already picked
- * an account.
+ * Empty means desktop sign-in is simply not configured.
  */
 private object DesktopOAuthConfig {
     /**
@@ -265,7 +215,6 @@ private object DesktopOAuthConfig {
      */
     const val CLIENT_ID =
         "404285880902-o8gn7j5v211m7rvldo19v0eb93im8b7e.apps.googleusercontent.com"
-    const val FIREBASE_API_KEY = "AIzaSyBDF6ff82bZ-nSI5sW4MhtGiHomifciAQo"
 
     private const val SECRET_ENV_VAR = "NOTELIKEUS_OAUTH_CLIENT_SECRET"
     private const val SECRET_PROPERTY = "notelikeus.oauthClientSecret"

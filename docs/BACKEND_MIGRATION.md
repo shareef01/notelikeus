@@ -1,11 +1,20 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
-**Status:** Phases 0–12 on `main`; staging bootstrap live. Firebase remains the production backend.  
-**Last updated:** 2026-09-04 (Android debug BuildConfig + desktop local.properties for staging)
+**Status: COMPLETED / SUPERSEDED — 2026-09-05**
 
-This document tracks the phased migration away from Firebase. Phases 0–12 are on `main`. Production cutover is **not** authorized. Firebase Auth, Firestore, and Firebase Hosting (`notelike.web.app`) remain the live backend.
+This document is historical. The cutover is finished in source:
 
-**Git:** Phases 0–12 and Pages staging are on `main` (#145–#147). Kotlin debug staging wiring is additive; Firebase remains the production default.
+- Legacy Firebase user/data migration was **intentionally abandoned**.
+- Supabase is the canonical backend (Auth, PostgreSQL, RPC, Realtime).
+- Cloudflare Pages hosts the Web PWA. Cloudflare Worker + R2 hold attachment blobs.
+- Do **not** preserve Firebase Auth, Firestore, UID mapping, or a dual-backend fallback.
+
+See `docs/BACKEND_ARCHITECTURE.md` for the current architecture and
+`docs/SUPABASE_CUTOVER_AUDIT.md` for the phase-by-phase audit.
+
+---
+
+
 
 ---
 
@@ -713,6 +722,201 @@ Kotlin **debug** builds can point at the same staging stack. Run `npm run kotlin
 
 Bootstrap: `npm run setup:staging` (`scripts/ops/setup-staging.sh`).
 
+---
+
+## Migration audit (2026-09-04)
+
+An independent audit re-derived this tracker from source, SQL and runtime behaviour rather than
+from the phase table. Method and results below; the phase statuses above are unchanged except
+where a finding contradicted them.
+
+### What was actually executed
+
+Docker was unavailable, so `supabase start` / `supabase db reset` could not run. Instead a local
+PostgreSQL 16 was given the Supabase platform bootstrap the CLI would have produced — the `anon` /
+`authenticated` / `service_role` / `authenticator` roles, an `auth` schema with `auth.users` and
+`auth.uid()`/`auth.role()`/`auth.jwt()` reading `request.jwt.claims`, the `supabase_realtime`
+publication, and Supabase's `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES/FUNCTIONS/SEQUENCES
+TO anon, authenticated, service_role`. Every PostgREST request was emulated as one transaction
+with `SET LOCAL ROLE` plus the caller's JWT claims.
+
+| Check | Result |
+| --- | --- |
+| All migrations apply to a virgin database, in order | **PASS** (9/9, repeated after each change) |
+| pgTAP suite (`supabase/tests/database`) | **PASS** — 94/94 assertions |
+| Cross-user reads/writes on `notes`, tombstones, `sync_meta`, attachments, uid mappings | **PASS** — zero rows and zero mutations leaked in either direction |
+| Anonymous role against every table and RPC | **PASS** — nothing readable, nothing callable |
+| Direct-table forgery of `revision` / `owner_id` on `notes` and `note_tombstones` | **PASS** — blocked by `sync_mutation_guard` |
+| Revision monotonicity across create/create/update/delete | **PASS** — strictly ascending, globally unique |
+| `pull_changes` paging over 1 200 changes at `limit 100` | **PASS** — 10 rounds, 1 000 changes, no duplicates, no gaps, converged to the correct 800-note live set |
+| Conflict matrix (stale base, recreate-over-live, resurrect-after-delete, idempotent delete, unknown note, id/local_id mismatch) | **PASS** — no implicit resurrection on any path |
+| `fetch_full_snapshot` size at 800 notes / 200 tombstones | 267 kB (≈ 3.3 MB projected at 10 000 notes) |
+| Secret scan of HEAD and full history | **CLEAN** — every hit is a placeholder, a comment, or a Postgres role name |
+| Web unit / typecheck / lint / build | **PASS** — 344/344, clean, 0 errors, bundle builds |
+| Attachments Worker | **PASS** — 58/58 (was 9, none covering the handler) |
+| Ops scripts (`test:ops-export`) | **PASS** — 3/3 |
+| Kotlin desktop unit tests | **PASS** — 330/330 |
+| Android unit tests | **PASS** — 407 (composeApp 390, androidApp 17), 0 failures, run on the owner's machine with the SDK present |
+
+### Defects found and fixed
+
+See `20250904000000_mapping_and_attachment_guards.sql` and the commit that introduced it.
+
+1. **Firebase uid ownership was never proven (data/identity, fixed).** `ensureFirebaseSupabaseMigration`
+   resolved its candidate Firebase uid from `lastMergedUserId` and a remembered-uid key, both of
+   which survive sign-out. On a shared browser profile the next Supabase account resolved the
+   *previous* user's uid, called `link_firebase_uid` with it, and adopted that uid's IndexedDB
+   namespace. Because `firebase_uid` is the mapping table's primary key, this also permanently
+   locked the real owner out of linking. A claim now requires a live Firebase session for that
+   uid. Regression tests fail against the pre-fix implementation.
+2. **`firebase_uid_mappings` and `note_attachments` had no mutation guard (fixed).** Their RLS
+   write policies let an authenticated PostgREST client insert rows directly, skipping the
+   "already linked to another account" check and the `object_key` owner-namespace check. The
+   latter, with the global `note_attachments_object_key_unique`, let one account squat another's
+   future object key and permanently break their attachment registration. Both were reproduced
+   against the pre-migration schema and are now blocked.
+3. **The mutation guard leaked for the rest of the transaction (fixed).** `set_config(..., is_local)`
+   is transaction-scoped, so any transaction that called an RPC could then write the guarded tables
+   directly. Not reachable through PostgREST — one RPC call is one transaction — but it silently
+   breaks any caller that mixes an RPC with a direct-write assertion, pgTAP files included. Every
+   mutating RPC now brackets the window.
+4. **`REVOKE ... FROM PUBLIC` never removed `anon`'s EXECUTE (fixed).** Supabase grants the Data
+   API roles explicitly through `ALTER DEFAULT PRIVILEGES`, *in addition to* Postgres' own PUBLIC
+   default, so revoking one leaves the other. `anon` held EXECUTE on every RPC; the function bodies
+   still refused it, so nothing leaked, but the grant table did not say so. Both are revoked now
+   and the anon pgTAP assertions move from `28000` to `42501`.
+5. **The Worker had no server-side upload limits (fixed).** `putAttachment` called
+   `request.arrayBuffer()` with no size cap and no content-type check. The editors' 10 MB cap is a
+   UX affordance: the Worker is reachable directly with any Supabase access token. Uploads are now
+   streamed against a 10 MB limit, restricted to image types, and served with `nosniff`.
+6. **A secret `sb_…` key could reach the browser bundle (fixed).** The ops scripts reject them, but
+   a hand-edited `web/.env.staging` was inlined by `import.meta.env` unchecked. The backend
+   selector now refuses to enable Supabase unless the anon key is a public JWT.
+7. **An empty cloud snapshot hid a migrated library (P1, fixed).** `syncNotesWithCloud` refuses to
+   reconcile an empty cloud against known ids, but it is keyed on `previouslyKnownCloudIds`, which
+   is empty for an account that has never synced — so it did not cover the case that actually
+   happens during migration. `ensureFirebaseSupabaseMigration` moves the user's library into the
+   Supabase owner namespace *before* anything is uploaded, so the first `fetch_full_snapshot`
+   legitimately answers with zero notes. Both `hydrateIndexedDbFromRemote` and the realtime
+   `onData` handler then called `setNotes([])`. IndexedDB survived (`putNotes` is additive, so
+   nothing was destroyed), but the in-memory store is what the upload path reads as "local notes",
+   so the library was invisible *and* never pushed — and it re-blanked on every subsequent load.
+   An empty snapshot no longer replaces a library the device still holds; a library emptied by
+   deletion still applies, because tombstoned notes do not count as held.
+8. **Kotlin deletes were dropped on a cold start (P2, fixed).** `SupabaseNoteTransport.revisions`
+   is per-instance and never persisted, and `NoteSyncEngine.deleteNote()` calls the transport
+   directly with no download first — so `deleteNotes` found no base revision and returned without
+   calling the RPC at all. Only the full-sync path repopulated the map, and only by luck of
+   ordering. It now refreshes once per batch, retries a revision conflict against the revision the
+   server reports, and clears the cached revision on the idempotent answer (which carries no
+   `revision`, so the old cleanup never ran).
+9. **Boot required Firebase even when Supabase was selected (P2, fixed).** `bootstrap.ts` threw
+   `BootFailure` on missing Firebase config and called `initFirebase()` unconditionally, and
+   `App.tsx` gated sync on `isFirebaseConfigured()`. A Supabase build could not start without full
+   Firebase web config — a cutover blocker, and the reason Pages staging never exercised a
+   Firebase-free client. Boot now requires whichever backend the build selected, and validates the
+   Supabase URL and anon key when that is Supabase. Firebase is still initialised on a Supabase
+   build that carries the config, because the Phase 6 bridge reads the live Firebase session to
+   prove uid ownership; a failure there is no longer fatal. **Production behaviour is unchanged**:
+   `isSupabaseBackendEnabled()` is false in production unless an owner-authorised cutover build
+   sets the allow flag, and tests pin both sides of that.
+10. **`idempotent` was read off the wrong branch (fixed).** `apply_note_delete` answers an
+   already-tombstoned note with `{status: 'applied', idempotent: true}`; the web client looked for
+   `idempotent` inside its `status === 'conflict'` branch, so the cleanup was unreachable and a
+   stale revision was left behind. Same family as the rehearsal script expecting `"ok"` (#148).
+
+### Firebase uid ownership — resolved (owner-authorised, 2026-09-04)
+
+The audit's one open security item. `link_firebase_uid` accepted any uid from any authenticated
+session, and `firebase_uid` was the table's primary key, so the first account to name a uid held it
+forever — a durable denial-of-migration against a named victim. (The `EXISTS` guard inside the RPC
+never caught that: it runs SECURITY INVOKER under RLS and cannot see another owner's row. The unique
+violation was doing the work.)
+
+The fix separates a **claim** from a **proof**:
+
+| | Written by | Exclusive? | Effect of a squatter |
+| --- | --- | --- | --- |
+| Claim (`verified = false`) | `link_firebase_uid`, any authenticated session | **No** | None — the real owner can still claim, and still prove |
+| Proof (`verified = true`) | `link_verified_firebase_uid`, `service_role` only | **Yes** | Displaces unproven claims on the same uid |
+
+A proof is recorded only after a Firebase ID token has been verified: RS256 signature checked
+against Google's published certificates, `aud`/`iss` pinned to the configured Firebase project,
+`exp`/`iat`/`auth_time` checked with 60s skew, and the uid taken from the token's `sub` — never from
+the request body. That runs in the existing attachments Worker
+(`workers/attachments/src/firebaseIdToken.ts`), which already validates Supabase access tokens, so
+both halves of the identity are checked in one place: *this Supabase user* and *this Firebase user*
+are the same person, right now.
+
+Verification is optional. Without `FIREBASE_PROJECT_ID` and `SUPABASE_SERVICE_ROLE_KEY` the route
+answers 501 and clients fall back to an unverified claim — which is no longer exclusive, so the
+lockout is gone either way. The service-role key bypasses RLS and widens what a Worker compromise
+would reach; it is scoped to that one RPC, never written to a file, and set only when the operator
+supplies it.
+
+**Tested:** 16 pgTAP assertions for the claim/proof model (squatting, displacement, two-proof
+conflict, RLS-blind exclusivity, provenance across re-linking) and 33 Worker tests for the verifier
+and route — algorithm confusion (`alg: none`, HS256), wrong-project tokens, forged signatures,
+post-signing payload swaps, expiry and skew, unknown key ids, malformed input, and Google being
+unreachable. The privileged RPC is never called unless a token actually verified.
+
+**Residual:** an attacker can still write an unverified claim naming someone else's uid. It is not
+exclusive, confers no server-side access, and is displaced the moment the real owner proves
+ownership — but it is a row they caused. Rate limiting on the Worker is not implemented.
+
+### PR #150 (backup attachments) — review
+
+Reviewed against `origin/main`. The design is right: images are embedded as `dataBase64` under the
+existing `version: 3` (older v3 clients ignore the field, so it is genuinely backward compatible),
+restored as **pending** attachments so the existing `attachmentSyncService` uploads them to R2 on
+save, MIME-allowlisted and size-capped in both directions, and capped at 20 attachments per note on
+both Web and Kotlin. Recommend merging after #148 and #149.
+
+Three things worth addressing, none of them blocking:
+
+1. **MIME allowlist mismatch — fixed here.** #150 accepts `image/jpg` (non-standard, but real) on
+   both platforms; the Worker's allowlist did not. A backup carrying `image/jpg` would import
+   cleanly, store a pending blob, and then be refused **415** on upload — a note importing
+   "successfully" with its image silently gone, which is exactly the cross-layer failure chain the
+   audit brief warns about. `image/jpg` is now accepted by the Worker, with a test asserting the
+   two allowlists agree.
+2. **Memory on a 50 MB import.** `MAX_BACKUP_FILE_BYTES` goes 10 MB → 50 MB. Base64 costs ~33%, so
+   a 50 MB file carries ~37 MB of binary, and import holds the JSON string, the decoded bytes and
+   the Blob copies at once — plausibly 150 MB+ peak. Fine on desktop; a real OOM risk on mobile
+   Safari. Worth a streaming or per-note-batched decode before the cap is raised again.
+3. **The pending blob store is unbounded and never evicted.** `pendingAttachmentStore` is a
+   module-level `Map` drained only by a successful upload. `attachmentsFromBackupDtos` populates it
+   from inside `importNotesFromBackup` — a synchronous, pure-looking function — so a parse that is
+   later abandoned (the upload throws, so `commitImportedNotes` never calls `setNotes`) leaves the
+   blobs resident until reload. At 10 MB per image that adds up.
+
+### Tombstone retention — audited, no change made
+
+`note_tombstones` is never pruned server-side. Nothing in `supabase/migrations` deletes a tombstone
+except `delete_all_user_cloud_data`, and `SupabaseNoteTransport.deleteTombstones` is deliberately a
+no-op. Kotlin's local `TOMBSTONE_TTL_MS` (180 days) prunes only the device's own copy.
+
+That is the safe direction and it should stay: because a tombstone is never removed, a device that
+has been offline for longer than any TTL still learns the note was deleted, so deleted notes cannot
+resurrect. The cost is unbounded growth — one row per deleted note per user, forever — at roughly
+100 bytes a row, which is slow enough not to matter for a long time (an 800-note/200-tombstone
+account snapshots at 267 kB).
+
+Pruning would need a safe watermark: a tombstone can only be dropped once every device that could
+resurrect the note has certainly seen it, and nothing currently tracks per-device sync progress.
+Inventing one without that tracking would trade unbounded growth for silent data resurrection, so
+this is recorded rather than "fixed".
+
+### Open findings — not fixed here
+
+| Finding | Severity | Why it was left |
+| --- | --- | --- |
+| Kotlin does not upload a verified Firebase uid link — it only writes unverified (non-exclusive) claims. The ownership *gate* is now shared with Web, so no Kotlin client claims a uid it cannot corroborate; what is missing is the proof upload, which needs a Firebase ID token and an HTTP call on two platform targets that cannot be exercised in this environment. | P3 | Needs Android/desktop runtime verification |
+| `note_attachments` is not in the realtime publication, so an attachment added on one client is not signalled to another until a note change or the 30 s fallback. | P3 | Behavioural gap, not a defect |
+| Desktop `readLocalProperty` (PR #149) scans up to six parent directories of the process CWD for `local.properties` and reads the Supabase URL/key/worker URL from it regardless of `isDebug`. `remoteBackend` is still `isDebug`-gated, so a packaged build stays on Firebase — but a cutover build would take its endpoint from a directory scan. | P2 | Belongs to #149 |
+| `nextLocalNoteIdAfter` returns `Math.max(maxId + 1, Date.now() * 1000 + rand)` ≈ 1.8e15 today, safely inside `Number.MAX_SAFE_INTEGER` (9.007e15, reached around year 2255). Backup import re-allocates ids rather than trusting the file, so a hostile `localId` cannot poison the allocator. `local_id` is `BIGINT`, and a value above 2^53-1 does lose precision in `JSON.parse` — verified — but nothing generates one. | P4 | Not reachable; recorded so it is not re-derived |
+| `docs/STAGING_HANDOFF.md` (PR #152, draft) describes `user_notes`, `upsert_user_notes`, `list_user_notes` and `import_user_backup`. **None of these exist** in `supabase/migrations`, the web client, the Kotlin client or the ops scripts. The real schema is `notes` / `note_tombstones` / `sync_meta` with `apply_note_change` / `apply_note_delete` / `pull_changes` / `fetch_full_snapshot`. The document, not the architecture, is wrong. | P3 | #152 owns that file |
+
 ## Owner actions before production cutover
 
 1. ~~Create Cloudflare Pages project `notelikeus-dev` and deploy a preview.~~ **Done** — https://notelikeus-dev.pages.dev/
@@ -736,6 +940,393 @@ Remaining work: sign in with Google on https://notelikeus-dev.pages.dev/ and imp
 ```
 Do not start Firebase retirement in production. Review docs/BACKEND_MIGRATION.md Live staging first.
 ```
+
+---
+
+## Cutover gate
+
+Production cutover is **not** authorized. These are the conditions that would let the owner decide.
+Ticked items were established by the 2026-09-04 audit; the rest are owner-gated or unfinished.
+
+- [x] Fresh Supabase database reproduces from `supabase/migrations` alone, with no manual SQL
+- [x] No cross-user read or write survives RLS on any table (A/B and anonymous, executed)
+- [x] Direct PostgREST writes cannot bypass the revision protocol or the RPC invariants
+- [x] RPC grants match what the function bodies enforce
+- [x] Conflict, tombstone and no-resurrection semantics verified
+- [x] `pull_changes` pagination verified past one page (1 200 changes)
+- [x] Empty cloud never replaces a library the device still holds (reconcile, hydrate, realtime)
+- [x] Worker rejects unauthenticated, cross-user and oversized requests (tested)
+- [x] Production-isolation guards tested (Firebase host, lookalike hosts, missing flags, secret key)
+- [x] No credential in HEAD or git history
+- [x] **Firebase uid ownership proven server-side** — Firebase ID token verified in the Worker; squatting no longer locks anyone out
+- [x] Owner set `FIREBASE_PROJECT_ID` + `SUPABASE_SERVICE_ROLE_KEY` on the staging Worker; a verified link was confirmed end to end (see above)
+- [ ] Web Google sign-in completed on `notelikeus-dev.pages.dev` (a 302 to accounts.google.com is not a sign-in)
+- [ ] Web backup import completed on staging, verified after reload and re-login
+- [ ] Attachment import verified end-to-end (bytes in R2, metadata row, image renders after reload)
+- [x] Android staging proven on-device (Pixel 7 / Android 16): auth, sync, and attachment upload/download through the Worker
+- [x] Desktop staging proven — Google sign-in completes against staging Supabase
+- [ ] Web / Android / Desktop convergence on one staging account
+- [x] Offline reconciliation proven on Android hardware (account switching still untested)
+- [x] Kotlin deletes reach the server without a prior download in the same process
+- [x] Web boots without Firebase config when Supabase is the selected backend
+- [ ] PWA service-worker behaviour across a backend change modelled
+- [ ] Rollback plan reviewed by the owner
+- [ ] **Owner explicitly authorizes cutover**
+
+Until the last box is ticked by the owner, do not set `VITE_ALLOW_SUPABASE_PRODUCTION` or
+`NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION`, repoint `notelike.web.app`, or remove any Firebase code.
+
+---
+
+## Runbook — enabling verified Firebase uid linking on staging
+
+Owner-operated. Nothing here touches production: Firebase Auth, Firestore and
+`notelike.web.app` are untouched, and no cutover flag is set at any point.
+
+**Never paste a secret into a chat, an issue, or a committed file.** `SUPABASE_SERVICE_ROLE_KEY`
+goes straight from your clipboard into `wrangler secret put`, which stores it in Cloudflare. It
+bypasses RLS — treat it like a database password.
+
+### 0. Prerequisites
+
+| Value | Where it comes from | Secret? |
+| --- | --- | --- |
+| `SUPABASE_PROJECT_REF` | Supabase → Project Settings → General | Treat as sensitive |
+| `SUPABASE_DB_PASSWORD` | Supabase → Project Settings → Database | **Yes** |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → `service_role` | **Yes** |
+| `FIREBASE_PROJECT_ID` | `.firebaserc` → `notelikeus` | No — ships in every web build |
+
+### 1. Get on the branch
+
+```bash
+git fetch origin
+git checkout claude/firebase-supabase-migration-audit-f55yye
+```
+
+The two new migrations exist only here until the branch merges.
+
+### 2. Push the schema change
+
+```bash
+npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+npx supabase migration list      # confirm 20250904000000 / 20250904010000 are pending
+npx supabase db push
+```
+
+Applying these to a populated database was rehearsed against a Supabase-equivalent copy seeded on
+the old schema: notes, labels, checklists, tombstones, attachment metadata and both uid mappings
+came through unchanged, and sync kept working. Existing mappings are marked `verified = false`,
+which is correct — none of them was ever proven.
+
+### 3. Configure and redeploy the Worker
+
+`workers/attachments/wrangler.toml` is gitignored. Add to its `[vars]`:
+
+```toml
+FIREBASE_PROJECT_ID = "notelikeus"
+```
+
+Then, from `workers/attachments/`:
+
+```bash
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY   # paste when prompted; never echo it
+npx wrangler deploy
+```
+
+Leaving either unset is a valid posture: the route answers 501 and clients fall back to unverified
+claims, which are not exclusive and lock nobody out.
+
+### 4. Redeploy Pages staging
+
+```bash
+npm run deploy:staging-pages
+```
+
+The web client only sends a Firebase ID token when a live Firebase session can mint one.
+
+### 5. Verify
+
+Sign in at https://notelikeus-dev.pages.dev/ with Google, then run in the Supabase SQL editor
+(the browser console cannot reach the module directly — a production Vite build has no source
+paths, and the Supabase client is not exposed globally):
+
+```sql
+select owner_id, firebase_uid, verified from public.firebase_uid_mappings;
+```
+
+`verified = true` means the Worker checked a real Firebase ID token against Google's keys.
+`verified = false` means the route was unreachable or no Firebase session was present — the link
+still works, it is simply not exclusive.
+
+Worker health, without a session:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  "$WORKER_URL/v1/identity/firebase-link" -d '{}'
+# 401 = the Worker is up and demanding a Supabase session
+```
+
+That check cannot tell a new build from an old one: `handleAttachmentRequest` resolves the bearer
+token *before* it looks at the path, so an unauthenticated request to any path — including one the
+old build never had — answers 401. Confirm the deployment from `npx wrangler deploy` output or the
+Cloudflare dashboard, or by signing in and watching for `verified = true` below.
+
+### Applied to staging — 2026-09-04
+
+Both migrations are live on the staging project, and the security model has now been exercised
+against real Supabase rather than the local equivalent.
+
+Raw Postgres is unreachable from the audit sandbox (TCP 5432/6543 time out under the network
+policy), so `supabase db push` could not run there. The migrations went through the Management API's
+HTTPS query endpoint instead, as one `BEGIN … COMMIT`, together with their
+`supabase_migrations.schema_migrations` rows. It was rehearsed first as `BEGIN … ROLLBACK` — the
+full payload executed cleanly against the live schema and left nothing behind (`verified` column
+absent, no tracking rows) — and only then re-run with `COMMIT`.
+
+| Check | Result |
+| --- | --- |
+| Migrations tracked | 9/9, including both `20250904*` |
+| Schema objects | `verified` column, 2 new guard triggers, 5 new functions, partial unique index |
+| Existing data | 2 notes, 1 attachment, 0 mappings — unchanged |
+| `anon` EXECUTE on any public function | false |
+| `anon` on `sync_revision_seq` | false |
+| `link_verified_firebase_uid` | anon ✗, authenticated ✗, service_role ✓ |
+
+Eight adversarial cases then ran against the live project, each in its own rolled-back transaction,
+and all eight held:
+
+1. An unproven claim on another user's uid is accepted but not exclusive
+2. The real owner can still claim a uid someone else squatted — the lockout is gone
+3. `authenticated` cannot call `link_verified_firebase_uid` (42501)
+4. `authenticated` cannot set `verified` by direct write (mutation guard)
+5. B cannot read A's notes
+6. Direct `INSERT` into `notes` is blocked
+7. Direct `INSERT` into `note_attachments` is blocked (the guard added by `20250904000000`)
+8. `register_note_attachment` refuses an object key outside the caller's namespace
+
+Verified afterwards that nothing persisted: no test users, note/attachment counts unchanged.
+
+**Deviation to note.** `db push` normally records a `statements` array alongside each tracking row;
+these two were inserted with `version` and `name` only (`statements` is nullable, and
+`migration list` reads `version`). A later `db push` from a machine with Postgres access will see
+both as applied and skip them; `db diff` may be less informative for these two.
+
+### Firebase uid ownership — proven end to end on staging, 2026-09-04
+
+The invariant is no longer an inference from unit tests. A real Google identity, a real Firebase ID
+token, the deployed Worker, and the live staging database completed the whole chain.
+
+**Why it could not be tested on Pages.** Firebase Auth sessions are per-origin. On
+`notelikeus-dev.pages.dev` there is no Firebase session and no way to create one — when Supabase is
+the selected backend the app's sign-in routes to Supabase — so `resolveFirebaseUid` finds nothing
+and the bridge exits before calling the Worker. A fresh sign-in there is not a migrating user. The
+path only exists in the real cutover shape: one origin that *was* Firebase and is now Supabase.
+
+**How it was reproduced.** `localhost:5173` was used as that single origin, in two phases against
+the same browser profile:
+
+1. dev server with no `VITE_REMOTE_BACKEND` → Firebase backend → Google sign-in. Confirmed on disk:
+   Firefox wrote `firebaseLocalStorageDb`, `firebase-heartbeat-database` and a Firestore cache for
+   that origin.
+2. dev server restarted with the staging Supabase env, **browser storage untouched** → Google
+   sign-in again. `resolveFirebaseUid` took its first branch, `source: 'firebase-session'`.
+
+**Evidence.**
+
+| Source | Observation |
+| --- | --- |
+| Worker log tail | `OPTIONS` then `POST /v1/identity/firebase-link`, 23:20:29 local |
+| `firebase_uid_mappings` | one row, `verified = true`, `linked_at` 21:20:30 UTC — one second after the POST |
+| Row identifiers | `owner_id` and `firebase_uid` match the values the client had recorded locally |
+| Client console | no `Skipping Firebase→Supabase link`, no `verification failed` — neither refusal path fired |
+
+`verified` can only be set by `link_verified_firebase_uid`, which only `service_role` may execute
+and which no anon or authenticated PostgREST session can reach. So the true value is itself proof
+that the Worker verified an RS256 Firebase ID token against Google's published keys, with
+`aud`/`iss` pinned to the `notelikeus` project, before writing.
+
+**A dead end worth recording.** An earlier attempt cleared all IndexedDB between the two sign-ins to
+force the migration to re-run. That destroys the Firebase session, which lives in IndexedDB — so the
+bridge correctly found nothing and never called the Worker. The correct reset is to delete only the
+app's `notelikeus-notes` database and leave `firebaseLocalStorageDb` alone.
+
+### PR #149 release isolation — verified, 2026-09-04
+
+The safety property this PR rests on had never been checked: debug builds bake staging Supabase
+values into `BuildConfig`, so a release build must not. Nothing in CI asserts it — `android.yml`
+runs `assembleRelease` but inspects nothing.
+
+Tested against the PR head in an isolated worktree, with real staging values in `local.properties`
+— the exact state of an operator who has run `npm run kotlin:staging-properties`:
+
+| BuildConfig field | debug | release |
+| --- | --- | --- |
+| `NOTELIKEUS_REMOTE_BACKEND` | `"supabase"` | `""` |
+| `NOTELIKEUS_SUPABASE_URL` | staging URL | `""` |
+| `NOTELIKEUS_SUPABASE_ANON_KEY` | staging anon JWT | `""` |
+| `NOTELIKEUS_ATTACHMENTS_WORKER_URL` | staging Worker | `""` |
+
+Empty is sufficient, not merely tidy. `firstNonBlank` discards empty strings, so `remoteBackendEnv`
+resolves to null, and `isSupabaseRemoteSelected` returns false on its first line — Firebase.
+
+There is a second, independent guard: the production allow flag is read **only** from
+`System.getenv`, on both Android and desktop. It is never a `BuildConfig` field and never read from
+`local.properties`, so it cannot be baked into an APK at all. `write-kotlin-staging-properties.mjs`
+additionally refuses to write it. A release APK therefore has no route to Supabase even if every
+other value were present.
+
+**Recommendation unchanged:** merge after #148. The isolation property holds; what is still missing
+is a CI assertion so it cannot regress silently. A test that generates both variants' `BuildConfig`
+and asserts the release fields are empty would close that.
+
+### Android staging proven on hardware — Pixel 7 / Android 16, 2026-09-05
+
+Ran against a physical Pixel 7 (owner-approved; the brief otherwise prefers an emulator). The build
+was PR #149 merged onto this branch in a throwaway worktree, with real staging values in
+`local.properties`.
+
+**The premise holds.** `NOTELIKEUS_REMOTE_BACKEND` is empty in the device environment, confirmed by
+`adb shell`. Without #149's BuildConfig baking, a debug build on a real device silently stays on
+Firebase — which is exactly the trap the tracker warned about, now demonstrated rather than assumed.
+
+**Server-side proof, no SQL required.** Attaching an image to a note produced, in the Worker log:
+
+```
+PUT /v1/attachments/<noteId>/<attachmentId>   HTTP 200
+GET /v1/attachments/<noteId>/<attachmentId>   HTTP 200
+```
+
+The Worker reaches R2 only after `${SUPABASE_URL}/auth/v1/user` accepts the caller's bearer token,
+and that URL is the staging project. A token it cannot validate yields 401. So a `200` means staging
+Supabase authenticated the device's session, the Worker derived the object key from the user id it
+returned, and the bytes round-tripped through R2. That is the whole Android→Supabase→R2 chain
+established from the server side.
+
+| Check | Result |
+| --- | --- |
+| Android unit tests | 407 passing (composeApp 390, androidApp 17), 0 failures |
+| Staging config inside the APK | present in two `classes*.dex` files |
+| Release variant BuildConfig | all four fields empty |
+| Production allow flag reachable from an APK | no — `System.getenv` only, on both platforms |
+| `System.getenv` on device | empty, confirmed on the Pixel |
+| Install, launch, Google sign-in | no crashes |
+| Note create and save | `pixel-staging-proof` |
+| `SyncWorker` | SUCCESS on every run after sign-in |
+| Attachment upload/download via Worker | HTTP 200 / 200 |
+
+**Incidental corroboration.** The note id in the upload path was `1788554457472992` — about 1.79e15,
+comfortably under `Number.MAX_SAFE_INTEGER` (9.007e15). That is the id-safety analysis confirmed on
+real data generated by the Kotlin client, not just reasoned about.
+
+**Caveats.** The note row itself was not read back from Postgres — SELinux on Android 16 blocks
+`run-as` for `targetSdkVersion=37`, and this machine has no database credentials. `SyncWorker`
+reported SUCCESS throughout and the attachment path is proven, so the remaining doubt is narrow. A
+`ReconciliationSyncWorker` FAILURE was observed once *before* sign-in and never recurred afterwards,
+consistent with "no session yet" rather than a defect.
+
+**The device's production app was replaced.** The release build and its local data were removed to
+install the staging build, at the owner's explicit instruction, with `allowBackup="false"` making an
+adb backup impossible. Notes already in Firestore are unaffected.
+
+### Desktop staging — blocked by a Google OAuth audience mismatch, 2026-09-05
+
+Launched with `./gradlew :composeApp:run --no-daemon` (no-daemon so the `NOTELIKEUS_*` exports reach
+the app; a reused daemon does not inherit them) against the staging Supabase project.
+
+**Backend selection works.** The app started, chose Supabase, and reached Supabase Auth — the error
+it surfaced is a Supabase error, not a Firebase one. That confirms the desktop env-var path.
+
+**Sign-in fails**, with a precise cause:
+
+```
+Supabase RPC auth failed: HTTP 400
+{"error":"invalid request",
+ "error_description":"Unacceptable audience in id_token: [<desktop client id>]"}
+```
+
+The chain: desktop signs in with `DesktopOAuthConfig.CLIENT_ID` — a Desktop/installed-app OAuth
+client hardcoded in `PlatformModule.kt` — so Google issues an `id_token` whose `aud` is that client.
+`SupabaseAuthApi` posts it to `/auth/v1/token?grant_type=id_token`, and Supabase rejects it because
+that audience is not among the client IDs configured for its Google provider.
+
+**Why Android works and desktop does not.** The staging Google provider was enabled from the
+existing Firebase *web* client, and the Android app requests its `id_token` against that same web
+client. Desktop is the only client using its own OAuth identity, so it is the only one rejected.
+
+**Fix — configuration, not code.** In Supabase → Authentication → Providers → Google, add the
+desktop client id to **Authorized Client IDs** (a comma-separated list of additional accepted
+audiences). That field exists for exactly this case: native and desktop clients using
+`grant_type=id_token`. No code change is needed, and nothing about the desktop client id is secret —
+it already ships compiled into the desktop application.
+
+**This recurs at cutover.** Production Supabase will need the same entry, or desktop users cannot
+sign in after the switch. It belongs on the cutover checklist, not just the staging one.
+
+### Offline reconciliation — verified on hardware, 2026-09-05
+
+Run against the Pixel 7 with the staging build, driven over adb.
+
+| Step | Observed |
+| --- | --- |
+| Airplane mode on, Wi-Fi and data disabled | staging Supabase unreachable from the device (ping fails) |
+| Create a note while offline | `offline-reconcile-test` saved and listed — the local-first write needs no network |
+| Restore connectivity | online within ~5s |
+| App foregrounded | `SyncWorker` → **SUCCESS**, tagged `cloud_note_sync` |
+
+No stuck failure state, no duplicated worker, nothing lost. The note written with no network
+survived the transition and the first sync after reconnect succeeded.
+
+### Supabase provider settings that only surface at first real sign-in
+
+Three separate Google-provider issues appeared during staging, each invisible until a client
+actually attempted to authenticate, and each returning an opaque HTTP 400. They will recur on the
+production project unless replicated:
+
+| Symptom | Cause | Resolution |
+| --- | --- | --- |
+| `Unacceptable audience in id_token` | Desktop uses its own OAuth client; only the web client was registered | Add the desktop client id to the provider's client-id list |
+| `Bad ID token` (no nonce sent) | GoTrue verifies the nonce; the desktop flow sent none | Send a nonce (done in code — no project setting needed) |
+| `Bad ID token` (plain nonce sent) | GoTrue hashes the nonce it is given and compares against the token claim | Send `SHA-256(nonce)` hex to Google, the plain value to Supabase |
+
+Android was unaffected throughout: its ID token carries the **web** client as audience and sends no
+nonce, so only desktop exercised any of these paths. That is worth remembering — a client working
+is not evidence that the provider is correctly configured for the others.
+
+### Desktop staging — signed in, 2026-09-05
+
+Desktop was the last unproven client. Three separate defects stood between it and a working
+sign-in, and only the first was a project setting:
+
+1. **Unregistered OAuth client.** Desktop authenticates with its own installed-app client, but only
+   the web client was configured on the Supabase Google provider — `Unacceptable audience`. Fixed by
+   adding the desktop client id to the provider.
+2. **No nonce, then an unhashed one.** GoTrue verifies the nonce on `grant_type=id_token`, and the
+   loopback flow sent none — `Bad ID token`. Sending the plain value to both sides failed the same
+   way, because GoTrue hashes what it is given and compares against the token claim. Google now
+   receives `SHA-256(nonce)` in hex and Supabase the plain value, so the project no longer needs
+   `skip_nonce_check` disabled.
+3. **A double exchange, which was the actual blocker.** `DesktopGoogleSignInHelper` already
+   exchanges the Google token and saves the session on the Supabase path, returning
+   `session.accessToken`. `main.kt` then passed that Supabase JWT back through
+   `signInWithGoogleIdToken`, re-posting it to `grant_type=id_token` — so a sign-in that had
+   succeeded reported `Bad ID token` and left the user on the gate. Firebase is unaffected: there
+   the helper returns a genuine Firebase ID token for the ViewModel to exchange.
+
+Removing the redundant exchange stopped the error but did not sign the user in: `refreshAccount()`
+is private to `DesktopSyncManager` and runs only inside `onSignedIn()`, which also performs the
+Firebase-uid linking and the account-isolation check. `SyncManager.completeExternalSignIn()` now
+runs exactly that post-sign-in work without a token exchange. Android implements it as an explicit
+failure — nothing there signs in outside `signInWithGoogle`.
+
+Worth recording: the intermediate version signed in *without* linking the Firebase uid or isolating
+the account. Shipping it would have reintroduced the wrong-account class of bug this audit opened
+with.
+
+### Rollback
+
+Redeploy the previous Worker version from the Cloudflare dashboard, or
+`npx wrangler secret delete SUPABASE_SERVICE_ROLE_KEY` — the route reverts to 501 and clients fall
+back to unverified claims. The schema change needs no rollback: it only widens what is allowed.
 
 ---
 

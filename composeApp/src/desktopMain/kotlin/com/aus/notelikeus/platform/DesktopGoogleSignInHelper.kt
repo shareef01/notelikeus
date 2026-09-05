@@ -1,7 +1,5 @@
 package com.aus.notelikeus.platform
 
-import com.aus.notelikeus.data.remote.BackendConfig
-import com.aus.notelikeus.data.remote.RemoteBackend
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppLog
 import com.sun.net.httpserver.HttpServer
@@ -11,7 +9,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import java.awt.Desktop
 import java.net.InetSocketAddress
@@ -30,7 +27,7 @@ import kotlin.coroutines.resume
  * Google sign-in for desktop via OAuth 2.0 loopback (RFC 8252).
  *
  * Flow: open system browser → user authorises → redirect to localhost →
- * exchange code for tokens → exchange Google token for Firebase session.
+ * exchange code for tokens → exchange Google token for a Supabase session.
  *
  * **Prerequisite:** a Desktop OAuth 2.0 client must be created in the
  * Google Cloud Console for project `notelikeus` with
@@ -38,13 +35,10 @@ import kotlin.coroutines.resume
  * Without this the authorisation endpoint will reject the request.
  *
  * @param oauthClientId The OAuth 2.0 client ID (desktop type).
- * @param firebaseApiKey Firebase web API key for the `notelikeus` project.
  */
 class DesktopGoogleSignInHelper(
     private val oauthClientId: String,
     private val oauthClientSecret: String,
-    private val firebaseApiKey: String,
-    private val tokenStore: DesktopTokenStore,
     private val supabaseAuthApi: com.aus.notelikeus.data.remote.SupabaseAuthApi,
     private val supabaseSessionStore: com.aus.notelikeus.data.remote.SupabaseSessionStore,
 ) : GoogleSignInHelper {
@@ -71,9 +65,10 @@ class DesktopGoogleSignInHelper(
             val codeVerifier = generateCodeVerifier()
             val codeChallenge = generateCodeChallenge(codeVerifier)
             val state = generateState()
+            val nonce = generateNonce()
 
             // Step 1: open browser and capture the auth code via loopback
-            val (authCode, redirectUri) = captureAuthCode(codeChallenge, state)
+            val (authCode, redirectUri) = captureAuthCode(codeChallenge, state, hashedNonce(nonce))
                 ?: return@withContext Result.failure(
                     IllegalStateException("Sign-in was cancelled or timed out")
                 )
@@ -85,26 +80,10 @@ class DesktopGoogleSignInHelper(
                     IllegalStateException("Google did not return an ID token")
                 )
 
-            // Step 3: exchange the Google ID token for a cloud session
-            if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
-                val session = supabaseAuthApi.signInWithGoogleIdToken(googleIdToken)
-                supabaseSessionStore.save(session)
-                return@withContext Result.success(session.accessToken)
-            }
-
-            val firebaseResponse = exchangeGoogleTokenForFirebase(googleIdToken)
-            val firebaseIdToken = firebaseResponse["idToken"]?.jsonPrimitive?.content
-                ?: return@withContext Result.failure(
-                    IllegalStateException("Firebase did not return an ID token")
-                )
-
-            // The refresh token is the durable half of the session — without it the sign-in
-            // silently stops working an hour from now. Persist both together.
-            tokenStore.save(
-                idToken = firebaseIdToken,
-                refreshToken = firebaseResponse["refreshToken"]?.jsonPrimitive?.content
-            )
-            Result.success(firebaseIdToken)
+            // Step 3: exchange the Google ID token for a Supabase session
+            val session = supabaseAuthApi.signInWithGoogleIdToken(googleIdToken, nonce)
+            supabaseSessionStore.save(session)
+            Result.success(session.accessToken)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -131,6 +110,36 @@ class DesktopGoogleSignInHelper(
      * the user's app to the attacker's account. PKCE does not cover this: it prevents an
      * intercepted code from being redeemed, not an injected one from being accepted.
      */
+    /**
+     * OIDC nonce (OpenID Connect Core §3.1.2.1). Google echoes it into the ID token's `nonce`
+     * claim, and Supabase verifies it on `grant_type=id_token`.
+     *
+     * Sending one is why the project does not have to disable the nonce check, which would
+     * otherwise let a captured ID token be replayed until it expired.
+     */
+    private fun generateNonce(): String {
+        val bytes = ByteArray(32)
+        SecureRandom().nextBytes(bytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    }
+
+    /**
+     * The value Google is given, which is the **hash** of the nonce — not the nonce itself.
+     *
+     * GoTrue hashes whatever nonce it is handed and compares the digest against the token's
+     * `nonce` claim, so the claim has to hold the digest and Supabase has to receive the plain
+     * value. Sending the same plain value to both is what produced
+     * `{"error_description":"Bad ID token"}`: Google echoed the plain nonce, GoTrue compared its
+     * hash against it, and they never matched.
+     *
+     * Hex, lower case — the encoding GoTrue's comparison expects, not base64url like the PKCE
+     * challenge above.
+     */
+    private fun hashedNonce(nonce: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(nonce.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+
     private fun generateState(): String {
         val bytes = ByteArray(32)
         SecureRandom().nextBytes(bytes)
@@ -141,7 +150,8 @@ class DesktopGoogleSignInHelper(
 
     private suspend fun captureAuthCode(
         codeChallenge: String,
-        expectedState: String
+        expectedState: String,
+        hashedNonce: String
     ): Pair<String, String>? {
         return withTimeoutOrNull(120_000L) {
             suspendCancellableCoroutine { cont ->
@@ -193,7 +203,7 @@ class DesktopGoogleSignInHelper(
                 cont.invokeOnCancellation { runCatching { server.stop(0) } }
 
                 // Open the browser
-                val authUrl = buildOAuthUrl(redirectUri, codeChallenge, expectedState)
+                val authUrl = buildOAuthUrl(redirectUri, codeChallenge, expectedState, hashedNonce)
                 try {
                     if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                         Desktop.getDesktop().browse(URI(authUrl))
@@ -248,7 +258,8 @@ class DesktopGoogleSignInHelper(
     private fun buildOAuthUrl(
         redirectUri: String,
         codeChallenge: String,
-        state: String
+        state: String,
+        hashedNonce: String
     ): String {
         val params = mapOf(
             "client_id" to oauthClientId,
@@ -258,6 +269,7 @@ class DesktopGoogleSignInHelper(
             "state" to state,
             "code_challenge" to codeChallenge,
             "code_challenge_method" to "S256",
+            "nonce" to hashedNonce,
             "access_type" to "offline",
             "prompt" to "consent"
         )
@@ -290,29 +302,6 @@ class DesktopGoogleSignInHelper(
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         if (response.statusCode() != 200) {
             throw IllegalStateException("Token exchange failed: ${response.statusCode()} ${response.body()}")
-        }
-        return json.decodeFromString<JsonObject>(response.body())
-    }
-
-    // ---- Token exchange (Firebase) ----
-
-    private suspend fun exchangeGoogleTokenForFirebase(googleIdToken: String): JsonObject {
-        val body = json.encodeToString(JsonObject.serializer(), JsonObject(mapOf(
-            "postBody" to JsonPrimitive("id_token=$googleIdToken&providerId=google.com"),
-            "requestUri" to JsonPrimitive("http://127.0.0.1"),
-            "returnIdpCredential" to JsonPrimitive("true"),
-            "returnSecureToken" to JsonPrimitive("true")
-        )))
-
-        val request = HttpRequest.newBuilder()
-            .uri(URI("https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=$firebaseApiKey"))
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body))
-            .build()
-
-        val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-        if (response.statusCode() != 200) {
-            throw IllegalStateException("Firebase token exchange failed: ${response.statusCode()} ${response.body()}")
         }
         return json.decodeFromString<JsonObject>(response.body())
     }

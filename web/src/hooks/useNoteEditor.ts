@@ -124,7 +124,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       };
     }
 
-    // Clamp to the same caps firestore.rules enforces, so an oversized paste can never wedge
+    // Clamp to the same caps the RPCs enforce, so an oversized paste can never wedge
     // the editor in a permanently-failing autosave. The input maxLength attributes are the
     // primary guard; this is defense-in-depth for programmatic state changes (smart text,
     // link wrapping, backup import) that bypass the inputs.
@@ -135,8 +135,8 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       timestamp: updatedTimestamp,
     };
 
-    // A cache snapshot can load the editor before Firestore has resolved serverTimestamp()
-    // into a Timestamp. upsertNote then sees an unconfirmed local vs a confirmed remote and
+    // A remote snapshot can load the editor before the server has assigned a revision.
+    // upsertNote then sees an unconfirmed local vs a confirmed remote and
     // skips the write — the e2e edit-after-reload path, and any live save in that window.
     // The store may already have the stamp from a later snapshot; take it without discarding
     // the in-progress edit. Never adopt a stamp the editor already has: a newer remote stamp
@@ -160,7 +160,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         setState({ ...working, isSaving: false, lastSavedAt: updatedTimestamp });
       }
     } catch (error) {
-      // Never wedge the editor on a failed write (e.g. a rejected Firestore write): reset the
+      // Never wedge the editor on a failed write: reset the
       // saving flag and surface the failure so the user can retry. Navigation must still work.
       console.warn('[Notelikeus] Note save failed:', error);
       useToastStore.getState().show('Could not save changes. Check your connection and try again.', 'error');
