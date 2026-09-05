@@ -64,12 +64,10 @@ None in source. Production **traffic** is still blocked on owner infra (see Owne
 
 ### Low
 
-9. Historical type/flag names kept for IndexedDB/backup compatibility: `firebaseHydrated`, `FirestoreNoteDocument`, `AccountUidBridge` (now equality-only).  
-10. Unused version-catalog entry `play-services-base` (Play Services is still pulled transitively for Credential Manager / `GoogleApiAvailability`).  
-11. Android CI release-job comment still says “Firebase-hosted web app”.  
-12. Desktop CI comments still mention Firestore.  
-13. `supabase/config.toml` unused `[auth.third_party.firebase]` template (commented).  
-14. `web/.env` on disk still has leftover Firebase client keys (gitignored). Safe to delete locally.
+10. Historical type/flag names kept for IndexedDB/backup compatibility: `firebaseHydrated`, `FirestoreNoteDocument`, `AccountUidBridge` (now equality-only).  
+11. Unused version-catalog entry `play-services-base` (Play Services is still pulled transitively for Credential Manager / `GoogleApiAvailability`).  
+12. `supabase/config.toml` unused `[auth.third_party.firebase]` template (commented).  
+13. `web/.env` on disk still has leftover Firebase client keys (gitignored). Safe to delete locally.
 
 ## Remaining Firebase references
 
