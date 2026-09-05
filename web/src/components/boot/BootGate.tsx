@@ -23,22 +23,10 @@ function describeBootError(error: unknown): BootErrorDetails {
           help: 'Your browser may have blocked or corrupted local app storage. Clearing local data is the best recovery step.',
           canClearData: true,
         };
-      case 'firebase-config':
-        return {
-          message: error.message,
-          help: 'Check your web Firebase environment values. This usually means web/.env is missing or incomplete for this build.',
-          canClearData: false,
-        };
       case 'supabase-config':
         return {
           message: error.message,
-          help: 'Check the Supabase values for this build. This usually means web/.env.staging is missing VITE_SUPABASE_URL or a public VITE_SUPABASE_ANON_KEY (the eyJ… anon JWT, never an sb_… secret key).',
-          canClearData: false,
-        };
-      case 'firebase-init':
-        return {
-          message: error.message,
-          help: 'Firebase failed to start. Retry first; if it keeps failing, verify the Firebase config and authorized domains for this app.',
+          help: 'Check the Supabase values for this build. Production needs VITE_SUPABASE_URL pointing at a hosted project and a public VITE_SUPABASE_ANON_KEY (the eyJ… anon JWT, never an sb_… secret key).',
           canClearData: false,
         };
       default:

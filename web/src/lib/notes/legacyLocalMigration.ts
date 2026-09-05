@@ -1,13 +1,13 @@
-import { syncNotesWithCloud } from '@/lib/firestore/notesRepository';
+import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegistry';
 import { unlockPersistedNotes, type MaybeLockedNote } from '@/lib/crypto/unlockMigration';
 
 const LEGACY_NOTES_KEY = 'notelikeus-notes';
 
 /**
  * One-time migration for the local-storage-backed notes store this app used to have. Notes now
- * live in Firestore only (see notesStore.ts), so on the first launch after that change, whatever
+ * live in IndexedDB + Supabase, so on the first launch after that change, whatever
  * was still sitting in the old key — most commonly edits made while the now-removed "auto-sync"
- * toggle was off — gets pushed to this account's Firestore data before the key is discarded.
+ * toggle was off — gets pushed to this account's cloud data before the key is discarded.
  *
  * Safe to call on every sign-in: it's a no-op once the legacy key is gone.
  */
@@ -28,7 +28,7 @@ export async function migrateLegacyLocalNotes(userId: string): Promise<void> {
       // Only notes whose text we actually hold. Uploading a still-encrypted note would publish a
       // blank copy that then wins over the real one everywhere.
       if (notes.length > 0) {
-        await syncNotesWithCloud(userId, notes);
+        await getRemoteNotesDataSource().syncNotesWithCloud(userId, notes, new Set());
       }
       if (unrecoverable.length > 0) {
         // Keep the legacy key. It holds the only copy of these notes' ciphertext, and the reason

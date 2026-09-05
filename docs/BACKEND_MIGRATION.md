@@ -1,11 +1,20 @@
 # Notelikeus Backend Migration (Firebase → Supabase + Cloudflare R2)
 
-**Status:** Phases 0–12 on `main`; staging bootstrap live. Firebase remains the production backend.  
-**Last updated:** 2026-09-05 (migration audit; Android/desktop staging config; Android production cutover path; staging schema applied and verified live)
+**Status: COMPLETED / SUPERSEDED — 2026-09-05**
 
-This document tracks the phased migration away from Firebase. Phases 0–12 are on `main`. Production cutover is **not** authorized. Firebase Auth, Firestore, and Firebase Hosting (`notelike.web.app`) remain the live backend.
+This document is historical. The cutover is finished in source:
 
-**Git:** Phases 0–12 and Pages staging are on `main` (#145–#147). Kotlin debug staging wiring is additive; Firebase remains the production default.
+- Legacy Firebase user/data migration was **intentionally abandoned**.
+- Supabase is the canonical backend (Auth, PostgreSQL, RPC, Realtime).
+- Cloudflare Pages hosts the Web PWA. Cloudflare Worker + R2 hold attachment blobs.
+- Do **not** preserve Firebase Auth, Firestore, UID mapping, or a dual-backend fallback.
+
+See `docs/BACKEND_ARCHITECTURE.md` for the current architecture and
+`docs/SUPABASE_CUTOVER_AUDIT.md` for the phase-by-phase audit.
+
+---
+
+
 
 ---
 

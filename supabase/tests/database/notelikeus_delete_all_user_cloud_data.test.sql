@@ -1,5 +1,5 @@
 begin;
-select plan(9);
+select plan(8);
 
 select tests.create_supabase_user('wipe_a@notelikeus.test');
 select tests.create_supabase_user('wipe_b@notelikeus.test');
@@ -32,10 +32,6 @@ select results_eq(
     )->>'status') $$,
   ARRAY['applied'],
   'user A deletes the note (tombstone remains)'
-);
-select lives_ok(
-  $$ select public.link_firebase_uid('firebase-uid-a') $$,
-  'user A links a firebase uid'
 );
 
 select tests.authenticate_as('wipe_b@notelikeus.test');

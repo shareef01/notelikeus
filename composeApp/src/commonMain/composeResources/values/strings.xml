@@ -133,15 +133,15 @@
     <string name="total_notes">Total Notes</string>
     <string name="cloud_sync">Cloud Sync</string>
     <string name="cloud_sync_now">Sync to cloud</string>
-    <string name="cloud_sync_subtitle">Upload notes to your Firebase account</string>
+    <string name="cloud_sync_subtitle">Upload notes to your Notelikeus cloud account</string>
     <string name="cloud_sync_in_progress">Uploading notes…</string>
     <string name="cloud_sync_last">Last sync: %1$d notes</string>
     <string name="cloud_sync_up_to_date">Up to date</string>
-    <string name="cloud_sync_offline">Cloud unavailable — check Firebase setup</string>
+    <string name="cloud_sync_offline">Cloud unavailable — check your connection and Supabase setup</string>
     <string name="cloud_sync_success">%1$d notes synced to cloud</string>
     <string name="cloud_download_success">%1$d notes restored from cloud</string>
     <string name="cloud_restore">Restore from cloud</string>
-    <string name="cloud_restore_subtitle">Download notes stored in Firebase</string>
+    <string name="cloud_restore_subtitle">Download notes stored in your cloud account</string>
     <string name="cloud_restore_confirm_title">Restore from cloud?</string>
     <string name="cloud_restore_confirm_message">This merges the notes in your cloud account into this device. Where the same note differs, the more recently synced version wins. Notes this device has already synced, and that are no longer in the cloud, are removed here too.</string>
     <string name="cloud_restore_confirm_action">Restore</string>
@@ -173,7 +173,7 @@
     <string name="test_login_password">Password</string>
     <string name="test_login_sign_in">Sign in</string>
     <string name="test_login_create">Create</string>
-    <string name="test_login_hint">Requires Email/Password enabled in Firebase Authentication.</string>
+    <string name="test_login_hint">Requires Email/Password enabled in Supabase Authentication.</string>
     <string name="sign_in_no_play_services">Google Play Services isn’t available on this device, so sign-in isn’t possible right now.</string>
     <string name="sign_in_cancelled">Sign-in was cancelled.</string>
     <string name="sign_in_network_error">Network error. Check your connection and try again.</string>

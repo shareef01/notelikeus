@@ -33,7 +33,7 @@ import com.aus.notelikeus.ui.theme.Size
 
 /**
  * Mandatory sign-in screen shown whenever there is no Google account signed in.
- * After [onIdToken] completes, the caller finishes Firebase Auth and shows the main UI.
+ * After [onIdToken] completes, the caller finishes Supabase Auth and shows the main UI.
  * Debug builds also expose email/password test login via [onEmailPassword].
  */
 @Composable
@@ -58,7 +58,7 @@ fun SignInGate(
     var playServicesAvailable by remember { mutableStateOf(googleSignInHelper.isAvailable()) }
     var testEmail by remember { mutableStateOf("") }
     var testPassword by remember { mutableStateOf("") }
-    // Matches the rule the backend already enforces: FirebaseSessionManager rejects email/password
+    // Matches the rule the backend already enforces: email/password is a debug/test path.
     // outright unless AppConfig.isDebug. Gating only on the callback meant desktop rendered a
     // "Test login (debug)" form in release builds that could never succeed — DesktopSyncManager
     // answers every email sign-in with UnsupportedOperationException.

@@ -32,8 +32,6 @@ import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.SidebarCollapsedStore
 import com.aus.notelikeus.util.WindowMetrics
 import com.aus.notelikeus.util.WindowMetricsStore
-import com.aus.notelikeus.data.remote.BackendConfig
-import com.aus.notelikeus.data.remote.RemoteBackend
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -220,17 +218,10 @@ private fun launchApp(
             onGoogleSignInClick = { viewModel ->
                 coroutineScope.launch {
                     googleSignInHelper.requestIdToken()
-                        .onSuccess { token ->
-                            // On Supabase the helper has already exchanged the Google token and
-                            // saved the session, and hands back a Supabase access token — not an
-                            // ID token. Passing it to signInWithGoogleIdToken re-posted it to
-                            // grant_type=id_token and failed with "Bad ID token". Firebase still
-                            // returns a real ID token for the ViewModel to exchange.
-                            if (BackendConfig.remoteBackend == RemoteBackend.SUPABASE) {
-                                viewModel.completeExternalSignIn()
-                            } else {
-                                viewModel.signInWithGoogleIdToken(token)
-                            }
+                        .onSuccess {
+                            // The helper already exchanged the Google token and saved the
+                            // Supabase session. completeExternalSignIn runs account isolation.
+                            viewModel.completeExternalSignIn()
                         }
                         .onFailure { error -> viewModel.reportGoogleSignInFailure(error) }
                 }

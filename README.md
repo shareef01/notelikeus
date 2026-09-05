@@ -4,7 +4,7 @@ A notes app for **Android**, **Windows**, and the **web** — one product, three
 
 It started as the app I actually wanted to use: something as quick as Google Keep, that works with no signal and no account, and that doesn't hold my notes hostage in one vendor's cloud. Everything here follows from that — local storage first, sync as an optional layer on top, and a backup format I can read without the app.
 
-**Live web app:** [notelike.web.app](https://notelike.web.app)
+**Live web app:** Cloudflare Pages (production domain is owner-configured; the old Firebase Hosting URL `notelike.web.app` is retired in source).
 
 ---
 
@@ -36,11 +36,11 @@ It started as the app I actually wanted to use: something as quick as Google Kee
 
 ## How it works
 
-**Notes live on the device first.** Android and Windows use Room; on Android the database is encrypted with SQLCipher, keyed from the AndroidKeystore. Sync is a layer above that, not a prerequisite — sign in and your notes replicate through Firestore, or don't and the app is still fully usable offline.
+**Notes live on the device first.** Android and Windows use Room; on Android the database is encrypted with SQLCipher, keyed from the AndroidKeystore. Sync is a layer above that, not a prerequisite — sign in and your notes replicate through Supabase, or don't and the app is still fully usable offline.
 
-**The web client is Firestore-native** when you are signed in, with the SDK's offline cache doing the same job the Room database does elsewhere. You can also continue without an account: notes stay in that browser until you sign in or export a backup. There is a PWA install path and service-worker reminders.
+**The web client is local-first.** Signed-in and guest notes persist in IndexedDB. A service worker provides the PWA install path and reminders. Supabase Auth, RPC sync, and Realtime are the remote layer.
 
-**Conflicts resolve on a server timestamp**, not a client clock. A device with a skewed clock — or an imported backup with a hand-edited timestamp — can't overwrite a revision the server has already confirmed. Deletions propagate as tombstones with a TTL, so a note deleted on one device stays deleted rather than being resurrected by another device syncing later.
+**Conflicts resolve on a server revision**, not a client clock. A device with a skewed clock — or an imported backup with a hand-edited timestamp — can't overwrite a revision the server has already confirmed. Deletions propagate as tombstones, so a note deleted on one device stays deleted rather than being resurrected by another device syncing later.
 
 **Reads that fail open are treated as suspect.** A cloud fetch returning nothing when notes were expected refuses the sync rather than concluding everything was deleted, on every client. That guard exists because the alternative is silent, unrecoverable data loss.
 
@@ -64,7 +64,7 @@ It started as the app I actually wanted to use: something as quick as Google Kee
 | Encrypted local database | ✓ SQLCipher | — | — |
 | Biometric app lock | ✓ | — | — |
 | Home-screen widget | ✓ Glance | — | — |
-| Google sign-in + Firestore sync | Optional | Optional | Optional |
+| Google sign-in + Supabase sync | Optional | Optional | Optional |
 | Works with no account | ✓ | ✓ | ✓ |
 | JSON backup import / export | ✓ | ✓ | ✓ |
 | Installable PWA | — | — | ✓ |
@@ -77,12 +77,14 @@ It started as the app I actually wanted to use: something as quick as Google Kee
 |---|---|---|
 | UI | Compose Multiplatform | React 19, TypeScript, Tailwind |
 | Architecture | MVVM + repositories (shared) | Hooks + Zustand stores |
-| Local data | Room (SQLCipher on Android) | Firestore offline cache |
-| Cloud | Firebase Auth + Firestore | Firebase Auth + Firestore |
+| Local data | Room (SQLCipher on Android) | IndexedDB |
+| Cloud | Supabase Auth + PostgreSQL RPC/Realtime | Supabase Auth + PostgreSQL RPC/Realtime |
+| Attachments | Cloudflare Worker + R2 | Cloudflare Worker + R2 |
+| Web hosting | — | Cloudflare Pages |
 | DI / tooling | Koin, Coroutines, Flow | Vite 8, Vitest |
 | Widget | Glance | — |
 
-Firebase usage is deliberately scoped to Auth and Firestore so the whole thing runs inside the **Spark** free tier.
+See [docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md) for auth, sync, RLS, and deployment.
 
 ---
 
@@ -95,26 +97,31 @@ Roughly 250 automated checks, arranged so that each one can actually fail:
 | JVM unit (~200) | Sync engine, mappers, repositories, backup, key management, populated Room upgrades | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest` |
 | Minified release APK | R8 + resource shrink; unsigned in CI | `./gradlew :androidApp:assembleRelease` |
 | Instrumented (4) | Database quarantine and encryption migration, on a real device | `./gradlew :composeApp:connectedDebugAndroidTest` |
-| Firestore rules (34) | Security rules against the emulator | `npm run test:rules` |
-| Web unit (263) | Merge logic, conflict resolution, backup parsing, search | `cd web && npm test` |
-| Web sync (6) | The sync layer against a live Firestore, production rules enforced | `cd web && npm run test:sync` |
-| Browser end-to-end (4) | The built bundle in Chromium: boot, auth, note round-trip | `cd web && npm run test:e2e` |
+| pgTAP | RLS, RPC sync, tombstones, attachments | `npm run supabase:test` (needs Docker / `supabase start`) |
+| Web unit | Merge logic, conflict resolution, backup parsing, search | `cd web && npm test` |
+| Browser end-to-end | Built bundle in Chromium against local Supabase | `cd web && npm run test:e2e` |
+| Attachments Worker | JWT auth, path isolation, size/MIME | `npm run test:attachments-worker` |
+| Pages artifacts | `_headers` / `_redirects` in `web/dist` | `npm run pages:verify` |
 
-The last three run against Firebase emulators in CI. Android CI also minifies a release APK on every PR so an R8 keep-rule break cannot wait for a tag. The instrumented suite needs a connected device or emulator.
-
-A note on why the split matters: the unit tests are all pure functions, so they'd happily pass while the app was broken in a browser. The emulator and end-to-end suites exist to cover exactly that gap — a Firebase SDK major upgrade landed cleanly because the browser suite could prove the built bundle still ran.
+The last web e2e suite needs a local Supabase (`npm run supabase:start`). Android CI minifies a release APK on every PR so an R8 keep-rule break cannot wait for a tag. The instrumented suite needs a connected device or emulator.
 
 ---
 
 ## Requirements
 
 - Android 8.0+ (API 26) / Windows 10+
-- JDK 17+ to build; JDK 21+ for the Firestore rules tests
-- Node.js 24 LTS for the web app and emulator suites
+- JDK 17+ to build
+- Node.js 24 LTS for the web app
+- Docker (optional locally) for the Supabase CLI database suite
 
 ## Getting started
 
 ```bash
+# Local backend
+npm install
+npm run supabase:start
+npm run supabase:reset
+
 # Android
 ./gradlew :androidApp:assembleDebug
 
@@ -123,11 +130,11 @@ A note on why the split matters: the unit tests are all pure functions, so they'
 
 # Web
 cd web && npm install
-cp .env.example .env     # fill in your own Firebase web app config
+cp .env.example .env
 npm run dev
 ```
 
-The Firebase values in `.env.example` are placeholders — point it at your own project. Firestore rules live in `firestore.rules` and are covered by `npm run test:rules`.
+Production web builds need a hosted `VITE_SUPABASE_URL` and public `VITE_SUPABASE_ANON_KEY`. See [docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md).
 
 ## Repository layout
 
@@ -135,11 +142,12 @@ The Firebase values in `.env.example` are placeholders — point it at your own 
 |---|---|
 | `androidApp/` | Android application (manifest, AppFunctions, widget metadata) |
 | `composeApp/` | Shared Kotlin Multiplatform UI, domain, Room, and Windows desktop |
-| `web/` | React PWA |
-| `docs/` | Decisions, closed findings, worklog, Pixel QA checklist |
-| `archive/` | Removed features kept with restore notes (attachments) |
-| `store/` | Play listing copy |
-| `tests/` | Firestore rules tests |
+| `web/` | React PWA (IndexedDB + Supabase) |
+| `supabase/` | Postgres migrations, seed, pgTAP |
+| `workers/attachments/` | Cloudflare Worker + R2 authorization |
+| `cloudflare/` | Pages header verification |
+| `docs/` | Architecture, superseded migration notes, Pixel QA |
+| `archive/` | Removed features kept with restore notes |
 
 ---
 

@@ -120,7 +120,7 @@ private fun contrastRatio(a: Float, b: Float): Float {
  * The nine built-in note colours are polarised — the dark set sits at or below 0.11, the light set
  * at or above 0.58 — so none of them fell in that band and none of them change appearance here.
  * What reaches it is arbitrary colour: `color` is a plain ARGB int in the backup format and in the
- * Firestore document, so an imported note, or one written by a future client with a different
+ * cloud document, so an imported note, or one written by a future client with a different
  * palette, can carry any value at all. Measuring rather than thresholding means those get a
  * readable foreground instead of an accidental one.
  */
