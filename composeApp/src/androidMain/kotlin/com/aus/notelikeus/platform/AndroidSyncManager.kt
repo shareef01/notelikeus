@@ -40,6 +40,10 @@ class AndroidSyncManager(
         isolator.isolateIfAccountChanged(uid)
     }
 
+    /** Android exchanges its token through [signInWithGoogle]; nothing signs in outside it. */
+    override suspend fun completeExternalSignIn(): Result<Unit> =
+        Result.failure(UnsupportedOperationException("Android signs in via signInWithGoogle"))
+
     override suspend fun signInWithGoogle(idToken: String): Result<Unit> {
         return sessionManager.signInWithGoogle(idToken).onSuccess {
             onSignedIn()

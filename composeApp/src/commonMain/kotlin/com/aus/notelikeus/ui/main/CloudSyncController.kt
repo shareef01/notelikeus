@@ -69,6 +69,35 @@ internal class CloudSyncController(
         }
     }
 
+    /**
+     * Finishes a sign-in that the platform helper already completed itself.
+     *
+     * The desktop Supabase path exchanges the Google ID token, saves the session and returns the
+     * resulting *Supabase* access token. Feeding that back through [signInWithGoogleIdToken] posted
+     * a Supabase JWT to `grant_type=id_token`, which Supabase rejected with `Bad ID token` — so a
+     * sign-in that had in fact succeeded surfaced as a failure and left the user on the gate.
+     *
+     * There is nothing left to exchange here: `cloudAccount` mirrors the SyncManager flow, so the
+     * saved session surfaces on its own once notes are pulled.
+     */
+    fun completeExternalSignIn() {
+        scope.launch {
+            state.update { it.copy(isSigningIn = true) }
+            val result = syncManager.completeExternalSignIn()
+            if (result.isSuccess) {
+                syncManager.downloadNotes()
+            }
+            state.update { currentState ->
+                currentState.copy(
+                    isSigningIn = false,
+                    pendingCloudSyncEvent = result.exceptionOrNull()
+                        ?.let { CloudSyncEvent.Failure(signInFailureMessage(it)) }
+                        ?: currentState.pendingCloudSyncEvent,
+                )
+            }
+        }
+    }
+
     fun signInWithGoogleIdToken(idToken: String) {
         scope.launch {
             state.update { it.copy(isSigningIn = true) }
