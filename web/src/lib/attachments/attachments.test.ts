@@ -44,8 +44,8 @@ describe('attachmentBlobStoreRegistry', () => {
     vi.unstubAllEnvs();
   });
 
-  it('returns noop store when R2 is disabled', () => {
-    vi.stubEnv('VITE_REMOTE_BACKEND', 'firebase');
+  it('returns noop store when the attachments worker URL is absent', () => {
+    vi.stubEnv('VITE_ATTACHMENTS_WORKER_URL', '');
     expect(getAttachmentBlobStore()).toBe(noopAttachmentBlobStore);
   });
 
@@ -65,8 +65,7 @@ describe('isR2AttachmentsEnabled', () => {
     vi.unstubAllEnvs();
   });
 
-  it('requires supabase backend and worker url', () => {
-    vi.stubEnv('VITE_REMOTE_BACKEND', 'supabase');
+  it('requires a worker url on top of a configured Supabase backend', () => {
     vi.stubEnv('VITE_ATTACHMENTS_WORKER_URL', 'http://127.0.0.1:8787');
     expect(isR2AttachmentsEnabled()).toBe(true);
   });

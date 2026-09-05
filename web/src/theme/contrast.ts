@@ -54,7 +54,7 @@ export function contrastRatio(a: number, b: number): number {
  *
  * None of the built-in palette falls in that band -- it is polarised -- so this changes nothing
  * for the nine built-in colours. What reaches the band is arbitrary colour: `color` is a plain
- * ARGB int in the Firestore document and the backup format, so an imported note, or one written
+ * ARGB int in the cloud document and the backup format, so an imported note, or one written
  * by another client, can carry any value. Measuring rather than thresholding gives those a
  * readable foreground instead of an accidental one.
  *

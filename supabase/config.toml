@@ -346,7 +346,7 @@ email_optional = false
 [auth.web3.solana]
 enabled = false
 
-# Use Firebase Auth as a third-party provider alongside Supabase Auth.
+# Unused Supabase CLI template. Notelikeus does not use Firebase Auth as a third-party provider.
 [auth.third_party.firebase]
 enabled = false
 # project_id = "my-firebase-project"

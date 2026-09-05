@@ -1,29 +1,24 @@
 # Notelikeus Web (PWA)
 
-React 19 + TypeScript PWA. Firestore-native, like the Android and Windows clients, but with the
-SDK's offline cache standing in for their local databases. Lives at
-[notelike.web.app](https://notelike.web.app).
+React 19 + TypeScript PWA. Local-first IndexedDB, with Supabase Auth + RPC sync when signed in.
+Hosted on Cloudflare Pages.
 
-The root [README](../README.md) covers the shared product/architecture; this file is about
-working in `web/`.
+The root [README](../README.md) covers the shared product; this file is about working in `web/`.
+Architecture details: [docs/BACKEND_ARCHITECTURE.md](../docs/BACKEND_ARCHITECTURE.md).
 
 ## Setup
 
 ```bash
+# from the repo root
+npm run supabase:start
+
 cd web
 npm install
-cp .env.example .env   # then fill in the values (see below)
+cp .env.example .env
 ```
 
-`web/.env` is gitignored. Generate it from the Firebase CLI instead of copying values by hand:
-
-```powershell
-# from the repo root
-./scripts/setup-web-env.ps1
-```
-
-Values are public app identifiers (API key, project id, app id) — the same ones Google ships in
-every client config. The web API key is referrer-restricted to this app's domains.
+`web/.env` is gitignored. Local `npm run dev` can use the default demo project from `supabase start`.
+A production build needs a hosted `VITE_SUPABASE_URL` and a public `VITE_SUPABASE_ANON_KEY` (the `eyJ…` anon JWT, never a `service_role` or `sb_secret_…` key).
 
 ## Everyday commands
 
@@ -31,54 +26,25 @@ every client config. The web API key is referrer-restricted to this app's domain
 |---|---|
 | `npm run dev` | Vite dev server on http://localhost:5173 |
 | `npm run lint` | oxlint (`correctness` as errors) |
-| `npm test` | Vitest unit suite (pure logic; no Firebase) |
+| `npm test` | Vitest unit suite |
 | `npm run typecheck` | `tsc -b --noEmit` |
 | `npm run build` | typecheck + production build |
-| `npm run test:sync` | sync layer against a real Firestore emulator, production rules enforced |
-| `npm run test:e2e` | builds the app, boots emulators, runs Playwright/Chromium against it |
-| `npm run deploy` | **lint + tests + build**, then `firebase deploy --only hosting,firestore:rules` |
-| `npm run verify:pages` | After `npm run build`, checks `dist/_headers` + `dist/_redirects` for Cloudflare Pages |
+| `npm run test:e2e` | builds the app (`--mode e2e`), refuses non-localhost Supabase, runs Playwright |
+| `npm run deploy:pages` | lint + tests + build, then Wrangler Pages deploy |
+| `npm run verify:pages` | After `npm run build`, checks `dist/_headers` + `dist/_redirects` |
 
-`deploy` is deliberately self-gating: it refuses to ship a tree that fails the quick local
-checks. The emulator-backed suites (`test:sync`, `test:e2e`) are not part of it — run them
-yourself around risky changes (Firebase upgrades, sync logic), or use
-`scripts/ci-local.ps1` at the root, which runs the whole CI matrix locally.
+Repo root: `npm run pages:verify` builds and checks Pages headers. Optional CI deploy: GitHub Actions → **Cloudflare Pages CI** → **Run workflow** (requires `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`).
 
-### Cloudflare Pages (migration branch, dev preview)
-
-Production still ships to **Firebase Hosting** (`notelike.web.app`). On `migration/supabase-r2`,
-`web/public/_headers` and `web/public/_redirects` mirror `firebase.json` security headers and add
-Supabase/R2 `connect-src` allowances for backend migration previews.
-
-```bash
-cd web && npm run build
-npx wrangler pages deploy dist --project-name=notelikeus-dev
-```
-
-Repo root: `npm run pages:verify` builds and checks header parity with `firebase.json`.
-Optional CI deploy: GitHub Actions → **Cloudflare Pages CI** → **Run workflow** (requires
-`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and web `VITE_*` secrets).
-
-E2e builds (`--mode e2e`) use `.env.e2e`, which points Firebase at local emulators with a fake
-API key and enables the email/password test login — they can never reach a real project.
+E2e builds (`--mode e2e`) use `.env.e2e`, which points only at local Supabase and enables email/password test login.
 
 ## Architecture map
 
-- **State** — Zustand stores (`src/store/`): auth, notes, ui. Real-time updates flow from
-  Firestore snapshots into the stores.
-- **Firestore layer** (`src/lib/firestore/`) — subscribe/upsert/delete, the cloud mapper
-  (field-parity with Android's `NoteCloudMapper.kt`), and the merge logic that decides
-  local-vs-remote wins.
+- **State** — Zustand stores (`src/store/`): auth, notes, ui. IndexedDB is the durable local database.
+- **Remote** — `src/lib/supabase/` RPC + Realtime; merge helpers in `src/lib/notes/remoteMerge.ts`.
+- **Cloud mapper** — `src/lib/mappers/noteCloudMapper.ts` keeps field parity with Kotlin `Note` / backup JSON.
 - **Rendering** — plain React text nodes throughout; no `dangerouslySetInnerHTML` anywhere.
-  Markdown preview is a small custom renderer emitting React elements, with link hrefs
-  scheme-sanitized (`toSafeHref`). Search highlighting builds `<mark>` nodes from a string
-  split, never HTML.
-- **Styling** — Tailwind CSS v4 (CSS-first config in `src/styles/globals.css`), theme-reactive
-  colours via CSS variables so all six themes work without rebuilds, animations from
-  `tw-animate-css`.
-- **PWA** — `vite-plugin-pwa` injectManifest with a custom service worker (`src/sw.ts`):
-  Workbox precache, SPA navigation route, and browser-notification reminders that persist in
-  Cache Storage and catch up on wake. Same-origin checks on all postMessage handling.
+- **Styling** — Tailwind CSS v4, theme-reactive colours via CSS variables.
+- **PWA** — `vite-plugin-pwa` injectManifest with `src/sw.ts`: Workbox precache, SPA navigation, reminders.
 
 ## Android parity
 
@@ -86,22 +52,20 @@ The three clients must agree on the data model or sync corrupts it:
 
 | Item | Value |
 |------|--------|
-| Firestore path | `users/{uid}/notes/{localId}` |
+| Note id | Client-generated string (`localId`) |
 | Display timestamp field | `timestamp` |
-| Conflict-resolution field | `serverUpdatedAt` (Firestore server timestamp; last write wins) |
+| Authoritative sync field | server `revision` (bigint); `serverUpdatedAt` remains a display/conflict hint |
 | Note colors | Same ARGB integers as Android `Color.kt` |
 | Backup format | JSON v3 (Android-compatible, importable both ways) |
 
-Firestore security rules live at the repo root (`firestore.rules`) and are deployed by
-`npm run deploy`. They are owner-scoped, schema-validated, and reject client-forged
-`serverUpdatedAt`; `tests/firestore.rules.test.mjs` proves all of that against the emulator.
+Row-level security and RPCs live under `supabase/`.
 
 ## Icons
 
-Production PNG icons live in `public/icons/` (192 and 512). `favicon.svg` remains for browser
-tabs.
+Production PNG icons live in `public/icons/` (192 and 512). `favicon.svg` remains for browser tabs.
 
 ## CI
 
-`.github/workflows/web.yml` runs lint + unit tests + build on every PR;
-`firebase.yml` runs the emulator-backed sync tests and Playwright e2e.
+`.github/workflows/web.yml` runs lint + unit tests + build on every PR.
+`.github/workflows/cloudflare-pages.yml` verifies Pages artifacts.
+`.github/workflows/supabase.yml` applies migrations and runs pgTAP.
