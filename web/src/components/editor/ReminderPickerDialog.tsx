@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface ReminderPickerDialogProps {
@@ -30,6 +30,7 @@ export function ReminderPickerDialog({
   onRemove,
 }: ReminderPickerDialogProps) {
   const [value, setValue] = useState(toInputValue(initialTimestamp));
+  const titleId = useId();
   const panelRef = useFocusTrap<HTMLDivElement>(open, onCancel);
 
   useEffect(() => {
@@ -44,10 +45,12 @@ export function ReminderPickerDialog({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Set reminder"
+        aria-labelledby={titleId}
         className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl animate-in zoom-in-95 duration-200"
       >
-        <h4 className="text-lg font-semibold">Set reminder</h4>
+        <h2 id={titleId} className="text-lg font-semibold">
+          Set reminder
+        </h2>
         <p className="mt-2 text-xs text-brand-muted">
           Web reminders fire when this app is open or recently used. They can be late or miss
           if the browser is fully closed — unlike the Android app, which uses system alarms.
@@ -56,6 +59,7 @@ export function ReminderPickerDialog({
           type="datetime-local"
           value={value}
           onChange={(event) => setValue(event.target.value)}
+          aria-label="Reminder date and time"
           className="mt-4 w-full rounded-note border border-brand-outline/50 bg-transparent px-4 py-3 text-sm text-brand-primary outline-none focus:border-brand-primary/50"
         />
         <div className="mt-5 flex justify-end gap-2">

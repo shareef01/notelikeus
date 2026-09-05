@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { importNotesFromBackup } from '@/lib/backup/importBackup';
 import {
+  BACKUP_VERSION,
+  MAX_BACKUP_LABELS,
   MAX_NOTE_CHECKLIST_ITEMS,
   MAX_NOTE_CONTENT_CHARS,
   MAX_NOTE_TITLE_CHARS,
@@ -79,5 +81,30 @@ describe('importNotesFromBackup', () => {
     expect(() => importNotesFromBackup({ version: 99, notes: [] }, [])).toThrow(
       /Unsupported backup version/,
     );
+  });
+
+  /**
+   * Parity with Kotlin's `NoteBackupImporter.MAX_BACKUP_LABELS`. The per-note label cap does not
+   * bound the root array, so a file that spends its whole size budget on label strings built an
+   * unbounded Set before any note was read.
+   */
+  it('caps how many distinct labels one backup can introduce', () => {
+    const labels = Array.from({ length: MAX_BACKUP_LABELS + 500 }, (_, i) => `label-${i}`);
+
+    const { result } = importNotesFromBackup(
+      { version: BACKUP_VERSION, notes: [{ localId: 1, title: 'Note' }], labels },
+      [],
+    );
+
+    expect(result.labelsCreated).toBe(MAX_BACKUP_LABELS);
+  });
+
+  it('still imports every label of an ordinary backup', () => {
+    const { result } = importNotesFromBackup(
+      { version: BACKUP_VERSION, notes: [{ localId: 1, title: 'Note' }], labels: ['work', 'home'] },
+      [],
+    );
+
+    expect(result.labelsCreated).toBe(2);
   });
 });

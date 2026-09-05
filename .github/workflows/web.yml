@@ -49,3 +49,11 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://placeholder.supabase.co
           VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiJ9.payload.signature
+
+      - name: Verify Pages artifacts
+        working-directory: .
+        run: node web/scripts/verifyPagesArtifacts.mjs
+
+      - name: Verify security headers
+        working-directory: .
+        run: node cloudflare/scripts/verify-headers-parity.mjs

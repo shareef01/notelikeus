@@ -33,8 +33,8 @@ const requiredCspTokens = [
   "default-src 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
-  'https://*.supabase.co',
-  'wss://*.supabase.co',
+  'https://cqydlidescvmpfviwncf.supabase.co',
+  'wss://cqydlidescvmpfviwncf.supabase.co',
   'https://*.workers.dev',
   'https://accounts.google.com',
 ];

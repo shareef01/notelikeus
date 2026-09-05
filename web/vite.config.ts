@@ -38,7 +38,7 @@ export default defineConfig({
       injectRegister: null,
       includeAssets: ['favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
       injectManifest: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}', '**/*latin*.woff2'],
       },
       manifest: {
         name: 'Notelikeus',
@@ -57,27 +57,33 @@ export default defineConfig({
             name: 'New note',
             short_name: 'New',
             url: '/?new=1',
-            icons: [{ src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
+            icons: [{ src: '/icons/icon-192.png', sizes: '1024x1024', type: 'image/png' }],
           },
         ],
         icons: [
           {
             src: '/icons/icon-192.png',
-            sizes: '192x192',
+            sizes: '1024x1024',
             type: 'image/png',
             purpose: 'any',
           },
           {
             src: '/icons/icon-512.png',
-            sizes: '512x512',
+            sizes: '1024x1024',
             type: 'image/png',
             purpose: 'any',
           },
           {
             src: '/icons/icon-512.png',
-            sizes: '512x512',
+            sizes: '1024x1024',
             type: 'image/png',
             purpose: 'maskable',
+          },
+          {
+            src: '/favicon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any',
           },
         ],
       },

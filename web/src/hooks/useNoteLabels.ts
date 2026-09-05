@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { notesContentKey } from '@/lib/notes/noteEquality';
 import { useNotesStore } from '@/store/notesStore';
 import { useLabelRegistryStore } from '@/store/labelRegistryStore';
 import type { Label } from '@/types/label';
@@ -23,8 +22,5 @@ function collectLabels(
 export function useNoteLabels(): Label[] {
   const notes = useNotesStore((state) => state.notes);
   const registered = useLabelRegistryStore((state) => state.labels);
-  const notesKey = notesContentKey(notes);
-  // notesKey is a content-derived guard: `notes` gets a new reference on every store update
-  // even when no label-relevant content changed, so it's deliberately left out of the deps.
-  return useMemo(() => collectLabels(notes, registered), [notesKey, registered]);
+  return useMemo(() => collectLabels(notes, registered), [notes, registered]);
 }

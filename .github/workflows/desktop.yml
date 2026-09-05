@@ -51,7 +51,7 @@ jobs:
   # The jobs above run against the full JDK, where every module is on hand. The MSI does not:
   # jlink builds its runtime from the `modules` list in composeApp/build.gradle.kts, and anything
   # missing there fails only once the app is installed. That is how the packaged build lost
-  # java.net.http — no HttpClient, so sign-in and every Firestore call died — while CI stayed
+  # java.net.http — no HttpClient, so sign-in and every Supabase call died — while CI stayed
   # green. Windows because the MSI is the only desktop format shipped.
   package:
     runs-on: windows-latest

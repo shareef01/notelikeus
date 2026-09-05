@@ -11,6 +11,8 @@ interface FilterChipProps {
   disabled?: boolean;
   leading?: ReactNode;
   compact?: boolean;
+  /** Toggle chips only. Action chips (Clear, sort cycle) omit this. */
+  pressed?: boolean;
 }
 
 function FilterChip({
@@ -20,12 +22,14 @@ function FilterChip({
   disabled = false,
   leading,
   compact = false,
+  pressed,
 }: FilterChipProps) {
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
+      aria-pressed={pressed}
       className={`filter-chip shrink-0 gap-1.5 ${CHROME_FOCUS} ${compact ? 'min-h-9 px-3 text-xs sm:px-3.5' : ''} ${
         selected ? 'filter-chip-active' : 'filter-chip-inactive'
       } ${disabled ? 'cursor-default opacity-70' : 'cursor-pointer'}`}
@@ -103,6 +107,7 @@ export function FilterRow({
             compact
             label="All labels"
             selected={selectedLabelName === null}
+            pressed={selectedLabelName === null}
             onClick={() => onLabelSelect(null)}
           />
           {labels.map((label) => (
@@ -111,6 +116,7 @@ export function FilterRow({
               compact
               label={label.name}
               selected={selectedLabelName === label.name}
+              pressed={selectedLabelName === label.name}
               onClick={() =>
                 onLabelSelect(selectedLabelName === label.name ? null : label.name)
               }

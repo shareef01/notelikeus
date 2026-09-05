@@ -4,7 +4,7 @@ import {
   dialogDangerButtonClass,
   dialogPrimaryButtonClass,
 } from '@/components/ui/ModalDialog';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 interface SignOutDialogProps {
   open: boolean;
@@ -20,16 +20,15 @@ export function SignOutDialog({
   onSignOutAndDelete,
 }: SignOutDialogProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const titleId = useId();
 
   return (
-    <ModalDialog
-      open={open}
-      onClose={onCancel}
-      ariaLabel={confirmDelete ? 'Confirm cloud data deletion' : 'Sign out of Google?'}
-    >
+    <ModalDialog open={open} onClose={onCancel} ariaLabelledBy={titleId}>
       {!confirmDelete ? (
         <>
-          <h4 className="text-lg font-semibold">Sign out of Google?</h4>
+          <h2 id={titleId} className="text-lg font-semibold">
+            Sign out of Google?
+          </h2>
           <p className="mt-2 text-sm text-brand-muted">
             Your notes stay in your Google account and aren&apos;t affected by ordinary sign out.
             This only clears locally cached app data on this device, and you&apos;ll need to sign
@@ -53,7 +52,9 @@ export function SignOutDialog({
         </>
       ) : (
         <>
-          <h4 className="text-lg font-semibold text-red-300">Delete cloud data and sign out?</h4>
+          <h2 id={titleId} className="text-lg font-semibold text-red-300">
+            Delete cloud data and sign out?
+          </h2>
           <p className="mt-2 text-sm text-brand-muted">
             This permanently deletes your synced notes from Notelikeus cloud for this account.
             It does not just remove this device. This action cannot be undone unless you have a

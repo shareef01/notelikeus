@@ -32,46 +32,67 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
   subscribeToNotes(userId, onData, onError) {
     let stopped = false;
     let notesById = new Map<string, Note>();
+    /**
+     * Whether [notesById] holds a full snapshot rather than a handful of pulled deltas.
+     *
+     * `onData` is contractually the caller's *complete* note set: notesSyncService diffs it
+     * against the previously known cloud ids and tombstones everything missing. `pull_changes`
+     * only returns notes above the persisted revision cursor, so layering it on a map that the
+     * snapshot never filled emits "the library is now just these two notes" — and the diff then
+     * deletes the rest on this device and, via the tombstone purge, in the cloud and on every
+     * other device. Nothing may be emitted until a snapshot has actually landed.
+     */
+    let hasBaseline = false;
+    /** Serialises bootstrap against pulls so a realtime wake cannot emit a half-built map. */
+    let queue: Promise<void> = Promise.resolve();
 
     const emit = () => {
       onData(Array.from(notesById.values()));
     };
 
-    const bootstrap = async () => {
-      try {
-        await ensureSupabaseAuthenticated();
-        const snapshot = await fetchSnapshotNotes();
-        useTombstoneStore.getState().mergeFromCloud(snapshot.tombstones);
-        notesById = new Map(snapshot.notes.map((note) => [note.id, note]));
-        await saveRevisionState(userId, {
-          noteRevisions: snapshot.noteRevisions,
-          lastRemoteRevision: snapshot.maxRevision,
-        });
-        emit();
-      } catch (error) {
-        onError?.(error instanceof Error ? error : new Error(String(error)));
-      }
+    const loadBaseline = async () => {
+      await ensureSupabaseAuthenticated();
+      const snapshot = await fetchSnapshotNotes();
+      useTombstoneStore.getState().mergeFromCloud(snapshot.tombstones);
+      notesById = new Map(snapshot.notes.map((note) => [note.id, note]));
+      await saveRevisionState(userId, {
+        noteRevisions: snapshot.noteRevisions,
+        lastRemoteRevision: snapshot.maxRevision,
+      });
+      hasBaseline = true;
+      emit();
     };
 
     const pull = async () => {
-      if (stopped) return;
-      try {
-        const changed = await pullIncrementalChanges(userId, notesById);
-        if (changed) emit();
-      } catch (error) {
-        onError?.(error instanceof Error ? error : new Error(String(error)));
+      // A failed bootstrap leaves no baseline to apply deltas to. Re-fetching the snapshot is
+      // both the correct emission and the recovery path; the realtime wake/fallback tick is what
+      // retries it until the transport comes back.
+      if (!hasBaseline) {
+        await loadBaseline();
+        return;
       }
+      const changed = await pullIncrementalChanges(userId, notesById);
+      if (changed) emit();
     };
 
-    void bootstrap();
+    const run = (task: () => Promise<void>): Promise<void> => {
+      queue = queue
+        .then(() => (stopped ? undefined : task()))
+        .catch((error: unknown) => {
+          onError?.(error instanceof Error ? error : new Error(String(error)));
+        });
+      return queue;
+    };
+
+    void run(loadBaseline);
 
     const unsubscribeRealtime = subscribeSupabaseNoteRealtime(
       userId,
       () => {
-        void pull();
+        void run(pull);
       },
       () => {
-        void pull();
+        void run(pull);
       },
     );
 

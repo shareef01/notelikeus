@@ -88,6 +88,7 @@ async function getAttachment(env: WorkerEnv, objectKey: string): Promise<Respons
   // and never let one render in this Worker's origin.
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Content-Disposition', 'attachment');
+  headers.set('Cache-Control', 'private, no-store');
   return new Response(object.body, { headers });
 }
 

@@ -5,6 +5,7 @@ import { labelFromName } from '@/types/label';
 import {
   BACKUP_VERSION,
   MAX_BACKUP_FILE_BYTES,
+  MAX_BACKUP_LABELS,
   MAX_BACKUP_NOTES,
   MAX_NOTE_CHECKLIST_ITEMS,
   MAX_NOTE_CONTENT_CHARS,
@@ -39,18 +40,27 @@ function parseLabelName(entry: unknown): string {
   return '';
 }
 
+/**
+ * Distinct label names in the file, capped at {@link MAX_BACKUP_LABELS} the way Kotlin's importer
+ * caps them. The per-note cap alone did not bound this: a hostile file can spend its whole 10 MB
+ * budget on label strings, and every distinct one was collected before a single note was read.
+ */
 function collectLabelNames(root: BackupRoot, noteEntries: unknown[]): Set<string> {
   const names = new Set<string>();
-  for (const entry of root.labels ?? []) {
+  const add = (entry: unknown): boolean => {
+    if (names.size >= MAX_BACKUP_LABELS) return false;
     const name = parseLabelName(entry);
     if (name) names.add(name);
+    return true;
+  };
+  for (const entry of root.labels ?? []) {
+    if (!add(entry)) return names;
   }
   for (const entry of noteEntries) {
     if (!entry || typeof entry !== 'object') continue;
     const labels = (entry as { labels?: unknown[] }).labels ?? [];
     for (const label of labels) {
-      const name = parseLabelName(label);
-      if (name) names.add(name);
+      if (!add(label)) return names;
     }
   }
   return names;

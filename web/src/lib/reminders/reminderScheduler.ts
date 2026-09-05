@@ -1,11 +1,5 @@
+import type { SwReminder } from '@/lib/reminders/swReminderPayload';
 import type { Note } from '@/types/note';
-
-interface SwReminder {
-  noteId: string;
-  title: string;
-  body: string;
-  fireAt: number;
-}
 
 async function postRemindersToServiceWorker(reminders: SwReminder[]) {
   if (!('serviceWorker' in navigator)) return;

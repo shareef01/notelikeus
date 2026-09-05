@@ -189,7 +189,7 @@ jobs:
   # Publishes the tag's artifacts as a GitHub Release. Runs only after every gate has
   # passed — a release tag on a red build must not ship. CI has no signing config
   # (see signing.properties.example), so the attached APK/AAB are unsigned; this repo's
-  # distribution model is build-from-source plus the Firebase-hosted web app.
+  # distribution model is build-from-source plus the Cloudflare Pages web app.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build, instrumented]

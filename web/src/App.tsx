@@ -75,7 +75,10 @@ export default function App() {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       const data = event.data as { type?: string; noteId?: string } | null;
-      if (data?.type === 'OPEN_NOTE' && typeof data.noteId === 'string' && data.noteId) {
+      // Same id shape the ?note= deep link above requires. The worker builds this message, but
+      // only one of the two paths into openNote() was validating, and an id that is not a note
+      // id opens the editor on nothing.
+      if (data?.type === 'OPEN_NOTE' && typeof data.noteId === 'string' && /^\d+$/.test(data.noteId)) {
         openNote(data.noteId);
       }
     };

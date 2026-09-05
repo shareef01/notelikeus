@@ -249,5 +249,6 @@ describe('attachment worker upload limits', () => {
     );
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(response.headers.get('Content-Disposition')).toBe('attachment');
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
   });
 });
