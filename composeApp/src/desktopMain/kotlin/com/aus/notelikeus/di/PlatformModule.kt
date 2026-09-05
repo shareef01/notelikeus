@@ -9,6 +9,7 @@ import com.aus.notelikeus.data.local.SETTINGS_DATASTORE_FILENAME
 import com.aus.notelikeus.data.local.createDataStore
 import com.aus.notelikeus.data.local.getDatabaseBuilder
 import com.aus.notelikeus.data.remote.BackendConfig
+import com.aus.notelikeus.util.readLocalProperty
 import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.remote.DesktopFirestoreTransport
 import com.aus.notelikeus.data.remote.DesktopSupabaseRpcClient
@@ -271,32 +272,7 @@ private object DesktopOAuthConfig {
 
     fun clientSecret(): String {
         System.getenv(SECRET_ENV_VAR)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        localPropertiesSecret()?.let { return it }
+        readLocalProperty(SECRET_PROPERTY)?.let { return it }
         return DesktopSecrets.OAUTH_CLIENT_SECRET
     }
-
-    /**
-     * Walks up from the working directory to find `local.properties`. Gradle's `run` task starts
-     * in `composeApp/`, a packaged app starts wherever the launcher puts it, so a fixed relative
-     * path would only work in one of them.
-     */
-    private fun localPropertiesSecret(): String? {
-        var dir: File? = File(".").absoluteFile
-        repeat(MAX_PARENT_LOOKUPS) {
-            val candidate = File(dir, "local.properties")
-            if (candidate.isFile) {
-                return runCatching {
-                    java.util.Properties()
-                        .apply { candidate.inputStream().use { load(it) } }
-                        .getProperty(SECRET_PROPERTY)
-                        ?.trim()
-                        ?.takeIf { it.isNotEmpty() }
-                }.getOrNull()
-            }
-            dir = dir?.parentFile ?: return null
-        }
-        return null
-    }
-
-    private const val MAX_PARENT_LOOKUPS = 6
 }

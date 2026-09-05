@@ -22,6 +22,7 @@
 #
 # Outputs (gitignored):
 #   web/.env.staging        — copy to web/.env for local smoke tests
+#   local.properties        — Kotlin staging keys merged (oauth secret preserved)
 #   workers/attachments/wrangler.toml
 #
 set -euo pipefail
@@ -149,6 +150,12 @@ Smoke test (after copying web/.env.staging → web/.env):
 
 Pages staging deploy (does not cut over production):
   npm run deploy:staging-pages
+
+Kotlin debug staging (does not cut over production):
+  npm run kotlin:staging-properties
+  - Android: rebuild the debug APK so BuildConfig picks up local.properties
+  - Desktop: restart ./gradlew run (reads local.properties at runtime)
+  - Do NOT set NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION
 
 Migration rehearsal (test Firebase account only):
   node scripts/ops/export-firestore-user.mjs --input dump.json --out backup.json
@@ -304,6 +311,11 @@ EOF
   write_env_staging
 
   green "Attachments worker deployed${WORKER_URL:+ → ${WORKER_URL}}"
+fi
+
+if [[ "${DRY_RUN:-}" != "1" && -f "$ROOT/web/.env.staging" ]]; then
+  info "Kotlin: merge staging keys into gitignored local.properties"
+  node "$ROOT/scripts/ops/write-kotlin-staging-properties.mjs"
 fi
 
 print_manual_steps
