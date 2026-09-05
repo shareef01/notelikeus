@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Bootstrap a Notelikeus *staging* stack (Supabase + R2 attachments worker).
-# Does NOT enable production cutover flags. Firebase remains the live backend.
 #
 # Required environment variables:
 #   SUPABASE_ACCESS_TOKEN   — personal access token (Account → Access Tokens)
@@ -120,7 +119,7 @@ Manual dashboard steps (agent cannot complete these via CLI):
 
 Supabase Auth → Providers → Google:
   1. Enable Google provider.
-  2. Client ID: same Web OAuth client as Firebase (VITE_FIREBASE_GOOGLE_CLIENT_ID).
+  2. Client ID: Google Cloud Web OAuth client used by the app.
   3. Client secret: from Google Cloud Console for that OAuth client.
   4. Auth → URL configuration → Redirect URLs, add:
        ${STAGING_WEB_ORIGIN}/**
@@ -138,7 +137,6 @@ Google Cloud Console → Web OAuth client:
   - ${STAGING_WEB_ORIGIN}
   Authorized redirect URIs:
   - https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/callback
-  - https://notelikeus.firebaseapp.com/__/auth/handler
 
 Smoke test (after copying web/.env.staging → web/.env):
   cd web && npm run dev
@@ -148,17 +146,10 @@ Smoke test (after copying web/.env.staging → web/.env):
 Pages staging deploy (does not cut over production):
   npm run deploy:staging-pages
 
-Kotlin debug staging (does not cut over production):
+Kotlin debug staging:
   npm run kotlin:staging-properties
   - Android: rebuild the debug APK so BuildConfig picks up local.properties
   - Desktop: restart ./gradlew run (reads local.properties at runtime)
-  - Do NOT set NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION
-
-Migration rehearsal (test Firebase account only):
-  node scripts/ops/export-firestore-user.mjs --input dump.json --out backup.json
-  - Sign in on staging, use in-app backup import
-
-Do NOT set VITE_ALLOW_SUPABASE_PRODUCTION until owner authorizes production cutover.
 EOF
 }
 
@@ -207,15 +198,10 @@ write_env_staging() {
     WORKER_URL="$(sed -n 's/^VITE_ATTACHMENTS_WORKER_URL=//p' "$ROOT/web/.env.staging" | head -1 || true)"
   fi
   cat > "$ROOT/web/.env.staging" <<EOF
-# Staging — copy to web/.env for local smoke tests. NOT for production deploy.
-VITE_REMOTE_BACKEND=supabase
+# Staging — copy to web/.env for local smoke tests.
 VITE_SUPABASE_URL=${SUPABASE_URL}
 VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
 VITE_ATTACHMENTS_WORKER_URL=${WORKER_URL:-http://127.0.0.1:8787}
-
-# Keep Firebase vars if you need side-by-side comparison (from web/.env.example):
-# VITE_FIREBASE_API_KEY=...
-# VITE_FIREBASE_GOOGLE_CLIENT_ID=...  (required for Supabase Google OAuth locally)
 EOF
   green "Wrote web/.env.staging (copy to web/.env)"
 }
@@ -301,4 +287,4 @@ fi
 
 print_manual_steps
 
-green "Staging bootstrap complete (Firebase remains production default)."
+green "Staging bootstrap complete (Supabase is the only backend)."

@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const syncNotesWithCloud = vi.fn();
-vi.mock('@/lib/firestore/notesRepository', () => ({
-  syncNotesWithCloud: (...args: unknown[]) => syncNotesWithCloud(...args),
+vi.mock('@/lib/remote/remoteNotesDataSourceRegistry', () => ({
+  getRemoteNotesDataSource: () => ({
+    syncNotesWithCloud: (...args: unknown[]) => syncNotesWithCloud(...args),
+  }),
 }));
 
 import { resetKeyCacheForTests } from '@/lib/crypto/unlockMigration';

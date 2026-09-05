@@ -1,9 +1,10 @@
 package com.aus.notelikeus.data.remote
 
-/**
- * Shared remote-backend selection. Firebase remains the default.
- * Release/production builds require an explicit allow flag and a non-localhost URL.
- */
+/** Well-known `supabase start` defaults. Debug/local-dev only — never a release fallback. */
+internal const val DEFAULT_LOCAL_SUPABASE_URL = "http://127.0.0.1:54321"
+internal const val DEFAULT_LOCAL_SUPABASE_ANON_KEY =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0"
+
 internal fun isLocalSupabaseUrl(url: String): Boolean {
     val trimmed = url.trim()
     if (trimmed.isEmpty()) return true
@@ -19,16 +20,18 @@ internal fun isLocalSupabaseUrl(url: String): Boolean {
 internal fun firstNonBlank(vararg values: String?): String? =
     values.firstNotNullOfOrNull { it?.trim()?.takeIf(String::isNotEmpty) }
 
-fun isSupabaseRemoteSelected(
-    isDebug: Boolean,
-    remoteBackendEnv: String?,
-    allowProductionEnv: String?,
-    supabaseUrl: String,
-): Boolean {
-    if (remoteBackendEnv?.trim() != "supabase") return false
-    if (isDebug) return true
-    val allow = allowProductionEnv?.trim().equals("true", ignoreCase = true) ||
-        allowProductionEnv?.trim() == "1"
-    if (!allow) return false
-    return !isLocalSupabaseUrl(supabaseUrl)
+/**
+ * Release builds fail closed when the hosted project is missing, matching web production.
+ * Debug/local-dev may still fall back to the CLI defaults.
+ */
+internal fun resolveSupabaseUrl(configured: String?, allowLocalFallback: Boolean): String {
+    val resolved = firstNonBlank(configured) ?: if (allowLocalFallback) DEFAULT_LOCAL_SUPABASE_URL else ""
+    if (!allowLocalFallback && isLocalSupabaseUrl(resolved)) return ""
+    return resolved
+}
+
+internal fun resolveSupabaseAnonKey(configured: String?, allowLocalFallback: Boolean): String {
+    val resolved = firstNonBlank(configured)
+    if (resolved != null) return resolved
+    return if (allowLocalFallback) DEFAULT_LOCAL_SUPABASE_ANON_KEY else ""
 }

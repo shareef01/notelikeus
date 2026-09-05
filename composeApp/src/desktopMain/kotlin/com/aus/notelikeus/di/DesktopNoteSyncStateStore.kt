@@ -3,7 +3,6 @@ package com.aus.notelikeus.di
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.aus.notelikeus.data.sync.NoteSyncStateStore
@@ -27,8 +26,6 @@ class DesktopNoteSyncStateStore(
     private val knownCloudSet: MutableSet<Long>
     private var reconciledAt: Long
     private var mergedUserId: String?
-    private var linkedFirebaseUid: String?
-    private var firebaseCloudMigrated: Boolean
 
     init {
         val prefs = runBlocking { dataStore.data.firstOrNull() }
@@ -37,8 +34,6 @@ class DesktopNoteSyncStateStore(
         knownCloudSet = parseIdSet(prefs, KEY_KNOWN_CLOUD_IDS).toMutableSet()
         reconciledAt = prefs?.get(KEY_LAST_RECONCILED) ?: 0L
         mergedUserId = prefs?.get(KEY_LAST_MERGED_USER_ID)
-        linkedFirebaseUid = prefs?.get(KEY_LINKED_FIREBASE_UID)
-        firebaseCloudMigrated = prefs?.get(KEY_FIREBASE_CLOUD_MIGRATED) ?: false
     }
 
     override fun markDeleted(noteId: Long, deletedAt: Long) {
@@ -118,32 +113,12 @@ class DesktopNoteSyncStateStore(
         runBlocking { dataStore.edit { it[KEY_LAST_MERGED_USER_ID] = userId } }
     }
 
-    override fun linkedFirebaseUid(): String? = linkedFirebaseUid
-
-    override fun setLinkedFirebaseUid(userId: String?) {
-        linkedFirebaseUid = userId
-        runBlocking {
-            dataStore.edit {
-                if (userId.isNullOrBlank()) it.remove(KEY_LINKED_FIREBASE_UID) else it[KEY_LINKED_FIREBASE_UID] = userId
-            }
-        }
-    }
-
-    override fun isFirebaseSupabaseCloudMigrated(): Boolean = firebaseCloudMigrated
-
-    override fun setFirebaseSupabaseCloudMigrated(migrated: Boolean) {
-        firebaseCloudMigrated = migrated
-        runBlocking { dataStore.edit { it[KEY_FIREBASE_CLOUD_MIGRATED] = migrated } }
-    }
-
     override fun clear() {
         deletedMap.clear()
         restoredSet.clear()
         knownCloudSet.clear()
         reconciledAt = 0L
         mergedUserId = null
-        linkedFirebaseUid = null
-        firebaseCloudMigrated = false
         runBlocking { dataStore.edit { it.clear() } }
     }
 
@@ -198,7 +173,5 @@ class DesktopNoteSyncStateStore(
         private val KEY_KNOWN_CLOUD_IDS = stringPreferencesKey("sync_known_cloud_ids")
         private val KEY_LAST_RECONCILED = longPreferencesKey("sync_last_reconciled")
         private val KEY_LAST_MERGED_USER_ID = stringPreferencesKey("sync_last_merged_user_id")
-        private val KEY_LINKED_FIREBASE_UID = stringPreferencesKey("sync_linked_firebase_uid")
-        private val KEY_FIREBASE_CLOUD_MIGRATED = booleanPreferencesKey("sync_firebase_cloud_migrated")
     }
 }

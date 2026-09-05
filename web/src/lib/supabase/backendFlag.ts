@@ -1,13 +1,8 @@
 /**
- * Pure backend-selection rules shared by the Vite client.
+ * Pure Supabase configuration rules shared by the Vite client.
  *
- * Production (`notelike.web.app`) stays on Firebase unless a cutover build sets
- * `VITE_REMOTE_BACKEND=supabase` and `VITE_ALLOW_SUPABASE_PRODUCTION=true`
- * against a non-localhost Supabase URL. Ordinary users cannot switch backends.
- *
- * A Pages *staging* build may set `VITE_ALLOW_SUPABASE_STAGING=true` instead.
- * That bundle talks to Supabase only on `*.pages.dev` hosts, so the same
- * artifacts cannot cut over Firebase Hosting.
+ * Supabase is the only remote backend. A production build must point at a hosted
+ * project URL with a browser-safe anon/publishable key.
  */
 
 export function isLocalSupabaseUrl(url: string): boolean {
@@ -21,27 +16,30 @@ export function isLocalSupabaseUrl(url: string): boolean {
   }
 }
 
-export function isPagesDevHost(hostname: string): boolean {
-  const host = hostname.trim().toLowerCase();
-  return host === 'pages.dev' || host.endsWith('.pages.dev');
+/**
+ * Whether an anon key is safe to ship in a browser bundle.
+ *
+ * Supabase issues two shapes that are easy to confuse: the public anon JWT (`eyJ…`, safe in a
+ * client because RLS is what authorises it) and secret API keys (`sb_secret_…`, and `sb_…`
+ * generally), which are backend credentials. A secret key pasted into a Vite env file is inlined
+ * into the bundle. Refuse those so a build that cannot authenticate is preferred to one that
+ * ships a secret.
+ */
+export function isBrowserSafeSupabaseKey(key: string): boolean {
+  const trimmed = key.trim();
+  if (!trimmed) return false;
+  if (trimmed.toLowerCase().startsWith('sb_')) return false;
+  return trimmed.startsWith('eyJ');
 }
 
-function isTruthyFlag(value: string | undefined): boolean {
-  return value === 'true' || value === '1';
-}
-
-export function resolveSupabaseBackendEnabled(input: {
+export function isSupabaseConfigured(input: {
   isProd: boolean;
   isE2e: boolean;
-  remoteBackend?: string;
-  allowProduction?: string;
-  allowStaging?: string;
   supabaseUrl: string;
-  hostname?: string;
+  anonKey: string;
 }): boolean {
-  if (input.remoteBackend !== 'supabase') return false;
-  if (!input.isProd || input.isE2e) return true;
-  if (isLocalSupabaseUrl(input.supabaseUrl)) return false;
-  if (isTruthyFlag(input.allowProduction)) return true;
-  return isTruthyFlag(input.allowStaging) && isPagesDevHost(input.hostname ?? '');
+  if (!isBrowserSafeSupabaseKey(input.anonKey)) return false;
+  if (!input.supabaseUrl.trim()) return false;
+  if (input.isProd && !input.isE2e && isLocalSupabaseUrl(input.supabaseUrl)) return false;
+  return true;
 }

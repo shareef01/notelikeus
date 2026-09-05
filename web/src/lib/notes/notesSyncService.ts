@@ -62,6 +62,12 @@ function applyNotes(userId: string, incoming: Note[]) {
   });
 }
 
+/** Whether the in-memory store still holds notes that have not been deleted on this device. */
+function storeHoldsLiveNotes(): boolean {
+  const isDeleted = useTombstoneStore.getState().isDeleted;
+  return useNotesStore.getState().notes.some((note) => !isDeleted(note.id));
+}
+
 let reconcileInFlight: Promise<void> | null = null;
 let lastReconcileStartedAt = 0;
 let lastSnapshotAppliedAt = 0;
@@ -79,12 +85,9 @@ function trackRemoteIds(ids: string[]) {
 
 /**
  * Safety net for the always-on write path in noteActions.ts. A save made while offline is
- * queued by Firestore's own offline persistence (lib/firebase.ts) and flushed unconditionally
- * once reconnected — `setDoc` doesn't compare against whatever changed on the server in the
- * meantime, so if another device wrote a genuinely newer edit to the same note while this one
- * was offline, that flush can silently overwrite it. Re-running the serverUpdatedAt-aware merge
- * (see notesRepository.ts) on reconnect/tab-refocus catches and repairs that instead of leaving
- * it wrong until the note happens to be edited again.
+ * stored in IndexedDB and pushed on reconnect. Re-running the revision-aware merge on
+ * reconnect/tab-refocus catches a newer remote edit instead of leaving a stale local flush
+ * as the last writer.
  */
 async function reconcileNow(userId: string): Promise<void> {
   const now = Date.now();
@@ -152,9 +155,8 @@ function detachReconciliationTriggers() {
 }
 
 /**
- * Remote Firebase snapshots update IndexedDB first (via applyNotes), then the in-memory UI store.
- * IndexedDB is the web client's durable local database; Firestore remains the remote backend
- * during migration Phases 1–3.
+ * Remote snapshots update IndexedDB first, then the in-memory UI store.
+ * IndexedDB is the web client's durable local database; Supabase is the remote backend.
  */
 export function startNotesRealtimeSync(userId: string): void {
   if (realtimeUserId === userId && unsubscribeRealtime) {
@@ -193,6 +195,15 @@ export function startNotesRealtimeSync(userId: string): void {
       }
 
       lastSnapshotAppliedAt = Date.now();
+
+      // Same rule as the delete-on-absence guard above, for the notes themselves: an empty
+      // snapshot must not replace a library this device is still holding. That happens for real
+      // during a Firebase→Supabase migration, where local notes exist under the Supabase owner id
+      // before the first upload. Blanking the store would also empty what reconcileNow() reads as
+      // "local notes", so the pending notes would never be uploaded. Notes already tombstoned do
+      // not count as held — deleting the last note must still leave an empty library.
+      if (live.length === 0 && storeHoldsLiveNotes()) return;
+
       applyNotes(userId, live);
     },
     (error) => {

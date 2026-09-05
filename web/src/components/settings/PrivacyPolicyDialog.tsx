@@ -1,30 +1,30 @@
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
-const PRIVACY_POLICY_BODY = `Notelikeus is an offline-first notes application across Android, Windows (Desktop), and Web. You can use Notelikeus completely offline without creating an account or signing in. This policy describes how the app handles information locally on your device and when you optionally enable cloud sync with Google sign-in.
+const PRIVACY_POLICY_BODY = `Notelikeus is an offline-first notes application across Android, Windows (Desktop), and Web. You can use Notelikeus completely offline without creating an account or signing in. This policy describes how the app handles information locally on your device and when you optionally enable cloud sync.
 
 Summary
 • Offline-first by default: On Android, Windows, and Web, notes are stored locally on your device. You can use the full application without creating an account.
-• Optional cloud sync: When you sign in with Google, note text, checklists, and metadata sync to Google Firebase Firestore under your user account.
+• Optional cloud sync: When you sign in, note text, checklists, and metadata sync to Supabase (PostgreSQL) under your user account. Attachment files may be stored in Cloudflare R2.
 • Local data isolation: Signing out clears locally cached notes from the active session so a subsequent user cannot inherit your data.
 • Encryption: Android local databases are encrypted at rest with SQLCipher backed by Android Keystore.
-• Synced cloud notes are not end-to-end encrypted by the app; they rely on Google Cloud / Firebase transport security and Firestore access rules.
+• Synced cloud notes are not end-to-end encrypted by the app; they rely on TLS plus Supabase Auth, row-level security, and Worker authorization for attachments.
 • The app does not include third-party tracking, analytics, or advertising SDKs.
 
 Information stored on your device
 • Android & Windows Desktop: Note titles, body text, colors, checklists, labels, and reminder timestamps in a local database (encrypted on Android). Local app preferences (theme, view mode, app lock status).
-• Web: Note content, checklists, labels, and preferences stored in local browser storage (IndexedDB / localStorage / memory cache). Operates fully as a guest / local-first PWA without requiring Google sign-in. Firestore offline cache for authenticated sessions.
+• Web: Note content, checklists, labels, and preferences stored in local browser storage (IndexedDB / localStorage). Operates fully as a guest / local-first PWA without requiring sign-in.
 
 Cloud sync (optional)
-When you choose to sign in with Google and use sync, note content is stored in Google Firebase Firestore under your Google account. Signing out clears locally cached notes on this device so the next account cannot inherit them; cloud data remains until you delete it.
+When you choose to sign in and use sync, note content is stored in Supabase under your authenticated identity. Signing out clears locally cached notes on this device so the next account cannot inherit them; cloud data remains until you delete it.
 
 Security
 • Android: SQLCipher-encrypted Room database. Optional app-wide lock uses device biometric APIs.
 • Windows Desktop & Web: Local storage is bound to the user's OS / browser profile permissions.
-• Cloud security: Firestore security rules restrict read and write operations to the authenticated owner.
+• Cloud security: PostgreSQL row-level security and authorized RPCs restrict read and write operations to the authenticated owner.
 
 Permissions
-• Internet: Firebase auth and cloud sync
+• Internet: Authentication and cloud sync
 • Notifications: Deliver reminders you schedule for notes
 • Biometric: Unlock the app when app lock is enabled (Android)
 
@@ -35,12 +35,12 @@ Links in notes
 Tapping a link opens your default browser. Notelikeus does not track link usage.
 
 Third parties
-We do not sell your data. We do not use analytics or advertising SDKs in this app.
+We do not sell your data. We do not use analytics or advertising SDKs in this app. Cloud providers used when you enable sync are Supabase (auth and note data) and Cloudflare (web hosting and attachment objects).
 
 Contact
 For privacy questions, contact the app developer through the store listing or project repository.
 
-Last updated: August 2026`;
+Last updated: September 2026`;
 
 interface PrivacyPolicyDialogProps {
   open: boolean;

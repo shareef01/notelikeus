@@ -1,7 +1,7 @@
 import {
   mergeRemoteNotes,
   shouldUploadOverRemote,
-} from '@/lib/firestore/notesRepository';
+} from '@/lib/notes/remoteMerge';
 import { subscribeSupabaseNoteRealtime } from '@/lib/supabase/supabaseRealtimeSync';
 import {
   loadRevisionState,
@@ -25,6 +25,7 @@ interface ApplyNoteResult {
   status?: string;
   revision?: number;
   idempotent?: boolean;
+  error?: string;
 }
 
 export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
@@ -118,9 +119,20 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     });
     if (error) throw error;
     const result = (data ?? {}) as ApplyNoteResult;
+    // apply_note_delete answers an already-tombstoned note with
+    // {status: 'applied', idempotent: true} and no revision — not 'conflict'. Reading `idempotent`
+    // off the conflict branch made that cleanup unreachable and left a stale revision behind.
+    if (result.idempotent) {
+      await forgetNoteRevision(userId, noteId);
+      useTombstoneStore.getState().markDeleted(noteId);
+      return;
+    }
     if (result.status === 'conflict') {
-      if (result.idempotent) {
+      // The server has neither the note nor a tombstone (e.g. after an account wipe): there is
+      // nothing left to delete, so drop the stale local revision instead of failing forever.
+      if (result.error === 'note_not_found') {
         await forgetNoteRevision(userId, noteId);
+        useTombstoneStore.getState().markDeleted(noteId);
         return;
       }
       throw new Error(`Delete conflict for note ${noteId}`);

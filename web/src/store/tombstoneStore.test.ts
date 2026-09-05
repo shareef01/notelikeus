@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { TOMBSTONE_TTL_MS } from '@/lib/firestore/tombstones';
+import { TOMBSTONE_TTL_MS } from '@/lib/notes/tombstones';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 
 describe('tombstoneStore', () => {

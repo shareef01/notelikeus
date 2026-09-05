@@ -1,5 +1,5 @@
 begin;
-select plan(9);
+select plan(8);
 
 select tests.create_supabase_user('wipe_a@notelikeus.test');
 select tests.create_supabase_user('wipe_b@notelikeus.test');
@@ -7,7 +7,9 @@ select tests.create_supabase_user('wipe_b@notelikeus.test');
 select tests.clear_authentication();
 select throws_ok(
   $$ select public.delete_all_user_cloud_data() $$,
-  '28000',
+  -- 42501, not 28000: since 20250904000000 anon has no EXECUTE grant, so PostgREST is
+  -- refused before the function body's own 'not authenticated' check can run.
+  '42501',
   null,
   'anonymous cannot wipe cloud data'
 );
@@ -30,10 +32,6 @@ select results_eq(
     )->>'status') $$,
   ARRAY['applied'],
   'user A deletes the note (tombstone remains)'
-);
-select lives_ok(
-  $$ select public.link_firebase_uid('firebase-uid-a') $$,
-  'user A links a firebase uid'
 );
 
 select tests.authenticate_as('wipe_b@notelikeus.test');
