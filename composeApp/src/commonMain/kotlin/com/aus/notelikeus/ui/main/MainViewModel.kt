@@ -104,6 +104,9 @@ class MainViewModel(
 
     fun signInWithGoogleIdToken(idToken: String) = cloudSync.signInWithGoogleIdToken(idToken)
 
+    /** The platform helper already signed in; just finish the UI and pull notes. */
+    fun completeExternalSignIn() = cloudSync.completeExternalSignIn()
+
     fun reportGoogleSignInFailure(error: Throwable) = cloudSync.reportGoogleSignInFailure(error)
 
     fun signInWithEmailPassword(email: String, password: String, createAccount: Boolean) =

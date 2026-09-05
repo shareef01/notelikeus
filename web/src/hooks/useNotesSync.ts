@@ -1,25 +1,19 @@
 import { useEffect, useRef } from 'react';
 import { clearLocalUserDataForAccountSwitch } from '@/lib/bootstrap';
 import { hydrateIndexedDbFromRemote, loadLocalNotesIntoStore } from '@/lib/local/hydrateFromRemote';
-import {
-  accountsMatch,
-  loadLocalFirebaseSupabaseLink,
-} from '@/lib/migration/accountIdentity';
-import { ensureFirebaseSupabaseMigration } from '@/lib/migration/firebaseSupabaseMigration';
 import { migrateLegacyLocalNotes } from '@/lib/notes/legacyLocalMigration';
 import {
   loadLastMergedUserId,
   saveLastMergedUserId,
 } from '@/lib/notes/lastMergedUser';
 import { startNotesRealtimeSync, stopNotesRealtimeSync } from '@/lib/notes/notesSyncService';
-import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
 import { useAuthStore, selectUserId } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
 
 /**
- * Signed-in notes sync: IndexedDB is the durable local store; remote backend is Firebase or
- * Supabase (dev flag). On first sign-in for an owner namespace, hydrate IndexedDB from a full
- * remote snapshot, then attach the realtime listener which mirrors remote changes into IndexedDB.
+ * Signed-in notes sync: IndexedDB is the durable local store; remote is Supabase.
+ * On first sign-in for an owner namespace, hydrate IndexedDB from a full remote snapshot, then
+ * attach Realtime which triggers revision-aware pulls into IndexedDB.
  */
 export function useNotesSync(enabled: boolean) {
   const userId = useAuthStore(selectUserId);
@@ -40,21 +34,12 @@ export function useNotesSync(enabled: boolean) {
     const bootstrap = async () => {
       if (bootstrappedRef.current !== userId) {
         const lastMerged = loadLastMergedUserId();
-        const linkedFirebaseUid = loadLocalFirebaseSupabaseLink()?.firebaseUid ?? null;
-        if (
-          lastMerged != null &&
-          !accountsMatch(lastMerged, userId, linkedFirebaseUid)
-        ) {
+        if (lastMerged != null && lastMerged !== userId) {
           clearLocalUserDataForAccountSwitch(lastMerged);
         } else {
           useNotesStore.getState().setNotes([]);
         }
         useNotesStore.getState().setStatus('loading');
-
-        if (isSupabaseBackendEnabled()) {
-          await ensureFirebaseSupabaseMigration(userId);
-          if (cancelled) return;
-        }
 
         await migrateLegacyLocalNotes(userId);
         if (cancelled) return;

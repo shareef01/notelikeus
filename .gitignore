@@ -39,7 +39,11 @@ workers/attachments/wrangler.toml
 web/.env.staging
 scripts/ops/fixtures/backup.rehearsal.json
 
-# Firebase emulator artefacts
+# Local Supabase / Wrangler
+.supabase/
+.wrangler/
+
+# Leftover emulator logs
 firestore-debug.log
 firebase-debug.log
 ui-debug.log

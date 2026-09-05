@@ -1,6 +1,5 @@
 package com.aus.notelikeus.platform
 
-import com.aus.notelikeus.data.migration.FirebaseSupabaseAccountLinker
 import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
@@ -18,7 +17,6 @@ class AndroidSyncManager(
     private val sessionManager: CloudSessionManager,
     private val syncEngine: NoteSyncEngine,
     private val isolator: LocalAccountIsolator,
-    private val accountLinker: FirebaseSupabaseAccountLinker,
 ) : SyncManager {
     private val _syncStatus = MutableStateFlow<CloudSyncStatus>(CloudSyncStatus.Unknown)
     override val syncStatus: StateFlow<CloudSyncStatus> = _syncStatus.asStateFlow()
@@ -36,9 +34,12 @@ class AndroidSyncManager(
     private suspend fun onSignedIn() {
         refreshAccount()
         val uid = sessionManager.getCurrentAccount().userId ?: return
-        accountLinker.linkAfterSupabaseSignIn(uid)
         isolator.isolateIfAccountChanged(uid)
     }
+
+    /** Android exchanges its token through [signInWithGoogle]; nothing signs in outside it. */
+    override suspend fun completeExternalSignIn(): Result<Unit> =
+        Result.failure(UnsupportedOperationException("Android signs in via signInWithGoogle"))
 
     override suspend fun signInWithGoogle(idToken: String): Result<Unit> {
         return sessionManager.signInWithGoogle(idToken).onSuccess {
@@ -65,7 +66,7 @@ class AndroidSyncManager(
 
     /**
      * Signing out destroys the credential [NoteSyncEngine.deleteAllCloudData] needs, so a failure
-     * there is permanent once the session is gone: the notes stay in Firestore and nothing can
+     * there is permanent once the session is gone: the notes stay in the cloud and nothing can
      * retry. This used to discard the Result and sign out anyway, which reported success for a
      * delete that never happened — and offline or on an expired token is exactly when a user
      * reaches for "sign out and delete". Fail the sign-out instead and leave the session intact so

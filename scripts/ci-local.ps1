@@ -1,30 +1,14 @@
 # Runs the full Notelikeus verification pipeline locally -- no GitHub Actions minutes.
 #
-# Everything GitHub CI does, on this machine:
-#   gradle check           JVM unit tests (composeApp + androidApp) + desktop tests + lint
-#   npm test               web unit tests
-#   npm run typecheck      web tsc
-#   npm run test:rules     Firestore rules vs the emulator (30 tests)
-#   npm run test:sync      web sync layer vs the emulator (6 tests)
-#   transport emulator     Android Firestore transport vs the no-rules emulator (3 tests)
-#   npm run test:e2e       Playwright browser e2e (4 tests)
-#   optional -Emulator     instrumented tests on a connected device/emulator
-#
-# The emulator-backed steps are sequential because they share port 8080 -- same
-# constraint as CI, where they are separate steps in one job.
-#
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File scripts\ci-local.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts\ci-local.ps1 -Emulator
-#   powershell -ExecutionPolicy Bypass -File scripts\ci-local.ps1 -SkipEmulatorSuites
+#   powershell -ExecutionPolicy Bypass -File scripts\ci-local.ps1 -SkipSupabaseSuites
 
 param(
-    # Also run the instrumented suite (connectedDebugAndroidTest) on an attached
-    # device or a booted emulator.
     [switch]$Emulator,
-    # Skip the Firebase-emulator-backed suites (rules/sync/transport/e2e).
+    [switch]$SkipSupabaseSuites,
     [switch]$SkipEmulatorSuites,
-    # Don't re-run web dependency installs (npm ci) -- faster when nothing changed.
     [switch]$NoInstall
 )
 
@@ -33,6 +17,7 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
 $failed = @()
+$skipRemote = $SkipSupabaseSuites -or $SkipEmulatorSuites
 
 function Step($name, [scriptblock]$body) {
     Write-Host ""
@@ -47,7 +32,6 @@ function Step($name, [scriptblock]$body) {
     }
 }
 
-# Gradle needs a JDK. Prefer JAVA_HOME; fall back to Android Studio's bundled JBR.
 if (-not $env:JAVA_HOME) {
     $jbr = "$env:ProgramFiles\Android\Android Studio\jbr"
     if (Test-Path "$jbr\bin\java.exe") {
@@ -75,24 +59,16 @@ Step "web unit tests" {
     } finally { Pop-Location }
 }
 
-if (-not $SkipEmulatorSuites) {
-    Step "Firestore security rules" {
-        & npm run test:rules
-    }
-    Step "web sync layer vs emulator" {
-        Push-Location web
-        try { & npm run test:sync } finally { Pop-Location }
-    }
-    Step "Android Firestore transport vs emulator" {
-        # Windows note: the CI step (Linux) uses ./gradlew with single quotes; cmd
-        # passes those quotes through, so the same pattern here needs them dropped.
-        & npx firebase emulators:exec --only firestore --config firebase.transport-test.json `
-            --project notelikeus-c4-test `
-            "gradlew.bat :composeApp:testDebugUnitTest --tests *FirestoreNoteTransportEmulatorTest* --console=plain"
+if (-not $skipRemote) {
+    Step "Supabase pgTAP" {
+        & npm run supabase:test
     }
     Step "browser e2e (Playwright)" {
         Push-Location web
         try { & npm run test:e2e } finally { Pop-Location }
+    }
+    Step "attachments worker" {
+        & npm run test:attachments-worker
     }
 }
 

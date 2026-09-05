@@ -14,9 +14,20 @@ export function initSupabaseAuthListener(
     onUser(session?.user ? authUserFromSupabase(session.user) : null);
   };
 
-  void client.auth.getSession().then(({ data }) => {
-    applySession(data.session);
-  });
+  void client.auth
+    .getSession()
+    .then(({ data, error }) => {
+      if (error) {
+        console.warn('[Notelikeus] Supabase session restore failed:', error.message);
+        applySession(null);
+        return;
+      }
+      applySession(data.session);
+    })
+    .catch((error: unknown) => {
+      console.warn('[Notelikeus] Supabase session restore failed:', error);
+      applySession(null);
+    });
 
   const {
     data: { subscription },

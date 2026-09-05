@@ -4,6 +4,10 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Backend:** Cloud sync and authentication now use Supabase (Auth, PostgreSQL, RPC, Realtime) instead of Firebase Auth and Firestore. Web hosting is Cloudflare Pages. Existing Firebase cloud accounts and Firestore data are **not migrated** — sign in again as a new Supabase user.
+- **Attachments:** Binary objects remain on Cloudflare R2 behind a Worker that verifies the Supabase session.
+
 ## [1.0.3] — 2026-08-30
 
 ### Fixed
