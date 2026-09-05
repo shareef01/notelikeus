@@ -955,7 +955,7 @@ Ticked items were established by the 2026-09-04 audit; the rest are owner-gated 
 - [ ] Web backup import completed on staging, verified after reload and re-login
 - [ ] Attachment import verified end-to-end (bytes in R2, metadata row, image renders after reload)
 - [x] Android staging proven on-device (Pixel 7 / Android 16): auth, sync, and attachment upload/download through the Worker
-- [ ] Desktop staging build proven
+- [x] Desktop staging proven — Google sign-in completes against staging Supabase
 - [ ] Web / Android / Desktop convergence on one staging account
 - [x] Offline reconciliation proven on Android hardware (account switching still untested)
 - [x] Kotlin deletes reach the server without a prior download in the same process
@@ -1282,6 +1282,36 @@ production project unless replicated:
 Android was unaffected throughout: its ID token carries the **web** client as audience and sends no
 nonce, so only desktop exercised any of these paths. That is worth remembering — a client working
 is not evidence that the provider is correctly configured for the others.
+
+### Desktop staging — signed in, 2026-09-05
+
+Desktop was the last unproven client. Three separate defects stood between it and a working
+sign-in, and only the first was a project setting:
+
+1. **Unregistered OAuth client.** Desktop authenticates with its own installed-app client, but only
+   the web client was configured on the Supabase Google provider — `Unacceptable audience`. Fixed by
+   adding the desktop client id to the provider.
+2. **No nonce, then an unhashed one.** GoTrue verifies the nonce on `grant_type=id_token`, and the
+   loopback flow sent none — `Bad ID token`. Sending the plain value to both sides failed the same
+   way, because GoTrue hashes what it is given and compares against the token claim. Google now
+   receives `SHA-256(nonce)` in hex and Supabase the plain value, so the project no longer needs
+   `skip_nonce_check` disabled.
+3. **A double exchange, which was the actual blocker.** `DesktopGoogleSignInHelper` already
+   exchanges the Google token and saves the session on the Supabase path, returning
+   `session.accessToken`. `main.kt` then passed that Supabase JWT back through
+   `signInWithGoogleIdToken`, re-posting it to `grant_type=id_token` — so a sign-in that had
+   succeeded reported `Bad ID token` and left the user on the gate. Firebase is unaffected: there
+   the helper returns a genuine Firebase ID token for the ViewModel to exchange.
+
+Removing the redundant exchange stopped the error but did not sign the user in: `refreshAccount()`
+is private to `DesktopSyncManager` and runs only inside `onSignedIn()`, which also performs the
+Firebase-uid linking and the account-isolation check. `SyncManager.completeExternalSignIn()` now
+runs exactly that post-sign-in work without a token exchange. Android implements it as an explicit
+failure — nothing there signs in outside `signInWithGoogle`.
+
+Worth recording: the intermediate version signed in *without* linking the Firebase uid or isolating
+the account. Shipping it would have reintroduced the wrong-account class of bug this audit opened
+with.
 
 ### Rollback
 
