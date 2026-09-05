@@ -16,11 +16,11 @@ vi.mock('@/lib/local/notesLocalRepository', () => ({
   deleteNote: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('@/lib/firestore/tombstones', () => ({
+vi.mock('@/lib/notes/tombstones', () => ({
   deleteCloudTombstone: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { deleteCloudTombstone } from '@/lib/firestore/tombstones';
+import { deleteCloudTombstone } from '@/lib/notes/tombstones';
 import { putNote } from '@/lib/local/notesLocalRepository';
 import { removeNote, restorePermanentlyDeletedNote, saveNote } from '@/lib/notes/noteActions';
 import { useAuthStore } from '@/store/authStore';
@@ -40,7 +40,7 @@ describe('saveNote', () => {
     useTombstoneStore.getState().reset();
   });
 
-  it('saves locally and uploads to Firestore when signed in', async () => {
+  it('saves locally and uploads to the cloud when signed in', async () => {
     useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
 
     await saveNote(makeNote());
@@ -93,7 +93,7 @@ describe('restorePermanentlyDeletedNote', () => {
     expect(remoteMocks.upsertNote).not.toHaveBeenCalled();
   });
 
-  it('deletes the cloud tombstone and re-uploads to Firestore when signed in', async () => {
+  it('deletes the cloud tombstone and re-uploads when signed in', async () => {
     useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
     const note = makeNote();
     await removeNote(note.id);

@@ -9,61 +9,45 @@ import kotlin.test.assertTrue
 class SupabaseBackendSelectionTest {
 
     @Test
-    fun debugAllowsLocalhostSupabase() {
-        assertTrue(
-            isSupabaseRemoteSelected(
-                isDebug = true,
-                remoteBackendEnv = "supabase",
-                allowProductionEnv = null,
-                supabaseUrl = "http://127.0.0.1:54321",
-            ),
-        )
-    }
-
-    @Test
-    fun firebaseRemainsDefault() {
-        assertFalse(
-            isSupabaseRemoteSelected(
-                isDebug = true,
-                remoteBackendEnv = null,
-                allowProductionEnv = null,
-                supabaseUrl = "https://abcd.supabase.co",
-            ),
-        )
-    }
-
-    @Test
-    fun releaseRequiresAllowFlagAndHostedUrl() {
-        assertFalse(
-            isSupabaseRemoteSelected(
-                isDebug = false,
-                remoteBackendEnv = "supabase",
-                allowProductionEnv = null,
-                supabaseUrl = "https://abcd.supabase.co",
-            ),
-        )
-        assertFalse(
-            isSupabaseRemoteSelected(
-                isDebug = false,
-                remoteBackendEnv = "supabase",
-                allowProductionEnv = "true",
-                supabaseUrl = "http://127.0.0.1:54321",
-            ),
-        )
-        assertTrue(
-            isSupabaseRemoteSelected(
-                isDebug = false,
-                remoteBackendEnv = "supabase",
-                allowProductionEnv = "true",
-                supabaseUrl = "https://abcd.supabase.co",
-            ),
-        )
-    }
-
-    @Test
     fun firstNonBlankSkipsEmptyBuildConfigAndPrefersRuntimeEnv() {
         assertNull(firstNonBlank(null, "", "  "))
         assertEquals("supabase", firstNonBlank("", "  ", "supabase"))
         assertEquals("from-env", firstNonBlank("from-env", "from-buildconfig"))
+    }
+
+    @Test
+    fun localUrlDetection() {
+        assertTrue(isLocalSupabaseUrl("http://127.0.0.1:54321"))
+        assertTrue(isLocalSupabaseUrl("http://localhost:54321"))
+        assertTrue(isLocalSupabaseUrl(""))
+        assertFalse(isLocalSupabaseUrl("https://abcd.supabase.co"))
+    }
+
+    @Test
+    fun debugFallsBackToLocalSupabaseWhenConfigIsEmpty() {
+        assertEquals(DEFAULT_LOCAL_SUPABASE_URL, resolveSupabaseUrl(null, allowLocalFallback = true))
+        assertEquals(DEFAULT_LOCAL_SUPABASE_URL, resolveSupabaseUrl("", allowLocalFallback = true))
+        assertEquals(DEFAULT_LOCAL_SUPABASE_ANON_KEY, resolveSupabaseAnonKey(null, allowLocalFallback = true))
+        assertEquals(DEFAULT_LOCAL_SUPABASE_ANON_KEY, resolveSupabaseAnonKey("  ", allowLocalFallback = true))
+    }
+
+    @Test
+    fun releaseWithoutHostedConfigFailsClosed() {
+        assertEquals("", resolveSupabaseUrl(null, allowLocalFallback = false))
+        assertEquals("", resolveSupabaseUrl("", allowLocalFallback = false))
+        assertEquals("", resolveSupabaseUrl("http://127.0.0.1:54321", allowLocalFallback = false))
+        assertEquals("", resolveSupabaseUrl("http://localhost:54321", allowLocalFallback = false))
+        assertEquals("", resolveSupabaseAnonKey(null, allowLocalFallback = false))
+        assertEquals("", resolveSupabaseAnonKey("", allowLocalFallback = false))
+    }
+
+    @Test
+    fun hostedConfigWinsInReleaseAndDebug() {
+        val hosted = "https://abcd.supabase.co"
+        val anon = "eyJhbGciOiJIUzI1NiJ9.payload.signature"
+        assertEquals(hosted, resolveSupabaseUrl(hosted, allowLocalFallback = false))
+        assertEquals(hosted, resolveSupabaseUrl(hosted, allowLocalFallback = true))
+        assertEquals(anon, resolveSupabaseAnonKey(anon, allowLocalFallback = false))
+        assertEquals(anon, resolveSupabaseAnonKey(anon, allowLocalFallback = true))
     }
 }

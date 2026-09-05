@@ -11,7 +11,7 @@ expect object AppConfig {
      */
     val supportsAppLock: Boolean
 
-    /** True only where cloud sign-in and Firestore sync are actually implemented. */
+    /** True only where cloud sign-in and remote sync are actually implemented. */
     val supportsCloudSync: Boolean
 
     /**
