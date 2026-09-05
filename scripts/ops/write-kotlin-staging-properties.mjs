@@ -1,8 +1,8 @@
 /**
  * Merge staging Supabase/R2 keys from web/.env.staging into gitignored local.properties.
  *
- * Android debug BuildConfig and desktop BackendConfig read these keys. Never writes a
- * production-allow flag — Firebase remains the default until an owner-authorized cutover.
+ * Android debug/release BuildConfig and desktop BackendConfig read these keys.
+ * Does not write retired production-allow flags.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
