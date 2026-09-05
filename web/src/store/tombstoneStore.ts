@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { TOMBSTONE_TTL_MS } from '@/lib/firestore/tombstones';
+import { TOMBSTONE_TTL_MS } from '@/lib/notes/tombstones';
 
 interface TombstoneState {
   /** Note ID → deletedAt millis. Suppresses cloud resurrection until pruned. */

@@ -202,7 +202,7 @@ export function useNoteActions({
 
   /**
    * Reordering is two steps by design: the drag previews into the store on every move so the list
-   * follows the finger, and only the drop persists. Writing on each move would be a Firestore
+   * follows the finger, and only the drop persists. Writing on each move would be a remote
    * commit per pixel of travel.
    */
   const moveNote = useCallback(

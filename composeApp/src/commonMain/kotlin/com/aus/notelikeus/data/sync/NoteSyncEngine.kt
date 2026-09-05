@@ -98,9 +98,9 @@ class NoteSyncEngine(
             // empty fetch does not delete anything directly — it empties the timestamp maps below,
             // and cloudWinsConflict reads a null remote timestamp as "local wins". Every local note
             // would then be pushed over whatever the cloud actually holds, discarding newer edits
-            // made on another device. A transport that fails open (Android's Firestore get() falls
-            // back to an empty cached snapshot rather than throwing) makes that reachable, so refuse
-            // the sync instead; the next successful one reconciles normally.
+            // made on another device. A transport that fails open (an empty cached snapshot rather
+            // than throwing) makes that reachable, so refuse the sync instead; the next successful
+            // one reconciles normally.
             if (accountUidBridge.isSameAccountAsLastMerge(uid)) {
                 val knownCloudIds = syncStateStore.knownCloudIds()
                 if (remoteRecords.isEmpty() && knownCloudIds.isNotEmpty()) {

@@ -1,16 +1,16 @@
 # Privacy Policy — Notelikeus
 
-**Last updated:** August 2026
+**Last updated:** September 2026
 
-Notelikeus is an offline-first notes application across Android, Windows (Desktop), and Web. You can use Notelikeus completely offline without creating an account or signing in. This policy describes how the app handles information locally on your device and when you optionally enable cloud sync with Google sign-in.
+Notelikeus is an offline-first notes application across Android, Windows (Desktop), and Web. You can use Notelikeus completely offline without creating an account or signing in. This policy describes how the app handles information locally on your device and when you optionally enable cloud sync.
 
 ## Summary
 
 - **Offline-first by default:** On Android, Windows, and Web, notes are stored **locally on your device**. You can use the full application without creating an account or providing personal details.
-- **Optional Cloud Sync:** When you sign in with Google and enable cloud sync, note text, checklists, and metadata are synchronized to **Google Firebase Firestore** under your user account.
+- **Optional Cloud Sync:** When you sign in and enable cloud sync, note text, checklists, and metadata are synchronized to **Supabase (PostgreSQL)** under your authenticated identity. Attachment files may be stored in **Cloudflare R2**.
 - **Local Data Isolation:** Signing out clears local cached notes from the active session so a subsequent user cannot inherit your data.
 - **Encryption:** Android local databases are encrypted at rest with **SQLCipher** backed by Android Keystore.
-- Synced cloud notes are **not end-to-end encrypted** by the app; they rely on Google Cloud / Firebase transport security and Firestore access rules.
+- Synced cloud notes are **not end-to-end encrypted** by the app; they rely on TLS plus Supabase Auth, row-level security, authorized RPCs, and Worker JWT checks for attachments.
 - The app does **not** include third-party tracking, analytics, or advertising SDKs.
 
 ## Information stored on your device
@@ -20,29 +20,28 @@ Notelikeus is an offline-first notes application across Android, Windows (Deskto
   - Stored in a local database (encrypted at rest with SQLCipher on Android)
   - Local app preferences (theme, view mode, app lock status)
 - **Web:**
-  - Note content, checklists, labels, and preferences stored in local browser storage (IndexedDB / localStorage / memory cache)
-  - Operates fully as a guest / local-first PWA without requiring a Google sign-in
-  - Firestore offline cache for authenticated sessions
+  - Note content, checklists, labels, and preferences stored in local browser storage (IndexedDB / localStorage)
+  - Operates fully as a guest / local-first PWA without requiring sign-in
 
 ## Cloud sync (Optional)
 
-When you choose to sign in with Google and use sync:
+When you choose to sign in and use sync:
 
-- Note content is stored in **Google Firebase Firestore** under your Google account
-- Data is governed by [Google’s privacy policy](https://policies.google.com/privacy) and your Firebase project settings
-- Signing out **clears locally cached notes on this device** so the next account cannot inherit them; cloud data remains until you delete it (in-app “Sign out and delete cloud data” or Firebase console)
+- Note content is stored in **Supabase** under your account
+- Attachment binaries, when used, are stored in **Cloudflare R2** behind an authenticated Worker
+- Signing out **clears locally cached notes on this device** so the next account cannot inherit them; cloud data remains until you delete it (in-app “Sign out and delete cloud data”)
 
 ## Security
 
 - **Android:** Notes are stored in a **SQLCipher-encrypted** Room database. An optional app-wide lock uses the device’s biometric APIs to gate opening the app.
 - **Windows Desktop & Web:** Local storage is bound to the user's OS / browser profile permissions.
-- **Cloud Security:** Firestore security rules restrict all read and write operations exclusively to the authenticated owner of the `/users/{userId}/` document tree.
+- **Cloud Security:** PostgreSQL row-level security and authorized RPCs restrict read and write operations to the authenticated owner.
 
 ## Permissions
 
 | Permission | Purpose |
 |------------|---------|
-| Internet | Firebase auth and cloud sync |
+| Internet | Authentication and cloud sync |
 | Notifications | Deliver reminders you schedule for notes |
 | Biometric | Unlock the app when app lock is enabled |
 
@@ -58,7 +57,9 @@ If you add links to notes, tapping them opens your default browser. Notelikeus d
 
 ## Third parties
 
-- **Google Firebase** — only when you enable cloud sync (Authentication + Firestore)
+- **Supabase** — authentication and note data when you enable cloud sync
+- **Cloudflare** — web hosting (Pages) and attachment objects (R2 / Worker) when those features are used
+- **Google** — optional Google sign-in identity; Google OAuth is not the note database
 - We do not sell your personal data or use analytics or advertising SDKs
 
 ## Children

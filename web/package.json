@@ -8,7 +8,7 @@
     "type": "git",
     "url": "https://github.com/shareef01/notelikeus.git"
   },
-  "homepage": "https://notelike.web.app",
+  "homepage": "https://github.com/shareef01/notelikeus",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -17,22 +17,19 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:sync": "firebase emulators:exec --only firestore \"vitest run --config vitest.emulator.config.ts\"",
-    "deploy": "npm run lint && npm test && npm run build && firebase deploy --only hosting,firestore:rules",
-    "test:e2e": "firebase emulators:exec --only firestore,auth \"npm run e2e:run\"",
+    "deploy:pages": "npm run lint && npm test && npm run build && npx wrangler pages deploy dist --project-name=notelikeus-dev",
+    "test:e2e": "node scripts/assertLocalSupabaseE2e.mjs && npm run e2e:run",
     "e2e:run": "vite build --mode e2e --outDir dist-e2e && playwright test",
     "verify:pages": "node scripts/verifyPagesArtifacts.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
     "@supabase/supabase-js": "^2.112.4",
-    "firebase": "^12.18.0",
     "react": "^19.1.0",
     "react-dom": "^19.2.8",
     "zustand": "^5.0.6"
   },
   "devDependencies": {
-    "@firebase/rules-unit-testing": "^5.0.2",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.3.0",
