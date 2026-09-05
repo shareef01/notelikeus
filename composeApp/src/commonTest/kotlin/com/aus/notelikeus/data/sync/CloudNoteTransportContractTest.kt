@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
  * Shared behavioral contract for [CloudNoteTransport] implementations.
  *
  * Runs against [FakeCloudNoteTransport] today. Future Phase 4 should add an emulator-backed
- * subclass for [com.aus.notelikeus.data.remote.FirestoreNoteTransport] and a Supabase adapter.
+ * subclass for a fake transport and the live Supabase adapter.
  */
 abstract class CloudNoteTransportContractTest {
 

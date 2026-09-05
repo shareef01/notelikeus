@@ -55,8 +55,3 @@ export async function hydrateIndexedDbFromRemote(userId: string): Promise<void> 
 
   useNotesStore.getState().setNotes(snapshot);
 }
-
-/** @deprecated Use hydrateIndexedDbFromRemote */
-export async function hydrateIndexedDbFromFirebase(userId: string): Promise<void> {
-  return hydrateIndexedDbFromRemote(userId);
-}

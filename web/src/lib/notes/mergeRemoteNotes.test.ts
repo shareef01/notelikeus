@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeRemoteNotes } from '@/lib/firestore/notesRepository';
+import { mergeRemoteNotes } from '@/lib/notes/remoteMerge';
 import { createEmptyNote, type Note } from '@/types/note';
 
 function note(partial: Partial<Note> & Pick<Note, 'id' | 'localId' | 'timestamp'>): Note {
@@ -36,8 +36,6 @@ describe('mergeRemoteNotes', () => {
   });
 
   it('prefers serverUpdatedAt over a skewed client timestamp when both sides have one', async () => {
-    // Local's device clock reads far in the future, but the server-confirmed order says remote
-    // is actually the more recent write — serverUpdatedAt must win the tie, not `timestamp`.
     const local = [
       note({ id: '1', localId: 1, timestamp: 999_999, serverUpdatedAt: 10, title: 'Clock-skewed local' }),
     ];
@@ -49,8 +47,6 @@ describe('mergeRemoteNotes', () => {
   });
 
   it('lets confirmed remote beat unconfirmed local regardless of client timestamp', async () => {
-    // Backup imports never carry a real serverUpdatedAt; a hand-edited timestamp must not
-    // clobber a cloud note that already round-tripped through Firestore.
     const local = [
       note({ id: '1', localId: 1, timestamp: 99, serverUpdatedAt: null, title: 'Imported local' }),
     ];
@@ -62,12 +58,6 @@ describe('mergeRemoteNotes', () => {
   });
 
   it('takes remote when both notes are the same confirmed revision', async () => {
-    // Equal server stamps mean one confirmed revision of one document, so the two sides cannot
-    // really disagree — the differing titles here only make the tie-break observable. The tie goes
-    // to the cloud, matching Kotlin's cloudWinsConflict; resolving it locally made
-    // syncNotesWithCloud re-upload every note on every reconcile. An unflushed local edit does not
-    // reach this branch: its serverUpdatedAt stays null until the server confirms it, which the
-    // 'confirmed remote beats unconfirmed local' case above covers.
     const local = [
       note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500, title: 'Local same revision' }),
     ];

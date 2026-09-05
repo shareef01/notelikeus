@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Bootstrap a Notelikeus *staging* stack (Supabase + R2 attachments worker).
-# Does NOT enable production cutover flags. Firebase remains the live backend.
 #
 # Required environment variables:
 #   SUPABASE_ACCESS_TOKEN   — personal access token (Account → Access Tokens)
@@ -14,9 +13,6 @@
 #   SUPABASE_DB_PASSWORD    — database password (avoids interactive prompt on link)
 #   STAGING_WEB_ORIGIN      — Pages preview origin for OAuth redirects (default: http://localhost:5173)
 #   SKIP_CLOUDFLARE=1       — only push Supabase migrations
-#   FIREBASE_PROJECT_ID     — optional; enables verified Firebase uid linking in the worker
-#   SUPABASE_SERVICE_ROLE_KEY — optional; same. Bypasses RLS, so it is never written to any file
-#                             here — it goes straight to `wrangler secret put`.
 #   SKIP_SUPABASE=1         — only deploy Cloudflare worker (wrangler.toml must exist)
 #   DRY_RUN=1               — print planned steps without mutating remote state
 #
@@ -123,7 +119,7 @@ Manual dashboard steps (agent cannot complete these via CLI):
 
 Supabase Auth → Providers → Google:
   1. Enable Google provider.
-  2. Client ID: same Web OAuth client as Firebase (VITE_FIREBASE_GOOGLE_CLIENT_ID).
+  2. Client ID: Google Cloud Web OAuth client used by the app.
   3. Client secret: from Google Cloud Console for that OAuth client.
   4. Auth → URL configuration → Redirect URLs, add:
        ${STAGING_WEB_ORIGIN}/**
@@ -141,7 +137,6 @@ Google Cloud Console → Web OAuth client:
   - ${STAGING_WEB_ORIGIN}
   Authorized redirect URIs:
   - https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/callback
-  - https://notelikeus.firebaseapp.com/__/auth/handler
 
 Smoke test (after copying web/.env.staging → web/.env):
   cd web && npm run dev
@@ -151,17 +146,10 @@ Smoke test (after copying web/.env.staging → web/.env):
 Pages staging deploy (does not cut over production):
   npm run deploy:staging-pages
 
-Kotlin debug staging (does not cut over production):
+Kotlin debug staging:
   npm run kotlin:staging-properties
   - Android: rebuild the debug APK so BuildConfig picks up local.properties
   - Desktop: restart ./gradlew run (reads local.properties at runtime)
-  - Do NOT set NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION
-
-Migration rehearsal (test Firebase account only):
-  node scripts/ops/export-firestore-user.mjs --input dump.json --out backup.json
-  - Sign in on staging, use in-app backup import
-
-Do NOT set VITE_ALLOW_SUPABASE_PRODUCTION until owner authorizes production cutover.
 EOF
 }
 
@@ -210,15 +198,10 @@ write_env_staging() {
     WORKER_URL="$(sed -n 's/^VITE_ATTACHMENTS_WORKER_URL=//p' "$ROOT/web/.env.staging" | head -1 || true)"
   fi
   cat > "$ROOT/web/.env.staging" <<EOF
-# Staging — copy to web/.env for local smoke tests. NOT for production deploy.
-VITE_REMOTE_BACKEND=supabase
+# Staging — copy to web/.env for local smoke tests.
 VITE_SUPABASE_URL=${SUPABASE_URL}
 VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
 VITE_ATTACHMENTS_WORKER_URL=${WORKER_URL:-http://127.0.0.1:8787}
-
-# Keep Firebase vars if you need side-by-side comparison (from web/.env.example):
-# VITE_FIREBASE_API_KEY=...
-# VITE_FIREBASE_GOOGLE_CLIENT_ID=...  (required for Supabase Google OAuth locally)
 EOF
   green "Wrote web/.env.staging (copy to web/.env)"
 }
@@ -267,11 +250,6 @@ bucket_name = "${R2_BUCKET}"
 
 [vars]
 SUPABASE_URL = "${SUPABASE_URL}"
-# Firebase project whose ID tokens may prove ownership of a legacy uid. Not a secret (it ships in
-# every web build), but load-bearing: without it a validly signed token from any Firebase project
-# would verify. Leave unset to disable verified linking — clients fall back to an unverified claim,
-# which is not exclusive and locks nobody out.
-FIREBASE_PROJECT_ID = "${FIREBASE_PROJECT_ID:-}"
 # localhost and *.pages.dev are allowed in worker CORS; add extras here if needed.
 # ALLOWED_ORIGINS = "${STAGING_WEB_ORIGIN}"
 EOF
@@ -280,11 +258,6 @@ EOF
   info "Cloudflare: deploy attachments worker"
   if [[ "${DRY_RUN:-}" == "1" ]]; then
     info "[dry-run] wrangler secret put SUPABASE_ANON_KEY (in ${WORKER_DIR})"
-    if [[ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
-      info "[dry-run] wrangler secret put SUPABASE_SERVICE_ROLE_KEY (in ${WORKER_DIR})"
-    else
-      info "[dry-run] SUPABASE_SERVICE_ROLE_KEY unset — verified Firebase uid linking stays off"
-    fi
     info "[dry-run] npx wrangler deploy (in ${WORKER_DIR})"
     WORKER_URL="https://notelikeus-attachments.<account>.workers.dev"
   else
@@ -292,12 +265,6 @@ EOF
     (
       cd "$WORKER_DIR"
       printf '%s' "$SUPABASE_ANON_KEY" | npx wrangler secret put SUPABASE_ANON_KEY
-      # Optional: lets the worker call link_verified_firebase_uid after checking a Firebase ID
-      # token. This key bypasses RLS, so it is only set when the operator supplies it deliberately;
-      # without it the route answers 501 and clients keep using unverified (non-exclusive) claims.
-      if [[ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
-        printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-      fi
       # Stream logs and keep a copy so we can parse the workers.dev URL.
       npx wrangler deploy | tee "$deploy_log"
     )
