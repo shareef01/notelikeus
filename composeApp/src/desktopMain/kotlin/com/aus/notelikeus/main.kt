@@ -218,7 +218,11 @@ private fun launchApp(
             onGoogleSignInClick = { viewModel ->
                 coroutineScope.launch {
                     googleSignInHelper.requestIdToken()
-                        .onSuccess { idToken -> viewModel.signInWithGoogleIdToken(idToken) }
+                        .onSuccess {
+                            // The helper already exchanged the Google token and saved the
+                            // Supabase session. completeExternalSignIn runs account isolation.
+                            viewModel.completeExternalSignIn()
+                        }
                         .onFailure { error -> viewModel.reportGoogleSignInFailure(error) }
                 }
             },
