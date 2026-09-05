@@ -24,13 +24,33 @@ class SupabaseAuthApi(
     private val supabaseUrl: String,
     private val anonKey: String,
 ) {
-    suspend fun signInWithGoogleIdToken(idToken: String): SupabaseAuthSession =
+    /**
+     * Exchanges a Google ID token for a Supabase session.
+     *
+     * [nonce] must be the value sent as `nonce` in the Google authorization request that produced
+     * this token. GoTrue compares it against the token's `nonce` claim and answers
+     * `{"error_description":"Bad ID token"}` when a token carries a nonce it was not given, or
+     * when the project enforces the check and none is supplied. Pass null only for a flow that
+     * genuinely sends no nonce.
+     */
+    suspend fun signInWithGoogleIdToken(
+        idToken: String,
+        nonce: String? = null,
+    ): SupabaseAuthSession =
         parseSession(
             supabaseAuthPost(
                 supabaseUrl,
                 anonKey,
                 "/auth/v1/token?grant_type=id_token",
-                """{"provider":"google","id_token":${jsonString(idToken)}}""",
+                buildString {
+                    append("""{"provider":"google","id_token":""")
+                    append(jsonString(idToken))
+                    if (nonce != null) {
+                        append(""","nonce":""")
+                        append(jsonString(nonce))
+                    }
+                    append("}")
+                },
             ),
         )
 
