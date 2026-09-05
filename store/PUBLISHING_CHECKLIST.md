@@ -6,8 +6,7 @@ Use this list before submitting Notelikeus to Google Play.
 
 - [ ] Create release keystore and `signing.properties` (see README and `signing.properties.example`)
 - [ ] Run `./gradlew :app:bundleRelease` and test the AAB on a physical device
-- [ ] Run `./gradlew :app:testDebugUnitTest` and `./gradlew :app:lintDebug`
-- [ ] Run `npm run test:rules` before deploying Firestore rules
+- [ ] Run `./gradlew :composeApp:testDebugUnitTest` and `./gradlew :androidApp:assembleRelease`
 - [ ] Verify app lock, reminders, backup export/import, cloud sync, and widget on a real device
 
 ## Store listing (`store/listing/en-US/`)
@@ -23,7 +22,7 @@ Use this list before submitting Notelikeus to Google Play.
 
 ## Policy & compliance
 
-- [x] **Privacy policy URL** — https://notelike.web.app/privacy.html (static page in `web/public/privacy.html`)
+- [ ] **Privacy policy URL** — update Play Console to the Cloudflare Pages / custom-domain URL for `web/public/privacy.html` after hosting cutover (the old Firebase Hosting URL is retired in source)
 - [ ] **Data safety** — complete form using `DATA_SAFETY.md`
 - [ ] **Content rating** — complete IARC questionnaire (notes app, no user-generated public content)
 - [ ] **Target audience** — set age group (likely 13+ or all ages; no child-directed content)

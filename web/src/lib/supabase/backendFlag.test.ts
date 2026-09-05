@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   isLocalSupabaseUrl,
-  isPagesDevHost,
-  resolveSupabaseBackendEnabled,
+  isBrowserSafeSupabaseKey,
+  isSupabaseConfigured,
 } from '@/lib/supabase/backendFlag';
 
 describe('isLocalSupabaseUrl', () => {
@@ -19,106 +19,85 @@ describe('isLocalSupabaseUrl', () => {
   });
 });
 
-describe('isPagesDevHost', () => {
-  it('matches Pages hosts only', () => {
-    expect(isPagesDevHost('notelikeus-dev.pages.dev')).toBe(true);
-    expect(isPagesDevHost('abc.notelikeus-dev.pages.dev')).toBe(true);
-    expect(isPagesDevHost('notelike.web.app')).toBe(false);
-    expect(isPagesDevHost('pages.dev.evil.example')).toBe(false);
+describe('isSupabaseConfigured', () => {
+  const hosted = 'https://abcd.supabase.co';
+  const anon = 'eyJhbGciOiJIUzI1NiJ9.payload.signature';
+
+  it('allows local Supabase in development', () => {
+    expect(
+      isSupabaseConfigured({
+        isProd: false,
+        isE2e: false,
+        supabaseUrl: 'http://127.0.0.1:54321',
+        anonKey: anon,
+      }),
+    ).toBe(true);
+  });
+
+  it('allows hosted Supabase in production', () => {
+    expect(
+      isSupabaseConfigured({
+        isProd: true,
+        isE2e: false,
+        supabaseUrl: hosted,
+        anonKey: anon,
+      }),
+    ).toBe(true);
+  });
+
+  it('blocks a production build pointed at localhost', () => {
+    expect(
+      isSupabaseConfigured({
+        isProd: true,
+        isE2e: false,
+        supabaseUrl: 'http://127.0.0.1:54321',
+        anonKey: anon,
+      }),
+    ).toBe(false);
+  });
+
+  it('allows localhost in an e2e production build', () => {
+    expect(
+      isSupabaseConfigured({
+        isProd: true,
+        isE2e: true,
+        supabaseUrl: 'http://127.0.0.1:54321',
+        anonKey: anon,
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects a secret API key', () => {
+    expect(
+      isSupabaseConfigured({
+        isProd: false,
+        isE2e: false,
+        supabaseUrl: hosted,
+        anonKey: 'sb_secret_not_a_real_key',
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects a missing anon key', () => {
+    expect(
+      isSupabaseConfigured({
+        isProd: false,
+        isE2e: false,
+        supabaseUrl: hosted,
+        anonKey: '',
+      }),
+    ).toBe(false);
   });
 });
 
-describe('resolveSupabaseBackendEnabled', () => {
-  const hosted = 'https://abcd.supabase.co';
-
-  it('stays off unless remote backend is supabase', () => {
-    expect(
-      resolveSupabaseBackendEnabled({
-        isProd: false,
-        isE2e: false,
-        remoteBackend: 'firebase',
-        supabaseUrl: hosted,
-      }),
-    ).toBe(false);
+describe('isBrowserSafeSupabaseKey', () => {
+  it('accepts a JWT-shaped anon key', () => {
+    expect(isBrowserSafeSupabaseKey('eyJhbGciOiJIUzI1NiJ9.payload.signature')).toBe(true);
   });
 
-  it('allows supabase in development without a production override', () => {
-    expect(
-      resolveSupabaseBackendEnabled({
-        isProd: false,
-        isE2e: false,
-        remoteBackend: 'supabase',
-        supabaseUrl: 'http://127.0.0.1:54321',
-      }),
-    ).toBe(true);
-  });
-
-  it('blocks production unless the explicit cutover flag and hosted URL are set', () => {
-    expect(
-      resolveSupabaseBackendEnabled({
-        isProd: true,
-        isE2e: false,
-        remoteBackend: 'supabase',
-        supabaseUrl: hosted,
-      }),
-    ).toBe(false);
-    expect(
-      resolveSupabaseBackendEnabled({
-        isProd: true,
-        isE2e: false,
-        remoteBackend: 'supabase',
-        allowProduction: 'true',
-        supabaseUrl: 'http://127.0.0.1:54321',
-      }),
-    ).toBe(false);
-    expect(
-      resolveSupabaseBackendEnabled({
-        isProd: true,
-        isE2e: false,
-        remoteBackend: 'supabase',
-        allowProduction: 'true',
-        supabaseUrl: hosted,
-      }),
-    ).toBe(true);
-  });
-
-  it('allows e2e production builds without the cutover flag', () => {
-    expect(
-      resolveSupabaseBackendEnabled({
-        isProd: true,
-        isE2e: true,
-        remoteBackend: 'supabase',
-        supabaseUrl: 'http://127.0.0.1:54321',
-      }),
-    ).toBe(true);
-  });
-
-  it('allows a Pages staging build only on pages.dev hosts', () => {
-    const staging = {
-      isProd: true,
-      isE2e: false,
-      remoteBackend: 'supabase',
-      allowStaging: 'true',
-      supabaseUrl: hosted,
-    };
-    expect(
-      resolveSupabaseBackendEnabled({
-        ...staging,
-        hostname: 'notelikeus-dev.pages.dev',
-      }),
-    ).toBe(true);
-    expect(
-      resolveSupabaseBackendEnabled({
-        ...staging,
-        hostname: '7c3e5ca7.notelikeus-dev.pages.dev',
-      }),
-    ).toBe(true);
-    expect(
-      resolveSupabaseBackendEnabled({
-        ...staging,
-        hostname: 'notelike.web.app',
-      }),
-    ).toBe(false);
-    expect(resolveSupabaseBackendEnabled(staging)).toBe(false);
+  it('rejects secret and empty keys', () => {
+    expect(isBrowserSafeSupabaseKey('sb_secret_x')).toBe(false);
+    expect(isBrowserSafeSupabaseKey('sb_publishable_x')).toBe(false);
+    expect(isBrowserSafeSupabaseKey('')).toBe(false);
   });
 });

@@ -1,15 +1,11 @@
-import { firebaseRemoteNotesDataSource } from '@/lib/remote/firebaseRemoteNotesDataSource';
-import type { RemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSource';
-import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
 import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNotesDataSource';
+import type { RemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSource';
 
 let activeOverride: RemoteNotesDataSource | null = null;
 
 export function getRemoteNotesDataSource(): RemoteNotesDataSource {
   if (activeOverride) return activeOverride;
-  return isSupabaseBackendEnabled()
-    ? supabaseRemoteNotesDataSource
-    : firebaseRemoteNotesDataSource;
+  return supabaseRemoteNotesDataSource;
 }
 
 /** Test-only hook for adapter parity tests. */
