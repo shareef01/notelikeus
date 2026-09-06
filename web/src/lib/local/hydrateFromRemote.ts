@@ -1,4 +1,5 @@
 import {
+  deleteNote,
   getOwnerMeta,
   listNotes,
   putNotes,
@@ -11,12 +12,23 @@ import type { Note } from '@/types/note';
 
 /**
  * Loads notes from IndexedDB into the in-memory store.
+ * Suppresses tombstoned notes and cleans stale tombstoned rows so the mirror converges.
  * Safe to call on every owner change / app resume.
  */
 export async function loadLocalNotesIntoStore(ownerId: string): Promise<Note[]> {
   const notes = await listNotes(ownerId);
-  useNotesStore.getState().setNotes(notes);
-  return notes;
+  const isDeleted = useTombstoneStore.getState().isDeleted;
+  const liveNotes = notes.filter((note) => !isDeleted(note.id));
+
+  const staleNotes = notes.filter((note) => isDeleted(note.id));
+  if (staleNotes.length > 0) {
+    void Promise.all(staleNotes.map((note) => deleteNote(ownerId, note.id))).catch((error) => {
+      console.warn('[Notelikeus] Cleaning stale tombstoned notes from IndexedDB failed:', error);
+    });
+  }
+
+  useNotesStore.getState().setNotes(liveNotes);
+  return liveNotes;
 }
 
 /**

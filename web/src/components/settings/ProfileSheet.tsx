@@ -125,7 +125,6 @@ interface ProfileSheetProps {
   isGuest: boolean;
   userEmail: string | null;
   syncStatus: string;
-  syncedNoteCount: number;
   onExportBackup: () => void;
   onImportBackup: () => void;
   onPrivacyPolicy: () => void;
@@ -150,7 +149,6 @@ export function ProfileSheet({
   isGuest,
   userEmail,
   syncStatus,
-  syncedNoteCount,
   onExportBackup,
   onImportBackup,
   onPrivacyPolicy,
@@ -234,7 +232,7 @@ export function ProfileSheet({
                     <CloudIcon size={16} />
                     <span className="text-chrome-label">Cloud</span>
                   </div>
-                  <p className="truncate text-base font-medium text-brand-primary sm:text-lg">
+                  <p className="truncate text-base font-medium text-brand-primary sm:text-lg capitalize">
                     {isGoogleAccount
                       ? syncStatus
                       : isGuest
@@ -243,7 +241,9 @@ export function ProfileSheet({
                   </p>
                   <p className="text-sm text-brand-muted">
                     {isGoogleAccount
-                      ? `${syncedNoteCount} synced`
+                      ? syncStatus === 'online'
+                        ? 'Connected to cloud'
+                        : 'Working offline'
                       : isGuest
                         ? 'Notes stay on this device'
                         : 'Sign in to sync'}

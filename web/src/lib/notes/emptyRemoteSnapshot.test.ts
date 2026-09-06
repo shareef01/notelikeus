@@ -16,13 +16,13 @@ vi.mock('@/lib/remote/remoteNotesDataSourceRegistry', () => ({
   getRemoteNotesDataSource: () => remoteMocks,
 }));
 
-import { NOTES_DB_NAME } from '@/lib/local/constants';
 import { hydrateIndexedDbFromRemote } from '@/lib/local/hydrateFromRemote';
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
 import { listNotes, putNote } from '@/lib/local/notesLocalRepository';
 import {
   startNotesRealtimeSync,
   stopNotesRealtimeSync,
+  waitForRealtimeMirrorWriteForTests,
 } from '@/lib/notes/notesSyncService';
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
@@ -49,11 +49,10 @@ function note(id: string): Note {
 describe('empty remote snapshot vs populated local library', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    await waitForRealtimeMirrorWriteForTests();
     stopNotesRealtimeSync();
     useNotesStore.getState().reset();
     useTombstoneStore.getState().reset();
-    await resetNotesDatabaseForTests();
-    indexedDB.deleteDatabase(NOTES_DB_NAME);
     await resetNotesDatabaseForTests();
     remoteMocks.subscribeToNotes.mockImplementation(() => () => {});
   });

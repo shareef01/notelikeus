@@ -34,8 +34,8 @@ select public.apply_note_change(
   't', 'b', 100::bigint, 0, false, false, false, 0, null::bigint,
   '[]'::jsonb, '[]'::jsonb
 );
-select public.register_note_attachment(
-  'att1', '1',
+select public.finalize_note_attachment_put(
+  '1', 'att1',
   public.expected_attachment_object_key(auth.uid(), '1', 'att1'),
   'image/png', 12, 'image'
 );
@@ -85,8 +85,8 @@ select public.apply_note_change(
   't', 'b', 100::bigint, 0, false, false, false, 0, null::bigint,
   '[]'::jsonb, '[]'::jsonb
 );
-select public.register_note_attachment(
-  'att2', '2',
+select public.finalize_note_attachment_put(
+  '2', 'att2',
   public.expected_attachment_object_key(auth.uid(), '2', 'att2'),
   'image/png', 12, 'image'
 );

@@ -44,7 +44,6 @@ interface MainDialogsProps {
   isGuest: boolean;
   userEmail: string | null;
   syncStatus: React.ComponentProps<typeof ProfileSheet>['syncStatus'];
-  syncedNoteCount: number;
 
   onExportBackup: () => void;
   onImportBackup: () => void;
@@ -84,7 +83,6 @@ export function MainDialogs({
   isGuest,
   userEmail,
   syncStatus,
-  syncedNoteCount,
   onExportBackup,
   onImportBackup,
   onSignIn,
@@ -111,7 +109,6 @@ export function MainDialogs({
         isGuest={isGuest}
         userEmail={userEmail}
         syncStatus={syncStatus}
-        syncedNoteCount={syncedNoteCount}
         onExportBackup={onExportBackup}
         onImportBackup={onImportBackup}
         onPrivacyPolicy={() => onOpenChange({ privacyPolicy: true })}

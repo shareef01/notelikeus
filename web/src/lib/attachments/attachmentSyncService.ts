@@ -12,7 +12,11 @@ import {
   purgeDeletedNoteAttachment,
   type NoteAttachmentMetadata,
 } from '@/lib/attachments/supabaseAttachmentMetadata';
-import { takePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
+import {
+  getPendingAttachmentBlob,
+  peekPendingAttachment,
+  releasePendingAttachment,
+} from '@/lib/attachments/pendingAttachmentStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Attachment } from '@/types/attachment';
 import type { Note } from '@/types/note';
@@ -56,10 +60,11 @@ export async function syncNoteAttachments(note: Note): Promise<Note> {
   for (const attachment of note.attachments) {
     if (isPendingAttachment(attachment.storagePath)) {
       const pendingId = attachment.storagePath.slice(ATTACHMENT_PENDING_PREFIX.length);
-      const pending = takePendingAttachment(pendingId);
+      const pending =
+        peekPendingAttachment(pendingId) ??
+        (await getPendingAttachmentBlob(pendingId, note.id));
       if (!pending) {
-        synced.push(attachment);
-        continue;
+        throw new Error(`Missing local blob for pending attachment ${pendingId}`);
       }
       const result = await store.upload(
         note.id,
@@ -67,6 +72,7 @@ export async function syncNoteAttachments(note: Note): Promise<Note> {
         pending.blob,
         pending.mimeType,
       );
+      await releasePendingAttachment(pendingId, note.id);
       synced.push({
         ...attachment,
         storagePath: `${ATTACHMENT_R2_PREFIX}${result.objectKey}`,
@@ -90,7 +96,10 @@ export async function deleteAttachmentsForNote(
   await Promise.all(
     attachments.map(async (attachment) => {
       if (isPendingAttachment(attachment.storagePath)) {
-        takePendingAttachment(attachment.storagePath.slice(ATTACHMENT_PENDING_PREFIX.length));
+        await releasePendingAttachment(
+          attachment.storagePath.slice(ATTACHMENT_PENDING_PREFIX.length),
+          noteId,
+        );
         return;
       }
       try {
@@ -115,7 +124,10 @@ export async function gcAttachmentsAfterNoteDelete(
   const failures: unknown[] = [];
   for (const attachment of attachments) {
     if (isPendingAttachment(attachment.storagePath)) {
-      takePendingAttachment(attachment.storagePath.slice(ATTACHMENT_PENDING_PREFIX.length));
+      await releasePendingAttachment(
+        attachment.storagePath.slice(ATTACHMENT_PENDING_PREFIX.length),
+        noteId,
+      );
       continue;
     }
     try {

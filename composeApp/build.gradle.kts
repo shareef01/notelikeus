@@ -290,8 +290,8 @@ compose.desktop {
             // not work. Restore those formats alongside a Keychain/libsecret backend.
             targetFormats(TargetFormat.Msi)
             packageName = "Notelikeus"
-            packageVersion = "1.0.0"
-            description = "Elite Cross-Platform Note Taking"
+            packageVersion = appVersionName
+            description = "Minimal, cross-platform notes — synced across devices."
             copyright = "© 2026 Aus"
             vendor = "Aus"
 

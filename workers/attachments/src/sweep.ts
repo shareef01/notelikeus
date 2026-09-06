@@ -33,13 +33,28 @@ async function rpc<T>(
 ): Promise<T | null> {
   const headers = serviceRoleHeaders(env);
   if (!headers) return null;
-  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/rpc/${name}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) return null;
-  return (await response.json()) as T;
+  let response: Response;
+  try {
+    response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/rpc/${name}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    console.error('[Sweep] Upstream RPC network failure', { rpc: name });
+    throw new Error(`Sweep RPC network failure: ${name}`);
+  }
+  if (!response.ok) {
+    console.error('[Sweep] Upstream RPC failed', { rpc: name, status: response.status });
+    throw new Error(`Sweep RPC failed: ${name} (${response.status})`);
+  }
+  try {
+    return (await response.json()) as T;
+  } catch {
+    console.error('[Sweep] Upstream RPC malformed response', { rpc: name });
+    throw new Error(`Sweep RPC malformed JSON: ${name}`);
+  }
 }
 
 /**
