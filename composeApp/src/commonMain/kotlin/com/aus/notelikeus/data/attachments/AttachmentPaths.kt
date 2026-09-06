@@ -32,6 +32,12 @@ fun localFilePath(storagePath: String): String? =
 fun r2ObjectKey(storagePath: String): String? =
     if (isR2Attachment(storagePath)) storagePath.removePrefix(ATTACHMENT_R2_PREFIX) else null
 
+data class PendingDeletedAttachment(
+    val attachmentId: String,
+    val noteId: String,
+    val objectKey: String,
+)
+
 data class NoteAttachmentMetadata(
     val attachmentId: String,
     val noteId: String,

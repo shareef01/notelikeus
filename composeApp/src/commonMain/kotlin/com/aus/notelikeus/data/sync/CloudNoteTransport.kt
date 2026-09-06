@@ -29,6 +29,16 @@ interface CloudNoteTransport {
     /** Deletes note documents in batches (transport handles chunking). */
     suspend fun deleteNotes(uid: String, noteIds: List<Long>)
 
+    /**
+     * Atomically removes the owner's tombstone (if any) and writes the live note.
+     * Default walks [deleteTombstones] then [putNotes]; Supabase overrides with `restore_note`.
+     */
+    suspend fun restoreNote(uid: String, note: Note): Map<Long, Long?> {
+        val noteId = note.id ?: return emptyMap()
+        deleteTombstones(uid, listOf(noteId))
+        return putNotes(uid, listOf(note))
+    }
+
     /** Returns every tombstone for [uid] as noteId → deletedAt. */
     suspend fun fetchTombstones(uid: String): Map<Long, Long>
 

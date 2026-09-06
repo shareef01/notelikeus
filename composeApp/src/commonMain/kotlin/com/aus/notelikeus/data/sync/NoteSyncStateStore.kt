@@ -50,8 +50,20 @@ interface NoteSyncStateStore {
     /** Every note id currently marked as restored. */
     fun restoredIds(): Set<Long>
 
-    /** Removes restore markers for [ids] (cloud tombstone confirmed gone). */
+    /** Removes restore markers for [ids] after the live remote note is confirmed. */
     fun clearRestored(ids: Collection<Long>)
+
+    /**
+     * Notes whose server deletion succeeded but R2/metadata GC has not.
+     * Survives process death so later reconciliation can retry blob cleanup.
+     */
+    fun markPendingAttachmentGc(noteId: Long, attachmentIds: Collection<String> = emptyList())
+
+    fun pendingAttachmentGcIds(): Set<Long>
+
+    fun pendingAttachmentGcEntries(): Map<Long, Set<String>>
+
+    fun clearPendingAttachmentGc(noteId: Long)
 
     // ---- reconciliation ----
 

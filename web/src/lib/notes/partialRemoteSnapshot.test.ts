@@ -182,9 +182,14 @@ describe('partial remote snapshot must never be emitted as the full library', ()
   });
 
   it('applies deltas normally once a baseline snapshot has landed', async () => {
+    let pullCalls = 0;
     rpc.mockImplementation((fn: string) => {
       if (fn === 'fetch_full_snapshot') return Promise.resolve(fullSnapshot());
       if (fn === 'pull_changes') {
+        pullCalls += 1;
+        if (pullCalls === 1) {
+          return Promise.resolve({ data: { changes: [], has_more: false }, error: null });
+        }
         return Promise.resolve({
           data: { changes: [noteRow('n6', 6)], has_more: false },
           error: null,
@@ -200,8 +205,7 @@ describe('partial remote snapshot must never be emitted as the full library', ()
       () => {},
     );
 
-    await settle();
-    expect(emitted).toHaveLength(1);
+    await vi.waitFor(() => expect(emitted).toHaveLength(1));
 
     await fireRealtimeWake();
     stop();

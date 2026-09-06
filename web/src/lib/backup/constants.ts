@@ -12,12 +12,14 @@ export const MAX_BACKUP_NOTES = 5_000;
 export const MAX_BACKUP_LABELS = 2_000;
 
 /**
- * Per-note caps applied on import, matching `notes_title_len` / `notes_content_len` in the
- * Supabase migrations and Android's `NoteBackupImporter`. Without these, an oversized field
- * imports fine but is rejected by `apply_note_change` on upload, surfacing later as an opaque
- * failure that blocks sync.
+ * Per-note caps applied on import, matching Android's `NoteBackupImporter` and the
+ * `validate_note_payload` / `apply_note_change` Supabase boundary. Without these, an oversized
+ * field imports fine but is rejected on upload, surfacing later as an opaque sync failure.
  */
 export const MAX_NOTE_TITLE_CHARS = 2_000;
 export const MAX_NOTE_CONTENT_CHARS = 100_000;
 export const MAX_NOTE_CHECKLIST_ITEMS = 500;
 export const MAX_NOTE_LABELS = 100;
+
+/** Matches Kotlin `NoteBackupImporter.MAX_JSON_DEPTH`. */
+export const MAX_JSON_DEPTH = 64;

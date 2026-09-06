@@ -6,6 +6,7 @@ import {
 } from '@/lib/local/notesLocalRepository';
 import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegistry';
 import { useNotesStore } from '@/store/notesStore';
+import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 
 /**
@@ -39,19 +40,22 @@ export async function hydrateIndexedDbFromRemote(userId: string): Promise<void> 
     hydratedAt: Date.now(),
   });
 
-  // An empty snapshot is not authoritative over a populated local namespace. A Firebase→Supabase
-  // migration puts the user's whole library under the Supabase owner id *before* anything is
-  // uploaded, so the first snapshot legitimately answers with zero notes; the same shape appears
-  // when the wrong account is signed in. Showing the local notes keeps them on screen and keeps
-  // them in the in-memory store, which is what the upload path reads — blanking it here would
-  // strand them in IndexedDB, invisible and never pushed.
+  // `putNotes` upserts; it does not delete local-only rows. The UI store is what the upload
+  // path reads, so those extras must stay visible. An empty snapshot is also not authoritative
+  // over a populated local namespace (Firebase→Supabase migration, or the wrong account).
+  const local = await listNotes(userId);
+  const isDeleted = useTombstoneStore.getState().isDeleted;
+  const liveLocal = local.filter((note) => !isDeleted(note.id));
   if (snapshot.length === 0) {
-    const local = await listNotes(userId);
-    if (local.length > 0) {
-      useNotesStore.getState().setNotes(local);
+    if (liveLocal.length > 0) {
+      useNotesStore.getState().setNotes(liveLocal);
       return;
     }
+    useNotesStore.getState().setNotes([]);
+    return;
   }
 
-  useNotesStore.getState().setNotes(snapshot);
+  const snapshotIds = new Set(snapshot.map((note) => note.id));
+  const extras = liveLocal.filter((note) => !snapshotIds.has(note.id));
+  useNotesStore.getState().setNotes([...snapshot, ...extras]);
 }

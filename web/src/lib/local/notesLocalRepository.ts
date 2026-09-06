@@ -13,6 +13,8 @@ export interface LocalOwnerMeta {
   lastRemoteRevision?: number;
   /** Per-note server revision for apply_note_change base_revision. */
   noteRevisions?: Record<string, number>;
+  /** Cloud note IDs from the last complete snapshot. Survives process death. */
+  knownCloudIds?: string[];
   /** Phase 6: IndexedDB namespace migrated from Firebase uid. */
   firebaseNamespaceMigrated?: boolean;
   migratedFromOwnerId?: string;
@@ -108,12 +110,115 @@ export async function getOwnerMeta(ownerId: string): Promise<LocalOwnerMeta | nu
   return (result as LocalOwnerMeta | undefined) ?? null;
 }
 
+let abortNextRemoteApply = false;
+
+/** Test-only: abort the next notes+cursor transaction before it commits. */
+export function abortNextRemotePageApplyForTests(): void {
+  abortNextRemoteApply = true;
+}
+
+export interface RemotePageApply {
+  ownerId: string;
+  upserts: Note[];
+  deletedNoteIds: string[];
+  noteRevisions: Record<string, number>;
+  lastRemoteRevision: number;
+  /** Cloud IDs from this apply. Omit to leave the persisted set unchanged. */
+  knownCloudIds?: string[];
+  replaceOwnerNotes?: boolean;
+}
+
+/**
+ * Cursor N is durable if and only if the note/tombstone mirror through N is durable.
+ * Attachment hydration is not part of this transaction.
+ */
+export async function applyRemotePageAtomically(page: RemotePageApply): Promise<void> {
+  const db = await import('@/lib/local/idb').then((m) => m.getNotesDatabase());
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([NOTES_STORE, META_STORE], 'readwrite');
+    const notes = tx.objectStore(NOTES_STORE);
+    const meta = tx.objectStore(META_STORE);
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('applyRemotePageAtomically failed'));
+    tx.onabort = () => reject(tx.error ?? new Error('applyRemotePageAtomically aborted'));
+
+    if (abortNextRemoteApply) {
+      abortNextRemoteApply = false;
+      tx.abort();
+      return;
+    }
+
+    const metaReq = meta.get(page.ownerId);
+    metaReq.onsuccess = () => {
+      const existing = (metaReq.result as LocalOwnerMeta | undefined) ?? {
+        ownerId: page.ownerId,
+        firebaseHydrated: false,
+        hydratedAt: null,
+      };
+      const currentCursor = existing.lastRemoteRevision ?? 0;
+      if (page.lastRemoteRevision < currentCursor) {
+        return;
+      }
+
+      const writePage = () => {
+        for (const note of page.upserts) {
+          notes.put({ ownerId: page.ownerId, id: note.id, note } satisfies StoredNoteRecord);
+        }
+        for (const noteId of page.deletedNoteIds) {
+          notes.delete([page.ownerId, noteId]);
+        }
+        meta.put({
+          ...existing,
+          ownerId: page.ownerId,
+          noteRevisions: page.noteRevisions,
+          lastRemoteRevision: page.lastRemoteRevision,
+          ...(page.knownCloudIds !== undefined ? { knownCloudIds: page.knownCloudIds } : {}),
+        } satisfies LocalOwnerMeta);
+      };
+
+      if (!page.replaceOwnerNotes) {
+        writePage();
+        return;
+      }
+
+      const existingReq = notes.index('ownerId').getAll(page.ownerId);
+      existingReq.onsuccess = () => {
+        for (const record of (existingReq.result as StoredNoteRecord[] | undefined) ?? []) {
+          notes.delete([page.ownerId, record.id]);
+        }
+        writePage();
+      };
+    };
+  });
+}
+
+export async function applyRemoteSnapshotAtomically(args: {
+  ownerId: string;
+  notes: Note[];
+  deletedNoteIds: string[];
+  noteRevisions: Record<string, number>;
+  lastRemoteRevision: number;
+  knownCloudIds?: string[];
+}): Promise<void> {
+  await applyRemotePageAtomically({
+    ownerId: args.ownerId,
+    upserts: args.notes,
+    deletedNoteIds: args.deletedNoteIds,
+    noteRevisions: args.noteRevisions,
+    lastRemoteRevision: args.lastRemoteRevision,
+    knownCloudIds: args.knownCloudIds,
+    replaceOwnerNotes: true,
+  });
+}
+
 export async function setOwnerMeta(
   ownerId: string,
   patch: Partial<
     Pick<
       LocalOwnerMeta,
       'firebaseHydrated' | 'remoteHydrated' | 'hydratedAt' | 'lastRemoteRevision' | 'noteRevisions'
+      | 'knownCloudIds'
       | 'firebaseNamespaceMigrated' | 'migratedFromOwnerId' | 'migratedAt'
       | 'firebaseCloudImported' | 'firebaseCloudImportedAt'
     >
