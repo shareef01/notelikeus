@@ -19,7 +19,8 @@ vi.mock('@/lib/supabase/supabaseRealtimeSync', () => ({
 
 import { NOTES_DB_NAME } from '@/lib/local/constants';
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
-import { loadRevisionState, rememberNoteRevision } from '@/lib/supabase/revisionStore';
+import { forgetNoteRevision, loadRevisionState, rememberNoteRevision } from '@/lib/supabase/revisionStore';
+import { fetchSnapshotNotes } from '@/lib/supabase/supabaseSyncEngine';
 import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNotesDataSource';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 
@@ -85,6 +86,44 @@ describe('supabaseRemoteNotesDataSource.deleteNote — RPC status contract', () 
     const state = await loadRevisionState(USER);
     expect(state.lastRemoteRevision).toBe(10_011);
     expect(state.noteRevisions['1']).toBeUndefined();
+    expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
+  });
+
+  it('refreshes revisions from a snapshot when none are cached, then deletes', async () => {
+    await forgetNoteRevision(USER, '1');
+    vi.mocked(fetchSnapshotNotes).mockResolvedValue({
+      notes: [],
+      tombstones: {},
+      noteRevisions: { '1': 10_042 },
+      maxRevision: 10_042,
+    });
+    rpcMock.mockResolvedValue({
+      data: { status: 'applied', revision: 10_043 },
+      error: null,
+    });
+
+    await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
+
+    expect(rpcMock).toHaveBeenCalledWith('apply_note_delete', {
+      p_note_id: '1',
+      p_base_revision: 10_042,
+    });
+    expect((await loadRevisionState(USER)).noteRevisions['1']).toBeUndefined();
+    expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
+  });
+
+  it('skips the RPC only after a snapshot still has no revision for the note', async () => {
+    await forgetNoteRevision(USER, '1');
+    vi.mocked(fetchSnapshotNotes).mockResolvedValue({
+      notes: [],
+      tombstones: {},
+      noteRevisions: {},
+      maxRevision: 0,
+    });
+
+    await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
+
+    expect(rpcMock).not.toHaveBeenCalled();
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
   });
 });

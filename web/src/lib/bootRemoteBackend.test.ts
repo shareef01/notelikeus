@@ -10,7 +10,7 @@ const { state } = vi.hoisted(() => ({
 
 vi.mock('@/lib/local/notesLocalRepository', () => ({ clearOwner: vi.fn() }));
 vi.mock('@/lib/reminders/reminderSync', () => ({ ensureReminderSync: vi.fn() }));
-vi.mock('@/lib/supabase/client', () => ({
+vi.mock('@/lib/supabase/env', () => ({
   isSupabaseBackendEnabled: () => state.supabaseEnabled,
   loadSupabaseUrl: () => state.supabaseUrl,
   loadSupabaseAnonKey: () => state.supabaseAnonKey,

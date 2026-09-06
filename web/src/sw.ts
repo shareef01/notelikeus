@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
+import { sanitizeReminders, type SwReminder } from '@/lib/reminders/swReminderPayload';
 import { createHandlerBoundToURL } from 'workbox-precaching';
 
 declare let self: ServiceWorkerGlobalScope;
@@ -8,18 +9,24 @@ declare let self: ServiceWorkerGlobalScope;
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
+const FONT_CACHE = 'notelikeus-fonts';
+
+async function cacheFirstFont(request: Request): Promise<Response> {
+  const cache = await caches.open(FONT_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response.ok) {
+    await cache.put(request, response.clone());
+  }
+  return response;
+}
+
 const handler = createHandlerBoundToURL('/index.html');
 const navigationRoute = new NavigationRoute(handler, {
   denylist: [/^\/_/, /\/[^/?]+\.[^/]+$/],
 });
 registerRoute(navigationRoute);
-
-interface SwReminder {
-  noteId: string;
-  title: string;
-  body: string;
-  fireAt: number;
-}
 
 const swTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -42,7 +49,7 @@ async function loadReminders(): Promise<SwReminder[]> {
     const stored = await cache.match(REMINDER_KEY);
     if (!stored) return [];
     const parsed: unknown = await stored.json();
-    return Array.isArray(parsed) ? (parsed as SwReminder[]) : [];
+    return sanitizeReminders(parsed);
   } catch (error) {
     console.warn('[Notelikeus SW] Stored reminders unreadable; starting with none:', error);
     return [];
@@ -161,7 +168,7 @@ self.addEventListener('message', (event) => {
     return;
   }
 
-  const data = event.data as { type?: string; reminders?: SwReminder[] } | null;
+  const data = event.data as { type?: string; reminders?: unknown[] } | null;
   if (data?.type === 'SKIP_WAITING') {
     // Sent by the client's updateSW(true) (see main.tsx's onNeedRefresh). With
     // injectManifest, Workbox does not inject this call for us — without it, a
@@ -171,7 +178,7 @@ self.addEventListener('message', (event) => {
     return;
   }
   if (data?.type === 'SYNC_REMINDERS' && Array.isArray(data.reminders)) {
-    event.waitUntil(syncSwReminders(data.reminders));
+    event.waitUntil(syncSwReminders(sanitizeReminders(data.reminders)));
   }
 });
 
@@ -179,6 +186,11 @@ self.addEventListener('message', (event) => {
 // burst of requests does not re-read storage repeatedly.
 let lastCatchUp = 0;
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  if (url.origin === self.location.origin && url.pathname.endsWith('.woff2')) {
+    event.respondWith(cacheFirstFont(event.request));
+    return;
+  }
   if (event.request.mode !== 'navigate') return;
   const now = Date.now();
   if (now - lastCatchUp < 30_000) return;

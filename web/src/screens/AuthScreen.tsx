@@ -2,17 +2,12 @@ import { BrandMark } from '@/components/brand/BrandMark';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { CloseIcon } from '@/components/icons/Icons';
 import { CloudIcon, NotesIcon, SyncIcon } from '@/components/icons/Icons';
-import { useAuthListener } from '@/hooks/useAuth';
+import { ensureSupabaseAuthStarted, useAuthListener } from '@/hooks/useAuth';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
-import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import { formatAuthError } from '@/lib/auth/authErrors';
-import {
-  createEmailPasswordAccount,
-  signInWithEmailPassword,
-  testLoginBuildEnabled,
-} from '@/lib/auth/emailAuth';
-import { signInWithGoogle } from '@/lib/auth/googleAuth';
+import { testLoginBuildEnabled } from '@/lib/auth/testLoginFlag';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
 import { useUiStore, type AuthMode } from '@/store/uiStore';
@@ -84,6 +79,8 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
     setError(null);
     setLoading(true);
     try {
+      await ensureSupabaseAuthStarted();
+      const { signInWithGoogle } = await import('@/lib/auth/googleAuth');
       await signInWithGoogle();
     } catch (err) {
       setError(formatAuthError(err));
@@ -112,6 +109,10 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
     setTestEmail(trimmedEmail);
     setTestPassword(password);
     try {
+      await ensureSupabaseAuthStarted();
+      const { createEmailPasswordAccount, signInWithEmailPassword } = await import(
+        '@/lib/auth/emailAuth'
+      );
       if (create) {
         await createEmailPasswordAccount(trimmedEmail, password);
       } else {

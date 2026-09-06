@@ -172,10 +172,11 @@ class NoteAppFunctions : KoinComponent {
     /**
      * Rejects note text the cloud will not accept.
      *
-     * firestore.rules caps title at 2000 characters and content at 100000, and app_metadata.xml
-     * tells agents so -- but nothing checked. An over-long note saved locally and then failed the
-     * rules check on every sync attempt, silently, for as long as it existed: the one note that
-     * never reaches the cloud, with nothing in the UI to say why.
+     * The cloud schema caps title at 2000 characters and content at 100000 (`notes_title_len` and
+     * `notes_content_len` in the Supabase migrations), and app_metadata.xml tells agents so -- but
+     * nothing checked. An over-long note saved locally and then failed `apply_note_change` on every
+     * sync attempt, silently, for as long as it existed: the one note that never reaches the cloud,
+     * with nothing in the UI to say why.
      */
     private fun requireWithinLimits(title: String, content: String) {
         if (title.length > MAX_TITLE_CHARS) {
@@ -187,7 +188,7 @@ class NoteAppFunctions : KoinComponent {
     }
 
     private companion object {
-        /** Mirrors the caps in firestore.rules; a note past either is rejected by the backend. */
+        /** Mirrors the cloud CHECK constraints; a note past either is rejected by the backend. */
         const val MAX_TITLE_CHARS = 2_000
         const val MAX_CONTENT_CHARS = 100_000
     }

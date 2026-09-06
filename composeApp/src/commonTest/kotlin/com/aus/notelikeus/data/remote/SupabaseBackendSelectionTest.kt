@@ -24,6 +24,25 @@ class SupabaseBackendSelectionTest {
     }
 
     @Test
+    fun requireConfiguredSupabaseUrlRejectsCleartextLoopback() {
+        val error = runCatching { requireConfiguredSupabaseUrl("http://127.0.0.1:54321") }.exceptionOrNull()
+        assertTrue(error is IllegalStateException)
+        assertTrue(error.message!!.contains("cleartext"))
+    }
+
+    @Test
+    fun requireConfiguredSupabaseUrlRejectsEmpty() {
+        val error = runCatching { requireConfiguredSupabaseUrl("") }.exceptionOrNull()
+        assertTrue(error is IllegalStateException)
+        assertTrue(error.message!!.contains("not set"))
+    }
+
+    @Test
+    fun requireConfiguredSupabaseUrlAcceptsHostedHttps() {
+        requireConfiguredSupabaseUrl("https://abcd.supabase.co")
+    }
+
+    @Test
     fun debugFallsBackToLocalSupabaseWhenConfigIsEmpty() {
         assertEquals(DEFAULT_LOCAL_SUPABASE_URL, resolveSupabaseUrl(null, allowLocalFallback = true))
         assertEquals(DEFAULT_LOCAL_SUPABASE_URL, resolveSupabaseUrl("", allowLocalFallback = true))
@@ -32,7 +51,7 @@ class SupabaseBackendSelectionTest {
     }
 
     @Test
-    fun releaseWithoutHostedConfigFailsClosed() {
+    fun releaseAndAndroidWithoutHostedConfigFailClosed() {
         assertEquals("", resolveSupabaseUrl(null, allowLocalFallback = false))
         assertEquals("", resolveSupabaseUrl("", allowLocalFallback = false))
         assertEquals("", resolveSupabaseUrl("http://127.0.0.1:54321", allowLocalFallback = false))

@@ -7,7 +7,7 @@ Copy these values into Google Play Console when creating the listing.
 | **App name** | See `listing/en-US/title.txt` |
 | **Package name** | `com.aus.notelikeus` |
 | **Category** | Productivity |
-| **Privacy policy URL** | https://notelike.web.app/privacy.html |
+| **Privacy policy URL** | https://notelikeus-dev.pages.dev/privacy.html |
 | **Default language** | English (United States) |
 
 ## Listing text
@@ -24,7 +24,7 @@ Copy these values into Google Play Console when creating the listing.
 
 ## Data safety
 
-Complete the form using `DATA_SAFETY.md`. No ads, no analytics SDKs, optional cloud sync via Firebase.
+Complete the form using `DATA_SAFETY.md`. No ads, no analytics SDKs, optional cloud sync via Supabase (with attachment bytes in Cloudflare R2 when that build is configured).
 
 ## Release build
 

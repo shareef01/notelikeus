@@ -5,6 +5,7 @@ import com.aus.notelikeus.data.sync.CloudNoteRecord
 import com.aus.notelikeus.data.sync.CloudNoteTransport
 import com.aus.notelikeus.domain.model.Note
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -28,14 +29,26 @@ class SupabaseNoteTransport(
     private fun revisionMap(uid: String): MutableMap<Long, Long> =
         revisions.getOrPut(uid) { mutableMapOf() }
 
-    override suspend fun fetchNotes(uid: String): List<CloudNoteRecord> {
-        val snapshot = rpc.callRpc("fetch_full_snapshot", buildJsonObject { })
+    private data class SnapshotPayload(val notes: List<JsonElement>, val tombstones: List<JsonElement>)
+
+    private fun parsedSnapshot(snapshot: JsonObject): SnapshotPayload {
         val notes = snapshot["notes"]?.jsonArray.orEmpty()
-        val tombstones = snapshot["tombstones"]?.jsonArray.orEmpty()
+        val expectedCount = snapshot["note_count"]?.jsonPrimitive?.longOrNull
+            ?: error("Incomplete snapshot: missing note_count")
+        // `note_count` is a separate COUNT(*) so a truncated jsonb_agg cannot look like a full
+        // library. Check before clearing the revision map — a throw here must not wipe it.
+        if (expectedCount != notes.size.toLong()) {
+            error("Incomplete snapshot: expected $expectedCount notes, got ${notes.size}")
+        }
+        return SnapshotPayload(notes, snapshot["tombstones"]?.jsonArray.orEmpty())
+    }
+
+    override suspend fun fetchNotes(uid: String): List<CloudNoteRecord> {
+        val snapshot = parsedSnapshot(rpc.callRpc("fetch_full_snapshot", buildJsonObject { }))
         val map = revisionMap(uid)
         map.clear()
         var maxRevision = 0L
-        val records = notes.mapNotNull { element ->
+        val records = snapshot.notes.mapNotNull { element ->
             val row = element.jsonObject
             val noteId = row.longId("local_id") ?: row.stringId("note_id")?.toLongOrNull()
                 ?: return@mapNotNull null
@@ -46,7 +59,7 @@ class SupabaseNoteTransport(
             }
             row.toCloudNoteRecord(noteId)
         }
-        for (element in tombstones) {
+        for (element in snapshot.tombstones) {
             val revision = element.jsonObject.longId("revision")
             if (revision != null) maxRevision = maxOf(maxRevision, revision)
         }
@@ -139,9 +152,8 @@ class SupabaseNoteTransport(
     }
 
     override suspend fun fetchTombstones(uid: String): Map<Long, Long> {
-        val snapshot = rpc.callRpc("fetch_full_snapshot", buildJsonObject { })
-        val tombstones = snapshot["tombstones"]?.jsonArray.orEmpty()
-        return tombstones.mapNotNull { element ->
+        val snapshot = parsedSnapshot(rpc.callRpc("fetch_full_snapshot", buildJsonObject { }))
+        return snapshot.tombstones.mapNotNull { element ->
             val row = element.jsonObject
             val noteId = row.stringId("note_id")?.toLongOrNull() ?: return@mapNotNull null
             val deletedAt = row.longId("deleted_at") ?: return@mapNotNull null

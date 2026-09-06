@@ -1,4 +1,4 @@
-import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
+import { isSupabaseBackendEnabled } from '@/lib/supabase/env';
 
 export function loadAttachmentsWorkerUrl(): string {
   return import.meta.env.VITE_ATTACHMENTS_WORKER_URL?.trim() || '';
