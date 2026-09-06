@@ -1,5 +1,6 @@
 import { restoreCloudNote } from '@/lib/notes/tombstones';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
+import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
 import { deleteNote as deleteLocalIndexedDbNote, putNote } from '@/lib/local/notesLocalRepository';
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import { notesEqual } from '@/lib/notes/noteEquality';
@@ -16,11 +17,18 @@ async function persistLocalNote(note: Note): Promise<void> {
 }
 
 async function pushNote(note: Note): Promise<void> {
-  useNotesStore.getState().upsertLocalNote(note);
+  // Persist-first: commit to IndexedDB before mutating memory
   await persistLocalNote(note);
+  useNotesStore.getState().upsertLocalNote(note);
   const userId = useAuthStore.getState().user?.uid;
   if (!userId) return;
-  await getRemoteNotesDataSource().upsertNote(userId, note);
+  try {
+    await getRemoteNotesDataSource().upsertNote(userId, note);
+  } catch (error) {
+    // If Supabase fails, DO NOT rollback local note.
+    // Local edit remains committed. Reconciliation retries remote later.
+    console.warn('Remote note upsert failed, note remains saved locally:', error);
+  }
 }
 
 function getNote(noteId: string): Note | undefined {
@@ -34,22 +42,51 @@ function withTimestamp(note: Note, patch: Partial<Note>): Note {
 /** Save locally and optionally push to the cloud when signed in — no React hooks. */
 export async function saveNote(note: Note): Promise<void> {
   const existing = getNote(note.id);
-  let toSave = note;
-  if (isR2AttachmentsEnabled()) {
-    const { syncNoteAttachments, deleteAttachmentsForNote } = await import(
+  const toSave = note;
+
+  // Clean up removed attachments if any
+  if (isR2AttachmentsEnabled() && existing) {
+    const { deleteAttachmentsForNote } = await import(
       '@/lib/attachments/attachmentSyncService'
     );
-    toSave = await syncNoteAttachments(note);
-    if (existing) {
-      const nextIds = new Set(toSave.attachments.map((attachment) => attachment.id));
-      const removed = existing.attachments.filter(
-        (attachment) => !nextIds.has(attachment.id),
-      );
+    const nextIds = new Set(toSave.attachments.map((attachment) => attachment.id));
+    const removed = existing.attachments.filter(
+      (attachment) => !nextIds.has(attachment.id),
+    );
+    if (removed.length > 0) {
       await deleteAttachmentsForNote(note.id, removed);
     }
   }
+
+  // Local data is primary: text note persistence must NOT wait for cloud attachment upload!
   if (existing && notesEqual(existing, toSave)) return;
   await pushNote(toSave);
+
+  // If there are pending attachments and R2 is enabled, attempt upload
+  const hasPending = toSave.attachments.some((a) => isPendingAttachment(a.storagePath));
+  if (isR2AttachmentsEnabled() && hasPending) {
+    const { syncNoteAttachments } = await import(
+      '@/lib/attachments/attachmentSyncService'
+    );
+    try {
+      const synced = await syncNoteAttachments(toSave);
+      if (!notesEqual(toSave, synced)) {
+        await persistLocalNote(synced);
+        useNotesStore.getState().upsertLocalNote(synced);
+        const userId = useAuthStore.getState().user?.uid;
+        if (userId) {
+          try {
+            await getRemoteNotesDataSource().upsertNote(userId, synced);
+          } catch {
+            // Transient network failure; retry on reconciliation
+          }
+        }
+      }
+    } catch (error) {
+      // Offline/Worker failure: note text and local pending blobs survive safely
+      console.warn('Attachment upload failed or offline; note text remains durably saved locally:', error);
+    }
+  }
 }
 
 /** Remove locally and from the cloud when signed in. Tombstoned so a later cloud
@@ -60,18 +97,25 @@ export async function saveNote(note: Note): Promise<void> {
 export async function removeNote(noteId: string): Promise<void> {
   const existing = getNote(noteId);
   const isGuest = useAuthStore.getState().guestMode;
-  if (!isGuest) {
-    useTombstoneStore.getState().markDeleted(noteId);
-  }
   const attachments = existing?.attachments ?? [];
-  useNotesStore.getState().removeLocalNote(noteId);
   const ownerId = resolveOwnerId();
+
+  // Persist-first: commit deletion to IndexedDB before mutating in-memory store
   if (ownerId) {
     await deleteLocalIndexedDbNote(ownerId, noteId);
   }
+
+  if (!isGuest) {
+    useTombstoneStore.getState().markDeleted(noteId);
+  }
+  useNotesStore.getState().removeLocalNote(noteId);
+
   const userId = useAuthStore.getState().user?.uid;
-  if (!userId) return;
-  await getRemoteNotesDataSource().deleteNote(userId, noteId);
+  if (userId) {
+    // Remote delete: locally committed delete stays deleted/tombstoned even if remote fails
+    await getRemoteNotesDataSource().deleteNote(userId, noteId);
+  }
+
   if (!isR2AttachmentsEnabled() || attachments.length === 0) return;
   const { gcAttachmentsAfterNoteDelete } = await import(
     '@/lib/attachments/attachmentSyncService'
@@ -131,9 +175,17 @@ export async function emptyTrash(): Promise<number> {
 export async function restorePermanentlyDeletedNote(note: Note): Promise<void> {
   const userId = useAuthStore.getState().user?.uid;
   useTombstoneStore.getState().markRestored(note.id);
+
+  // Persist-first: commit to IndexedDB before clearing tombstone protection
+  try {
+    await persistLocalNote(note);
+  } catch (error) {
+    useTombstoneStore.getState().clearRestored([note.id]);
+    throw error;
+  }
+
   useTombstoneStore.getState().clearIds([note.id]);
   useNotesStore.getState().upsertLocalNote(note);
-  await persistLocalNote(note);
   if (userId) {
     await restoreCloudNote(userId, note);
   }

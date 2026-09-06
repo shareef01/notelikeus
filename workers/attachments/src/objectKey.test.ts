@@ -31,4 +31,11 @@ describe('attachment object keys', () => {
     expect(isAttachmentObjectKeyForOwner(key, ownerId)).toBe(true);
     expect(isAttachmentObjectKeyForOwner(key, 'other-owner')).toBe(false);
   });
+
+  it('safely handles malformed percent-encoding without crashing', () => {
+    expect(parseAttachmentPath('/v1/attachments/%/att')).toBeNull();
+    expect(parseAttachmentPath('/v1/attachments/%ZZ/att')).toBeNull();
+    expect(parseAttachmentPath('/v1/attachments/%E0%A4%A/att')).toBeNull();
+    expect(parseAttachmentPath('/v1/attachments/note/%C3%28')).toBeNull();
+  });
 });

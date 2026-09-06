@@ -1,5 +1,5 @@
-import { resolveAuthenticatedUserId, type WorkerEnv } from './auth';
-import { withAttachmentCors } from './cors';
+import { resolveAuthenticatedUserId, UpstreamServiceError, type WorkerEnv } from './auth';
+import { ATTACHMENT_ALLOWED_METHODS, withAttachmentCors } from './cors';
 import { sweepOrphanedDeletedAttachments } from './sweep';
 import {
   AttachmentTooLargeError,
@@ -17,35 +17,47 @@ export async function handleAttachmentRequest(
   request: Request,
   env: WorkerEnv,
 ): Promise<Response> {
-  const userId = await resolveAuthenticatedUserId(request, env);
-  if (!userId) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+  try {
+    const userId = await resolveAuthenticatedUserId(request, env);
+    if (!userId) {
+      return new Response('Unauthorized', { status: 401 });
+    }
 
-  const url = new URL(request.url);
+    const url = new URL(request.url);
 
-  const parsed = parseAttachmentPath(url.pathname);
-  if (!parsed) {
-    return new Response('Not Found', { status: 404 });
-  }
+    const parsed = parseAttachmentPath(url.pathname);
+    if (!parsed) {
+      return new Response('Not Found', { status: 404 });
+    }
 
-  const objectKey = buildAttachmentObjectKey(userId, parsed.noteId, parsed.attachmentId);
+    const objectKey = buildAttachmentObjectKey(userId, parsed.noteId, parsed.attachmentId);
 
-  switch (request.method) {
-    case 'PUT':
-      return putAttachment(request, env, objectKey, parsed, userId);
-    case 'GET':
-      return getAttachment(request, env, objectKey, parsed);
-    case 'DELETE':
-      return deleteAttachment(request, env, objectKey, parsed);
-    default:
-      return new Response('Method Not Allowed', { status: 405 });
+    switch (request.method) {
+      case 'PUT':
+        return await putAttachment(request, env, objectKey, parsed, userId);
+      case 'GET':
+        return await getAttachment(request, env, objectKey, parsed);
+      case 'DELETE':
+        return await deleteAttachment(request, env, objectKey, parsed);
+      default:
+        return new Response('Method Not Allowed', {
+          status: 405,
+          headers: { Allow: ATTACHMENT_ALLOWED_METHODS },
+        });
+    }
+  } catch (error) {
+    if (error instanceof UpstreamServiceError) {
+      return new Response(error.message, { status: error.status });
+    }
+    throw error;
   }
 }
 
 interface AttachmentAuthz {
   allowed?: boolean;
   object_key?: string;
+  attachment_id?: string;
+  note_id?: string;
   max_bytes?: number;
 }
 
@@ -56,19 +68,29 @@ async function authorizeAttachment(
   body: Record<string, unknown>,
 ): Promise<AttachmentAuthz | null> {
   const authorization = request.headers.get('Authorization') ?? '';
-  const response = await fetch(
-    `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/rpc/${rpcName}`,
-    {
-      method: 'POST',
-      headers: {
-        apikey: env.SUPABASE_ANON_KEY,
-        Authorization: authorization,
-        'Content-Type': 'application/json',
+  let response: Response;
+  try {
+    response = await fetch(
+      `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/rpc/${rpcName}`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: env.SUPABASE_ANON_KEY,
+          Authorization: authorization,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10_000),
       },
-      body: JSON.stringify(body),
-    },
-  );
+    );
+  } catch {
+    throw new UpstreamServiceError('Upstream database unreachable', 503);
+  }
+
   if (response.status === 401) return null;
+  if (response.status >= 500) {
+    throw new UpstreamServiceError('Upstream database error', 502);
+  }
   if (!response.ok) return { allowed: false };
   return (await response.json()) as AttachmentAuthz;
 }
@@ -85,8 +107,6 @@ async function putAttachment(
     return new Response('Unsupported Media Type', { status: 415 });
   }
 
-  // Refuse a declared oversize before reading a byte; the streaming read below is what catches a
-  // caller that lies about, or omits, Content-Length.
   const declared = declaredContentLength(request.headers.get('Content-Length'));
   if (declared != null && declared > MAX_ATTACHMENT_BYTES) {
     return new Response('Payload Too Large', { status: 413 });
@@ -103,22 +123,60 @@ async function putAttachment(
   }
 
   const mimeType = normalizeMimeType(contentType);
-  const authz = await authorizeAttachment(request, env, 'authorize_note_attachment_put', {
+  // Phase 1: Preflight authorization check (does NOT insert live metadata)
+  const preflight = await authorizeAttachment(request, env, 'authorize_note_attachment_put', {
     p_note_id: parsed.noteId,
     p_attachment_id: parsed.attachmentId,
     p_mime_type: mimeType,
     p_size_bytes: body.byteLength,
   });
-  if (!authz) return new Response('Unauthorized', { status: 401 });
-  if (!authz.allowed) return new Response('Forbidden', { status: 403 });
-  const canonicalKey = authz.object_key || objectKey;
-  if (authz.max_bytes != null && body.byteLength > authz.max_bytes) {
+  if (!preflight) return new Response('Unauthorized', { status: 401 });
+  if (!preflight.allowed) return new Response('Forbidden', { status: 403 });
+
+  // Security boundary: NEVER trust preflight object_key over locally derived key!
+  if (!preflight.object_key || preflight.object_key !== objectKey) {
+    return new Response('Forbidden', { status: 403 });
+  }
+  if (preflight.max_bytes != null && body.byteLength > preflight.max_bytes) {
     return new Response('Payload Too Large', { status: 413 });
   }
-  await env.ATTACHMENTS_BUCKET.put(canonicalKey, body, {
+
+  // Phase 2: Write bytes to R2
+  await env.ATTACHMENTS_BUCKET.put(objectKey, body, {
     httpMetadata: { contentType: mimeType },
   });
-  return Response.json({ objectKey: canonicalKey, sizeBytes: body.byteLength, mimeType });
+
+  // Phase 3: Metadata finalization in database
+  let finalized: AttachmentAuthz | null;
+  try {
+    finalized = await authorizeAttachment(request, env, 'finalize_note_attachment_put', {
+      p_note_id: parsed.noteId,
+      p_attachment_id: parsed.attachmentId,
+      p_object_key: objectKey,
+      p_mime_type: mimeType,
+      p_size_bytes: body.byteLength,
+      p_attachment_type: 'image',
+    });
+  } catch (error) {
+    // Best-effort compensating R2 delete on finalization failure
+    try {
+      await env.ATTACHMENTS_BUCKET.delete(objectKey);
+    } catch {
+      console.error('[Worker] Compensating R2 delete failed after upstream finalization error');
+    }
+    throw error;
+  }
+
+  if (!finalized || !finalized.attachment_id || finalized.object_key !== objectKey) {
+    try {
+      await env.ATTACHMENTS_BUCKET.delete(objectKey);
+    } catch {
+      console.error('[Worker] Compensating R2 delete failed after finalization rejection');
+    }
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  return Response.json({ objectKey, sizeBytes: body.byteLength, mimeType });
 }
 
 async function getAttachment(
@@ -133,16 +191,19 @@ async function getAttachment(
   });
   if (!authz) return new Response('Unauthorized', { status: 401 });
   if (!authz.allowed) return new Response('Not Found', { status: 404 });
-  const canonicalKey = authz.object_key || objectKey;
-  const object = await env.ATTACHMENTS_BUCKET.get(canonicalKey);
+
+  // Security boundary: NEVER trust returned object_key over locally derived key!
+  if (!authz.object_key || authz.object_key !== objectKey) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const object = await env.ATTACHMENTS_BUCKET.get(objectKey);
   if (!object) {
     return new Response('Not Found', { status: 404 });
   }
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set('etag', object.httpEtag);
-  // Stored bytes are user-supplied. Never let a browser sniff them into something executable,
-  // and never let one render in this Worker's origin.
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Content-Disposition', 'attachment');
   headers.set('Cache-Control', 'private, no-store');
@@ -155,15 +216,29 @@ async function deleteAttachment(
   objectKey: string,
   parsed: { noteId: string; attachmentId: string },
 ): Promise<Response> {
+  // Phase 1: Preflight delete authorization
   const authz = await authorizeAttachment(request, env, 'authorize_note_attachment_delete', {
     p_note_id: parsed.noteId,
     p_attachment_id: parsed.attachmentId,
   });
   if (!authz) return new Response('Unauthorized', { status: 401 });
   if (!authz.allowed) return new Response('Not Found', { status: 404 });
-  const canonicalKey = authz.object_key || objectKey;
-  await env.ATTACHMENTS_BUCKET.delete(canonicalKey);
-  return Response.json({ deleted: true, objectKey: canonicalKey });
+
+  // Security boundary: NEVER trust returned object_key over locally derived key!
+  if (!authz.object_key || authz.object_key !== objectKey) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  // Phase 2: Idempotent R2 delete
+  await env.ATTACHMENTS_BUCKET.delete(objectKey);
+
+  // Phase 3: Finalize metadata delete
+  await authorizeAttachment(request, env, 'finalize_note_attachment_delete', {
+    p_note_id: parsed.noteId,
+    p_attachment_id: parsed.attachmentId,
+  });
+
+  return Response.json({ deleted: true, objectKey });
 }
 
 export default {

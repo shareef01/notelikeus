@@ -10,9 +10,9 @@ select public.apply_note_change(
 );
 
 select lives_ok(
-  $$ select public.register_note_attachment(
-        'att-a',
+  $$ select public.finalize_note_attachment_put(
         '9',
+        'att-a',
         public.expected_attachment_object_key(
           tests.get_supabase_uid('attach_list@notelikeus.test'),
           '9',
@@ -22,7 +22,7 @@ select lives_ok(
         10,
         'image'
       ) $$,
-  'user can register an attachment'
+  'user can finalize an attachment'
 );
 
 select results_eq(

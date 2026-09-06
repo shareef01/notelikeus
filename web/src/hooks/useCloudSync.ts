@@ -1,19 +1,17 @@
 import { useAuthListener } from '@/hooks/useAuth';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { useNotesStore } from '@/store/notesStore';
 
-export type CloudSyncStatus = 'unknown' | 'synced' | 'offline';
+export type CloudSyncStatus = 'unknown' | 'online' | 'offline';
 
 /**
- * Read-only sync status for the settings screen. Note saves write locally then to Supabase
- * (see noteActions.ts); Realtime (see useNotesSync.ts) wakes an authoritative pull.
+ * Read-only connectivity status for the settings screen.
+ * Reflects network reachability rather than falsely claiming full note synchronization.
  */
 export function useCloudSync() {
   const { userId, user, isGuest } = useAuthListener();
   const online = useOnlineStatus();
-  const notes = useNotesStore((s) => s.notes);
 
-  const status: CloudSyncStatus = !userId ? 'unknown' : online ? 'synced' : 'offline';
+  const status: CloudSyncStatus = !userId ? 'unknown' : online ? 'online' : 'offline';
 
   return {
     userId,
@@ -21,6 +19,6 @@ export function useCloudSync() {
     isGoogleAccount: Boolean(userId),
     isGuest,
     status,
-    syncedCount: notes.length,
+    online,
   };
 }

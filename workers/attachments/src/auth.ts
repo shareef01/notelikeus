@@ -11,6 +11,16 @@ export interface WorkerEnv {
   ALLOWED_ORIGINS?: string;
 }
 
+export class UpstreamServiceError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number = 502,
+  ) {
+    super(message);
+    this.name = 'UpstreamServiceError';
+  }
+}
+
 export async function resolveAuthenticatedUserId(
   request: Request,
   env: Pick<WorkerEnv, 'SUPABASE_URL' | 'SUPABASE_ANON_KEY'>,
@@ -20,13 +30,27 @@ export async function resolveAuthenticatedUserId(
   const token = authHeader.slice('Bearer '.length).trim();
   if (!token) return null;
 
-  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/user`, {
-    headers: {
-      apikey: env.SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, '')}/auth/v1/user`, {
+      headers: {
+        apikey: env.SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${token}`,
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new UpstreamServiceError('Upstream auth service unreachable', 503);
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    return null;
+  }
+  if (response.status >= 500) {
+    throw new UpstreamServiceError('Upstream auth service error', 502);
+  }
   if (!response.ok) return null;
+
   const payload = (await response.json()) as { id?: string };
   return payload.id?.trim() || null;
 }

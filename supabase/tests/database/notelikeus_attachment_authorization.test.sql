@@ -44,8 +44,8 @@ select results_eq(
 
 select tests.authenticate_as('authz_a@notelikeus.test');
 select throws_ok(
-  $$ select public.register_note_attachment(
-       'bad id', '1',
+  $$ select public.finalize_note_attachment_put(
+       '1', 'bad id',
        public.expected_attachment_object_key(auth.uid(), '1', 'bad id'),
        'image/png', 12, 'image'
      ) $$,
@@ -55,8 +55,8 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$ select public.register_note_attachment(
-       'att2', '1',
+  $$ select public.finalize_note_attachment_put(
+       '1', 'att2',
        public.expected_attachment_object_key(auth.uid(), '1', 'att2'),
        'text/html', 12, 'image'
      ) $$,
@@ -66,8 +66,8 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$ select public.register_note_attachment(
-       'att3', '1',
+  $$ select public.finalize_note_attachment_put(
+       '1', 'att3',
        public.expected_attachment_object_key(auth.uid(), '1', 'att3'),
        'image/png', 10485761, 'image'
      ) $$,
@@ -77,14 +77,20 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$ select public.register_note_attachment(
-       'att4', '1',
+  $$ select public.finalize_note_attachment_put(
+       '1', 'att4',
        public.expected_attachment_object_key(auth.uid(), '1', 'att4'),
        'image/png', 12, 'video'
      ) $$,
   '22023',
   null,
   'disallowed attachment type rejected'
+);
+
+select public.finalize_note_attachment_put(
+  '1', 'att1',
+  public.expected_attachment_object_key(auth.uid(), '1', 'att1'),
+  'image/png', 12, 'image'
 );
 
 select results_eq(

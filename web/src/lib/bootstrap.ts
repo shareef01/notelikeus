@@ -1,4 +1,5 @@
 import { clearOwner } from '@/lib/local/notesLocalRepository';
+import { clearPendingAttachmentsForOwner } from '@/lib/local/pendingAttachmentRepository';
 import { isSupabaseBackendEnabled, loadSupabaseAnonKey, loadSupabaseUrl } from '@/lib/supabase/env';
 import { isBrowserSafeSupabaseKey } from '@/lib/supabase/backendFlag';
 import { LEGACY_NOTES_STORAGE_KEY } from '@/lib/notes/legacyLocalMigration';
@@ -136,17 +137,18 @@ export function clearLocalUserData(): void {
 }
 
 /**
- * Account switch only: clear session state and wipe the prior account's IndexedDB namespace so
- * the next account cannot read it. Normal sign-out must NOT call this — unsynced offline edits
- * must remain in IndexedDB until the same account signs in again and syncs.
+ * Account switch only: clear session state and wipe the prior account's IndexedDB namespace and
+ * pending attachments so the next account cannot read it. Normal sign-out must NOT call this —
+ * unsynced offline edits must remain in IndexedDB until the same account signs in again and syncs.
  */
-export function clearLocalUserDataForAccountSwitch(previousOwnerId: string): void {
+export async function clearLocalUserDataForAccountSwitch(previousOwnerId: string): Promise<void> {
   clearLocalUserData();
-  void clearOwner(previousOwnerId).catch((error: unknown) => {
-    // Async owner wipe is best-effort. A leftover A namespace must never be listed under B:
-    // IndexedDB records stay owner-keyed, and the in-memory store was already reset above.
-    console.warn('[Notelikeus] Failed to clear IndexedDB owner namespace:', error);
-  });
+  await clearOwner(previousOwnerId);
+  try {
+    await clearPendingAttachmentsForOwner(previousOwnerId);
+  } catch (error) {
+    console.warn('[Notelikeus] Failed to clear pending attachments on account switch:', error);
+  }
 }
 
 /** Runs once before the app shell renders. Never blocks forever. */
