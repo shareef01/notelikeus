@@ -11,11 +11,12 @@ describe('Cloudflare Pages static artifacts', () => {
     expect(redirects).toContain('/index.html');
   });
 
-  it('ships security headers with pinned Supabase connect-src', () => {
+  it('ships security headers; Supabase connect-src is pinned at build time', () => {
     const headers = readFileSync(join(publicDir, '_headers'), 'utf8');
     expect(headers).toContain('X-Frame-Options: DENY');
-    expect(headers).toContain('https://cqydlidescvmpfviwncf.supabase.co');
-    expect(headers).toContain('wss://cqydlidescvmpfviwncf.supabase.co');
+    expect(headers).toContain("connect-src 'self'");
+    expect(headers).toContain('https://accounts.google.com');
+    expect(headers).not.toMatch(/https:\/\/[a-z0-9]+\.supabase\.co/);
     expect(headers).not.toContain('https://*.supabase.co');
     expect(headers).not.toContain('https://*.workers.dev');
     expect(headers).toContain('no-cache, no-store, must-revalidate');
