@@ -143,6 +143,8 @@ export function clearLocalUserData(): void {
 export function clearLocalUserDataForAccountSwitch(previousOwnerId: string): void {
   clearLocalUserData();
   void clearOwner(previousOwnerId).catch((error: unknown) => {
+    // Async owner wipe is best-effort. A leftover A namespace must never be listed under B:
+    // IndexedDB records stay owner-keyed, and the in-memory store was already reset above.
     console.warn('[Notelikeus] Failed to clear IndexedDB owner namespace:', error);
   });
 }

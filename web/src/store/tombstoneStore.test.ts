@@ -44,5 +44,35 @@ describe('tombstoneStore', () => {
     expect(useTombstoneStore.getState().isDeleted('b')).toBe(true);
     useTombstoneStore.getState().reset();
     expect(useTombstoneStore.getState().deletedAtById).toEqual({});
+    expect(useTombstoneStore.getState().restoredIds).toEqual([]);
+  });
+
+  it('does not re-import a cloud tombstone for a restored note', () => {
+    useTombstoneStore.getState().markRestored('a');
+    useTombstoneStore.getState().mergeFromCloud({ a: 100, b: 200 });
+    expect(useTombstoneStore.getState().isDeleted('a')).toBe(false);
+    expect(useTombstoneStore.getState().isDeleted('b')).toBe(true);
+  });
+
+  it('acknowledgeRestoredLiveNotes clears leftover local suppression', () => {
+    useTombstoneStore.getState().markDeleted('a', 50);
+    useTombstoneStore.getState().markRestored('a');
+    useTombstoneStore.getState().acknowledgeRestoredLiveNotes(['a', 'other']);
+    expect(useTombstoneStore.getState().isDeleted('a')).toBe(false);
+    expect(useTombstoneStore.getState().isRestored('a')).toBe(false);
+  });
+
+  it('a later delete cancels an in-flight restore marker', () => {
+    useTombstoneStore.getState().markRestored('a');
+    useTombstoneStore.getState().markDeleted('a', 10);
+    expect(useTombstoneStore.getState().isRestored('a')).toBe(false);
+    expect(useTombstoneStore.getState().isDeleted('a')).toBe(true);
+  });
+
+  it('a restore cancels pending attachment GC so blobs are not deleted after undo', () => {
+    useTombstoneStore.getState().markPendingAttachmentGc('a', ['att-1']);
+    useTombstoneStore.getState().markRestored('a');
+    expect(useTombstoneStore.getState().pendingAttachmentGcByNoteId.a).toBeUndefined();
+    expect(useTombstoneStore.getState().isRestored('a')).toBe(true);
   });
 });

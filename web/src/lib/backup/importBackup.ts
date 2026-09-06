@@ -7,6 +7,7 @@ import {
   MAX_BACKUP_FILE_BYTES,
   MAX_BACKUP_LABELS,
   MAX_BACKUP_NOTES,
+  MAX_JSON_DEPTH,
   MAX_NOTE_CHECKLIST_ITEMS,
   MAX_NOTE_CONTENT_CHARS,
   MAX_NOTE_LABELS,
@@ -22,6 +23,26 @@ interface BackupRoot {
   version?: number;
   notes?: unknown[];
   labels?: unknown[];
+}
+
+/** Version 0 is the intentional legacy format (missing/omitted version). */
+export function parseBackupVersion(value: unknown): number {
+  if (value === undefined || value === null) return 0;
+  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+    throw new Error('Invalid backup version');
+  }
+  return value;
+}
+
+function jsonNestingDepth(value: unknown, depth = 1): number {
+  if (value === null || typeof value !== 'object') return depth;
+  let max = depth;
+  const children = Array.isArray(value) ? value : Object.values(value as Record<string, unknown>);
+  for (const child of children) {
+    max = Math.max(max, jsonNestingDepth(child, depth + 1));
+    if (max > MAX_JSON_DEPTH) return max;
+  }
+  return max;
 }
 
 function nextNotePosition(notes: Note[]): number {
@@ -53,7 +74,8 @@ function collectLabelNames(root: BackupRoot, noteEntries: unknown[]): Set<string
     if (name) names.add(name);
     return true;
   };
-  for (const entry of root.labels ?? []) {
+  const rootLabels = Array.isArray(root.labels) ? root.labels : [];
+  for (const entry of rootLabels) {
     if (!add(entry)) return names;
   }
   for (const entry of noteEntries) {
@@ -83,8 +105,8 @@ function noteFromBackupEntry(
     .filter((name) => name.length > 0)
     .slice(0, MAX_NOTE_LABELS);
 
-  // cloudMapToNote coerces types; the caps below keep an imported note inside the Postgres
-  // CHECK limits so it can still sync after import.
+  // cloudMapToNote coerces types; the caps below keep an imported note inside the limits
+  // apply_note_change / validate_note_payload enforce, so it can still sync after import.
   const mapped = cloudMapToNote(String(localId), {
     ...data,
     localId,
@@ -114,10 +136,17 @@ export function importNotesFromBackup(json: unknown, existingNotes: Note[]): {
     throw new Error('Invalid backup file');
   }
 
+  if (jsonNestingDepth(json) > MAX_JSON_DEPTH) {
+    throw new Error('Backup file is too deeply nested');
+  }
+
   const root = json as BackupRoot;
-  const version = typeof root.version === 'number' ? root.version : 0;
+  const version = parseBackupVersion(root.version);
   if (version > BACKUP_VERSION) {
     throw new Error(`Unsupported backup version: ${version}`);
+  }
+  if (root.labels != null && !Array.isArray(root.labels)) {
+    throw new Error('Backup labels must be an array');
   }
 
   const noteEntries = Array.isArray(root.notes) ? root.notes : [];

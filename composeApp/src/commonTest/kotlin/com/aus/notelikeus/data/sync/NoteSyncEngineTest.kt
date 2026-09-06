@@ -7,6 +7,7 @@ import com.aus.notelikeus.data.local.entity.NoteEntity
 import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
 import com.aus.notelikeus.data.mapper.toNote
 import com.aus.notelikeus.data.mapper.toNoteEntity
+import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import kotlinx.coroutines.test.runTest
@@ -437,6 +438,173 @@ class NoteSyncEngineTest {
         assertTrue(stateStore.isDeleted(42L))
         assertTrue(42L in transport.tombstones)
         assertTrue(42L in transport.deletedNoteIds)
+    }
+
+    @Test
+    fun `deleteNote does not destroy attachments when server delete fails`() = runTest {
+        setup()
+        val attachments = listOf(
+            Attachment(id = "a1", noteId = 42L, storagePath = "r2:owners/uid/notes/42/a1"),
+        )
+        noteDao.insertNote(
+            Note(id = 42L, title = "Live", content = "body", timestamp = 1L, color = 0, attachments = attachments)
+                .toNoteEntity(),
+        )
+        var gcCalls = 0
+        engine = NoteSyncEngine(
+            transport = transport,
+            noteDao = noteDao,
+            labelDao = labelDao,
+            syncStateStore = stateStore,
+            uidProvider = { Result.success("uid") },
+            deleteNoteAttachments = { _, _ -> gcCalls++ },
+        )
+        stateStore.setLastMergedUserId("uid")
+        transport.deleteNotesFailure = IllegalStateException("rpc failed")
+
+        assertTrue(engine.deleteNote(42L).isFailure)
+        assertEquals(0, gcCalls)
+        assertTrue(stateStore.isDeleted(42L))
+        assertTrue(42L !in stateStore.pendingAttachmentGcIds())
+    }
+
+    @Test
+    fun `deleteNote stays deleted when attachment GC fails and remains retryable`() = runTest {
+        setup()
+        val attachments = listOf(
+            Attachment(id = "a1", noteId = 42L, storagePath = "r2:owners/uid/notes/42/a1"),
+        )
+        noteDao.insertNote(
+            Note(id = 42L, title = "Gone", content = "body", timestamp = 1L, color = 0, attachments = attachments)
+                .toNoteEntity(),
+        )
+        var gcCalls = 0
+        engine = NoteSyncEngine(
+            transport = transport,
+            noteDao = noteDao,
+            labelDao = labelDao,
+            syncStateStore = stateStore,
+            uidProvider = { Result.success("uid") },
+            deleteNoteAttachments = { _, _ ->
+                gcCalls++
+                if (gcCalls == 1) error("r2 unavailable")
+            },
+        )
+        stateStore.setLastMergedUserId("uid")
+
+        assertTrue(engine.deleteNote(42L).isSuccess)
+        assertTrue(42L in transport.deletedNoteIds)
+        assertTrue(stateStore.isDeleted(42L))
+        assertTrue(42L in stateStore.pendingAttachmentGcIds())
+        assertEquals(1, gcCalls)
+
+        assertTrue(engine.downloadAllNotes().isSuccess)
+        assertEquals(2, gcCalls)
+        assertTrue(42L !in stateStore.pendingAttachmentGcIds())
+    }
+
+    @Test
+    fun `process death after server delete retries attachment GC on reconcile`() = runTest {
+        setup()
+        val attachments = listOf(
+            Attachment(id = "a1", noteId = 7L, storagePath = "r2:owners/uid/notes/7/a1"),
+        )
+        noteDao.insertNote(
+            Note(id = 7L, title = "x", content = "y", timestamp = 1L, color = 0, attachments = attachments)
+                .toNoteEntity(),
+        )
+        var gcCalls = 0
+        engine = NoteSyncEngine(
+            transport = transport,
+            noteDao = noteDao,
+            labelDao = labelDao,
+            syncStateStore = stateStore,
+            uidProvider = { Result.success("uid") },
+            deleteNoteAttachments = { _, _ -> gcCalls++ },
+        )
+        stateStore.setLastMergedUserId("uid")
+        stateStore.markDeleted(7L, 1L)
+        stateStore.markPendingAttachmentGc(7L)
+        transport.deletedNoteIds += 7L
+        transport.tombstones[7L] = 1L
+
+        assertTrue(engine.downloadAllNotes().isSuccess)
+        assertEquals(1, gcCalls)
+        assertTrue(7L !in stateStore.pendingAttachmentGcIds())
+    }
+
+    @Test
+    fun `duplicate attachment GC is idempotent`() = runTest {
+        setup()
+        var gcCalls = 0
+        engine = NoteSyncEngine(
+            transport = transport,
+            noteDao = noteDao,
+            labelDao = labelDao,
+            syncStateStore = stateStore,
+            uidProvider = { Result.success("uid") },
+            deleteNoteAttachments = { _, _ -> gcCalls++ },
+        )
+        stateStore.setLastMergedUserId("uid")
+        stateStore.markPendingAttachmentGc(9L)
+        assertTrue(engine.downloadAllNotes().isSuccess)
+        assertEquals(1, gcCalls)
+        stateStore.markPendingAttachmentGc(9L)
+        assertTrue(engine.downloadAllNotes().isSuccess)
+        assertEquals(2, gcCalls)
+        assertTrue(9L !in stateStore.pendingAttachmentGcIds())
+    }
+
+    @Test
+    fun `restoreNote cancels pending attachment GC`() = runTest {
+        setup()
+        stateStore.markPendingAttachmentGc(11L, listOf("att-1"))
+        noteDao.insertNote(Note(id = 11L, title = "Back", content = "body", timestamp = 5L, color = 0).toNoteEntity())
+
+        assertTrue(engine.restoreNote(11L).isSuccess)
+        assertTrue(11L !in stateStore.pendingAttachmentGcIds())
+    }
+
+    @Test
+    fun `restoreNote keeps the marker when the restore RPC fails`() = runTest {
+        setup()
+        stateStore.markDeleted(11L, 99L)
+        noteDao.insertNote(Note(id = 11L, title = "Back", content = "body", timestamp = 5L, color = 0).toNoteEntity())
+        transport.restoreNoteFailure = IllegalStateException("rpc failed")
+
+        assertTrue(engine.restoreNote(11L).isFailure)
+        assertTrue(11L in stateStore.restoredIds())
+        assertFalse(stateStore.isDeleted(11L))
+        assertTrue(11L !in transport.notes)
+    }
+
+    @Test
+    fun `process death after server restore clears the marker on next merge`() = runTest {
+        setup()
+        noteDao.insertNote(Note(id = 11L, title = "Back", content = "body", timestamp = 5L, color = 0).toNoteEntity())
+        transport.notes[11L] = CloudNoteRecord(
+            noteId = 11L, serverUpdatedAt = 200_000L, clientTimestamp = 5L,
+            title = "Back", content = "body", timestamp = 5L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null,
+            labels = emptyList(), checklistItems = emptyList(),
+        )
+        stateStore.markRestored(11L)
+
+        assertTrue(engine.downloadAllNotes().isSuccess)
+        assertFalse(11L in stateStore.restoredIds())
+    }
+
+    @Test
+    fun `duplicate restore is idempotent`() = runTest {
+        setup()
+        noteDao.insertNote(Note(id = 11L, title = "Back", content = "body", timestamp = 5L, color = 0).toNoteEntity())
+
+        assertTrue(engine.restoreNote(11L).isSuccess)
+        assertTrue(engine.restoreNote(11L).isSuccess)
+        assertEquals(2, transport.restoreNoteCalls)
+        assertTrue(11L in transport.notes)
+        assertFalse(11L in stateStore.restoredIds())
     }
 
     // ---- downloadAllNotes ----

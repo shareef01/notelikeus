@@ -115,6 +115,48 @@ class SharedPrefsNoteSyncStateStore(
         if (current.removeAll(ids.toSet())) writeRestored(current)
     }
 
+    override fun markPendingAttachmentGc(noteId: Long, attachmentIds: Collection<String>) {
+        val map = pendingAttachmentGcEntries().mapValues { it.value.toMutableSet() }.toMutableMap()
+        map.getOrPut(noteId) { mutableSetOf() }.addAll(attachmentIds)
+        writePendingGc(map)
+    }
+
+    override fun pendingAttachmentGcIds(): Set<Long> = pendingAttachmentGcEntries().keys
+
+    override fun pendingAttachmentGcEntries(): Map<Long, Set<String>> {
+        val json = prefs.getString(KEY_PENDING_ATTACHMENT_GC, null) ?: return emptyMap()
+        return runCatching {
+            val obj = JSONObject(json)
+            buildMap {
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val id = key.toLongOrNull() ?: continue
+                    val array = obj.optJSONArray(key)
+                    val ids = buildSet {
+                        if (array != null) {
+                            for (i in 0 until array.length()) add(array.optString(i))
+                        }
+                    }
+                    put(id, ids)
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    override fun clearPendingAttachmentGc(noteId: Long) {
+        val map = pendingAttachmentGcEntries().toMutableMap()
+        if (map.remove(noteId) != null) writePendingGc(map)
+    }
+
+    private fun writePendingGc(map: Map<Long, Set<String>>) {
+        val obj = JSONObject()
+        for ((id, attachmentIds) in map) {
+            obj.put(id.toString(), org.json.JSONArray(attachmentIds.toList()))
+        }
+        prefs.edit().putString(KEY_PENDING_ATTACHMENT_GC, obj.toString()).apply()
+    }
+
     private fun writeRestored(ids: Set<Long>) {
         prefs.edit().putStringSet(KEY_RESTORED, ids.map { it.toString() }.toSet()).apply()
     }
@@ -167,6 +209,7 @@ class SharedPrefsNoteSyncStateStore(
         private const val KEY_DELETED_JSON = "deleted_at_by_id"
         private const val KEY_KNOWN_CLOUD = "known_cloud_ids"
         private const val KEY_RESTORED = "restored_ids"
+        private const val KEY_PENDING_ATTACHMENT_GC = "pending_attachment_gc_ids"
         private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
         private const val KEY_LAST_RECONCILED = "last_reconciled_at"
     }

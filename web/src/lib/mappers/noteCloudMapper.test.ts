@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cloudMapToNote, type FirestoreNoteDocument } from './noteCloudMapper';
 
 /**
- * Integer cloud fields have to arrive as whole numbers (`notes_timestamp_int` and the other
- * integer CHECKs in the Supabase migrations).
+ * Every field the Supabase payload validator type-checks as an integer has to arrive as a whole number.
  *
  * A fractional value in any of them is accepted by the write path and then rejected by
  * `apply_note_change` on every sync attempt, so the note lives on locally and silently never

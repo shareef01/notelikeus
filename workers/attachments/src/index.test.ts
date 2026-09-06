@@ -33,16 +33,45 @@ function fakeBucket() {
   };
 }
 
-/** Bearer token is the user id; anything else is an invalid token. */
+/**
+ * Bearer token is the user id. Note authorization:
+ * USER_A may use note `1` only; `fake` / `tombstoned` are rejected; USER_B is never allowed.
+ */
 function mockSupabaseAuth(validTokens: Record<string, string>) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (_url: string, init?: RequestInit) => {
-      const auth = (init?.headers as Record<string, string> | undefined)?.Authorization ?? '';
+    vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      const headers = init?.headers as Record<string, string> | undefined;
+      const auth = headers?.Authorization ?? '';
       const token = auth.replace('Bearer ', '');
       const id = validTokens[token];
       if (!id) return new Response('unauthorized', { status: 401 });
-      return new Response(JSON.stringify({ id }), { status: 200 });
+      if (url.includes('/auth/v1/user')) {
+        return new Response(JSON.stringify({ id }), { status: 200 });
+      }
+      if (url.includes('/rest/v1/rpc/authorize_note_attachment_')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          p_note_id?: string;
+          p_attachment_id?: string;
+        };
+        const noteId = body.p_note_id ?? '';
+        const attachmentId = body.p_attachment_id ?? '';
+        const allowed =
+          id === USER_A &&
+          noteId === '1' &&
+          attachmentId !== 'missing' &&
+          !attachmentId.includes(' ');
+        return new Response(
+          JSON.stringify({
+            allowed,
+            object_key: allowed ? `owners/${id}/notes/${noteId}/${attachmentId}` : undefined,
+            max_bytes: 10 * 1024 * 1024,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('not found', { status: 404 });
     }),
   );
 }
@@ -127,8 +156,8 @@ describe('attachment worker owner isolation', () => {
       request('DELETE', '/v1/attachments/1/att1', USER_B),
       env,
     );
-    expect(response.status).toBe(200);
-    // B deleted only their own (absent) key; A's object survives.
+    expect(response.status).toBe(404);
+    // B is not authorized for A's note; generic 404 does not leak A's object. A's object survives.
     expect(bucket.objects.has(`owners/${USER_A}/notes/1/att1`)).toBe(true);
   });
 
@@ -233,6 +262,52 @@ describe('attachment worker upload limits', () => {
       env,
     );
     expect(response.status).toBe(415);
+  });
+
+  it('rejects a PUT for a note the backend does not authorize', async () => {
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/fake/x', USER_A, {
+        body: new Uint8Array([1]),
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+    expect(response.status).toBe(403);
+    expect(bucket.objects.size).toBe(0);
+  });
+
+  it('rejects a PUT for a tombstoned note', async () => {
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/tombstoned/x', USER_A, {
+        body: new Uint8Array([1]),
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it('rejects USER_B uploading into USER_A note 1', async () => {
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/1/att1', USER_B, {
+        body: new Uint8Array([1]),
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it('GET without authorized metadata is a generic 404', async () => {
+    const response = await handleAttachmentRequest(request('GET', '/v1/attachments/1/missing', USER_A), env);
+    expect(response.status).toBe(404);
+  });
+
+  it('DELETE cleanup is idempotent', async () => {
+    const first = await handleAttachmentRequest(request('DELETE', '/v1/attachments/1/att1', USER_A), env);
+    const second = await handleAttachmentRequest(request('DELETE', '/v1/attachments/1/att1', USER_A), env);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
   });
 
   it('serves stored bytes with sniffing disabled', async () => {

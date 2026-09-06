@@ -30,7 +30,7 @@ describe('importNotesFromBackup', () => {
     expect(() => note.title.toLowerCase()).not.toThrow();
   });
 
-  it('clamps fields to the cloud CHECK limits, so imports stay syncable', () => {
+  it('clamps fields to the limits apply_note_change enforces, so imports stay syncable', () => {
     const { merged } = importNotesFromBackup(
       {
         version: 3,
@@ -97,6 +97,31 @@ describe('importNotesFromBackup', () => {
     );
 
     expect(result.labelsCreated).toBe(MAX_BACKUP_LABELS);
+  });
+
+  it('rejects a labels object instead of throwing TypeError', () => {
+    expect(() =>
+      importNotesFromBackup(
+        { version: 3, labels: { name: 'not-an-array' }, notes: [{ title: 'n' }] },
+        [],
+      ),
+    ).toThrow(/labels must be an array/);
+  });
+
+  it('rejects negative, fractional, and non-finite versions', () => {
+    for (const version of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => importNotesFromBackup({ version, notes: [{ title: 'n' }] }, [])).toThrow(
+        /Invalid backup version/,
+      );
+    }
+  });
+
+  it('accepts legacy version 0', () => {
+    const { result } = importNotesFromBackup(
+      { version: 0, notes: [{ title: 'Legacy', content: 'ok', timestamp: 1, color: 0 }] },
+      [],
+    );
+    expect(result.notesImported).toBe(1);
   });
 
   it('still imports every label of an ordinary backup', () => {

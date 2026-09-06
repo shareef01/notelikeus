@@ -68,6 +68,39 @@ export async function listUserAttachments(): Promise<NoteAttachmentMetadata[]> {
   return parseAttachmentMetadataList(data);
 }
 
+export interface PendingDeletedAttachment {
+  attachmentId: string;
+  noteId: string;
+  objectKey: string;
+}
+
+export async function listPendingDeletedAttachments(): Promise<PendingDeletedAttachment[]> {
+  const { data, error } = await getSupabaseClient().rpc('list_pending_deleted_attachments');
+  if (error) throw error;
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((row) => {
+      const rec = (row ?? {}) as Record<string, unknown>;
+      return {
+        attachmentId: String(rec.attachment_id ?? ''),
+        noteId: String(rec.note_id ?? ''),
+        objectKey: String(rec.object_key ?? ''),
+      };
+    })
+    .filter((row) => row.attachmentId.length > 0 && row.noteId.length > 0);
+}
+
+export async function purgeDeletedNoteAttachment(
+  attachmentId: string,
+  noteId: string,
+): Promise<void> {
+  const { error } = await getSupabaseClient().rpc('purge_deleted_note_attachment', {
+    p_attachment_id: attachmentId,
+    p_note_id: noteId,
+  });
+  if (error) throw error;
+}
+
 export async function deleteNoteAttachment(
   attachmentId: string,
   noteId: string,
