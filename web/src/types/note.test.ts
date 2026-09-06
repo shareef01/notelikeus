@@ -54,11 +54,17 @@ describe('local id allocation', () => {
     expect(nextLocalNoteIdAfter(huge)).toBe(huge + 1);
   });
 
-  it('does not collide for two allocations in the same millisecond', () => {
+  it('issues sequential ids from a running max even when the clock is frozen', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2025-07-12T16:37:00Z'));
-    const ids = new Set(Array.from({ length: 50 }, () => nextLocalNoteIdAfter(0)));
-    expect(ids.size).toBeGreaterThan(1);
+    let max = 0;
+    const ids = new Set<number>();
+    for (let i = 0; i < 50; i++) {
+      const id = nextLocalNoteIdAfter(max);
+      ids.add(id);
+      max = id;
+    }
+    expect(ids.size).toBe(50);
   });
 });
 

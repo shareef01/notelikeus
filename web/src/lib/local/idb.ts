@@ -1,4 +1,11 @@
-import { META_STORE, NOTES_DB_NAME, NOTES_DB_VERSION, NOTES_STORE } from '@/lib/local/constants';
+import {
+  ID_SEQUENCE_STORE,
+  META_STORE,
+  NOTES_DB_NAME,
+  NOTES_DB_VERSION,
+  NOTES_STORE,
+  PENDING_ATTACHMENTS_STORE,
+} from '@/lib/local/constants';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -16,6 +23,16 @@ function openNotesDatabase(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(META_STORE)) {
         db.createObjectStore(META_STORE, { keyPath: 'ownerId' });
+      }
+      if (!db.objectStoreNames.contains(PENDING_ATTACHMENTS_STORE)) {
+        const pending = db.createObjectStore(PENDING_ATTACHMENTS_STORE, {
+          keyPath: ['ownerId', 'attachmentId'],
+        });
+        pending.createIndex('ownerId', 'ownerId', { unique: false });
+        pending.createIndex('ownerNote', ['ownerId', 'noteId'], { unique: false });
+      }
+      if (!db.objectStoreNames.contains(ID_SEQUENCE_STORE)) {
+        db.createObjectStore(ID_SEQUENCE_STORE, { keyPath: 'ownerId' });
       }
     };
     request.onsuccess = () => resolve(request.result);

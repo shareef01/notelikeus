@@ -1,7 +1,7 @@
 import { isPendingAttachment, ATTACHMENT_PENDING_PREFIX } from '@/lib/attachments/attachmentPaths';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { getAttachmentBlobStore } from '@/lib/attachments/attachmentBlobStoreRegistry';
-import { peekPendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
+import { peekPendingAttachment, loadPendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
 import type { Attachment } from '@/types/attachment';
 
 const previewUrls = new Map<string, string>();
@@ -20,7 +20,8 @@ export async function resolveAttachmentPreviewUrl(
 
   if (isPendingAttachment(attachment.storagePath)) {
     const pendingId = attachment.storagePath.slice(ATTACHMENT_PENDING_PREFIX.length);
-    const pending = peekPendingAttachment(pendingId);
+    const pending =
+      peekPendingAttachment(pendingId) ?? (await loadPendingAttachment(pendingId));
     if (!pending) return null;
     const url = URL.createObjectURL(pending.blob);
     previewUrls.set(key, url);

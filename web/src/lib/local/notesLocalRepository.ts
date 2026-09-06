@@ -20,6 +20,8 @@ export interface LocalOwnerMeta {
   /** Phase 6: Firebase cloud snapshot imported into Supabase. */
   firebaseCloudImported?: boolean;
   firebaseCloudImportedAt?: number;
+  /** Complete cloud id set from the last successful snapshot. Survives reload. */
+  knownRemoteIds?: string[];
 }
 
 interface StoredNoteRecord {
@@ -116,6 +118,7 @@ export async function setOwnerMeta(
       'firebaseHydrated' | 'remoteHydrated' | 'hydratedAt' | 'lastRemoteRevision' | 'noteRevisions'
       | 'firebaseNamespaceMigrated' | 'migratedFromOwnerId' | 'migratedAt'
       | 'firebaseCloudImported' | 'firebaseCloudImportedAt'
+      | 'knownRemoteIds'
     >
   >,
 ): Promise<void> {

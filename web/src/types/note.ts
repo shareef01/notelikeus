@@ -24,11 +24,10 @@ export interface Note {
   position: number;
   reminderTimestamp: number | null;
   /**
-   * Firestore's server-assigned commit time (epoch millis) as of the last time this device
-   * observed a write to this note in the cloud. Null until the note has synced at least once
-   * under this scheme. This — not `timestamp` — is what conflict resolution compares, since a
-   * device's own clock can be wrong or spoofed; see notesRepository.ts's `mergeRemoteNotes` and
-   * the shared Kotlin engine's NoteSyncEngine.kt.
+   * Server-assigned commit time (epoch millis) from the last confirmed cloud write.
+   * Display/conflict metadata only — revision knowledge plus the RPC decide the winner.
+   * A client wall clock must not silently discard a local mutation based on the current revision.
+   * Null until the note has synced at least once under this scheme.
    */
   serverUpdatedAt: number | null;
   labels: Label[];
@@ -88,14 +87,13 @@ export function allocateLocalNoteId(existing: Note[]): number {
  * Same allocation rule as {@link allocateLocalNoteId}, but takes the current max directly
  * instead of rescanning a notes array — lets callers that allocate many ids in a row (e.g.
  * backup import) track a running max instead of an O(n) scan per id.
+ *
+ * This is the monotonic floor only. Cross-tab uniqueness comes from
+ * {@link allocateLocalNoteIdForOwner} / {@link reserveLocalNoteIdRange}, which reserve the
+ * id in IndexedDB. Do not use this alone to mint ids from two tabs at once.
  */
 export function nextLocalNoteIdAfter(maxId: number): number {
-  // A bare Date.now() can collide when two tabs/windows each create their first note
-  // within the same millisecond (both compute maxId=0 and the same candidate), silently
-  // clobbering one note's cloud document. The random suffix makes that require the same
-  // millisecond AND the same 1-in-1000 draw.
-  const randomSuffix = Math.floor(Math.random() * 1000);
-  const candidate = Date.now() * 1000 + randomSuffix;
+  const candidate = Date.now() * 1000;
   return Math.max(maxId + 1, candidate);
 }
 

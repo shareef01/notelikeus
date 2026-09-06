@@ -153,3 +153,81 @@ describe('supabaseRemoteNotesDataSource.uploadAllNotes', () => {
     expect(applyNoteChange).not.toHaveBeenCalled();
   });
 });
+
+describe('supabaseRemoteNotesDataSource.syncNotesWithCloud', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    useTombstoneStore.getState().reset();
+    await resetNotesDatabaseForTests();
+    indexedDB.deleteDatabase(NOTES_DB_NAME);
+    await resetNotesDatabaseForTests();
+  });
+
+  it('propagates a transport failure instead of swallowing it as a conflict', async () => {
+    const { RemoteTransportError } = await import('@/lib/remote/remoteErrors');
+    vi.mocked(fetchSnapshotNotes).mockResolvedValue(emptySnapshot());
+    vi.mocked(applyNoteChange).mockRejectedValueOnce(new RemoteTransportError('timeout'));
+
+    const local = note({ id: '1', localId: 1, title: 'Unsynced', serverUpdatedAt: null });
+    await expect(
+      supabaseRemoteNotesDataSource.syncNotesWithCloud(USER, [local], new Set()),
+    ).rejects.toBeInstanceOf(RemoteTransportError);
+  });
+
+  it('follows conflict policy for a revision conflict without exposing note content', async () => {
+    const { RevisionConflictError } = await import('@/lib/remote/remoteErrors');
+    const remote = note({
+      id: '1',
+      localId: 1,
+      title: 'Remote secret',
+      content: 'Body secret',
+      serverUpdatedAt: 80,
+    });
+    vi.mocked(fetchSnapshotNotes).mockResolvedValue({
+      notes: [remote],
+      tombstones: {},
+      noteRevisions: { '1': 12 },
+      maxRevision: 12,
+    });
+    vi.mocked(applyNoteChange).mockRejectedValueOnce(
+      new RevisionConflictError('1', remote),
+    );
+
+    const local = note({
+      id: '1',
+      localId: 1,
+      title: 'Local secret',
+      serverUpdatedAt: 80,
+    });
+    const result = await supabaseRemoteNotesDataSource.syncNotesWithCloud(
+      USER,
+      [local],
+      new Set(['1']),
+    );
+    expect(result.merged[0]?.title).toBe('Remote secret');
+  });
+
+  it('uploads a local-only unsynced note beside a non-empty remote set', async () => {
+    vi.mocked(applyNoteChange).mockImplementation(async (_userId, uploaded) => ({
+      ...uploaded,
+      serverUpdatedAt: 9,
+    }));
+    const remote = note({ id: '2', localId: 2, title: 'Remote B', serverUpdatedAt: 50 });
+    vi.mocked(fetchSnapshotNotes).mockResolvedValue({
+      notes: [remote],
+      tombstones: {},
+      noteRevisions: { '2': 4 },
+      maxRevision: 4,
+    });
+    const localOnly = note({ id: '1', localId: 1, title: 'Local A', serverUpdatedAt: null });
+
+    const result = await supabaseRemoteNotesDataSource.syncNotesWithCloud(
+      USER,
+      [localOnly],
+      new Set(['2']),
+    );
+
+    expect(result.merged.map((entry) => entry.id).sort()).toEqual(['1', '2']);
+    expect(applyNoteChange).toHaveBeenCalled();
+  });
+});

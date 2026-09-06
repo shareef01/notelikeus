@@ -1,6 +1,8 @@
 import { commitImportedNotes } from '@/lib/backup/commitImportedNotes';
 import { exportNotesBackup } from '@/lib/backup/exportBackup';
 import { importNotesFromBackup, readBackupFile } from '@/lib/backup/importBackup';
+import { reserveLocalNoteIdRange } from '@/lib/local/localNoteIdAllocator';
+import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import { useToastStore } from '@/store/toastStore';
 import type { Note } from '@/types/note';
 
@@ -58,7 +60,16 @@ export function useAccountActions({
   const importBackup = async (file: File) => {
     try {
       const json = await readBackupFile(file);
-      const { merged, result } = importNotesFromBackup(json, notes);
+      const ownerId = resolveOwnerId();
+      const noteEntries = Array.isArray((json as { notes?: unknown }).notes)
+        ? ((json as { notes: unknown[] }).notes)
+        : [];
+      const existingMax = notes.reduce((max, note) => Math.max(max, note.localId), 0);
+      const firstLocalId =
+        ownerId && noteEntries.length > 0
+          ? await reserveLocalNoteIdRange(ownerId, noteEntries.length, existingMax)
+          : undefined;
+      const { merged, result } = importNotesFromBackup(json, notes, { firstLocalId });
       const uploadedToCloud = await commitImportedNotes(
         merged,
         result.notesImported,

@@ -5,7 +5,7 @@ import { clearLocalUserData } from '@/lib/bootstrap';
 interface AuthState {
   user: AuthUser | null;
   isReady: boolean;
-  /** Try-out mode: app shell renders without an account, notes live in memory only. */
+  /** Try-out mode: app shell renders without an account; notes live in the guest IndexedDB namespace. */
   guestMode: boolean;
   setUser: (user: AuthUser | null) => void;
   setReady: (ready: boolean) => void;

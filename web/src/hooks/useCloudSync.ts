@@ -1,26 +1,51 @@
 import { useAuthListener } from '@/hooks/useAuth';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { useNotesStore } from '@/store/notesStore';
+import { selectSyncPhase, useSyncStore, type SyncPhase } from '@/store/syncStore';
+import { useEffect } from 'react';
 
-export type CloudSyncStatus = 'unknown' | 'synced' | 'offline';
+export type CloudSyncStatus = SyncPhase;
 
 /**
- * Read-only sync status for the settings screen. Note saves write locally then to Supabase
- * (see noteActions.ts); Realtime (see useNotesSync.ts) wakes an authoritative pull.
+ * Read-only sync status for the settings screen and editor chrome.
+ * Never maps `navigator.onLine` alone to "synced".
  */
+export function formatSyncPhase(phase: SyncPhase): string {
+  switch (phase) {
+    case 'synced':
+      return 'Synced';
+    case 'syncing':
+      return 'Syncing…';
+    case 'offline-with-local-changes':
+      return 'Offline — saved locally';
+    case 'error':
+      return 'Sync error';
+    default:
+      return 'Local only';
+  }
+}
+
 export function useCloudSync() {
   const { userId, user, isGuest } = useAuthListener();
   const online = useOnlineStatus();
-  const notes = useNotesStore((s) => s.notes);
+  const sync = useSyncStore();
 
-  const status: CloudSyncStatus = !userId ? 'unknown' : online ? 'synced' : 'offline';
+  useEffect(() => {
+    useSyncStore.getState().markOnline(online);
+  }, [online]);
+
+  const phase = userId || isGuest ? selectSyncPhase(sync) : 'idle';
+  const status: CloudSyncStatus = !userId && !isGuest ? 'idle' : phase;
 
   return {
     userId,
     userEmail: user?.email ?? null,
-    isGoogleAccount: Boolean(userId),
+    isGoogleAccount: user?.isGoogleAccount ?? false,
     isGuest,
     status,
-    syncedCount: notes.length,
+    statusLabel: formatSyncPhase(status),
+    pendingLocalMutations: sync.pendingLocalMutations,
+    lastError: sync.lastError,
+    lastSuccessfulReconciliationAt: sync.lastSuccessfulReconciliationAt,
+    syncedCount: sync.lastSyncedRemoteCount,
   };
 }

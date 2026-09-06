@@ -1,9 +1,17 @@
+import { noteSyncPayloadEqual } from '@/lib/notes/noteEquality';
 import type { Note } from '@/types/note';
 
 /**
- * Last-write-wins merge helper shared by the Supabase remote adapter.
- * Prefers server-assigned `serverUpdatedAt`; a confirmed remote beats an unconfirmed local
- * (e.g. backup import) regardless of client `timestamp`.
+ * Whether a local mutation should be sent given the current remote row.
+ *
+ * Server revision (`serverUpdatedAt` as the confirmed-revision marker) is authoritative.
+ * The client wall clock never decides a winner when both sides share a confirmed revision:
+ * a local edit based on revision R may upload even if the device clock is behind the cloud
+ * copy's `timestamp`. Identical payloads are skipped so unchanged notes are not pushed on
+ * every sync.
+ *
+ * Unconfirmed local notes (imports, first write) never overwrite a confirmed remote row.
+ * That decision still belongs to the RPC once a base revision exists.
  */
 export function shouldUploadOverRemote(note: Note, remote: Note | undefined): boolean {
   if (!remote) return true;
@@ -11,7 +19,7 @@ export function shouldUploadOverRemote(note: Note, remote: Note | undefined): bo
     if (note.serverUpdatedAt !== remote.serverUpdatedAt) {
       return note.serverUpdatedAt > remote.serverUpdatedAt;
     }
-    return note.timestamp > remote.timestamp;
+    return !noteSyncPayloadEqual(note, remote);
   }
   if (remote.serverUpdatedAt != null) return false;
   if (note.serverUpdatedAt != null) return true;

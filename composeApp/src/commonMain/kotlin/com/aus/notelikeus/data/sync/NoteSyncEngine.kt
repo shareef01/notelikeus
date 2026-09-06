@@ -116,6 +116,10 @@ class NoteSyncEngine(
 
             for (note in notes) {
                 val noteId = note.id ?: continue
+                val remoteRecord = remoteRecords.find { it.noteId == noteId }
+                if (remoteRecord != null && sameSyncPayload(note, remoteRecord)) {
+                    continue
+                }
                 val remoteServerTs = remoteServerTimestamps[noteId]
                 val remoteTs = remoteTimestamps[noteId]
                 if (cloudWinsConflict(remoteServerTs, note.serverUpdatedAt, remoteTs, note.timestamp)) {
@@ -176,15 +180,11 @@ class NoteSyncEngine(
             for (note in changed) {
                 val noteId = note.id ?: continue
                 val remote = transport.fetchNote(uid, noteId)
-                // A null remote usually means "never synced", the legitimate answer for a new note,
-                // so this cannot key off null alone the way the collection-level guards do. But when
-                // the last full download recorded this id as present in the cloud and no tombstone
-                // has since explained its absence — mergeCloudTombstones ran above, and a genuine
-                // remote delete leaves one — a failed-open fetch is likelier than the document
-                // vanishing. Pushing on that null would resolve the conflict in local's favour and
-                // overwrite whatever is actually there.
                 if (remote == null && noteId in knownCloudIds) {
                     throw SuspectEmptyCloudException(knownCloudIds.size)
+                }
+                if (remote != null && sameSyncPayload(note, remote)) {
+                    continue
                 }
                 val remoteServerTs = remote?.serverUpdatedAt
                 val localServerTs = note.serverUpdatedAt
@@ -214,6 +214,9 @@ class NoteSyncEngine(
                 ?: return@runCatching
             val remote = transport.fetchNote(uid, noteId)
             if (remote != null) {
+                if (sameSyncPayload(note, remote)) {
+                    return@runCatching
+                }
                 val remoteServerTs = remote.serverUpdatedAt
                 val remoteTs = remote.clientTimestamp
                 if (cloudWinsConflict(remoteServerTs, note.serverUpdatedAt, remoteTs, note.timestamp)) {
@@ -429,12 +432,9 @@ class NoteSyncEngine(
             if (remoteServerUpdatedAt != localServerUpdatedAt) {
                 return remoteServerUpdatedAt > localServerUpdatedAt
             }
-            // Same confirmed revision on both sides. Only here does the client clock get a say, and
-            // only as a tie-break: Room keeps the old serverUpdatedAt after a local edit, so a newer
-            // local `timestamp` against an unchanged server stamp is exactly how a pending local edit
-            // announces itself. The tie itself goes to the cloud so an unchanged note is not pushed
-            // back up on every sync.
-            return remoteClientTimestamp != null && remoteClientTimestamp >= localClientTimestamp
+            // Same confirmed revision: the client wall clock must not decide the winner.
+            // Callers skip identical payloads so unchanged notes are not re-uploaded.
+            return false
         }
 
         // Exactly one side has been confirmed by the server: that side wins outright, whatever the
@@ -481,6 +481,23 @@ class NoteSyncEngine(
             return false
         }
         return cloud.checklist.checklistKey() == local.checklist.checklistKey()
+    }
+
+    /** Like [sameContent] but ignores the client wall clock. */
+    internal fun sameSyncPayload(local: Note, remote: CloudNoteRecord): Boolean {
+        if (local.id != remote.noteId) return false
+        if (local.serverUpdatedAt != remote.serverUpdatedAt) return false
+        if (local.title != remote.title) return false
+        if (local.content != remote.content) return false
+        if (local.color != remote.color) return false
+        if (local.position != remote.position) return false
+        if (local.isPinned != remote.isPinned) return false
+        if (local.isArchived != remote.isArchived) return false
+        if (local.isTrashed != remote.isTrashed) return false
+        if (local.reminderTimestamp != remote.reminderTimestamp) return false
+        if (local.labels.map { it.name }.sorted() != remote.labels.sorted()) return false
+        return local.checklist.checklistKey() ==
+            remote.checklistItems.map { Triple(it.position, it.isChecked, it.text) }.sortedBy { it.first }
     }
 
     private fun List<ChecklistItem>.checklistKey(): List<Triple<Int, Boolean, String>> =

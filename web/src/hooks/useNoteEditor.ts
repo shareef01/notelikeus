@@ -13,19 +13,26 @@ import { useNotesStore } from '@/store/notesStore';
 import { useToastStore } from '@/store/toastStore';
 import { createChecklistItem, sortChecklistItems } from '@/types/checklist';
 import type { Label } from '@/types/label';
-import { allocateLocalNoteId } from '@/types/note';
 import { labelFromName } from '@/types/label';
 import { processSmartText, type TextEdit } from '@/lib/text/smartTextProcessor';
+import { createCoalescedPersister } from '@/lib/notes/coalescedPersister';
+import { allocateLocalNoteIdForOwner } from '@/lib/local/localNoteIdAllocator';
+import { GUEST_OWNER_ID } from '@/lib/local/constants';
+import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import {
   createAttachmentId,
+  isPendingAttachment,
   MAX_ATTACHMENT_BYTES,
   pendingStoragePath,
 } from '@/lib/attachments/attachmentPaths';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { getAttachmentBlobStore } from '@/lib/attachments/attachmentBlobStoreRegistry';
-import { releasePendingAttachment, storePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
+import {
+  releasePendingAttachment,
+  storePendingAttachment,
+  rebindPendingAttachmentNote,
+} from '@/lib/attachments/pendingAttachmentStore';
 import { revokeAttachmentPreviewUrl } from '@/lib/attachments/attachmentPreviewCache';
-import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const AUTOSAVE_MS = 1000;
@@ -79,95 +86,124 @@ export function useNoteEditor(noteId: string | 'new' | null) {
   });
   stateRef.current = state;
 
+  const persisterRef = useRef(
+    createCoalescedPersister<EditorState>(async (snapshot, generation) => {
+      const persister = persisterRef.current;
+      const savingForRoute = loadedRouteRef.current;
+      const isCurrentRoute = () => loadedRouteRef.current === savingForRoute;
+      const stillLatest = () =>
+        persister != null &&
+        generation === persister.generation &&
+        !persister.hasQueued;
+
+      if (isNoteEmpty(snapshot)) return;
+      if (
+        routeRef.current &&
+        routeRef.current !== 'new' &&
+        loadedRouteRef.current !== routeRef.current
+      ) {
+        return;
+      }
+
+      if (isCurrentRoute()) {
+        setState((prev) => ({ ...prev, isSaving: true, persistStatus: 'saving' }));
+      }
+
+      let working = { ...snapshot };
+      const updatedTimestamp = Date.now();
+
+      if (!working.id || working.localId == null) {
+        const ownerId = resolveOwnerId() ?? GUEST_OWNER_ID;
+        const existingMax = useNotesStore
+          .getState()
+          .notes.reduce((max, note) => Math.max(max, note.localId), 0);
+        const localId = await allocateLocalNoteIdForOwner(ownerId, existingMax);
+        const id = String(localId);
+        working = {
+          ...working,
+          id,
+          localId,
+          position: working.position || nextNotePosition(),
+          attachments: working.attachments.map((attachment) => ({
+            ...attachment,
+            noteId: localId,
+          })),
+        };
+        for (const attachment of working.attachments) {
+          if (isPendingAttachment(attachment.storagePath)) {
+            await rebindPendingAttachmentNote(attachment.id, id);
+          }
+        }
+      }
+
+      working = {
+        ...working,
+        title: working.title.slice(0, MAX_NOTE_TITLE_CHARS),
+        content: working.content.slice(0, MAX_NOTE_CONTENT_CHARS),
+        timestamp: updatedTimestamp,
+      };
+
+      const stored = working.id
+        ? useNotesStore.getState().notes.find((n) => n.id === working.id)
+        : undefined;
+      if (working.serverUpdatedAt == null && stored?.serverUpdatedAt != null) {
+        working = { ...working, serverUpdatedAt: stored.serverUpdatedAt };
+      }
+
+      const note = buildNoteFromEditor(working);
+      if (!note) {
+        if (isCurrentRoute() && stillLatest()) {
+          setState((prev) => ({ ...prev, isSaving: false, persistStatus: 'idle' }));
+        }
+        return;
+      }
+
+      try {
+        const result = await saveNote(note);
+        if (!isCurrentRoute() || !stillLatest()) return;
+        const persistStatus = result.error
+          ? result.localSaved
+            ? result.attachmentPending
+              ? 'attachment-pending'
+              : 'saved-local'
+            : 'error'
+          : result.attachmentPending
+            ? 'attachment-pending'
+            : result.remoteSynced
+              ? 'synced'
+              : 'saved-local';
+        if (result.error && result.localSaved) {
+          useToastStore
+            .getState()
+            .show(
+              result.attachmentPending
+                ? 'Saved locally. Attachment will upload when you are back online.'
+                : 'Saved locally. Sync will retry when you are back online.',
+              'default',
+            );
+        }
+        setState({
+          ...working,
+          isSaving: false,
+          persistStatus,
+          lastSavedAt: updatedTimestamp,
+        });
+      } catch (error) {
+        console.warn('[Notelikeus] Note save failed:', error);
+        if (isCurrentRoute() && stillLatest()) {
+          useToastStore.getState().show('Could not save changes to this device.', 'error');
+          setState((prev) => ({ ...prev, isSaving: false, persistStatus: 'error' }));
+        }
+      }
+    }),
+  );
+
   const persistNow = useCallback(async () => {
     if (autosaveTimer.current) {
       clearTimeout(autosaveTimer.current);
       autosaveTimer.current = null;
     }
-
-    // Identifies the editor session this save belongs to, so a flush triggered
-    // by navigating away can't land its result on whatever note loads next.
-    const savingForRoute = loadedRouteRef.current;
-    const isCurrentRoute = () => loadedRouteRef.current === savingForRoute;
-
-    const current = stateRef.current;
-    if (isNoteEmpty(current)) return;
-
-    // An edit route whose note never loaded (see the noteId effect) must never be saved: it has
-    // no id, so the allocate-new-id path below would mint a phantom note. Only a 'new' route or
-    // a route that actually loaded may persist.
-    if (
-      routeRef.current &&
-      routeRef.current !== 'new' &&
-      loadedRouteRef.current !== routeRef.current
-    ) {
-      return;
-    }
-
-    setState((prev) => (isCurrentRoute() ? { ...prev, isSaving: true } : prev));
-
-    let working = { ...current };
-    const updatedTimestamp = Date.now();
-
-    if (!working.id || working.localId == null) {
-      const localId = allocateLocalNoteId(useNotesStore.getState().notes);
-      const id = String(localId);
-      working = {
-        ...working,
-        id,
-        localId,
-        position: working.position || nextNotePosition(),
-        attachments: working.attachments.map((attachment) => ({
-          ...attachment,
-          noteId: localId,
-        })),
-      };
-    }
-
-    // Clamp to the same caps the RPCs enforce, so an oversized paste can never wedge
-    // the editor in a permanently-failing autosave. The input maxLength attributes are the
-    // primary guard; this is defense-in-depth for programmatic state changes (smart text,
-    // link wrapping, backup import) that bypass the inputs.
-    working = {
-      ...working,
-      title: working.title.slice(0, MAX_NOTE_TITLE_CHARS),
-      content: working.content.slice(0, MAX_NOTE_CONTENT_CHARS),
-      timestamp: updatedTimestamp,
-    };
-
-    // A remote snapshot can load the editor before the server has assigned a revision.
-    // upsertNote then sees an unconfirmed local vs a confirmed remote and
-    // skips the write — the e2e edit-after-reload path, and any live save in that window.
-    // The store may already have the stamp from a later snapshot; take it without discarding
-    // the in-progress edit. Never adopt a stamp the editor already has: a newer remote stamp
-    // means another device won, and shouldUploadOverRemote must still see that.
-    const stored = working.id
-      ? useNotesStore.getState().notes.find((n) => n.id === working.id)
-      : undefined;
-    if (working.serverUpdatedAt == null && stored?.serverUpdatedAt != null) {
-      working = { ...working, serverUpdatedAt: stored.serverUpdatedAt };
-    }
-
-    const note = buildNoteFromEditor(working);
-    if (!note) {
-      setState((prev) => (isCurrentRoute() ? { ...prev, isSaving: false } : prev));
-      return;
-    }
-
-    try {
-      await saveNote(note);
-      if (isCurrentRoute()) {
-        setState({ ...working, isSaving: false, lastSavedAt: updatedTimestamp });
-      }
-    } catch (error) {
-      // Never wedge the editor on a failed write: reset the
-      // saving flag and surface the failure so the user can retry. Navigation must still work.
-      console.warn('[Notelikeus] Note save failed:', error);
-      useToastStore.getState().show('Could not save changes. Check your connection and try again.', 'error');
-      if (isCurrentRoute()) {
-        setState((prev) => ({ ...prev, isSaving: false }));
-      }
-    }
+    await persisterRef.current.request(stateRef.current);
   }, []);
 
   const scheduleAutosave = useCallback(() => {
@@ -376,7 +412,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       patch((s) => ({ ...s, reminderTimestamp }));
     },
     clearReminder: () => patch((s) => ({ ...s, reminderTimestamp: null })),
-    addAttachment: (file: File) => {
+    addAttachment: async (file: File) => {
       if (!isR2AttachmentsEnabled()) {
         useToastStore.getState().show('Attachments are not enabled', 'error');
         return;
@@ -390,7 +426,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         return;
       }
       const attachmentId = createAttachmentId();
-      storePendingAttachment(attachmentId, file, file.type);
+      await storePendingAttachment(attachmentId, file, file.type, stateRef.current.id);
       patch((s) => ({
         ...s,
         attachments: [
@@ -414,7 +450,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
           .delete(current.id, attachmentId)
           .catch(() => {});
       }
-      releasePendingAttachment(attachmentId);
+      void releasePendingAttachment(attachmentId);
       if (current.id) {
         revokeAttachmentPreviewUrl(current.id, attachmentId);
       }

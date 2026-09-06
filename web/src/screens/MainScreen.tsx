@@ -16,9 +16,8 @@ import { TrashBanner } from '@/components/notes/TrashBanner';
 
 
 import { useAuthListener } from '@/hooks/useAuth';
-
 import { useCloudSync } from '@/hooks/useCloudSync';
-
+import { retryNotesReconciliation } from '@/lib/notes/notesSyncService';
 import { useNotes } from '@/hooks/useNotes';
 
 
@@ -101,6 +100,7 @@ export function MainScreen() {
   const clearRecentSearches = useUiStore((s) => s.clearRecentSearches);
 
   const selectedNoteIds = useUiStore((s) => s.selectedNoteIds);
+  const selectedNoteIdSet = useMemo(() => new Set(selectedNoteIds), [selectedNoteIds]);
   const toggleNoteSelection = useUiStore((s) => s.toggleNoteSelection);
   const clearSelection = useUiStore((s) => s.clearSelection);
   const toggleSelectAll = useUiStore((s) => s.toggleSelectAll);
@@ -146,6 +146,8 @@ export function MainScreen() {
 
   } = useNotes();
 
+  const notesById = useMemo(() => new Map(notes.map((note) => [note.id, note])), [notes]);
+
 
 
   const navCounts = useMemo(
@@ -171,14 +173,14 @@ export function MainScreen() {
 
   const allFilteredSelected =
     filteredNotes.length > 0 &&
-    filteredNotes.every((note) => selectedNoteIds.includes(note.id));
+    filteredNotes.every((note) => selectedNoteIdSet.has(note.id));
 
   const selectedNoteModels = useMemo(
     () =>
       selectedNoteIds
-        .map((id) => notes.find((note) => note.id === id))
+        .map((id) => notesById.get(id))
         .filter((note): note is Note => note != null),
-    [notes, selectedNoteIds],
+    [notesById, selectedNoteIds],
   );
 
   const selectionAllPinned =
@@ -198,7 +200,7 @@ export function MainScreen() {
 
   const getSelectedSnapshots = () =>
     selectedNoteIds
-      .map((id) => notes.find((note) => note.id === id))
+      .map((id) => notesById.get(id))
       .filter((note): note is Note => note != null)
       .map((note) => ({ ...note }));
 
@@ -211,7 +213,7 @@ export function MainScreen() {
   };
 
   const handleNoteLongPress = (note: Note) => {
-    if (!selectedNoteIds.includes(note.id)) {
+    if (!selectedNoteIdSet.has(note.id)) {
       toggleNoteSelection(note.id);
     }
   };
@@ -422,7 +424,13 @@ export function MainScreen() {
                 <p className="text-sm text-red-500 dark:text-red-400 mb-3">{error}</p>
                 <button
                   type="button"
-                  onClick={() => window.location.reload()}
+                  onClick={() => {
+                    if (user?.uid) {
+                      void retryNotesReconciliation(user.uid);
+                      return;
+                    }
+                    window.location.reload();
+                  }}
                   className="rounded-full border border-brand-outline/50 bg-brand-primary/10 px-4 py-2 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
                 >
                   Retry
@@ -578,9 +586,10 @@ export function MainScreen() {
         onAccentChange={setAccentColor}
         onAmoledChange={setAmoled}
         isGoogleAccount={cloud.isGoogleAccount}
+        isSignedIn={Boolean(cloud.userId)}
         isGuest={cloud.isGuest}
         userEmail={cloud.userEmail}
-        syncStatus={cloud.status}
+        syncStatus={cloud.statusLabel}
         syncedNoteCount={cloud.syncedCount}
         onExportBackup={exportBackup}
         onImportBackup={() => backupInputRef.current?.click()}

@@ -658,10 +658,17 @@ rediscovered as an oversight.
 `accepts malformed elements inside labels and checklist` — pins the current behaviour, so whoever
 closes the gap properly will see it fail and know to update it.
 
-**Related, and decided the other way:** `tombstones.deletedAt` gained a `> 0` bound in the same pass,
-because that one *is* expressible and the failure it prevents is real — `pruneExpiredTombstones`
-deletes a tombstone once `now - deletedAt >= 180 days`, so a `deletedAt` of 0 is pruned on the first
-sync and the deleted note returns on every other device. The bound is one-sided on purpose: an upper
-bound would reject the write from a device with a fast clock, and a rejected tombstone means the
-deletion never propagates at all.
+---
+
+## D-web-theme-default — Fresh web installs keep Dark + AMOLED
+
+**Decided:** the web client's `DEFAULT_THEME` remains Dark + AMOLED (`base: 'dark', amoled: true`).
+Existing stored preferences are never rewritten. Fresh installs match the long-standing Android
+True Dark / AMOLED first-run look rather than switching to System.
+
+**Why:** product parity, not taste. Changing the default would restyle every new browser profile
+without a corresponding Android change.
+
+**Cost to reverse:** one constant plus a stored-preference test.
+
 

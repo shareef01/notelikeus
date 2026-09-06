@@ -42,3 +42,18 @@ test('the signed-out app reaches an interactive state', async ({ page }) => {
   const signIn = page.getByRole('button', { name: /sign in/i }).first();
   await expect(signIn).toBeVisible({ timeout: 20_000 });
 });
+
+test('auth copy matches local persistence and names the primary actions', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
+
+  await expect(
+    page.getByText(/sign in to sync across devices, or continue locally without an account/i),
+  ).toBeVisible({ timeout: 20_000 });
+  await expect(
+    page.getByText(/stored locally in this browser/i),
+  ).toBeVisible();
+  await expect(page.getByText(/for this session/i)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /continue without an account/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /close/i })).toHaveCount(0);
+});

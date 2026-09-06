@@ -50,18 +50,18 @@ class NoteSyncEngineTest {
     }
 
     @Test
-    fun `cloudWinsConflict — equal server timestamps, newer client timestamp wins`() {
+    fun `cloudWinsConflict — equal server timestamps ignore client clocks`() {
         setup()
-        // Same server timestamp, remote client newer → remote wins
-        assertTrue(engine.cloudWinsConflict(100, 100, 500, 100))
-        // Same server timestamp, local client newer → local wins
+        // Same revision, local clock behind — local may still upload.
+        assertFalse(engine.cloudWinsConflict(100, 100, 500, 10))
+        // Same revision, local clock ahead — still not a clock-based win for the cloud.
         assertFalse(engine.cloudWinsConflict(100, 100, 100, 500))
     }
 
     @Test
-    fun `cloudWinsConflict — full tie, cloud wins to avoid redundant write`() {
+    fun `cloudWinsConflict — full tie at the same revision does not use the clock`() {
         setup()
-        assertTrue(engine.cloudWinsConflict(100, 100, 100, 100))
+        assertFalse(engine.cloudWinsConflict(100, 100, 100, 100))
     }
 
     @Test

@@ -1,7 +1,5 @@
-import {
-  mergeRemoteNotes,
-  shouldUploadOverRemote,
-} from '@/lib/notes/remoteMerge';
+import { shouldUploadOverRemote } from '@/lib/notes/remoteMerge';
+import { reconcileLocalAndRemoteSnapshot } from '@/lib/notes/reconcileLocalAndRemoteSnapshot';
 import { subscribeSupabaseNoteRealtime } from '@/lib/supabase/supabaseRealtimeSync';
 import {
   loadRevisionState,
@@ -17,6 +15,11 @@ import {
   pullIncrementalChanges,
 } from '@/lib/supabase/supabaseSyncEngine';
 import type { RemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSource';
+import {
+  isRemoteNoteDeletedError,
+  isRevisionConflictError,
+} from '@/lib/remote/remoteErrors';
+import { getOwnerMeta, setOwnerMeta } from '@/lib/local/notesLocalRepository';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 import { isCloudSyncEligible } from '@/types/note';
@@ -206,7 +209,8 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     for (const note of notes) {
       if (!isCloudSyncEligible(note)) continue;
       if (useTombstoneStore.getState().isDeleted(note.id)) continue;
-      if (!shouldUploadOverRemote(note, remoteById.get(note.id))) continue;
+      const remote = remoteById.get(note.id);
+      if (!shouldUploadOverRemote(note, remote)) continue;
       await this.upsertNote(userId, note);
       uploaded += 1;
     }
@@ -219,75 +223,59 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       await fetchSnapshotNotes();
     useTombstoneStore.getState().mergeFromCloud(tombstones);
 
-    if (remoteNotes.length === 0 && previouslyKnownCloudIds.size > 0) {
-      throw new Error(
-        `Cloud returned no notes but ${previouslyKnownCloudIds.size} were expected — refusing to ` +
-          `delete local copies. Check the connection or sign in again.`,
-      );
+    const meta = await getOwnerMeta(userId);
+    const prior = await loadRevisionState(userId);
+    const knownRemoteIds = new Set(previouslyKnownCloudIds);
+    for (const id of meta?.knownRemoteIds ?? []) knownRemoteIds.add(id);
+    for (const id of Object.keys(prior.noteRevisions)) knownRemoteIds.add(id);
+
+    const reconciled = reconcileLocalAndRemoteSnapshot({
+      localNotes,
+      remoteNotes,
+      remoteTombstones: tombstones,
+      knownRemoteIds,
+      isDeleted: (id) => useTombstoneStore.getState().isDeleted(id),
+    });
+
+    for (const id of reconciled.newlyDeletedIds) {
+      useTombstoneStore.getState().markDeleted(id);
     }
 
-    const remoteById = new Map(remoteNotes.map((note) => [note.id, note]));
-    const cloudIds = new Set(remoteById.keys());
-    const isDeleted = (id: string) => useTombstoneStore.getState().isDeleted(id);
+    let merged = reconciled.merged;
 
-    let merged = await mergeRemoteNotes(localNotes, remoteNotes);
-    merged = merged.filter((note) => !isDeleted(note.id));
-
-    let changes = 0;
-    const droppedLocalIds = new Set<string>();
-
-    for (const localNote of localNotes) {
-      if (isDeleted(localNote.id)) continue;
-
-      if (cloudIds.has(localNote.id)) {
-        if (!isCloudSyncEligible(localNote)) continue;
-        const remote = remoteById.get(localNote.id);
-        if (shouldUploadOverRemote(localNote, remote)) {
-          const state = await loadRevisionState(userId);
-          const baseRevision = getNoteBaseRevision(state, localNote.id);
-          try {
-            const updated = await applyNoteChange(userId, localNote, baseRevision);
-            merged = merged.map((note) => (note.id === localNote.id ? updated : note));
-            changes++;
-          } catch {
-            // Conflict — keep merged remote winner from mergeRemoteNotes.
-          }
-        }
-        continue;
-      }
-
-      if (previouslyKnownCloudIds.has(localNote.id)) {
-        droppedLocalIds.add(localNote.id);
-        useTombstoneStore.getState().markDeleted(localNote.id);
-        changes++;
-        continue;
-      }
-
-      if (isCloudSyncEligible(localNote)) {
-        const updated = await applyNoteChange(userId, localNote, null);
+    for (const localNote of reconciled.toUpload) {
+      if (!isCloudSyncEligible(localNote)) continue;
+      if (useTombstoneStore.getState().isDeleted(localNote.id)) continue;
+      const state = await loadRevisionState(userId);
+      const remote = remoteNotes.find((note) => note.id === localNote.id);
+      const baseRevision = remote ? getNoteBaseRevision(state, localNote.id) : null;
+      try {
+        const updated = await applyNoteChange(userId, localNote, baseRevision);
         merged = merged.map((note) => (note.id === localNote.id ? updated : note));
         if (!merged.some((note) => note.id === localNote.id)) {
           merged.push(updated);
         }
-        changes++;
-      }
-    }
-
-    if (droppedLocalIds.size > 0) {
-      merged = merged.filter((note) => !droppedLocalIds.has(note.id));
-    }
-
-    for (const remoteNote of remoteNotes) {
-      if (isDeleted(remoteNote.id)) continue;
-      if (!merged.some((note) => note.id === remoteNote.id)) {
-        merged.push(remoteNote);
-        changes++;
+      } catch (error) {
+        if (isRemoteNoteDeletedError(error)) {
+          merged = merged.filter((note) => note.id !== localNote.id);
+          continue;
+        }
+        if (isRevisionConflictError(error)) {
+          if (error.remote) {
+            merged = merged.map((note) => (note.id === localNote.id ? error.remote! : note));
+          }
+          continue;
+        }
+        throw error;
       }
     }
 
     await saveRevisionState(userId, {
       noteRevisions,
       lastRemoteRevision: maxRevision,
+    });
+    await setOwnerMeta(userId, {
+      knownRemoteIds: [...reconciled.nextKnownRemoteIds],
     });
 
     return {

@@ -154,7 +154,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
             <h1 className="mt-5 text-2xl font-semibold text-brand-primary">{copy.title}</h1>
             <p className="mt-2 text-sm text-brand-muted">
               {mandatory
-                ? 'Sign in with Google to use Notelikeus — your notes live in your account and sync automatically across every device you sign into.'
+                ? 'Sign in to sync across devices, or continue locally without an account.'
                 : copy.subtitle}
             </p>
           </div>
@@ -220,8 +220,8 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
                     Continue without an account
                   </button>
                   <p className="text-center text-xs leading-relaxed text-brand-muted">
-                    Try Notelikeus on this device for now. Notes stay here for this session and
-                    aren't synced or backed up.
+                    Continue on this device. Notes are stored locally in this browser and aren’t
+                    synced or backed up until you sign in.
                   </p>
                 </div>
               </>

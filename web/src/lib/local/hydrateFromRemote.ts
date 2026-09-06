@@ -1,11 +1,14 @@
 import {
   getOwnerMeta,
   listNotes,
-  putNotes,
+  replaceAllNotes,
   setOwnerMeta,
 } from '@/lib/local/notesLocalRepository';
+import { reconcileLocalAndRemoteSnapshot } from '@/lib/notes/reconcileLocalAndRemoteSnapshot';
 import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegistry';
+import { isSuspiciousEmptySnapshotError, sanitizeSyncErrorMessage } from '@/lib/remote/remoteErrors';
 import { useNotesStore } from '@/store/notesStore';
+import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 
 /**
@@ -18,10 +21,16 @@ export async function loadLocalNotesIntoStore(ownerId: string): Promise<Note[]> 
   return notes;
 }
 
+/** Persist the merged live set to memory and IndexedDB as one complete mirror. */
+export async function applyMergedLiveSet(ownerId: string, merged: Note[]): Promise<void> {
+  useNotesStore.getState().setNotes(merged);
+  await replaceAllNotes(ownerId, merged);
+}
+
 /**
  * First signed-in session for this owner: pull an authoritative remote snapshot,
- * populate IndexedDB, then mirror into the UI store. Idempotent once `remoteHydrated`
- * is set for the owner.
+ * reconcile with any local-only notes already in the namespace, then mirror the merged
+ * live set into IndexedDB. Idempotent once `remoteHydrated` is set for the owner.
  */
 export async function hydrateIndexedDbFromRemote(userId: string): Promise<void> {
   const meta = await getOwnerMeta(userId);
@@ -32,26 +41,33 @@ export async function hydrateIndexedDbFromRemote(userId: string): Promise<void> 
 
   const remote = getRemoteNotesDataSource();
   const snapshot = await remote.fetchAllNotes(userId);
-  await putNotes(userId, snapshot);
-  await setOwnerMeta(userId, {
-    remoteHydrated: true,
-    firebaseHydrated: true,
-    hydratedAt: Date.now(),
-  });
+  const local = await listNotes(userId);
+  const knownRemoteIds = new Set(meta?.knownRemoteIds ?? []);
 
-  // An empty snapshot is not authoritative over a populated local namespace. A Firebase→Supabase
-  // migration puts the user's whole library under the Supabase owner id *before* anything is
-  // uploaded, so the first snapshot legitimately answers with zero notes; the same shape appears
-  // when the wrong account is signed in. Showing the local notes keeps them on screen and keeps
-  // them in the in-memory store, which is what the upload path reads — blanking it here would
-  // strand them in IndexedDB, invisible and never pushed.
-  if (snapshot.length === 0) {
-    const local = await listNotes(userId);
-    if (local.length > 0) {
-      useNotesStore.getState().setNotes(local);
+  try {
+    const result = reconcileLocalAndRemoteSnapshot({
+      localNotes: local,
+      remoteNotes: snapshot,
+      remoteTombstones: {},
+      knownRemoteIds,
+      isDeleted: (id) => useTombstoneStore.getState().isDeleted(id),
+    });
+    for (const id of result.newlyDeletedIds) {
+      useTombstoneStore.getState().markDeleted(id);
+    }
+    await applyMergedLiveSet(userId, result.merged);
+    await setOwnerMeta(userId, {
+      remoteHydrated: true,
+      firebaseHydrated: true,
+      hydratedAt: Date.now(),
+      knownRemoteIds: [...result.nextKnownRemoteIds],
+    });
+  } catch (error) {
+    if (isSuspiciousEmptySnapshotError(error)) {
+      await loadLocalNotesIntoStore(userId);
+      useNotesStore.getState().setError(sanitizeSyncErrorMessage(error));
       return;
     }
+    throw error;
   }
-
-  useNotesStore.getState().setNotes(snapshot);
 }

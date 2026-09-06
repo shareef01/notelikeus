@@ -1,3 +1,5 @@
+import { replaceAllNotes } from '@/lib/local/notesLocalRepository';
+import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import {
   pauseRealtimeSnapshots,
   resumeRealtimeSnapshots,
@@ -7,14 +9,8 @@ import { useNotesStore } from '@/store/notesStore';
 import type { Note } from '@/types/note';
 
 /**
- * Commits an import to the in-memory store — and to the active remote when signed in —
- * without letting a realtime snapshot of the *pre-import* cloud replace the merged library first.
- *
- * Upload runs before `setNotes` so the next snapshot already contains the new ids. Snapshots
- * that arrive during the upload are dropped rather than applied.
- *
- * Returns whether the library was written to the cloud. A failed upload does not update the
- * store, so the user can retry rather than watching the import vanish on the next snapshot.
+ * Commits an import to IndexedDB and the in-memory store. Cloud upload is best-effort:
+ * a failed upsert must not unwind the local import.
  */
 export async function commitImportedNotes(
   merged: Note[],
@@ -28,13 +24,14 @@ export async function commitImportedNotes(
 
   pauseRealtimeSnapshots();
   try {
-    if (userId) {
-      await getRemoteNotesDataSource().uploadAllNotes(userId, merged);
-      useNotesStore.getState().setNotes(merged);
-      return true;
+    const ownerId = resolveOwnerId();
+    if (ownerId) {
+      await replaceAllNotes(ownerId, merged);
     }
     useNotesStore.getState().setNotes(merged);
-    return false;
+    if (!userId) return false;
+    await getRemoteNotesDataSource().uploadAllNotes(userId, merged);
+    return true;
   } finally {
     resumeRealtimeSnapshots();
   }

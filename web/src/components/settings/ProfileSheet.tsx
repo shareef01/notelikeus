@@ -122,6 +122,7 @@ interface ProfileSheetProps {
   onAccentChange: (accent: AccentColor) => void;
   onAmoledChange: (amoled: boolean) => void;
   isGoogleAccount: boolean;
+  isSignedIn: boolean;
   isGuest: boolean;
   userEmail: string | null;
   syncStatus: string;
@@ -147,6 +148,7 @@ export function ProfileSheet({
   onAccentChange,
   onAmoledChange,
   isGoogleAccount,
+  isSignedIn,
   isGuest,
   userEmail,
   syncStatus,
@@ -235,14 +237,14 @@ export function ProfileSheet({
                     <span className="text-chrome-label">Cloud</span>
                   </div>
                   <p className="truncate text-base font-medium text-brand-primary sm:text-lg">
-                    {isGoogleAccount
+                    {isSignedIn
                       ? syncStatus
                       : isGuest
                         ? 'Guest session'
                         : 'Signed out'}
                   </p>
                   <p className="text-sm text-brand-muted">
-                    {isGoogleAccount
+                    {isSignedIn
                       ? `${syncedNoteCount} synced`
                       : isGuest
                         ? 'Notes stay on this device'
@@ -272,11 +274,11 @@ export function ProfileSheet({
                   icon={<AccountIcon size={18} />}
                 />
               ) : null}
-              {isGoogleAccount && userEmail ? (
+              {isSignedIn && userEmail ? (
                 <>
                   <SettingsRow
                     title={userEmail}
-                    subtitle="Signed in"
+                    subtitle={isGoogleAccount ? 'Signed in with Google' : 'Signed in'}
                     icon={<AccountIcon size={18} />}
                   />
                   <SettingsRow

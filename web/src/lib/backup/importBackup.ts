@@ -106,7 +106,11 @@ function noteFromBackupEntry(
   });
 }
 
-export function importNotesFromBackup(json: unknown, existingNotes: Note[]): {
+export function importNotesFromBackup(
+  json: unknown,
+  existingNotes: Note[],
+  options?: { firstLocalId?: number },
+): {
   merged: Note[];
   result: BackupImportResult;
 } {
@@ -153,9 +157,11 @@ export function importNotesFromBackup(json: unknown, existingNotes: Note[]): {
   const basePosition = nextNotePosition(existingNotes);
   let runningMaxId = existingNotes.reduce((max, note) => Math.max(max, note.localId), 0);
   const imported: Note[] = [];
+  let nextReservedId = options?.firstLocalId;
 
   for (const entry of noteEntries) {
-    const localId = nextLocalNoteIdAfter(runningMaxId);
+    const localId =
+      nextReservedId != null ? nextReservedId++ : nextLocalNoteIdAfter(runningMaxId);
     runningMaxId = localId;
     const position = basePosition + imported.length;
     const note = noteFromBackupEntry(entry, localId, position, resolveLabel);

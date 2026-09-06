@@ -58,7 +58,9 @@ export function useNoteActions({
         await archiveNoteById(note.id);
         showUndoToast({
           message: 'Note archived',
-          revert: () => saveNote(previous),
+          revert: async () => {
+            await saveNote(previous);
+          },
         });
       }),
     [],
@@ -71,7 +73,9 @@ export function useNoteActions({
         await trashNoteById(note.id);
         showUndoToast({
           message: 'Note moved to trash',
-          revert: () => saveNote(previous),
+          revert: async () => {
+            await saveNote(previous);
+          },
         });
       }),
     [],

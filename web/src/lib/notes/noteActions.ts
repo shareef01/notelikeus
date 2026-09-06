@@ -1,13 +1,23 @@
-import { deleteCloudTombstone } from '@/lib/notes/tombstones';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
+import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
+import { deleteCloudTombstone } from '@/lib/notes/tombstones';
 import { deleteNote as deleteLocalIndexedDbNote, putNote } from '@/lib/local/notesLocalRepository';
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import { notesEqual } from '@/lib/notes/noteEquality';
 import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegistry';
+import { sanitizeSyncErrorMessage } from '@/lib/remote/remoteErrors';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
+import { useSyncStore } from '@/store/syncStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
+
+export interface SaveNoteResult {
+  localSaved: true;
+  remoteSynced: boolean;
+  attachmentPending: boolean;
+  error?: Error;
+}
 
 async function persistLocalNote(note: Note): Promise<void> {
   const ownerId = resolveOwnerId();
@@ -15,12 +25,9 @@ async function persistLocalNote(note: Note): Promise<void> {
   await putNote(ownerId, note);
 }
 
-async function pushNote(note: Note): Promise<void> {
+function persistMemoryAndDisk(note: Note): Promise<void> {
   useNotesStore.getState().upsertLocalNote(note);
-  await persistLocalNote(note);
-  const userId = useAuthStore.getState().user?.uid;
-  if (!userId) return;
-  await getRemoteNotesDataSource().upsertNote(userId, note);
+  return persistLocalNote(note);
 }
 
 function getNote(noteId: string): Note | undefined {
@@ -31,15 +38,36 @@ function withTimestamp(note: Note, patch: Partial<Note>): Note {
   return { ...note, ...patch, timestamp: Date.now() };
 }
 
-/** Save locally and optionally push to the cloud when signed in — no React hooks. */
-export async function saveNote(note: Note): Promise<void> {
+/** Save locally first. Cloud/R2 failures stay retryable and never unwind the local write. */
+export async function saveNote(note: Note): Promise<SaveNoteResult> {
   const existing = getNote(note.id);
+  const hasPendingAttachments = note.attachments.some((attachment) =>
+    isPendingAttachment(attachment.storagePath),
+  );
+  if (existing && notesEqual(existing, note) && !hasPendingAttachments) {
+    return { localSaved: true, remoteSynced: true, attachmentPending: false };
+  }
+
+  await persistMemoryAndDisk(note);
+  useSyncStore.getState().markPendingLocalMutations(true);
+
   let toSave = note;
+  let attachmentPending = note.attachments.some((attachment) =>
+    isPendingAttachment(attachment.storagePath),
+  );
+  let error: Error | undefined;
+
   if (isR2AttachmentsEnabled()) {
     const { syncNoteAttachments, deleteAttachmentsForNote } = await import(
       '@/lib/attachments/attachmentSyncService'
     );
-    toSave = await syncNoteAttachments(note);
+    const synced = await syncNoteAttachments(note);
+    toSave = synced.note;
+    attachmentPending = synced.pendingCount > 0;
+    error = synced.error;
+    if (!notesEqual(note, toSave)) {
+      await persistMemoryAndDisk(toSave);
+    }
     if (existing) {
       const nextIds = new Set(toSave.attachments.map((attachment) => attachment.id));
       const removed = existing.attachments.filter(
@@ -48,8 +76,34 @@ export async function saveNote(note: Note): Promise<void> {
       await deleteAttachmentsForNote(note.id, removed);
     }
   }
-  if (existing && notesEqual(existing, toSave)) return;
-  await pushNote(toSave);
+
+  const userId = useAuthStore.getState().user?.uid;
+  if (!userId) {
+    if (!attachmentPending && !error) {
+      useSyncStore.getState().markPendingLocalMutations(false);
+    }
+    return { localSaved: true, remoteSynced: false, attachmentPending, error };
+  }
+
+  try {
+    useSyncStore.getState().markSyncing('upsert');
+    await getRemoteNotesDataSource().upsertNote(userId, toSave);
+    if (!attachmentPending) {
+      useSyncStore.getState().markPendingLocalMutations(false);
+    }
+    useSyncStore.getState().markReconcileSuccess();
+    return { localSaved: true, remoteSynced: true, attachmentPending, error };
+  } catch (remoteError) {
+    const wrapped =
+      remoteError instanceof Error ? remoteError : new Error('Cloud save failed');
+    useSyncStore.getState().markError(sanitizeSyncErrorMessage(wrapped));
+    return {
+      localSaved: true,
+      remoteSynced: false,
+      attachmentPending,
+      error: error ?? wrapped,
+    };
+  }
 }
 
 /** Remove locally and from the cloud when signed in. Tombstoned so a later cloud
@@ -81,7 +135,7 @@ export async function trashNoteById(noteId: string): Promise<Note | null> {
   const note = getNote(noteId);
   if (!note) return null;
   const updated = withTimestamp(note, { isTrashed: true, isArchived: false, isPinned: false });
-  await pushNote(updated);
+  await saveNote(updated);
   return updated;
 }
 
@@ -89,7 +143,7 @@ export async function restoreNoteById(noteId: string): Promise<Note | null> {
   const note = getNote(noteId);
   if (!note) return null;
   const updated = withTimestamp(note, { isTrashed: false, isArchived: false });
-  await pushNote(updated);
+  await saveNote(updated);
   return updated;
 }
 
@@ -97,7 +151,7 @@ export async function archiveNoteById(noteId: string): Promise<Note | null> {
   const note = getNote(noteId);
   if (!note) return null;
   const updated = withTimestamp(note, { isArchived: true, isTrashed: false, isPinned: false });
-  await pushNote(updated);
+  await saveNote(updated);
   return updated;
 }
 
@@ -105,7 +159,7 @@ export async function unarchiveNoteById(noteId: string): Promise<Note | null> {
   const note = getNote(noteId);
   if (!note) return null;
   const updated = withTimestamp(note, { isArchived: false });
-  await pushNote(updated);
+  await saveNote(updated);
   return updated;
 }
 
@@ -120,8 +174,6 @@ export async function emptyTrash(): Promise<number> {
 export async function restorePermanentlyDeletedNote(note: Note): Promise<void> {
   const userId = useAuthStore.getState().user?.uid;
   if (userId) {
-    // Must go before upsertNote: upsertNote re-reads the cloud tombstone and would
-    // otherwise merge it back and delete the doc again.
     await deleteCloudTombstone(userId, note.id);
   }
   useTombstoneStore.getState().clearIds([note.id]);

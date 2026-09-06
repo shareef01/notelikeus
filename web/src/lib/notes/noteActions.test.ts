@@ -60,6 +60,18 @@ describe('saveNote', () => {
     expect(useNotesStore.getState().notes.some((note) => note.id === '1')).toBe(true);
   });
 
+  it('keeps the local copy when cloud upsert fails', async () => {
+    useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
+    remoteMocks.upsertNote.mockRejectedValueOnce(new Error('timeout'));
+
+    const result = await saveNote(makeNote());
+
+    expect(result.localSaved).toBe(true);
+    expect(result.remoteSynced).toBe(false);
+    expect(useNotesStore.getState().notes.some((entry) => entry.id === '1')).toBe(true);
+    expect(putNote).toHaveBeenCalled();
+  });
+
   it('skips no-op saves for an unchanged note', async () => {
     useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
     const note = makeNote();

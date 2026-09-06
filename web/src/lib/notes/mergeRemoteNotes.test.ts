@@ -57,15 +57,15 @@ describe('mergeRemoteNotes', () => {
     expect(merged[0]?.title).toBe('Confirmed remote');
   });
 
-  it('takes remote when both notes are the same confirmed revision', async () => {
+  it('keeps a local mutation at the same confirmed revision even when the client clock is behind', async () => {
     const local = [
-      note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500, title: 'Local same revision' }),
+      note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500, title: 'Local edit' }),
     ];
     const remote = [
       note({ id: '1', localId: 1, timestamp: 999, serverUpdatedAt: 500, title: 'Remote same revision' }),
     ];
     const merged = await mergeRemoteNotes(local, remote);
-    expect(merged[0]?.title).toBe('Remote same revision');
+    expect(merged[0]?.title).toBe('Local edit');
   });
 
   it('keeps local when both legacy notes have equal timestamps', async () => {

@@ -407,7 +407,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           focusContentField();
         }}
       >
-        <div className="flex min-h-full flex-col">
+        <div className="mx-auto flex min-h-full w-full max-w-[min(100%,80ch)] flex-col">
           <input
             type="text"
             value={state.title}
@@ -573,6 +573,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
         <EditorBottomBar
           timestamp={state.timestamp}
           isSaving={state.isSaving}
+          persistStatus={state.persistStatus}
           contentColor={contentColor}
           reminderTimestamp={state.reminderTimestamp}
           onMoreClick={() => setShowOptions(true)}

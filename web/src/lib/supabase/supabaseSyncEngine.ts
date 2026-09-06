@@ -15,6 +15,11 @@ import {
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 import { hydrateNotesWithAttachments } from '@/lib/attachments/attachmentSyncService';
+import {
+  RemoteNoteDeletedError,
+  RemoteTransportError,
+  RevisionConflictError,
+} from '@/lib/remote/remoteErrors';
 
 export interface ApplyNoteResult {
   status?: string;
@@ -41,7 +46,7 @@ export async function ensureSupabaseAuthenticated(): Promise<void> {
   if (error) throw error;
   if (!data.session) {
     throw new Error(
-      'Supabase session missing — sign in via Supabase Auth (Phase 5) before using the Supabase backend.',
+      'Supabase session missing — sign in before using cloud sync.',
     );
   }
 }
@@ -104,27 +109,30 @@ export async function applyNoteChange(
 ): Promise<Note> {
   const args = noteToSupabaseRpcArgs(note, baseRevision);
   const { data, error } = await getSupabaseClient().rpc('apply_note_change', args);
-  if (error) throw error;
+  if (error) {
+    throw new RemoteTransportError(
+      error.message?.trim() ? 'Cloud save failed' : 'Cloud save failed',
+      { cause: error },
+    );
+  }
   const result = (data ?? {}) as ApplyNoteResult;
   if (result.status === 'conflict') {
     if (result.error === 'note_deleted') {
       useTombstoneStore.getState().markDeleted(note.id);
       await forgetNoteRevision(userId, note.id);
-      throw new Error(`Note ${note.id} was deleted in the cloud`);
+      throw new RemoteNoteDeletedError(note.id);
     }
     if (result.current) {
       const remote = supabaseNoteToNote(result.current);
       if (result.current.revision != null) {
         await rememberNoteRevision(userId, note.id, result.current.revision);
       }
-      throw new Error(
-        `Revision conflict for note ${note.id}: remote title "${remote.title}"`,
-      );
+      throw new RevisionConflictError(note.id, remote);
     }
-    throw new Error(`Revision conflict for note ${note.id}`);
+    throw new RevisionConflictError(note.id);
   }
   if (result.status !== 'applied' || result.revision == null) {
-    throw new Error(`Unexpected apply_note_change response for note ${note.id}`);
+    throw new RemoteTransportError(`Unexpected apply_note_change response for note ${note.id}`);
   }
   await rememberNoteRevision(userId, note.id, result.revision);
   return applyServerFields(note, result);

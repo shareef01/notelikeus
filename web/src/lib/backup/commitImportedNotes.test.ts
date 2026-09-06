@@ -15,6 +15,10 @@ vi.mock('@/lib/notes/notesSyncService', () => ({
   resumeRealtimeSnapshots: vi.fn(),
 }));
 
+vi.mock('@/lib/local/notesLocalRepository', () => ({
+  replaceAllNotes: vi.fn().mockResolvedValue(undefined),
+}));
+
 import {
   pauseRealtimeSnapshots,
   resumeRealtimeSnapshots,
@@ -33,12 +37,12 @@ describe('commitImportedNotes', () => {
     useNotesStore.getState().reset();
   });
 
-  it('uploads before writing the store when signed in', async () => {
+  it('writes the local library before uploading when signed in', async () => {
     const order: string[] = [];
     vi.mocked(pauseRealtimeSnapshots).mockImplementation(() => order.push('pause'));
     vi.mocked(remoteMocks.uploadAllNotes).mockImplementation(async () => {
       order.push('upload');
-      expect(useNotesStore.getState().notes).toEqual([]);
+      expect(useNotesStore.getState().notes).toHaveLength(1);
       return 1;
     });
     vi.mocked(resumeRealtimeSnapshots).mockImplementation(() => order.push('resume'));
@@ -52,12 +56,12 @@ describe('commitImportedNotes', () => {
     expect(order).toEqual(['pause', 'upload', 'resume']);
   });
 
-  it('does not write the store if the upload fails', async () => {
+  it('keeps the imported notes locally if the upload fails', async () => {
     vi.mocked(remoteMocks.uploadAllNotes).mockRejectedValueOnce(new Error('offline'));
 
     await expect(commitImportedNotes([note('1')], 1, 'user-1')).rejects.toThrow('offline');
 
-    expect(useNotesStore.getState().notes).toEqual([]);
+    expect(useNotesStore.getState().notes).toHaveLength(1);
     expect(resumeRealtimeSnapshots).toHaveBeenCalled();
   });
 

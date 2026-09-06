@@ -3,6 +3,14 @@ import type { Label } from '@/types/label';
 import type { Note } from '@/types/note';
 import type { Attachment } from '@/types/attachment';
 
+export type PersistStatus =
+  | 'idle'
+  | 'saving'
+  | 'saved-local'
+  | 'attachment-pending'
+  | 'synced'
+  | 'error';
+
 export interface EditorState {
   id: string | null;
   localId: number | null;
@@ -23,6 +31,7 @@ export interface EditorState {
   position: number;
   isLoaded: boolean;
   isSaving: boolean;
+  persistStatus: PersistStatus;
   lastSavedAt: number | null;
 }
 
@@ -75,6 +84,7 @@ export function editorStateFromNote(note: Note): EditorState {
     position: note.position,
     isLoaded: true,
     isSaving: false,
+    persistStatus: 'idle',
     lastSavedAt: note.timestamp,
   };
 }
@@ -98,6 +108,7 @@ export function createBlankEditorState(color = DEFAULT_EDITOR_COLOR, position = 
     position,
     isLoaded: true,
     isSaving: false,
+    persistStatus: 'idle',
     lastSavedAt: null,
   };
 }

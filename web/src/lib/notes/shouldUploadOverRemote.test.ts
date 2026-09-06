@@ -41,22 +41,16 @@ describe('shouldUploadOverRemote', () => {
     expect(shouldUploadOverRemote(local, legacyRemote)).toBe(true);
   });
 
-  it('does not re-upload when both sides are the same confirmed revision', () => {
-    const local = note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500 });
-    const remote = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });
-    expect(shouldUploadOverRemote(local, remote)).toBe(false);
-  });
-
-  it('does not re-upload when stamps and client timestamps both match', () => {
-    const local = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });
-    const remote = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });
-    expect(shouldUploadOverRemote(local, remote)).toBe(false);
-  });
-
-  it('uploads an equal-stamp local edit whose client timestamp is newer', () => {
-    const local = note({ id: '1', localId: 1, timestamp: 30, serverUpdatedAt: 500 });
-    const remote = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500 });
+  it('uploads an equal-stamp local edit even when the client clock is behind', () => {
+    const local = note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500, title: 'Edited' });
+    const remote = note({ id: '1', localId: 1, timestamp: 999_999, serverUpdatedAt: 500, title: 'Previous' });
     expect(shouldUploadOverRemote(local, remote)).toBe(true);
+  });
+
+  it('does not re-upload when the confirmed revision and payload both match', () => {
+    const local = note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500, title: 'Same' });
+    const remote = note({ id: '1', localId: 1, timestamp: 20, serverUpdatedAt: 500, title: 'Same' });
+    expect(shouldUploadOverRemote(local, remote)).toBe(false);
   });
 
   it('refuses to overwrite a strictly newer remote stamp even if local timestamp is newer', () => {

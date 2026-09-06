@@ -1,7 +1,7 @@
 import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
 import { SortIcon } from '@/components/icons/Icons';
 import type { Label } from '@/types/label';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 
 interface FilterChipProps {
@@ -72,6 +72,10 @@ export function FilterRow({
   hasActiveFilters,
   onClearFilters,
 }: FilterRowProps) {
+  const facetsActive = selectedColor != null || selectedLabelName != null;
+  const [filtersOpen, setFiltersOpen] = useState(facetsActive);
+  const showFacets = filtersOpen || facetsActive;
+
   return (
     <div className="flex flex-col gap-1.5 pb-2">
       <div className="flex items-center gap-2.5 overflow-x-auto px-3 py-1.5 scrollbar-none sm:px-4 lg:px-6">
@@ -87,8 +91,25 @@ export function FilterRow({
           <FilterChip compact label="Clear" selected onClick={onClearFilters} />
         ) : null}
 
+        <button
+          type="button"
+          className={`filter-chip shrink-0 lg:hidden ${CHROME_FOCUS} ${
+            showFacets ? 'filter-chip-active' : 'filter-chip-inactive'
+          }`}
+          aria-expanded={showFacets}
+          aria-controls="note-filter-facets"
+          onClick={() => setFiltersOpen((open) => !open)}
+        >
+          Filters
+        </button>
+      </div>
+
+      <div
+        id="note-filter-facets"
+        className={`${showFacets ? 'flex' : 'hidden'} lg:flex items-center gap-2.5 overflow-x-auto px-3 py-1.5 scrollbar-none sm:px-4 lg:px-6`}
+      >
         <div
-          className="flex h-9 min-w-0 items-center rounded-full border border-brand-outline/25 bg-true-surface-variant/20 px-1.5 shadow-sm"
+          className="flex h-11 min-w-0 items-center rounded-full border border-brand-outline/25 bg-true-surface-variant/20 px-1.5 shadow-sm"
           role="group"
           aria-label="Color filter"
         >
@@ -102,7 +123,9 @@ export function FilterRow({
       </div>
 
       {labels.length > 0 ? (
-        <div className="flex gap-1.5 overflow-x-auto px-3 py-0.5 scrollbar-none sm:px-4 md:flex-wrap md:overflow-visible lg:px-6">
+        <div
+          className={`${showFacets ? 'flex' : 'hidden'} lg:flex gap-1.5 overflow-x-auto px-3 py-0.5 scrollbar-none sm:px-4 md:flex-wrap md:overflow-visible lg:px-6`}
+        >
           <FilterChip
             compact
             label="All labels"

@@ -20,7 +20,7 @@ export function ColorSwatch({ argb, selected, onClick, label }: ColorSwatchProps
       onClick={onClick}
       aria-label={label ?? (isDefault ? 'No color' : 'Note color')}
       aria-pressed={selected}
-      className={`relative flex size-[26px] shrink-0 items-center justify-center rounded-full transition-[box-shadow,transform] ${
+      className={`relative flex size-11 shrink-0 items-center justify-center rounded-full transition-[box-shadow,transform] ${
         selected
           ? 'scale-105 ring-2 ring-brand-primary ring-offset-2 ring-offset-true-surface'
           : 'hover:scale-105 hover:ring-1 hover:ring-brand-outline/50 hover:ring-offset-1 hover:ring-offset-true-surface'

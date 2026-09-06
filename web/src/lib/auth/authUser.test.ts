@@ -15,5 +15,19 @@ describe('authUserFromSupabase', () => {
     expect(user.uid).toBe('11111111-2222-3333-4444-555555555555');
     expect(user.email).toBe('dev@notelikeus.test');
     expect(user.displayName).toBe('Dev User');
+    expect(user.isGoogleAccount).toBe(false);
+  });
+
+  it('detects Google from identities, not from merely having a user id', () => {
+    const user = authUserFromSupabase({
+      id: '11111111-2222-3333-4444-555555555555',
+      email: 'dev@notelikeus.test',
+      user_metadata: {},
+      app_metadata: { provider: 'google', providers: ['google'] },
+      identities: [{ provider: 'google' } as never],
+      aud: 'authenticated',
+      created_at: '2025-01-01T00:00:00Z',
+    });
+    expect(user.isGoogleAccount).toBe(true);
   });
 });

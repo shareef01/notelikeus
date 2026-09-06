@@ -46,6 +46,12 @@ function note(id: string): Note {
  * the durable copy, and blanking the in-memory store also empties the set that the upload path
  * reads, so the notes would never be pushed.
  */
+async function flushApply() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 describe('empty remote snapshot vs populated local library', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -77,7 +83,7 @@ describe('empty remote snapshot vs populated local library', () => {
     expect(await listNotes(USER)).toHaveLength(1);
   });
 
-  it('does not blank a populated store when a realtime snapshot arrives empty', () => {
+  it('does not blank a populated store when a realtime snapshot arrives empty', async () => {
     useNotesStore.getState().setNotes([note('1'), note('2')]);
     let emit: ((notes: Note[]) => void) | undefined;
     remoteMocks.subscribeToNotes.mockImplementation((_uid: string, onData: (n: Note[]) => void) => {
@@ -87,11 +93,12 @@ describe('empty remote snapshot vs populated local library', () => {
 
     startNotesRealtimeSync(USER);
     emit?.([]);
+    await flushApply();
 
     expect(useNotesStore.getState().notes).toHaveLength(2);
   });
 
-  it('still applies a genuinely empty snapshot when nothing is held locally', () => {
+  it('still applies a genuinely empty snapshot when nothing is held locally', async () => {
     useNotesStore.getState().setNotes([]);
     let emit: ((notes: Note[]) => void) | undefined;
     remoteMocks.subscribeToNotes.mockImplementation((_uid: string, onData: (n: Note[]) => void) => {
@@ -101,12 +108,13 @@ describe('empty remote snapshot vs populated local library', () => {
 
     startNotesRealtimeSync(USER);
     emit?.([]);
+    await flushApply();
 
     expect(useNotesStore.getState().notes).toEqual([]);
     expect(useNotesStore.getState().status).toBe('ready');
   });
 
-  it('applies a non-empty snapshot normally', () => {
+  it('applies a non-empty snapshot normally', async () => {
     useNotesStore.getState().setNotes([note('1')]);
     let emit: ((notes: Note[]) => void) | undefined;
     remoteMocks.subscribeToNotes.mockImplementation((_uid: string, onData: (n: Note[]) => void) => {
@@ -116,11 +124,12 @@ describe('empty remote snapshot vs populated local library', () => {
 
     startNotesRealtimeSync(USER);
     emit?.([note('1'), note('5')]);
+    await flushApply();
 
     expect(useNotesStore.getState().notes.map((n) => n.id).sort()).toEqual(['1', '5']);
   });
 
-  it('lets a snapshot empty by deletion through once every note is tombstoned', () => {
+  it('lets a snapshot empty by deletion through once every note is tombstoned', async () => {
     useNotesStore.getState().setNotes([note('1')]);
     useTombstoneStore.getState().markDeleted('1');
     let emit: ((notes: Note[]) => void) | undefined;
@@ -131,7 +140,23 @@ describe('empty remote snapshot vs populated local library', () => {
 
     startNotesRealtimeSync(USER);
     emit?.([]);
+    await flushApply();
 
     expect(useNotesStore.getState().notes).toEqual([]);
+  });
+
+  it('keeps local-only unsynced A when a non-empty remote snapshot is only B', async () => {
+    useNotesStore.getState().setNotes([note('1')]);
+    let emit: ((notes: Note[]) => void) | undefined;
+    remoteMocks.subscribeToNotes.mockImplementation((_uid: string, onData: (n: Note[]) => void) => {
+      emit = onData;
+      return () => {};
+    });
+
+    startNotesRealtimeSync(USER);
+    emit?.([note('2')]);
+    await flushApply();
+
+    expect(useNotesStore.getState().notes.map((n) => n.id).sort()).toEqual(['1', '2']);
   });
 });
