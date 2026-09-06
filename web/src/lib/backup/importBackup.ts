@@ -83,8 +83,8 @@ function noteFromBackupEntry(
     .filter((name) => name.length > 0)
     .slice(0, MAX_NOTE_LABELS);
 
-  // cloudMapToNote coerces types; the caps below keep an imported note inside the limits
-  // firestore.rules enforces, so it can still sync after import.
+  // cloudMapToNote coerces types; the caps below keep an imported note inside the Postgres
+  // CHECK limits so it can still sync after import.
   const mapped = cloudMapToNote(String(localId), {
     ...data,
     localId,

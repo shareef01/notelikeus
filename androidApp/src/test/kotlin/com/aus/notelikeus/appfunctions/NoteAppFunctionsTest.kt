@@ -162,8 +162,8 @@ class NoteAppFunctionsTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun `a title past the cloud limit is refused rather than saved unsyncable`() = runTest {
-        // firestore.rules caps title at 2000; over that the note saves locally and then fails the
-        // rules check on every sync attempt, silently, forever.
+        // Postgres caps title at 2000; over that the note saves locally and then fails
+        // apply_note_change on every sync attempt, silently, forever.
         noteAppFunctions.createNote(context, "x".repeat(2001), "body")
     }
 

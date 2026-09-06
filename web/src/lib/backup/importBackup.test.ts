@@ -30,7 +30,7 @@ describe('importNotesFromBackup', () => {
     expect(() => note.title.toLowerCase()).not.toThrow();
   });
 
-  it('clamps fields to the limits firestore.rules enforces, so imports stay syncable', () => {
+  it('clamps fields to the cloud CHECK limits, so imports stay syncable', () => {
     const { merged } = importNotesFromBackup(
       {
         version: 3,
