@@ -4,20 +4,26 @@ import type { Note } from '@/types/note';
 
 export interface LocalOwnerMeta {
   ownerId: string;
-  /** Legacy alias kept for existing IndexedDB rows. */
+  /**
+   * Legacy alias kept for existing IndexedDB rows. Prefer [remoteHydrated].
+   * Do not rename or drop: old clients wrote this key during Firebase-era hydration.
+   */
   firebaseHydrated: boolean;
-  /** Phase 4+: remote snapshot hydration complete for this owner. */
+  /** Remote snapshot hydration complete for this owner. */
   remoteHydrated?: boolean;
   hydratedAt: number | null;
-  /** Supabase pull_changes cursor (Phase 4+). */
+  /** Supabase pull_changes cursor. */
   lastRemoteRevision?: number;
   /** Per-note server revision for apply_note_change base_revision. */
   noteRevisions?: Record<string, number>;
-  /** Phase 6: IndexedDB namespace migrated from Firebase uid. */
+  /**
+   * IndexedDB namespace migrated from a Firebase uid. Required to read old installs;
+   * not a user-facing migration-phase label.
+   */
   firebaseNamespaceMigrated?: boolean;
   migratedFromOwnerId?: string;
   migratedAt?: number;
-  /** Phase 6: Firebase cloud snapshot imported into Supabase. */
+  /** Firebase cloud snapshot imported into Supabase. Keep for old-client rows. */
   firebaseCloudImported?: boolean;
   firebaseCloudImportedAt?: number;
   /** Complete cloud id set from the last successful snapshot. Survives reload. */

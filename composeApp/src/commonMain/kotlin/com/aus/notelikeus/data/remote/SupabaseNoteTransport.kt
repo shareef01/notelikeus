@@ -170,7 +170,7 @@ class SupabaseNoteTransport(
     }
 
     override suspend fun writeSyncMeta(uid: String, noteCount: Int, platform: String) {
-        // Optional metadata — direct table writes deferred until Phase 5 auth mapping is stable.
+        // Optional metadata. Note mutations go through RPCs; this table is unused.
     }
 
     override suspend fun deleteSyncMeta(uid: String) {

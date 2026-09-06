@@ -125,10 +125,9 @@ class NoteAppFunctionsTest {
     }
 
     /**
-     * A local edit does not move serverUpdatedAt, so on an already-synced note the client
-     * timestamp is the only thing separating the two sides -- and cloudWinsConflict gives an exact
-     * tie to the cloud. Without a bump, uploadNote skipped these writes and the next download
-     * overwrote them, so an agent's archive or reminder silently undid itself.
+     * A local edit does not move serverUpdatedAt. Upload compares the sync payload at that
+     * revision, so archive/reminder still reach the cloud. The client timestamp is bumped to
+     * match the rest of the write path (NoteActionsController) and for display sort.
      */
     @Test
     fun `archive bumps the client timestamp so the change can reach the cloud`() = runTest {

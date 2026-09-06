@@ -37,4 +37,47 @@ if (!headers.includes('.supabase.co') && !headers.includes('127.0.0.1') && !head
   process.exit(1);
 }
 
+const manifestCandidates = ['manifest.webmanifest', 'manifest.json'];
+let manifestPath = null;
+for (const file of manifestCandidates) {
+  const path = join(distDir, file);
+  try {
+    readFileSync(path);
+    manifestPath = path;
+    break;
+  } catch {
+    // try next
+  }
+}
+if (!manifestPath) {
+  console.error('web/dist must include a web app manifest with icon sizes');
+  process.exit(1);
+}
+
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+const icons = Array.isArray(manifest.icons) ? manifest.icons : [];
+const icon192 = icons.find((icon) => String(icon.src).includes('icon-192'));
+const icon512 = icons.find((icon) => String(icon.src).includes('icon-512'));
+if (icon192?.sizes !== '192x192') {
+  console.error('icon-192.png must declare sizes 192x192');
+  process.exit(1);
+}
+if (icon512?.sizes !== '512x512') {
+  console.error('icon-512.png must declare sizes 512x512');
+  process.exit(1);
+}
+if (String(icon192?.purpose ?? 'any').includes('maskable') || String(icon512?.purpose ?? 'any').includes('maskable')) {
+  console.error('do not declare maskable icons unless the asset is a maskable-safe image');
+  process.exit(1);
+}
+const shortcutIcons = (Array.isArray(manifest.shortcuts) ? manifest.shortcuts : []).flatMap(
+  (shortcut) => (Array.isArray(shortcut.icons) ? shortcut.icons : []),
+);
+for (const icon of shortcutIcons) {
+  if (String(icon.src).includes('icon-192') && icon.sizes !== '192x192') {
+    console.error('shortcut icon-192.png must declare sizes 192x192');
+    process.exit(1);
+  }
+}
+
 console.log('Cloudflare Pages artifacts verified in web/dist');

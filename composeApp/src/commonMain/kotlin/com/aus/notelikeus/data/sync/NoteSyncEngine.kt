@@ -350,18 +350,16 @@ class NoteSyncEngine(
                         innerInsert(cloudNote)
                         changes++
                     }
-                    // The cloud copy winning does not mean it differs. In steady state both sides
-                    // carry the same serverUpdatedAt and the same timestamp, so cloudWinsConflict
-                    // answers "cloud" for every note in the library — and innerUpdate is not a
-                    // cheap no-op, it rewrites the row and deletes and re-inserts every label
-                    // cross-ref and checklist item. Without this check a download rewrites the
-                    // whole library through SQLCipher on every sync and reports each note as a
-                    // change, so the snackbar always claims the full note count.
+                    // Same revision + same sync payload is a no-op even when client clocks differ.
+                    // cloudWinsConflict no longer treats an equal stamp as "cloud wins", so this
+                    // check must run before the push-local branch or a steady-state library would
+                    // look like a mutation on every download (SQLCipher rewrite + snackbar count).
+                    sameSyncPayload(localNote, record) || sameContent(cloudNote, localNote) -> {
+                        // already matches
+                    }
                     cloudWins -> {
-                        if (!sameContent(cloudNote, localNote)) {
-                            innerUpdate(cloudNote)
-                            changes++
-                        }
+                        innerUpdate(cloudNote)
+                        changes++
                     }
                     else -> {
                         toPushBack += localNote

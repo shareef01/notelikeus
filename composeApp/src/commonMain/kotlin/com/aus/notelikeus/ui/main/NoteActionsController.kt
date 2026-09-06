@@ -201,10 +201,8 @@ internal class NoteActionsController(
     }
 
     // Both of these bump `timestamp`, like every other write in this file. A local edit does not
-    // move serverUpdatedAt, so once a note has synced, the client timestamp is the only thing
-    // separating the two sides -- and cloudWinsConflict resolves an exact tie in the cloud's
-    // favour. Leaving it unchanged meant uploadNote skipped the upload *and* the next download
-    // overwrote the row, so restoring or pinning a synced note silently undid itself.
+    // move serverUpdatedAt. Upload compares the sync payload at that revision, so restore/pin
+    // still reach the cloud; the wall clock is not the conflict authority.
     fun restoreSelectedNotes() {
         launchAction(NoteActionFailure.UPDATE) {
             val notesToRestore = state.value.notes.filter { it.id in state.value.selectedNotes }

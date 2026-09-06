@@ -16,10 +16,9 @@ import org.koin.core.component.inject
  * Exposes note management capabilities to system agents.
  *
  * Every write here bumps the note's client `timestamp`, matching NoteActionsController. A local
- * edit does not move `serverUpdatedAt`, so on an already-synced note the client timestamp is the
- * only thing separating the two sides, and `cloudWinsConflict` gives an exact tie to the cloud --
- * which meant an agent's archive or reminder was skipped by the upload and then overwritten by the
- * next download, without ever reporting a failure.
+ * edit does not move `serverUpdatedAt`. Upload/download compare the sync payload at that revision
+ * (`sameSyncPayload`); a changed archive/reminder flag still uploads. The client wall clock is
+ * not the conflict authority.
  */
 class NoteAppFunctions : KoinComponent {
     private val repository: NoteRepository by inject()

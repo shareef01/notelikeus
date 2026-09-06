@@ -175,6 +175,31 @@ class NoteSyncEngineTest {
     }
 
     @Test
+    fun `uploadAllNotes sends a same-revision edit even when the local clock is behind`() = runTest {
+        setup()
+        stateStore.setLastMergedUserId("uid")
+        transport.notes[1L] = CloudNoteRecord(
+            noteId = 1L, serverUpdatedAt = 200_000L, clientTimestamp = 999_999L,
+            title = "Previous", content = "Old", timestamp = 999_999L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null,
+            labels = emptyList(), checklistItems = emptyList()
+        )
+        noteDao.insertNote(
+            Note(
+                id = 1L, title = "Edited locally", content = "New", timestamp = 1L, color = 0,
+                serverUpdatedAt = 200_000L
+            ).toNoteEntity()
+        )
+
+        val result = engine.uploadAllNotes()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, result.getOrNull())
+        assertEquals("Edited locally", transport.notes[1L]?.title)
+    }
+
+    @Test
     fun `uploadAllNotes refuses when lastMergedUserId belongs to another account`() = runTest {
         setup(uid = "second-account")
         stateStore.setLastMergedUserId("first-account")
@@ -473,9 +498,9 @@ class NoteSyncEngineTest {
             }
         })
 
-        // Steady state: the same confirmed revision on both sides. cloudWinsConflict answers
-        // "cloud" here by design (the tie avoids pushing the note back up), which is exactly why
-        // the branch has to check whether anything actually differs before rewriting the row.
+        // Steady state: the same confirmed revision and payload on both sides. Equal stamps are
+        // not a cloud win (the clock is ignored), so download must still treat an identical
+        // payload as a no-op rather than a local mutation to push back.
         baseDao.insertNote(
             Note(
                 id = 5L, title = "Same", content = "Body", timestamp = 1L, color = 0,
@@ -489,6 +514,57 @@ class NoteSyncEngineTest {
         assertTrue(result.isSuccess)
         assertEquals(0, result.getOrNull(), "an unchanged library is not a change")
         assertEquals(0, updates, "a row that already matches must not be rewritten")
+    }
+
+    @Test
+    fun `downloadAllNotes ignores a skewed client clock when the payload already matches`() = runTest {
+        val baseDao = FakeNoteDao()
+        var updates = 0
+        setupWithDao(object : NoteDao by baseDao {
+            override suspend fun updateNote(note: NoteEntity) {
+                updates++
+                baseDao.updateNote(note)
+            }
+        })
+
+        baseDao.insertNote(
+            Note(
+                id = 5L, title = "Same", content = "Body", timestamp = 1L, color = 0,
+                serverUpdatedAt = 200_000L
+            ).toNoteEntity()
+        )
+        transport.notes[5L] = cloudRecord(title = "Same", content = "Body").copy(
+            clientTimestamp = 999_999L,
+            timestamp = 999_999L,
+        )
+
+        val result = engine.downloadAllNotes()
+
+        assertTrue(result.isSuccess)
+        assertEquals(0, result.getOrNull(), "clock skew must not count as a change")
+        assertEquals(0, updates)
+        assertEquals(1L, baseDao.notes[5L]?.timestamp, "local row must not be rewritten from the remote clock")
+    }
+
+    @Test
+    fun `downloadAllNotes uploads a same-revision local edit even when the client clock is behind`() = runTest {
+        setup()
+        noteDao.insertNote(
+            Note(
+                id = 5L, title = "Edited locally", content = "New", timestamp = 1L, color = 0,
+                serverUpdatedAt = 200_000L
+            ).toNoteEntity()
+        )
+        transport.notes[5L] = cloudRecord(title = "Previous", content = "Old").copy(
+            clientTimestamp = 999_999L,
+            timestamp = 999_999L,
+        )
+
+        val result = engine.downloadAllNotes()
+
+        assertTrue(result.isSuccess)
+        assertEquals("Edited locally", noteDao.notes[5L]?.title, "clock must not discard the local edit")
+        assertEquals("Edited locally", transport.notes[5L]?.title, "the local mutation must upload")
     }
 
     @Test

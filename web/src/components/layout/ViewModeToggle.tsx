@@ -31,7 +31,7 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
       <button
         type="button"
         onClick={() => onChange(nextMode(value))}
-        className="flex size-9 shrink-0 items-center justify-center rounded-full border border-brand-outline/40 bg-true-surface-variant/70 text-brand-secondary shadow-sm transition-colors hover:text-brand-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary md:hidden"
+        className="flex size-11 shrink-0 items-center justify-center rounded-full border border-brand-outline/40 bg-true-surface-variant/70 text-brand-secondary shadow-sm transition-colors hover:text-brand-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary md:hidden"
         aria-label={`View: ${current.shortLabel}. Tap to change`}
         title={current.label}
       >
@@ -39,7 +39,7 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
       </button>
 
       <div
-        className="hidden h-9 shrink-0 items-center gap-0.5 rounded-full border border-brand-outline/40 bg-true-surface-variant/70 p-0.5 shadow-sm md:flex"
+        className="hidden h-11 shrink-0 items-center gap-0.5 rounded-full border border-brand-outline/40 bg-true-surface-variant/70 p-0.5 shadow-sm md:flex"
         role="radiogroup"
         aria-label="Notes view size"
       >
@@ -54,7 +54,7 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
               aria-label={label}
               title={label}
               onClick={() => onChange(mode)}
-              className={`flex size-8 items-center justify-center rounded-full transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
+              className={`flex size-10 items-center justify-center rounded-full transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
                 selected
                   ? 'bg-brand-primary text-true-surface shadow-sm'
                   : 'text-brand-secondary hover:bg-brand-primary/10 hover:text-brand-primary'

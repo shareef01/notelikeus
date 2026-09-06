@@ -11,8 +11,8 @@ import kotlin.test.assertTrue
 /**
  * Shared behavioral contract for [CloudNoteTransport] implementations.
  *
- * Runs against [FakeCloudNoteTransport] today. Future Phase 4 should add an emulator-backed
- * subclass for a fake transport and the live Supabase adapter.
+ * Runs against [FakeCloudNoteTransport] today. [SupabaseNoteTransportTest] covers the live
+ * adapter's mapping separately.
  */
 abstract class CloudNoteTransportContractTest {
 

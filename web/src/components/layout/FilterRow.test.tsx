@@ -56,4 +56,14 @@ describe('FilterRow', () => {
     expect(sort?.hasAttribute('aria-pressed')).toBe(false);
     cleanup();
   });
+
+  it('discloses secondary facets behind an expanded Filters control', () => {
+    const { container, cleanup } = render(null);
+    const filters = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Filters',
+    );
+    expect(filters?.getAttribute('aria-expanded')).toBe('false');
+    expect(filters?.getAttribute('aria-controls')).toBe('note-filter-facets');
+    cleanup();
+  });
 });

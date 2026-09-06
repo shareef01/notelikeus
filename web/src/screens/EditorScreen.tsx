@@ -270,7 +270,12 @@ export function EditorScreen({ route }: EditorScreenProps) {
     if (editorLayout === 'dock') {
       return (
         <div className="relative flex h-full w-full flex-col">
-          <div className="relative mx-auto flex h-full w-full max-w-editor flex-col" style={surface}>
+          <div
+            className="relative mx-auto flex h-full w-full max-w-editor flex-col"
+            style={surface}
+            role="region"
+            aria-label="Note editor"
+          >
             {children}
           </div>
         </div>
@@ -314,7 +319,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
   const layoutControls = isTabletUp ? (
     <div
-      className="flex h-9 shrink-0 items-center gap-0.5 rounded-full border border-[color-mix(in_srgb,currentColor_12%,transparent)] bg-[color-mix(in_srgb,currentColor_8%,transparent)] p-0.5"
+      className="flex h-11 shrink-0 items-center gap-0.5 rounded-full border border-[color-mix(in_srgb,currentColor_12%,transparent)] bg-[color-mix(in_srgb,currentColor_8%,transparent)] p-0.5"
       role="radiogroup"
       aria-label="Editor layout"
     >
@@ -328,7 +333,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             role="radio"
             aria-checked={active}
             onClick={() => setEditorLayout(button.id)}
-            className={`flex size-8 items-center justify-center rounded-full transition-[background-color,opacity] duration-150 ${CHROME_FOCUS} ${
+            className={`flex size-10 items-center justify-center rounded-full transition-[background-color,opacity] duration-150 ${CHROME_FOCUS} ${
               active
                 ? 'bg-[color-mix(in_srgb,currentColor_18%,transparent)] opacity-100'
                 : 'opacity-60 hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] hover:opacity-80'
