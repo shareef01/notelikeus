@@ -10,6 +10,7 @@ import com.aus.notelikeus.data.mapper.toChecklistItemEntity
 import com.aus.notelikeus.data.mapper.toLabel
 import com.aus.notelikeus.data.mapper.toNote
 import com.aus.notelikeus.data.mapper.toNoteEntity
+import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
@@ -72,6 +73,12 @@ class NoteSyncEngine(
      */
     private val now: () -> Long = { DateUtils.currentTimeMillis() },
     private val attachmentSync: AttachmentSyncService? = null,
+    /**
+     * Test hook for attachment GC. Production uses [attachmentSync].
+     * Must never run before authoritative server note deletion succeeds.
+     */
+    private val deleteNoteAttachments: suspend (noteId: Long, attachments: List<Attachment>) -> Unit =
+        { noteId, attachments -> attachmentSync?.deleteAttachmentsForNote(noteId, attachments) },
 ) {
     private val accountUidBridge = accountUidBridge ?: AccountUidBridge(syncStateStore)
 
@@ -125,19 +132,8 @@ class NoteSyncEngine(
             }
 
             if (toPush.isNotEmpty()) {
-                val syncedNotes = attachmentSync?.syncNotesAttachments(toPush) ?: toPush
-                val serverTimestamps = transport.putNotes(uid, syncedNotes)
-                uploaded = syncedNotes.size
-                for ((noteId, resolvedTs) in serverTimestamps) {
-                    if (resolvedTs != null) {
-                        noteDao.updateServerTimestamp(noteId, resolvedTs)
-                    }
-                }
-                for (note in syncedNotes) {
-                    if (note.attachments.isNotEmpty()) {
-                        noteDao.updateNote(note.toNoteEntity())
-                    }
-                }
+                putNotes(uid, toPush)
+                uploaded = toPush.size
             }
 
             transport.writeSyncMeta(uid, noteDao.getCloudEligibleNoteCount(), platform)
@@ -227,17 +223,9 @@ class NoteSyncEngine(
     /**
      * Brings a permanently-deleted note back, locally and in the cloud.
      *
-     * The restore marker is written first, and that ordering is the whole point of it. Clearing
-     * the local tombstone is what stops [purgeLocalTombstonedNotes] deleting the row the
-     * repository has just re-inserted, so it has to happen here rather than after the network
-     * call. But that leaves the *cloud* tombstone as the hazard: if [deleteTombstones] below
-     * never lands — offline, expired token, SyncWorker exhausting its retries — the next sync's
-     * [mergeCloudTombstones] re-imports it and the note is purged again, silently.
-     *
-     * The marker is what closes that window. It survives process death, [mergeCloudTombstones]
-     * treats a cloud tombstone for a restored id as stale and re-attempts the delete on every
-     * sync, and [refreshCloudTombstone] refuses to re-import one in the meantime. Clearing it
-     * only after [deleteTombstones] returns is what makes it mean "not confirmed gone yet".
+     * The restore marker is written first so a crash cannot re-import the cloud tombstone and
+     * purge the row. The marker is cleared only after [CloudNoteTransport.restoreNote] confirms
+     * the live remote note (tombstone removal + note write in one server transaction).
      */
     suspend fun restoreNote(noteId: Long): Result<Unit> {
         return runCatching {
@@ -245,11 +233,17 @@ class NoteSyncEngine(
             requireCurrentAccount(uid)
             syncStateStore.markRestored(noteId)
             syncStateStore.clearDeleted(listOf(noteId))
-            transport.deleteTombstones(uid, listOf(noteId))
-            syncStateStore.clearRestored(listOf(noteId))
+            syncStateStore.clearPendingAttachmentGc(noteId)
             val note = noteDao.getNoteById(noteId)?.toNote()
                 ?: return@runCatching
-            putNote(uid, note)
+            val timestamps = transport.restoreNote(uid, note)
+            for ((id, resolved) in timestamps) {
+                if (resolved != null) {
+                    noteDao.updateServerTimestamp(id, resolved)
+                }
+            }
+            // Marker survives until the live remote note is confirmed.
+            syncStateStore.clearRestored(listOf(noteId))
         }
     }
 
@@ -258,13 +252,19 @@ class NoteSyncEngine(
             val uid = uidProvider().getOrThrow()
             requireCurrentAccount(uid)
             val note = noteDao.getNoteById(noteId)?.toNote()
-            if (note != null) {
-                attachmentSync?.deleteAttachmentsForNote(noteId, note.attachments)
-            }
             val deletedAt = now()
+            // A later delete must cancel an in-flight restore so merge cannot resurrect it.
+            syncStateStore.clearRestored(listOf(noteId))
+            // Local tombstone first so a crash mid-network still treats the note as deleted.
             syncStateStore.markDeleted(noteId, deletedAt)
             transport.writeTombstone(uid, noteId, deletedAt)
             transport.deleteNotes(uid, listOf(noteId))
+            // Blob GC only after authoritative server deletion. Failure is retryable.
+            if (note != null && note.attachments.isNotEmpty()) {
+                syncStateStore.markPendingAttachmentGc(noteId, note.attachments.map { it.id })
+                runCatching { deleteNoteAttachments(noteId, note.attachments) }
+                    .onSuccess { syncStateStore.clearPendingAttachmentGc(noteId) }
+            }
         }
     }
 
@@ -388,6 +388,7 @@ class NoteSyncEngine(
             putNotes(uid, toPushBack)
 
             attachmentSync?.hydrateAllNotes()
+            retryPendingAttachmentGc()
 
             syncStateStore.setKnownCloudIds(cloudNoteIds)
             pruneExpiredTombstones(uid, cloudNoteIds, cloudTombstones)
@@ -503,6 +504,7 @@ class NoteSyncEngine(
         for (note in syncedNotes) {
             if (note.attachments.isNotEmpty()) {
                 noteDao.updateNote(note.toNoteEntity())
+                attachmentSync?.confirmCommittedAttachments(note)
             }
         }
     }
@@ -511,14 +513,41 @@ class NoteSyncEngine(
     private suspend fun mergeCloudTombstones(uid: String): Map<Long, Long> {
         val remote = transport.fetchTombstones(uid)
         val restored = syncStateStore.restoredIds()
-        val stale = remote.keys.filter { it in restored }
-        if (stale.isNotEmpty()) {
-            transport.deleteTombstones(uid, stale)
-            syncStateStore.clearRestored(stale)
+        val ignoreTombstones = mutableSetOf<Long>()
+        for (noteId in restored) {
+            val liveNote = transport.fetchNote(uid, noteId)
+            if (liveNote != null) {
+                syncStateStore.clearRestored(listOf(noteId))
+                ignoreTombstones.add(noteId)
+                continue
+            }
+            val local = noteDao.getNoteById(noteId)?.toNote()
+            if (local != null) {
+                runCatching { transport.restoreNote(uid, local) }
+                    .onSuccess {
+                        syncStateStore.clearRestored(listOf(noteId))
+                        ignoreTombstones.add(noteId)
+                    }
+            }
         }
-        val live = remote.filterKeys { it !in restored }
+        val stillRestored = syncStateStore.restoredIds()
+        val live = remote.filterKeys { it !in stillRestored && it !in ignoreTombstones }
         syncStateStore.mergeDeleted(live)
         return live
+    }
+
+    private suspend fun retryPendingAttachmentGc() {
+        for ((noteId, attachmentIds) in syncStateStore.pendingAttachmentGcEntries()) {
+            val fromNote = noteDao.getNoteById(noteId)?.toNote()?.attachments
+            val attachments = fromNote ?: attachmentIds.map { id ->
+                Attachment(id = id, noteId = noteId, storagePath = "r2:gc/$noteId/$id")
+            }
+            runCatching { deleteNoteAttachments(noteId, attachments) }
+                .onSuccess { syncStateStore.clearPendingAttachmentGc(noteId) }
+        }
+        attachmentSync?.sweepPendingDeletedAttachments { id ->
+            id.toLongOrNull() in syncStateStore.restoredIds()
+        }
     }
 
     private suspend fun refreshCloudTombstone(uid: String, noteId: Long) {

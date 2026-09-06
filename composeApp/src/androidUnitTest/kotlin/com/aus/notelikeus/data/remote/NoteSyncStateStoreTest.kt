@@ -30,6 +30,15 @@ class NoteSyncStateStoreTest {
     }
 
     @Test
+    fun `pending attachment GC ids round-trip and clear`() {
+        store.markPendingAttachmentGc(9L)
+        store.markPendingAttachmentGc(10L)
+        assertEquals(setOf(9L, 10L), store.pendingAttachmentGcIds())
+        store.clearPendingAttachmentGc(9L)
+        assertEquals(setOf(10L), store.pendingAttachmentGcIds())
+    }
+
+    @Test
     fun `restored ids round-trip and clear`() {
         store.markRestored(3L)
         store.markRestored(4L)

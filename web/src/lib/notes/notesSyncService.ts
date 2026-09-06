@@ -1,6 +1,8 @@
 import { putNotes } from '@/lib/local/notesLocalRepository';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
+import { shouldUploadOverRemote } from '@/lib/notes/remoteMerge';
 import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegistry';
+import { loadRevisionState, saveRevisionState } from '@/lib/supabase/revisionStore';
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
@@ -45,19 +47,41 @@ export function resumeRealtimeSnapshots(): void {
   realtimeApplyPaused = false;
 }
 
+/**
+ * Subscribe emits whatever its in-memory map last held. Local saves update IndexedDB and the
+ * UI store, not that map, so a later incremental emit can carry stale copies. Keep the live
+ * local winner (and local-only notes the map never saw) unless a tombstone already removed them.
+ */
+function mergeIncomingWithLocal(incoming: Note[]): Note[] {
+  const isDeleted = useTombstoneStore.getState().isDeleted;
+  const byId = new Map<string, Note>();
+  for (const local of useNotesStore.getState().notes) {
+    if (!isDeleted(local.id)) byId.set(local.id, local);
+  }
+  for (const remote of incoming) {
+    if (isDeleted(remote.id)) continue;
+    const local = byId.get(remote.id);
+    if (!local || !shouldUploadOverRemote(local, remote)) {
+      byId.set(remote.id, remote);
+    }
+  }
+  return Array.from(byId.values());
+}
+
 function applyNotes(userId: string, incoming: Note[]) {
+  const merged = mergeIncomingWithLocal(incoming);
   const current = useNotesStore.getState().notes;
-  if (notesContentEqual(current, incoming)) {
+  if (notesContentEqual(current, merged)) {
     if (useNotesStore.getState().status !== 'ready') {
       useNotesStore.getState().setStatus('ready');
     }
-    void putNotes(userId, incoming).catch((error: unknown) => {
+    void putNotes(userId, merged).catch((error: unknown) => {
       console.warn('[Notelikeus] IndexedDB mirror write failed:', error);
     });
     return;
   }
-  useNotesStore.getState().setNotes(incoming);
-  void putNotes(userId, incoming).catch((error: unknown) => {
+  useNotesStore.getState().setNotes(merged);
+  void putNotes(userId, merged).catch((error: unknown) => {
     console.warn('[Notelikeus] IndexedDB mirror write failed:', error);
   });
 }
@@ -79,8 +103,11 @@ const SNAPSHOT_FRESHNESS_WINDOW_MS = 15_000;
 let knownRemoteIds = new Set<string>();
 
 /** Replaces the known-remote-id set with the complete cloud ID set from the latest sync result. */
-function trackRemoteIds(ids: string[]) {
+function trackRemoteIds(userId: string, ids: string[]) {
   knownRemoteIds = new Set(ids);
+  void saveRevisionState(userId, { knownCloudIds: ids }).catch((error: unknown) => {
+    console.warn('[Notelikeus] Failed to persist known cloud ids:', error);
+  });
 }
 
 /**
@@ -111,7 +138,7 @@ async function reconcileNow(userId: string): Promise<void> {
       // Signed out, or switched to a different account, while this was in flight — applying a
       // stale result now would repopulate a store that clearLocalUserData() already cleared.
       if (reconcileUserId !== userId) return;
-      trackRemoteIds(result.remoteIds);
+      trackRemoteIds(userId, result.remoteIds);
       const isDeleted = useTombstoneStore.getState().isDeleted;
       applyNotes(userId, result.merged.filter((note) => !isDeleted(note.id)));
     } catch (error) {
@@ -167,6 +194,12 @@ export function startNotesRealtimeSync(userId: string): void {
   stopNotesRealtimeSync();
   realtimeUserId = userId;
   attachReconciliationTriggers(userId);
+  void loadRevisionState(userId).then((state) => {
+    if (realtimeUserId !== userId) return;
+    if (knownRemoteIds.size === 0 && state.knownCloudIds.length > 0) {
+      knownRemoteIds = new Set(state.knownCloudIds);
+    }
+  });
 
   const remote = getRemoteNotesDataSource();
   unsubscribeRealtime = remote.subscribeToNotes(
@@ -191,7 +224,12 @@ export function startNotesRealtimeSync(userId: string): void {
             useTombstoneStore.getState().markDeleted(id);
           }
         }
-        trackRemoteIds(remoteNotes.map((note) => note.id));
+        // Persist only actual cloud IDs (snapshot/reconcile/incremental apply). Emitting
+        // local-only notes kept across an empty first snapshot must not mark them remote.
+        void loadRevisionState(userId).then((state) => {
+          if (realtimeUserId !== userId) return;
+          knownRemoteIds = new Set(state.knownCloudIds);
+        });
       }
 
       lastSnapshotAppliedAt = Date.now();

@@ -68,6 +68,16 @@ describe('empty remote snapshot vs populated local library', () => {
     expect(useNotesStore.getState().notes).toHaveLength(3);
   });
 
+  it('keeps unsynced local notes when the first cloud snapshot already has other notes', async () => {
+    await putNote(USER, note('7'));
+    remoteMocks.fetchAllNotes.mockResolvedValue([note('1')]);
+
+    await hydrateIndexedDbFromRemote(USER);
+
+    expect(useNotesStore.getState().notes.map((n) => n.id).sort()).toEqual(['1', '7']);
+    expect((await listNotes(USER)).map((n) => n.id).sort()).toEqual(['1', '7']);
+  });
+
   it('still hydrates from the cloud when the local namespace is empty', async () => {
     remoteMocks.fetchAllNotes.mockResolvedValue([note('9')]);
 
@@ -118,6 +128,80 @@ describe('empty remote snapshot vs populated local library', () => {
     emit?.([note('1'), note('5')]);
 
     expect(useNotesStore.getState().notes.map((n) => n.id).sort()).toEqual(['1', '5']);
+  });
+
+  it('does not overwrite a newer local edit with a stale subscribe emit', async () => {
+    const local = createEmptyNote({
+      id: '1',
+      localId: 1,
+      title: 'typed locally',
+      timestamp: 100,
+    });
+    const stale = createEmptyNote({
+      id: '1',
+      localId: 1,
+      title: 'stale snapshot',
+      timestamp: 1,
+    });
+    await putNote(USER, local);
+    useNotesStore.getState().setNotes([local]);
+    let emit: ((notes: Note[]) => void) | undefined;
+    remoteMocks.subscribeToNotes.mockImplementation((_uid: string, onData: (n: Note[]) => void) => {
+      emit = onData;
+      return () => {};
+    });
+
+    startNotesRealtimeSync(USER);
+    emit?.([stale]);
+    await vi.waitFor(async () => {
+      expect(useNotesStore.getState().notes[0]?.title).toBe('typed locally');
+      expect((await listNotes(USER))[0]?.title).toBe('typed locally');
+    });
+  });
+
+  it('still applies a newer remote copy over a stale local one', () => {
+    const local = createEmptyNote({
+      id: '1',
+      localId: 1,
+      title: 'stale local',
+      timestamp: 10,
+      serverUpdatedAt: 10,
+    });
+    const remote = createEmptyNote({
+      id: '1',
+      localId: 1,
+      title: 'newer remote',
+      timestamp: 20,
+      serverUpdatedAt: 30,
+    });
+    useNotesStore.getState().setNotes([local]);
+    let emit: ((notes: Note[]) => void) | undefined;
+    remoteMocks.subscribeToNotes.mockImplementation((_uid: string, onData: (n: Note[]) => void) => {
+      emit = onData;
+      return () => {};
+    });
+
+    startNotesRealtimeSync(USER);
+    emit?.([remote]);
+
+    expect(useNotesStore.getState().notes[0]?.title).toBe('newer remote');
+  });
+
+  it('keeps a local-only note that a later emit never included', async () => {
+    const localOnly = note('7');
+    await putNote(USER, localOnly);
+    useNotesStore.getState().setNotes([localOnly]);
+    let emit: ((notes: Note[]) => void) | undefined;
+    remoteMocks.subscribeToNotes.mockImplementation((_uid: string, onData: (n: Note[]) => void) => {
+      emit = onData;
+      return () => {};
+    });
+
+    startNotesRealtimeSync(USER);
+    emit?.([note('1')]);
+    await vi.waitFor(() => {
+      expect(useNotesStore.getState().notes.map((n) => n.id).sort()).toEqual(['1', '7']);
+    });
   });
 
   it('lets a snapshot empty by deletion through once every note is tombstoned', () => {

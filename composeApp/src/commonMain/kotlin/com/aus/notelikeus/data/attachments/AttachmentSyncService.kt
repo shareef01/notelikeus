@@ -47,8 +47,8 @@ class AttachmentSyncService(
             when {
                 isPendingAttachment(attachment.storagePath) -> {
                     val pendingId = attachment.storagePath.removePrefix(ATTACHMENT_PENDING_PREFIX)
-                    val pending = PendingAttachmentStore.take(pendingId)
-                        ?: PendingAttachmentStore.peek(pendingId)
+                    // Keep the only local copy until the note revision commits.
+                    val pending = PendingAttachmentStore.peek(pendingId)
                     if (pending == null) {
                         synced.add(attachment)
                         continue
@@ -79,7 +79,6 @@ class AttachmentSyncService(
                         bytes = bytes,
                         mimeType = mimeType,
                     )
-                    localStorage.deleteIfLocal(attachment.storagePath)
                     synced.add(
                         attachment.copy(
                             storagePath = "$ATTACHMENT_R2_PREFIX${result.objectKey}",
@@ -97,9 +96,27 @@ class AttachmentSyncService(
     suspend fun syncNotesAttachments(notes: List<Note>): List<Note> =
         notes.map { syncNoteAttachments(it) }
 
+    /**
+     * Drops local source copies only after the live note revision that references them
+     * has been accepted by the server. Never called as compensation for a failed upload.
+     */
+    suspend fun confirmCommittedAttachments(note: Note) {
+        if (!enabled) return
+        for (attachment in note.attachments) {
+            when {
+                isPendingAttachment(attachment.storagePath) -> {
+                    val pendingId = attachment.storagePath.removePrefix(ATTACHMENT_PENDING_PREFIX)
+                    PendingAttachmentStore.take(pendingId)
+                }
+                isFileAttachment(attachment.storagePath) -> localStorage.deleteIfLocal(attachment.storagePath)
+            }
+        }
+    }
+
     suspend fun deleteAttachmentsForNote(noteId: Long, attachments: List<Attachment>) {
         if (!enabled || attachments.isEmpty()) return
         val noteIdStr = noteId.toString()
+        var remoteFailure: Throwable? = null
         for (attachment in attachments) {
             when {
                 isPendingAttachment(attachment.storagePath) -> {
@@ -109,7 +126,27 @@ class AttachmentSyncService(
                 isFileAttachment(attachment.storagePath) -> localStorage.deleteIfLocal(attachment.storagePath)
                 isR2Attachment(attachment.storagePath) -> runCatching {
                     blobTransport.delete(noteIdStr, attachment.id)
+                }.onFailure { error ->
+                    if (remoteFailure == null) remoteFailure = error
                 }
+            }
+        }
+        remoteFailure?.let { throw it }
+    }
+
+    /**
+     * Deletes R2 objects the server already marked pending-deleted for tombstoned notes.
+     * Skips [skipNoteId] (in-flight restores) and prefers orphan storage on failure.
+     */
+    suspend fun sweepPendingDeletedAttachments(skipNoteId: (String) -> Boolean = { false }) {
+        if (!enabled) return
+        val metadataClient = metadata ?: return
+        val pending = runCatching { metadataClient.listPendingDeletedAttachments() }.getOrNull() ?: return
+        for (row in pending) {
+            if (skipNoteId(row.noteId)) continue
+            runCatching {
+                blobTransport.delete(row.noteId, row.attachmentId)
+                metadataClient.purgeDeleted(row.attachmentId, row.noteId)
             }
         }
     }
