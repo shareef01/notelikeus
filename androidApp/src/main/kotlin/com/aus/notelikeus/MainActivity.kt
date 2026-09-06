@@ -167,10 +167,17 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val shared = extractSharedText(intent)
-        pendingSharedTitle = shared?.first
-        pendingSharedContent = shared?.second
-        pendingNoteId = extractEditorNoteId(intent)
-        pendingCreateNote = intentRequestsNewNote(intent) || shared != null
+        val noteId = extractEditorNoteId(intent)
+        val createNote = intentRequestsNewNote(intent) || shared != null
+        // A LAUNCHER tap while the sign-in gate is up must not wipe a widget / share payload
+        // that is waiting for the user to sign in or continue offline.
+        if (shared == null && noteId == null && !createNote) return
+        if (shared != null) {
+            pendingSharedTitle = shared.first
+            pendingSharedContent = shared.second
+        }
+        if (noteId != null) pendingNoteId = noteId
+        if (createNote) pendingCreateNote = true
         navigationRequest++
     }
 

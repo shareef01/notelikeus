@@ -3,9 +3,12 @@ package com.aus.notelikeus.ui.navigation
 import android.content.Intent
 import com.aus.notelikeus.ui.navigation.EXTRA_INTERNAL_NAV
 import com.aus.notelikeus.ui.navigation.EXTRA_INTERNAL_NAV_TOKEN
+import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.ui.navigation.markInternalNavigation
+import com.aus.notelikeus.ui.navigation.widgetMainActivityIntent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -21,6 +24,12 @@ class NavigationIntentsTest {
 
     @Before
     fun setup() {
+        InternalNavigationToken.forgetInMemoryForTests()
+        RuntimeEnvironment.getApplication()
+            .getSharedPreferences(InternalNavigationToken.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
         InternalNavigationToken.init(RuntimeEnvironment.getApplication())
     }
 
@@ -71,5 +80,86 @@ class NavigationIntentsTest {
         assertTrue(intentRequestsNewNote(Intent().markInternalNavigation().putExtra("createNote", true)))
         assertFalse(intentRequestsNewNote(Intent().putExtra("createNote", true)))
         assertFalse(intentRequestsNewNote(Intent()))
+    }
+
+    /**
+     * The sending app chooses these strings. Anything longer than the cloud schema's
+     * `notes_title_len` / `notes_content_len` checks saved locally and was then rejected by
+     * `apply_note_change` on every later sync, leaving a note that could never upload.
+     */
+    @Test
+    fun `extractSharedText clamps oversized shared text to the cloud limits`() {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "t".repeat(NoteBackupImporter.MAX_FIELD_CHARS * 2))
+            putExtra(Intent.EXTRA_TEXT, "c".repeat(NoteBackupImporter.MAX_CONTENT_CHARS + 5_000))
+        }
+
+        val shared = extractSharedText(intent)
+
+        assertNotNull(shared)
+        assertEquals(NoteBackupImporter.MAX_FIELD_CHARS, shared!!.first!!.length)
+        assertEquals(NoteBackupImporter.MAX_CONTENT_CHARS, shared.second!!.length)
+    }
+
+    @Test
+    fun `extractSharedText leaves ordinary shared text untouched`() {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Article title")
+            putExtra(Intent.EXTRA_TEXT, "Body worth keeping")
+        }
+
+        val shared = extractSharedText(intent)
+
+        assertEquals("Article title", shared?.first)
+        assertEquals("Body worth keeping", shared?.second)
+    }
+
+    @Test
+    fun `internal token survives a process death stand-in`() {
+        val first = InternalNavigationToken.current()
+        val intent = Intent().markInternalNavigation().putExtra("noteId", 7L)
+
+        InternalNavigationToken.forgetInMemoryForTests()
+        InternalNavigationToken.init(RuntimeEnvironment.getApplication())
+
+        assertEquals(first, InternalNavigationToken.current())
+        assertEquals(7L, extractEditorNoteId(intent))
+    }
+
+    @Test
+    fun `widgetMainActivityIntent carries NEW_TASK SINGLE_TOP token extra and editor uri`() {
+        val intent = widgetMainActivityIntent(RuntimeEnvironment.getApplication(), noteId = 42L)
+        assertEquals(
+            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            intent.flags and (Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        )
+        assertTrue(InternalNavigationToken.matches(intent))
+        assertEquals(42L, intent.getLongExtra("noteId", -1L))
+        assertEquals("notelikeus://editor/42", intent.dataString)
+        assertEquals(42L, extractEditorNoteId(intent))
+    }
+
+    @Test
+    fun `extractEditorNoteId still reads the editor uri when the noteId extra is missing`() {
+        val intent = widgetMainActivityIntent(RuntimeEnvironment.getApplication(), noteId = 99L)
+        intent.removeExtra("noteId")
+        assertEquals(99L, extractEditorNoteId(intent))
+    }
+
+    @Test
+    fun `extractEditorNoteId still reads a legacy reminder note-host uri`() {
+        val intent = Intent()
+            .markInternalNavigation()
+            .setData(android.net.Uri.parse("notelikeus://note/77"))
+        assertEquals(77L, extractEditorNoteId(intent))
+    }
+
+    @Test
+    fun `widgetMainActivityIntent createNote is detected as a new-note request`() {
+        val intent = widgetMainActivityIntent(RuntimeEnvironment.getApplication(), createNote = true)
+        assertTrue(intentRequestsNewNote(intent))
+        assertNull(extractEditorNoteId(intent))
     }
 }

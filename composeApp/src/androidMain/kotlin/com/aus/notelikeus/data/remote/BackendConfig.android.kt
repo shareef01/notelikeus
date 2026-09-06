@@ -9,7 +9,9 @@ actual object BackendConfig {
                 System.getenv("NOTELIKEUS_SUPABASE_URL"),
                 BuildConfig.NOTELIKEUS_SUPABASE_URL,
             ),
-            allowLocalFallback = BuildConfig.DEBUG,
+            // Debug APKs still install on phones. A localhost HTTP fallback is blocked
+            // there as cleartext, so Android never uses the CLI demo defaults.
+            allowLocalFallback = false,
         )
 
     actual val supabaseAnonKey: String
@@ -18,7 +20,7 @@ actual object BackendConfig {
                 System.getenv("NOTELIKEUS_SUPABASE_ANON_KEY"),
                 BuildConfig.NOTELIKEUS_SUPABASE_ANON_KEY,
             ),
-            allowLocalFallback = BuildConfig.DEBUG,
+            allowLocalFallback = false,
         )
 
     actual val attachmentsWorkerUrl: String

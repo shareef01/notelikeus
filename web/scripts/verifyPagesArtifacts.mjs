@@ -23,4 +23,10 @@ if (!redirects.includes('/index.html')) {
   process.exit(1);
 }
 
+const headers = readFileSync(join(distDir, '_headers'), 'utf8');
+if (headers.includes('https://*.workers.dev') || headers.includes('https://*.supabase.co')) {
+  console.error('web/dist/_headers must not wildcard workers.dev or supabase.co');
+  process.exit(1);
+}
+
 console.log('Cloudflare Pages artifacts verified in web/dist');

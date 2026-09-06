@@ -5,6 +5,7 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -49,3 +50,61 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://placeholder.supabase.co
           VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiJ9.payload.signature
+
+      - name: Verify Pages artifacts
+        working-directory: .
+        run: node web/scripts/verifyPagesArtifacts.mjs
+
+      - name: Verify security headers
+        working-directory: .
+        run: node cloudflare/scripts/verify-headers-parity.mjs
+
+  # Playwright talks to local Supabase. The unit job above cannot see that stack, and
+  # cloudflare-pages.yml is path-filtered, so this is the required E2E gate for PRs.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install repo dependencies
+        run: npm ci
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Start local Supabase
+        run: npm run supabase:start
+
+      - name: Reset database from migrations
+        run: npm run supabase:reset
+        # `supabase:reset` passes `--yes` so this step cannot hang on a TTY confirm.
+
+      - name: Run Playwright E2E
+        working-directory: web
+        run: npm run test:e2e
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-e2e-traces
+          path: web/test-results/
+
+      - name: Stop local Supabase
+        if: always()
+        run: npm run supabase:stop

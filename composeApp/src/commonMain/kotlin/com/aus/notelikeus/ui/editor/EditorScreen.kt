@@ -152,6 +152,7 @@ fun EditorScreen(
     val noteArchivedMsg = stringResource(Res.string.note_archived)
     val noteTrashedMsg = stringResource(Res.string.note_trashed)
     val noteSaveFailedMsg = stringResource(Res.string.note_save_failed)
+    val noteTruncatedMsg = stringResource(Res.string.note_truncated_to_sync_limit)
     val noteDeleteFailedMsg = stringResource(Res.string.note_delete_failed)
     val reminderRemovedMsg = stringResource(Res.string.reminder_removed_confirmation)
     val noteCopiedMsg = stringResource(Res.string.note_copied_to_clipboard)
@@ -179,6 +180,12 @@ fun EditorScreen(
         if (!state.saveFailed) return@LaunchedEffect
         snackbarHostState.showSnackbar(noteSaveFailedMsg)
         viewModel.clearSaveFailure()
+    }
+
+    LaunchedEffect(state.truncatedToSyncLimit) {
+        if (!state.truncatedToSyncLimit) return@LaunchedEffect
+        snackbarHostState.showSnackbar(noteTruncatedMsg)
+        viewModel.clearTruncationNotice()
     }
 
     val notePinnedMsg = stringResource(Res.string.note_pinned)
