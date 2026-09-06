@@ -20,6 +20,7 @@ export function getEmptyState(
   filter: NoteFilter,
   hasActiveFilters: boolean,
   hasSearch: boolean,
+  signedIn = true,
 ): EmptyStateCopy {
   if (hasSearch) {
     return {
@@ -53,7 +54,9 @@ export function getEmptyState(
 
   return {
     message: 'Notes you add appear here',
-    subtitle: 'Synced automatically with your Android device',
+    subtitle: signedIn
+      ? 'Synced automatically with your Android device'
+      : 'Stored locally in this browser until you sign in',
     icon: 'brand',
     showCreate: true,
   };

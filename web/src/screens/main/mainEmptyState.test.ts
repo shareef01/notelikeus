@@ -40,6 +40,12 @@ describe('getEmptyState', () => {
 
   it('offers Create note only in the genuinely empty default view', () => {
     expect(getEmptyState('active', false, false).showCreate).toBe(true);
+    expect(getEmptyState('active', false, false).subtitle).toBe(
+      'Synced automatically with your Android device',
+    );
+    expect(getEmptyState('active', false, false, false).subtitle).toBe(
+      'Stored locally in this browser until you sign in',
+    );
 
     // Anywhere else, a created note would either be hidden by the filter or belong to a scope it
     // cannot be created into.

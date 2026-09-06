@@ -276,7 +276,12 @@ export function MainScreen() {
     closeProfile: () => openDialogs({ profile: false }),
   });
 
-  const emptyState = getEmptyState(filters.filter, hasActiveFilters, Boolean(filters.searchQuery));
+  const emptyState = getEmptyState(
+    filters.filter,
+    hasActiveFilters,
+    Boolean(filters.searchQuery),
+    Boolean(user),
+  );
 
   const isTabletUp = useIsTabletUp();
   const editorRoute = useUiStore((s) => s.editorRoute);
