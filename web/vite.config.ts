@@ -32,7 +32,10 @@ export default defineConfig(({ mode }) => {
   plugins: [
     react(),
     tailwindcss(),
-    pinAttachmentsCspPlugin(env.VITE_ATTACHMENTS_WORKER_URL ?? ''),
+    pinAttachmentsCspPlugin(
+      env.VITE_ATTACHMENTS_WORKER_URL ?? '',
+      env.VITE_SUPABASE_URL ?? '',
+    ),
     VitePWA({
       strategies: 'injectManifest',
       srcDir: 'src',
