@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 private const val UID = "11111111-1111-4111-8111-111111111111"
@@ -54,11 +55,13 @@ private fun snapshotWith(noteId: Long, revision: Long): JsonObject = buildJsonOb
         },
     )
     put("tombstones", buildJsonArray { })
+    put("note_count", JsonPrimitive(1))
 }
 
 private fun emptySnapshot(): JsonObject = buildJsonObject {
     put("notes", buildJsonArray { })
     put("tombstones", buildJsonArray { })
+    put("note_count", JsonPrimitive(0))
 }
 
 class SupabaseNoteTransportTest {
@@ -169,5 +172,55 @@ class SupabaseNoteTransportTest {
 
         assertEquals(1, rpc.calls.count { it.first == "fetch_full_snapshot" })
         assertEquals(1, rpc.deleteCalls().size)
+    }
+
+    /**
+     * `note_count` is a separate COUNT(*) from the notes jsonb_agg. If they disagree the payload
+     * was truncated, and treating it as the full library would tombstone everything missing.
+     */
+    @Test
+    fun aTruncatedSnapshotIsRejected() = runTest {
+        val rpc = RecordingRpcClient().on(
+            "fetch_full_snapshot",
+            buildJsonObject {
+                put(
+                    "notes",
+                    buildJsonArray {
+                        add(
+                            buildJsonObject {
+                                put("note_id", JsonPrimitive("7"))
+                                put("local_id", JsonPrimitive(7L))
+                                put("revision", JsonPrimitive(1L))
+                            },
+                        )
+                    },
+                )
+                put("tombstones", buildJsonArray { })
+                put("note_count", JsonPrimitive(5))
+            },
+        )
+
+        assertFailsWith<IllegalStateException> {
+            SupabaseNoteTransport(rpc).fetchNotes(UID)
+        }
+    }
+
+    /**
+     * Pre-migration `fetch_full_snapshot` returned SQL NULL when the owner had zero notes, which
+     * PostgREST surfaces as `{}`. That dropped tombstones. Missing `note_count` is the same class.
+     */
+    @Test
+    fun aSnapshotWithoutNoteCountIsRejected() = runTest {
+        val rpc = RecordingRpcClient().on(
+            "fetch_full_snapshot",
+            buildJsonObject {
+                put("notes", buildJsonArray { })
+                put("tombstones", buildJsonArray { })
+            },
+        )
+
+        assertFailsWith<IllegalStateException> {
+            SupabaseNoteTransport(rpc).fetchNotes(UID)
+        }
     }
 }

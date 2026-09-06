@@ -122,7 +122,10 @@ npm install
 npm run supabase:start
 npm run supabase:reset
 
-# Android
+# Android (device Google sign-in needs a hosted URL baked into the APK;
+# debug builds do not fall back to localhost HTTP). Requires gitignored
+# web/.env.staging from `npm run setup:staging`.
+npm run kotlin:staging-properties
 ./gradlew :androidApp:assembleDebug
 
 # Windows

@@ -10,6 +10,7 @@
       Standalone and self-contained on purpose. This is the URL given to the Play Console
       (scripts/bundle-release.ps1), so it has to resolve without the app booting, and the hosting
       CSP has no 'unsafe-inline' in script-src — hence no scripts at all and inline styles only.
+      Keep this page aligned with PRIVACY_POLICY.md.
     -->
     <style>
       :root {
@@ -62,48 +63,51 @@
   <body>
     <main>
       <h1>Privacy Policy — Notelikeus</h1>
-      <p class="updated">Last updated: July 2026</p>
+      <p class="updated">Last updated: September 2026</p>
 
       <p>
-        Notelikeus is offline-first on Android; the web app requires a Google account and keeps
-        notes in the cloud. This policy describes how the app handles information on your device
-        and when you use cloud sync with Google sign-in.
+        Notelikeus is an offline-first notes application across Android, Windows (Desktop), and Web.
+        You can use Notelikeus completely offline without creating an account or signing in. This
+        policy describes how the app handles information locally on your device and when you
+        optionally enable cloud sync.
       </p>
 
       <h2>Summary</h2>
       <ul>
-        <li><strong>Android:</strong> Notes are stored <strong>locally on your device</strong> in an encrypted database. Cloud sync uploads note text to <strong>your Firebase project / Firestore account data</strong> when auto-sync is enabled.</li>
-        <li><strong>Web:</strong> Google sign-in is required to use the app. Notes sync to <strong>Firebase Firestore</strong> under your Google account. The browser may keep an offline cache, and some browsers may fall back to temporary in-memory storage only.</li>
-        <li>Synced notes are <strong>not end-to-end encrypted</strong> by the app.</li>
-        <li>The app does <strong>not</strong> include analytics or advertising SDKs.</li>
+        <li><strong>Offline-first by default:</strong> On Android, Windows, and Web, notes are stored <strong>locally on your device</strong>. You can use the full application without creating an account or providing personal details.</li>
+        <li><strong>Optional Cloud Sync:</strong> When you sign in and enable cloud sync, note text, checklists, and metadata are synchronized to <strong>Supabase (PostgreSQL)</strong> under your authenticated identity. Attachment files may be stored in <strong>Cloudflare R2</strong>.</li>
+        <li><strong>Local Data Isolation:</strong> Signing out clears local cached notes from the active session so a subsequent user cannot inherit your data.</li>
+        <li><strong>Encryption:</strong> Android local databases are encrypted at rest with <strong>SQLCipher</strong> backed by Android Keystore.</li>
+        <li>Synced cloud notes are <strong>not end-to-end encrypted</strong> by the app; they rely on TLS plus Supabase Auth, row-level security, authorized RPCs, and Worker JWT checks for attachments.</li>
+        <li>The app does <strong>not</strong> include third-party tracking, analytics, or advertising SDKs.</li>
       </ul>
 
       <h2>Information stored on your device</h2>
-      <p><strong>Android</strong> may store:</p>
+      <p><strong>Android &amp; Windows Desktop</strong> may store:</p>
       <ul>
-        <li>Note titles, body text, colors, and positions</li>
-        <li>Labels, checklists, and reminder times</li>
-        <li>Settings (for example dark mode, app lock, and auto-sync preferences)</li>
+        <li>Note titles, body text, colors, checklists, labels, and reminder timestamps</li>
+        <li>A local database (encrypted at rest with SQLCipher on Android)</li>
+        <li>Local app preferences (theme, view mode, app lock status)</li>
       </ul>
       <p>
-        <strong>Web</strong> stores app preferences on your device (theme, layout, reminder
-        scheduling). Firestore may also keep an offline browser cache for continuity; in some
-        browsers, storage may be temporary and cleared when the tab or browser closes.
+        <strong>Web</strong> stores note content, checklists, labels, and preferences in local
+        browser storage (IndexedDB / localStorage). It operates fully as a guest / local-first PWA
+        without requiring sign-in.
       </p>
 
-      <h2>Cloud sync</h2>
-      <p>When you sign in with Google and use sync:</p>
+      <h2>Cloud sync (optional)</h2>
+      <p>When you choose to sign in and use sync:</p>
       <ul>
-        <li>Note content is stored in <strong>Google Firebase Firestore</strong> under your Google account</li>
-        <li>Data is governed by <a href="https://policies.google.com/privacy" rel="noopener noreferrer">Google’s privacy policy</a> and your Firebase project settings</li>
-        <li>Signing out <strong>clears locally cached app data on this device</strong> so the next account cannot inherit it; cloud data remains until you delete it (in-app “Sign out and delete cloud data” or Firebase console)</li>
+        <li>Note content is stored in <strong>Supabase</strong> under your account</li>
+        <li>Attachment binaries, when used, are stored in <strong>Cloudflare R2</strong> behind an authenticated Worker</li>
+        <li>Signing out <strong>clears locally cached notes on this device</strong> so the next account cannot inherit them; cloud data remains until you delete it (in-app “Sign out and delete cloud data”)</li>
       </ul>
 
       <h2>Security</h2>
       <ul>
         <li><strong>Android:</strong> Notes are stored in a <strong>SQLCipher-encrypted</strong> Room database. An optional app-wide lock uses the device’s biometric APIs to gate opening the app.</li>
-        <li><strong>Web:</strong> Synced notes are protected by your Google account, browser profile, and Firestore access rules. The browser may keep a Firestore-managed offline cache for continuity, and some browsers may fall back to temporary in-memory storage only.</li>
-        <li>Notelikeus does <strong>not</strong> provide end-to-end encryption for synced notes. If someone can access your signed-in browser profile, Firebase project data, or exported backup files, they may be able to read your notes.</li>
+        <li><strong>Windows Desktop &amp; Web:</strong> Local storage is bound to the user's OS / browser profile permissions.</li>
+        <li><strong>Cloud:</strong> PostgreSQL row-level security and authorized RPCs restrict read and write operations to the authenticated owner.</li>
       </ul>
 
       <h2>Permissions</h2>
@@ -113,7 +117,7 @@
             <tr><th scope="col">Permission</th><th scope="col">Purpose</th></tr>
           </thead>
           <tbody>
-            <tr><td>Internet</td><td>Firebase auth and cloud sync</td></tr>
+            <tr><td>Internet</td><td>Authentication and cloud sync</td></tr>
             <tr><td>Notifications</td><td>Deliver reminders you schedule for notes</td></tr>
             <tr><td>Biometric</td><td>Unlock the app when app lock is enabled</td></tr>
           </tbody>
@@ -139,7 +143,9 @@
 
       <h2>Third parties</h2>
       <ul>
-        <li><strong>Google Firebase</strong> — only when you enable cloud sync (Authentication + Firestore)</li>
+        <li><strong>Supabase</strong> — authentication and note data when you enable cloud sync</li>
+        <li><strong>Cloudflare</strong> — web hosting (Pages) and attachment objects (R2 / Worker) when those features are used</li>
+        <li><strong>Google</strong> — optional Google sign-in identity; Google OAuth is not the note database</li>
         <li>We do not sell your personal data or use analytics or advertising SDKs</li>
       </ul>
 

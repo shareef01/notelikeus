@@ -11,7 +11,7 @@
   "scripts": {
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
-    "supabase:reset": "supabase db reset",
+    "supabase:reset": "supabase db reset --yes",
     "supabase:test": "supabase test db",
     "setup:staging": "bash scripts/ops/setup-staging.sh",
     "kotlin:staging-properties": "node scripts/ops/write-kotlin-staging-properties.mjs",

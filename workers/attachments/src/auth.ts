@@ -2,7 +2,7 @@ export interface WorkerEnv {
   ATTACHMENTS_BUCKET: R2Bucket;
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
-  /** Comma-separated extra Origins (beyond localhost and *.pages.dev). */
+  /** Comma-separated extra Origins (beyond localhost and notelikeus-dev.pages.dev). */
   ALLOWED_ORIGINS?: string;
 }
 

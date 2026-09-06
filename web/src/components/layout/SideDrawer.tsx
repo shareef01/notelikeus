@@ -8,6 +8,8 @@ import {
   SettingsIcon,
   TrashIcon,
 } from '@/components/icons/Icons';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import type { NoteFilter } from '@/types/note';
@@ -138,6 +140,12 @@ export function SideDrawer({
 }: SideDrawerProps) {
   const isTabletUp = useIsTabletUp();
   const showCollapsed = collapsed && isTabletUp;
+  // Below the tablet breakpoint this same element is a modal overlay drawer; at and above it it is
+  // the page's static sidebar. Only the overlay may trap focus, lock scrolling or answer Escape.
+  const isMobileOverlay = !isTabletUp;
+  const isModal = isMobileOverlay && open;
+  const panelRef = useFocusTrap<HTMLElement>(isModal, onClose);
+  useBodyScrollLock(isModal);
 
   return (
     <>
@@ -150,6 +158,7 @@ export function SideDrawer({
       />
 
       <aside
+        ref={panelRef}
         className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-true-surface transition-all duration-300 ease-out md:static md:z-auto md:shrink-0 md:translate-x-0 md:border-r md:border-brand-outline/50 ${
           showCollapsed
             ? 'w-[min(300px,88vw)] md:w-16'
@@ -157,7 +166,13 @@ export function SideDrawer({
         } ${
           open ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0 md:shadow-none'
         }`}
-        aria-hidden={!open && !isTabletUp}
+        // A closed mobile drawer is only translated off-screen, so its links stayed in the tab
+        // order — tabbing the notes list walked through invisible navigation. `inert` takes them
+        // out of the tab order and the accessibility tree together; `aria-hidden` alone left them
+        // focusable, which is the one thing it must never do.
+        inert={isMobileOverlay && !open}
+        role={isModal ? 'dialog' : undefined}
+        aria-modal={isModal ? true : undefined}
         aria-label="Navigation"
       >
         {/* Header */}

@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { notesContentKey } from '@/lib/notes/noteEquality';
 import { saveNote, removeNote } from '@/lib/notes/noteActions';
 import { useNotesStore } from '@/store/notesStore';
 import type { NoteQueryFilters } from '@/types/note';
@@ -15,17 +14,12 @@ export function useNotes() {
   const error = useNotesStore((state) => state.error);
   const filters = useNotesStore((state) => state.filters);
 
-  const notesKey = notesContentKey(notes);
-  const filterKey = `${filters.filter}|${filters.searchQuery ?? ''}|${filters.colorArgb ?? ''}|${filters.labelName ?? ''}|${filters.sortOrder ?? 'manual'}`;
-
-  // notesKey/filterKey are content-derived guards: `notes` and `filters` get new references
-  // on every store update even when nothing relevant to filtering changed.
   const { filteredNotes, isFuzzyResult } = useMemo(() => {
     const result = searchNotes(notes, filters);
     return { filteredNotes: result.notes, isFuzzyResult: result.isFuzzy };
-  }, [notesKey, filterKey]);
+  }, [notes, filters]);
 
-  const labels = useMemo(() => collectUniqueLabels(notes), [notesKey]);
+  const labels = useMemo(() => collectUniqueLabels(notes), [notes]);
 
   const actions = useMemo(
     () => ({

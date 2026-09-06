@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface LinkDialogProps {
@@ -9,6 +9,7 @@ interface LinkDialogProps {
 
 export function LinkDialog({ open, onCancel, onConfirm }: LinkDialogProps) {
   const [url, setUrl] = useState('');
+  const titleId = useId();
   const panelRef = useFocusTrap<HTMLDivElement>(open, onCancel);
 
   useEffect(() => {
@@ -23,10 +24,12 @@ export function LinkDialog({ open, onCancel, onConfirm }: LinkDialogProps) {
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Add link"
+        aria-labelledby={titleId}
         className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl animate-in zoom-in-95 duration-200"
       >
-        <h4 className="text-lg font-semibold">Add link</h4>
+        <h2 id={titleId} className="text-lg font-semibold">
+          Add link
+        </h2>
         <input
           type="url"
           value={url}
