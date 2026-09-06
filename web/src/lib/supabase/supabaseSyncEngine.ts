@@ -62,8 +62,23 @@ export async function fetchSnapshotNotes(): Promise<{
 }> {
   const { data, error } = await getSupabaseClient().rpc('fetch_full_snapshot');
   if (error) throw error;
-  const snapshot = (data ?? {}) as SnapshotResult;
-  const notes = (snapshot.notes ?? []).map((row) => supabaseNoteToNote(row));
+  // SQL NULL used to mean "zero notes" because fetch_full_snapshot's outer FROM notes
+  // matched nothing — that also dropped tombstones. Refuse it; the RPC must return JSON.
+  if (data == null) {
+    throw new Error('Incomplete snapshot: fetch_full_snapshot returned null');
+  }
+  const snapshot = data as SnapshotResult;
+  const rows = snapshot.notes ?? [];
+  // `note_count` is a separate COUNT(*) so a truncated jsonb_agg cannot look like a full library.
+  if (typeof snapshot.note_count !== 'number') {
+    throw new Error('Incomplete snapshot: missing note_count');
+  }
+  if (snapshot.note_count !== rows.length) {
+    throw new Error(
+      `Incomplete snapshot: expected ${snapshot.note_count} notes, got ${rows.length}`,
+    );
+  }
+  const notes = rows.map((row) => supabaseNoteToNote(row));
   const hydratedNotes = await hydrateNotesWithAttachments(notes);
   const tombstones = parseTombstoneMap(snapshot.tombstones ?? []);
   const noteRevisions: Record<string, number> = {};

@@ -1,7 +1,5 @@
-import { AuthError } from '@supabase/supabase-js';
-
 export function formatAuthError(error: unknown): string {
-  if (error instanceof AuthError) {
+  if (isAuthLikeError(error)) {
     const message = error.message.toLowerCase();
     if (message.includes('popup') && message.includes('closed')) {
       return 'Sign-in was cancelled.';
@@ -35,4 +33,16 @@ export function formatAuthError(error: unknown): string {
   }
   if (error instanceof Error) return error.message;
   return 'Sign-in failed. Please try again.';
+}
+
+/**
+ * Supabase `AuthError` without importing `@supabase/supabase-js` on the auth-gate path.
+ * The SDK sets `name` to `AuthError` and optional `status` / `code`.
+ */
+function isAuthLikeError(
+  error: unknown,
+): error is { message: string; status?: number; code?: string } {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { name?: unknown; message?: unknown };
+  return candidate.name === 'AuthError' && typeof candidate.message === 'string';
 }

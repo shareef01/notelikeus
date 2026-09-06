@@ -3,7 +3,7 @@ import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';
 import { TrashIcon, AddIcon, ShareIcon, DownloadIcon } from '@/components/icons/Icons';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import type { Label } from '@/types/label';
-import { useState } from 'react';
+import { useState, useId } from 'react';
 
 function formatReminderInputValue(timestamp: number | null): string {
   if (timestamp == null) return '';
@@ -54,6 +54,7 @@ export function EditorOptionsSheet({
 }: EditorOptionsSheetProps) {
   const [newLabel, setNewLabel] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const confirmDeleteTitleId = useId();
   const confirmDeletePanelRef = useFocusTrap<HTMLDivElement>(confirmDelete, () => setConfirmDelete(false));
 
   if (!open) return null;
@@ -168,6 +169,7 @@ export function EditorOptionsSheet({
             type="datetime-local"
             value={formatReminderInputValue(reminderTimestamp)}
             onChange={(event) => handleReminderInput(event.target.value)}
+            aria-label="Reminder date and time"
             className="mt-4 w-full rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
           />
           {reminderTimestamp != null ? (
@@ -223,10 +225,12 @@ export function EditorOptionsSheet({
             ref={confirmDeletePanelRef}
             role="dialog"
             aria-modal="true"
-            aria-label="Delete note?"
+            aria-labelledby={confirmDeleteTitleId}
             className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl animate-in zoom-in-95 duration-200"
           >
-            <h4 className="text-lg font-semibold">Delete note?</h4>
+            <h2 id={confirmDeleteTitleId} className="text-lg font-semibold">
+              Delete note?
+            </h2>
             <p className="mt-2 text-sm text-brand-muted">
               This note will be moved to trash on your synced devices.
             </p>

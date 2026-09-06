@@ -2,12 +2,9 @@ import { useEffect } from 'react';
 import type { AuthUser } from '@/lib/auth/authUser';
 import { formatAuthError } from '@/lib/auth/authErrors';
 import { clearLocalUserData } from '@/lib/bootstrap';
-import {
-  completeSupabaseOAuthRedirect,
-  initSupabaseAuthListener,
-} from '@/lib/auth/supabaseAuth';
+import { hadSessionLastLoad, forgetSignedIn, rememberSignedIn } from '@/lib/auth/sessionHint';
+import { shouldStartSupabaseAuthOnBoot } from '@/lib/auth/supabaseAuthBoot';
 import { useAuthStore } from '@/store/authStore';
-import { forgetSignedIn, rememberSignedIn } from '@/lib/auth/sessionHint';
 import { useToastStore } from '@/store/toastStore';
 
 function handleAuthUser(nextUser: AuthUser | null): void {
@@ -28,13 +25,46 @@ function handleAuthUser(nextUser: AuthUser | null): void {
   });
 }
 
-/** Mount once in App — registers the only auth listener (Supabase). */
+let authStart: Promise<void> | null = null;
+let stopAuthListener: (() => void) | undefined;
+
+/** Loads supabase-js and starts the session listener. Safe to call more than once. */
+export function ensureSupabaseAuthStarted(): Promise<void> {
+  authStart ??= (async () => {
+    const { completeSupabaseOAuthRedirect, initSupabaseAuthListener } = await import(
+      '@/lib/auth/supabaseAuth'
+    );
+    try {
+      await completeSupabaseOAuthRedirect();
+    } catch (error) {
+      useToastStore.getState().show(formatAuthError(error), 'error');
+    }
+    stopAuthListener = initSupabaseAuthListener(handleAuthUser);
+  })();
+  return authStart;
+}
+
+/** Mount once in App — registers the only auth listener (Supabase) when a session is likely. */
 export function useAuthSync() {
   useEffect(() => {
-    void completeSupabaseOAuthRedirect().catch((error) => {
-      useToastStore.getState().show(formatAuthError(error), 'error');
+    if (!shouldStartSupabaseAuthOnBoot(hadSessionLastLoad(), window.location.search)) {
+      useAuthStore.setState((state) => (state.isReady ? state : { ...state, isReady: true }));
+      return;
+    }
+    let cancelled = false;
+    void ensureSupabaseAuthStarted().then(() => {
+      if (cancelled) {
+        stopAuthListener?.();
+        stopAuthListener = undefined;
+        authStart = null;
+      }
     });
-    return initSupabaseAuthListener(handleAuthUser);
+    return () => {
+      cancelled = true;
+      stopAuthListener?.();
+      stopAuthListener = undefined;
+      authStart = null;
+    };
   }, []);
 }
 

@@ -131,6 +131,10 @@ Supabase Auth → URL configuration:
   - Site URL: ${STAGING_WEB_ORIGIN}  (keep localhost for Vite smoke)
   - Also allow ${pages_origin} as a Redirect URL
 
+Supabase Auth → Passwords (Pro dashboard; not SQL):
+  - Enable "Prevent use of leaked passwords" (HaveIBeenPwned). The security
+    advisor stays WARN until this toggle is on.
+
 Google Cloud Console → Web OAuth client:
   Authorized JavaScript origins:
   - ${pages_origin}
@@ -250,7 +254,8 @@ bucket_name = "${R2_BUCKET}"
 
 [vars]
 SUPABASE_URL = "${SUPABASE_URL}"
-# localhost and *.pages.dev are allowed in worker CORS; add extras here if needed.
+# localhost and notelikeus-dev.pages.dev are allowed in worker CORS.
+# A production custom domain must be listed here — wildcard *.pages.dev is not.
 # ALLOWED_ORIGINS = "${STAGING_WEB_ORIGIN}"
 EOF
   fi

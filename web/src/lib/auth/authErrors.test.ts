@@ -1,14 +1,17 @@
-import { AuthError } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
 import { formatAuthError } from '@/lib/auth/authErrors';
 
-function authError(message: string, status = 400, code?: string): AuthError {
-  return new AuthError(message, status, code);
+function authError(message: string, status = 400, code?: string): Error {
+  const error = new Error(message) as Error & { status?: number; code?: string };
+  error.name = 'AuthError';
+  error.status = status;
+  if (code) error.code = code;
+  return error;
 }
 
 describe('formatAuthError', () => {
   it('maps known auth messages to actionable copy', () => {
-    const cases: Array<[AuthError, string]> = [
+    const cases: Array<[Error, string]> = [
       [authError('Popup closed by user'), 'Sign-in was cancelled.'],
       [authError('Popup blocked by browser'), 'Pop-up blocked. Allow pop-ups for this site and try again.'],
       [authError('Network request failed', 0), 'Network error. Check your connection and try again.'],

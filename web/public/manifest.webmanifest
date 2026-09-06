@@ -1,36 +1,24 @@
 {
-
   "name": "Notelikeus",
-
   "short_name": "Notelikeus",
-
   "description": "Minimal, premium notes — synced across devices.",
-
   "theme_color": "#000000",
-
   "background_color": "#000000",
-
   "display": "standalone",
-
   "orientation": "any",
-
   "scope": "/",
-
   "start_url": "/",
-
   "categories": ["productivity", "utilities"],
-
   "icons": [
-
     {
       "src": "/icons/icon-192.png",
-      "sizes": "192x192",
+      "sizes": "1024x1024",
       "type": "image/png",
       "purpose": "any"
     },
     {
       "src": "/icons/icon-512.png",
-      "sizes": "512x512",
+      "sizes": "1024x1024",
       "type": "image/png",
       "purpose": "any maskable"
     },
@@ -42,5 +30,3 @@
     }
   ]
 }
-
-

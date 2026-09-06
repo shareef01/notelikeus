@@ -8,6 +8,8 @@ function extraOriginsFromEnv(allowedOrigins: string | undefined): string[] {
     .filter((origin) => origin.length > 0);
 }
 
+const PAGES_PROJECT_HOST = 'notelikeus-dev.pages.dev';
+
 export function isAllowedAttachmentOrigin(
   origin: string,
   allowedOrigins?: string,
@@ -18,7 +20,10 @@ export function isAllowedAttachmentOrigin(
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
     const host = url.hostname.toLowerCase();
     if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
-    if (url.protocol === 'https:' && (host === 'pages.dev' || host.endsWith('.pages.dev'))) {
+    if (
+      url.protocol === 'https:' &&
+      (host === PAGES_PROJECT_HOST || host.endsWith(`.${PAGES_PROJECT_HOST}`))
+    ) {
       return true;
     }
     return extraOriginsFromEnv(allowedOrigins).includes(origin);
