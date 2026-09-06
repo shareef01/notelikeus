@@ -28,5 +28,13 @@ if (headers.includes('https://*.workers.dev') || headers.includes('https://*.sup
   console.error('web/dist/_headers must not wildcard workers.dev or supabase.co');
   process.exit(1);
 }
+if (headers.includes('[REDACTED]')) {
+  console.error('web/dist/_headers still names the [REDACTED] placeholder host');
+  process.exit(1);
+}
+if (!headers.includes('.supabase.co') && !headers.includes('127.0.0.1') && !headers.includes('localhost')) {
+  console.error('web/dist/_headers must pin a Supabase connect-src host from VITE_SUPABASE_URL');
+  process.exit(1);
+}
 
 console.log('Cloudflare Pages artifacts verified in web/dist');

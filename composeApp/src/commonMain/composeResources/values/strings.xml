@@ -192,7 +192,7 @@
     <string name="privacy_policy">Privacy policy</string>
     <string name="privacy_policy_title">Privacy policy</string>
     <string name="app_version">Version %1$s</string>
-    <string name="privacy_policy_body">Notelikeus is an offline-first notes app. Sign-in with Google is required to use cloud sync features.</string>
+    <string name="privacy_policy_body">Notelikeus is offline-first. Notes stay on this device unless you sign in.\n\nWhen you enable cloud sync, note text is stored in Supabase (PostgreSQL) under your account. Attachments may be stored in Cloudflare R2. Synced notes are not end-to-end encrypted.\n\nGoogle sign-in is optional and is used only as an identity provider. The app does not include analytics or advertising SDKs.</string>
 
     <!-- Filters -->
     <string name="all_colors">All Colors</string>

@@ -33,8 +33,7 @@ const requiredCspTokens = [
   "default-src 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
-  'https://cqydlidescvmpfviwncf.supabase.co',
-  'wss://cqydlidescvmpfviwncf.supabase.co',
+  "connect-src 'self'",
   'https://accounts.google.com',
 ];
 
@@ -52,6 +51,7 @@ const forbiddenCspTokens = [
   'recaptcha',
   'https://*.workers.dev',
   'https://*.supabase.co',
+  '[REDACTED]',
 ];
 
 for (const token of forbiddenCspTokens) {

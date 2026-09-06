@@ -5,7 +5,7 @@ import {
 } from '@/lib/hosting/attachmentsConnectSrc';
 
 const BASE_HEADERS = `/*
-  Content-Security-Policy: default-src 'self'; connect-src 'self' https://cqydlidescvmpfviwncf.supabase.co wss://cqydlidescvmpfviwncf.supabase.co https://*.workers.dev https://accounts.google.com
+  Content-Security-Policy: default-src 'self'; connect-src 'self' https://abcd.supabase.co wss://abcd.supabase.co https://*.workers.dev https://accounts.google.com
 `;
 
 describe('attachmentsConnectSrcOrigin', () => {
@@ -45,7 +45,7 @@ describe('applyAttachmentsConnectSrc', () => {
   it('drops the workers.dev wildcard when attachments are off', () => {
     const next = applyAttachmentsConnectSrc(BASE_HEADERS, null);
     expect(next).not.toContain('https://*.workers.dev');
-    expect(next).toContain('wss://cqydlidescvmpfviwncf.supabase.co https://accounts.google.com');
+    expect(next).toContain('wss://abcd.supabase.co https://accounts.google.com');
   });
 
   it('inserts the pinned Worker origin after the Supabase wss host', () => {
@@ -55,7 +55,7 @@ describe('applyAttachmentsConnectSrc', () => {
     );
     expect(next).not.toContain('https://*.workers.dev');
     expect(next).toContain(
-      'wss://cqydlidescvmpfviwncf.supabase.co https://notelikeus-attachments.error-endpoint.workers.dev https://accounts.google.com',
+      'wss://abcd.supabase.co https://notelikeus-attachments.error-endpoint.workers.dev https://accounts.google.com',
     );
   });
 });
