@@ -1,9 +1,5 @@
 import { deleteCloudTombstone } from '@/lib/notes/tombstones';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
-import {
-  deleteAttachmentsForNote,
-  syncNoteAttachments,
-} from '@/lib/attachments/attachmentSyncService';
 import { deleteNote as deleteLocalIndexedDbNote, putNote } from '@/lib/local/notesLocalRepository';
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import { notesEqual } from '@/lib/notes/noteEquality';
@@ -40,6 +36,9 @@ export async function saveNote(note: Note): Promise<void> {
   const existing = getNote(note.id);
   let toSave = note;
   if (isR2AttachmentsEnabled()) {
+    const { syncNoteAttachments, deleteAttachmentsForNote } = await import(
+      '@/lib/attachments/attachmentSyncService'
+    );
     toSave = await syncNoteAttachments(note);
     if (existing) {
       const nextIds = new Set(toSave.attachments.map((attachment) => attachment.id));
@@ -64,7 +63,8 @@ export async function removeNote(noteId: string): Promise<void> {
   if (!isGuest) {
     useTombstoneStore.getState().markDeleted(noteId);
   }
-  if (existing) {
+  if (existing && isR2AttachmentsEnabled()) {
+    const { deleteAttachmentsForNote } = await import('@/lib/attachments/attachmentSyncService');
     await deleteAttachmentsForNote(noteId, existing.attachments);
   }
   useNotesStore.getState().removeLocalNote(noteId);

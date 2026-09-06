@@ -35,16 +35,18 @@ internal interface PassphraseKeyStore {
 }
 
 /** The real one. Everything here is AndroidKeyStore-specific and untestable off-device. */
-internal class AndroidPassphraseKeyStore : PassphraseKeyStore {
+internal class AndroidPassphraseKeyStore(
+    private val alias: String = DB_PASSPHRASE_ALIAS,
+) : PassphraseKeyStore {
 
     override fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        (keyStore.getKey(alias, null) as? SecretKey)?.let { return it }
 
         val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
         keyGenerator.init(
             KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
+                alias,
                 KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
             )
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
@@ -56,7 +58,7 @@ internal class AndroidPassphraseKeyStore : PassphraseKeyStore {
     }
 
     override fun deleteKey(): Boolean = try {
-        KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }.deleteEntry(KEY_ALIAS)
+        KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }.deleteEntry(alias)
         Log.w(TAG, "Deleted unusable AndroidKeyStore key; regenerating")
         true
     } catch (error: Exception) {
@@ -64,9 +66,10 @@ internal class AndroidPassphraseKeyStore : PassphraseKeyStore {
         false
     }
 
-    private companion object {
+    internal companion object {
         const val TAG = "PassphraseKeyStore"
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
-        const val KEY_ALIAS = "notelikeus_db_passphrase_aes"
+        const val DB_PASSPHRASE_ALIAS = "notelikeus_db_passphrase_aes"
+        const val SESSION_ALIAS = "notelikeus_supabase_session_aes"
     }
 }

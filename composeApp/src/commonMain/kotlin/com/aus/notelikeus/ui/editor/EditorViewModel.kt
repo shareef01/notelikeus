@@ -2,10 +2,12 @@ package com.aus.notelikeus.ui.editor
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.data.attachments.AttachmentSyncService
 import com.aus.notelikeus.data.attachments.MAX_ATTACHMENT_BYTES
 import com.aus.notelikeus.data.attachments.createAttachmentId
@@ -49,7 +51,9 @@ data class EditorState(
     val isNoteLoaded: Boolean = false,
     val noteNotFound: Boolean = false,
     /** A save (autosave included) failed: the editor still holds the only copy of the edit. */
-    val saveFailed: Boolean = false
+    val saveFailed: Boolean = false,
+    /** Title or body was shortened to the Postgres / sync caps. */
+    val truncatedToSyncLimit: Boolean = false,
 )
 
 class EditorViewModel(
@@ -229,7 +233,13 @@ class EditorViewModel(
 
     fun onTitleChange(title: String) {
         titleEdited = true
-        _state.update { it.copy(title = title) }
+        val clamped = title.take(NoteBackupImporter.MAX_FIELD_CHARS)
+        _state.update {
+            it.copy(
+                title = clamped,
+                truncatedToSyncLimit = it.truncatedToSyncLimit || clamped.length < title.length,
+            )
+        }
         triggerAutosave()
     }
 
@@ -242,7 +252,15 @@ class EditorViewModel(
             convertContentToChecklist()
         } else {
             contentEdited = true
-            _state.update { it.copy(contentValue = result.value, content = result.value.text) }
+            val clamped = clampTextField(result.value, NoteBackupImporter.MAX_CONTENT_CHARS)
+            _state.update {
+                it.copy(
+                    contentValue = clamped,
+                    content = clamped.text,
+                    truncatedToSyncLimit = it.truncatedToSyncLimit ||
+                        clamped.text.length < result.value.text.length,
+                )
+            }
             triggerAutosave()
         }
     }
@@ -351,7 +369,7 @@ class EditorViewModel(
      * flight — both reading `state.id == null` and both inserting.
      */
     private suspend fun persistNote(): Long? = saveMutex.withLock {
-        val currentState = _state.value
+        val currentState = clampStateToSyncLimits(_state.value)
         if (currentState.title.isEmpty() &&
             currentState.content.isEmpty() &&
             currentState.checklist.isEmpty() &&
@@ -422,6 +440,34 @@ class EditorViewModel(
         if (_state.value.saveFailed) _state.update { it.copy(saveFailed = false) }
     }
 
+    fun clearTruncationNotice() {
+        if (_state.value.truncatedToSyncLimit) _state.update { it.copy(truncatedToSyncLimit = false) }
+    }
+
+    private fun clampTextField(value: TextFieldValue, maxChars: Int): TextFieldValue {
+        if (value.text.length <= maxChars) return value
+        val text = value.text.take(maxChars)
+        val start = value.selection.start.coerceIn(0, text.length)
+        val end = value.selection.end.coerceIn(0, text.length)
+        return value.copy(text = text, selection = TextRange(start, end))
+    }
+
+    private fun clampStateToSyncLimits(state: EditorState): EditorState {
+        val title = state.title.take(NoteBackupImporter.MAX_FIELD_CHARS)
+        val contentValue = clampTextField(state.contentValue, NoteBackupImporter.MAX_CONTENT_CHARS)
+        val truncated =
+            title.length < state.title.length || contentValue.text.length < state.content.length
+        if (!truncated) return state
+        val next = state.copy(
+            title = title,
+            content = contentValue.text,
+            contentValue = contentValue,
+            truncatedToSyncLimit = true,
+        )
+        _state.value = next
+        return next
+    }
+
     suspend fun undoArchive(snapshot: Note) {
         _state.update { it.copy(isArchived = false) }
         repository.updateNote(snapshot)
@@ -490,8 +536,14 @@ class EditorViewModel(
     private fun applyFormatting(transform: (TextFieldValue) -> TextFieldValue) {
         contentEdited = true
         _state.update { currentState ->
-            val updated = transform(currentState.contentValue)
-            currentState.copy(contentValue = updated, content = updated.text)
+            val transformed = transform(currentState.contentValue)
+            val updated = clampTextField(transformed, NoteBackupImporter.MAX_CONTENT_CHARS)
+            currentState.copy(
+                contentValue = updated,
+                content = updated.text,
+                truncatedToSyncLimit = currentState.truncatedToSyncLimit ||
+                    updated.text.length < transformed.text.length,
+            )
         }
         triggerAutosave()
     }

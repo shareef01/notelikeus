@@ -97,4 +97,15 @@ describe('notesContentEqual', () => {
     notesContentEqual(list, [a, b]);
     expect(list).toEqual([b, a]);
   });
+
+  it('treats the same array reference as equal without walking contents', () => {
+    const list = [note({ content: 'a' }), note({ id: '2', localId: 2, content: 'b' })];
+    expect(notesContentEqual(list, list)).toBe(true);
+  });
+
+  it('treats identical object identities in the same order as equal', () => {
+    const a = note({ id: '1', localId: 1, content: 'a' });
+    const b = note({ id: '2', localId: 2, content: 'b' });
+    expect(notesContentEqual([a, b], [a, b])).toBe(true);
+  });
 });
