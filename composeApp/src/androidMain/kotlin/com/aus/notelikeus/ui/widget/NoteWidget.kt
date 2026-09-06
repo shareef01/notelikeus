@@ -1,7 +1,6 @@
 package com.aus.notelikeus.ui.widget
 
 import android.content.Context
-import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -21,7 +20,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import com.aus.notelikeus.ui.navigation.markInternalNavigation
+import com.aus.notelikeus.ui.navigation.widgetMainActivityIntent
 import com.aus.notelikeus.shared.R
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.ui.theme.getContentColor
@@ -113,11 +112,7 @@ class NoteWidget : GlanceAppWidget() {
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                             .clickable(
                                 actionStartActivity(
-                                    Intent().apply {
-                                        setClassName(context, "com.aus.notelikeus.MainActivity")
-                                        markInternalNavigation()
-                                        putExtra("createNote", true)
-                                    }
+                                    widgetMainActivityIntent(context, createNote = true)
                                 )
                             )
                     )
@@ -200,11 +195,7 @@ class NoteWidget : GlanceAppWidget() {
                 .padding(12.dp)
                 .clickable(
                     actionStartActivity(
-                        Intent().apply {
-                            setClassName(context, "com.aus.notelikeus.MainActivity")
-                            markInternalNavigation()
-                            putExtra("noteId", note.id)
-                        }
+                        widgetMainActivityIntent(context, noteId = note.id)
                     )
                 )
         ) {

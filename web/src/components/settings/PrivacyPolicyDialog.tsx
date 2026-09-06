@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
@@ -49,6 +50,7 @@ interface PrivacyPolicyDialogProps {
 
 export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
+  const titleId = useId();
   useBodyScrollLock(open);
 
   if (!open) return null;
@@ -63,10 +65,12 @@ export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps)
         className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-[20px] border border-brand-outline bg-true-surface p-6 shadow-2xl"
         role="dialog"
         aria-modal="true"
-        aria-label="Privacy policy"
+        aria-labelledby={titleId}
         onClick={(event) => event.stopPropagation()}
       >
-        <h4 className="text-xl font-bold tracking-tight text-brand-primary">Privacy policy</h4>
+        <h2 id={titleId} className="text-xl font-bold tracking-tight text-brand-primary">
+          Privacy policy
+        </h2>
         <p className="mt-4 whitespace-pre-line text-[14px] leading-[1.4em] text-brand-muted">
           {PRIVACY_POLICY_BODY}
         </p>

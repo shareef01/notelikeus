@@ -1,4 +1,3 @@
-import { signOutGoogle } from '@/lib/auth/googleAuth';
 import { commitImportedNotes } from '@/lib/backup/commitImportedNotes';
 import { exportNotesBackup } from '@/lib/backup/exportBackup';
 import { importNotesFromBackup, readBackupFile } from '@/lib/backup/importBackup';
@@ -39,6 +38,7 @@ export function useAccountActions({
     closeProfile();
 
     try {
+      const { signOutGoogle } = await import('@/lib/auth/googleAuth');
       await signOutGoogle({ deleteCloudData });
       toast(deleteCloudData ? 'Signed out and cloud data deleted' : 'Signed out');
     } catch (error) {

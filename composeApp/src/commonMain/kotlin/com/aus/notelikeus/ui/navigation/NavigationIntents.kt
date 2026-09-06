@@ -1,7 +1,8 @@
 package com.aus.notelikeus.ui.navigation
 
 /**
- * Process-private token stamped into our own PendingIntents (widget, reminders).
+ * Opaque token stamped into our own PendingIntents (widget, reminders).
+ * Android persists it so a widget tap still matches after a process death.
  */
 expect object InternalNavigationToken {
     fun init(context: Any)
