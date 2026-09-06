@@ -35,7 +35,7 @@ export function useNotesSync(enabled: boolean) {
       if (bootstrappedRef.current !== userId) {
         const lastMerged = loadLastMergedUserId();
         if (lastMerged != null && lastMerged !== userId) {
-          clearLocalUserDataForAccountSwitch(lastMerged);
+          await clearLocalUserDataForAccountSwitch(lastMerged);
         } else {
           useNotesStore.getState().setNotes([]);
         }

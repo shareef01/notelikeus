@@ -15,7 +15,13 @@ import {
   gcAttachmentsAfterNoteDelete,
   mergeAttachmentsIntoNotes,
   retryPendingAttachmentGc,
+  syncNoteAttachments,
 } from '@/lib/attachments/attachmentSyncService';
+import {
+  clearPendingAttachmentsForTests,
+  peekPendingAttachment,
+  storePendingAttachment,
+} from '@/lib/attachments/pendingAttachmentStore';
 import {
   resetAttachmentBlobStoreForTests,
   setAttachmentBlobStoreForTests,
@@ -117,5 +123,90 @@ describe('gcAttachmentsAfterNoteDelete', () => {
     expect(del).not.toHaveBeenCalledWith('restored', 'att-restored');
     expect(useTombstoneStore.getState().pendingAttachmentGcByNoteId.keep).toBeUndefined();
     expect(useTombstoneStore.getState().pendingAttachmentGcByNoteId.restored).toBeUndefined();
+  });
+});
+
+describe('syncNoteAttachments', () => {
+  beforeEach(() => {
+    resetAttachmentBlobStoreForTests();
+    clearPendingAttachmentsForTests();
+    vi.unstubAllEnvs();
+    vi.stubEnv('VITE_ATTACHMENTS_WORKER_URL', 'http://127.0.0.1:8787');
+  });
+
+  it('keeps pending blob retryable when upload fails, then releases after successful retry', async () => {
+    const blob = new Blob(['attachment data'], { type: 'image/png' });
+    storePendingAttachment('att-pending', blob, 'image/png', 'note-1');
+
+    const note = {
+      ...createEmptyNote({ id: 'note-1', localId: 1 }),
+      attachments: [
+        {
+          id: 'att-pending',
+          noteId: 1,
+          storagePath: pendingStoragePath('att-pending'),
+          type: 'image' as const,
+          mimeType: 'image/png',
+          sizeBytes: blob.size,
+        },
+      ],
+    };
+
+    const uploadMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('R2 upload 500'))
+      .mockResolvedValueOnce({
+        objectKey: 'owners/user-1/notes/note-1/att-pending',
+        mimeType: 'image/png',
+        sizeBytes: blob.size,
+      });
+
+    setAttachmentBlobStoreForTests({
+      upload: uploadMock,
+      download: vi.fn(),
+      delete: vi.fn(),
+    });
+
+    // Attempt 1: Upload fails
+    await expect(syncNoteAttachments(note)).rejects.toThrow(/R2 upload 500/);
+
+    // Pending Blob MUST still exist for retry
+    const surviving = peekPendingAttachment('att-pending');
+    expect(surviving).toBeDefined();
+    expect(surviving?.blob).toBe(blob);
+
+    // Attempt 2: Retry succeeds
+    const syncedNote = await syncNoteAttachments(note);
+    expect(syncedNote.attachments?.[0]?.storagePath).toBe(
+      'r2:owners/user-1/notes/note-1/att-pending',
+    );
+
+    // Pending Blob must now be released
+    expect(peekPendingAttachment('att-pending')).toBeUndefined();
+  });
+
+  it('throws an explicit error when pending metadata reference exists but blob is missing', async () => {
+    const note = {
+      ...createEmptyNote({ id: 'note-missing', localId: 2 }),
+      attachments: [
+        {
+          id: 'att-lost',
+          noteId: 2,
+          storagePath: pendingStoragePath('att-lost'),
+          type: 'image' as const,
+          mimeType: 'image/png',
+        },
+      ],
+    };
+
+    setAttachmentBlobStoreForTests({
+      upload: vi.fn(),
+      download: vi.fn(),
+      delete: vi.fn(),
+    });
+
+    await expect(syncNoteAttachments(note)).rejects.toThrow(
+      /Missing local blob for pending attachment att-lost/,
+    );
   });
 });

@@ -581,7 +581,6 @@ export function MainScreen() {
         isGuest={cloud.isGuest}
         userEmail={cloud.userEmail}
         syncStatus={cloud.status}
-        syncedNoteCount={cloud.syncedCount}
         onExportBackup={exportBackup}
         onImportBackup={() => backupInputRef.current?.click()}
         onSignIn={() => openAuthScreen('signin')}

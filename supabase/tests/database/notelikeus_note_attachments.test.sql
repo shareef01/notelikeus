@@ -11,9 +11,9 @@ select public.apply_note_change(
   '[]'::jsonb, '[]'::jsonb
 );
 select results_eq(
-  $$ select (public.register_note_attachment(
-        'att-1',
+  $$ select (public.finalize_note_attachment_put(
         '1',
+        'att-1',
         public.expected_attachment_object_key(
           tests.get_supabase_uid('attach_a@notelikeus.test'),
           '1',
@@ -29,9 +29,9 @@ select results_eq(
 
 select tests.authenticate_as('attach_b@notelikeus.test');
 select throws_ok(
-  $$ select public.register_note_attachment(
-        'att-1',
+  $$ select public.finalize_note_attachment_put(
         '1',
+        'att-1',
         public.expected_attachment_object_key(
           tests.get_supabase_uid('attach_a@notelikeus.test'),
           '1',
@@ -62,14 +62,14 @@ select results_eq(
 
 select tests.authenticate_as('attach_a@notelikeus.test');
 select results_eq(
-  $$ select (public.delete_note_attachment('att-1', '1')->>'deleted')::boolean $$,
+  $$ select (public.finalize_note_attachment_delete('1', 'att-1')->>'allowed')::boolean $$,
   ARRAY[true],
   'user A can soft-delete attachment'
 );
 
 select tests.clear_authentication();
 select throws_ok(
-  $$ select public.register_note_attachment('att-2', '1', 'owners/x/notes/1/att-2', 'image/png', 1) $$,
+  $$ select public.finalize_note_attachment_put('1', 'att-2', 'owners/x/notes/1/att-2', 'image/png', 1) $$,
   -- 42501, not 28000: since 20250904000000 anon has no EXECUTE grant, so PostgREST is
   -- refused before the function body's own 'not authenticated' check can run.
   '42501',

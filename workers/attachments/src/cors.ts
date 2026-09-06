@@ -1,5 +1,6 @@
 const ALLOWED_HEADERS = 'Authorization, Content-Type';
-const ALLOWED_METHODS = 'GET, POST, PUT, DELETE, OPTIONS';
+export const ATTACHMENT_ALLOWED_METHODS = 'GET, PUT, DELETE, OPTIONS';
+const ALLOWED_METHODS = ATTACHMENT_ALLOWED_METHODS;
 
 function extraOriginsFromEnv(allowedOrigins: string | undefined): string[] {
   return (allowedOrigins ?? '')
