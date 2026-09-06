@@ -5,6 +5,7 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -91,6 +92,7 @@ jobs:
 
       - name: Reset database from migrations
         run: npm run supabase:reset
+        # `supabase:reset` passes `--yes` so this step cannot hang on a TTY confirm.
 
       - name: Run Playwright E2E
         working-directory: web
