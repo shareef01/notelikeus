@@ -33,15 +33,30 @@ function fakeBucket() {
   };
 }
 
+interface RpcCallLog {
+  url: string;
+  body: Record<string, unknown>;
+}
+
+let rpcLog: RpcCallLog[] = [];
+
 /**
  * Bearer token is the user id. Note authorization:
  * USER_A may use note `1` only; `fake` / `tombstoned` are rejected; USER_B is never allowed.
  */
-function mockSupabaseAuth(validTokens: Record<string, string>) {
+function mockSupabaseAuth(
+  validTokens: Record<string, string>,
+  customHandler?: (url: string, init?: RequestInit) => Response | Promise<Response> | undefined | void,
+) {
+  rpcLog = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = String(input);
+      if (customHandler) {
+        const custom = await customHandler(url, init);
+        if (custom) return custom;
+      }
       const headers = init?.headers as Record<string, string> | undefined;
       const auth = headers?.Authorization ?? '';
       const token = auth.replace('Bearer ', '');
@@ -50,13 +65,13 @@ function mockSupabaseAuth(validTokens: Record<string, string>) {
       if (url.includes('/auth/v1/user')) {
         return new Response(JSON.stringify({ id }), { status: 200 });
       }
+
+      const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      rpcLog.push({ url, body });
+
       if (url.includes('/rest/v1/rpc/authorize_note_attachment_')) {
-        const body = JSON.parse(String(init?.body ?? '{}')) as {
-          p_note_id?: string;
-          p_attachment_id?: string;
-        };
-        const noteId = body.p_note_id ?? '';
-        const attachmentId = body.p_attachment_id ?? '';
+        const noteId = (body.p_note_id as string) ?? '';
+        const attachmentId = (body.p_attachment_id as string) ?? '';
         const allowed =
           id === USER_A &&
           noteId === '1' &&
@@ -70,6 +85,26 @@ function mockSupabaseAuth(validTokens: Record<string, string>) {
           }),
           { status: 200 },
         );
+      }
+      if (url.includes('/rest/v1/rpc/finalize_note_attachment_put')) {
+        const noteId = (body.p_note_id as string) ?? '';
+        const attachmentId = (body.p_attachment_id as string) ?? '';
+        const objectKey = (body.p_object_key as string) ?? '';
+        const expectedKey = `owners/${id}/notes/${noteId}/${attachmentId}`;
+        if (id !== USER_A || noteId !== '1' || objectKey !== expectedKey) {
+          return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 });
+        }
+        return new Response(
+          JSON.stringify({
+            attachment_id: attachmentId,
+            object_key: objectKey,
+            status: 'registered',
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/rest/v1/rpc/finalize_note_attachment_delete')) {
+        return new Response(JSON.stringify({ status: 'deleted' }), { status: 200 });
       }
       return new Response('not found', { status: 404 });
     }),
@@ -117,9 +152,60 @@ describe('attachment worker authentication', () => {
     expect(response.status).toBe(401);
   });
 
-  it('rejects an unknown method', async () => {
+  it('rejects an unknown method with 405 and Allow header', async () => {
     const response = await handleAttachmentRequest(request('PATCH', '/v1/attachments/1/a', USER_A), env);
     expect(response.status).toBe(405);
+    expect(response.headers.get('Allow')).toBe('GET, PUT, DELETE, OPTIONS');
+  });
+
+  it('maps Supabase auth 401 to Worker 401', async () => {
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('/auth/v1/user')) {
+        return new Response('unauthorized', { status: 401 });
+      }
+    });
+    const response = await handleAttachmentRequest(request('GET', '/v1/attachments/1/a', USER_A), env);
+    expect(response.status).toBe(401);
+  });
+
+  it('maps Supabase auth 500 to Worker 502 Bad Gateway', async () => {
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('/auth/v1/user')) {
+        return new Response('internal error', { status: 500 });
+      }
+    });
+    const response = await handleAttachmentRequest(request('GET', '/v1/attachments/1/a', USER_A), env);
+    expect(response.status).toBe(502);
+  });
+
+  it('maps Supabase auth network failure to Worker 503 Service Unavailable', async () => {
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('/auth/v1/user')) {
+        throw new Error('network down');
+      }
+    });
+    const response = await handleAttachmentRequest(request('GET', '/v1/attachments/1/a', USER_A), env);
+    expect(response.status).toBe(503);
+  });
+
+  it('maps Supabase RPC 500 to Worker 502', async () => {
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('/rest/v1/rpc/authorize_note_attachment_')) {
+        return new Response('database error', { status: 500 });
+      }
+    });
+    const response = await handleAttachmentRequest(request('GET', '/v1/attachments/1/a', USER_A), env);
+    expect(response.status).toBe(502);
+  });
+
+  it('maps Supabase RPC network failure to Worker 503', async () => {
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('/rest/v1/rpc/authorize_note_attachment_')) {
+        throw new Error('rpc unreachable');
+      }
+    });
+    const response = await handleAttachmentRequest(request('GET', '/v1/attachments/1/a', USER_A), env);
+    expect(response.status).toBe(503);
   });
 });
 
@@ -325,5 +411,153 @@ describe('attachment worker upload limits', () => {
     expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(response.headers.get('Content-Disposition')).toBe('attachment');
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+  });
+
+  it('rejects malformed percent-encoded routes with 404 without crashing', async () => {
+    for (const badPath of [
+      '/v1/attachments/%/att',
+      '/v1/attachments/%ZZ/att',
+      '/v1/attachments/%E0%A4%A/att',
+      '/v1/attachments/note/%C3%28',
+    ]) {
+      const response = await handleAttachmentRequest(request('GET', badPath, USER_A), env);
+      expect(response.status).toBe(404);
+    }
+  });
+
+  it('never trusts an RPC object_key over the locally derived key on PUT', async () => {
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('/rest/v1/rpc/authorize_note_attachment_put')) {
+        return new Response(
+          JSON.stringify({
+            allowed: true,
+            object_key: `owners/${USER_B}/notes/1/att1`, // Malicious cross-owner key!
+            max_bytes: 10 * 1024 * 1024,
+          }),
+          { status: 200 },
+        );
+      }
+    });
+
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/1/att1', USER_A, {
+        body: new Uint8Array([1, 2, 3]),
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+    expect(response.status).toBe(403);
+    expect(bucket.objects.size).toBe(0);
+  });
+
+  it('never trusts an RPC object_key over the locally derived key on GET', async () => {
+    bucket.objects.set(`owners/${USER_B}/notes/1/att1`, {
+      body: new Uint8Array([9, 9, 9]),
+      contentType: 'image/png',
+    });
+
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('/rest/v1/rpc/authorize_note_attachment_get')) {
+        return new Response(
+          JSON.stringify({
+            allowed: true,
+            object_key: `owners/${USER_B}/notes/1/att1`, // Malicious mismatch!
+          }),
+          { status: 200 },
+        );
+      }
+    });
+
+    const response = await handleAttachmentRequest(request('GET', '/v1/attachments/1/att1', USER_A), env);
+    expect(response.status).toBe(403);
+  });
+
+  it('never trusts an RPC object_key over the locally derived key on DELETE', async () => {
+    bucket.objects.set(`owners/${USER_B}/notes/1/att1`, {
+      body: new Uint8Array([9, 9, 9]),
+      contentType: 'image/png',
+    });
+
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('/rest/v1/rpc/authorize_note_attachment_delete')) {
+        return new Response(
+          JSON.stringify({
+            allowed: true,
+            object_key: `owners/${USER_B}/notes/1/att1`, // Malicious mismatch!
+          }),
+          { status: 200 },
+        );
+      }
+    });
+
+    const response = await handleAttachmentRequest(request('DELETE', '/v1/attachments/1/att1', USER_A), env);
+    expect(response.status).toBe(403);
+    // USER_B's object MUST NOT have been deleted
+    expect(bucket.objects.has(`owners/${USER_B}/notes/1/att1`)).toBe(true);
+  });
+
+  it('two-phase PUT executes preflight, R2 write, and finalize in strict order', async () => {
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/1/att1', USER_A, {
+        body: new Uint8Array([1, 2, 3]),
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+    expect(response.status).toBe(200);
+
+    const rpcNames = rpcLog.map((c) => c.url.split('/rpc/')[1]);
+    expect(rpcNames).toEqual(['authorize_note_attachment_put', 'finalize_note_attachment_put']);
+  });
+
+  it('aborts PUT and never calls finalize if R2 PUT throws', async () => {
+    bucket.put = async () => {
+      throw new Error('R2 write error');
+    };
+
+    await expect(
+      handleAttachmentRequest(
+        request('PUT', '/v1/attachments/1/att1', USER_A, {
+          body: new Uint8Array([1, 2, 3]),
+          headers: { 'Content-Type': 'image/png' },
+        }),
+        env,
+      ),
+    ).rejects.toThrow('R2 write error');
+
+    const finalizeCalls = rpcLog.filter((c) => c.url.includes('finalize_note_attachment_put'));
+    expect(finalizeCalls).toHaveLength(0);
+  });
+
+  it('attempts compensating R2 delete if finalize PUT fails', async () => {
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('/rest/v1/rpc/finalize_note_attachment_put')) {
+        return new Response(JSON.stringify({ error: 'quota exceeded' }), { status: 403 });
+      }
+    });
+
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/1/att1', USER_A, {
+        body: new Uint8Array([1, 2, 3]),
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+    expect(response.status).toBe(403);
+    // Compensating delete must have removed the object from R2!
+    expect(bucket.objects.has(`owners/${USER_A}/notes/1/att1`)).toBe(false);
+  });
+
+  it('aborts DELETE and never calls finalize_delete if R2 DELETE throws', async () => {
+    bucket.delete = async () => {
+      throw new Error('R2 delete error');
+    };
+
+    await expect(
+      handleAttachmentRequest(request('DELETE', '/v1/attachments/1/att1', USER_A), env),
+    ).rejects.toThrow('R2 delete error');
+
+    const finalizeCalls = rpcLog.filter((c) => c.url.includes('finalize_note_attachment_delete'));
+    expect(finalizeCalls).toHaveLength(0);
   });
 });

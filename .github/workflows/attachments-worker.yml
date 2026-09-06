@@ -44,6 +44,10 @@ jobs:
         working-directory: workers/attachments
         run: npm ci
 
+      - name: Lint worker
+        working-directory: workers/attachments
+        run: npm run lint
+
       - name: Typecheck worker
         working-directory: workers/attachments
         run: npm run typecheck

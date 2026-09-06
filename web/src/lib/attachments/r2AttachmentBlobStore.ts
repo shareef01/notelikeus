@@ -7,7 +7,6 @@ import type {
   AttachmentBlobUploadResult,
 } from '@/lib/attachments/attachmentBlobStore';
 import { loadAttachmentsWorkerUrl } from '@/lib/attachments/attachmentConfig';
-import { registerNoteAttachment, deleteNoteAttachment } from '@/lib/attachments/supabaseAttachmentMetadata';
 import { getSupabaseClient } from '@/lib/supabase/client';
 
 export function createR2AttachmentBlobStore(
@@ -54,13 +53,6 @@ export function createR2AttachmentBlobStore(
         sizeBytes?: number;
         mimeType?: string;
       };
-      await registerNoteAttachment({
-        attachmentId,
-        noteId,
-        objectKey: payload.objectKey ?? objectKey,
-        mimeType: payload.mimeType ?? mimeType,
-        sizeBytes: payload.sizeBytes ?? blob.size,
-      });
       return {
         objectKey: payload.objectKey ?? objectKey,
         sizeBytes: payload.sizeBytes ?? blob.size,
@@ -88,7 +80,6 @@ export function createR2AttachmentBlobStore(
       if (!response.ok) {
         throw new Error(`attachment delete failed (${response.status})`);
       }
-      await deleteNoteAttachment(attachmentId, noteId);
     },
   };
 }

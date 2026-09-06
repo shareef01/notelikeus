@@ -37,5 +37,7 @@ describe('attachment CORS', () => {
     );
     expect(headers['Access-Control-Allow-Origin']).toBe('http://127.0.0.1:5173');
     expect(headers['Access-Control-Allow-Headers']).toContain('Authorization');
+    expect(headers['Access-Control-Allow-Methods']).toBe('GET, PUT, DELETE, OPTIONS');
+    expect(headers['Access-Control-Allow-Methods']).not.toContain('POST');
   });
 });
