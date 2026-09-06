@@ -1,6 +1,7 @@
 package com.aus.notelikeus.data.remote
 
 import com.aus.notelikeus.data.attachments.NoteAttachmentMetadata
+import com.aus.notelikeus.data.attachments.PendingDeletedAttachment
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -36,6 +37,31 @@ class SupabaseAttachmentMetadata(
     suspend fun delete(attachmentId: String, noteId: String) {
         rpcClient.callRpc(
             functionName = "delete_note_attachment",
+            body = buildJsonObject {
+                put("p_attachment_id", attachmentId)
+                put("p_note_id", noteId)
+            },
+        )
+    }
+
+    suspend fun listPendingDeletedAttachments(): List<PendingDeletedAttachment> {
+        val element = rpcClient.callRpcElement("list_pending_deleted_attachments")
+        return element.jsonArray.mapNotNull { row ->
+            val obj = row.jsonObject
+            val attachmentId = obj.stringField("attachment_id") ?: return@mapNotNull null
+            val noteId = obj.stringField("note_id") ?: return@mapNotNull null
+            if (attachmentId.isBlank() || noteId.isBlank()) return@mapNotNull null
+            PendingDeletedAttachment(
+                attachmentId = attachmentId,
+                noteId = noteId,
+                objectKey = obj.stringField("object_key").orEmpty(),
+            )
+        }
+    }
+
+    suspend fun purgeDeleted(attachmentId: String, noteId: String) {
+        rpcClient.callRpc(
+            functionName = "purge_deleted_note_attachment",
             body = buildJsonObject {
                 put("p_attachment_id", attachmentId)
                 put("p_note_id", noteId)

@@ -7,10 +7,13 @@ import {
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { getAttachmentBlobStore } from '@/lib/attachments/attachmentBlobStoreRegistry';
 import {
+  listPendingDeletedAttachments,
   listUserAttachments,
+  purgeDeletedNoteAttachment,
   type NoteAttachmentMetadata,
 } from '@/lib/attachments/supabaseAttachmentMetadata';
 import { takePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
+import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Attachment } from '@/types/attachment';
 import type { Note } from '@/types/note';
 
@@ -86,12 +89,88 @@ export async function deleteAttachmentsForNote(
   const store = getAttachmentBlobStore();
   await Promise.all(
     attachments.map(async (attachment) => {
-      if (isPendingAttachment(attachment.storagePath)) return;
+      if (isPendingAttachment(attachment.storagePath)) {
+        takePendingAttachment(attachment.storagePath.slice(ATTACHMENT_PENDING_PREFIX.length));
+        return;
+      }
       try {
         await store.delete(noteId, attachment.id);
       } catch {
-        // Best-effort cleanup when the note is being removed.
+        // Live-note edits prefer an orphan blob over failing the save.
       }
     }),
   );
+}
+
+/**
+ * R2 GC after the server note delete has committed. Throws if any remote delete
+ * fails so the pending-GC marker stays and a later pull can retry.
+ */
+export async function gcAttachmentsAfterNoteDelete(
+  noteId: string,
+  attachments: Attachment[],
+): Promise<void> {
+  if (!isR2AttachmentsEnabled() || attachments.length === 0) return;
+  const store = getAttachmentBlobStore();
+  const failures: unknown[] = [];
+  for (const attachment of attachments) {
+    if (isPendingAttachment(attachment.storagePath)) {
+      takePendingAttachment(attachment.storagePath.slice(ATTACHMENT_PENDING_PREFIX.length));
+      continue;
+    }
+    try {
+      await store.delete(noteId, attachment.id);
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0) {
+    throw failures[0] instanceof Error
+      ? failures[0]
+      : new Error(`Attachment GC failed for note ${noteId}`);
+  }
+}
+
+export async function retryPendingAttachmentGc(): Promise<void> {
+  const tomb = useTombstoneStore.getState();
+  for (const [noteId, attachmentIds] of tomb.pendingAttachmentGcEntries()) {
+    if (tomb.isRestored(noteId)) {
+      tomb.clearPendingAttachmentGc(noteId);
+      continue;
+    }
+    const attachments = attachmentIds.map((id) => ({
+      id,
+      noteId: Number.parseInt(noteId, 10) || 0,
+      storagePath: `${ATTACHMENT_R2_PREFIX}gc/${noteId}/${id}`,
+      type: 'image',
+    }));
+    try {
+      await gcAttachmentsAfterNoteDelete(noteId, attachments);
+      useTombstoneStore.getState().clearPendingAttachmentGc(noteId);
+    } catch {
+      // Marker stays; the next snapshot or pull retries.
+    }
+  }
+  await sweepServerPendingDeletedAttachments();
+}
+
+async function sweepServerPendingDeletedAttachments(): Promise<void> {
+  if (!isR2AttachmentsEnabled()) return;
+  let pending;
+  try {
+    pending = await listPendingDeletedAttachments();
+  } catch {
+    return;
+  }
+  const tomb = useTombstoneStore.getState();
+  const store = getAttachmentBlobStore();
+  for (const row of pending) {
+    if (tomb.isRestored(row.noteId)) continue;
+    try {
+      await store.delete(row.noteId, row.attachmentId);
+      await purgeDeletedNoteAttachment(row.attachmentId, row.noteId);
+    } catch {
+      // Prefer orphan storage; the next pull retries.
+    }
+  }
 }

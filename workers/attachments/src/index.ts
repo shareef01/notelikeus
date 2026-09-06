@@ -1,5 +1,6 @@
 import { resolveAuthenticatedUserId, type WorkerEnv } from './auth';
 import { withAttachmentCors } from './cors';
+import { sweepOrphanedDeletedAttachments } from './sweep';
 import {
   AttachmentTooLargeError,
   declaredContentLength,
@@ -32,20 +33,52 @@ export async function handleAttachmentRequest(
 
   switch (request.method) {
     case 'PUT':
-      return putAttachment(request, env, objectKey);
+      return putAttachment(request, env, objectKey, parsed, userId);
     case 'GET':
-      return getAttachment(env, objectKey);
+      return getAttachment(request, env, objectKey, parsed);
     case 'DELETE':
-      return deleteAttachment(env, objectKey);
+      return deleteAttachment(request, env, objectKey, parsed);
     default:
       return new Response('Method Not Allowed', { status: 405 });
   }
+}
+
+interface AttachmentAuthz {
+  allowed?: boolean;
+  object_key?: string;
+  max_bytes?: number;
+}
+
+async function authorizeAttachment(
+  request: Request,
+  env: WorkerEnv,
+  rpcName: string,
+  body: Record<string, unknown>,
+): Promise<AttachmentAuthz | null> {
+  const authorization = request.headers.get('Authorization') ?? '';
+  const response = await fetch(
+    `${env.SUPABASE_URL.replace(/\/$/, '')}/rest/v1/rpc/${rpcName}`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: env.SUPABASE_ANON_KEY,
+        Authorization: authorization,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  if (response.status === 401) return null;
+  if (!response.ok) return { allowed: false };
+  return (await response.json()) as AttachmentAuthz;
 }
 
 async function putAttachment(
   request: Request,
   env: WorkerEnv,
   objectKey: string,
+  parsed: { noteId: string; attachmentId: string },
+  _userId: string,
 ): Promise<Response> {
   const contentType = request.headers.get('Content-Type');
   if (!isAllowedAttachmentMimeType(contentType)) {
@@ -70,14 +103,38 @@ async function putAttachment(
   }
 
   const mimeType = normalizeMimeType(contentType);
-  await env.ATTACHMENTS_BUCKET.put(objectKey, body, {
+  const authz = await authorizeAttachment(request, env, 'authorize_note_attachment_put', {
+    p_note_id: parsed.noteId,
+    p_attachment_id: parsed.attachmentId,
+    p_mime_type: mimeType,
+    p_size_bytes: body.byteLength,
+  });
+  if (!authz) return new Response('Unauthorized', { status: 401 });
+  if (!authz.allowed) return new Response('Forbidden', { status: 403 });
+  const canonicalKey = authz.object_key || objectKey;
+  if (authz.max_bytes != null && body.byteLength > authz.max_bytes) {
+    return new Response('Payload Too Large', { status: 413 });
+  }
+  await env.ATTACHMENTS_BUCKET.put(canonicalKey, body, {
     httpMetadata: { contentType: mimeType },
   });
-  return Response.json({ objectKey, sizeBytes: body.byteLength, mimeType });
+  return Response.json({ objectKey: canonicalKey, sizeBytes: body.byteLength, mimeType });
 }
 
-async function getAttachment(env: WorkerEnv, objectKey: string): Promise<Response> {
-  const object = await env.ATTACHMENTS_BUCKET.get(objectKey);
+async function getAttachment(
+  request: Request,
+  env: WorkerEnv,
+  objectKey: string,
+  parsed: { noteId: string; attachmentId: string },
+): Promise<Response> {
+  const authz = await authorizeAttachment(request, env, 'authorize_note_attachment_get', {
+    p_note_id: parsed.noteId,
+    p_attachment_id: parsed.attachmentId,
+  });
+  if (!authz) return new Response('Unauthorized', { status: 401 });
+  if (!authz.allowed) return new Response('Not Found', { status: 404 });
+  const canonicalKey = authz.object_key || objectKey;
+  const object = await env.ATTACHMENTS_BUCKET.get(canonicalKey);
   if (!object) {
     return new Response('Not Found', { status: 404 });
   }
@@ -92,9 +149,21 @@ async function getAttachment(env: WorkerEnv, objectKey: string): Promise<Respons
   return new Response(object.body, { headers });
 }
 
-async function deleteAttachment(env: WorkerEnv, objectKey: string): Promise<Response> {
-  await env.ATTACHMENTS_BUCKET.delete(objectKey);
-  return Response.json({ deleted: true, objectKey });
+async function deleteAttachment(
+  request: Request,
+  env: WorkerEnv,
+  objectKey: string,
+  parsed: { noteId: string; attachmentId: string },
+): Promise<Response> {
+  const authz = await authorizeAttachment(request, env, 'authorize_note_attachment_delete', {
+    p_note_id: parsed.noteId,
+    p_attachment_id: parsed.attachmentId,
+  });
+  if (!authz) return new Response('Unauthorized', { status: 401 });
+  if (!authz.allowed) return new Response('Not Found', { status: 404 });
+  const canonicalKey = authz.object_key || objectKey;
+  await env.ATTACHMENTS_BUCKET.delete(canonicalKey);
+  return Response.json({ deleted: true, objectKey: canonicalKey });
 }
 
 export default {
@@ -107,5 +176,12 @@ export default {
       await handleAttachmentRequest(request, env),
       env.ALLOWED_ORIGINS,
     );
+  },
+  async scheduled(
+    _controller: ScheduledController,
+    env: WorkerEnv,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    ctx.waitUntil(sweepOrphanedDeletedAttachments(env));
   },
 };

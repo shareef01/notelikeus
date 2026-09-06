@@ -1,4 +1,4 @@
-import { deleteCloudTombstone } from '@/lib/notes/tombstones';
+import { restoreCloudNote } from '@/lib/notes/tombstones';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { deleteNote as deleteLocalIndexedDbNote, putNote } from '@/lib/local/notesLocalRepository';
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
@@ -63,10 +63,7 @@ export async function removeNote(noteId: string): Promise<void> {
   if (!isGuest) {
     useTombstoneStore.getState().markDeleted(noteId);
   }
-  if (existing && isR2AttachmentsEnabled()) {
-    const { deleteAttachmentsForNote } = await import('@/lib/attachments/attachmentSyncService');
-    await deleteAttachmentsForNote(noteId, existing.attachments);
-  }
+  const attachments = existing?.attachments ?? [];
   useNotesStore.getState().removeLocalNote(noteId);
   const ownerId = resolveOwnerId();
   if (ownerId) {
@@ -75,6 +72,20 @@ export async function removeNote(noteId: string): Promise<void> {
   const userId = useAuthStore.getState().user?.uid;
   if (!userId) return;
   await getRemoteNotesDataSource().deleteNote(userId, noteId);
+  if (!isR2AttachmentsEnabled() || attachments.length === 0) return;
+  const { gcAttachmentsAfterNoteDelete } = await import(
+    '@/lib/attachments/attachmentSyncService'
+  );
+  useTombstoneStore.getState().markPendingAttachmentGc(
+    noteId,
+    attachments.map((attachment) => attachment.id),
+  );
+  try {
+    await gcAttachmentsAfterNoteDelete(noteId, attachments);
+    useTombstoneStore.getState().clearPendingAttachmentGc(noteId);
+  } catch {
+    // Note stays deleted; GC retries on the next snapshot or pull.
+  }
 }
 
 export async function trashNoteById(noteId: string): Promise<Note | null> {
@@ -119,15 +130,12 @@ export async function emptyTrash(): Promise<number> {
  * realtime listener and future merges (which suppress tombstoned ids) keep the note live. */
 export async function restorePermanentlyDeletedNote(note: Note): Promise<void> {
   const userId = useAuthStore.getState().user?.uid;
-  if (userId) {
-    // Must go before upsertNote: upsertNote re-reads the cloud tombstone and would
-    // otherwise merge it back and delete the doc again.
-    await deleteCloudTombstone(userId, note.id);
-  }
+  useTombstoneStore.getState().markRestored(note.id);
   useTombstoneStore.getState().clearIds([note.id]);
   useNotesStore.getState().upsertLocalNote(note);
   await persistLocalNote(note);
   if (userId) {
-    await getRemoteNotesDataSource().upsertNote(userId, note);
+    await restoreCloudNote(userId, note);
   }
+  useTombstoneStore.getState().clearRestored([note.id]);
 }
