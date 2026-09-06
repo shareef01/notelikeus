@@ -11,6 +11,6 @@
     "@cloudflare/workers-types": "^4.20250525.0",
     "oxlint": "^1.80.0",
     "typescript": "^5.8.3",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   }
 }
