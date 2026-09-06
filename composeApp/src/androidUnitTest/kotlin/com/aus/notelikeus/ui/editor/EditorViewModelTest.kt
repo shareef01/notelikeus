@@ -2,8 +2,9 @@ package com.aus.notelikeus.ui.editor
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
-import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.domain.platform.ReminderManager
+import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.domain.repository.NoteRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -180,6 +181,28 @@ class EditorViewModelTest {
             viewModel.onTitleChange("New Title")
             assertEquals("New Title", awaitItem().title)
         }
+    }
+
+    @Test
+    fun `onTitleChange clamps to backup importer title cap`() = runTest {
+        val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
+        viewModel = createViewModel(savedStateHandle)
+
+        viewModel.onTitleChange("t".repeat(NoteBackupImporter.MAX_FIELD_CHARS + 50))
+        assertEquals(NoteBackupImporter.MAX_FIELD_CHARS, viewModel.state.value.title.length)
+        assertTrue(viewModel.state.value.truncatedToSyncLimit)
+    }
+
+    @Test
+    fun `onContentValueChange clamps to backup importer content cap`() = runTest {
+        val savedStateHandle = SavedStateHandle(mapOf("noteId" to -1L))
+        viewModel = createViewModel(savedStateHandle)
+
+        viewModel.onContentValueChange(
+            TextFieldValue("c".repeat(NoteBackupImporter.MAX_CONTENT_CHARS + 80)),
+        )
+        assertEquals(NoteBackupImporter.MAX_CONTENT_CHARS, viewModel.state.value.content.length)
+        assertTrue(viewModel.state.value.truncatedToSyncLimit)
     }
 
     @Test

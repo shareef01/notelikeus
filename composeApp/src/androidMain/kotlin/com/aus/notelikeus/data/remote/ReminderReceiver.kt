@@ -5,10 +5,9 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.core.app.NotificationCompat
 import com.aus.notelikeus.shared.R
-import com.aus.notelikeus.ui.navigation.markInternalNavigation
+import com.aus.notelikeus.ui.navigation.widgetMainActivityIntent
 
 class ReminderReceiver : BroadcastReceiver() {
 
@@ -27,18 +26,10 @@ class ReminderReceiver : BroadcastReceiver() {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val channelId = NotificationChannels.REMINDERS_ID
 
-            val activityIntent = Intent().apply {
-                setClassName(context, "com.aus.notelikeus.MainActivity")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                // Distinct data per note so this tap-to-open PendingIntent doesn't collide with
-                // another note's (request code is a 32-bit hash of a 64-bit id — see
-                // ReminderScheduler), which would otherwise open the wrong note.
-                if (noteId != -1L) {
-                    data = Uri.parse("notelikeus://note/$noteId")
-                    putExtra("noteId", noteId)
-                }
-                markInternalNavigation()
-            }
+            val activityIntent = widgetMainActivityIntent(
+                context,
+                noteId = noteId.takeIf { it != -1L },
+            )
             val pendingIntent = PendingIntent.getActivity(
                 context,
                 noteId.hashCode(),

@@ -36,8 +36,9 @@ class SupabaseAuthApi(
     suspend fun signInWithGoogleIdToken(
         idToken: String,
         nonce: String? = null,
-    ): SupabaseAuthSession =
-        parseSession(
+    ): SupabaseAuthSession {
+        requireConfiguredSupabaseUrl(supabaseUrl)
+        return parseSession(
             supabaseAuthPost(
                 supabaseUrl,
                 anonKey,
@@ -53,9 +54,11 @@ class SupabaseAuthApi(
                 },
             ),
         )
+    }
 
-    suspend fun signInWithPassword(email: String, password: String): SupabaseAuthSession =
-        parseSession(
+    suspend fun signInWithPassword(email: String, password: String): SupabaseAuthSession {
+        requireConfiguredSupabaseUrl(supabaseUrl)
+        return parseSession(
             supabaseAuthPost(
                 supabaseUrl,
                 anonKey,
@@ -63,9 +66,11 @@ class SupabaseAuthApi(
                 """{"email":${jsonString(email)},"password":${jsonString(password)}}""",
             ),
         )
+    }
 
-    suspend fun signUp(email: String, password: String): SupabaseAuthSession =
-        parseSession(
+    suspend fun signUp(email: String, password: String): SupabaseAuthSession {
+        requireConfiguredSupabaseUrl(supabaseUrl)
+        return parseSession(
             supabaseAuthPost(
                 supabaseUrl,
                 anonKey,
@@ -73,9 +78,11 @@ class SupabaseAuthApi(
                 """{"email":${jsonString(email)},"password":${jsonString(password)}}""",
             ),
         )
+    }
 
-    suspend fun refreshSession(refreshToken: String): SupabaseAuthSession =
-        parseSession(
+    suspend fun refreshSession(refreshToken: String): SupabaseAuthSession {
+        requireConfiguredSupabaseUrl(supabaseUrl)
+        return parseSession(
             supabaseAuthPost(
                 supabaseUrl,
                 anonKey,
@@ -83,6 +90,7 @@ class SupabaseAuthApi(
                 """{"refresh_token":${jsonString(refreshToken)}}""",
             ),
         )
+    }
 
     private fun jsonString(value: String): String =
         buildString {

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AuthUser } from '@/lib/auth/authUser';
+import { clearLocalUserData } from '@/lib/bootstrap';
 
 interface AuthState {
   user: AuthUser | null;
@@ -27,7 +28,13 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (state.isReady === isReady) return state;
       return { isReady };
     }),
-  enterGuestMode: () => set({ guestMode: true }),
+  enterGuestMode: () => {
+    // Guest IndexedDB is a separate owner namespace, but labels and tombstones
+    // lived in un-namespaced localStorage — a prior account's labels would otherwise
+    // appear in guest filters, and in-memory notes would flash until guest bootstrap.
+    clearLocalUserData();
+    set({ guestMode: true });
+  },
   exitGuestMode: () => set((state) => (state.guestMode ? { guestMode: false } : state)),
   reset: () => set({ user: null, isReady: false, guestMode: false }),
 }));

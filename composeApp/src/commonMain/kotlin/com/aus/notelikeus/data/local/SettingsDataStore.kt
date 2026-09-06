@@ -21,4 +21,9 @@ val SAVED_FILTERS_KEY = stringPreferencesKey("saved_filters")
 /** Accent hue, independent of base theme and black level. See ThemePreference. */
 val ACCENT_COLOR_KEY = stringPreferencesKey("accent_color")
 
-const val SETTINGS_DATASTORE_FILENAME = "settings.preferences_pb"
+/**
+ * Bare store name. Android's `preferencesDataStore` always appends `.preferences_pb`, so this
+ * must stay suffix-free or the widget reads a second empty file beside the app's settings.
+ */
+const val SETTINGS_DATASTORE_NAME = "settings"
+const val SETTINGS_DATASTORE_FILENAME = "$SETTINGS_DATASTORE_NAME.preferences_pb"
