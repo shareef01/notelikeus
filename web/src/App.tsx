@@ -1,7 +1,7 @@
 import { useAuthListener, useAuthSync } from '@/hooks/useAuth';
 import { useGuestLocalNotesBootstrap } from '@/hooks/useGuestLocalNotesBootstrap';
 import { useNotesSync } from '@/hooks/useNotesSync';
-import { isSupabaseBackendEnabled } from '@/lib/supabase/client';
+import { isSupabaseBackendEnabled } from '@/lib/supabase/env';
 import { MainScreen } from '@/screens/MainScreen';
 import { ThemeApplier } from '@/components/theme/ThemeApplier';
 import { AppSplash } from '@/components/boot/AppSplash';

@@ -1,22 +1,30 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getRemoteNotesDataSource,
   resetRemoteNotesDataSourceForTests,
   setRemoteNotesDataSourceForTests,
 } from '@/lib/remote/remoteNotesDataSourceRegistry';
-import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNotesDataSource';
+import type { RemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSource';
 
 describe('remoteNotesDataSourceRegistry', () => {
   afterEach(() => {
     resetRemoteNotesDataSourceForTests();
   });
 
-  it('uses the Supabase remote notes source', () => {
-    expect(getRemoteNotesDataSource()).toBe(supabaseRemoteNotesDataSource);
+  it('returns a remote notes source with the sync contract', () => {
+    const source = getRemoteNotesDataSource();
+    expect(typeof source.fetchAllNotes).toBe('function');
+    expect(typeof source.subscribeToNotes).toBe('function');
+    expect(typeof source.upsertNote).toBe('function');
+    expect(typeof source.deleteNote).toBe('function');
+    expect(typeof source.uploadAllNotes).toBe('function');
+    expect(typeof source.syncNotesWithCloud).toBe('function');
   });
 
   it('honours test overrides', () => {
-    const stub = { ...supabaseRemoteNotesDataSource };
+    const stub = {
+      fetchAllNotes: vi.fn(),
+    } as unknown as RemoteNotesDataSource;
     setRemoteNotesDataSourceForTests(stub);
     expect(getRemoteNotesDataSource()).toBe(stub);
   });

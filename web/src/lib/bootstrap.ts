@@ -1,5 +1,5 @@
 import { clearOwner } from '@/lib/local/notesLocalRepository';
-import { isSupabaseBackendEnabled, loadSupabaseAnonKey, loadSupabaseUrl } from '@/lib/supabase/client';
+import { isSupabaseBackendEnabled, loadSupabaseAnonKey, loadSupabaseUrl } from '@/lib/supabase/env';
 import { isBrowserSafeSupabaseKey } from '@/lib/supabase/backendFlag';
 import { LEGACY_NOTES_STORAGE_KEY } from '@/lib/notes/legacyLocalMigration';
 import { LAST_MERGED_USER_STORAGE_KEY } from '@/lib/notes/lastMergedUser';

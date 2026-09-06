@@ -247,4 +247,83 @@ describe('partial remote snapshot must never be emitted as the full library', ()
     expect(emitted.length).toBeGreaterThan(0);
     expect([...emitted[0]].sort()).toEqual([...CLOUD_IDS].sort());
   });
+
+  it('does not emit when note_count disagrees with the notes array', async () => {
+    rpc.mockImplementation((fn: string) => {
+      if (fn === 'fetch_full_snapshot') {
+        return Promise.resolve({
+          data: {
+            notes: CLOUD_IDS.slice(0, 2).map((id, index) => noteRow(id, index + 1)),
+            tombstones: [],
+            note_count: CLOUD_IDS.length,
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    const emitted: string[][] = [];
+    const errors: Error[] = [];
+    const stop = supabaseRemoteNotesDataSource.subscribeToNotes(
+      USER,
+      (notes) => emitted.push(notes.map((note) => note.id)),
+      (error) => errors.push(error),
+    );
+
+    await settle();
+    stop();
+
+    expect(emitted).toEqual([]);
+    expect(errors.some((error) => error.message.includes('Incomplete snapshot'))).toBe(true);
+  });
+
+  it('does not emit when fetch_full_snapshot returns SQL NULL', async () => {
+    rpc.mockImplementation((fn: string) => {
+      if (fn === 'fetch_full_snapshot') {
+        return Promise.resolve({ data: null, error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    const emitted: string[][] = [];
+    const errors: Error[] = [];
+    const stop = supabaseRemoteNotesDataSource.subscribeToNotes(
+      USER,
+      (notes) => emitted.push(notes.map((note) => note.id)),
+      (error) => errors.push(error),
+    );
+
+    await settle();
+    stop();
+
+    expect(emitted).toEqual([]);
+    expect(errors.some((error) => error.message.includes('returned null'))).toBe(true);
+  });
+
+  it('does not emit when note_count is missing', async () => {
+    rpc.mockImplementation((fn: string) => {
+      if (fn === 'fetch_full_snapshot') {
+        return Promise.resolve({
+          data: { notes: [], tombstones: [] },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    const emitted: string[][] = [];
+    const errors: Error[] = [];
+    const stop = supabaseRemoteNotesDataSource.subscribeToNotes(
+      USER,
+      (notes) => emitted.push(notes.map((note) => note.id)),
+      (error) => errors.push(error),
+    );
+
+    await settle();
+    stop();
+
+    expect(emitted).toEqual([]);
+    expect(errors.some((error) => error.message.includes('missing note_count'))).toBe(true);
+  });
 });

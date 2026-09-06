@@ -6,8 +6,7 @@ import com.aus.notelikeus.data.local.DatabaseMigrations
 import com.aus.notelikeus.data.local.NotelikeusDatabase
 import com.aus.notelikeus.data.local.PlaintextDatabaseMigrator
 import com.aus.notelikeus.data.local.getDatabaseBuilder
-import com.aus.notelikeus.data.local.createDataStore
-import com.aus.notelikeus.data.local.SETTINGS_DATASTORE_FILENAME
+import com.aus.notelikeus.data.local.settingsDataStore
 import com.aus.notelikeus.domain.platform.PlatformWidgetManager
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.domain.platform.SyncCoordinator
@@ -48,17 +47,14 @@ import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
-import java.io.File
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 
 actual val platformModule = module {
-    single {
-        val context = get<android.content.Context>()
-        createDataStore {
-            File(context.filesDir, "datastore/$SETTINGS_DATASTORE_FILENAME").absolutePath
-        }
-    }
+    // Same singleton Glance uses (`Context.settingsDataStore`). A second
+    // PreferenceDataStoreFactory on that file crashes App Functions / the widget with
+    // "multiple DataStores active for the same file".
+    single { get<android.content.Context>().settingsDataStore }
 
     single<NotelikeusDatabase> {
         val context = get<android.content.Context>()

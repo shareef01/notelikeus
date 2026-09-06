@@ -127,8 +127,22 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
 
   async deleteNote(userId, noteId) {
     await ensureSupabaseAuthenticated();
-    const state = await loadRevisionState(userId);
-    const baseRevision = getNoteBaseRevision(state, noteId);
+    let state = await loadRevisionState(userId);
+    let baseRevision = getNoteBaseRevision(state, noteId);
+    // Same hole Kotlin already closed: a delete issued before this tab's revision map is
+    // populated (fresh IDB, failed baseline, purge of a tombstoned cloud row) used to return
+    // without calling apply_note_delete. The note stayed in the cloud and came back on the
+    // next device that synced.
+    if (baseRevision == null) {
+      const snapshot = await fetchSnapshotNotes();
+      useTombstoneStore.getState().mergeFromCloud(snapshot.tombstones);
+      await saveRevisionState(userId, {
+        noteRevisions: snapshot.noteRevisions,
+        lastRemoteRevision: snapshot.maxRevision,
+      });
+      state = await loadRevisionState(userId);
+      baseRevision = getNoteBaseRevision(state, noteId);
+    }
     if (baseRevision == null) {
       useTombstoneStore.getState().markDeleted(noteId);
       return;
@@ -170,10 +184,29 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
 
   async uploadAllNotes(userId, notes) {
     await ensureSupabaseAuthenticated();
+    const prior = await loadRevisionState(userId);
+    const snapshot = await fetchSnapshotNotes();
+    // Same fail-open hazard Kotlin already closed: an empty snapshot must not look like
+    // "local wins every id". upsertNote would then push the whole library over whatever the
+    // cloud actually holds — including a newer copy the fetch just failed to return.
+    if (snapshot.notes.length === 0 && Object.keys(prior.noteRevisions).length > 0) {
+      throw new Error(
+        `Cloud returned no notes but ${Object.keys(prior.noteRevisions).length} were expected — ` +
+          `refusing to overwrite the cloud. Check the connection or sign in again.`,
+      );
+    }
+    useTombstoneStore.getState().mergeFromCloud(snapshot.tombstones);
+    await saveRevisionState(userId, {
+      noteRevisions: snapshot.noteRevisions,
+      lastRemoteRevision: snapshot.maxRevision,
+    });
+
+    const remoteById = new Map(snapshot.notes.map((note) => [note.id, note]));
     let uploaded = 0;
     for (const note of notes) {
       if (!isCloudSyncEligible(note)) continue;
       if (useTombstoneStore.getState().isDeleted(note.id)) continue;
+      if (!shouldUploadOverRemote(note, remoteById.get(note.id))) continue;
       await this.upsertNote(userId, note);
       uploaded += 1;
     }

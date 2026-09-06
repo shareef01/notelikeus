@@ -11,13 +11,13 @@ describe('Cloudflare Pages static artifacts', () => {
     expect(redirects).toContain('/index.html');
   });
 
-  it('ships security headers with migration connect-src allowances', () => {
+  it('ships security headers with pinned Supabase connect-src', () => {
     const headers = readFileSync(join(publicDir, '_headers'), 'utf8');
     expect(headers).toContain('X-Frame-Options: DENY');
     expect(headers).toContain('https://cqydlidescvmpfviwncf.supabase.co');
     expect(headers).toContain('wss://cqydlidescvmpfviwncf.supabase.co');
     expect(headers).not.toContain('https://*.supabase.co');
-    expect(headers).toContain('https://*.workers.dev');
+    expect(headers).not.toContain('https://*.workers.dev');
     expect(headers).toContain('no-cache, no-store, must-revalidate');
   });
 });

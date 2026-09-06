@@ -2,9 +2,14 @@ import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
+import { loadEnv } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { pinAttachmentsCspPlugin } from './src/lib/hosting/pinAttachmentsCspPlugin.ts';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, fileURLToPath(new URL('.', import.meta.url)), 'VITE_');
+
+  return {
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -27,6 +32,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    pinAttachmentsCspPlugin(env.VITE_ATTACHMENTS_WORKER_URL ?? ''),
     VitePWA({
       strategies: 'injectManifest',
       srcDir: 'src',
@@ -110,4 +116,5 @@ export default defineConfig({
       },
     },
   },
+  };
 });

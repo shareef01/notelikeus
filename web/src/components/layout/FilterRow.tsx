@@ -30,7 +30,7 @@ function FilterChip({
       disabled={disabled}
       onClick={onClick}
       aria-pressed={pressed}
-      className={`filter-chip shrink-0 gap-1.5 ${CHROME_FOCUS} ${compact ? 'min-h-9 px-3 text-xs sm:px-3.5' : ''} ${
+      className={`filter-chip shrink-0 gap-1.5 ${CHROME_FOCUS} ${compact ? 'px-3 text-xs sm:px-3.5' : ''} ${
         selected ? 'filter-chip-active' : 'filter-chip-inactive'
       } ${disabled ? 'cursor-default opacity-70' : 'cursor-pointer'}`}
     >

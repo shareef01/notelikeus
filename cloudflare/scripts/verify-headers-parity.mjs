@@ -35,7 +35,6 @@ const requiredCspTokens = [
   "frame-ancestors 'none'",
   'https://cqydlidescvmpfviwncf.supabase.co',
   'wss://cqydlidescvmpfviwncf.supabase.co',
-  'https://*.workers.dev',
   'https://accounts.google.com',
 ];
 
@@ -51,11 +50,13 @@ const forbiddenCspTokens = [
   'firebaseapp.com',
   'firebaseappcheck',
   'recaptcha',
+  'https://*.workers.dev',
+  'https://*.supabase.co',
 ];
 
 for (const token of forbiddenCspTokens) {
   if (pagesHeaders.includes(token)) {
-    console.error(`Pages CSP still allows retired Firebase token: ${token}`);
+    console.error(`Pages CSP still allows forbidden token: ${token}`);
     process.exit(1);
   }
 }

@@ -5,6 +5,7 @@ import com.aus.notelikeus.ui.navigation.EXTRA_INTERNAL_NAV
 import com.aus.notelikeus.ui.navigation.EXTRA_INTERNAL_NAV_TOKEN
 import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.ui.navigation.markInternalNavigation
+import com.aus.notelikeus.ui.navigation.widgetMainActivityIntent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -23,6 +24,12 @@ class NavigationIntentsTest {
 
     @Before
     fun setup() {
+        InternalNavigationToken.forgetInMemoryForTests()
+        RuntimeEnvironment.getApplication()
+            .getSharedPreferences(InternalNavigationToken.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
         InternalNavigationToken.init(RuntimeEnvironment.getApplication())
     }
 
@@ -107,5 +114,52 @@ class NavigationIntentsTest {
 
         assertEquals("Article title", shared?.first)
         assertEquals("Body worth keeping", shared?.second)
+    }
+
+    @Test
+    fun `internal token survives a process death stand-in`() {
+        val first = InternalNavigationToken.current()
+        val intent = Intent().markInternalNavigation().putExtra("noteId", 7L)
+
+        InternalNavigationToken.forgetInMemoryForTests()
+        InternalNavigationToken.init(RuntimeEnvironment.getApplication())
+
+        assertEquals(first, InternalNavigationToken.current())
+        assertEquals(7L, extractEditorNoteId(intent))
+    }
+
+    @Test
+    fun `widgetMainActivityIntent carries NEW_TASK SINGLE_TOP token extra and editor uri`() {
+        val intent = widgetMainActivityIntent(RuntimeEnvironment.getApplication(), noteId = 42L)
+        assertEquals(
+            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            intent.flags and (Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        )
+        assertTrue(InternalNavigationToken.matches(intent))
+        assertEquals(42L, intent.getLongExtra("noteId", -1L))
+        assertEquals("notelikeus://editor/42", intent.dataString)
+        assertEquals(42L, extractEditorNoteId(intent))
+    }
+
+    @Test
+    fun `extractEditorNoteId still reads the editor uri when the noteId extra is missing`() {
+        val intent = widgetMainActivityIntent(RuntimeEnvironment.getApplication(), noteId = 99L)
+        intent.removeExtra("noteId")
+        assertEquals(99L, extractEditorNoteId(intent))
+    }
+
+    @Test
+    fun `extractEditorNoteId still reads a legacy reminder note-host uri`() {
+        val intent = Intent()
+            .markInternalNavigation()
+            .setData(android.net.Uri.parse("notelikeus://note/77"))
+        assertEquals(77L, extractEditorNoteId(intent))
+    }
+
+    @Test
+    fun `widgetMainActivityIntent createNote is detected as a new-note request`() {
+        val intent = widgetMainActivityIntent(RuntimeEnvironment.getApplication(), createNote = true)
+        assertTrue(intentRequestsNewNote(intent))
+        assertNull(extractEditorNoteId(intent))
     }
 }
