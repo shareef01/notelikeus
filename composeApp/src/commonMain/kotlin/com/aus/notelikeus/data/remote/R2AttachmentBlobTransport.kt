@@ -8,7 +8,7 @@ import kotlinx.serialization.json.longOrNull
 class R2AttachmentBlobTransport(
     private val workerBaseUrl: String,
     private val accessTokenProvider: SupabaseAccessTokenProvider,
-    private val metadata: SupabaseAttachmentMetadata,
+    private val metadata: SupabaseAttachmentMetadata? = null,
     private val ownerIdProvider: suspend () -> String,
 ) : AttachmentBlobTransport {
 
@@ -36,13 +36,6 @@ class R2AttachmentBlobTransport(
         val uploadedKey = payload["objectKey"]?.jsonPrimitive?.content ?: objectKey
         val uploadedMime = payload["mimeType"]?.jsonPrimitive?.content ?: mimeType
         val uploadedSize = payload["sizeBytes"]?.jsonPrimitive?.longOrNull ?: bytes.size.toLong()
-        metadata.register(
-            attachmentId = attachmentId,
-            noteId = noteId,
-            objectKey = uploadedKey,
-            mimeType = uploadedMime,
-            sizeBytes = uploadedSize,
-        )
         return AttachmentBlobUploadResult(
             objectKey = uploadedKey,
             sizeBytes = uploadedSize,
@@ -62,6 +55,5 @@ class R2AttachmentBlobTransport(
             ?: throw SupabaseTransportException("attachments", 401, "missing access token")
         val path = AttachmentObjectKey.workerPath(noteId, attachmentId)
         attachmentWorkerDelete("$baseUrl$path", token)
-        metadata.delete(attachmentId, noteId)
     }
 }

@@ -42,7 +42,7 @@ vi.mock('@/lib/attachments/attachmentSyncService', () => ({
 }));
 
 import { restoreCloudNote } from '@/lib/notes/tombstones';
-import { putNote } from '@/lib/local/notesLocalRepository';
+import { deleteNote, putNote } from '@/lib/local/notesLocalRepository';
 import { removeNote, restorePermanentlyDeletedNote, saveNote } from '@/lib/notes/noteActions';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
@@ -56,6 +56,11 @@ function makeNote() {
 describe('saveNote', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(putNote).mockResolvedValue(undefined);
+    vi.mocked(deleteNote).mockResolvedValue(undefined);
+    remoteMocks.upsertNote.mockResolvedValue(undefined);
+    remoteMocks.deleteNote.mockResolvedValue(undefined);
+    attachmentMocks.syncNoteAttachments.mockImplementation(async (note: unknown) => note);
     useNotesStore.getState().reset();
     useAuthStore.getState().reset();
     useTombstoneStore.getState().reset();
@@ -90,11 +95,54 @@ describe('saveNote', () => {
 
     expect(remoteMocks.upsertNote).toHaveBeenCalledTimes(1);
   });
+
+  it('saves note text locally even when attachment upload is offline / fails', async () => {
+    useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
+    attachmentMocks.syncNoteAttachments.mockRejectedValueOnce(
+      new Error('R2 Worker temporary 503'),
+    );
+    const note = makeNote();
+
+    // The note text MUST save locally without throwing
+    await saveNote(note);
+
+    expect(putNote).toHaveBeenCalled();
+    expect(useNotesStore.getState().notes.some((n) => n.id === note.id)).toBe(true);
+  });
+
+  it('does not mutate in-memory store when IndexedDB putNote fails', async () => {
+    useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
+    vi.mocked(putNote).mockRejectedValueOnce(new Error('IndexedDB disk full'));
+    const note = makeNote();
+
+    await expect(saveNote(note)).rejects.toThrow(/IndexedDB disk full/);
+
+    // In-memory store must not falsely contain the unpersisted note
+    expect(useNotesStore.getState().notes.some((n) => n.id === note.id)).toBe(false);
+  });
+
+  it('keeps note durable in IndexedDB and memory when remote upsert fails', async () => {
+    useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
+    remoteMocks.upsertNote.mockRejectedValueOnce(new Error('Supabase 503 outage'));
+    const note = makeNote();
+
+    // Local-first: remote error does not fail the local save
+    await saveNote(note);
+
+    // Locally committed note remains durable in store and IndexedDB
+    expect(putNote).toHaveBeenCalled();
+    expect(useNotesStore.getState().notes.some((n) => n.id === note.id)).toBe(true);
+  });
 });
 
 describe('restorePermanentlyDeletedNote', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(putNote).mockResolvedValue(undefined);
+    vi.mocked(deleteNote).mockResolvedValue(undefined);
+    remoteMocks.upsertNote.mockResolvedValue(undefined);
+    remoteMocks.deleteNote.mockResolvedValue(undefined);
+    vi.mocked(restoreCloudNote).mockResolvedValue(undefined);
     useNotesStore.getState().reset();
     useAuthStore.getState().reset();
     useTombstoneStore.getState().reset();
@@ -140,16 +188,60 @@ describe('restorePermanentlyDeletedNote', () => {
     expect(useTombstoneStore.getState().isRestored(note.id)).toBe(true);
     expect(useNotesStore.getState().notes.some((entry) => entry.id === note.id)).toBe(true);
   });
+
+  it('does not prematurely clear tombstone when IndexedDB putNote fails during restore', async () => {
+    useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
+    const note = makeNote();
+    useTombstoneStore.getState().markDeleted(note.id);
+    vi.mocked(putNote).mockRejectedValueOnce(new Error('IndexedDB restore failure'));
+
+    await expect(restorePermanentlyDeletedNote(note)).rejects.toThrow(/IndexedDB restore failure/);
+
+    // Tombstone MUST NOT be cleared if durable persistence failed
+    expect(useTombstoneStore.getState().isDeleted(note.id)).toBe(true);
+    expect(useNotesStore.getState().notes.some((n) => n.id === note.id)).toBe(false);
+  });
 });
 
 describe('removeNote', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(putNote).mockResolvedValue(undefined);
+    vi.mocked(deleteNote).mockResolvedValue(undefined);
+    remoteMocks.upsertNote.mockResolvedValue(undefined);
+    remoteMocks.deleteNote.mockResolvedValue(undefined);
     attachmentMocks.isR2AttachmentsEnabled.mockReturnValue(false);
     attachmentMocks.gcAttachmentsAfterNoteDelete.mockResolvedValue(undefined);
     useNotesStore.getState().reset();
     useAuthStore.getState().reset();
     useTombstoneStore.getState().reset();
+  });
+
+  it('does not remove from memory or tombstone when IndexedDB deleteNote fails', async () => {
+    useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
+    const note = makeNote();
+    useNotesStore.getState().setNotes([note]);
+    vi.mocked(deleteNote).mockRejectedValueOnce(new Error('IndexedDB delete failed'));
+
+    await expect(removeNote(note.id)).rejects.toThrow(/IndexedDB delete failed/);
+
+    // Note must not enter incoherent state: stays in memory, not tombstoned
+    expect(useNotesStore.getState().notes.some((n) => n.id === note.id)).toBe(true);
+    expect(useTombstoneStore.getState().isDeleted(note.id)).toBe(false);
+  });
+
+  it('keeps locally committed delete tombstoned and removed when remote delete fails', async () => {
+    useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
+    const note = makeNote();
+    useNotesStore.getState().setNotes([note]);
+    remoteMocks.deleteNote.mockRejectedValueOnce(new Error('Supabase network timeout'));
+
+    await expect(removeNote(note.id)).rejects.toThrow(/Supabase network timeout/);
+
+    // Local commit succeeded: note stays deleted and tombstoned
+    expect(deleteNote).toHaveBeenCalledWith('user-1', note.id);
+    expect(useNotesStore.getState().notes.some((n) => n.id === note.id)).toBe(false);
+    expect(useTombstoneStore.getState().isDeleted(note.id)).toBe(true);
   });
 
   it('skips the tombstone in guest mode so a guest delete can never suppress a real cloud note', async () => {

@@ -19,12 +19,12 @@ select public.apply_note_change(
   '[]'::jsonb, '[]'::jsonb
 );
 select lives_ok(
-  $$ select public.register_note_attachment(
-       'a_att', '1',
+  $$ select public.finalize_note_attachment_put(
+       '1', 'a_att',
        public.expected_attachment_object_key(auth.uid(), '1', 'a_att'),
        'image/png', 10, 'image'
      ) $$,
-  'register_note_attachment still writes through the guard'
+  'finalize_note_attachment_put still writes through the guard'
 );
 
 select tests.authenticate_as('guard_b@notelikeus.test');
@@ -41,8 +41,8 @@ select throws_ok(
   'B cannot direct-insert metadata claiming an object key in A''s namespace'
 );
 select throws_ok(
-  $$ select public.register_note_attachment(
-       'a_att_2', '1',
+  $$ select public.finalize_note_attachment_put(
+       '1', 'a_att_2',
        'owners/' || tests.get_supabase_uid('guard_a@notelikeus.test')::text || '/notes/1/a_att_2',
        'image/png', 10, 'image'
      ) $$,
@@ -54,17 +54,17 @@ select throws_ok(
 -- A can still claim the key B tried to squat: the unique-key denial-of-upload is gone.
 select tests.authenticate_as('guard_a@notelikeus.test');
 select lives_ok(
-  $$ select public.register_note_attachment(
-       'a_att_2', '1',
+  $$ select public.finalize_note_attachment_put(
+       '1', 'a_att_2',
        public.expected_attachment_object_key(auth.uid(), '1', 'a_att_2'),
        'image/png', 10, 'image'
      ) $$,
   'A can still register the object key B attempted to squat'
 );
 select is(
-  (public.delete_note_attachment('a_att_2', '1')->>'deleted')::boolean,
+  (public.finalize_note_attachment_delete('1', 'a_att_2')->>'allowed')::boolean,
   true,
-  'delete_note_attachment still soft-deletes through the guard'
+  'finalize_note_attachment_delete still soft-deletes through the guard'
 );
 
 -- ---------------------------------------------------------------------------
