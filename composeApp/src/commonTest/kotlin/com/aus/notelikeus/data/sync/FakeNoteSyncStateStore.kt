@@ -7,6 +7,7 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
 
     private val deleted = mutableMapOf<Long, Long>()
     private val restored = mutableSetOf<Long>()
+    private val pendingAttachmentGc = mutableMapOf<Long, MutableSet<String>>()
     private val knownCloud = mutableSetOf<Long>()
     private var reconciledAt: Long = 0L
     private var mergedUserId: String? = null
@@ -53,6 +54,19 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
         restored.removeAll(ids.toSet())
     }
 
+    override fun markPendingAttachmentGc(noteId: Long, attachmentIds: Collection<String>) {
+        pendingAttachmentGc.getOrPut(noteId) { mutableSetOf() }.addAll(attachmentIds)
+    }
+
+    override fun pendingAttachmentGcIds(): Set<Long> = pendingAttachmentGc.keys.toSet()
+
+    override fun pendingAttachmentGcEntries(): Map<Long, Set<String>> =
+        pendingAttachmentGc.mapValues { it.value.toSet() }
+
+    override fun clearPendingAttachmentGc(noteId: Long) {
+        pendingAttachmentGc.remove(noteId)
+    }
+
     override fun lastReconciledAt(): Long = reconciledAt
 
     override fun markReconciled(at: Long) {
@@ -75,6 +89,7 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
     override fun clear() {
         deleted.clear()
         restored.clear()
+        pendingAttachmentGc.clear()
         knownCloud.clear()
         reconciledAt = 0L
         mergedUserId = null

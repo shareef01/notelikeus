@@ -169,6 +169,20 @@ class SupabaseNoteTransport(
         // Individual tombstone cleanup is server-managed; account wipe uses deleteAllOwnedCloudData.
     }
 
+    override suspend fun restoreNote(uid: String, note: Note): Map<Long, Long?> {
+        val noteId = note.id ?: return emptyMap()
+        val response = rpc.callRpc("restore_note", note.toRpcArgs(revisionMap(uid)[noteId]))
+        return when (response.stringField("status")) {
+            "applied" -> {
+                val revision = response.longId("revision")
+                val serverUpdatedAt = response.longId("server_updated_at")
+                if (revision != null) revisionMap(uid)[noteId] = revision
+                mapOf(noteId to serverUpdatedAt)
+            }
+            else -> error("restore_note failed for $noteId: ${response.stringField("error") ?: response.stringField("status")}")
+        }
+    }
+
     override suspend fun writeSyncMeta(uid: String, noteCount: Int, platform: String) {
         // Optional metadata — direct table writes deferred until Phase 5 auth mapping is stable.
     }
