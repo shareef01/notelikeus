@@ -28,9 +28,18 @@ export function applyAttachmentsConnectSrc(headers: string, origin: string | nul
   if (!origin) return withoutWildcard;
   if (withoutWildcard.includes(origin)) return withoutWildcard;
 
-  const needle = 'wss://cqydlidescvmpfviwncf.supabase.co';
+  const wss = withoutWildcard.match(/wss:\/\/[^\s;]+/);
+  if (wss) {
+    return withoutWildcard.replace(wss[0], `${wss[0]} ${origin}`);
+  }
+  const ws = withoutWildcard.match(/ws:\/\/[^\s;]+/);
+  if (ws && !ws[0].startsWith('wss:')) {
+    return withoutWildcard.replace(ws[0], `${ws[0]} ${origin}`);
+  }
+
+  const needle = "connect-src 'self'";
   if (!withoutWildcard.includes(needle)) {
-    throw new Error('CSP connect-src is missing the pinned Supabase wss origin');
+    throw new Error("CSP connect-src is missing connect-src 'self'");
   }
   return withoutWildcard.replace(needle, `${needle} ${origin}`);
 }
