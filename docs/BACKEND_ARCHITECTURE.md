@@ -1,6 +1,6 @@
 # Notelikeus backend architecture
 
-Canonical backend as of 2026-09-05. Firebase is not part of the runtime.
+Canonical backend as of 2026-09-06. Firebase is not part of the runtime.
 
 ## Auth
 
@@ -26,15 +26,17 @@ User action writes local state first, then remote sync. Guest notes never upload
 
 Supabase PostgreSQL. Authoritative note mutations go through RPCs, not direct table writes:
 
-- `apply_note_change`
-- `apply_note_delete`
-- `pull_changes`
-- `fetch_full_snapshot`
+- `apply_note_change` / `apply_note_delete`
+- `restore_note` (clears the tombstone and undeletes attachment metadata in the same transaction)
+- `lookup_note_revision`
+- `pull_changes` / `fetch_full_snapshot`
 - `clear_note_tombstone` (explicit undo of a permanent delete)
 - `delete_all_user_cloud_data`
-- attachment RPCs (`register_note_attachment`, `delete_note_attachment`, `list_user_attachments`, …)
+- `validate_note_payload` (shared by apply + restore)
+- attachment RPCs: `register_note_attachment`, `delete_note_attachment`, `list_user_attachments`, `list_pending_deleted_attachments`, `purge_deleted_note_attachment`, `authorize_note_attachment_{put,get,delete}`
+- Hosted sweep only (`service_role`): `list_orphaned_deleted_attachments`, `purge_orphaned_deleted_attachment`
 
-Row-level security is enabled on user-owned tables. Direct INSERT/UPDATE/DELETE of revision, owner, and tombstone rows is blocked by mutation guards.
+Row-level security is enabled on user-owned tables. Direct INSERT/UPDATE/DELETE of revision, owner, and tombstone rows is blocked by mutation guards. User attachment PUT/GET/DELETE stay on the caller’s bearer token.
 
 ## Sync protocol
 
@@ -45,9 +47,11 @@ The server owns a monotonic `sync_revision_seq`.
 3. Server detects conflicts / tombstones, assigns a new revision, and commits.
 4. Pull returns notes and tombstones after revision N, paginated.
 
-Failed cloud reads must not be treated as an empty database. A successful empty snapshot is distinct from auth, timeout, HTTP, or RPC failure.
+Failed cloud reads must not be treated as an empty database. A successful empty snapshot is distinct from auth, timeout, HTTP, or RPC failure. An empty snapshot also does not prove deletion: clients keep unsynced local notes and refuse to overwrite when known cloud ids are unexplained.
 
-Tombstones prevent resurrection of deleted notes. They remain required.
+Tombstones prevent resurrection of deleted notes. They remain required. A restore marker survives process death so a stale tombstone snapshot cannot hide a note the user just brought back.
+
+Clients persist `knownCloudIds` with the notes+cursor write. Only ids that were actually on the server are stored.
 
 ## Realtime
 
@@ -57,7 +61,10 @@ Supabase Realtime (`postgres_changes`) is a wake-up: subscribe after login, unsu
 
 - Metadata: `note_attachments` in Postgres.
 - Blobs: Cloudflare R2.
-- Authorization: Cloudflare Worker verifies the Supabase JWT and derives `owners/{userId}/notes/{noteId}/{attachmentId}`. Callers cannot supply an arbitrary object key.
+- Authorization: Cloudflare Worker verifies the Supabase JWT and derives `owners/{userId}/notes/{noteId}/{attachmentId}`. Callers cannot supply an arbitrary object key. Unauthorized GET/DELETE are generic 404.
+- Delete order: authoritative note delete first, then R2. Prefer an orphan blob over destroying data. `apply_note_delete` sets `note_attachments.deleted_at` in the same transaction; `restore_note` clears it.
+- Client sweep: `list_pending_deleted_attachments` + `purge_deleted_note_attachment` on the next snapshot/pull. Pending GC is persisted locally.
+- Hosted sweep (optional Worker cron every 6 hours): `service_role` lists metadata that is deleted, tombstoned, not live, and older than 24 hours, then deletes the canonical R2 key and purges the row. Without `SUPABASE_SERVICE_ROLE_KEY` the cron is a no-op. It never lists R2 first.
 
 ## Web hosting
 
@@ -82,6 +89,7 @@ Worker:
 
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY` (secret)
+- `SUPABASE_SERVICE_ROLE_KEY` (optional secret; cron orphan sweep only)
 - `ATTACHMENTS_BUCKET` (R2 binding)
 - `ALLOWED_ORIGINS` (optional)
 
@@ -114,7 +122,7 @@ Owner-operated (credentials required):
 1. Create a fresh Supabase project, `supabase link`, `supabase db push`.
 2. Enable Google provider; add redirect URLs for localhost, Pages preview, and the production domain.
 3. Enable Realtime on `notes` and `note_tombstones` (already published by migration).
-4. Create an R2 bucket, deploy `workers/attachments`.
+4. Create an R2 bucket, deploy `workers/attachments`. Optional: `wrangler secret put SUPABASE_SERVICE_ROLE_KEY` so the orphan-sweep cron can run.
 5. Create a Cloudflare Pages project with build `cd web && npm ci && npm run build`, output `web/dist`.
 6. Set Pages env vars listed above.
 7. Attach a custom domain and add it to the Supabase Auth redirect allowlist.
