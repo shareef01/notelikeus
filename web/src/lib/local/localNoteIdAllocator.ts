@@ -3,6 +3,17 @@ import { getNotesDatabase } from '@/lib/local/idb';
 
 const MAX_SAFE = Number.MAX_SAFE_INTEGER;
 
+/** Injectable so tests can freeze or advance the time-based floor without waiting on the wall clock. */
+let nowMs: () => number = () => Date.now();
+
+export function setLocalNoteIdNowForTests(now: (() => number) | null): void {
+  nowMs = now ?? (() => Date.now());
+}
+
+function timeBasedFloor(): number {
+  return nowMs() * 1000;
+}
+
 interface SequenceRecord {
   ownerId: string;
   lastIssued: number;
@@ -12,10 +23,6 @@ interface StoredNoteRecord {
   ownerId: string;
   id: string;
   note: { localId?: number };
-}
-
-function timeBasedFloor(): number {
-  return Date.now() * 1000;
 }
 
 async function withOwnerIdLock<T>(ownerId: string, run: () => Promise<T>): Promise<T> {

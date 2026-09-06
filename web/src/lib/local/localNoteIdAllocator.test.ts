@@ -5,12 +5,14 @@ import { resetNotesDatabaseForTests } from '@/lib/local/idb';
 import {
   allocateLocalNoteIdForOwner,
   reserveLocalNoteIdRange,
+  setLocalNoteIdNowForTests,
 } from '@/lib/local/localNoteIdAllocator';
 import { putNote } from '@/lib/local/notesLocalRepository';
 import { createEmptyNote } from '@/types/note';
 
 describe('localNoteIdAllocator', () => {
   beforeEach(async () => {
+    setLocalNoteIdNowForTests(null);
     await resetNotesDatabaseForTests();
     indexedDB.deleteDatabase(NOTES_DB_NAME);
     await resetNotesDatabaseForTests();
@@ -48,10 +50,22 @@ describe('localNoteIdAllocator', () => {
   });
 
   it('reserves a contiguous range for backup import', async () => {
+    setLocalNoteIdNowForTests(() => 1_700_000_000_000);
     const first = await reserveLocalNoteIdRange('owner-a', 5, 10);
     expect(first).toBeGreaterThan(10);
+    expect(first).toBe(1_700_000_000_000_000);
     const next = await allocateLocalNoteIdForOwner('owner-a');
     expect(next).toBe(first + 5);
+  });
+
+  it('does not reuse a reserved range when the wall clock advances', async () => {
+    let now = 1_700_000_000_000;
+    setLocalNoteIdNowForTests(() => now);
+    const first = await reserveLocalNoteIdRange('owner-a', 5, 10);
+    now += 1;
+    const next = await allocateLocalNoteIdForOwner('owner-a');
+    expect(next).toBeGreaterThanOrEqual(first + 5);
+    expect(next).not.toBeLessThan(first + 5);
   });
 
   it('never exceeds MAX_SAFE_INTEGER', async () => {
