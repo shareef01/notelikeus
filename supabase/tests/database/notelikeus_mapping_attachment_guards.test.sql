@@ -13,6 +13,11 @@ select tests.create_supabase_user('guard_b@notelikeus.test');
 -- note_attachments: the object_key namespace check cannot be bypassed.
 -- ---------------------------------------------------------------------------
 select tests.authenticate_as('guard_a@notelikeus.test');
+select public.apply_note_change(
+  '1', 1::bigint, null::bigint,
+  't', 'b', 100::bigint, 0, false, false, false, 0, null::bigint,
+  '[]'::jsonb, '[]'::jsonb
+);
 select lives_ok(
   $$ select public.register_note_attachment(
        'a_att', '1',

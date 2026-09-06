@@ -1,9 +1,13 @@
+import { applyRemotePageAtomically } from '@/lib/local/notesLocalRepository';
+import {
+  retryPendingCloudRestores,
+  withoutRestoredDeletes,
+} from '@/lib/notes/restoreRetry';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import {
   forgetNoteRevision,
   loadRevisionState,
   rememberNoteRevision,
-  saveRevisionState,
 } from '@/lib/supabase/revisionStore';
 import {
   noteToSupabaseRpcArgs,
@@ -14,7 +18,10 @@ import {
 } from '@/lib/supabase/supabaseNoteMapper';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
-import { hydrateNotesWithAttachments } from '@/lib/attachments/attachmentSyncService';
+import {
+  hydrateNotesWithAttachments,
+  retryPendingAttachmentGc,
+} from '@/lib/attachments/attachmentSyncService';
 
 export interface ApplyNoteResult {
   status?: string;
@@ -54,7 +61,9 @@ export function applyServerFields(note: Note, result: ApplyNoteResult): Note {
   };
 }
 
-export async function fetchSnapshotNotes(): Promise<{
+export async function fetchSnapshotNotes(options?: {
+  hydrateAttachments?: boolean;
+}): Promise<{
   notes: Note[];
   tombstones: Record<string, number>;
   noteRevisions: Record<string, number>;
@@ -79,7 +88,8 @@ export async function fetchSnapshotNotes(): Promise<{
     );
   }
   const notes = rows.map((row) => supabaseNoteToNote(row));
-  const hydratedNotes = await hydrateNotesWithAttachments(notes);
+  const hydratedNotes =
+    options?.hydrateAttachments === false ? notes : await hydrateNotesWithAttachments(notes);
   const tombstones = parseTombstoneMap(snapshot.tombstones ?? []);
   const noteRevisions: Record<string, number> = {};
   let maxRevision = 0;
@@ -133,12 +143,16 @@ export async function applyNoteChange(
 export async function pullIncrementalChanges(
   userId: string,
   notesById: Map<string, Note>,
+  options?: { isActive?: () => boolean },
 ): Promise<boolean> {
+  const stillActive = () => options?.isActive?.() !== false;
   await ensureSupabaseAuthenticated();
+  if (!stillActive()) return false;
   let state = await loadRevisionState(userId);
   let changed = false;
 
   for (;;) {
+    if (!stillActive()) return changed;
     const { data, error } = await getSupabaseClient().rpc('pull_changes', {
       p_after_revision: state.lastRemoteRevision,
       p_limit: 100,
@@ -150,16 +164,17 @@ export async function pullIncrementalChanges(
 
     let maxRevision = state.lastRemoteRevision;
     const noteRevisions = { ...state.noteRevisions };
+    const upserts: Note[] = [];
+    const deletedNoteIds: string[] = [];
+    const tombstones: Record<string, number> = {};
 
     for (const change of changes) {
       if (change.type === 'tombstone') {
         const tombstone = change as SupabaseTombstonePayload;
         if (tombstone.note_id) {
-          notesById.delete(tombstone.note_id);
+          deletedNoteIds.push(tombstone.note_id);
           if (tombstone.deleted_at != null) {
-            useTombstoneStore
-              .getState()
-              .mergeFromCloud({ [tombstone.note_id]: tombstone.deleted_at });
+            tombstones[tombstone.note_id] = tombstone.deleted_at;
           }
           delete noteRevisions[tombstone.note_id];
         }
@@ -173,7 +188,7 @@ export async function pullIncrementalChanges(
       const notePayload = change as SupabaseNotePayload;
       if (!notePayload.note_id) continue;
       const note = supabaseNoteToNote(notePayload);
-      notesById.set(note.id, note);
+      upserts.push(note);
       if (notePayload.revision != null) {
         noteRevisions[note.id] = notePayload.revision;
         maxRevision = Math.max(maxRevision, notePayload.revision);
@@ -181,21 +196,56 @@ export async function pullIncrementalChanges(
       changed = true;
     }
 
+    if (!stillActive()) return changed;
+    const safeDeletes = withoutRestoredDeletes(deletedNoteIds);
+    const knownCloudIds = [
+      ...new Set([
+        ...state.knownCloudIds.filter((id) => !safeDeletes.includes(id)),
+        ...upserts.map((note) => note.id),
+      ]),
+    ];
+    await applyRemotePageAtomically({
+      ownerId: userId,
+      upserts,
+      deletedNoteIds: safeDeletes,
+      noteRevisions,
+      lastRemoteRevision: maxRevision,
+      knownCloudIds,
+    });
+    if (!stillActive()) return changed;
+
+    for (const noteId of safeDeletes) {
+      notesById.delete(noteId);
+    }
+    if (Object.keys(tombstones).length > 0) {
+      useTombstoneStore.getState().mergeFromCloud(tombstones);
+    }
+    useTombstoneStore.getState().acknowledgeRestoredLiveNotes(upserts.map((note) => note.id));
+    for (const note of upserts) {
+      notesById.set(note.id, note);
+    }
+    await retryPendingCloudRestores(userId, [...notesById.values(), ...upserts]);
+    if (!stillActive()) return changed;
     state = {
       lastRemoteRevision: maxRevision,
       noteRevisions,
+      knownCloudIds,
     };
-    await saveRevisionState(userId, state);
 
     if (!payload.has_more) break;
   }
 
-  if (changed) {
+  if (changed && stillActive()) {
     const hydrated = await hydrateNotesWithAttachments(Array.from(notesById.values()));
+    if (!stillActive()) return changed;
     notesById.clear();
     for (const note of hydrated) {
       notesById.set(note.id, note);
     }
+  }
+
+  if (stillActive()) {
+    await retryPendingAttachmentGc();
   }
 
   return changed;

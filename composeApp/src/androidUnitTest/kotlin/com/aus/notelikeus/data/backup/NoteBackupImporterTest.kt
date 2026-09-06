@@ -105,6 +105,27 @@ class NoteBackupImporterTest {
     }
 
     @Test
+    fun `legacy version 0 still imports`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+        val json = """{"version":0,"notes":[{"title":"Legacy","content":"ok","timestamp":1,"color":0}]}"""
+
+        val result = importer.importFromJson(json) as BackupImportResult.Success
+        assertEquals(1, result.notesImported)
+    }
+
+    @Test
+    fun `labels object is a controlled error not a crash`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+        val json = """{"version":3,"labels":{"name":"not-an-array"},"notes":[{"title":"n","content":"","timestamp":1,"color":0}]}"""
+
+        val result = importer.importFromJson(json)
+        assertTrue(result is BackupImportResult.Error || result is BackupImportResult.InvalidFormat)
+        assertTrue(repository.insertedWithoutSync.isEmpty())
+    }
+
+    @Test
     fun `too many root labels is rejected`() = runTest {
         val repository = RecordingNoteRepository()
         val importer = NoteBackupImporter(repository)

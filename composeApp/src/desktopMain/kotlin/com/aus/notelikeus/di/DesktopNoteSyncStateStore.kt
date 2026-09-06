@@ -23,6 +23,7 @@ class DesktopNoteSyncStateStore(
 
     private val deletedMap: MutableMap<Long, Long>
     private val restoredSet: MutableSet<Long>
+    private val pendingAttachmentGcMap: MutableMap<Long, MutableSet<String>>
     private val knownCloudSet: MutableSet<Long>
     private var reconciledAt: Long
     private var mergedUserId: String?
@@ -31,6 +32,7 @@ class DesktopNoteSyncStateStore(
         val prefs = runBlocking { dataStore.data.firstOrNull() }
         deletedMap = parseDeletedMap(prefs).toMutableMap()
         restoredSet = parseIdSet(prefs, KEY_RESTORED_IDS).toMutableSet()
+        pendingAttachmentGcMap = parsePendingGc(prefs).mapValues { it.value.toMutableSet() }.toMutableMap()
         knownCloudSet = parseIdSet(prefs, KEY_KNOWN_CLOUD_IDS).toMutableSet()
         reconciledAt = prefs?.get(KEY_LAST_RECONCILED) ?: 0L
         mergedUserId = prefs?.get(KEY_LAST_MERGED_USER_ID)
@@ -91,6 +93,20 @@ class DesktopNoteSyncStateStore(
         if (restoredSet.removeAll(ids.toSet())) persistRestored()
     }
 
+    override fun markPendingAttachmentGc(noteId: Long, attachmentIds: Collection<String>) {
+        pendingAttachmentGcMap.getOrPut(noteId) { mutableSetOf() }.addAll(attachmentIds)
+        persistPendingGc()
+    }
+
+    override fun pendingAttachmentGcIds(): Set<Long> = pendingAttachmentGcMap.keys.toSet()
+
+    override fun pendingAttachmentGcEntries(): Map<Long, Set<String>> =
+        pendingAttachmentGcMap.mapValues { it.value.toSet() }
+
+    override fun clearPendingAttachmentGc(noteId: Long) {
+        if (pendingAttachmentGcMap.remove(noteId) != null) persistPendingGc()
+    }
+
     override fun lastReconciledAt(): Long = reconciledAt
 
     override fun markReconciled(at: Long) {
@@ -116,6 +132,7 @@ class DesktopNoteSyncStateStore(
     override fun clear() {
         deletedMap.clear()
         restoredSet.clear()
+        pendingAttachmentGcMap.clear()
         knownCloudSet.clear()
         reconciledAt = 0L
         mergedUserId = null
@@ -134,6 +151,25 @@ class DesktopNoteSyncStateStore(
         val encoded = json.encodeToString(SetSerializer(String.serializer()),
             restoredSet.map { it.toString() }.toSet())
         runBlocking { dataStore.edit { it[KEY_RESTORED_IDS] = encoded } }
+    }
+
+    private fun persistPendingGc() {
+        val encoded = json.encodeToString(
+            MapSerializer(String.serializer(), SetSerializer(String.serializer())),
+            pendingAttachmentGcMap.mapKeys { it.key.toString() }.mapValues { it.value.toSet() },
+        )
+        runBlocking { dataStore.edit { it[KEY_PENDING_ATTACHMENT_GC] = encoded } }
+    }
+
+    private fun parsePendingGc(prefs: Preferences?): Map<Long, Set<String>> {
+        val raw = prefs?.get(KEY_PENDING_ATTACHMENT_GC) ?: return emptyMap()
+        return try {
+            json.decodeFromString<Map<String, Set<String>>>(raw)
+                .mapKeys { it.key.toLong() }
+        } catch (error: Exception) {
+            AppLog.warn(TAG, "Pending attachment GC map unreadable; starting with none", error)
+            emptyMap()
+        }
     }
 
     private fun persistKnownCloud() {
@@ -170,6 +206,7 @@ class DesktopNoteSyncStateStore(
         private const val TAG = "NoteSyncStateStore"
         private val KEY_DELETED_JSON = stringPreferencesKey("sync_deleted_json")
         private val KEY_RESTORED_IDS = stringPreferencesKey("sync_restored_ids")
+        private val KEY_PENDING_ATTACHMENT_GC = stringPreferencesKey("sync_pending_attachment_gc")
         private val KEY_KNOWN_CLOUD_IDS = stringPreferencesKey("sync_known_cloud_ids")
         private val KEY_LAST_RECONCILED = longPreferencesKey("sync_last_reconciled")
         private val KEY_LAST_MERGED_USER_ID = stringPreferencesKey("sync_last_merged_user_id")

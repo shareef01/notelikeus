@@ -25,6 +25,9 @@ class FakeCloudNoteTransport : CloudNoteTransport {
      * case that strands a cloud tombstone after a restore.
      */
     var deleteTombstonesFailure: Throwable? = null
+    var deleteNotesFailure: Throwable? = null
+    var restoreNoteFailure: Throwable? = null
+    var restoreNoteCalls = 0
 
     override suspend fun fetchNotes(uid: String): List<CloudNoteRecord> =
         notes.values.toList()
@@ -62,8 +65,19 @@ class FakeCloudNoteTransport : CloudNoteTransport {
     }
 
     override suspend fun deleteNotes(uid: String, noteIds: List<Long>) {
+        deleteNotesFailure?.let { throw it }
         deletedNoteIds.addAll(noteIds)
         noteIds.forEach { notes.remove(it) }
+    }
+
+    override suspend fun restoreNote(uid: String, note: Note): Map<Long, Long?> {
+        restoreNoteCalls++
+        restoreNoteFailure?.let { throw it }
+        deleteTombstonesFailure?.let { throw it }
+        val noteId = note.id ?: return emptyMap()
+        tombstones.remove(noteId)
+        deletedTombstoneIds.add(noteId)
+        return putNotes(uid, listOf(note))
     }
 
     override suspend fun fetchTombstones(uid: String): Map<Long, Long> =

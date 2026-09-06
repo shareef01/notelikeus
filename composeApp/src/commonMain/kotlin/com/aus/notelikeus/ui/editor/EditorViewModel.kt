@@ -410,7 +410,9 @@ class EditorViewModel(
         }
         val noteIdForCleanup = savedId ?: note.id
         if (noteIdForCleanup != null && removedAttachments.isNotEmpty()) {
-            attachmentSync?.deleteAttachmentsForNote(noteIdForCleanup, removedAttachments.toList())
+            runCatching {
+                attachmentSync?.deleteAttachmentsForNote(noteIdForCleanup, removedAttachments.toList())
+            }
             removedAttachments.clear()
         }
         syncReminder(savedId ?: return@withLock null, _state.value)

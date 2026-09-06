@@ -20,7 +20,7 @@ vi.mock('@/lib/supabase/supabaseRealtimeSync', () => ({
 import { NOTES_DB_NAME } from '@/lib/local/constants';
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
 import { forgetNoteRevision, loadRevisionState, rememberNoteRevision } from '@/lib/supabase/revisionStore';
-import { fetchSnapshotNotes } from '@/lib/supabase/supabaseSyncEngine';
+import { beginNotesSyncSession } from '@/lib/supabase/syncSession';
 import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNotesDataSource';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 
@@ -89,21 +89,18 @@ describe('supabaseRemoteNotesDataSource.deleteNote — RPC status contract', () 
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
   });
 
-  it('refreshes revisions from a snapshot when none are cached, then deletes', async () => {
+  it('resolves a missing local revision from lookup_note_revision, then deletes', async () => {
     await forgetNoteRevision(USER, '1');
-    vi.mocked(fetchSnapshotNotes).mockResolvedValue({
-      notes: [],
-      tombstones: {},
-      noteRevisions: { '1': 10_042 },
-      maxRevision: 10_042,
-    });
-    rpcMock.mockResolvedValue({
-      data: { status: 'applied', revision: 10_043 },
-      error: null,
+    rpcMock.mockImplementation(async (fn: string) => {
+      if (fn === 'lookup_note_revision') {
+        return { data: { exists: true, tombstoned: false, revision: 10_042 }, error: null };
+      }
+      return { data: { status: 'applied', revision: 10_043 }, error: null };
     });
 
     await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
 
+    expect(rpcMock).toHaveBeenCalledWith('lookup_note_revision', { p_note_id: '1' });
     expect(rpcMock).toHaveBeenCalledWith('apply_note_delete', {
       p_note_id: '1',
       p_base_revision: 10_042,
@@ -112,18 +109,41 @@ describe('supabaseRemoteNotesDataSource.deleteNote — RPC status contract', () 
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
   });
 
-  it('skips the RPC only after a snapshot still has no revision for the note', async () => {
+  it('skips apply_note_delete only after the backend confirms the note is absent', async () => {
     await forgetNoteRevision(USER, '1');
-    vi.mocked(fetchSnapshotNotes).mockResolvedValue({
-      notes: [],
-      tombstones: {},
-      noteRevisions: {},
-      maxRevision: 0,
+    rpcMock.mockImplementation(async (fn: string) => {
+      if (fn === 'lookup_note_revision') {
+        return { data: { exists: false, tombstoned: false, revision: null }, error: null };
+      }
+      return { data: { status: 'applied' }, error: null };
     });
 
     await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
 
-    expect(rpcMock).not.toHaveBeenCalled();
+    expect(rpcMock).toHaveBeenCalledWith('lookup_note_revision', { p_note_id: '1' });
+    expect(rpcMock).not.toHaveBeenCalledWith(
+      'apply_note_delete',
+      expect.objectContaining({ p_note_id: '1' }),
+    );
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
+  });
+
+  it('aborts when the signed-in account changes mid-delete', async () => {
+    await forgetNoteRevision(USER, '1');
+    rpcMock.mockImplementation(async (fn: string) => {
+      if (fn === 'lookup_note_revision') {
+        beginNotesSyncSession('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+        return { data: { exists: true, tombstoned: false, revision: 10_042 }, error: null };
+      }
+      return { data: { status: 'applied', revision: 10_043 }, error: null };
+    });
+
+    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1')).rejects.toThrow(
+      /Account changed/,
+    );
+    expect(rpcMock).not.toHaveBeenCalledWith(
+      'apply_note_delete',
+      expect.objectContaining({ p_note_id: '1' }),
+    );
   });
 });
