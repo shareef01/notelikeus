@@ -1,4 +1,4 @@
-import { putNotes } from '@/lib/local/notesLocalRepository';
+import { deleteNote, putNotes } from '@/lib/local/notesLocalRepository';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
 import { shouldUploadOverRemote } from '@/lib/notes/remoteMerge';
 import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegistry';
@@ -68,21 +68,41 @@ function mergeIncomingWithLocal(incoming: Note[]): Note[] {
   return Array.from(byId.values());
 }
 
-function applyNotes(userId: string, incoming: Note[]) {
+let lastMirrorWrite: Promise<void> | null = null;
+
+export function waitForRealtimeMirrorWriteForTests(): Promise<void> {
+  return lastMirrorWrite ?? Promise.resolve();
+}
+
+/**
+ * Applies incoming remote notes with optimistic UI update and deterministic rollback if
+ * IndexedDB persistence fails.
+ */
+function applyNotes(userId: string, incoming: Note[]): void {
   const merged = mergeIncomingWithLocal(incoming);
-  const current = useNotesStore.getState().notes;
-  if (notesContentEqual(current, merged)) {
+  const isDeleted = useTombstoneStore.getState().isDeleted;
+  const live = merged.filter((note) => !isDeleted(note.id));
+
+  const prevNotes = useNotesStore.getState().notes;
+  if (notesContentEqual(prevNotes, live)) {
     if (useNotesStore.getState().status !== 'ready') {
       useNotesStore.getState().setStatus('ready');
     }
-    void putNotes(userId, merged).catch((error: unknown) => {
+    lastMirrorWrite = putNotes(userId, live).catch((error: unknown) => {
       console.warn('[Notelikeus] IndexedDB mirror write failed:', error);
     });
     return;
   }
-  useNotesStore.getState().setNotes(merged);
-  void putNotes(userId, merged).catch((error: unknown) => {
-    console.warn('[Notelikeus] IndexedDB mirror write failed:', error);
+
+  // Optimistic UI update
+  useNotesStore.getState().setNotes(live);
+
+  // Durable local mirror with deterministic rollback if persistence fails
+  lastMirrorWrite = putNotes(userId, live).catch((error: unknown) => {
+    console.warn('[Notelikeus] IndexedDB mirror write failed, rolling back:', error);
+    if (useNotesStore.getState().notes === live) {
+      useNotesStore.getState().setNotes(prevNotes);
+    }
   });
 }
 
@@ -209,6 +229,12 @@ export function startNotesRealtimeSync(userId: string): void {
       const { live, staleIds } = partitionTombstoned(remoteNotes);
       purgeStaleCloudDocs(userId, staleIds);
 
+      if (staleIds.length > 0) {
+        for (const staleId of staleIds) {
+          void deleteNote(userId, staleId).catch(() => {});
+        }
+      }
+
       // Detect notes deleted on another device: any ID we previously knew about that is absent
       // from the current snapshot (and not already tombstoned) was deleted elsewhere.
       // Guard against an empty snapshot from a transient condition — a legitimate empty set
@@ -222,6 +248,7 @@ export function startNotesRealtimeSync(userId: string): void {
         for (const id of knownRemoteIds) {
           if (!currentIds.has(id) && !isDeleted(id)) {
             useTombstoneStore.getState().markDeleted(id);
+            void deleteNote(userId, id).catch(() => {});
           }
         }
         // Persist only actual cloud IDs (snapshot/reconcile/incremental apply). Emitting

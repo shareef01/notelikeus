@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const clearOwnerMock = vi.fn().mockResolvedValue(undefined);
+const clearPendingAttachmentsMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/lib/local/notesLocalRepository', () => ({
   clearOwner: (...args: unknown[]) => clearOwnerMock(...args),
+}));
+
+vi.mock('@/lib/local/pendingAttachmentRepository', () => ({
+  clearPendingAttachmentsForOwner: (...args: unknown[]) => clearPendingAttachmentsMock(...args),
 }));
 
 import {
@@ -24,9 +29,10 @@ describe('clearLocalUserData', () => {
     useTombstoneStore.getState().reset();
   });
 
-  it('does not wipe IndexedDB on sign-out so offline edits can survive re-login', () => {
+  it('does not wipe IndexedDB or pending attachments on sign-out so offline edits survive re-login', () => {
     clearLocalUserData();
     expect(clearOwnerMock).not.toHaveBeenCalled();
+    expect(clearPendingAttachmentsMock).not.toHaveBeenCalled();
   });
 });
 
@@ -38,9 +44,17 @@ describe('clearLocalUserDataForAccountSwitch', () => {
     useTombstoneStore.getState().reset();
   });
 
-  it('clears the previous account IndexedDB namespace on account switch', () => {
-    clearLocalUserDataForAccountSwitch('user-a');
+  it('clears the previous account IndexedDB namespace and pending attachments on account switch', async () => {
+    await clearLocalUserDataForAccountSwitch('user-a');
     expect(clearOwnerMock).toHaveBeenCalledWith('user-a');
+    expect(clearPendingAttachmentsMock).toHaveBeenCalledWith('user-a');
+  });
+
+  it('surfaces storage failure when clearing prior account data fails', async () => {
+    clearOwnerMock.mockRejectedValueOnce(new Error('IndexedDB clear failure'));
+    await expect(clearLocalUserDataForAccountSwitch('user-a')).rejects.toThrow(
+      /IndexedDB clear failure/,
+    );
   });
 });
 

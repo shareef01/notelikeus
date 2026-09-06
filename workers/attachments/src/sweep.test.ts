@@ -81,16 +81,34 @@ describe('orphaned attachment sweep', () => {
     expect(rpcCalls).toEqual([]);
   });
 
-  it('does nothing when the list RPC fails', async () => {
+  it('throws when the list RPC fails with configured service role', async () => {
     mockRpcs({ listStatus: 500 });
     await bucket.put(OBJECT_KEY, new Uint8Array([1]));
 
-    expect(await sweepOrphanedDeletedAttachments(env)).toEqual({
-      scanned: 0,
-      deleted: 0,
-      skipped: 0,
-    });
+    await expect(sweepOrphanedDeletedAttachments(env)).rejects.toThrow(
+      /Sweep RPC failed: list_orphaned_deleted_attachments \(500\)/,
+    );
     expect(bucket.objects.has(OBJECT_KEY)).toBe(true);
+  });
+
+  it('throws on upstream RPC network failure or malformed JSON', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network down');
+      }),
+    );
+    await expect(sweepOrphanedDeletedAttachments(env)).rejects.toThrow(
+      /Sweep RPC network failure: list_orphaned_deleted_attachments/,
+    );
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not valid json', { status: 200 })),
+    );
+    await expect(sweepOrphanedDeletedAttachments(env)).rejects.toThrow(
+      /Sweep RPC malformed JSON: list_orphaned_deleted_attachments/,
+    );
   });
 
   it('deletes a canonical orphan and purges metadata', async () => {

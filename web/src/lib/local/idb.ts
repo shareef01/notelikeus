@@ -1,4 +1,10 @@
-import { META_STORE, NOTES_DB_NAME, NOTES_DB_VERSION, NOTES_STORE } from '@/lib/local/constants';
+import {
+  META_STORE,
+  NOTES_DB_NAME,
+  NOTES_DB_VERSION,
+  NOTES_STORE,
+  PENDING_ATTACHMENTS_STORE,
+} from '@/lib/local/constants';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -17,6 +23,13 @@ function openNotesDatabase(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(META_STORE)) {
         db.createObjectStore(META_STORE, { keyPath: 'ownerId' });
       }
+      if (!db.objectStoreNames.contains(PENDING_ATTACHMENTS_STORE)) {
+        const pending = db.createObjectStore(PENDING_ATTACHMENTS_STORE, {
+          keyPath: ['ownerId', 'noteId', 'attachmentId'],
+        });
+        pending.createIndex('ownerId', 'ownerId', { unique: false });
+        pending.createIndex('attachmentId', 'attachmentId', { unique: false });
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('IndexedDB open failed'));
@@ -31,12 +44,29 @@ export function getNotesDatabase(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
+/** Test-only: close connection without deleting the database to simulate app restart. */
+export async function closeNotesDatabaseForTests(): Promise<void> {
+  if (dbPromise) {
+    try {
+      const db = await dbPromise;
+      db.close();
+    } catch {
+      // ignore
+    }
+    dbPromise = null;
+  }
+}
+
 /** Test-only: close and reset the singleton so each test gets a fresh DB. */
 export async function resetNotesDatabaseForTests(): Promise<void> {
-  if (dbPromise) {
-    const db = await dbPromise;
-    db.close();
-    dbPromise = null;
+  await closeNotesDatabaseForTests();
+  if (typeof indexedDB !== 'undefined') {
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(NOTES_DB_NAME);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+      req.onblocked = () => resolve();
+    });
   }
 }
 

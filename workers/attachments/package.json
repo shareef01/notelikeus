@@ -3,11 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "lint": "oxlint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250525.0",
+    "oxlint": "^1.80.0",
     "typescript": "^5.8.3",
     "vitest": "^4.1.11"
   }

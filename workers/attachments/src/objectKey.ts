@@ -17,8 +17,14 @@ export function buildAttachmentObjectKey(
 export function parseAttachmentPath(pathname: string): { noteId: string; attachmentId: string } | null {
   const match = pathname.match(/^\/v1\/attachments\/([^/]+)\/([^/]+)$/);
   if (!match) return null;
-  const noteId = decodeURIComponent(match[1]);
-  const attachmentId = decodeURIComponent(match[2]);
+  let noteId: string;
+  let attachmentId: string;
+  try {
+    noteId = decodeURIComponent(match[1]);
+    attachmentId = decodeURIComponent(match[2]);
+  } catch {
+    return null;
+  }
   if (!NOTE_ID_PATTERN.test(noteId) || !ATTACHMENT_ID_PATTERN.test(attachmentId)) {
     return null;
   }
