@@ -22,4 +22,16 @@ class SupabaseBackendSelectionTest {
         assertTrue(isLocalSupabaseUrl(""))
         assertFalse(isLocalSupabaseUrl("https://abcd.supabase.co"))
     }
+
+    @Test
+    fun requireConfiguredSupabaseUrlRejectsCleartextLoopback() {
+        val error = runCatching { requireConfiguredSupabaseUrl("http://127.0.0.1:54321") }.exceptionOrNull()
+        assertTrue(error is IllegalStateException)
+        assertTrue(error.message!!.contains("cleartext"))
+    }
+
+    @Test
+    fun requireConfiguredSupabaseUrlAcceptsHostedHttps() {
+        requireConfiguredSupabaseUrl("https://abcd.supabase.co")
+    }
 }
