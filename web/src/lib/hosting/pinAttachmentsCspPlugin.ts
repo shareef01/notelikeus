@@ -5,28 +5,40 @@ import {
   applyAttachmentsConnectSrc,
   attachmentsConnectSrcOrigin,
 } from './attachmentsConnectSrc.ts';
+import {
+  applySupabaseConnectSrc,
+  requireSupabaseConnectSrcTokens,
+} from './supabaseConnectSrc.ts';
 
-/** Rewrites `dist/_headers` connect-src to the Worker origin for this build, never `*.workers.dev`. */
-export function pinAttachmentsCspPlugin(workerUrl: string): Plugin {
+/**
+ * Rewrites `dist/_headers` connect-src to this build's Supabase host and Worker origin.
+ * Never ships `*.supabase.co`, `*.workers.dev`, or the `[REDACTED]` placeholder host.
+ */
+export function pinAttachmentsCspPlugin(workerUrl: string, supabaseUrl: string): Plugin {
   let headersPath = resolve('dist/_headers');
 
   return {
-    name: 'notelikeus-pin-attachments-csp',
+    name: 'notelikeus-pin-connect-src-csp',
     apply: 'build',
     enforce: 'post',
     configResolved(config) {
       headersPath = resolve(config.root, config.build.outDir, '_headers');
     },
     closeBundle() {
-      const origin = attachmentsConnectSrcOrigin(workerUrl);
+      const supabase = requireSupabaseConnectSrcTokens(supabaseUrl);
+      const workerOrigin = attachmentsConnectSrcOrigin(workerUrl);
       if (!existsSync(headersPath)) {
-        if (origin) {
-          throw new Error(`Cannot pin attachments CSP: missing ${headersPath}`);
-        }
-        return;
+        throw new Error(`Cannot pin CSP: missing ${headersPath}`);
       }
 
-      const next = applyAttachmentsConnectSrc(readFileSync(headersPath, 'utf8'), origin);
+      const withSupabase = applySupabaseConnectSrc(
+        readFileSync(headersPath, 'utf8'),
+        supabase,
+      );
+      const next = applyAttachmentsConnectSrc(withSupabase, workerOrigin);
+      if (next.includes('[REDACTED]') || next.includes('https://*.supabase.co') || next.includes('https://*.workers.dev')) {
+        throw new Error('Pinned CSP still contains a wildcard or placeholder host');
+      }
       writeFileSync(headersPath, next);
     },
   };

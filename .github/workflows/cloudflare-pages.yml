@@ -111,3 +111,64 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy web/dist --project-name=notelikeus-dev
+
+  # The verify job builds with placeholder env so PRs never need secrets. Merging that
+  # artifact would pin CSP to placeholder.supabase.co and skip a real deploy — which is
+  # why #164's privacy.html sat in git while notelikeus-dev.pages.dev stayed on Firebase
+  # copy until a local `npm run deploy:staging-pages`. Push to main rebuilds with secrets
+  # and publishes the production alias.
+  deploy:
+    if: github.event_name == 'push'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require Pages secrets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
+        run: |
+          missing=0
+          for name in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY VITE_ATTACHMENTS_WORKER_URL; do
+            if [ -z "${!name}" ]; then
+              echo "Missing GitHub secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Add those secrets, or run locally: npm run deploy:staging-pages"
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build static bundle
+        working-directory: web
+        run: npm ci && npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
+
+      - name: Verify Pages artifacts
+        run: node web/scripts/verifyPagesArtifacts.mjs
+
+      - name: Deploy to Cloudflare Pages (production alias)
+        uses: cloudflare/wrangler-action@4bea050a0a830575b2b1f999e528f1cb4f7e219 # v3.14.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy web/dist --project-name=notelikeus-dev --branch=main
