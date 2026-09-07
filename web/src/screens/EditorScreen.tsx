@@ -51,6 +51,14 @@ interface EditorScreenProps {
   route: Exclude<EditorRoute, { mode: 'closed' }>;
 }
 
+/**
+ * Which layout button to focus once the editor has rebuilt itself.
+ *
+ * Module scope rather than a ref because a layout change remounts EditorScreen (see the effect
+ * that reads this), so anything held inside the component is gone before it can be used.
+ */
+let pendingLayoutFocusIndex: number | null = null;
+
 function formatNoteForSharing(
   title: string,
   content: string,
@@ -336,22 +344,27 @@ export function EditorScreen({ route }: EditorScreenProps) {
   // already claimed those roles, so without the roving tabindex and key handling below the
   // control announced a contract that keyboard users could not actually drive.
   const layoutRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const pendingLayoutFocus = useRef<number | null>(null);
   const selectLayoutAt = (index: number) => {
     const bounded = (index + EDITOR_LAYOUTS.length) % EDITOR_LAYOUTS.length;
-    pendingLayoutFocus.current = bounded;
+    pendingLayoutFocusIndex = bounded;
     setEditorLayout(EDITOR_LAYOUTS[bounded].id);
   };
 
-  // Focus has to be restored *after* the layout change commits. Changing the layout swaps the
-  // whole editor shell, so the button that was focused is unmounted and replaced — focusing it
-  // synchronously in the key handler targeted the old node and left the keyboard user with no
-  // focus at all, even though selection had moved.
+  // Restoring focus after an arrow key has to survive a remount, which is why the intent is
+  // held outside the component. MainScreen renders the editor from two different branches —
+  // docked and overlay — so changing the layout moves it in the tree and React unmounts and
+  // rebuilds the whole screen. Every ref and piece of local state is new by the time this runs,
+  // and the rebuilt screen focuses the note body, so a keyboard user pressing ArrowRight saw
+  // selection move while focus jumped out of the control entirely.
+  //
+  // The rAF matters too: it lands after the remounted screen's own focus effect, which would
+  // otherwise win.
   useEffect(() => {
-    const target = pendingLayoutFocus.current;
+    const target = pendingLayoutFocusIndex;
     if (target == null) return;
-    pendingLayoutFocus.current = null;
-    layoutRefs.current[target]?.focus();
+    pendingLayoutFocusIndex = null;
+    const id = requestAnimationFrame(() => layoutRefs.current[target]?.focus());
+    return () => cancelAnimationFrame(id);
   }, [editorLayout]);
 
   const layoutControls = isTabletUp ? (
