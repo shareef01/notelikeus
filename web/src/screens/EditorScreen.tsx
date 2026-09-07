@@ -336,11 +336,23 @@ export function EditorScreen({ route }: EditorScreenProps) {
   // already claimed those roles, so without the roving tabindex and key handling below the
   // control announced a contract that keyboard users could not actually drive.
   const layoutRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const pendingLayoutFocus = useRef<number | null>(null);
   const selectLayoutAt = (index: number) => {
     const bounded = (index + EDITOR_LAYOUTS.length) % EDITOR_LAYOUTS.length;
+    pendingLayoutFocus.current = bounded;
     setEditorLayout(EDITOR_LAYOUTS[bounded].id);
-    layoutRefs.current[bounded]?.focus();
   };
+
+  // Focus has to be restored *after* the layout change commits. Changing the layout swaps the
+  // whole editor shell, so the button that was focused is unmounted and replaced — focusing it
+  // synchronously in the key handler targeted the old node and left the keyboard user with no
+  // focus at all, even though selection had moved.
+  useEffect(() => {
+    const target = pendingLayoutFocus.current;
+    if (target == null) return;
+    pendingLayoutFocus.current = null;
+    layoutRefs.current[target]?.focus();
+  }, [editorLayout]);
 
   const layoutControls = isTabletUp ? (
     <div
