@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { AuthUser } from '@/lib/auth/authUser';
-import { clearLocalUserData } from '@/lib/bootstrap';
+import { clearLocalUserData, clearPendingDeletions } from '@/lib/bootstrap';
 
 interface AuthState {
   user: AuthUser | null;
@@ -36,6 +36,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     // lived in un-namespaced localStorage — a prior account's labels would otherwise
     // appear in guest filters, and in-memory notes would flash until guest bootstrap.
     clearLocalUserData();
+    // Guest is a different namespace, so a signed-in account's pending deletions must not follow
+    // the user into it — and guest deletes never record tombstones to begin with.
+    clearPendingDeletions();
     set({ guestMode: true });
   },
   exitGuestMode: () => set((state) => (state.guestMode ? { guestMode: false } : state)),
