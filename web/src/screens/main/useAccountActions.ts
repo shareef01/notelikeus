@@ -3,6 +3,7 @@ import { exportNotesBackup } from '@/lib/backup/exportBackup';
 import { importNotesFromBackup, readBackupFile } from '@/lib/backup/importBackup';
 import { useToastStore } from '@/store/toastStore';
 import type { Note } from '@/types/note';
+import { useState } from 'react';
 
 /** Every path here reports through the same toast, success or failure. */
 function toast(message: string, kind?: 'error') {
@@ -20,6 +21,12 @@ interface AccountActionsDeps {
   closeProfile: () => void;
 }
 
+/** A parsed backup waiting on the user to confirm that importing it is what they meant. */
+export interface PendingImport {
+  merged: Note[];
+  result: { notesImported: number; labelsCreated: number };
+}
+
 /**
  * Sign-out and backup transfer — the account-level actions, as opposed to note-level ones.
  *
@@ -33,6 +40,8 @@ export function useAccountActions({
   closeSignOutConfirm,
   closeProfile,
 }: AccountActionsDeps) {
+  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+
   const signOut = async (deleteCloudData: boolean) => {
     closeSignOutConfirm();
     closeProfile();
@@ -55,22 +64,50 @@ export function useAccountActions({
     }
   };
 
-  const importBackup = async (file: File) => {
+  /**
+   * Parses the file and describes what importing it would do, without writing anything.
+   *
+   * Import adds the backup's notes as new notes rather than restoring over what is here, so
+   * importing the same file twice produces two sets. That is a surprise worth showing before it
+   * happens rather than explaining afterwards, which is why parsing and committing are separate.
+   */
+  const prepareImport = async (file: File) => {
     try {
       const json = await readBackupFile(file);
       const { merged, result } = importNotesFromBackup(json, notes);
+      if (result.notesImported === 0) {
+        toast('No notes found in backup');
+        return;
+      }
+      setPendingImport({ merged, result });
+    } catch (error) {
+      toast(messageOf(error, 'Import failed'), 'error');
+    }
+  };
+
+  const cancelImport = () => setPendingImport(null);
+
+  const confirmImport = async () => {
+    const staged = pendingImport;
+    if (!staged) return;
+    setPendingImport(null);
+    try {
       const uploadedToCloud = await commitImportedNotes(
-        merged,
-        result.notesImported,
+        staged.merged,
+        staged.result.notesImported,
         userId,
       );
 
       const parts: string[] = [];
-      if (result.notesImported > 0) {
-        parts.push(`${result.notesImported} note${result.notesImported === 1 ? '' : 's'}`);
+      if (staged.result.notesImported > 0) {
+        parts.push(
+          `${staged.result.notesImported} note${staged.result.notesImported === 1 ? '' : 's'}`,
+        );
       }
-      if (result.labelsCreated > 0) {
-        parts.push(`${result.labelsCreated} label${result.labelsCreated === 1 ? '' : 's'}`);
+      if (staged.result.labelsCreated > 0) {
+        parts.push(
+          `${staged.result.labelsCreated} label${staged.result.labelsCreated === 1 ? '' : 's'}`,
+        );
       }
       const base =
         parts.length > 0 ? `Imported ${parts.join(' and ')}` : 'No notes found in backup';
@@ -80,5 +117,5 @@ export function useAccountActions({
     }
   };
 
-  return { signOut, exportBackup, importBackup };
+  return { signOut, exportBackup, prepareImport, pendingImport, confirmImport, cancelImport };
 }
