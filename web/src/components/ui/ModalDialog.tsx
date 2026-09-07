@@ -60,9 +60,15 @@ interface ConfirmDialogProps {
   onCancel: () => void;
   onConfirm: () => void;
   confirmDisabled?: boolean;
+  /**
+   * Colour of the confirm button. Defaults to `danger`, which is what every existing caller
+   * wants; `primary` is for a consequential-but-not-destructive choice, where a red button would
+   * misdescribe what is about to happen.
+   */
+  tone?: 'danger' | 'primary';
 }
 
-/** Destructive confirmation: title, explanation, Cancel and a red confirm button. */
+/** Confirmation: title, explanation, Cancel and a confirm button. */
 export function ConfirmDialog({
   open,
   title,
@@ -71,6 +77,7 @@ export function ConfirmDialog({
   onCancel,
   onConfirm,
   confirmDisabled = false,
+  tone = 'danger',
 }: ConfirmDialogProps) {
   const titleId = useId();
   return (
@@ -87,7 +94,7 @@ export function ConfirmDialog({
           type="button"
           onClick={onConfirm}
           disabled={confirmDisabled}
-          className={dialogDangerButtonClass}
+          className={tone === 'primary' ? dialogPrimaryButtonClass : dialogDangerButtonClass}
         >
           {confirmLabel}
         </button>
