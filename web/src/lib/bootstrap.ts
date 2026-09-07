@@ -46,10 +46,12 @@ const USER_DATA_STORAGE_KEYS = [
   LEGACY_NOTES_STORAGE_KEY,
   LAST_MERGED_USER_STORAGE_KEY,
   'notelikeus-label-registry',
-  'notelikeus-deleted-notes',
   'notelikeus-lock-key',
   SESSION_HINT_STORAGE_KEY,
 ] as const;
+
+/** Tombstones. Cleared only alongside the notes themselves — see clearPendingDeletions. */
+const DELETED_NOTES_STORAGE_KEY = 'notelikeus-deleted-notes';
 
 const REHYDRATE_TIMEOUT_MS = 8_000;
 const OPTIONAL_REHYDRATE_TIMEOUT_MS = 4_000;
@@ -121,11 +123,35 @@ export function clearPersistedAppData(): void {
   }
 }
 
-/** Clears in-memory UI state and persisted tombstones/labels. IndexedDB notes are intentionally preserved so offline edits can survive sign-out and re-login under the same account namespace. */
+/**
+ * Deletion intent that has not reached the server yet.
+ *
+ * A note deleted while offline exists nowhere afterwards except as a tombstone: the local row is
+ * already gone and the server copy is still live. Clearing this is therefore as destructive as
+ * clearing the notes themselves, and belongs only where the notes are cleared too — an account
+ * switch, or entering guest mode. See [clearLocalUserData], which deliberately does not.
+ */
+export function clearPendingDeletions(): void {
+  useTombstoneStore.getState().reset();
+  try {
+    localStorage.removeItem(DELETED_NOTES_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Clears in-memory UI state and persisted labels.
+ *
+ * IndexedDB notes are intentionally preserved so offline edits survive sign-out and re-login
+ * under the same account namespace — and unsynced deletions are preserved for exactly the same
+ * reason. Clearing tombstones here used to resurrect notes: deleting a note offline removes it
+ * locally and records a tombstone, signing out destroyed that tombstone, and the next sign-in
+ * hydrated the still-live server copy straight back.
+ */
 export function clearLocalUserData(): void {
   useNotesStore.getState().reset();
   useLabelRegistryStore.getState().reset();
-  useTombstoneStore.getState().reset();
   // The navigation drawer belongs to the session that opened it. Signing out from inside it left
   // it open across the switch, so the next account arrived at a notes list with a modal drawer
   // still covering it and swallowing taps.
@@ -147,6 +173,8 @@ export function clearLocalUserData(): void {
  */
 export async function clearLocalUserDataForAccountSwitch(previousOwnerId: string): Promise<void> {
   clearLocalUserData();
+  // A different account must not inherit this one's pending deletions.
+  clearPendingDeletions();
   await clearOwner(previousOwnerId);
   try {
     await clearPendingAttachmentsForOwner(previousOwnerId);
