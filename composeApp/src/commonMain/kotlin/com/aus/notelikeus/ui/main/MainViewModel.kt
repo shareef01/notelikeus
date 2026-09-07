@@ -648,10 +648,40 @@ class MainViewModel(
     }
 
     suspend fun importBackup(json: String): BackupImportResult {
-        return try {
+        val result = try {
             backupImporter.importFromJson(json)
         } catch (e: Exception) {
             BackupImportResult.Error(e)
+        }
+        _state.update {
+            it.copy(
+                pendingBackupTransferEvent = when (result) {
+                    is BackupImportResult.Success ->
+                        BackupTransferEvent.Imported(result.notesImported)
+                    is BackupImportResult.InvalidFormat ->
+                        BackupTransferEvent.ImportRejected(result.message)
+                    else -> BackupTransferEvent.ImportFailed
+                },
+            )
+        }
+        return result
+    }
+
+    /**
+     * Records how a backup transfer ended, for the UI to report.
+     *
+     * The platform layer owns the file itself — a Storage Access Framework document on Android, a
+     * file chooser on desktop — so only it knows whether the bytes actually landed. Exporting is
+     * reported from there for that reason; importing is reported by [importBackup], which is
+     * where the outcome is known.
+     */
+    fun reportBackupTransfer(event: BackupTransferEvent) {
+        _state.update { it.copy(pendingBackupTransferEvent = event) }
+    }
+
+    fun clearPendingBackupTransferEvent() {
+        if (_state.value.pendingBackupTransferEvent != null) {
+            _state.update { it.copy(pendingBackupTransferEvent = null) }
         }
     }
 }
