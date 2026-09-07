@@ -29,6 +29,7 @@ import {
   wrapSelection,
   wrapSelectionAsLink,
 } from '@/lib/text/markdown';
+import { shareText } from '@/lib/share/shareText';
 import { noteSurfaceStyle } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { useUiStore, type EditorLayout, type EditorRoute } from '@/store/uiStore';
@@ -80,10 +81,21 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const editor = useNoteEditor(noteId);
   const { state } = editor;
 
+  // Closing on a failed write would discard the only copy of the edit, so navigation is
+  // conditional on the local save landing. The failure banner below is then the way out:
+  // retry, or discard deliberately.
   const handleBack = useCallback(async () => {
-    await editor.flushSave();
+    const result = await editor.flushSave();
+    if (result.status === 'failed') return;
     closeEditor();
   }, [closeEditor, editor]);
+
+  const handleDiscardAndClose = useCallback(async () => {
+    await editor.discardChanges();
+    closeEditor();
+  }, [closeEditor, editor]);
+
+  const savingRef = useRef(false);
 
   useShortcuts([
     {
@@ -104,8 +116,24 @@ export function EditorScreen({ route }: EditorScreenProps) {
           state.checklist.length === 0 &&
           state.attachments.length === 0;
         if (isEmpty) return;
-        void editor.flushSave();
-        useToastStore.getState().show('Note saved');
+        // Only report a save once IndexedDB has taken it, and never let a held-down shortcut
+        // stack concurrent saves of a note that has not been assigned an id yet.
+        if (savingRef.current) return;
+        savingRef.current = true;
+        void editor
+          .flushSave()
+          .then((result) => {
+            if (result.status === 'saved') {
+              useToastStore.getState().show('Note saved');
+            } else if (result.status === 'failed') {
+              useToastStore
+                .getState()
+                .show('Could not save this note — your changes are still here', 'error');
+            }
+          })
+          .finally(() => {
+            savingRef.current = false;
+          });
       },
     },
   ]);
@@ -208,28 +236,20 @@ export function EditorScreen({ route }: EditorScreenProps) {
   useBodyScrollLock(isOverlayShell);
 
   const handleDelete = async () => {
-    await editor.trashNote();
+    // Trashing is a write like any other; closing on a failed one would report a delete that
+    // never happened and leave the note where it was.
+    const result = await editor.trashNote();
+    if (result.status === 'failed') {
+      useToastStore.getState().show('Could not move this note to trash', 'error');
+      return;
+    }
     closeEditor();
   };
 
   const handleShareNote = async () => {
     const text = formatNoteForSharing(state.title, state.content, state.checklist);
     if (!text) return;
-    if (typeof navigator !== 'undefined' && navigator.share) {
-      try {
-        await navigator.share({
-          title: state.title || 'Note',
-          text,
-        });
-        return;
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') return;
-      }
-    }
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-      useToastStore.getState().show('Note copied to clipboard');
-    }
+    await shareText({ title: state.title || 'Note', text });
   };
 
   const handleExportMarkdown = () => {
@@ -312,22 +332,60 @@ export function EditorScreen({ route }: EditorScreenProps) {
     );
   };
 
+  // A radiogroup is a single tab stop whose selection moves with the arrow keys. The markup
+  // already claimed those roles, so without the roving tabindex and key handling below the
+  // control announced a contract that keyboard users could not actually drive.
+  const layoutRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const selectLayoutAt = (index: number) => {
+    const bounded = (index + EDITOR_LAYOUTS.length) % EDITOR_LAYOUTS.length;
+    setEditorLayout(EDITOR_LAYOUTS[bounded].id);
+    layoutRefs.current[bounded]?.focus();
+  };
+
   const layoutControls = isTabletUp ? (
     <div
       className="flex h-9 shrink-0 items-center gap-0.5 rounded-full border border-[color-mix(in_srgb,currentColor_12%,transparent)] bg-[color-mix(in_srgb,currentColor_8%,transparent)] p-0.5"
       role="radiogroup"
       aria-label="Editor layout"
     >
-      {EDITOR_LAYOUTS.map((button) => {
+      {EDITOR_LAYOUTS.map((button, index) => {
         const active = editorLayout === button.id;
         const Icon = button.icon;
         return (
           <button
             key={button.id}
+            ref={(node) => {
+              layoutRefs.current[index] = node;
+            }}
             type="button"
             role="radio"
             aria-checked={active}
+            tabIndex={active ? 0 : -1}
             onClick={() => setEditorLayout(button.id)}
+            onKeyDown={(event) => {
+              switch (event.key) {
+                case 'ArrowRight':
+                case 'ArrowDown':
+                  event.preventDefault();
+                  selectLayoutAt(index + 1);
+                  break;
+                case 'ArrowLeft':
+                case 'ArrowUp':
+                  event.preventDefault();
+                  selectLayoutAt(index - 1);
+                  break;
+                case 'Home':
+                  event.preventDefault();
+                  selectLayoutAt(0);
+                  break;
+                case 'End':
+                  event.preventDefault();
+                  selectLayoutAt(EDITOR_LAYOUTS.length - 1);
+                  break;
+                default:
+                  break;
+              }
+            }}
             className={`flex size-8 items-center justify-center rounded-full transition-[background-color,opacity] duration-150 ${CHROME_FOCUS} ${
               active
                 ? 'bg-[color-mix(in_srgb,currentColor_18%,transparent)] opacity-100'
@@ -408,7 +466,37 @@ export function EditorScreen({ route }: EditorScreenProps) {
         }}
       >
         <div className="flex min-h-full flex-col">
+          {state.saveFailed ? (
+            <div
+              role="alert"
+              className="mb-4 flex flex-col gap-2 rounded-note border border-red-500/40 bg-red-500/10 p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+              style={{ color: contentColor }}
+            >
+              <span>Could not save this note. Your changes are still here.</span>
+              <span className="flex shrink-0 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleBack()}
+                  className={`rounded-full bg-[color-mix(in_srgb,currentColor_14%,transparent)] px-3 py-1.5 font-medium ${CHROME_FOCUS}`}
+                >
+                  Retry save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDiscardAndClose()}
+                  className={`rounded-full px-3 py-1.5 font-medium underline underline-offset-2 ${CHROME_FOCUS}`}
+                >
+                  Discard changes
+                </button>
+              </span>
+            </div>
+          ) : null}
+
+          <label htmlFor="note-title" className="sr-only">
+            Note title
+          </label>
           <input
+            id="note-title"
             type="text"
             value={state.title}
             onChange={(event) => editor.setTitle(event.target.value)}
@@ -494,13 +582,14 @@ export function EditorScreen({ route }: EditorScreenProps) {
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   event.target.value = '';
-                  if (file) editor.addAttachment(file);
+                  if (file) void editor.addAttachment(file);
                 }}
               />
 
               {contentFocused || !state.content.trim() ? (
                 <textarea
                   ref={contentRef}
+                  aria-label="Note body"
                   value={state.content}
                   onFocus={() => setContentFocused(true)}
                   onBlur={() => {
