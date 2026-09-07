@@ -28,7 +28,11 @@ import com.aus.notelikeus.data.remote.SupabaseSessionManager
 import com.aus.notelikeus.data.remote.SupabaseSessionStore
 import com.aus.notelikeus.data.attachments.AndroidAttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
+import com.aus.notelikeus.data.attachments.AttachmentStagingStore
 import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.attachments.FileAttachmentStagingStore
+import java.io.File
+import okio.Path.Companion.toPath
 import com.aus.notelikeus.data.remote.AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.NoopAttachmentBlobTransport
 import com.aus.notelikeus.data.remote.R2AttachmentBlobTransport
@@ -117,6 +121,13 @@ actual val platformModule = module {
             NoopAttachmentBlobTransport()
         }
     }
+    single<AttachmentStagingStore> {
+        FileAttachmentStagingStore(
+            root = File(get<android.content.Context>().filesDir, "pending-attachments")
+                .absolutePath.toPath(),
+            ioDispatcher = get(),
+        )
+    }
     single {
         AttachmentSyncService(
             blobTransport = get(),
@@ -129,6 +140,8 @@ actual val platformModule = module {
             ),
             localStorage = get(),
             noteDao = get(),
+            staging = get(),
+            ownerIdProvider = { get<SupabaseSessionManager>().getCurrentAccount().userId },
         )
     }
     single<CloudNoteTransport> {

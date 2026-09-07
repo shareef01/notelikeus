@@ -27,10 +27,29 @@ function fakeBucket() {
         },
       };
     },
+    async head(key: string) {
+      const stored = objects.get(key);
+      if (!stored) return null;
+      return { key, size: stored.body.byteLength, httpEtag: '"etag"' };
+    },
     async delete(key: string) {
       objects.delete(key);
     },
   };
+}
+
+/**
+ * Live attachment metadata, as the database would hold it.
+ *
+ * The double used to answer every preflight the same way regardless of what had been committed,
+ * which cannot express the case these protocol tests are about: a second PUT of an attachment
+ * that is already live. Finalization writes here and delete-finalization removes, so preflight's
+ * `already_live` reflects real committed state.
+ */
+const liveAttachments = new Map<string, { mimeType: string; sizeBytes: number }>();
+
+function liveKey(owner: string, noteId: string, attachmentId: string): string {
+  return `${owner}/${noteId}/${attachmentId}`;
 }
 
 interface RpcCallLog {
@@ -77,10 +96,14 @@ function mockSupabaseAuth(
           noteId === '1' &&
           attachmentId !== 'missing' &&
           !attachmentId.includes(' ');
+        const live = liveAttachments.get(liveKey(id, noteId, attachmentId));
         return new Response(
           JSON.stringify({
             allowed,
             object_key: allowed ? `owners/${id}/notes/${noteId}/${attachmentId}` : undefined,
+            already_live: allowed ? live != null : undefined,
+            mime_type: live?.mimeType,
+            size_bytes: live?.sizeBytes,
             max_bytes: 10 * 1024 * 1024,
           }),
           { status: 200 },
@@ -94,6 +117,10 @@ function mockSupabaseAuth(
         if (id !== USER_A || noteId !== '1' || objectKey !== expectedKey) {
           return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 });
         }
+        liveAttachments.set(liveKey(id, noteId, attachmentId), {
+          mimeType: (body.p_mime_type as string) ?? 'image/png',
+          sizeBytes: (body.p_size_bytes as number) ?? 0,
+        });
         return new Response(
           JSON.stringify({
             attachment_id: attachmentId,
@@ -104,6 +131,9 @@ function mockSupabaseAuth(
         );
       }
       if (url.includes('/rest/v1/rpc/finalize_note_attachment_delete')) {
+        const noteId = (body.p_note_id as string) ?? '';
+        const attachmentId = (body.p_attachment_id as string) ?? '';
+        liveAttachments.delete(liveKey(id, noteId, attachmentId));
         return new Response(JSON.stringify({ status: 'deleted' }), { status: 200 });
       }
       return new Response('not found', { status: 404 });
@@ -122,6 +152,7 @@ function request(method: string, path: string, token?: string, init: RequestInit
 
 beforeEach(() => {
   bucket = fakeBucket();
+  liveAttachments.clear();
   env = {
     ATTACHMENTS_BUCKET: bucket as unknown as R2Bucket,
     SUPABASE_URL: 'https://project.supabase.co',
@@ -559,5 +590,146 @@ describe('attachment worker upload limits', () => {
 
     const finalizeCalls = rpcLog.filter((c) => c.url.includes('finalize_note_attachment_delete'));
     expect(finalizeCalls).toHaveLength(0);
+  });
+});
+
+/**
+ * Retrying a PUT of an attachment that is already committed.
+ *
+ * The object key is derived from the attachment id, so a repeat PUT lands on the live object.
+ * Compensation for this request's own failure must never reach bytes that a surviving metadata
+ * row still points at, or a retry could permanently break an attachment that was fine.
+ */
+describe('PUT retry against a committed attachment', () => {
+  const key = `owners/${USER_A}/notes/1/att1`;
+
+  async function commitAttachment(body = 'original-bytes'): Promise<void> {
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/1/att1', USER_A, {
+        body,
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect(bucket.objects.has(key)).toBe(true);
+  }
+
+  it('treats a repeated PUT of a committed attachment as already uploaded', async () => {
+    await commitAttachment();
+    const originalBytes = bucket.objects.get(key)!.body;
+
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/1/att1', USER_A, {
+        body: 'different-bytes',
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ objectKey: key, alreadyUploaded: true });
+    // The committed object is left exactly as it was; an id is one immutable image.
+    expect(bucket.objects.get(key)!.body).toEqual(originalBytes);
+  });
+
+  it('does not re-finalize metadata for an already committed attachment', async () => {
+    await commitAttachment();
+    const before = rpcLog.filter((c) => c.url.includes('finalize_note_attachment_put')).length;
+
+    await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/1/att1', USER_A, {
+        body: 'again',
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+
+    const after = rpcLog.filter((c) => c.url.includes('finalize_note_attachment_put')).length;
+    expect(after).toBe(before);
+  });
+
+  it('keeps the committed blob when a repeat PUT hits a database outage', async () => {
+    await commitAttachment();
+    const originalBytes = bucket.objects.get(key)!.body;
+
+    // Metadata row exists but the object vanished, so the retry genuinely re-uploads — and then
+    // finalization fails. The regression: compensation deleted the object the live row needs.
+    bucket.objects.delete(key);
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('finalize_note_attachment_put')) {
+        return new Response('gateway timeout', { status: 504 });
+      }
+      return undefined;
+    });
+    liveAttachments.set(liveKey(USER_A, '1', 'att1'), {
+      mimeType: 'image/png',
+      sizeBytes: originalBytes.byteLength,
+    });
+
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/1/att1', USER_A, {
+        body: 'repair-bytes',
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(502);
+    // Bytes uploaded for a still-live attachment are not this request's to destroy.
+    expect(bucket.objects.has(key)).toBe(true);
+  });
+
+  it('still cleans up its own uncommitted blob when a fresh PUT fails to finalize', async () => {
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('finalize_note_attachment_put')) {
+        return new Response('gateway timeout', { status: 504 });
+      }
+      return undefined;
+    });
+
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/1/att-fresh', USER_A, {
+        body: 'never-committed',
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(502);
+    // Nothing else referenced these bytes, so compensation is still correct here.
+    expect(bucket.objects.has(`owners/${USER_A}/notes/1/att-fresh`)).toBe(false);
+  });
+
+  it('repairs a live attachment whose object is missing', async () => {
+    await commitAttachment();
+    bucket.objects.delete(key);
+
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/1/att1', USER_A, {
+        body: 'repaired',
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(bucket.objects.has(key)).toBe(true);
+  });
+
+  it('does not let another owner reach a committed attachment by retrying its PUT', async () => {
+    await commitAttachment();
+    const originalBytes = bucket.objects.get(key)!.body;
+
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v1/attachments/1/att1', USER_B, {
+        body: 'intruder',
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(403);
+    expect(bucket.objects.get(key)!.body).toEqual(originalBytes);
   });
 });

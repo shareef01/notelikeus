@@ -8,6 +8,63 @@ import {
   MAX_NOTE_TITLE_CHARS,
 } from '@/lib/backup/constants';
 
+/**
+ * The import contract, pinned so it cannot drift silently.
+ *
+ * Import means "add these notes as new copies", not "restore this device to the backup". Every
+ * imported note gets a fresh local identity and nothing existing is replaced or removed, so
+ * importing the same file twice deliberately yields two sets. Attachments are outside the JSON
+ * format's scope and are not carried across.
+ */
+describe('backup import semantics', () => {
+  const backup = {
+    version: BACKUP_VERSION,
+    notes: [
+      { title: 'Groceries', content: 'milk', timestamp: 1_725_000_000 },
+      { title: 'Ideas', content: 'a second note', timestamp: 1_725_000_001 },
+    ],
+  };
+
+  it('imports notes as new copies rather than replacing what is already there', () => {
+    const existing = importNotesFromBackup(backup, []).merged;
+    expect(existing).toHaveLength(2);
+
+    const { merged, result } = importNotesFromBackup(backup, existing);
+
+    // Append, never overwrite: the originals survive alongside the new copies.
+    expect(result.notesImported).toBe(2);
+    expect(merged).toHaveLength(4);
+    expect(merged.filter((note) => note.title === 'Groceries')).toHaveLength(2);
+  });
+
+  it('gives every imported note a distinct local identity', () => {
+    const first = importNotesFromBackup(backup, []).merged;
+    const { merged } = importNotesFromBackup(backup, first);
+
+    const ids = merged.map((note) => note.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('does not carry attachments, which the JSON format does not contain', () => {
+    const { merged } = importNotesFromBackup(
+      {
+        version: BACKUP_VERSION,
+        notes: [
+          {
+            title: 'Has an attachment upstream',
+            content: '',
+            timestamp: 1,
+            attachments: [{ id: 'att-1', storagePath: 'r2:owners/x/notes/1/att-1' }],
+          },
+        ],
+      },
+      [],
+    );
+
+    expect(merged[0].attachments).toEqual([]);
+  });
+});
+
 describe('importNotesFromBackup', () => {
   it('coerces non-string fields instead of putting them in the store', () => {
     const { merged, result } = importNotesFromBackup(
