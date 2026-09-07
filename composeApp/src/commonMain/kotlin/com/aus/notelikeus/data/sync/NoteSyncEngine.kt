@@ -388,6 +388,9 @@ class NoteSyncEngine(
             putNotes(uid, toPushBack)
 
             attachmentSync?.hydrateAllNotes()
+            // Bytes staged before a restart or an outage upload here. Failures stay staged and
+            // are retried on the next sync; nothing about the local note changes either way.
+            runCatching { attachmentSync?.reconcileStagedAttachments() }
             retryPendingAttachmentGc()
 
             syncStateStore.setKnownCloudIds(cloudNoteIds)

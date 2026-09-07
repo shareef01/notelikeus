@@ -26,6 +26,7 @@ import {
   resetAttachmentBlobStoreForTests,
   setAttachmentBlobStoreForTests,
 } from '@/lib/attachments/attachmentBlobStoreRegistry';
+import { useAuthStore } from '@/store/authStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { createEmptyNote } from '@/types/note';
 
@@ -130,13 +131,18 @@ describe('syncNoteAttachments', () => {
   beforeEach(() => {
     resetAttachmentBlobStoreForTests();
     clearPendingAttachmentsForTests();
+    // Staging is namespaced per owner, so a session has to exist for a blob to be stageable —
+    // the same condition the editor runs under.
+    useAuthStore.getState().reset();
+    useAuthStore.getState().setUser({ uid: 'user-1', email: null, displayName: null });
     vi.unstubAllEnvs();
     vi.stubEnv('VITE_ATTACHMENTS_WORKER_URL', 'http://127.0.0.1:8787');
   });
 
   it('keeps pending blob retryable when upload fails, then releases after successful retry', async () => {
     const blob = new Blob(['attachment data'], { type: 'image/png' });
-    storePendingAttachment('att-pending', blob, 'image/png', 'note-1');
+    // Staging is durable and awaited: the blob is only referenceable once IndexedDB has it.
+    expect(await storePendingAttachment('att-pending', blob, 'image/png', 'note-1')).toBe(true);
 
     const note = {
       ...createEmptyNote({ id: 'note-1', localId: 1 }),

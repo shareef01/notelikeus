@@ -65,6 +65,17 @@ Supabase Realtime (`postgres_changes`) is a wake-up: subscribe after login, unsu
 - Delete order: authoritative note delete first, then R2. Prefer an orphan blob over destroying data. `apply_note_delete` sets `note_attachments.deleted_at` in the same transaction; `restore_note` clears it.
 - Client sweep: `list_pending_deleted_attachments` + `purge_deleted_note_attachment` on the next snapshot/pull. Pending GC is persisted locally.
 - Hosted sweep (optional Worker cron every 6 hours): `service_role` lists metadata that is deleted, tombstoned, not live, and older than 24 hours, then deletes the canonical R2 key and purges the row. Without `SUPABASE_SERVICE_ROLE_KEY` the cron is a no-op. It never lists R2 first.
+- PUT retry: an attachment id is an immutable identity, and its object key is derived from it, so a repeated PUT of a committed attachment is a retry of work that already succeeded. `authorize_note_attachment_put` returns `already_live`, and the Worker then returns the committed object instead of rewriting it. Changing an image's content uses a **new** attachment id.
+- Compensation scope: the compensating R2 delete after a failed finalization only removes bytes the failed request itself created. It never touches an object a surviving metadata row still points at — otherwise a retry that failed to finalize could destroy a previously committed blob.
+
+### Local attachment staging
+
+Bytes that have not reached R2 are staged durably before the note references them, on every client:
+
+- **Web**: the `pendingAttachments` IndexedDB store. The write is awaited; the attachment is not added to the note if it fails.
+- **Android / Windows**: `pending-attachments/<ownerId>/<attachmentId>` under app storage, written through `AttachmentStagingStore`.
+
+The invariant is the same on both: a locally persisted note never references attachment bytes that exist only in process memory, so an attachment cannot survive a restart as metadata pointing at nothing. Staging is namespaced per owner, so signing into a different account cannot read or upload the previous account's staged bytes. Staged bytes are released only when the upload is committed, the user removes the attachment, or reconciliation finds no note referencing them — never on age alone.
 
 ## Web hosting
 
