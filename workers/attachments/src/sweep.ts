@@ -93,9 +93,30 @@ export async function sweepOrphanedDeletedAttachments(env: WorkerEnv): Promise<S
       continue;
     }
 
+    // Claim before touching a byte. The listing is a snapshot, and a note can be restored
+    // between building it and getting here — deleting the object on the strength of the
+    // snapshot left live metadata pointing at an object that no longer existed. The claim
+    // re-checks eligibility under a row lock, so a restore either wins outright or finds the
+    // attachment already claimed and leaves it deleted.
+    const claim = await rpc<{ claimed?: boolean; object_key?: string }>(
+      env,
+      'claim_orphaned_attachment_for_delete',
+      { p_owner_id: ownerId, p_note_id: noteId, p_attachment_id: attachmentId },
+    );
+    if (!claim?.claimed) {
+      skipped += 1;
+      continue;
+    }
+    // Never trust a key handed back by the database over the one derived locally.
+    if (claim.object_key !== expected) {
+      skipped += 1;
+      continue;
+    }
+
     try {
       await env.ATTACHMENTS_BUCKET.delete(objectKey);
     } catch {
+      // The claim persists, so the next sweep retries this same row rather than losing it.
       skipped += 1;
       continue;
     }

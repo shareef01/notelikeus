@@ -37,9 +37,37 @@ function openNotesDatabase(): Promise<IDBDatabase> {
   });
 }
 
+/**
+ * The open connection, opening it once for concurrent callers.
+ *
+ * A failed open is deliberately *not* remembered. Caching the rejected promise meant one
+ * transient failure — a blocked upgrade from another tab, storage briefly unavailable — left
+ * every later call rejecting with it until the page was reloaded. For a local-first app that is
+ * indefinite data loss: every save fails, and the editor is the only copy.
+ *
+ * A connection that closes underneath us is dropped for the same reason, so the next call opens
+ * a fresh one rather than handing out a dead handle.
+ */
 export function getNotesDatabase(): Promise<IDBDatabase> {
   if (!dbPromise) {
-    dbPromise = openNotesDatabase();
+    const pending = openNotesDatabase()
+      .then((db) => {
+        const forget = () => {
+          if (dbPromise === pending) dbPromise = null;
+        };
+        // versionchange: another tab is upgrading and needs this connection out of the way.
+        db.onversionchange = () => {
+          db.close();
+          forget();
+        };
+        db.onclose = forget;
+        return db;
+      })
+      .catch((error: unknown) => {
+        if (dbPromise === pending) dbPromise = null;
+        throw error;
+      });
+    dbPromise = pending;
   }
   return dbPromise;
 }

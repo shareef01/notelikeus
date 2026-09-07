@@ -1,5 +1,5 @@
 begin;
-select plan(6);
+select plan(8);
 
 create function tests.backdate_deleted_attachments(p_hours integer)
 returns void
@@ -71,12 +71,21 @@ select results_eq(
   'service_role sees stale tombstoned attachment metadata'
 );
 
+-- Deletion is claimed before any byte is touched, so purging requires that claim. Without it a
+-- restore landing mid-sweep could leave live metadata pointing at an object already deleted.
+select results_eq(
+  $$ select (public.claim_orphaned_attachment_for_delete(
+        tests.get_supabase_uid('orphan_a@notelikeus.test'), '1', 'att1'
+      )->>'claimed')::boolean $$,
+  ARRAY[true],
+  'service_role can claim a stale orphan for deletion'
+);
 select results_eq(
   $$ select public.purge_orphaned_deleted_attachment(
         tests.get_supabase_uid('orphan_a@notelikeus.test'), '1', 'att1'
       )->>'status' $$,
   ARRAY['applied'::text],
-  'service_role can purge stale orphan metadata'
+  'service_role can purge stale orphan metadata once claimed'
 );
 
 select tests.authenticate_as('orphan_a@notelikeus.test');
@@ -93,11 +102,18 @@ select public.finalize_note_attachment_put(
 select tests.authenticate_as_service_role();
 select tests.backdate_deleted_attachments(25);
 select results_eq(
-  $$ select public.purge_orphaned_deleted_attachment(
+  $$ select public.claim_orphaned_attachment_for_delete(
         tests.get_supabase_uid('orphan_a@notelikeus.test'), '2', 'att2'
       )->>'reason' $$,
   ARRAY['note_live'::text],
-  'hosted sweep refuses to drop metadata for a live note'
+  'a live note cannot be claimed for deletion'
+);
+select results_eq(
+  $$ select public.purge_orphaned_deleted_attachment(
+        tests.get_supabase_uid('orphan_a@notelikeus.test'), '2', 'att2'
+      )->>'reason' $$,
+  ARRAY['not_claimed'::text],
+  'hosted sweep refuses to drop metadata that was never claimed'
 );
 
 select * from finish();

@@ -64,42 +64,63 @@ export async function deleteNote(ownerId: string, noteId: string): Promise<void>
   await withStore(NOTES_STORE, 'readwrite', (store) => store.delete([ownerId, noteId]));
 }
 
+/**
+ * Removes every note and the meta row for one owner, in a single transaction.
+ *
+ * Enumeration and deletion have to share the transaction. Reading the ids in a readonly
+ * transaction and deleting them in a later readwrite one leaves a window in which an in-flight
+ * write — a sync response landing as the account switches — adds a note that the delete list was
+ * built before and therefore never removes. That note then survives into the next account's
+ * session, which is exactly what clearing the owner exists to prevent.
+ */
 export async function clearOwner(ownerId: string): Promise<void> {
-  const records = await new Promise<StoredNoteRecord[]>((resolve, reject) => {
-    void withStore(NOTES_STORE, 'readonly', (store) => {
-      const index = store.index('ownerId');
-      return index.getAll(ownerId) as IDBRequest<StoredNoteRecord[]>;
-    })
-      .then((result) => resolve((result as StoredNoteRecord[]) ?? []))
-      .catch(reject);
-  });
   const db = await import('@/lib/local/idb').then((m) => m.getNotesDatabase());
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction([NOTES_STORE, META_STORE], 'readwrite');
     const notes = tx.objectStore(NOTES_STORE);
-    for (const record of records) {
-      notes.delete([ownerId, record.id]);
-    }
+    const cursorRequest = notes.index('ownerId').openKeyCursor(IDBKeyRange.only(ownerId));
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
+      if (!cursor) return;
+      notes.delete(cursor.primaryKey);
+      cursor.continue();
+    };
     tx.objectStore(META_STORE).delete(ownerId);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error('clearOwner failed'));
+    tx.onabort = () => reject(tx.error ?? new Error('clearOwner aborted'));
   });
 }
 
+/**
+ * Replaces this owner's notes with [notes], enumerating and writing in one transaction.
+ *
+ * Same reason as [clearOwner]: a note written between a separate read and write would be missed
+ * by the delete list and then survive a replacement that is supposed to be authoritative,
+ * leaving a note the server never sent.
+ */
 export async function replaceAllNotes(ownerId: string, notes: Note[]): Promise<void> {
-  const existing = await listNotes(ownerId);
   const db = await import('@/lib/local/idb').then((m) => m.getNotesDatabase());
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(NOTES_STORE, 'readwrite');
     const store = tx.objectStore(NOTES_STORE);
-    for (const record of existing) {
-      store.delete([ownerId, record.id]);
-    }
-    for (const note of notes) {
-      store.put({ ownerId, id: note.id, note } satisfies StoredNoteRecord);
-    }
+    const cursorRequest = store.index('ownerId').openKeyCursor(IDBKeyRange.only(ownerId));
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
+      if (cursor) {
+        store.delete(cursor.primaryKey);
+        cursor.continue();
+        return;
+      }
+      // Writes go after the sweep completes, so a replacement note is never deleted by the
+      // cursor that is still walking the same index.
+      for (const note of notes) {
+        store.put({ ownerId, id: note.id, note } satisfies StoredNoteRecord);
+      }
+    };
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error('replaceAllNotes failed'));
+    tx.onabort = () => reject(tx.error ?? new Error('replaceAllNotes aborted'));
   });
 }
 
