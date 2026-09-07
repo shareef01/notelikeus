@@ -220,8 +220,8 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
                     Continue without an account
                   </button>
                   <p className="text-center text-xs leading-relaxed text-brand-muted">
-                    Try Notelikeus on this device for now. Notes stay here for this session and
-                    aren't synced or backed up.
+                    Try Notelikeus on this device. Notes are saved here and will still be waiting
+                    next time, but they aren't synced to an account or backed up.
                   </p>
                 </div>
               </>

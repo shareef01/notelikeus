@@ -11,9 +11,9 @@ import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.data.attachments.AttachmentSyncService
 import com.aus.notelikeus.data.attachments.MAX_ATTACHMENT_BYTES
 import com.aus.notelikeus.data.attachments.createAttachmentId
+import com.aus.notelikeus.data.attachments.isPendingAttachment
 import com.aus.notelikeus.data.attachments.isR2AttachmentsEnabled
 import com.aus.notelikeus.data.attachments.pendingStoragePath
-import com.aus.notelikeus.data.attachments.PendingAttachmentStore
 import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
@@ -52,6 +52,13 @@ data class EditorState(
     val noteNotFound: Boolean = false,
     /** A save (autosave included) failed: the editor still holds the only copy of the edit. */
     val saveFailed: Boolean = false,
+    /**
+     * The note is saved on this device, but an attachment has not reached the cloud yet. This is
+     * a sync state, never a save failure — the bytes are staged locally and upload is retried.
+     */
+    val attachmentSyncPending: Boolean = false,
+    /** Adding an attachment failed before it was referenced, so nothing was added to the note. */
+    val attachmentStagingFailed: Boolean = false,
     /** Title or body was shortened to the Postgres / sync caps. */
     val truncatedToSyncLimit: Boolean = false,
 )
@@ -61,6 +68,11 @@ class EditorViewModel(
     private val reminderManager: ReminderManager,
     private val savedStateHandle: SavedStateHandle,
     private val attachmentSync: AttachmentSyncService? = null,
+    /**
+     * Whether attachments are configured. Injectable so the attachment paths can be exercised
+     * without a Worker URL baked into the build under test.
+     */
+    private val attachmentsEnabled: () -> Boolean = ::isR2AttachmentsEnabled,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(EditorState())
@@ -326,33 +338,63 @@ class EditorViewModel(
         )
     }
 
-    fun isAttachmentsEnabled(): Boolean = isR2AttachmentsEnabled()
+    fun isAttachmentsEnabled(): Boolean = attachmentsEnabled()
 
+    /**
+     * Stages the bytes durably, then references them from the note.
+     *
+     * The order matters: the note is autosaved with a `pending:` reference, and if the bytes only
+     * ever lived in process memory that reference outlives them — the attachment survives a
+     * restart as metadata pointing at nothing. Nothing is added to the note unless the bytes are
+     * on disk.
+     */
     fun addAttachment(bytes: ByteArray, mimeType: String) {
-        if (!isR2AttachmentsEnabled()) return
+        if (!attachmentsEnabled()) return
         if (bytes.size > MAX_ATTACHMENT_BYTES) return
         if (!mimeType.startsWith("image/")) return
-        attachmentsEdited = true
         val attachmentId = createAttachmentId()
-        PendingAttachmentStore.put(attachmentId, bytes, mimeType)
-        val noteId = _state.value.id ?: 0L
-        val attachment = Attachment(
-            id = attachmentId,
-            noteId = noteId,
-            storagePath = pendingStoragePath(attachmentId),
-            type = "image",
-            mimeType = mimeType,
-            sizeBytes = bytes.size.toLong(),
-        )
-        _state.update { it.copy(attachments = it.attachments + attachment) }
-        triggerAutosave()
+        viewModelScope.launch {
+            // No sync service means no durable staging, so there is nowhere for the bytes to live
+            // — referencing them anyway is exactly the metadata-without-bytes case this avoids.
+            val staged = attachmentSync?.let { sync ->
+                runCatching {
+                    sync.stageAttachment(attachmentId, _state.value.id, bytes, mimeType)
+                }.getOrDefault(false)
+            } ?: false
+            if (!staged) {
+                _state.update { it.copy(attachmentStagingFailed = true) }
+                return@launch
+            }
+            attachmentsEdited = true
+            val attachment = Attachment(
+                id = attachmentId,
+                noteId = _state.value.id ?: 0L,
+                storagePath = pendingStoragePath(attachmentId),
+                type = "image",
+                mimeType = mimeType,
+                sizeBytes = bytes.size.toLong(),
+            )
+            _state.update { it.copy(attachments = it.attachments + attachment) }
+            triggerAutosave()
+        }
     }
 
     fun removeAttachment(attachment: Attachment) {
         attachmentsEdited = true
         removedAttachments.add(attachment)
         _state.update { it.copy(attachments = it.attachments.filterNot { item -> item.id == attachment.id }) }
+        // The user removed it deliberately, so the staged bytes are no longer the only copy of
+        // anything they can still see.
+        viewModelScope.launch {
+            runCatching { attachmentSync?.releaseStagedAttachments(listOf(attachment)) }
+        }
         triggerAutosave()
+    }
+
+    fun clearAttachmentStagingFailure() {
+        if (_state.value.attachmentStagingFailed) {
+            _state.update { it.copy(attachmentStagingFailed = false) }
+        }
     }
 
     suspend fun loadAttachmentPreview(attachment: Attachment): ByteArray? {
@@ -361,12 +403,18 @@ class EditorViewModel(
     }
 
     /**
-     * Persists the current state, one save at a time.
+     * Persists the current state locally, one save at a time.
      *
      * The mutex is what stops a new note being inserted twice. [triggerAutosave] only cancels its
      * own delay wrapper, not a [persistNote] already running inside the coroutine it launched, so
      * a direct save (pin, reminder, trash) firing alongside a due autosave could put two calls in
      * flight — both reading `state.id == null` and both inserting.
+     *
+     * Ordering is local-first and deliberate. The note reaches Room, the editor adopts the id Room
+     * issued, and only then is anything attempted over the network. Uploading before the insert
+     * had been adopted meant a failed upload threw past the state update: the editor still thought
+     * the note was new, so the next save inserted it a second time, and on the update path the
+     * user's text never reached Room at all because the write came after the upload.
      */
     private suspend fun persistNote(): Long? = saveMutex.withLock {
         val currentState = clampStateToSyncLimits(_state.value)
@@ -397,17 +445,34 @@ class EditorViewModel(
                 id = newId,
                 attachments = note.attachments.map { it.copy(noteId = newId) },
             )
-            note = attachmentSync?.syncNoteAttachments(note) ?: note
+            // The note exists locally from here on. Adopt the id before anything can fail, so a
+            // retry updates this row instead of inserting another one.
+            _state.update {
+                it.copy(
+                    id = newId,
+                    position = position,
+                    timestamp = updatedTimestamp,
+                    attachments = note.attachments,
+                )
+            }
+            // Bind the generated id to the staged bytes and re-write the note with the bound
+            // attachments, so the local record is coherent without waiting on R2.
             repository.updateNote(note)
-            _state.update { it.copy(id = newId, position = position, timestamp = updatedTimestamp, attachments = note.attachments) }
             newId
         } else {
             note = note.copy(attachments = note.attachments.map { it.copy(noteId = note.id!!) })
-            note = attachmentSync?.syncNoteAttachments(note) ?: note
             repository.updateNote(note)
             _state.update { it.copy(timestamp = updatedTimestamp, attachments = note.attachments) }
             note.id
         }
+
+        // Local save has succeeded. Everything below is remote or best-effort cleanup, and must
+        // not be able to turn this into a failed save.
+        if (savedId != null) {
+            runCatching { attachmentSync?.bindStagedAttachmentsToNote(savedId, note.attachments) }
+            syncRemoteAttachments(note)
+        }
+
         val noteIdForCleanup = savedId ?: note.id
         if (noteIdForCleanup != null && removedAttachments.isNotEmpty()) {
             runCatching {
@@ -417,6 +482,37 @@ class EditorViewModel(
         }
         syncReminder(savedId ?: return@withLock null, _state.value)
         return savedId
+    }
+
+    /**
+     * Uploads pending attachment bytes and records the resulting R2 paths.
+     *
+     * Runs only after the note is durably local. A failure here means the image has not reached
+     * the cloud yet — the note, and the staged bytes behind the attachment, are both still on the
+     * device — so it sets the pending-sync flag rather than reporting a failed save.
+     */
+    private suspend fun syncRemoteAttachments(note: Note) {
+        val sync = attachmentSync ?: return
+        if (note.attachments.none { isPendingAttachment(it.storagePath) }) return
+        try {
+            val synced = sync.syncNoteAttachments(note)
+            if (synced.attachments == note.attachments) {
+                _state.update { it.copy(attachmentSyncPending = false) }
+                return
+            }
+            repository.updateNote(synced)
+            _state.update { current ->
+                // Only adopt the uploaded paths if the editor is still on this note and the user
+                // has not since changed the attachment set.
+                if (current.id != synced.id) current
+                else current.copy(attachments = synced.attachments, attachmentSyncPending = false)
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            AppLog.warn(TAG, "Attachment upload deferred; note is saved on this device", error)
+            _state.update { it.copy(attachmentSyncPending = true) }
+        }
     }
 
     /**
@@ -666,6 +762,54 @@ class EditorViewModel(
         if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) return
         autosaveJob?.cancel()
         persistNote()
+    }
+
+    /**
+     * Local save with an unambiguous outcome, for callers that must decide whether it is safe to
+     * leave the editor. Cancellation is rethrown rather than reported as a failed write: a
+     * cancelled coroutine has not established that Room rejected anything.
+     */
+    suspend fun saveLocallyAndAwait(): LocalSaveResult {
+        val currentState = _state.value
+        if (currentState.title.isEmpty() &&
+            currentState.content.isEmpty() &&
+            currentState.checklist.isEmpty() &&
+            currentState.attachments.isEmpty()
+        ) {
+            return LocalSaveResult.Unchanged
+        }
+        autosaveJob?.cancel()
+        return try {
+            val id = persistNote()
+            if (id == null) {
+                LocalSaveResult.Unchanged
+            } else {
+                if (_state.value.saveFailed) _state.update { it.copy(saveFailed = false) }
+                LocalSaveResult.Saved(id)
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            AppLog.warn(TAG, "Saving the note failed", error)
+            _state.update { it.copy(saveFailed = true) }
+            LocalSaveResult.Failed(error)
+        }
+    }
+
+    /**
+     * Drops the edit the user chose not to keep, including any bytes staged for it that no saved
+     * note references. Only reachable from an explicit discard.
+     */
+    suspend fun discardUnsavedChanges() {
+        autosaveJob?.cancel()
+        val staged = _state.value.attachments.filter { isPendingAttachment(it.storagePath) }
+        if (staged.isNotEmpty()) {
+            val savedNote = _state.value.id?.let { id -> runCatching { repository.getNoteById(id) }.getOrNull() }
+            val stillReferenced = savedNote?.attachments.orEmpty().map { it.id }.toSet()
+            val orphaned = staged.filterNot { it.id in stillReferenced }
+            runCatching { attachmentSync?.releaseStagedAttachments(orphaned) }
+        }
+        _state.update { it.copy(saveFailed = false) }
     }
 
     private fun syncReminder(noteId: Long, state: EditorState) {

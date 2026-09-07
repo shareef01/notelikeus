@@ -59,6 +59,10 @@ interface AttachmentAuthz {
   attachment_id?: string;
   note_id?: string;
   max_bytes?: number;
+  /** A live metadata row already exists for this owner/note/attachment. */
+  already_live?: boolean;
+  mime_type?: string;
+  size_bytes?: number;
 }
 
 async function authorizeAttachment(
@@ -141,10 +145,41 @@ async function putAttachment(
     return new Response('Payload Too Large', { status: 413 });
   }
 
+  // An attachment id is an immutable identity, and its object key is derived from it, so a
+  // repeated PUT of a committed attachment is a retry of work that already succeeded — usually a
+  // client that never saw the first response. Report the committed state instead of rewriting the
+  // object: overwriting it put a live blob at risk from this request's own failure paths.
+  // Changing an image's content uses a new attachment id, which lands on the fresh path below.
+  if (preflight.already_live) {
+    const committed = await env.ATTACHMENTS_BUCKET.head(objectKey);
+    if (committed) {
+      return Response.json({
+        objectKey,
+        sizeBytes: preflight.size_bytes ?? committed.size,
+        mimeType: preflight.mime_type ?? mimeType,
+        alreadyUploaded: true,
+      });
+    }
+    // Metadata says live but the object is gone. Re-upload to repair it; compensation below
+    // still leaves the object alone, because deleting it cannot improve on already-missing.
+  }
+
   // Phase 2: Write bytes to R2
   await env.ATTACHMENTS_BUCKET.put(objectKey, body, {
     httpMetadata: { contentType: mimeType },
   });
+
+  // Compensation may only remove bytes this request is solely responsible for. When a live row
+  // already referenced this key, the object is not ours to delete on failure.
+  const ownedByThisRequest = preflight.already_live !== true;
+  const compensate = async (reason: string) => {
+    if (!ownedByThisRequest) return;
+    try {
+      await env.ATTACHMENTS_BUCKET.delete(objectKey);
+    } catch {
+      console.error(`[Worker] Compensating R2 delete failed after ${reason}`);
+    }
+  };
 
   // Phase 3: Metadata finalization in database
   let finalized: AttachmentAuthz | null;
@@ -158,21 +193,12 @@ async function putAttachment(
       p_attachment_type: 'image',
     });
   } catch (error) {
-    // Best-effort compensating R2 delete on finalization failure
-    try {
-      await env.ATTACHMENTS_BUCKET.delete(objectKey);
-    } catch {
-      console.error('[Worker] Compensating R2 delete failed after upstream finalization error');
-    }
+    await compensate('upstream finalization error');
     throw error;
   }
 
   if (!finalized || !finalized.attachment_id || finalized.object_key !== objectKey) {
-    try {
-      await env.ATTACHMENTS_BUCKET.delete(objectKey);
-    } catch {
-      console.error('[Worker] Compensating R2 delete failed after finalization rejection');
-    }
+    await compensate('finalization rejection');
     return new Response('Forbidden', { status: 403 });
   }
 

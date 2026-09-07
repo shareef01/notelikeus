@@ -5,7 +5,10 @@ import { clearLocalUserData } from '@/lib/bootstrap';
 interface AuthState {
   user: AuthUser | null;
   isReady: boolean;
-  /** Try-out mode: app shell renders without an account, notes live in memory only. */
+  /**
+   * Try-out mode: the app runs without an account. Guest notes are not throwaway — they persist
+   * in IndexedDB under their own owner namespace, so they survive a reload like any other note.
+   */
   guestMode: boolean;
   setUser: (user: AuthUser | null) => void;
   setReady: (ready: boolean) => void;
