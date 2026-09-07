@@ -4,6 +4,12 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.aus.notelikeus.data.backup.BackupExportResult
+import com.aus.notelikeus.ui.main.MainViewModel
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
 import androidx.biometric.BiometricPrompt
@@ -86,8 +92,62 @@ class MainActivity : FragmentActivity() {
                         DatabaseRecoveryNotice.pending(this@MainActivity) != null
                 }
 
+                // Backup transfer goes through the Storage Access Framework: the app writes and
+                // reads only the single document the user picked, and needs no storage
+                // permission. Until this was wired, App()'s no-op defaults applied and both
+                // rows in the profile sheet did nothing at all when tapped.
+                var pendingExportJson by remember { mutableStateOf<String?>(null) }
+                var backupViewModel by remember { mutableStateOf<MainViewModel?>(null) }
+
+                val exportBackupLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.CreateDocument(BACKUP_MIME_TYPE),
+                ) { uri ->
+                    val json = pendingExportJson
+                    pendingExportJson = null
+                    if (uri == null || json == null) return@rememberLauncherForActivityResult
+                    scope.launch(Dispatchers.IO) {
+                        runCatching {
+                            contentResolver.openOutputStream(uri)?.use { output ->
+                                output.write(json.toByteArray())
+                            }
+                        }.onFailure { Log.w(TAG, "Writing the backup document failed", it) }
+                    }
+                }
+
+                val importBackupLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.OpenDocument(),
+                ) { uri ->
+                    val viewModel = backupViewModel
+                    backupViewModel = null
+                    if (uri == null || viewModel == null) return@rememberLauncherForActivityResult
+                    scope.launch(Dispatchers.IO) {
+                        val json = runCatching { readBackupDocument(uri) }
+                            .onFailure { Log.w(TAG, "Reading the backup document failed", it) }
+                            .getOrNull()
+                        if (json != null) viewModel.importBackup(json)
+                    }
+                }
+
                 App(
                     windowSizeClass = windowSizeClass,
+                    onExportBackup = { viewModel ->
+                        scope.launch {
+                            val result = viewModel.exportBackup()
+                            if (result is BackupExportResult.Success) {
+                                // Held rather than passed: the launcher only carries the
+                                // filename, and the document does not exist until the user has
+                                // picked where it goes.
+                                pendingExportJson = result.json
+                                exportBackupLauncher.launch(BACKUP_FILE_NAME)
+                            } else {
+                                Log.w(TAG, "Building the backup failed: $result")
+                            }
+                        }
+                    },
+                    onImportBackup = { viewModel ->
+                        backupViewModel = viewModel
+                        importBackupLauncher.launch(BACKUP_IMPORT_MIME_TYPES)
+                    },
                     onShowBiometricPrompt = { title, onSuccess, onError ->
                         showBiometricPrompt(title, onSuccess, onError)
                     },
@@ -214,5 +274,50 @@ class MainActivity : FragmentActivity() {
             .build()
 
         biometricPrompt.authenticate(promptInfo)
+    }
+
+    /**
+     * Reads a picked backup document, refusing anything larger than the importer would accept.
+     *
+     * The cap is applied while reading rather than after: `NoteBackupImporter` rejects an
+     * oversized backup, but only once the whole document is already a String in memory, which a
+     * hostile or simply enormous file could exhaust before the check ever runs.
+     */
+    private fun readBackupDocument(uri: android.net.Uri): String? {
+        return contentResolver.openInputStream(uri)?.use { input ->
+            val reader = input.reader()
+            val buffer = CharArray(DEFAULT_BUFFER_SIZE)
+            val text = StringBuilder()
+            while (true) {
+                val read = reader.read(buffer)
+                if (read <= 0) break
+                if (text.length + read > MAX_BACKUP_DOCUMENT_CHARS) {
+                    Log.w(TAG, "Backup document exceeds the import limit; refusing it")
+                    return null
+                }
+                text.appendRange(buffer, 0, read)
+            }
+            text.toString()
+        }
+    }
+
+    private companion object {
+        const val TAG = "MainActivity"
+        const val BACKUP_MIME_TYPE = "application/json"
+        const val BACKUP_FILE_NAME = "notelikeus-backup.json"
+
+        /**
+         * Providers disagree about what a `.json` file is — Drive and Downloads commonly report
+         * `application/octet-stream`, and some report `text/plain` — so the picker accepts the
+         * types a JSON backup realistically arrives as. Content is validated on import either way.
+         */
+        val BACKUP_IMPORT_MIME_TYPES = arrayOf(
+            "application/json",
+            "text/plain",
+            "application/octet-stream",
+        )
+
+        /** Matches `NoteBackupImporter.MAX_BACKUP_CHARS`. */
+        const val MAX_BACKUP_DOCUMENT_CHARS = 10 * 1024 * 1024
     }
 }
