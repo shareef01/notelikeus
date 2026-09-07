@@ -35,6 +35,7 @@ import { useUiStore } from '@/store/uiStore';
 import type { Note, NoteFilter } from '@/types/note';
 import { MainDialogs, NO_DIALOGS_OPEN, type MainDialogState } from '@/screens/main/MainDialogs';
 import { getEmptyState } from '@/screens/main/mainEmptyState';
+import { ConfirmDialog } from '@/components/ui/ModalDialog';
 import { useAccountActions } from '@/screens/main/useAccountActions';
 import { useNoteActions } from '@/screens/main/useNoteActions';
 
@@ -267,7 +268,14 @@ export function MainScreen() {
     closeBulkDeleteConfirm: () => openDialogs({ bulkDeleteConfirm: false }),
   });
 
-  const { signOut, exportBackup, importBackup } = useAccountActions({
+  const {
+    signOut,
+    exportBackup,
+    prepareImport,
+    pendingImport,
+    confirmImport,
+    cancelImport,
+  } = useAccountActions({
     notes,
     userId: user?.uid,
     closeSignOutConfirm: () => openDialogs({ signOutConfirm: false }),
@@ -610,10 +618,26 @@ export function MainScreen() {
 
           event.target.value = '';
 
-          if (file) void importBackup(file);
+          if (file) void prepareImport(file);
 
         }}
 
+      />
+
+      <ConfirmDialog
+        open={pendingImport != null}
+        title={
+          pendingImport == null
+            ? 'Import backup'
+            : `Import ${pendingImport.result.notesImported} note${
+                pendingImport.result.notesImported === 1 ? '' : 's'
+              } as new notes?`
+        }
+        description="They're added alongside what's already here, so importing this file again will create another copy of each note. Images aren't part of a JSON backup and won't come across."
+        confirmLabel="Import"
+        tone="primary"
+        onCancel={cancelImport}
+        onConfirm={() => void confirmImport()}
       />
 
     </div>
