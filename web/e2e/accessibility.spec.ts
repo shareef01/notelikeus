@@ -17,6 +17,12 @@ function uniqueEmail(): string {
 const PASSWORD = 'e2e-password-123';
 
 async function scan(page: Page) {
+  // Freeze entry animations first. A scan that lands mid-fade measures a part-transparent
+  // element composited over whatever is behind it and reports contrast failures that do not
+  // exist once the frame settles — a race these scans win locally and can lose on CI.
+  await page.addStyleTag({
+    content: '*,*::before,*::after{animation:none !important;transition:none !important}',
+  });
   return new AxeBuilder({ page }).withTags(WCAG).analyze();
 }
 

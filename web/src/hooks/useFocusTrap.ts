@@ -17,12 +17,17 @@ interface TrapEntry {
 const openTraps: TrapEntry[] = [];
 
 /**
- * The trap that owns Escape: the most recently opened one that has no other open trap nested
- * inside it. Containment rather than push order, because React commits child effects before
- * parent ones — a dialog and its host opening in the same commit would otherwise hand Escape
- * to the host.
+ * The trap that owns the keyboard: the most recently opened one that has no other open trap
+ * nested inside it. Containment rather than push order, because React commits child effects
+ * before parent ones — a dialog and its host opening in the same commit would otherwise hand the
+ * keyboard to the host.
+ *
+ * This governs Tab as well as Escape. A dialog opened from inside the editor is a DOM descendant
+ * of the editor's own panel, so the editor's Tab handler also saw the inner dialog's last control
+ * as *its* last control, wrapped focus to its own first one, and threw the user out of the dialog
+ * they were in — the opposite of what aria-modal promises.
  */
-function escapeOwner(): TrapEntry | null {
+function innermostTrap(): TrapEntry | null {
   for (let index = openTraps.length - 1; index >= 0; index--) {
     const entry = openTraps[index]!;
     const panel = entry.getPanel();
@@ -78,7 +83,7 @@ export function useFocusTrap<T extends HTMLElement>(
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        if (escapeOwner() !== entry) return;
+        if (innermostTrap() !== entry) return;
         if (!closeOnEscape) {
           // Owning Escape and refusing it is the point of a non-dismissable trap: swallow the
           // key so a trap further out does not close instead.
@@ -92,6 +97,8 @@ export function useFocusTrap<T extends HTMLElement>(
         return;
       }
       if (event.key !== 'Tab' || !panel) return;
+      // Only the innermost open trap wraps Tab, for the same reason it owns Escape.
+      if (innermostTrap() !== entry) return;
 
       const items = panel.querySelectorAll<HTMLElement>(FOCUSABLE);
       if (items.length === 0) return;
