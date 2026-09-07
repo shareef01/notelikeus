@@ -19,6 +19,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useLabelRegistryStore } from '@/store/labelRegistryStore';
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
+import { useUiStore } from '@/store/uiStore';
 import { createEmptyNote } from '@/types/note';
 
 describe('clearLocalUserData', () => {
@@ -33,6 +34,17 @@ describe('clearLocalUserData', () => {
     clearLocalUserData();
     expect(clearOwnerMock).not.toHaveBeenCalled();
     expect(clearPendingAttachmentsMock).not.toHaveBeenCalled();
+  });
+
+  it('closes the navigation drawer so it cannot cover the next account’s notes', () => {
+    // Signing out is normally done from inside the drawer on mobile. It is a modal overlay, so
+    // leaving it open across the switch put an aria-modal panel over the next session's notes
+    // list, swallowing taps meant for it.
+    useUiStore.getState().setDrawerOpen(true);
+
+    clearLocalUserData();
+
+    expect(useUiStore.getState().drawerOpen).toBe(false);
   });
 });
 
