@@ -1,5 +1,5 @@
 begin;
-select plan(14);
+select plan(15);
 
 -- The wipe has to leave every attachment object reachable for deletion. It previously returned
 -- only the keys of rows that were still live, then hard-deleted every row — so already
