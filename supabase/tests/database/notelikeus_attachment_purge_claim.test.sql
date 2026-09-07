@@ -19,6 +19,23 @@ begin
 end;
 $$;
 
+
+-- note_attachments is behind a mutation guard, so the test cannot backdate it with a raw UPDATE.
+create function tests.backdate_deleted_attachments(p_hours integer)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform public.begin_sync_mutation();
+  update public.note_attachments
+  set deleted_at = timezone('utc', now()) - make_interval(hours => p_hours)
+  where deleted_at is not null;
+  perform public.end_sync_mutation();
+end;
+$$;
+
 select tests.create_supabase_user('claim_user@notelikeus.test');
 select tests.authenticate_as('claim_user@notelikeus.test');
 
@@ -47,9 +64,7 @@ select public.finalize_note_attachment_put(
 select public.apply_note_delete('300', (select revision from public.notes where note_id = '300'));
 -- Age both past the retention window so only eligibility, not timing, decides the outcome.
 select public.finalize_note_attachment_delete('301', 'att301');
-update public.note_attachments
-set deleted_at = timezone('utc', now()) - interval '48 hours'
-where deleted_at is not null;
+select tests.backdate_deleted_attachments(48);
 
 -- 1. Claiming is a service-role operation.
 select throws_ok(

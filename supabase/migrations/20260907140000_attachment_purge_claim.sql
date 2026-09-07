@@ -85,11 +85,16 @@ BEGIN
         RETURN jsonb_build_object('claimed', false, 'reason', 'not_tombstoned');
     END IF;
 
+    -- note_attachments is behind a mutation guard, so every write has to declare itself the
+    -- same way the other RPCs do. Without this the claim raised "direct table mutation not
+    -- allowed" and no attachment could ever be claimed for deletion.
+    PERFORM public.begin_sync_mutation();
     UPDATE public.note_attachments
     SET purge_claimed_at = COALESCE(purge_claimed_at, timezone('utc', now()))
     WHERE owner_id = p_owner_id
       AND note_id = v_note_id
       AND attachment_id = v_attachment_id;
+    PERFORM public.end_sync_mutation();
 
     RETURN jsonb_build_object(
         'claimed', true,
