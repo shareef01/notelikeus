@@ -42,11 +42,20 @@ async function signIn(page: Page, email: string): Promise<void> {
 }
 
 async function signOut(page: Page): Promise<void> {
-  const signOutNav = page.getByRole('button', { name: 'Sign out', exact: true }).first();
-  if (!(await signOutNav.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: 'Open menu' }).click();
+  // Open the drawer whenever the layout has one, rather than inferring it from whether the Sign
+  // out button looks visible.
+  //
+  // On mobile the navigation lives in a drawer that starts closed, and a closed drawer is only
+  // translated off-canvas — it keeps a real bounding box, so Playwright reports its buttons as
+  // visible. Asking the Sign out button therefore concluded the drawer was already open, skipped
+  // the menu, and then spent the full timeout trying to click an element sitting at x=-284 in a
+  // 393px viewport. The menu trigger only renders in the layout that actually has a drawer, so
+  // its presence is what genuinely answers "is there something to open here".
+  const menuTrigger = page.getByRole('button', { name: 'Open menu' });
+  if (await menuTrigger.isVisible().catch(() => false)) {
+    await menuTrigger.click();
   }
-  await signOutNav.click();
+  await page.getByRole('button', { name: 'Sign out', exact: true }).first().click();
   await page.getByRole('button', { name: 'Sign out', exact: true }).last().click();
   await waitForAuthForm(page);
 }

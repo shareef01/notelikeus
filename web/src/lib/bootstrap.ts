@@ -126,6 +126,10 @@ export function clearLocalUserData(): void {
   useNotesStore.getState().reset();
   useLabelRegistryStore.getState().reset();
   useTombstoneStore.getState().reset();
+  // The navigation drawer belongs to the session that opened it. Signing out from inside it left
+  // it open across the switch, so the next account arrived at a notes list with a modal drawer
+  // still covering it and swallowing taps.
+  useUiStore.getState().setDrawerOpen(false);
   forgetSignedIn();
   for (const key of USER_DATA_STORAGE_KEYS) {
     try {
