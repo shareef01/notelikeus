@@ -4,7 +4,10 @@ Audit of `main` at `84827e8`, validating a set of supplied hypotheses against th
 effective** schema (all 18 migrations applied) and current source, then fixing what was confirmed.
 
 Every finding below was reproduced before being changed, and every fix has a regression test that
-was demonstrated to fail against the previous code.
+was demonstrated to fail against the previous code — except A5, which is called out explicitly.
+
+**Verification status:** all suites green, including `database-tests` running the three new
+migrations from a clean `supabase db reset` (190 pgTAP assertions across 22 files).
 
 ## Summary
 
@@ -53,7 +56,7 @@ first, and the client had no failure signal to notice.
 **Tests.** `web/src/lib/supabase/deleteAllUserCloudData.test.ts` (12 cases) —
 **8 fail against the previous implementation**, including "refuses to report success when the
 Worker rejects every delete". Plus `supabase/tests/database/notelikeus_cloud_wipe_attachments.test.sql`
-(14 assertions) covering key coverage, surviving authorization, idempotent retry, ownership
+(15 assertions) covering key coverage, surviving authorization, idempotent retry, ownership
 isolation and anon rejection.
 
 **Residual risk.** If the client dies after phase 1, the bytes live until the next sweep (≤24h
@@ -232,6 +235,26 @@ a count and preview, reusing the now-existing import-confirmation dialog from #1
   "undiscoverable by the later orphan sweeper" because their metadata is hard-deleted. True, but
   the sweeper could not have found them even with metadata intact: it requires a `note_tombstones`
   row, and the wipe deletes tombstones too. The fix had to address both.
+
+
+## Defects introduced during this remediation, and caught by CI
+
+Recorded because the pattern is more useful than the individual mistakes. The SQL in this change
+set was written without a local Postgres — Docker was unavailable — and four defects reached CI as
+a result. The web and Worker changes, where each fix was proven to fail on the old code before
+being committed, needed no corrections.
+
+| Defect | Nature |
+|---|---|
+| `SET ROLE service_role` in a test | Wrong idiom; the repo already had a working `set_config` helper I did not look for |
+| Two mismatched `plan()` counts | Careless |
+| Claim `UPDATE` missing the sync-mutation guard | **Real product bug.** `note_attachments` is behind a guard trigger, so the claim raised `direct table mutation not allowed` and no attachment could ever be claimed — the A4 fix would have been inert |
+| `deleted_at` checked before note-live | Inaccurate diagnostic: a never-deleted row reported `restored`. Reordered so a live note is reported first, and the remaining case renamed `not_deleted` |
+
+The guard trigger in particular is invisible when reading a function in isolation; only executing
+the migration reveals it. That is the argument for running `supabase db reset` locally before
+proposing schema changes, and the reason the pre-merge verification section distinguished executed
+from unexecuted work.
 
 ## Preserved controls
 
