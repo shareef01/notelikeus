@@ -110,13 +110,9 @@ class MainActivity : FragmentActivity() {
                     // A cancelled picker is the user changing their mind, not a failure.
                     if (uri == null || json == null) return@rememberLauncherForActivityResult
                     scope.launch(Dispatchers.IO) {
-                        val written = runCatching {
-                            contentResolver.openOutputStream(uri)?.use { output ->
-                                output.write(json.toByteArray())
-                            } ?: error("no output stream for $uri")
-                        }.onFailure { Log.w(TAG, "Writing the backup document failed", it) }
+                        val written = BackupDocumentIo.write(contentResolver, uri, json)
                         viewModel?.reportBackupTransfer(
-                            if (written.isSuccess) BackupTransferEvent.Exported
+                            if (written) BackupTransferEvent.Exported
                             else BackupTransferEvent.ExportFailed,
                         )
                     }
@@ -129,9 +125,7 @@ class MainActivity : FragmentActivity() {
                     backupViewModel = null
                     if (uri == null || viewModel == null) return@rememberLauncherForActivityResult
                     scope.launch(Dispatchers.IO) {
-                        val json = runCatching { readBackupDocument(uri) }
-                            .onFailure { Log.w(TAG, "Reading the backup document failed", it) }
-                            .getOrNull()
+                        val json = BackupDocumentIo.read(contentResolver, uri)
                         // importBackup reports its own outcome; an unreadable or oversized
                         // document never reaches it, so it is reported here instead.
                         if (json != null) viewModel.importBackup(json)
@@ -290,31 +284,6 @@ class MainActivity : FragmentActivity() {
         biometricPrompt.authenticate(promptInfo)
     }
 
-    /**
-     * Reads a picked backup document, refusing anything larger than the importer would accept.
-     *
-     * The cap is applied while reading rather than after: `NoteBackupImporter` rejects an
-     * oversized backup, but only once the whole document is already a String in memory, which a
-     * hostile or simply enormous file could exhaust before the check ever runs.
-     */
-    private fun readBackupDocument(uri: android.net.Uri): String? {
-        return contentResolver.openInputStream(uri)?.use { input ->
-            val reader = input.reader()
-            val buffer = CharArray(DEFAULT_BUFFER_SIZE)
-            val text = StringBuilder()
-            while (true) {
-                val read = reader.read(buffer)
-                if (read <= 0) break
-                if (text.length + read > MAX_BACKUP_DOCUMENT_CHARS) {
-                    Log.w(TAG, "Backup document exceeds the import limit; refusing it")
-                    return null
-                }
-                text.appendRange(buffer, 0, read)
-            }
-            text.toString()
-        }
-    }
-
     private companion object {
         const val TAG = "MainActivity"
         const val BACKUP_MIME_TYPE = "application/json"
@@ -331,7 +300,5 @@ class MainActivity : FragmentActivity() {
             "application/octet-stream",
         )
 
-        /** Matches `NoteBackupImporter.MAX_BACKUP_CHARS`. */
-        const val MAX_BACKUP_DOCUMENT_CHARS = 10 * 1024 * 1024
     }
 }
