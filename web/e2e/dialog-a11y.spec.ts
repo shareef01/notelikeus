@@ -23,6 +23,21 @@ async function openEditor(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Freezes entry animations before an axe scan.
+ *
+ * Dialogs fade and zoom in over 200ms, and a scan that lands mid-animation measures a
+ * part-transparent element composited over the backdrop — reporting colours like `#060606` on
+ * black and a pile of contrast failures that do not exist once the frame settles. It passed
+ * locally and failed on CI purely because CI is slower, so the scan is made deterministic rather
+ * than left to lose that race.
+ */
+async function settleAnimations(page: Page): Promise<void> {
+  await page.addStyleTag({
+    content: '*,*::before,*::after{animation:none !important;transition:none !important}',
+  });
+}
+
 /** Whether focus currently sits inside the given dialog. */
 function focusIsInside(page: Page, dialogName: string) {
   return page.evaluate((name) => {
@@ -114,6 +129,7 @@ test('every editor dialog exposes an accessible name and no WCAG violations', as
     await page.getByRole('button', { name: trigger, exact: true }).click();
     const dialog = page.getByRole('dialog', { name: dialogPattern });
     await expect(dialog).toBeVisible();
+    await settleAnimations(page);
 
     const scan = await new AxeBuilder({ page }).withTags(WCAG).analyze();
     expect(scan.violations, `violations while ${trigger} dialog open`).toEqual([]);
