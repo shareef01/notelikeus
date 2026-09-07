@@ -1,5 +1,6 @@
 package com.aus.notelikeus
 
+import com.aus.notelikeus.ui.main.BackupTransferEvent
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.*
@@ -235,7 +236,13 @@ private fun launchApp(
                                 selectedFile = java.io.File("notelikeus-backup.json")
                             }
                             if (chooser.showSaveDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
-                                chooser.selectedFile.writeText(result.json)
+                                val written = runCatching {
+                                    chooser.selectedFile.writeText(result.json)
+                                }
+                                viewModel.reportBackupTransfer(
+                                    if (written.isSuccess) BackupTransferEvent.Exported
+                                    else BackupTransferEvent.ExportFailed,
+                                )
                             }
                         }
                     }
@@ -246,9 +253,16 @@ private fun launchApp(
                     withContext(Dispatchers.Main) {
                         val chooser = javax.swing.JFileChooser()
                         if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
-                            val json = chooser.selectedFile.readText()
                             launch(Dispatchers.IO) {
-                                viewModel.importBackup(json)
+                                // Reading can fail on its own — an unreadable file, or one large
+                                // enough that holding it as a String is the problem. importBackup
+                                // reports every outcome it reaches, so this only covers the case
+                                // where the text never gets that far.
+                                val json = runCatching { chooser.selectedFile.readText() }.getOrNull()
+                                if (json != null) viewModel.importBackup(json)
+                                else viewModel.reportBackupTransfer(
+                                    BackupTransferEvent.ImportFailed,
+                                )
                             }
                         }
                     }

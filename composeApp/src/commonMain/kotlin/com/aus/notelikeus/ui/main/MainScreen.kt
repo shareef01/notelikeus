@@ -123,6 +123,24 @@ fun MainScreen(
         viewModel.clearPendingActionFailure()
     }
 
+    LaunchedEffect(state.pendingBackupTransferEvent) {
+        val event = state.pendingBackupTransferEvent ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            when (event) {
+                BackupTransferEvent.Exported -> getString(Res.string.export_success)
+                BackupTransferEvent.ExportFailed -> getString(Res.string.export_failed)
+                is BackupTransferEvent.Imported ->
+                    getString(Res.string.import_success, event.notesImported)
+                BackupTransferEvent.ImportFailed -> getString(Res.string.import_failed)
+                // The parser's own reason is more use than a generic failure: it says whether the
+                // file was too large, too deeply nested, or from a newer build.
+                is BackupTransferEvent.ImportRejected ->
+                    event.message.ifBlank { getString(Res.string.import_failed) }
+            }
+        )
+        viewModel.clearPendingBackupTransferEvent()
+    }
+
     LaunchedEffect(state.pendingCloudSyncEvent) {
         when (val event = state.pendingCloudSyncEvent) {
             is CloudSyncEvent.Uploaded -> {
