@@ -8,6 +8,7 @@ import {
 import { useNoteLabels } from '@/hooks/useNoteLabels';
 import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { saveNote, removeNote } from '@/lib/notes/noteActions';
+import type { LocalSaveResult } from '@/lib/notes/localSaveResult';
 import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
 import { useNotesStore } from '@/store/notesStore';
 import { useToastStore } from '@/store/toastStore';
@@ -79,7 +80,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
   });
   stateRef.current = state;
 
-  const persistNow = useCallback(async () => {
+  const persistNow = useCallback(async (): Promise<LocalSaveResult> => {
     if (autosaveTimer.current) {
       clearTimeout(autosaveTimer.current);
       autosaveTimer.current = null;
@@ -91,7 +92,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     const isCurrentRoute = () => loadedRouteRef.current === savingForRoute;
 
     const current = stateRef.current;
-    if (isNoteEmpty(current)) return;
+    if (isNoteEmpty(current)) return { status: 'unchanged' };
 
     // An edit route whose note never loaded (see the noteId effect) must never be saved: it has
     // no id, so the allocate-new-id path below would mint a phantom note. Only a 'new' route or
@@ -101,7 +102,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       routeRef.current !== 'new' &&
       loadedRouteRef.current !== routeRef.current
     ) {
-      return;
+      return { status: 'unchanged' };
     }
 
     setState((prev) => (isCurrentRoute() ? { ...prev, isSaving: true } : prev));
@@ -151,22 +152,29 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     const note = buildNoteFromEditor(working);
     if (!note) {
       setState((prev) => (isCurrentRoute() ? { ...prev, isSaving: false } : prev));
-      return;
+      return { status: 'unchanged' };
     }
 
     try {
       await saveNote(note);
       if (isCurrentRoute()) {
-        setState({ ...working, isSaving: false, lastSavedAt: updatedTimestamp });
+        setState({
+          ...working,
+          isSaving: false,
+          lastSavedAt: updatedTimestamp,
+          saveFailed: false,
+        });
       }
+      return { status: 'saved', noteId: note.id };
     } catch (error) {
-      // Never wedge the editor on a failed write: reset the
-      // saving flag and surface the failure so the user can retry. Navigation must still work.
+      // The editor is now holding the only copy of this edit. Record that in state and hand the
+      // failure back: whoever asked for the save decides what to do, and navigation away from
+      // unsaved work is not something this function may decide on its own.
       console.warn('[Notelikeus] Note save failed:', error);
-      useToastStore.getState().show('Could not save changes. Check your connection and try again.', 'error');
       if (isCurrentRoute()) {
-        setState((prev) => ({ ...prev, isSaving: false }));
+        setState((prev) => ({ ...prev, isSaving: false, saveFailed: true }));
       }
+      return { status: 'failed', error };
     }
   }, []);
 
@@ -228,6 +236,19 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     stateRef.current = next;
     setState(next);
   }, [noteId, sourceServerUpdatedAt]);
+
+  // Warn on unload only when a local write has actually failed and the editor is still holding
+  // the edit. A pending debounce is normal and must not prompt: the flush below covers it, and
+  // prompting on every close would train the warning to be ignored when it matters.
+  useEffect(() => {
+    if (!state.saveFailed) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [state.saveFailed]);
 
   // Flush on tab close/refresh and on backgrounding (mobile browsers don't
   // reliably fire beforeunload) so a pending debounce never silently drops.
@@ -376,7 +397,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       patch((s) => ({ ...s, reminderTimestamp }));
     },
     clearReminder: () => patch((s) => ({ ...s, reminderTimestamp: null })),
-    addAttachment: (file: File) => {
+    addAttachment: async (file: File) => {
       if (!isR2AttachmentsEnabled()) {
         useToastStore.getState().show('Attachments are not enabled', 'error');
         return;
@@ -390,7 +411,19 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         return;
       }
       const attachmentId = createAttachmentId();
-      storePendingAttachment(attachmentId, file, file.type);
+      // Stage the blob durably *before* the note references it. The note autosaves with a
+      // `pending:` path, so if staging silently failed that reference would outlive the blob and
+      // the attachment would come back after a reload as metadata pointing at nothing.
+      const staged = await storePendingAttachment(
+        attachmentId,
+        file,
+        file.type,
+        stateRef.current.id ?? undefined,
+      );
+      if (!staged) {
+        useToastStore.getState().show('Could not add that image', 'error');
+        return;
+      }
       patch((s) => ({
         ...s,
         attachments: [
@@ -414,7 +447,8 @@ export function useNoteEditor(noteId: string | 'new' | null) {
           .delete(current.id, attachmentId)
           .catch(() => {});
       }
-      releasePendingAttachment(attachmentId);
+      // Deliberate removal, so the staged blob is no longer the only copy of anything visible.
+      void releasePendingAttachment(attachmentId, current.id ?? undefined);
       if (current.id) {
         revokeAttachmentPreviewUrl(current.id, attachmentId);
       }
@@ -444,11 +478,36 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       return result;
     },
     flushSave: persistNow,
-    trashNote: async () => {
+    /** Clears the failure banner and drops blobs staged for an edit the user chose not to keep. */
+    discardChanges: async () => {
+      if (autosaveTimer.current) {
+        clearTimeout(autosaveTimer.current);
+        autosaveTimer.current = null;
+      }
+      const current = stateRef.current;
+      const savedIds = new Set(
+        (current.id
+          ? (useNotesStore.getState().notes.find((n) => n.id === current.id)?.attachments ?? [])
+          : []
+        ).map((attachment) => attachment.id),
+      );
+      await Promise.all(
+        current.attachments
+          .filter(
+            (attachment) =>
+              isPendingAttachment(attachment.storagePath) && !savedIds.has(attachment.id),
+          )
+          .map((attachment) =>
+            releasePendingAttachment(attachment.id, current.id ?? undefined).catch(() => {}),
+          ),
+      );
+      setState((prev) => ({ ...prev, saveFailed: false }));
+    },
+    trashNote: async (): Promise<LocalSaveResult> => {
       const updated = { ...stateRef.current, isTrashed: true };
       stateRef.current = updated;
       setState(updated);
-      await persistNow();
+      return persistNow();
     },
     deleteNote: async () => {
       // Cancel the debounce first. Otherwise the unmount flush below runs persistNow after the

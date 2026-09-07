@@ -44,6 +44,14 @@ It started as the app I actually wanted to use: something as quick as Google Kee
 
 **Reads that fail open are treated as suspect.** A cloud fetch returning nothing when notes were expected refuses the sync rather than concluding everything was deleted, on every client. That guard exists because the alternative is silent, unrecoverable data loss.
 
+**Saved locally and synced to the cloud are different things, and the app says which.** An edit is saved once the local database — Room on Android and Windows, IndexedDB on the web — has taken it. Cloud sync happens after that and can fail on its own without changing the fact that the note is stored. So a note is never reported as saved before the local write lands, and a network failure is reported as sync pending, not as a lost note.
+
+**A failed local save keeps your text.** If the local write actually fails, the editor stays open holding the edit and offers to retry; leaving without saving is a deliberate choice you make, never something a failed write does for you.
+
+**Attachments are staged on disk before the note points at them.** An image you attach is written to durable local storage first, so a note that references it still has the bytes after a restart, and the upload can resume later. Staged bytes are scoped to the account that created them.
+
+**Backup import adds copies.** Importing a JSON backup adds its notes as new notes; it does not replace what is already on the device, so importing the same file twice gives you two sets. The JSON format carries note content, not attachments.
+
 ---
 
 ## Features
