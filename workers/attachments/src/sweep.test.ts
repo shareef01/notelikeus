@@ -27,6 +27,9 @@ let rpcCalls: Array<{ url: string; body: unknown }>;
 function mockRpcs(handlers: {
   list?: unknown;
   listStatus?: number;
+  /** Claim response. Defaults to granting the claim for the canonical key of the listed row. */
+  claim?: unknown;
+  claimStatus?: number;
   purge?: unknown;
   purgeStatus?: number;
 }) {
@@ -41,6 +44,15 @@ function mockRpcs(handlers: {
         return new Response(JSON.stringify(handlers.list ?? []), {
           status: handlers.listStatus ?? 200,
         });
+      }
+      if (url.includes('claim_orphaned_attachment_for_delete')) {
+        const claim =
+          handlers.claim ??
+          {
+            claimed: true,
+            object_key: `owners/${body.p_owner_id}/notes/${body.p_note_id}/${body.p_attachment_id}`,
+          };
+        return new Response(JSON.stringify(claim), { status: handlers.claimStatus ?? 200 });
       }
       if (url.includes('purge_orphaned_deleted_attachment')) {
         return new Response(JSON.stringify(handlers.purge ?? { status: 'applied' }), {
@@ -124,7 +136,8 @@ describe('orphaned attachment sweep', () => {
       skipped: 0,
     });
     expect(bucket.objects.has(OBJECT_KEY)).toBe(false);
-    expect(rpcCalls[1]?.url).toContain('purge_orphaned_deleted_attachment');
+    expect(rpcCalls[1]?.url).toContain('claim_orphaned_attachment_for_delete');
+    expect(rpcCalls[2]?.url).toContain('purge_orphaned_deleted_attachment');
     expect(rpcCalls[1]?.body).toEqual({
       p_owner_id: OWNER,
       p_note_id: '1',
@@ -177,5 +190,78 @@ describe('orphaned attachment sweep', () => {
       skipped: 1,
     });
     expect(bucket.objects.has(OBJECT_KEY)).toBe(false);
+  });
+  it('does not touch the object when a restore beat the claim', async () => {
+    // The race this protocol exists for. The listing is a snapshot; by the time the sweeper acts
+    // the note can be live again. Deleting on the strength of the snapshot left the restored
+    // note with metadata pointing at bytes that were already gone.
+    mockRpcs({
+      list: [{ owner_id: OWNER, note_id: '1', attachment_id: 'att1', object_key: OBJECT_KEY }],
+      claim: { claimed: false, reason: 'restored' },
+    });
+    await bucket.put(OBJECT_KEY, new Uint8Array([1]));
+
+    expect(await sweepOrphanedDeletedAttachments(env)).toEqual({
+      scanned: 1,
+      deleted: 0,
+      skipped: 1,
+    });
+    expect(bucket.objects.has(OBJECT_KEY)).toBe(true);
+    expect(rpcCalls.some((call) => call.url.includes('purge_'))).toBe(false);
+  });
+
+  it('does not touch the object when the note came back live', async () => {
+    mockRpcs({
+      list: [{ owner_id: OWNER, note_id: '1', attachment_id: 'att1', object_key: OBJECT_KEY }],
+      claim: { claimed: false, reason: 'note_live' },
+    });
+    await bucket.put(OBJECT_KEY, new Uint8Array([1]));
+
+    expect((await sweepOrphanedDeletedAttachments(env)).deleted).toBe(0);
+    expect(bucket.objects.has(OBJECT_KEY)).toBe(true);
+  });
+
+  it('claims before deleting, never after', async () => {
+    mockRpcs({
+      list: [{ owner_id: OWNER, note_id: '1', attachment_id: 'att1', object_key: OBJECT_KEY }],
+    });
+    let keyExistedAtClaim: boolean | null = null;
+    const realDelete = bucket.delete.bind(bucket);
+    bucket.delete = async (key: string) => {
+      keyExistedAtClaim = rpcCalls.some((call) =>
+        call.url.includes('claim_orphaned_attachment_for_delete'),
+      );
+      return realDelete(key);
+    };
+    await bucket.put(OBJECT_KEY, new Uint8Array([1]));
+
+    await sweepOrphanedDeletedAttachments(env);
+
+    expect(keyExistedAtClaim).toBe(true);
+  });
+
+  it('refuses a claim whose returned key is not the canonical owner path', async () => {
+    // A compromised or buggy database must not be able to point the sweeper at another owner.
+    mockRpcs({
+      list: [{ owner_id: OWNER, note_id: '1', attachment_id: 'att1', object_key: OBJECT_KEY }],
+      claim: { claimed: true, object_key: 'owners/someone-else/notes/1/att1' },
+    });
+    await bucket.put(OBJECT_KEY, new Uint8Array([1]));
+
+    expect((await sweepOrphanedDeletedAttachments(env)).skipped).toBe(1);
+    expect(bucket.objects.has(OBJECT_KEY)).toBe(true);
+  });
+
+  it('keeps the claim so a failed R2 delete is retried, not lost', async () => {
+    mockRpcs({
+      list: [{ owner_id: OWNER, note_id: '1', attachment_id: 'att1', object_key: OBJECT_KEY }],
+    });
+    bucket.delete = async () => {
+      throw new Error('R2 unavailable');
+    };
+
+    expect((await sweepOrphanedDeletedAttachments(env)).skipped).toBe(1);
+    // Purging here would drop the only record of an object that is still stored.
+    expect(rpcCalls.some((call) => call.url.includes('purge_'))).toBe(false);
   });
 });
