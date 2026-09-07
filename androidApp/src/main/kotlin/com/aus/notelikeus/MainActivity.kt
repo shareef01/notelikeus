@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.aus.notelikeus.data.backup.BackupExportResult
+import com.aus.notelikeus.ui.main.BackupTransferEvent
 import com.aus.notelikeus.ui.main.MainViewModel
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -103,14 +104,21 @@ class MainActivity : FragmentActivity() {
                     ActivityResultContracts.CreateDocument(BACKUP_MIME_TYPE),
                 ) { uri ->
                     val json = pendingExportJson
+                    val viewModel = backupViewModel
                     pendingExportJson = null
+                    backupViewModel = null
+                    // A cancelled picker is the user changing their mind, not a failure.
                     if (uri == null || json == null) return@rememberLauncherForActivityResult
                     scope.launch(Dispatchers.IO) {
-                        runCatching {
+                        val written = runCatching {
                             contentResolver.openOutputStream(uri)?.use { output ->
                                 output.write(json.toByteArray())
-                            }
+                            } ?: error("no output stream for $uri")
                         }.onFailure { Log.w(TAG, "Writing the backup document failed", it) }
+                        viewModel?.reportBackupTransfer(
+                            if (written.isSuccess) BackupTransferEvent.Exported
+                            else BackupTransferEvent.ExportFailed,
+                        )
                     }
                 }
 
@@ -124,7 +132,10 @@ class MainActivity : FragmentActivity() {
                         val json = runCatching { readBackupDocument(uri) }
                             .onFailure { Log.w(TAG, "Reading the backup document failed", it) }
                             .getOrNull()
+                        // importBackup reports its own outcome; an unreadable or oversized
+                        // document never reaches it, so it is reported here instead.
                         if (json != null) viewModel.importBackup(json)
+                        else viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
                     }
                 }
 
@@ -136,11 +147,14 @@ class MainActivity : FragmentActivity() {
                             if (result is BackupExportResult.Success) {
                                 // Held rather than passed: the launcher only carries the
                                 // filename, and the document does not exist until the user has
-                                // picked where it goes.
+                                // picked where it goes. The view model is held for the same
+                                // reason — the result arrives in the launcher's callback.
                                 pendingExportJson = result.json
+                                backupViewModel = viewModel
                                 exportBackupLauncher.launch(BACKUP_FILE_NAME)
                             } else {
                                 Log.w(TAG, "Building the backup failed: $result")
+                                viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
                             }
                         }
                     },
