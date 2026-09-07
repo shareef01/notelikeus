@@ -61,17 +61,19 @@ BEGIN
         RETURN jsonb_build_object('claimed', false, 'reason', 'missing');
     END IF;
 
-    -- A restore that got here first cleared deleted_at. The note being live again means the
-    -- attachment is live again, and its bytes must stay.
-    IF v_row.deleted_at IS NULL THEN
-        RETURN jsonb_build_object('claimed', false, 'reason', 'restored');
-    END IF;
-
+    -- A live note is the most fundamental reason to refuse, and the most useful one to report,
+    -- so it is checked first. A restore that got here before the claim leaves the note live.
     IF EXISTS (
         SELECT 1 FROM public.notes
         WHERE owner_id = p_owner_id AND note_id = v_note_id
     ) THEN
         RETURN jsonb_build_object('claimed', false, 'reason', 'note_live');
+    END IF;
+
+    -- Note gone but the attachment is not deleted: nothing to sweep. Distinct from 'note_live',
+    -- and not called 'restored', which would misdescribe a row that was never deleted at all.
+    IF v_row.deleted_at IS NULL THEN
+        RETURN jsonb_build_object('claimed', false, 'reason', 'not_deleted');
     END IF;
 
     IF v_row.deleted_at >= timezone('utc', now()) - interval '24 hours' THEN
