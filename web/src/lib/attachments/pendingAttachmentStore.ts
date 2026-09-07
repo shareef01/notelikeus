@@ -15,17 +15,24 @@ interface PendingEntry {
 
 const pending = new Map<string, PendingEntry>();
 
-export function storePendingAttachment(
+/**
+ * Stages a blob durably and reports whether it landed.
+ *
+ * The IndexedDB write is awaited rather than fired off: a note that references `pending:<id>`
+ * outlives this tab, so staging that silently failed leaves the attachment as metadata pointing
+ * at nothing after a reload. Callers must not reference the attachment when this returns false.
+ */
+export async function storePendingAttachment(
   attachmentId: string,
   blob: Blob,
   mimeType: string,
   noteId?: string,
   ownerId?: string,
-): void {
+): Promise<boolean> {
   const resolvedOwner = ownerId ?? resolveOwnerId();
-  pending.set(attachmentId, { blob, mimeType, noteId, ownerId: resolvedOwner });
-  if (resolvedOwner) {
-    void putPendingAttachment({
+  if (!resolvedOwner) return false;
+  try {
+    await putPendingAttachment({
       ownerId: resolvedOwner,
       noteId: noteId ?? '',
       attachmentId,
@@ -33,8 +40,12 @@ export function storePendingAttachment(
       mimeType,
       sizeBytes: blob.size,
       createdAt: Date.now(),
-    }).catch(() => {});
+    });
+  } catch {
+    return false;
   }
+  pending.set(attachmentId, { blob, mimeType, noteId, ownerId: resolvedOwner });
+  return true;
 }
 
 export function peekPendingAttachment(

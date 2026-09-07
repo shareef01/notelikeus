@@ -36,6 +36,11 @@
     <string name="note_undo_failed">Couldn’t undo that</string>
     <string name="note_order_save_failed">Couldn’t save the new order</string>
     <string name="note_save_failed">Couldn’t save this note</string>
+    <string name="note_save_failed_kept">Couldn’t save this note — your changes are still here</string>
+    <string name="action_discard">Discard</string>
+    <string name="note_changes_discarded">Changes discarded</string>
+    <string name="attachment_staging_failed">Couldn’t add that image</string>
+    <string name="attachment_sync_pending">Saved on this device. Image will upload when you’re online.</string>
     <string name="note_truncated_to_sync_limit">Note was shortened to the sync limit</string>
 
     <!-- Delete confirmation -->

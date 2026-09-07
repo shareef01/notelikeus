@@ -24,6 +24,11 @@ export interface EditorState {
   isLoaded: boolean;
   isSaving: boolean;
   lastSavedAt: number | null;
+  /**
+   * The last local write failed, so the editor holds the only copy of the edit. Distinct from a
+   * sync failure: this means IndexedDB rejected the write, not that the cloud is unreachable.
+   */
+  saveFailed: boolean;
 }
 
 export const DEFAULT_EDITOR_COLOR = 0; // Use theme background by default to prevent blinking
@@ -76,6 +81,7 @@ export function editorStateFromNote(note: Note): EditorState {
     isLoaded: true,
     isSaving: false,
     lastSavedAt: note.timestamp,
+    saveFailed: false,
   };
 }
 
@@ -99,5 +105,6 @@ export function createBlankEditorState(color = DEFAULT_EDITOR_COLOR, position = 
     isLoaded: true,
     isSaving: false,
     lastSavedAt: null,
+    saveFailed: false,
   };
 }

@@ -118,19 +118,16 @@ fun EditorScreen(
     val editorTapInteraction = remember { MutableInteractionSource() }
 
     // Leaving the editor pops this destination, which clears the ViewModel and cancels the scope
-    // saveNote() would have launched the write into. Await it first so navigating away cannot
-    // discard the edit, and close regardless of the outcome so a failed write cannot trap the
-    // user on the screen. The screen is gone before a snackbar could be read, so the failure goes
-    // to the log — it is the only record that the edit was not stored.
+    // saveNote() would have launched the write into. Await the local write first so navigating
+    // away cannot discard the edit — and when that write fails, stay: the editor is holding the
+    // only copy of what the user typed, and a log line is not somewhere they can get it back from.
+    // Leaving is then their explicit choice, through the discard action on the failure snackbar.
     fun saveThenLeave() {
         scope.launch {
-            runCatching { viewModel.saveNoteAndAwait() }
-                .onFailure { error ->
-                    if (error !is CancellationException) {
-                        AppLog.warn("EditorScreen", "Save on leave failed", error)
-                    }
-                }
-            onBack()
+            when (viewModel.saveLocallyAndAwait()) {
+                is LocalSaveResult.Saved, LocalSaveResult.Unchanged -> onBack()
+                is LocalSaveResult.Failed -> Unit // The snackbar below offers retry or discard.
+            }
         }
     }
 
@@ -151,18 +148,29 @@ fun EditorScreen(
     val reminderMustBeFutureMsg = stringResource(Res.string.reminder_must_be_future)
     val noteArchivedMsg = stringResource(Res.string.note_archived)
     val noteTrashedMsg = stringResource(Res.string.note_trashed)
-    val noteSaveFailedMsg = stringResource(Res.string.note_save_failed)
+    val noteSaveFailedMsg = stringResource(Res.string.note_save_failed_kept)
     val noteTruncatedMsg = stringResource(Res.string.note_truncated_to_sync_limit)
     val noteDeleteFailedMsg = stringResource(Res.string.note_delete_failed)
     val reminderRemovedMsg = stringResource(Res.string.reminder_removed_confirmation)
     val noteCopiedMsg = stringResource(Res.string.note_copied_to_clipboard)
+    val retryLabel = stringResource(Res.string.action_retry)
+    val discardLabel = stringResource(Res.string.action_discard)
+    val changesDiscardedMsg = stringResource(Res.string.note_changes_discarded)
+    val attachmentStagingFailedMsg = stringResource(Res.string.attachment_staging_failed)
+    val attachmentSyncPendingMsg = stringResource(Res.string.attachment_sync_pending)
     val platformShare = rememberPlatformShare()
 
+    // The reminder is only confirmed once the note carrying it is in the database. Confirming off
+    // the state change alone announced reminders that a failed write meant did not exist.
     fun scheduleReminderIfAllowed(millis: Long) {
-        viewModel.setReminder(millis)
         showReminderDialog = false
         scope.launch {
-            snackbarHostState.showSnackbar(reminderSetMsg)
+            viewModel.setReminder(millis)
+            when (viewModel.saveLocallyAndAwait()) {
+                is LocalSaveResult.Saved -> snackbarHostState.showSnackbar(reminderSetMsg)
+                LocalSaveResult.Unchanged -> Unit
+                is LocalSaveResult.Failed -> Unit // Reported by the save-failure snackbar below.
+            }
         }
     }
 
@@ -176,10 +184,44 @@ fun EditorScreen(
         scheduleReminderIfAllowed(millis)
     }
 
+    // A failed local save leaves the editor holding the only copy, so the notice is indefinite and
+    // carries the two ways out: try the write again, or deliberately throw the edit away.
     LaunchedEffect(state.saveFailed) {
         if (!state.saveFailed) return@LaunchedEffect
-        snackbarHostState.showSnackbar(noteSaveFailedMsg)
+        val action = snackbarHostState.showSnackbar(
+            message = noteSaveFailedMsg,
+            actionLabel = retryLabel,
+            withDismissAction = true,
+            duration = SnackbarDuration.Indefinite,
+        )
+        if (action == SnackbarResult.ActionPerformed) {
+            saveThenLeave()
+            return@LaunchedEffect
+        }
         viewModel.clearSaveFailure()
+        val discard = snackbarHostState.showSnackbar(
+            message = noteSaveFailedMsg,
+            actionLabel = discardLabel,
+            withDismissAction = true,
+            duration = SnackbarDuration.Long,
+        )
+        if (discard == SnackbarResult.ActionPerformed) {
+            viewModel.discardUnsavedChanges()
+            snackbarHostState.showSnackbar(changesDiscardedMsg)
+            onBack()
+        }
+    }
+
+    LaunchedEffect(state.attachmentStagingFailed) {
+        if (!state.attachmentStagingFailed) return@LaunchedEffect
+        snackbarHostState.showSnackbar(attachmentStagingFailedMsg)
+        viewModel.clearAttachmentStagingFailure()
+    }
+
+    // Distinct from a failed save: the note is stored, only the upload is outstanding.
+    LaunchedEffect(state.attachmentSyncPending) {
+        if (!state.attachmentSyncPending) return@LaunchedEffect
+        snackbarHostState.showSnackbar(attachmentSyncPendingMsg)
     }
 
     LaunchedEffect(state.truncatedToSyncLimit) {
@@ -235,10 +277,14 @@ fun EditorScreen(
                         IconButton(onClick = {
                             val willPin = !state.isPinned
                             viewModel.togglePin()
+                            // Confirm the pin only once it is in the database. Announcing it off
+                            // the state flip alone reported a pin that a failed write undid.
                             scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    if (willPin) notePinnedMsg else noteUnpinnedMsg
-                                )
+                                if (viewModel.saveLocallyAndAwait() is LocalSaveResult.Saved) {
+                                    snackbarHostState.showSnackbar(
+                                        if (willPin) notePinnedMsg else noteUnpinnedMsg
+                                    )
+                                }
                             }
                         }) {
                             Icon(
