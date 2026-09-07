@@ -18,11 +18,21 @@ class AttachmentSyncService(
     private val staging: AttachmentStagingStore,
     /** Current account, or null while signed out. Staged bytes are namespaced by its result. */
     private val ownerIdProvider: () -> String? = { null },
+    /**
+     * Whether attachments are configured. Injectable so these paths can be exercised without a
+     * Worker URL baked into the build under test.
+     */
+    private val attachmentsEnabled: () -> Boolean = ::isR2AttachmentsEnabled,
 ) {
     private val cache = PendingAttachmentCache()
 
+    /**
+     * [metadata] is deliberately not part of this: the two methods that use it null-check it
+     * themselves, and requiring it here made the blob paths — upload, delete, staging — untestable
+     * without a live RPC client for a collaborator they never touch.
+     */
     private val enabled: Boolean
-        get() = isR2AttachmentsEnabled() && blobTransport !is NoopAttachmentBlobTransport && metadata != null
+        get() = attachmentsEnabled() && blobTransport !is NoopAttachmentBlobTransport
 
     private fun ownerId(): String = ownerIdProvider() ?: GUEST_STAGING_OWNER
 
@@ -176,6 +186,13 @@ class AttachmentSyncService(
                     val pendingId = pendingId(attachment.storagePath)
                     cache.remove(owner, pendingId)
                     staging.release(pendingId, owner)
+                    // An upload can commit after the user removed the attachment: the snapshot
+                    // being uploaded was taken before the removal, so it finishes and writes a
+                    // metadata row for an image the note no longer lists. mergeAttachmentsIntoNotes
+                    // rebuilds a note's attachments from live rows, so that row would put the
+                    // deleted image straight back on the next hydrate. Best effort by design —
+                    // usually nothing was ever uploaded and there is no row to remove.
+                    runCatching { blobTransport.delete(noteIdStr, attachment.id) }
                 }
                 isFileAttachment(attachment.storagePath) -> localStorage.deleteIfLocal(attachment.storagePath)
                 isR2Attachment(attachment.storagePath) -> runCatching {
