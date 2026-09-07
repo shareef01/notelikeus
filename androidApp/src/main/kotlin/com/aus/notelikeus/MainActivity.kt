@@ -4,6 +4,13 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.aus.notelikeus.data.backup.BackupExportResult
+import com.aus.notelikeus.ui.main.BackupTransferEvent
+import com.aus.notelikeus.ui.main.MainViewModel
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
 import androidx.biometric.BiometricPrompt
@@ -86,8 +93,69 @@ class MainActivity : FragmentActivity() {
                         DatabaseRecoveryNotice.pending(this@MainActivity) != null
                 }
 
+                // Backup transfer goes through the Storage Access Framework: the app writes and
+                // reads only the single document the user picked, and needs no storage
+                // permission. Until this was wired, App()'s no-op defaults applied and both
+                // rows in the profile sheet did nothing at all when tapped.
+                var pendingExportJson by remember { mutableStateOf<String?>(null) }
+                var backupViewModel by remember { mutableStateOf<MainViewModel?>(null) }
+
+                val exportBackupLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.CreateDocument(BACKUP_MIME_TYPE),
+                ) { uri ->
+                    val json = pendingExportJson
+                    val viewModel = backupViewModel
+                    pendingExportJson = null
+                    backupViewModel = null
+                    // A cancelled picker is the user changing their mind, not a failure.
+                    if (uri == null || json == null) return@rememberLauncherForActivityResult
+                    scope.launch(Dispatchers.IO) {
+                        val written = BackupDocumentIo.write(contentResolver, uri, json)
+                        viewModel?.reportBackupTransfer(
+                            if (written) BackupTransferEvent.Exported
+                            else BackupTransferEvent.ExportFailed,
+                        )
+                    }
+                }
+
+                val importBackupLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.OpenDocument(),
+                ) { uri ->
+                    val viewModel = backupViewModel
+                    backupViewModel = null
+                    if (uri == null || viewModel == null) return@rememberLauncherForActivityResult
+                    scope.launch(Dispatchers.IO) {
+                        val json = BackupDocumentIo.read(contentResolver, uri)
+                        // importBackup reports its own outcome; an unreadable or oversized
+                        // document never reaches it, so it is reported here instead.
+                        if (json != null) viewModel.importBackup(json)
+                        else viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
+                    }
+                }
+
                 App(
                     windowSizeClass = windowSizeClass,
+                    onExportBackup = { viewModel ->
+                        scope.launch {
+                            val result = viewModel.exportBackup()
+                            if (result is BackupExportResult.Success) {
+                                // Held rather than passed: the launcher only carries the
+                                // filename, and the document does not exist until the user has
+                                // picked where it goes. The view model is held for the same
+                                // reason — the result arrives in the launcher's callback.
+                                pendingExportJson = result.json
+                                backupViewModel = viewModel
+                                exportBackupLauncher.launch(BACKUP_FILE_NAME)
+                            } else {
+                                Log.w(TAG, "Building the backup failed: $result")
+                                viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
+                            }
+                        }
+                    },
+                    onImportBackup = { viewModel ->
+                        backupViewModel = viewModel
+                        importBackupLauncher.launch(BACKUP_IMPORT_MIME_TYPES)
+                    },
                     onShowBiometricPrompt = { title, onSuccess, onError ->
                         showBiometricPrompt(title, onSuccess, onError)
                     },
@@ -214,5 +282,23 @@ class MainActivity : FragmentActivity() {
             .build()
 
         biometricPrompt.authenticate(promptInfo)
+    }
+
+    private companion object {
+        const val TAG = "MainActivity"
+        const val BACKUP_MIME_TYPE = "application/json"
+        const val BACKUP_FILE_NAME = "notelikeus-backup.json"
+
+        /**
+         * Providers disagree about what a `.json` file is — Drive and Downloads commonly report
+         * `application/octet-stream`, and some report `text/plain` — so the picker accepts the
+         * types a JSON backup realistically arrives as. Content is validated on import either way.
+         */
+        val BACKUP_IMPORT_MIME_TYPES = arrayOf(
+            "application/json",
+            "text/plain",
+            "application/octet-stream",
+        )
+
     }
 }

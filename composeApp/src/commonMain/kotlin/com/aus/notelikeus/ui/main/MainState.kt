@@ -111,6 +111,8 @@ data class MainState(
     val cloudSyncStatus: CloudSyncStatus = CloudSyncStatus.Unknown,
     val cloudSyncedNoteCount: Int = 0,
     val pendingCloudSyncEvent: CloudSyncEvent? = null,
+    /** Outcome of the last backup export or import, until the UI has reported it. */
+    val pendingBackupTransferEvent: BackupTransferEvent? = null,
     val cloudAccount: CloudAccount = CloudAccount(),
     val isCloudAutoSyncEnabled: Boolean = true,
     val isSigningIn: Boolean = false,
