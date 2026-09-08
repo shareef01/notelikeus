@@ -21,7 +21,7 @@ All notable changes to Notelikeus are documented here.
 - **PWA Manifest:** Corrected declared icon dimensions for high-resolution PNG assets and scalable SVG favicon.
 
 ### Changed
-- All project documentation ([`FINDINGS.md`](file:///C:/Users/LENOVO/AndroidStudioProjects/Notelikeus/docs/FINDINGS.md), [`WORKLOG.md`](file:///C:/Users/LENOVO/AndroidStudioProjects/Notelikeus/docs/WORKLOG.md), [`PRIVACY_POLICY.md`](file:///C:/Users/LENOVO/AndroidStudioProjects/Notelikeus/PRIVACY_POLICY.md)) updated with full audit findings (F1–F45).
+- Project documentation ([`docs/FINDINGS.md`](docs/FINDINGS.md), [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md)) updated with the audit findings F1-F45.
 
 ## [1.0.2] — 2026-08-29
 
@@ -151,7 +151,7 @@ All notable changes to Notelikeus are documented here.
 - Locked notes are excluded from cloud sync; locking removes a note from the cloud
 - Deep links no longer accept a lock-bypass flag; locked notes require biometric unlock in the editor
 - Manual sync and restore require Google sign-in (no anonymous cloud uploads)
-- Image attachments removed (archived under `archive/attachments-feature/`)
+- Image attachments removed (restored on Cloudflare R2 in a later release)
 
 ## [1.0] — 2026-07-08
 

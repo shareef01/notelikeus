@@ -137,5 +137,3 @@ Owner-operated (credentials required):
 5. Create a Cloudflare Pages project with build `cd web && npm ci && npm run build`, output `web/dist`.
 6. Set Pages env vars listed above.
 7. Attach a custom domain and add it to the Supabase Auth redirect allowlist.
-
-See `docs/SUPABASE_CUTOVER_AUDIT.md` for remaining owner actions.
