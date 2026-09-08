@@ -9,6 +9,16 @@ export interface WorkerEnv {
   SUPABASE_SERVICE_ROLE_KEY?: string;
   /** Comma-separated extra Origins (beyond localhost and notelikeus-dev.pages.dev). */
   ALLOWED_ORIGINS?: string;
+  /**
+   * Optional Cloudflare rate-limiting binding. Cloudflare counts these at the edge rather than
+   * in isolate memory, so the limit holds across every isolate the Worker runs in. Absent
+   * binding means no Worker-level throttling at all — see `wrangler.toml.example`.
+   */
+  ATTACHMENT_RATE_LIMITER?: RateLimiterBinding;
+}
+
+export interface RateLimiterBinding {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
 export class UpstreamServiceError extends Error {

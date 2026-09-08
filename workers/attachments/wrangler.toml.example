@@ -14,5 +14,25 @@ SUPABASE_URL = "http://127.0.0.1:54321"
 # Optional hosted orphan sweep: `wrangler secret put SUPABASE_SERVICE_ROLE_KEY`.
 # The cron is a no-op until that secret exists.
 
+# Optional abuse control. Cloudflare counts these at the edge, so the limit holds across every
+# isolate the Worker runs in — an in-process counter would not. The Worker applies it twice per
+# request: keyed by client IP before it spends a Supabase Auth call, and keyed by the
+# authenticated user id afterwards. Without this binding there is no Worker-level throttling.
+#
+# Pick any namespace_id unique within this Worker. `simple` is requests per `period` seconds
+# (period must be 10 or 60). The values below allow roughly two requests a second per key, which
+# is well clear of a note with twenty attachments syncing at once.
+#
+# [[unsafe.bindings]]
+# name = "ATTACHMENT_RATE_LIMITER"
+# type = "ratelimit"
+# namespace_id = "1001"
+# simple = { limit = 120, period = 60 }
+
+# Request body size, connection, and CPU limits are Cloudflare platform limits, and zone-level
+# WAF rules, bot protection, and per-endpoint rate limiting live in the Cloudflare dashboard or
+# API for the zone in front of this Worker. None of those are configurable from this repository;
+# the upload cap the Worker itself enforces is in `src/limits.ts`.
+
 [triggers]
 crons = ["15 */6 * * *"]
