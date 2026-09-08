@@ -132,3 +132,64 @@ export async function sweepOrphanedDeletedAttachments(env: WorkerEnv): Promise<S
 
   return { scanned: rows.length, deleted, skipped };
 }
+
+/**
+ * Finishes attachment deletes that were claimed but never confirmed.
+ *
+ * A user DELETE marks the metadata deleted before it touches R2, so a request that dies in
+ * between leaves bytes nothing references. The row records the claim, so this pass can pick it
+ * up hours later, delete the object, and stamp the confirmation. It never removes metadata —
+ * whether the row itself may go is the orphan sweep's decision, under its own retention rules.
+ */
+export async function sweepUnconfirmedAttachmentDeletes(env: WorkerEnv): Promise<SweepResult> {
+  if (!serviceRoleHeaders(env)) {
+    return { scanned: 0, deleted: 0, skipped: 0 };
+  }
+
+  const rows = await rpc<OrphanRow[]>(env, 'list_unconfirmed_attachment_deletes', {
+    p_limit: SWEEP_LIMIT,
+  });
+  if (!Array.isArray(rows)) {
+    return { scanned: 0, deleted: 0, skipped: 0 };
+  }
+
+  let deleted = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    const ownerId = row.owner_id?.trim() ?? '';
+    const noteId = row.note_id?.trim() ?? '';
+    const attachmentId = row.attachment_id?.trim() ?? '';
+    const objectKey = row.object_key?.trim() ?? '';
+    let expected = '';
+    try {
+      expected = buildAttachmentObjectKey(ownerId, noteId, attachmentId);
+    } catch {
+      skipped += 1;
+      continue;
+    }
+    // Never trust a stored key over the one derived from the owner: the delete has to stay
+    // inside the owner's namespace even if the column were somehow wrong.
+    if (objectKey !== expected) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      await env.ATTACHMENTS_BUCKET.delete(objectKey);
+    } catch {
+      // The claim persists and stays unconfirmed, so the next sweep retries this same row.
+      skipped += 1;
+      continue;
+    }
+
+    const confirmed = await rpc<{ status?: string }>(env, 'confirm_attachment_object_deleted', {
+      p_owner_id: ownerId,
+      p_note_id: noteId,
+      p_attachment_id: attachmentId,
+    });
+    if (confirmed?.status === 'applied') deleted += 1;
+    else skipped += 1;
+  }
+
+  return { scanned: rows.length, deleted, skipped };
+}
