@@ -1,58 +1,26 @@
 # Notelikeus
 
-A notes app for **Android**, **Windows**, and the **web** — one product, three real clients, sharing a Kotlin Multiplatform core and a React PWA that speaks the same data model. Current release: **[1.0.3](https://github.com/shareef01/notelikeus/releases/tag/v1.0.3)**.
+A Keep-style notes app for Android, Windows and the browser. Notes are written to local storage first; signing in is optional and only adds sync on top.
 
-It started as the app I actually wanted to use: something as quick as Google Keep, that works with no signal and no account, and that doesn't hold my notes hostage in one vendor's cloud. Everything here follows from that — local storage first, sync as an optional layer on top, and a backup format I can read without the app.
+Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web client is a separate React PWA that talks to the same Supabase schema.
 
-**Live web app:** Cloudflare Pages (production domain is owner-configured; the old Firebase Hosting URL `notelike.web.app` is retired in source).
-
----
+- Web app: <https://notelikeus-dev.pages.dev>
+- Current version: [1.0.3](https://github.com/shareef01/notelikeus/releases/tag/v1.0.3)
+- Backend details: [docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md)
 
 ## Screenshots
 
-### Windows
+**Windows**
 
-<p align="center">
-  <img src="screenshots/desktop-notes.png" width="90%" alt="Notelikeus on Windows — pinned notes, labels, colour filters, and a collapsible side rail" />
-</p>
+<img src="screenshots/windows-notes.png" width="800" alt="Notelikeus on Windows: pinned notes, label and colour filters, collapsible side rail" />
 
-### Web
+**Web**
 
-<p align="center">
-  <img src="screenshots/web-notes.png" width="49%" alt="Web app note grid with pinned notes, colour and label filters, and List / Grid / Compact toggles" />
-  <img src="screenshots/web-editor.png" width="49%" alt="Web app note editor with rich-text toolbar" />
-</p>
+<img src="screenshots/web-notes.png" width="395" alt="Web note grid with pinned notes, filters and layout toggles" /> <img src="screenshots/web-editor.png" width="395" alt="Web note editor with the rich-text toolbar" />
 
-### Android
+**Android**
 
-<p align="center">
-  <img src="screenshots/android-notes.png" width="24%" alt="Android notes list with pinned cards, filters, and List / Grid / Compact" />
-  <img src="screenshots/android-drawer.png" width="24%" alt="Android navigation drawer — Notes, Archive, Trash, and smart views" />
-  <img src="screenshots/android-editor.png" width="24%" alt="Android note editor with rich-text toolbar" />
-  <img src="screenshots/android-settings.png" width="24%" alt="Android settings — System / Light / Dark, accent, AMOLED, and app lock" />
-</p>
-
----
-
-## How it works
-
-**Notes live on the device first.** Android and Windows use Room; on Android the database is encrypted with SQLCipher, keyed from the AndroidKeystore. Sync is a layer above that, not a prerequisite — sign in and your notes replicate through Supabase, or don't and the app is still fully usable offline.
-
-**The web client is local-first.** Signed-in and guest notes persist in IndexedDB. A service worker provides the PWA install path and reminders. Supabase Auth, RPC sync, and Realtime are the remote layer.
-
-**Conflicts resolve on a server revision**, not a client clock. A device with a skewed clock — or an imported backup with a hand-edited timestamp — can't overwrite a revision the server has already confirmed. Deletions propagate as tombstones, so a note deleted on one device stays deleted rather than being resurrected by another device syncing later.
-
-**Reads that fail open are treated as suspect.** A cloud fetch returning nothing when notes were expected refuses the sync rather than concluding everything was deleted, on every client. That guard exists because the alternative is silent, unrecoverable data loss.
-
-**Saved locally and synced to the cloud are different things, and the app says which.** An edit is saved once the local database — Room on Android and Windows, IndexedDB on the web — has taken it. Cloud sync happens after that and can fail on its own without changing the fact that the note is stored. So a note is never reported as saved before the local write lands, and a network failure is reported as sync pending, not as a lost note.
-
-**A failed local save keeps your text.** If the local write actually fails, the editor stays open holding the edit and offers to retry; leaving without saving is a deliberate choice you make, never something a failed write does for you.
-
-**Attachments are staged on disk before the note points at them.** An image you attach is written to durable local storage first, so a note that references it still has the bytes after a restart, and the upload can resume later. Staged bytes are scoped to the account that created them.
-
-**Backup import adds copies.** Importing a JSON backup adds its notes as new notes; it does not replace what is already on the device, so importing the same file twice gives you two sets. The JSON format carries note content, not attachments.
-
----
+<img src="screenshots/android-settings.png" width="190" alt="Android settings: theme, accent, pure black, app lock" /> <img src="screenshots/android-drawer.png" width="190" alt="Android navigation drawer with Notes, Archive, Trash and smart views" /> <img src="screenshots/android-notes.png" width="190" alt="Android notes list with a pinned card and filter chips" /> <img src="screenshots/android-editor.png" width="190" alt="Android note editor with the rich-text toolbar" />
 
 ## Features
 
@@ -61,111 +29,124 @@ It started as the app I actually wanted to use: something as quick as Google Kee
 | Notes, labels, checklists, colours | ✓ | ✓ | ✓ |
 | Pin, archive, trash, search, filters | ✓ | ✓ | ✓ |
 | List / grid / compact layouts | ✓ | ✓ | ✓ |
-| Multi-select + bulk actions | ✓ | ✓ | ✓ |
-| Swipe actions + undo | ✓ | ✓ | ✓ |
-| Manual reorder (list view) | ✓ | ✓ | ✓ |
-| Date-grouped sections | ✓ | ✓ | ✓ |
-| Collapsible side rail (persisted) | — (drawer) | ✓ | ✓ |
-| Appearance (System / Light / Dark, AMOLED, accent) | ✓ | ✓ | ✓ |
 | Rich text (bold, italic, links, bullets) | ✓ | ✓ | ✓ |
-| Reminders | System notifications | Tray (missed ones surface at next launch) | Service worker |
-| Encrypted local database | ✓ SQLCipher | — | — |
+| Multi-select and bulk actions | ✓ | ✓ | ✓ |
+| Swipe actions with undo | ✓ | ✓ | ✓ |
+| Manual reorder in list view | ✓ | ✓ | ✓ |
+| Image attachments | ✓ | ✓ | ✓ |
+| Theme, accent, pure black | ✓ | ✓ | ✓ |
+| Reminders | Notifications | Tray, while the app runs | Service worker |
+| Encrypted local database | SQLCipher | — | — |
 | Biometric app lock | ✓ | — | — |
-| Home-screen widget | ✓ Glance | — | — |
-| Google sign-in + Supabase sync | Optional | Optional | Optional |
-| Works with no account | ✓ | ✓ | ✓ |
+| Home-screen widget | Glance | — | — |
+| Google sign-in and cloud sync | Optional | Optional | Optional |
+| Usable with no account | ✓ | ✓ | ✓ |
 | JSON backup import / export | ✓ | ✓ | ✓ |
 | Installable PWA | — | — | ✓ |
 
----
+## How it works
+
+Notes are stored on the device. Android and Windows use Room; on Android the database is encrypted with SQLCipher under a key held in the Android Keystore. The web client keeps notes in IndexedDB, for guests and signed-in users alike. Nothing about the app requires an account.
+
+Sync sits above that. When you sign in, notes replicate through Supabase: Postgres RPCs for mutations, Realtime as a wake-up signal, row-level security for isolation.
+
+Conflicts resolve on a server-assigned revision rather than a client clock, so a device with a skewed clock cannot overwrite a revision the server has already confirmed. Deletions travel as tombstones, so a note deleted on one device stays deleted when another device syncs later.
+
+A cloud read that fails is not treated as an empty account. A fetch returning nothing where notes were expected refuses the sync rather than concluding everything was deleted.
+
+Saved locally and synced are reported as different things. An edit counts as saved once Room or IndexedDB has taken it; a later network failure shows as sync pending, not as a lost note. If the local write itself fails, the editor stays open holding the text and offers a retry.
+
+Attachments are written to durable local storage before the note references them, so a note that points at an image still has the bytes after a restart and the upload can resume. Blobs live in Cloudflare R2 behind a Worker that verifies the Supabase session and derives the object key from the authenticated user. Staged bytes are scoped to the account that created them.
+
+Importing a JSON backup adds its notes as new notes rather than replacing what is on the device, so importing the same file twice gives you two copies. The format carries note content, not attachments.
 
 ## Stack
 
 | Layer | Android / Windows | Web |
 |---|---|---|
 | UI | Compose Multiplatform | React 19, TypeScript, Tailwind |
-| Architecture | MVVM + repositories (shared) | Hooks + Zustand stores |
-| Local data | Room (SQLCipher on Android) | IndexedDB |
-| Cloud | Supabase Auth + PostgreSQL RPC/Realtime | Supabase Auth + PostgreSQL RPC/Realtime |
-| Attachments | Cloudflare Worker + R2 | Cloudflare Worker + R2 |
-| Web hosting | — | Cloudflare Pages |
-| DI / tooling | Koin, Coroutines, Flow | Vite 8, Vitest |
-| Widget | Glance | — |
-
-See [docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md) for auth, sync, RLS, and deployment.
-
----
-
-## Testing
-
-Roughly 250 automated checks, arranged so that each one can actually fail:
-
-| Suite | Covers | Run with |
-|---|---|---|
-| JVM unit (~200) | Sync engine, mappers, repositories, backup, key management, populated Room upgrades | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest` |
-| Minified release APK | R8 + resource shrink; unsigned in CI | `./gradlew :androidApp:assembleRelease` |
-| Instrumented (4) | Database quarantine and encryption migration, on a real device | `./gradlew :composeApp:connectedDebugAndroidTest` |
-| pgTAP | RLS, RPC sync, tombstones, attachments | `npm run supabase:test` (needs Docker / `supabase start`) |
-| Web unit | Merge logic, conflict resolution, backup parsing, search | `cd web && npm test` |
-| Browser end-to-end | Built bundle in Chromium against local Supabase | `cd web && npm run test:e2e` |
-| Attachments Worker | JWT auth, path isolation, size/MIME | `npm run test:attachments-worker` |
-| Pages artifacts | `_headers` / `_redirects` in `web/dist` | `npm run pages:verify` |
-
-The last web e2e suite needs a local Supabase (`npm run supabase:start`). Android CI minifies a release APK on every PR so an R8 keep-rule break cannot wait for a tag. The instrumented suite needs a connected device or emulator.
-
----
-
-## Requirements
-
-- Android 8.0+ (API 26) / Windows 10+
-- JDK 17+ to build
-- Node.js 24 LTS for the web app
-- Docker (optional locally) for the Supabase CLI database suite
+| Structure | MVVM with shared repositories | Hooks and Zustand stores |
+| Local data | Room, SQLCipher on Android | IndexedDB |
+| Cloud | Supabase Auth, Postgres RPC, Realtime | Supabase Auth, Postgres RPC, Realtime |
+| Attachments | Cloudflare Worker and R2 | Cloudflare Worker and R2 |
+| Hosting | MSI installer | Cloudflare Pages |
+| Tooling | Koin, Coroutines, Flow | Vite, Vitest, Playwright |
 
 ## Getting started
 
+Requires JDK 17 for the Kotlin targets and Node.js 24 for the web app. The database test suite needs Docker for the Supabase CLI.
+
 ```bash
-# Local backend
 npm install
 npm run supabase:start
 npm run supabase:reset
+```
 
-# Android (device Google sign-in needs a hosted URL baked into the APK;
-# debug builds do not fall back to localhost HTTP). Requires gitignored
-# web/.env.staging from `npm run setup:staging`.
+### Android
+
+Google sign-in on a device needs a hosted Supabase URL compiled into the APK; debug builds do not fall back to localhost. `npm run setup:staging` writes the gitignored `web/.env.staging` that the next command reads.
+
+```bash
 npm run kotlin:staging-properties
 ./gradlew :androidApp:assembleDebug
+```
 
-# Windows
-./gradlew :composeApp:run
+See [docs/ANDROID_STAGING.md](docs/ANDROID_STAGING.md) for the keys involved.
 
-# Web
-cd web && npm install
+### Windows
+
+```bash
+./gradlew :composeApp:run          # run from source
+./gradlew :composeApp:packageMsi   # build the installer
+```
+
+### Web
+
+```bash
+cd web
+npm install
 cp .env.example .env
 npm run dev
 ```
 
-Production web builds need a hosted `VITE_SUPABASE_URL` and public `VITE_SUPABASE_ANON_KEY`. See [docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md).
+Production builds need a hosted `VITE_SUPABASE_URL` and the public `VITE_SUPABASE_ANON_KEY`.
+
+## Testing
+
+| Suite | Covers | Command |
+|---|---|---|
+| Kotlin unit | Sync engine, mappers, repositories, backup, key management, Room migrations | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest :androidApp:testDebugUnitTest` |
+| Instrumented | Database quarantine and encryption migration, on a device | `./gradlew :composeApp:connectedDebugAndroidTest` |
+| Minified release | R8 and resource shrinking | `./gradlew :androidApp:assembleRelease` |
+| Web unit | Merge logic, conflict resolution, backup parsing, search | `cd web && npm test` |
+| Web end-to-end | Built bundle in Chromium against local Supabase | `cd web && npm run test:e2e` |
+| Database | RLS, sync RPCs, tombstones, attachments (pgTAP) | `npm run supabase:test` |
+| Attachments Worker | JWT auth, path isolation, size and MIME limits | `npm run test:attachments-worker` |
+| Pages artifacts | `_headers` and `_redirects` in `web/dist` | `npm run pages:verify` |
+
+The instrumented suite needs a connected device or emulator; the database and end-to-end suites need a running local Supabase (`npm run supabase:start`).
 
 ## Repository layout
 
-| Path | What it is |
+| Path | Contents |
 |---|---|
-| `androidApp/` | Android application (manifest, AppFunctions, widget metadata) |
-| `composeApp/` | Shared Kotlin Multiplatform UI, domain, Room, and Windows desktop |
-| `web/` | React PWA (IndexedDB + Supabase) |
-| `supabase/` | Postgres migrations, seed, pgTAP |
-| `workers/attachments/` | Cloudflare Worker + R2 authorization |
-| `cloudflare/` | Pages header verification |
-| `docs/` | Architecture, superseded migration notes, Pixel QA |
-| `archive/` | Removed features kept with restore notes |
+| `androidApp/` | Android application module: manifest, AppFunctions, widget metadata |
+| `composeApp/` | Shared Kotlin Multiplatform UI, domain, Room, and the Windows desktop target |
+| `web/` | React PWA |
+| `supabase/` | Postgres migrations, seed data, pgTAP tests |
+| `workers/attachments/` | Cloudflare Worker for R2 authorization |
+| `cloudflare/` | Pages header parity check |
+| `docs/` | Architecture, design decisions, known defects, device QA |
+| `store/` | Play Store listing copy and publishing notes |
 
----
+## Privacy
+
+Guest notes never leave the device. Signed-in notes sync to your own Supabase account, protected by row-level security and authorized RPCs rather than end-to-end encryption. There is no analytics or tracking SDK in any client. See [PRIVACY_POLICY.md](PRIVACY_POLICY.md).
 
 ## Maintainer
 
-Maintained by [@shareef01](https://github.com/shareef01).
+Built and maintained by [@shareef01](https://github.com/shareef01). Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## License
 
-Private project — all rights reserved unless otherwise noted.
+All rights reserved. No licence is granted for reuse or redistribution.

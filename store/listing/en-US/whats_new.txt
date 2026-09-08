@@ -1,8 +1,6 @@
-Notelikeus 1.0.0
+Notelikeus 1.0.3
 
-• Google sign-in with cloud sync across your devices
-• Realtime Firestore sync on web; background sync on Android
-• Labels, checklists, colors, pin, archive, trash, and search
-• Date/time reminders and a home screen widget
-• Optional biometric app lock
-• JSON backup import and export
+• Fixed the bold and italic toolbar actions in the editor
+• Keyboard focus and screen-reader fixes across dialogs and sheets
+• Corrected contrast on light theme error states
+• Sort control now reflects relevance ranking during search
