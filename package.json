@@ -13,6 +13,7 @@
     "supabase:stop": "supabase stop",
     "supabase:reset": "supabase db reset --yes",
     "supabase:test": "supabase test db",
+    "supabase:test-concurrency": "node supabase/tests/concurrency/attachment-quota-lock.test.mjs",
     "setup:staging": "bash scripts/ops/setup-staging.sh",
     "kotlin:staging-properties": "node scripts/ops/write-kotlin-staging-properties.mjs",
     "test:kotlin-staging-properties": "node --test scripts/ops/write-kotlin-staging-properties.test.mjs",

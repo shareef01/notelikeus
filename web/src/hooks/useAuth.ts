@@ -4,6 +4,7 @@ import { formatAuthError } from '@/lib/auth/authErrors';
 import { clearLocalUserData } from '@/lib/bootstrap';
 import { hadSessionLastLoad, forgetSignedIn, rememberSignedIn } from '@/lib/auth/sessionHint';
 import { shouldStartSupabaseAuthOnBoot } from '@/lib/auth/supabaseAuthBoot';
+import { notifyGuestNotesRemain } from '@/lib/auth/guestNotesNotice';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
 
@@ -12,6 +13,9 @@ function handleAuthUser(nextUser: AuthUser | null): void {
     if (useAuthStore.getState().guestMode) {
       clearLocalUserData();
       useAuthStore.getState().exitGuestMode();
+      // Guest notes stay in their own namespace rather than moving into the account, so say so.
+      // Without this they simply vanish from the UI, which is indistinguishable from data loss.
+      void notifyGuestNotesRemain();
     }
     rememberSignedIn();
   } else {

@@ -52,6 +52,10 @@ jobs:
       - name: Run pgTAP database tests
         run: npm run supabase:test
 
+      # pgTAP is single-session, so quota serialisation is proven with two real psql sessions.
+      - name: Run concurrency tests
+        run: npm run supabase:test-concurrency
+
       - name: Stop local Supabase stack
         if: always()
         run: npm run supabase:stop
