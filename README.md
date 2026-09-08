@@ -74,7 +74,9 @@ Importing a JSON backup adds its notes as new notes rather than replacing what i
 
 ## Getting started
 
-Requires JDK 17 for the Kotlin targets and Node.js 24 for the web app. The database test suite needs Docker for the Supabase CLI.
+Android 8.0 (API 26) is the minimum supported release, and the desktop build ships as a
+Windows MSI. Building needs JDK 17 for the Kotlin targets and Node.js 24 for the web app;
+the database suite needs Docker for the Supabase CLI.
 
 ```bash
 npm install
