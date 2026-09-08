@@ -1,26 +1,28 @@
-# Contributing to Notelikeus
+# Contributing
 
-Thank you for your interest in Notelikeus.
+Notelikeus is a personal project with one maintainer, [@shareef01](https://github.com/shareef01). Issues and pull requests are welcome, and I review them when I have time.
 
-## Maintainership
+## Issues
 
-Notelikeus is an independently maintained personal project by [@shareef01](https://github.com/shareef01).
+Open a GitHub issue for bugs and suggestions. Include the platform (Android, Windows, web), the app version, and what you expected to happen. For anything security related, follow [SECURITY.md](SECURITY.md) instead.
 
-## Reporting Issues & Feedback
+## Pull requests
 
-- If you encounter a bug or have a feature suggestion, please open an issue on GitHub.
-- For security vulnerabilities, please refer to [SECURITY.md](SECURITY.md).
+Fork, branch, and keep the change focused on one thing. Before opening the PR, run whichever suites your change touches:
 
-## Submitting Pull Requests
+```bash
+cd web && npm run lint && npm run typecheck && npm test
+npm run supabase:start && npm run supabase:reset && npm run supabase:test
+npm run test:attachments-worker
+./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest :androidApp:testDebugUnitTest
+```
 
-1. Fork the repository and create a feature branch.
-2. Ensure all existing tests and builds pass before submitting:
-   - Web: `cd web && npm test && npm run lint && npm run typecheck`
-   - Database: `npm run supabase:start && npm run supabase:reset && npm run supabase:test`
-   - Attachments worker: `npm run test:attachments-worker`
-   - Android & Desktop: `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest`
-3. Maintain existing invariants:
-   - Offline-first architecture and fast local capture
-   - Strict tenant isolation and revision-aware remote conflict handling
-   - Zero telemetry and zero analytics
-4. Open a pull request with a concise description of the changes and testing performed.
+A few invariants the codebase depends on, so changes that break them will not merge:
+
+- Local storage is written before cloud sync, and a note is never reported as saved before the local write lands.
+- Remote conflicts resolve on the server revision, and deletions propagate as tombstones.
+- A failed cloud read is never treated as an empty account.
+- Tenant isolation is enforced in Postgres (row-level security and authorized RPCs), not only in client code.
+- No analytics, telemetry, or tracking SDKs.
+
+Describe what you changed and how you tested it in the PR body.

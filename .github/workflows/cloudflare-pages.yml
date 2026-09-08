@@ -112,11 +112,9 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy web/dist --project-name=notelikeus-dev
 
-  # The verify job builds with placeholder env so PRs never need secrets. Merging that
-  # artifact would pin CSP to placeholder.supabase.co and skip a real deploy — which is
-  # why #164's privacy.html sat in git while notelikeus-dev.pages.dev stayed on Firebase
-  # copy until a local `npm run deploy:staging-pages`. Push to main rebuilds with secrets
-  # and publishes the production alias.
+  # The verify job builds with placeholder env so PRs never need secrets, which pins its
+  # CSP to placeholder.supabase.co — that artifact must never be deployed. Push to main
+  # rebuilds with the real secrets and publishes the production alias.
   deploy:
     if: github.event_name == 'push'
     needs: verify
