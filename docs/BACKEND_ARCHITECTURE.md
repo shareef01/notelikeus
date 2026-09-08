@@ -33,8 +33,8 @@ Supabase PostgreSQL. Authoritative note mutations go through RPCs, not direct ta
 - `clear_note_tombstone` (explicit undo of a permanent delete)
 - `delete_all_user_cloud_data`
 - `validate_note_payload` (shared by apply + restore)
-- attachment RPCs: `register_note_attachment`, `delete_note_attachment`, `list_user_attachments`, `list_pending_deleted_attachments`, `purge_deleted_note_attachment`, `authorize_note_attachment_{put,get,delete}`
-- Hosted sweep only (`service_role`): `list_orphaned_deleted_attachments`, `purge_orphaned_deleted_attachment`
+- attachment RPCs: `register_note_attachment`, `delete_note_attachment`, `list_user_attachments`, `list_pending_deleted_attachments`, `purge_deleted_note_attachment`, `precheck_note_attachment_put`, `authorize_note_attachment_{put,get,delete}`, `finalize_note_attachment_put`, `begin_note_attachment_delete`, `finalize_note_attachment_delete`
+- Hosted sweep only (`service_role`): `list_orphaned_deleted_attachments`, `claim_orphaned_attachment_for_delete`, `purge_orphaned_deleted_attachment`, `list_unconfirmed_attachment_deletes`, `confirm_attachment_object_deleted`
 
 Row-level security is enabled on user-owned tables. Direct INSERT/UPDATE/DELETE of revision, owner, and tombstone rows is blocked by mutation guards. User attachment PUT/GET/DELETE stay on the caller’s bearer token.
 
@@ -62,9 +62,16 @@ Supabase Realtime (`postgres_changes`) is a wake-up: subscribe after login, unsu
 - Metadata: `note_attachments` in Postgres.
 - Blobs: Cloudflare R2.
 - Authorization: Cloudflare Worker verifies the Supabase JWT and derives `owners/{userId}/notes/{noteId}/{attachmentId}`. Callers cannot supply an arbitrary object key. Unauthorized GET/DELETE are generic 404.
+- Request pipeline order: route shape -> method -> upload headers -> rate limit -> authenticate -> per-user rate limit -> authorize the resource -> body/storage work. Everything before authentication is a property of the request alone, so the ordering cannot be used to probe for another user's notes. `PATCH /invalid-path` costs no outbound call.
+- Upload order: `precheck_note_attachment_put` decides ownership before a single body byte is read, then the body is streamed under the cap, then `authorize_note_attachment_put` runs against the real byte count, then R2, then `finalize_note_attachment_put`. The precheck is advisory; size, MIME, both quotas, note liveness, and the canonical key are all still enforced authoritatively at finalization, under the per-owner advisory lock.
+- Delete order (user-initiated): `begin_note_attachment_delete` takes a row lock, marks `deleted_at` and `delete_claimed_at`, and returns the canonical key; then the R2 object is deleted; then `finalize_note_attachment_delete` stamps `object_deleted_at`. Claiming first means every later failure leaves an orphaned object -- recoverable -- instead of live metadata pointing at bytes that are gone. A failure to stamp the confirmation is reported as `confirmed: false` in a 200 response, because the attachment really is deleted by then. Every phase is idempotent, so a repeated DELETE converges.
+- A claimed attachment is never resurrected, by any path. `restore_note` skips rows carrying `delete_claimed_at` (the owner deleted it) or `purge_claimed_at` (a sweeper claimed it), and `finalize_note_attachment_put` refuses a claimed identity under that row's own lock, so a DELETE landing mid-upload wins over the upload rather than being undone by it. A `note_attachments` CHECK constraint makes it structural: no function can leave a live row carrying a claim. Attachments deleted only as a side effect of deleting the note carry neither stamp and still come back.
+- Deleting an attachment retires its id. A PUT of a retired id is refused with `terminally_deleted` (Worker: 409) rather than reviving it; replacement content uses a **new** attachment id, as it always has. The refusal is a value, not an exception, precisely so the Worker can tell it apart from a timeout and safely delete bytes it has already written — on an ambiguous failure it still leaves them, because a live row may still need them.
 - Delete order: authoritative note delete first, then R2. Prefer an orphan blob over destroying data. `apply_note_delete` sets `note_attachments.deleted_at` in the same transaction; `restore_note` clears it.
 - Client sweep: `list_pending_deleted_attachments` + `purge_deleted_note_attachment` on the next snapshot/pull. Pending GC is persisted locally.
-- Hosted sweep (optional Worker cron every 6 hours): `service_role` lists metadata that is deleted, tombstoned, not live, and older than 24 hours, then deletes the canonical R2 key and purges the row. Without `SUPABASE_SERVICE_ROLE_KEY` the cron is a no-op. It never lists R2 first.
+- Hosted sweep (optional Worker cron every 6 hours): `service_role` lists metadata that is deleted, tombstoned, not live, and older than 24 hours, claims it under a row lock, then deletes the canonical R2 key and purges the row. Without `SUPABASE_SERVICE_ROLE_KEY` the cron is a no-op. It never lists R2 first.
+- Second cron pass: `list_unconfirmed_attachment_deletes` finds deletes claimed more than an hour ago whose object was never confirmed gone -- a client that died mid-DELETE -- deletes the object and stamps `confirm_attachment_object_deleted`. It never removes metadata; whether the row itself may go stays the orphan sweep's decision.
+- Abuse controls: bind a Cloudflare rate limiter as `ATTACHMENT_RATE_LIMITER` (see `wrangler.toml.example`) and the Worker throttles by client IP before authenticating and by user id after. Counting happens at the edge, so the limit is not defeated by a different isolate. Zone-level WAF rules, bot protection, and platform request limits are configured on the Cloudflare zone and are **not** represented in this repository.
 - PUT retry: an attachment id is an immutable identity, and its object key is derived from it, so a repeated PUT of a committed attachment is a retry of work that already succeeded. `authorize_note_attachment_put` returns `already_live`, and the Worker then returns the committed object instead of rewriting it. Changing an image's content uses a **new** attachment id.
 - Compensation scope: the compensating R2 delete after a failed finalization only removes bytes the failed request itself created. It never touches an object a surviving metadata row still points at — otherwise a retry that failed to finalize could destroy a previously committed blob.
 
@@ -103,6 +110,7 @@ Worker:
 - `SUPABASE_SERVICE_ROLE_KEY` (optional secret; cron orphan sweep only)
 - `ATTACHMENTS_BUCKET` (R2 binding)
 - `ALLOWED_ORIGINS` (optional)
+- `ATTACHMENT_RATE_LIMITER` (optional Cloudflare rate-limit binding)
 
 Never put `service_role`, database passwords, or OAuth client secrets in a client app.
 
@@ -130,7 +138,7 @@ Gradle:
 
 Owner-operated (credentials required):
 
-1. Create a fresh Supabase project, `supabase link`, `supabase db push`.
+1. Create a fresh Supabase project, `supabase link`, `supabase db push`. Migrations go out **before** the Worker: a Worker calling an RPC its database does not have yet answers 503, and the older Worker's RPCs all still exist, so schema-first is the safe order in both directions.
 2. Enable Google provider; add redirect URLs for localhost, Pages preview, and the production domain.
 3. Enable Realtime on `notes` and `note_tombstones` (already published by migration).
 4. Create an R2 bucket, deploy `workers/attachments`. Optional: `wrangler secret put SUPABASE_SERVICE_ROLE_KEY` so the orphan-sweep cron can run.

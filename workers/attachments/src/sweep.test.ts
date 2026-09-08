@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerEnv } from './auth';
-import { sweepOrphanedDeletedAttachments } from './sweep';
+import { sweepOrphanedDeletedAttachments, sweepUnconfirmedAttachmentDeletes } from './sweep';
 
 const OWNER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const OBJECT_KEY = `owners/${OWNER}/notes/1/att1`;
@@ -27,6 +27,10 @@ let rpcCalls: Array<{ url: string; body: unknown }>;
 function mockRpcs(handlers: {
   list?: unknown;
   listStatus?: number;
+  unconfirmed?: unknown;
+  unconfirmedStatus?: number;
+  confirm?: unknown;
+  confirmStatus?: number;
   /** Claim response. Defaults to granting the claim for the canonical key of the listed row. */
   claim?: unknown;
   claimStatus?: number;
@@ -53,6 +57,16 @@ function mockRpcs(handlers: {
             object_key: `owners/${body.p_owner_id}/notes/${body.p_note_id}/${body.p_attachment_id}`,
           };
         return new Response(JSON.stringify(claim), { status: handlers.claimStatus ?? 200 });
+      }
+      if (url.includes('list_unconfirmed_attachment_deletes')) {
+        return new Response(JSON.stringify(handlers.unconfirmed ?? []), {
+          status: handlers.unconfirmedStatus ?? 200,
+        });
+      }
+      if (url.includes('confirm_attachment_object_deleted')) {
+        return new Response(JSON.stringify(handlers.confirm ?? { status: 'applied' }), {
+          status: handlers.confirmStatus ?? 200,
+        });
       }
       if (url.includes('purge_orphaned_deleted_attachment')) {
         return new Response(JSON.stringify(handlers.purge ?? { status: 'applied' }), {
@@ -263,5 +277,119 @@ describe('orphaned attachment sweep', () => {
     expect((await sweepOrphanedDeletedAttachments(env)).skipped).toBe(1);
     // Purging here would drop the only record of an object that is still stored.
     expect(rpcCalls.some((call) => call.url.includes('purge_'))).toBe(false);
+  });
+});
+
+
+/**
+ * The recovery half of the user DELETE protocol.
+ *
+ * A DELETE records the claim before it touches R2, so a request that died in between leaves an
+ * object nothing references and a row that says so. This pass finishes that work hours later,
+ * without the client ever coming back.
+ */
+describe('unconfirmed attachment delete sweep', () => {
+  it('does nothing without a service-role key', async () => {
+    delete env.SUPABASE_SERVICE_ROLE_KEY;
+    mockRpcs({
+      unconfirmed: [{ owner_id: OWNER, note_id: '1', attachment_id: 'att1', object_key: OBJECT_KEY }],
+    });
+    await bucket.put(OBJECT_KEY, new Uint8Array([1]));
+
+    expect(await sweepUnconfirmedAttachmentDeletes(env)).toEqual({
+      scanned: 0,
+      deleted: 0,
+      skipped: 0,
+    });
+    expect(bucket.objects.has(OBJECT_KEY)).toBe(true);
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it('deletes the abandoned object and stamps the confirmation', async () => {
+    mockRpcs({
+      unconfirmed: [{ owner_id: OWNER, note_id: '1', attachment_id: 'att1', object_key: OBJECT_KEY }],
+    });
+    await bucket.put(OBJECT_KEY, new Uint8Array([1]));
+
+    expect(await sweepUnconfirmedAttachmentDeletes(env)).toEqual({
+      scanned: 1,
+      deleted: 1,
+      skipped: 0,
+    });
+    expect(bucket.objects.has(OBJECT_KEY)).toBe(false);
+    expect(rpcCalls[1]?.url).toContain('confirm_attachment_object_deleted');
+    expect(rpcCalls[1]?.body).toEqual({
+      p_owner_id: OWNER,
+      p_note_id: '1',
+      p_attachment_id: 'att1',
+    });
+  });
+
+  it('is harmless when the object was already deleted before the crash', async () => {
+    mockRpcs({
+      unconfirmed: [{ owner_id: OWNER, note_id: '1', attachment_id: 'att1', object_key: OBJECT_KEY }],
+    });
+
+    expect((await sweepUnconfirmedAttachmentDeletes(env)).deleted).toBe(1);
+    expect(rpcCalls.some((call) => call.url.includes('confirm_attachment_object_deleted'))).toBe(true);
+  });
+
+  it('never removes metadata: that stays the orphan sweep decision', async () => {
+    mockRpcs({
+      unconfirmed: [{ owner_id: OWNER, note_id: '1', attachment_id: 'att1', object_key: OBJECT_KEY }],
+    });
+    await bucket.put(OBJECT_KEY, new Uint8Array([1]));
+
+    await sweepUnconfirmedAttachmentDeletes(env);
+
+    expect(rpcCalls.some((call) => call.url.includes('purge_'))).toBe(false);
+  });
+
+  it('skips a row whose stored key is not the canonical owner path', async () => {
+    mockRpcs({
+      unconfirmed: [{
+        owner_id: OWNER,
+        note_id: '1',
+        attachment_id: 'att1',
+        object_key: 'owners/someone-else/notes/1/att1',
+      }],
+    });
+    await bucket.put(OBJECT_KEY, new Uint8Array([1]));
+
+    expect(await sweepUnconfirmedAttachmentDeletes(env)).toEqual({
+      scanned: 1,
+      deleted: 0,
+      skipped: 1,
+    });
+    expect(bucket.objects.has(OBJECT_KEY)).toBe(true);
+    expect(rpcCalls.some((call) => call.url.includes('confirm_'))).toBe(false);
+  });
+
+  it('leaves the claim unconfirmed when the R2 delete fails, so the next sweep retries', async () => {
+    mockRpcs({
+      unconfirmed: [{ owner_id: OWNER, note_id: '1', attachment_id: 'att1', object_key: OBJECT_KEY }],
+    });
+    bucket.failNextDelete = true;
+
+    expect((await sweepUnconfirmedAttachmentDeletes(env)).skipped).toBe(1);
+    expect(rpcCalls.some((call) => call.url.includes('confirm_'))).toBe(false);
+  });
+
+  it('reports a refused confirmation as skipped rather than done', async () => {
+    mockRpcs({
+      unconfirmed: [{ owner_id: OWNER, note_id: '1', attachment_id: 'att1', object_key: OBJECT_KEY }],
+      confirm: { status: 'skipped', reason: 'not_claimed' },
+    });
+    await bucket.put(OBJECT_KEY, new Uint8Array([1]));
+
+    expect((await sweepUnconfirmedAttachmentDeletes(env)).deleted).toBe(0);
+  });
+
+  it('throws when the listing RPC fails', async () => {
+    mockRpcs({ unconfirmedStatus: 500 });
+
+    await expect(sweepUnconfirmedAttachmentDeletes(env)).rejects.toThrow(
+      /Sweep RPC failed: list_unconfirmed_attachment_deletes \(500\)/,
+    );
   });
 });
