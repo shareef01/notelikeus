@@ -1140,3 +1140,43 @@ Windows CI job, and a decision about guest-mode users for whom key loss is unrec
 loss. The full threat model, migration plan, recovery/backup/key-loss implications, and testing
 requirements are in [`docs/LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md), which also
 records why browser-side encryption must not be described as an XSS mitigation.
+
+---
+
+## F52 — `finalize_note_attachment_put` could revive an attachment whose deletion was already claimed — **FIXED**
+
+Follow-up review of F46. `20260908120000` made an owner-claimed deletion terminal and taught
+`restore_note` to respect it, but missed the other route back to live: the finalizer ends in
+`INSERT ... ON CONFLICT (owner_id, attachment_id) DO UPDATE SET ... deleted_at = NULL`, with no
+check on `delete_claimed_at`, `purge_claimed_at`, or `object_deleted_at`.
+
+Reproduced against the applied schema, not inferred:
+
+- **Sequential.** Upload `attA` → delete `attA` → re-PUT `attA` left
+  `deleted_at = NULL, delete_claimed_at NOT NULL, object_deleted_at NOT NULL` — a live attachment
+  whose bytes the Worker had already destroyed, and one no sweeper revisits: the unconfirmed-delete
+  pass skips confirmed rows, and the orphan pass needs the note to be gone.
+- **Concurrent**, two real sessions. A DELETE claim committing between a PUT's authorization and
+  its finalization was overwritten by that finalization. (The reverse order was already correct —
+  the claim waits on the insert's row lock and then wins.)
+- **Worker-level.** With a DELETE landing between `authorize` and `R2.head()`, the `already_live`
+  repair path re-uploaded bytes for an identity that had just been retired; `ownedByThisRequest`
+  was false, so ordinary compensation would have declined to remove them and nothing would ever
+  have collected them.
+
+**Fixed** in `20260908130000_attachment_delete_is_terminal.sql`. `finalize_note_attachment_put`
+now takes `FOR UPDATE` on the conflict row and returns
+`{allowed: false, reason: 'terminally_deleted', object_key}` — a value, not an exception, so the
+Worker can distinguish it from a timeout and force compensation for bytes it just wrote.
+`precheck_note_attachment_put` and `authorize_note_attachment_put` refuse the same identity early
+so no body is read. A CHECK constraint makes it structural: no function, including the
+still-reviving `register_note_attachment`, can leave a live row carrying a claim. A repair pass
+re-marks any pre-existing live-but-claimed row before the constraint is added.
+
+**Behaviour change**, and the one existing assertion it invalidated: an attachment id is retired by
+its own deletion, so re-uploading that id is refused (Worker 409) rather than treated as fresh.
+`notelikeus_attachment_put_idempotency.test.sql` step 5 asserted the old contract and now asserts
+the new one; replacement content uses a new attachment id, exactly as the architecture already
+documented.
+
+**Severity:** high (silent resurrection of destroyed data; unreachable by any sweeper).

@@ -110,6 +110,26 @@ interface AttachmentAuthz {
   size_bytes?: number;
   /** Delete finalization: the object deletion is recorded against the metadata row. */
   confirmed?: boolean;
+  /** Why a refusal was refused. `terminally_deleted` is authoritative — see putAttachment. */
+  reason?: string;
+}
+
+/**
+ * The database's authoritative "this attachment identity is retired" answer.
+ *
+ * It is deliberately a value rather than an error. Only an unambiguous answer lets this Worker
+ * delete bytes it has already written: a timeout, a 5xx, and an unreachable database all look
+ * alike, and one of them means a live attachment still needs those bytes.
+ */
+const TERMINALLY_DELETED = 'terminally_deleted';
+
+/**
+ * An attachment id is an immutable identity, and deleting it retires that identity for good.
+ * Replacement content uses a new id, so this asks the client to do that rather than pretending
+ * the upload succeeded.
+ */
+function terminallyDeleted(): Response {
+  return new Response('Attachment deleted; use a new attachment id', { status: 409 });
 }
 
 /**
@@ -200,6 +220,7 @@ async function putAttachment(
     p_declared_size_bytes: declared,
   });
   if (!precheck) return new Response('Unauthorized', { status: 401 });
+  if (precheck.reason === TERMINALLY_DELETED) return terminallyDeleted();
   if (!precheck.allowed) return new Response('Forbidden', { status: 403 });
   // Security boundary: NEVER trust a returned object_key over the locally derived key!
   if (!precheck.object_key || precheck.object_key !== objectKey) {
@@ -225,6 +246,8 @@ async function putAttachment(
     p_size_bytes: body.byteLength,
   });
   if (!preflight) return new Response('Unauthorized', { status: 401 });
+  // Still ahead of the R2 write, so there is nothing to compensate for yet.
+  if (preflight.reason === TERMINALLY_DELETED) return terminallyDeleted();
   if (!preflight.allowed) return new Response('Forbidden', { status: 403 });
 
   // Security boundary: NEVER trust preflight object_key over locally derived key!
@@ -255,10 +278,13 @@ async function putAttachment(
   }
 
   // Compensation may only remove bytes this request is solely responsible for. When a live row
-  // already referenced this key, the object is not ours to delete on failure.
+  // already referenced this key, the object is not ours to delete on an ambiguous failure.
+  // `force` is for the one answer that removes the ambiguity: if the database says the identity
+  // is terminally deleted, no row can legitimately point at this key — object_key is unique and
+  // derived from the identity — so the bytes this request just wrote are nobody's.
   const ownedByThisRequest = preflight.already_live !== true;
-  const compensate = async (reason: string) => {
-    if (!ownedByThisRequest) return;
+  const compensate = async (reason: string, force = false) => {
+    if (!ownedByThisRequest && !force) return;
     try {
       await env.ATTACHMENTS_BUCKET.delete(objectKey);
     } catch {
@@ -292,6 +318,15 @@ async function putAttachment(
   } catch (error) {
     await compensate('upstream finalization error');
     throw error;
+  }
+
+  // Checked before the generic rejection below, which would otherwise take the conservative
+  // branch and leave these bytes orphaned: a terminal answer carries no attachment_id, and on
+  // the repair path ownedByThisRequest is false. That is exactly the case a DELETE racing this
+  // upload produces.
+  if (finalized?.reason === TERMINALLY_DELETED) {
+    await compensate('terminally deleted identity', true);
+    return terminallyDeleted();
   }
 
   if (!finalized || !finalized.attachment_id || finalized.object_key !== objectKey) {

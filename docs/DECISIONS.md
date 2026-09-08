@@ -702,3 +702,32 @@ test `an unclaimed attachment cannot be purged` catches exactly that.
 the old order would compile against the old RPCs, which still exist. What cannot be reverted
 cheaply is the deployment order: the schema must ship before the Worker, because a Worker calling
 an RPC its database does not have answers 503 rather than guessing.
+
+**Amended after review** — the decision above was enforced in only one of the two directions.
+`restore_note` respected the claim; `finalize_note_attachment_put` did not, and its
+`ON CONFLICT DO UPDATE SET deleted_at = NULL` revived claimed rows both sequentially and when a
+DELETE claim raced a PUT. The invariant is now **terminal for the identity, not just for restore**:
+a claimed attachment id can never be finalized live again.
+
+Three deliberate choices in that fix:
+
+- **A CHECK constraint, not just a guard in the finalizer.** `register_note_attachment` still
+  carries the same reviving `ON CONFLICT` and is out of reach only because its grants were revoked;
+  a constraint means no function, present or future, can produce the forbidden state. The
+  constraint deliberately covers only `delete_claimed_at` and `purge_claimed_at` — the two states a
+  claim-holder acts on — so that `restore_note` can never be turned into an error by a row it
+  would otherwise simply skip. `object_deleted_at` is treated as terminal in the function guards
+  instead, defensively.
+- **Refused as a value (`reason: 'terminally_deleted'`), not an exception.** By the time
+  finalization runs the Worker has written bytes, and it may only delete them again on an answer
+  that cannot mean anything else. An exception, a timeout, and an unreachable database are
+  indistinguishable to the caller, and one of them means a live attachment still needs those bytes.
+- **Not clearing the claim columns during a PUT.** That was the other way to make the conflict go
+  away, and it would let one request resurrect an object another request has already been
+  authorized to destroy.
+
+**Cost to reverse:** the constraint would have to be dropped before the old finalizer could be
+restored, and any database that has run this migration may hold rows the repair pass re-marked as
+deleted. Those rows were already inconsistent — their bytes were claimed for destruction — so the
+repair is not information that can be recovered by reverting.
+

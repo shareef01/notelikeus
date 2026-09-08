@@ -1,5 +1,5 @@
 begin;
-select plan(12);
+select plan(13);
 
 -- Preflight has to tell the Worker whether an attachment is already committed, so a retried PUT
 -- is idempotent instead of overwriting a live object it might then have to compensate away.
@@ -72,12 +72,20 @@ select results_eq(
   'a different attachment id is not already live'
 );
 
--- 5. Deleting the attachment clears the live state, so a later upload is fresh again.
+-- 5. Deleting the attachment retires that identity. This assertion used to read "a later upload
+--    is fresh again", which was the contract before the delete protocol became terminal: the
+--    delete claims the attachment and its bytes are destroyed, so re-uploading the same id would
+--    resurrect metadata pointing at nothing. Replacement content uses a NEW id (see step 4).
 select public.finalize_note_attachment_delete('20', 'att20');
 select results_eq(
-  $$ select (public.authorize_note_attachment_put('20', 'att20', 'image/png', 1024)->>'already_live')::boolean $$,
-  ARRAY[false],
-  'a deleted attachment is no longer already live'
+  $$ select public.authorize_note_attachment_put('20', 'att20', 'image/png', 1024)->>'reason' $$,
+  ARRAY['terminally_deleted'::text],
+  'a deleted attachment id cannot be uploaded again'
+);
+select results_eq(
+  $$ select (public.authorize_note_attachment_put('20', 'att21', 'image/png', 1024)->>'allowed')::boolean $$,
+  ARRAY[true],
+  'a fresh attachment id on the same note is still allowed'
 );
 
 -- 6. Ownership still gates everything: another account learns nothing about this attachment.

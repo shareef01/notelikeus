@@ -113,7 +113,19 @@ function mockSupabaseAuth(
       const key = rowKey(id, noteId, attachmentId);
       const objectKey = `owners/${id}/notes/${noteId}/${attachmentId}`;
 
+      // Once a delete is claimed the identity is retired, and all three PUT RPCs say so.
+      const terminal = (() => {
+        const row = attachmentRows.get(key);
+        return row != null && (row.deleteClaimed || row.objectDeleted);
+      })();
+
       if (url.includes('/rest/v1/rpc/precheck_note_attachment_put')) {
+        if (terminal) {
+          return new Response(
+            JSON.stringify({ allowed: false, reason: 'terminally_deleted' }),
+            { status: 200 },
+          );
+        }
         const allowed = noteIsWritable(id, noteId, attachmentId);
         return new Response(
           JSON.stringify({
@@ -125,6 +137,12 @@ function mockSupabaseAuth(
         );
       }
       if (url.includes('/rest/v1/rpc/authorize_note_attachment_put')) {
+        if (terminal) {
+          return new Response(
+            JSON.stringify({ allowed: false, reason: 'terminally_deleted' }),
+            { status: 200 },
+          );
+        }
         const allowed = noteIsWritable(id, noteId, attachmentId);
         const row = attachmentRows.get(key);
         const live = row && !row.deleted ? row : undefined;
@@ -149,6 +167,12 @@ function mockSupabaseAuth(
         );
       }
       if (url.includes('/rest/v1/rpc/finalize_note_attachment_put')) {
+        if (terminal) {
+          return new Response(
+            JSON.stringify({ allowed: false, reason: 'terminally_deleted', object_key: objectKey }),
+            { status: 200 },
+          );
+        }
         const expectedKey = objectKey;
         if (id !== USER_A || noteId !== '1' || (body.p_object_key as string) !== expectedKey) {
           return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 });
@@ -1065,5 +1089,145 @@ describe('attachment DELETE protocol', () => {
     expect(response.status).toBe(404);
     expect(bucket.objects.has(bKey)).toBe(true);
     expect(attachmentRows.get(rowKey(USER_B, '1', 'att1'))).toMatchObject({ deleted: false });
+  });
+});
+
+/**
+ * An attachment id is retired by its own deletion.
+ *
+ * The delete protocol makes a claimed deletion terminal, but the object key is derived from the
+ * attachment id, so a PUT of that same id lands right back on the retired identity. The database
+ * is the authority here — a DELETE can be claimed at any point after the Worker's preflight said
+ * yes, including while the bytes are still uploading — and it answers `terminally_deleted` as a
+ * value so the Worker can act on it without guessing.
+ */
+describe('PUT against a terminally deleted attachment identity', () => {
+  const key = `owners/${USER_A}/notes/1/att1`;
+
+  async function commitThenDelete(): Promise<void> {
+    expect((await upload('1', 'att1', USER_A)).status).toBe(200);
+    expect(
+      (await handleAttachmentRequest(request('DELETE', '/v1/attachments/1/att1', USER_A), env))
+        .status,
+    ).toBe(200);
+    expect(bucket.objects.has(key)).toBe(false);
+    rpcLog = [];
+  }
+
+  it('cannot resurrect an id whose delete completed', async () => {
+    await commitThenDelete();
+
+    const response = await upload('1', 'att1', USER_A, 'replacement');
+
+    expect(response.status).toBe(409);
+    expect(bucket.objects.has(key)).toBe(false);
+    expect(attachmentRows.get(rowKey(USER_A, '1', 'att1'))).toMatchObject({ deleted: true });
+  });
+
+  it('refuses at the precheck, without reading the body', async () => {
+    await commitThenDelete();
+
+    await upload('1', 'att1', USER_A, 'replacement');
+
+    // Nothing past the precheck runs: no authorization, no finalization, no R2 write.
+    expect(rpcNames()).toEqual(['precheck_note_attachment_put']);
+  });
+
+  it('cannot resurrect an id claimed but not yet confirmed deleted', async () => {
+    expect((await upload('1', 'att1', USER_A)).status).toBe(200);
+    // The claim has landed; the object delete and its confirmation have not.
+    const row = attachmentRows.get(rowKey(USER_A, '1', 'att1'))!;
+    row.deleted = true;
+    row.deleteClaimed = true;
+    row.objectDeleted = false;
+
+    const response = await upload('1', 'att1', USER_A, 'replacement');
+
+    expect(response.status).toBe(409);
+    expect(attachmentRows.get(rowKey(USER_A, '1', 'att1'))).toMatchObject({
+      deleted: true,
+      deleteClaimed: true,
+    });
+  });
+
+  it('still uploads normally under a new attachment id', async () => {
+    await commitThenDelete();
+
+    const response = await upload('1', 'att2', USER_A, 'the replacement image');
+
+    expect(response.status).toBe(200);
+    expect(bucket.objects.has(`owners/${USER_A}/notes/1/att2`)).toBe(true);
+  });
+
+  it('does not let another owner reach a retired identity', async () => {
+    await commitThenDelete();
+
+    // USER_B's own namespace is untouched by USER_A retiring an id, and USER_B still cannot
+    // reach USER_A's note either way.
+    const response = await upload('1', 'att1', USER_B, 'intruder');
+
+    expect(response.status).toBe(403);
+    expect(bucket.objects.has(key)).toBe(false);
+  });
+
+  /**
+   * The interleaving that makes the authoritative answer necessary, and forced compensation with
+   * it. A DELETE lands between this PUT's authorization and its R2 lookup, so the Worker sees a
+   * live row, finds the object missing, and re-uploads to "repair" an attachment that has in fact
+   * just been retired. `ownedByThisRequest` is false on that path, so ordinary compensation would
+   * decline to remove the bytes — and nothing would ever collect them: the row's object deletion
+   * is already confirmed, so the unconfirmed-delete sweep skips it, and its note is still live, so
+   * the orphan sweep never looks at it either.
+   */
+  it('does not orphan replacement bytes when a DELETE races an already_live repair', async () => {
+    expect((await upload('1', 'att1', USER_A)).status).toBe(200);
+    rpcLog = [];
+
+    let raced = false;
+    const realHead = bucket.head.bind(bucket);
+    bucket.head = async (k: string) => {
+      if (!raced) {
+        raced = true;
+        // The whole DELETE completes here: claim, object delete, confirmation.
+        const deleted = await handleAttachmentRequest(
+          request('DELETE', '/v1/attachments/1/att1', USER_A),
+          env,
+        );
+        expect(deleted.status).toBe(200);
+      }
+      return realHead(k);
+    };
+
+    const response = await upload('1', 'att1', USER_A, 'repair-bytes');
+
+    expect(raced).toBe(true);
+    expect(response.status).toBe(409);
+    // The bytes this request wrote are gone again: the database said, unambiguously, that no row
+    // can ever point at this key.
+    expect(bucket.objects.has(key)).toBe(false);
+    expect(attachmentRows.get(rowKey(USER_A, '1', 'att1'))).toMatchObject({
+      deleted: true,
+      deleteClaimed: true,
+      objectDeleted: true,
+    });
+  });
+
+  it('leaves a live attachment bytes alone when finalization is merely untrustworthy', async () => {
+    // The conservative path must survive the new forced one. Same shape as the race above — live
+    // row, missing object, re-upload — but finalization times out instead of answering, so the
+    // Worker cannot know whether the row survived and must not destroy bytes it may still need.
+    expect((await upload('1', 'att1', USER_A)).status).toBe(200);
+    bucket.objects.delete(key);
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('finalize_note_attachment_put')) {
+        throw Object.assign(new Error('The operation was aborted'), { name: 'TimeoutError' });
+      }
+      return undefined;
+    });
+
+    const response = await upload('1', 'att1', USER_A, 'repair-bytes');
+
+    expect(response.status).toBe(503);
+    expect(bucket.objects.has(key)).toBe(true);
   });
 });
