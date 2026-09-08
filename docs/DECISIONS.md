@@ -665,3 +665,40 @@ sync and the deleted note returns on every other device. The bound is one-sided 
 bound would reject the write from a device with a fast clock, and a rejected tombstone means the
 deletion never propagates at all.
 
+
+---
+
+## D20 — An attachment delete records its intent before it deletes bytes, and a failure afterwards still answers 200.
+
+**Decided:** the user DELETE path is `begin_note_attachment_delete` (row lock, mark `deleted_at`
+and `delete_claimed_at`, return the canonical key) → delete the R2 object →
+`finalize_note_attachment_delete` (stamp `object_deleted_at`). If that last call is refused, fails,
+times out, or answers something unreadable, the Worker still replies `200 {"deleted": true,
+"confirmed": false}`.
+
+**Why:** ordering, not error handling, is what makes this safe. Deleting the object first left
+exactly one bad outcome available — a live metadata row pointing at bytes that were gone — and no
+amount of checking the finalization result could undo it, because by then the object was already
+destroyed. Claiming first inverts which side can be wrong: the attachment is deleted the moment the
+claim commits, and every later failure leaves at worst an orphaned object, which is recoverable and
+which the cron sweep now finishes on its own.
+
+That is also why a failed confirmation is not an error status. By the time it runs, the metadata
+says deleted and the bytes are gone — the attachment really is deleted, and telling the client
+otherwise would be the false answer. Two callers act on that status and both would act wrongly:
+`gcAttachmentsAfterNoteDelete` would keep retrying a completed delete forever, and
+`deleteAllSupabaseCloudData` would raise `CloudWipeIncompleteError`, telling the user their data
+survived when it did not. The missing stamp is reported in the body for anyone who wants it, and
+the sweeper picks the row up from its unconfirmed claim.
+
+**Why a separate `delete_claimed_at` rather than reusing `purge_claimed_at`:** they grant different
+things. `purge_claimed_at` is the sweeper's permission to *remove the metadata row*, and
+`purge_orphaned_deleted_attachment` acts on it directly; an attachment deleted from a live note
+must keep its row so clients still see the deletion and drop their local copy. Overloading one
+column would have let the orphan purge delete metadata it was never meant to touch — the existing
+test `an unclaimed attachment cannot be purged` catches exactly that.
+
+**Cost to reverse:** the columns are additive and the RPCs are additive; reverting the Worker to
+the old order would compile against the old RPCs, which still exist. What cannot be reverted
+cheaply is the deployment order: the schema must ship before the Worker, because a Worker calling
+an RPC its database does not have answers 503 rather than guessing.

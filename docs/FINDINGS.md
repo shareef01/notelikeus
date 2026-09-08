@@ -1024,3 +1024,119 @@ The duplicate `icon-512.png` `"purpose": "any"` entry (identical to the maskable
 **Severity:** low (incorrect metadata; install works but browser makes suboptimal icon choices; correct
 icon still served since browsers use the file data, not just the declared size).
 
+
+---
+
+## F46 — Attachment DELETE deleted the R2 object before recording the deletion, and ignored the result — **FIXED**
+
+`workers/attachments/src/index.ts:deleteAttachment` ran `authorize_note_attachment_delete` (a
+read-only preflight since `20260906160000`), deleted the R2 object, then called
+`finalize_note_attachment_delete` **and discarded the answer**, always replying
+`200 {"deleted":true}`.
+
+Every failure of that third call therefore produced a live metadata row pointing at an object that
+no longer existed:
+
+- 403/404/400 from the RPC became `{ allowed: false }` and was thrown away — a false 200.
+- 5xx, a network failure, a timeout, or a malformed body raised `UpstreamServiceError`, which the
+  outer handler turned into 502/503 **after** the bytes were already gone.
+- Nothing recorded the intent, so a client that gave up left the row live forever. The orphan
+  sweeper could not help: `list_orphaned_deleted_attachments` only looks at rows whose
+  `deleted_at` is set, and this row's never was.
+
+A related integrity bug fell out of the same ordering: because only finalization set `deleted_at`
+and nothing marked the deletion as the owner's own, `restore_note` would later undelete a row the
+user had explicitly deleted, resurrecting metadata whose bytes the Worker had destroyed. Reproduced
+directly against the migrations (delete attachment → delete note → restore note → row live again).
+
+**Fixed** by claiming the deletion first, mirroring the sweeper's own claim protocol from
+`20260907140000_attachment_purge_claim.sql`. `20260908120000_attachment_delete_claim.sql` adds
+`begin_note_attachment_delete` (row lock, marks `deleted_at` + `delete_claimed_at`, returns the
+canonical key), stamps `object_deleted_at` at finalization, teaches `restore_note` to skip
+owner-claimed rows, and adds a service-role recovery pass
+(`list_unconfirmed_attachment_deletes` / `confirm_attachment_object_deleted`) so an abandoned
+delete is finished by the cron rather than left forever. The Worker now reports an unconfirmed
+stamp as `confirmed: false` inside a 200, because by then the attachment genuinely is deleted.
+
+**Severity:** high (silent metadata/object divergence, unrecoverable without the claim).
+
+---
+
+## F47 — Worker authenticated against Supabase before rejecting unroutable requests — **FIXED**
+
+`handleAttachmentRequest` called `resolveAuthenticatedUserId` first, so `PATCH /invalid-path` with a
+garbage bearer cost one outbound Supabase Auth request before the 404/405 that any local check
+could have produced.
+
+**Fixed** by ordering the pipeline route shape → method → upload headers → rate limit →
+authenticate → per-user rate limit → resource authorization. Everything decided before
+authentication is a property of the request alone, so no status difference can be used to probe for
+another user's notes or attachments.
+
+**Severity:** medium (amplification of unauthenticated traffic into upstream auth calls).
+
+---
+
+## F48 — PUT buffered the whole upload before checking who owned the note — **FIXED**
+
+`putAttachment` read up to 10 MB into Worker memory and only then called
+`authorize_note_attachment_put`, so any authenticated account could make the Worker buffer an
+upload aimed at someone else's note before being told 403.
+
+**Fixed** with `precheck_note_attachment_put`, an advisory RPC that answers ownership, note
+liveness, MIME, the per-note count quota, and (from `Content-Length`, when present) an obvious
+byte-quota overflow before `request.body` is touched. Nothing authoritative moved: the real size,
+both quotas, note liveness and the canonical key are still enforced by
+`finalize_note_attachment_put` under the per-owner advisory lock, against the bytes that actually
+arrived.
+
+**Severity:** medium.
+
+---
+
+## F49 — An unreadable Supabase answer was indistinguishable from a refusal — **FIXED**
+
+`authorizeAttachment` treated any non-401, non-5xx failure as `{ allowed: false }`, and parsed the
+body with a bare `response.json()`. Two consequences: PostgREST's `404 PGRST202` — the RPC does not
+exist, i.e. a Worker deployed ahead of its migrations — was reported to the caller as "you may not
+do that"; and a JSON `null` body parsed to `null`, which the call sites read as "token rejected"
+and answered 401.
+
+**Fixed** by keeping three outcomes distinct: null for a rejected token, `{ allowed: false }` for a
+refusal, and `UpstreamServiceError` (503 unreachable / schema behind, 502 malformed) for an answer
+that cannot be trusted. A non-object JSON document is now an upstream fault, not a decision.
+
+**Severity:** medium.
+
+---
+
+## F50 — No repository-managed abuse controls on the attachments Worker — **PARTIALLY FIXED**
+
+`wrangler.toml.example` configured no rate limit, body limit, or timeout, and nothing in the repo
+throttled per user or per endpoint.
+
+**Fixed** as far as the repository can: the Worker now applies an *optional* Cloudflare
+rate-limiting binding (`ATTACHMENT_RATE_LIMITER`) keyed by client IP before authentication and by
+user id after, documented in `wrangler.toml.example`. Cloudflare counts these at the edge, so
+unlike an in-isolate counter the limit is not reset by the request landing on a different isolate.
+It fails open by design — throttling is a mitigation, not the authorization boundary.
+
+**Not fixed, and not fixable here:** zone-level WAF rules, bot management, per-endpoint rate
+limiting, and platform request/CPU limits are configured on the Cloudflare zone, not in this
+repository. Deployments that want them must set them there.
+
+---
+
+## F51 — Windows and Web store notes unencrypted at rest — **DESIGN / PRODUCT DECISION**
+
+Android encrypts its Room database with SQLCipher under an AndroidKeyStore-sealed passphrase.
+Windows uses `BundledSQLiteDriver` against a plaintext file (only the Supabase session token is
+DPAPI-sealed), and Web stores plain records in IndexedDB. `PRIVACY_POLICY.md` already describes
+this accurately.
+
+Not implemented here, deliberately: the desktop Room stack has no JVM-capable encrypted SQLite
+driver to swap in, so it would mean a new native dependency plus a custom Room KMP driver, a
+Windows CI job, and a decision about guest-mode users for whom key loss is unrecoverable data
+loss. The full threat model, migration plan, recovery/backup/key-loss implications, and testing
+requirements are in [`docs/LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md), which also
+records why browser-side encryption must not be described as an XSS mitigation.
