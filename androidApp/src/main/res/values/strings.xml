@@ -5,6 +5,11 @@
          actually reads (com.aus.notelikeus.shared.R). Copies here were dead, and worse than
          dead: editing one changed nothing on screen. -->
     <string name="app_functions_description">Manage your notes with ease</string>
+    <!-- The Google OAuth *web* client id, passed to Credential Manager as the server client id
+         (NotelikeusApp -> GoogleSignInHelper.setServerClientId). It must match the client id
+         configured on the Supabase Google provider, or the id_token exchange is rejected.
+         This is the only declaration: two shadowed copies in :composeApp used to sit alongside
+         it, so changing the id in the obvious place changed nothing. Keep it that way. -->
     <string name="default_web_client_id">404285880902-cpiu3nj2itndnh0kkouvn374ec5ecl9v.apps.googleusercontent.com</string>
 
     <string name="db_recovery_title">Your notes could not be opened</string>
