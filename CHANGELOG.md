@@ -4,9 +4,18 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Attachment delete could leave a note pointing at a file that no longer exists.** The Worker deleted the R2 object first and then asked the database to record the deletion without checking the answer, so a refused, failing, or timed-out record still reported success. Deletion is now claimed in the database before any byte is touched, every phase is idempotent, and a delete abandoned half-way is finished by the cron sweep instead of being stranded.
+- **Restoring a note brought back attachments the user had already deleted**, whose files were gone — they now stay deleted, while attachments removed only as a side effect of deleting the note still come back.
+- **An unreadable answer from the database is no longer treated as a refusal.** A Worker deployed ahead of its migrations, or a malformed response, now reports a server error instead of telling the caller they are not allowed.
+- **Re-uploading a deleted attachment could bring it back with no file behind it.** Deleting an attachment now retires its id for good — including when the delete lands while that same id is mid-upload — and an upload aimed at a retired id is refused instead of resurrecting it. Replacement images already use a new id, so this changes nothing about adding or replacing a picture.
+
 ### Changed
 - **Backend:** Cloud sync and authentication now use Supabase (Auth, PostgreSQL, RPC, Realtime) instead of Firebase Auth and Firestore. Web hosting is Cloudflare Pages. Existing Firebase cloud accounts and Firestore data are **not migrated** — sign in again as a new Supabase user.
 - **Attachments:** Binary objects remain on Cloudflare R2 behind a Worker that verifies the Supabase session.
+- **Uploads are authorized before the file is read.** An upload aimed at a note the caller does not own is refused without the Worker buffering it first; the real size, both quotas, and the file's destination are still checked authoritatively against the bytes that actually arrived.
+- **Malformed requests cost nothing upstream.** The Worker settles the route, method, and upload headers locally before it verifies a session.
+- **Optional rate limiting.** Deployments can bind a Cloudflare rate limiter (`ATTACHMENT_RATE_LIMITER`) and the Worker throttles by client IP and by user. Without the binding nothing changes. WAF and per-endpoint rules remain zone configuration, outside this repository.
 
 ## [1.0.3] — 2026-08-30
 
