@@ -80,6 +80,7 @@ export function EditorOptionsSheet({
             <ColorSwatchRow
               selectedColor={selectedColor}
               onSelect={(color) => color != null && onColorSelect(color)}
+              wrap
             />
           </div>
         </section>
