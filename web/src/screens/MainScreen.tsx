@@ -1,3 +1,5 @@
+import { DiagnosticsDialog } from '@/components/settings/DiagnosticsDialog';
+import { version as appVersion } from '../../package.json';
 import { AddIcon } from '@/components/icons/Icons';
 
 import { ToastHost } from '@/components/feedback/ToastHost';
@@ -70,6 +72,7 @@ export function MainScreen() {
   const { user } = useAuthListener();
 
   const [dialogs, setDialogs] = useState<MainDialogState>(NO_DIALOGS_OPEN);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const openDialogs = useCallback(
     (patch: Partial<MainDialogState>) => setDialogs((current) => ({ ...current, ...patch })),
     [],
@@ -271,6 +274,7 @@ export function MainScreen() {
   const {
     signOut,
     exportBackup,
+    exportCompleteBackup,
     prepareImport,
     pendingImport,
     confirmImport,
@@ -591,12 +595,20 @@ export function MainScreen() {
         userEmail={cloud.userEmail}
         syncStatus={cloud.status}
         onExportBackup={exportBackup}
+        onExportCompleteBackup={() => void exportCompleteBackup()}
+        onShowDiagnostics={() => setShowDiagnostics(true)}
         onImportBackup={() => backupInputRef.current?.click()}
         onSignIn={() => openAuthScreen('signin')}
         onSignUp={() => openAuthScreen('signup')}
         onSignOut={(deleteCloudData) => void signOut(deleteCloudData)}
         onEmptyTrash={() => void emptyTheTrash()}
         onBulkPermanentDelete={() => void bulkPermanentDelete()}
+      />
+
+      <DiagnosticsDialog
+        open={showDiagnostics}
+        appVersion={appVersion}
+        onClose={() => setShowDiagnostics(false)}
       />
 
       <ToastHost />
@@ -609,7 +621,7 @@ export function MainScreen() {
 
         type="file"
 
-        accept="application/json,.json"
+        accept="application/json,.json,.nlkbak,application/zip"
 
         className="hidden"
 
@@ -634,7 +646,22 @@ export function MainScreen() {
                 pendingImport.result.notesImported === 1 ? '' : 's'
               } as new notes?`
         }
-        description="They're added alongside what's already here, so importing this file again will create another copy of each note. Images aren't part of a JSON backup and won't come across."
+        description={
+          pendingImport == null
+            ? ''
+            : `They're added alongside what's already here, so importing this file again will ` +
+              `create another copy of each note. ` +
+              (pendingImport.attachmentsImported > 0
+                ? `${pendingImport.attachmentsImported} image${
+                    pendingImport.attachmentsImported === 1 ? '' : 's'
+                  } will be restored too.`
+                : `Images aren't part of a notes-only JSON backup and won't come across.`) +
+              (pendingImport.attachmentsSkipped > 0
+                ? ` ${pendingImport.attachmentsSkipped} image${
+                    pendingImport.attachmentsSkipped === 1 ? '' : 's'
+                  } in this file couldn't be read and will be skipped.`
+                : '')
+        }
         confirmLabel="Import"
         tone="primary"
         onCancel={cancelImport}

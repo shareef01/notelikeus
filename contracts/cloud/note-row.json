@@ -1,0 +1,68 @@
+{
+  "comment": "A note row exactly as pull_changes and fetch_full_snapshot return it. note_id is text, local_id is a bigint, and the checklist keeps its camelCase isChecked inside an otherwise snake_case payload.",
+  "row": {
+    "type": "note",
+    "note_id": "12",
+    "local_id": 12,
+    "revision": 41,
+    "title": "Trip",
+    "content": "**pack** bags",
+    "client_timestamp": 1767225000000,
+    "color": -2955,
+    "is_pinned": true,
+    "is_archived": false,
+    "is_trashed": false,
+    "position": 2,
+    "reminder_timestamp": 4102444800000,
+    "server_updated_at": 1767225600000,
+    "labels": [
+      {
+        "name": "Travel"
+      },
+      {
+        "name": "Work"
+      }
+    ],
+    "checklist": [
+      {
+        "text": "Passport",
+        "isChecked": true,
+        "position": 0
+      },
+      {
+        "text": "Charger",
+        "isChecked": false,
+        "position": 1
+      }
+    ]
+  },
+  "expected": {
+    "localId": 12,
+    "title": "Trip",
+    "content": "**pack** bags",
+    "timestamp": 1767225000000,
+    "color": -2955,
+    "isPinned": true,
+    "isArchived": false,
+    "isTrashed": false,
+    "position": 2,
+    "reminderTimestamp": 4102444800000,
+    "serverUpdatedAt": 1767225600000,
+    "labels": [
+      "Travel",
+      "Work"
+    ],
+    "checklist": [
+      {
+        "text": "Passport",
+        "isChecked": true,
+        "position": 0
+      },
+      {
+        "text": "Charger",
+        "isChecked": false,
+        "position": 1
+      }
+    ]
+  }
+}

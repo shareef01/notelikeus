@@ -11,6 +11,7 @@ Notelikeus is an offline-first notes application across Android, Windows (Deskto
 - **Local Data Isolation:** Signing out clears local cached notes from the active session so a subsequent user cannot inherit your data.
 - **Encryption:** Android local databases are encrypted at rest with **SQLCipher** backed by Android Keystore.
 - Synced cloud notes are **not end-to-end encrypted** by the app; they rely on TLS plus Supabase Auth, row-level security, authorized RPCs, and Worker JWT checks for attachments.
+- **Diagnostics stay local:** an optional sync-diagnostics report shows counts and version numbers, never note content or credentials, and is never transmitted.
 - The app does **not** include third-party tracking, analytics, or advertising SDKs.
 
 ## Information stored on your device
@@ -49,7 +50,33 @@ When you export or import backups, the system file picker is used; the app only 
 
 ## Backups
 
-JSON backup export/import is **manual**. Backup files are written to a location you choose. You are responsible for securing copied files.
+Backup export and import are **manual**. Backup files are written to a location you choose. You are responsible for securing copied files.
+
+Two formats:
+
+- **JSON** — note titles, bodies, checklists, labels, colours and reminder times. No images.
+- **`.nlkbak`** (web export) — a plain ZIP holding the same JSON document plus the **attachment
+  image bytes stored on that device**. It is a normal archive: rename it to `.zip` and you can open
+  it and see exactly what it contains.
+
+Neither format contains sign-in tokens, session data, encryption keys, sync cursors, or your
+account identifier. An export never contacts the network — images that exist only in the cloud are
+left out and reported as skipped, rather than being downloaded to build the file.
+
+## Diagnostics
+
+The app can show a **sync diagnostics** report to help troubleshoot problems like a note not
+appearing on another device. It contains counts and version numbers only: app and database
+versions, how many notes are active, archived, trashed or pinned, how many are waiting to sync, the
+last sync time, and a category name for the last error.
+
+It does **not** contain note titles or text, checklist or label text, images, email addresses,
+sign-in tokens, or your account identifier — your account appears only as a short scrambled tag
+that cannot be turned back into an identity. Error messages are reduced to a fixed category name
+so that no note content can travel inside one.
+
+The report is shown to you on screen and is never transmitted anywhere. Copying it, and deciding
+who to send it to, is entirely your choice.
 
 ## Links in notes
 

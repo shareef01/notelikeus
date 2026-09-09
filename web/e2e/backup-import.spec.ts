@@ -42,8 +42,10 @@ test('importing asks first, and says the notes arrive as copies', async ({ page 
   // The count comes from the parsed file, so the user knows the size before committing.
   await expect(dialog).toContainText('2 notes');
   await expect(dialog).toContainText('another copy');
-  // Attachment scope is disclosed rather than left to be discovered.
-  await expect(dialog).toContainText(/[Ii]mages aren't part of a JSON backup/);
+  // Attachment scope is disclosed rather than left to be discovered. "notes-only" is load
+  // bearing now that there are two export formats: a .nlkbak bundle does carry the images, and
+  // this sentence is what tells the user which kind of file they just picked.
+  await expect(dialog).toContainText(/[Ii]mages aren't part of a notes-only JSON backup/);
 });
 
 test('cancelling imports nothing', async ({ page }) => {

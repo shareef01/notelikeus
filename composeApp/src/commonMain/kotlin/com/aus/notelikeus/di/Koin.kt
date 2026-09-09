@@ -23,7 +23,7 @@ val sharedModule = module {
     
     single { Dispatchers.IO }
     
-    viewModel { MainViewModel(get(), get(), get(), get(), get(), get()) }
+    viewModel { MainViewModel(get(), get(), get(), get(), get(), get(), get()) }
     viewModel { params -> 
         EditorViewModel(get(), get(), params.get(), get()) 
     }

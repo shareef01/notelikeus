@@ -1,3 +1,5 @@
+import { recordSyncFailure, recordSyncSuccess } from '@/lib/diagnostics/collectDiagnostics';
+import { categorizeSyncError } from '@/lib/diagnostics/diagnosticsReport';
 import { deleteNote, putNotes } from '@/lib/local/notesLocalRepository';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
 import { shouldUploadOverRemote } from '@/lib/notes/remoteMerge';
@@ -161,9 +163,13 @@ async function reconcileNow(userId: string): Promise<void> {
       trackRemoteIds(userId, result.remoteIds);
       const isDeleted = useTombstoneStore.getState().isDeleted;
       applyNotes(userId, result.merged.filter((note) => !isDeleted(note.id)));
+      recordSyncSuccess();
     } catch (error) {
       if (reconcileUserId !== userId) return;
       lastReconcileStartedAt = 0; // allow immediate retry on the next trigger
+      // The category, not the error: a revision conflict's message embeds the remote note's
+      // title, and diagnostics must never carry note content.
+      recordSyncFailure(categorizeSyncError(error));
       useNotesStore.getState().setError(
         error instanceof Error ? error.message : 'Reconcile failed',
       );
@@ -272,6 +278,7 @@ export function startNotesRealtimeSync(userId: string): void {
       applyNotes(userId, live);
     },
     (error) => {
+      recordSyncFailure(categorizeSyncError(error));
       useNotesStore.getState().setError(error.message);
     },
   );

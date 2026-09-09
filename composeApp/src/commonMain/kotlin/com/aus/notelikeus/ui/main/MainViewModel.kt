@@ -6,6 +6,8 @@ import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.BackupExportResult
 import com.aus.notelikeus.data.backup.BackupImportResult
 import com.aus.notelikeus.data.backup.NoteBackupImporter
+import com.aus.notelikeus.domain.diagnostics.DiagnosticsCollector
+import com.aus.notelikeus.domain.diagnostics.formatDiagnosticsReport
 import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.NoteSortOrder
@@ -54,7 +56,8 @@ class MainViewModel(
     backupExporter: NoteBackupExporter,
     backupImporter: NoteBackupImporter,
     syncManager: SyncManager,
-    private val defaultDispatcher: CoroutineDispatcher
+    private val defaultDispatcher: CoroutineDispatcher,
+    private val diagnostics: DiagnosticsCollector? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(MainState())
@@ -645,6 +648,30 @@ class MainViewModel(
         } catch (e: Exception) {
             BackupExportResult.Error(e)
         }
+    }
+
+    /**
+     * Opens the diagnostics dialog and collects the report in the background.
+     *
+     * The dialog opens first so the surface is never blocked on a store that may itself be the
+     * problem, and the collection is wrapped: a diagnostics screen that throws is the least
+     * useful possible outcome.
+     */
+    fun openDiagnostics() {
+        _state.update { it.copy(isDiagnosticsOpen = true, diagnosticsReport = null) }
+        viewModelScope.launch {
+            val rendered = runCatching {
+                val collector = diagnostics ?: return@runCatching null
+                withContext(defaultDispatcher) { formatDiagnosticsReport(collector.collect()) }
+            }.onFailure { error ->
+                AppLog.warn(TAG, "Collecting diagnostics failed", error)
+            }.getOrNull()
+            _state.update { it.copy(diagnosticsReport = rendered ?: "") }
+        }
+    }
+
+    fun closeDiagnostics() {
+        _state.update { it.copy(isDiagnosticsOpen = false, diagnosticsReport = null) }
     }
 
     suspend fun importBackup(json: String): BackupImportResult {

@@ -47,16 +47,35 @@ export async function putNote(ownerId: string, note: Note): Promise<void> {
   await withStore(NOTES_STORE, 'readwrite', (store) => store.put(record));
 }
 
+let abortNextPutNotes = false;
+
+/** Test-only: abort the next {@link putNotes} transaction before it commits. */
+export function abortNextPutNotesForTests(): void {
+  abortNextPutNotes = true;
+}
+
 export async function putNotes(ownerId: string, notes: Note[]): Promise<void> {
   const db = await import('@/lib/local/idb').then((m) => m.getNotesDatabase());
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(NOTES_STORE, 'readwrite');
     const store = tx.objectStore(NOTES_STORE);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('putNotes failed'));
+    // An IndexedDB transaction can abort without any request having errored — the browser
+    // reclaiming storage, or an internal fault — and `error` does not fire for those. Without
+    // this handler the promise never settled, which is worse than a rejection everywhere it is
+    // awaited: `hydrateFromRemote` waits on it before the app reports ready, and `applyNotes`
+    // rolls the optimistic UI back in `.catch`, so a hang leaves the store claiming a durable
+    // write that never happened. Matches `withStore`, which has handled both since it was written.
+
+    if (abortNextPutNotes) {
+      abortNextPutNotes = false;
+      tx.abort();
+      return;
+    }
     for (const note of notes) {
       store.put({ ownerId, id: note.id, note } satisfies StoredNoteRecord);
     }
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error('putNotes failed'));
   });
 }
 
