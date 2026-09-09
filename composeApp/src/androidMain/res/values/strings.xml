@@ -17,7 +17,6 @@
     <string name="app_name">Notelikeus</string>
     <string name="widget_name">Notelikeus widget</string>
     <string name="app_functions_description">Capture ideas, lists, and reminders in one place.</string>
-    <string name="default_web_client_id">404285880902-cpiu3nj2itndnh0kkouvn374ec5ecl9v.apps.googleusercontent.com</string>
 
     <!-- Reminder notifications (NotificationChannels, ReminderReceiver) -->
     <string name="reminder_channel_name">Note Reminders</string>
