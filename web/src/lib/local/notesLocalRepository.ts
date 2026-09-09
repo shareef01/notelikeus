@@ -67,6 +67,7 @@ export async function putNotes(ownerId: string, notes: Note[]): Promise<void> {
     // awaited: `hydrateFromRemote` waits on it before the app reports ready, and `applyNotes`
     // rolls the optimistic UI back in `.catch`, so a hang leaves the store claiming a durable
     // write that never happened. Matches `withStore`, which has handled both since it was written.
+    tx.onabort = () => reject(tx.error ?? new Error('putNotes aborted'));
 
     if (abortNextPutNotes) {
       abortNextPutNotes = false;
