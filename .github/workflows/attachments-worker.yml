@@ -180,9 +180,26 @@ jobs:
         working-directory: workers/attachments
         run: npm ci
 
-      # SUPABASE_ANON_KEY is uploaded as a Worker secret rather than written into
-      # wrangler.toml, which would place it in the deploy log.
+      # Deploy before secrets, and in two steps, because wrangler-action uploads any
+      # `secrets:` it is given *before* running its command. On a Worker that does not
+      # exist yet there is nothing to attach a secret to, and the API answers
+      # "Could not route to /accounts/.../workers/scripts/<name>/settings [code: 7003]".
+      # The script has to exist first. Once it does, the order stops mattering -- secrets
+      # outlive a deploy -- so this shape is correct on both the first run and every
+      # later one.
       - name: Deploy Worker
+        uses: cloudflare/wrangler-action@392082e81ffbcb9ebdde27400634aa004b35ea37 # v3.14.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/attachments
+          command: deploy
+
+      # SUPABASE_ANON_KEY is a Worker secret rather than a wrangler.toml var, which would
+      # place it in the deploy log. The second deploy costs a few seconds and leaves the
+      # live Worker running with the secret in place; without it the freshly created
+      # Worker would answer every request 500 until the next dispatch.
+      - name: Upload Worker secret and redeploy with it
         uses: cloudflare/wrangler-action@392082e81ffbcb9ebdde27400634aa004b35ea37 # v3.14.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
