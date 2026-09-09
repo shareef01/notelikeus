@@ -6,6 +6,26 @@ name: Attachments Worker CI
 # with any Supabase access token).
 
 on:
+  # Owner-operated Worker deploy. Deploy this only after the Supabase migrations it
+  # depends on have been applied: a Worker calling an RPC its database does not have
+  # yet answers 503, while the older Worker's RPCs all still exist, so schema-first is
+  # safe in both directions and Worker-first is not.
+  workflow_dispatch:
+    inputs:
+      confirm_worker_name:
+        description: 'Type the Worker name to confirm (notelikeus-attachments)'
+        required: true
+        type: string
+      r2_bucket:
+        description: 'R2 bucket holding attachment objects'
+        required: true
+        default: notelikeus-attachments-dev
+        type: string
+      allowed_origins:
+        description: 'Extra CORS origins, comma-separated. localhost and notelikeus-dev.pages.dev are always allowed; a custom domain must be listed here.'
+        required: false
+        default: ''
+        type: string
   push:
     branches: [main, master]
     paths:
@@ -20,9 +40,11 @@ on:
 permissions:
   contents: read
 
+# A burst of pushes should supersede itself; a deploy must not be cancelled part-way
+# through `wrangler deploy`, nor superseded by an unrelated push to the same ref.
 concurrency:
-  group: attachments-worker-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: attachments-worker-ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   verify:
@@ -55,3 +77,119 @@ jobs:
       - name: Test worker (auth, owner isolation, upload limits)
         working-directory: workers/attachments
         run: npm test
+
+  # wrangler.toml is gitignored -- it carries an account id and the environment's bucket
+  # name -- so the deploy writes one from the same shape scripts/ops/setup-staging.sh
+  # uses, rather than expecting a file the repository does not have.
+  #
+  # `environment: production` is where to attach required reviewers if this should ever
+  # need a second pair of eyes; it works unconfigured today.
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # The same project URL and public anon JWT the Pages build uses, read from those
+      # secrets rather than duplicated under a second name that could drift out of step.
+      SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require Cloudflare secrets and a matching confirmation
+        env:
+          # Through env, never interpolated into the script: these are operator input.
+          CONFIRM_WORKER_NAME: ${{ inputs.confirm_worker_name }}
+          R2_BUCKET: ${{ inputs.r2_bucket }}
+        run: |
+          missing=0
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID SUPABASE_URL SUPABASE_ANON_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "Missing GitHub secret for: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Needed: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY"
+            exit 1
+          fi
+          # Typing the name is what makes this a decision rather than a misclick.
+          if [ "$CONFIRM_WORKER_NAME" != "notelikeus-attachments" ]; then
+            echo "confirm_worker_name must be notelikeus-attachments. Nothing was deployed."
+            exit 1
+          fi
+          if [ -z "$R2_BUCKET" ]; then
+            echo "r2_bucket must not be empty. Nothing was deployed."
+            exit 1
+          fi
+          # The browser anon JWT begins eyJ. A secret API key here would hand a live
+          # privileged credential to the Worker's callers.
+          case "$SUPABASE_ANON_KEY" in
+            eyJ*) ;;
+            sb_*) echo "VITE_SUPABASE_ANON_KEY looks like a secret API key. Use the public anon JWT."; exit 1 ;;
+            *) echo "VITE_SUPABASE_ANON_KEY does not look like a JWT."; exit 1 ;;
+          esac
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: workers/attachments/package-lock.json
+
+      - name: Write wrangler.toml
+        env:
+          R2_BUCKET: ${{ inputs.r2_bucket }}
+          ALLOWED_ORIGINS: ${{ inputs.allowed_origins }}
+        run: |
+          # Values are written through the environment by a script, never pasted into
+          # the YAML, so nothing here can be broken by a quote inside an input.
+          node --input-type=module -e '
+            import { writeFileSync } from "node:fs";
+            const q = (v) => JSON.stringify(String(v));
+            const lines = [
+              `name = "notelikeus-attachments"`,
+              `main = "src/index.ts"`,
+              `compatibility_date = "2025-09-02"`,
+              `account_id = ${q(process.env.CLOUDFLARE_ACCOUNT_ID)}`,
+              ``,
+              `[[r2_buckets]]`,
+              `binding = "ATTACHMENTS_BUCKET"`,
+              `bucket_name = ${q(process.env.R2_BUCKET)}`,
+              ``,
+              `[vars]`,
+              `SUPABASE_URL = ${q(process.env.SUPABASE_URL)}`,
+            ];
+            if (process.env.ALLOWED_ORIGINS) {
+              lines.push(`ALLOWED_ORIGINS = ${q(process.env.ALLOWED_ORIGINS)}`);
+            }
+            lines.push(``, `[triggers]`, `crons = ["15 */6 * * *"]`, ``);
+            writeFileSync("workers/attachments/wrangler.toml", lines.join("\n"));
+          '
+          # Printed without the account id, so the binding and cron stay reviewable.
+          grep -v '^account_id' workers/attachments/wrangler.toml
+
+      - name: Install worker dependencies
+        working-directory: workers/attachments
+        run: npm ci
+
+      # SUPABASE_ANON_KEY is uploaded as a Worker secret rather than written into
+      # wrangler.toml, which would place it in the deploy log.
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@392082e81ffbcb9ebdde27400634aa004b35ea37 # v3.14.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/attachments
+          command: deploy
+          secrets: |
+            SUPABASE_ANON_KEY
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}

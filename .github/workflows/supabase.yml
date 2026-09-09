@@ -117,7 +117,7 @@ jobs:
           npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
           # Read-only, and the same connection db push will make. Failing here costs
           # forty seconds; failing in deploy costs the whole pgTAP run first.
-          npx supabase migration list --linked
+          bash scripts/ops/retry-on-connect.sh npx supabase migration list --linked
 
   database-tests:
     needs: preflight
@@ -147,6 +147,9 @@ jobs:
 
       - name: Run pgTAP database tests
         run: npm run supabase:test
+
+      - name: Test the connection retry helper
+        run: npm run test:retry-on-connect
 
       - name: Stop local Supabase stack
         if: always()
@@ -187,13 +190,13 @@ jobs:
         run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
 
       - name: Show pending migrations
-        run: npx supabase migration list --linked
+        run: bash scripts/ops/retry-on-connect.sh npx supabase migration list --linked
 
       - name: Apply migrations
-        run: npx supabase db push
+        run: bash scripts/ops/retry-on-connect.sh npx supabase db push
 
       # `db push` failing is what fails this job; this prints the resulting local/remote
       # table as the record of what landed. Read it before deploying the attachments
       # Worker -- a Worker calling an RPC its database does not have yet answers 503.
       - name: Record applied migrations
-        run: npx supabase migration list --linked
+        run: bash scripts/ops/retry-on-connect.sh npx supabase migration list --linked
