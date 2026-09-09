@@ -1,3 +1,4 @@
+import { recordRealtimeState } from '@/lib/diagnostics/collectDiagnostics';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import {
@@ -71,6 +72,15 @@ export function subscribeSupabaseNoteRealtime(
     .subscribe((status) => {
       if (stopped) return;
       onStatus?.(status as RealtimeSubscriptionStatus);
+      recordRealtimeState(
+        status === 'SUBSCRIBED'
+          ? 'subscribed'
+          : status === 'CLOSED'
+            ? 'unsubscribed'
+            : status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'
+              ? 'error'
+              : 'unknown',
+      );
       if (status === 'SUBSCRIBED') {
         stopFallback();
         return;

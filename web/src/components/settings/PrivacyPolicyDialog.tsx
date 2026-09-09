@@ -10,6 +10,7 @@ Summary
 • Local data isolation: Signing out clears locally cached notes from the active session so a subsequent user cannot inherit your data.
 • Encryption: Android local databases are encrypted at rest with SQLCipher backed by Android Keystore.
 • Synced cloud notes are not end-to-end encrypted by the app; they rely on TLS plus Supabase Auth, row-level security, and Worker authorization for attachments.
+• Diagnostics stay local: an optional sync-diagnostics report shows counts and version numbers, never note content or credentials, and is never transmitted.
 • The app does not include third-party tracking, analytics, or advertising SDKs.
 
 Information stored on your device
@@ -30,7 +31,13 @@ Permissions
 • Biometric: Unlock the app when app lock is enabled (Android)
 
 Backups
-JSON backup export/import is manual. Backup files are written to a location you choose. You are responsible for securing copied files.
+Backup export and import are manual. Backup files are written to a location you choose. You are responsible for securing copied files.
+• JSON: note titles, bodies, checklists, labels, colours and reminder times. No images.
+• .nlkbak: a plain ZIP holding the same JSON document plus the attachment image bytes stored on this device. Rename it to .zip and you can open it and see exactly what it contains.
+Neither format contains sign-in tokens, session data, encryption keys, sync cursors, or your account identifier. An export never contacts the network — images that exist only in the cloud are left out and reported as skipped.
+
+Diagnostics
+Sync diagnostics shows counts and version numbers only: app and database versions, how many notes are active, archived, trashed or pinned, how many are waiting to sync, the last sync time, and a category name for the last error. It contains no note or checklist text, no images, no email address, no sign-in tokens, and not your account identifier — your account appears only as a short scrambled tag that cannot be turned back into an identity. It is shown on screen and never transmitted; copying it is entirely your choice.
 
 Links in notes
 Tapping a link opens your default browser. Notelikeus does not track link usage.
