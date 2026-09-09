@@ -113,6 +113,14 @@ data class MainState(
     val pendingCloudSyncEvent: CloudSyncEvent? = null,
     /** Outcome of the last backup export or import, until the UI has reported it. */
     val pendingBackupTransferEvent: BackupTransferEvent? = null,
+    /** True while the diagnostics dialog is open. */
+    val isDiagnosticsOpen: Boolean = false,
+    /**
+     * The rendered diagnostics report, or null while it is being collected. Held as text rather
+     * than as the report object: it is redacted on the way out of the domain layer, and the UI
+     * should never be able to reach past that.
+     */
+    val diagnosticsReport: String? = null,
     val cloudAccount: CloudAccount = CloudAccount(),
     val isCloudAutoSyncEnabled: Boolean = true,
     val isSigningIn: Boolean = false,

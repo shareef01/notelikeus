@@ -9,6 +9,12 @@ import com.aus.notelikeus.data.local.entity.LabelEntity
 import com.aus.notelikeus.data.local.entity.NoteEntity
 import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
 
+/**
+ * The Room schema version, named so the diagnostics report can state it without a second literal
+ * drifting away from the one Room actually uses.
+ */
+const val NOTELIKEUS_DATABASE_VERSION = 11
+
 @Database(
     entities = [
         NoteEntity::class,
@@ -16,7 +22,7 @@ import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
         NoteLabelCrossRef::class,
         ChecklistItemEntity::class
     ],
-    version = 11,
+    version = NOTELIKEUS_DATABASE_VERSION,
     exportSchema = true
 )
 abstract class NotelikeusDatabase : RoomDatabase() {
