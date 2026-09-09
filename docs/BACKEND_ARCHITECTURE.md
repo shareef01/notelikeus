@@ -164,3 +164,26 @@ npx supabase db push
 
 Note that `db.<ref>.supabase.co` publishes AAAA records only, so an IPv4-only host
 cannot reach it directly and needs the IPv4 pooler.
+
+Every command that touches the hosted database runs through
+`scripts/ops/retry-on-connect.sh`. Supavisor caches credentials per pooler node, so for
+a window after a password reset one node can reject a password another accepts — the
+same `migration list` has succeeded and then failed three minutes later inside one run.
+Only connection and authentication failures are retried; a SQL error from a migration
+fails on the first attempt, and `npm run test:retry-on-connect` holds that line.
+
+### Deploying the attachments Worker
+
+The `workflow_dispatch` deploy job in `.github/workflows/attachments-worker.yml` runs
+lint, typecheck and the Worker suite first, then writes a `wrangler.toml` (gitignored,
+so it is generated rather than committed) and deploys. It asks you to type the Worker
+name, takes the R2 bucket and any extra CORS origins as inputs, and uploads
+`SUPABASE_ANON_KEY` as a Worker secret rather than a var so it stays out of the log.
+
+It needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, and reuses the Pages
+secrets `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` — the same project URL and
+public anon JWT — rather than duplicating them under names that could drift.
+
+**Apply the migrations first.** A Worker calling an RPC its database does not have yet
+answers 503, while the older Worker's RPCs all still exist, so schema-first is safe in
+both directions and Worker-first is not.
