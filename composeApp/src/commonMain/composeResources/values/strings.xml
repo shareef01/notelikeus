@@ -194,9 +194,17 @@
 
     <string name="section_about">About</string>
     <string name="privacy_policy">Privacy policy</string>
+    <string name="diagnostics_title">Sync diagnostics</string>
+    <string name="diagnostics_subtitle">Technical state for troubleshooting — no note content</string>
+    <string name="diagnostics_explainer">Counts and version numbers only — no note text, no images, no account details. Nothing is sent anywhere; copying is up to you.</string>
+    <string name="diagnostics_copy">Copy</string>
+    <string name="diagnostics_copied">Diagnostics copied</string>
+    <string name="diagnostics_unavailable">Diagnostics could not be collected.</string>
     <string name="privacy_policy_title">Privacy policy</string>
     <string name="app_version">Version %1$s</string>
-    <string name="privacy_policy_body">Notelikeus is offline-first. Notes stay on this device unless you sign in.\n\nWhen you enable cloud sync, note text is stored in Supabase (PostgreSQL) under your account. Attachments may be stored in Cloudflare R2. Synced notes are not end-to-end encrypted.\n\nGoogle sign-in is optional and is used only as an identity provider. The app does not include analytics or advertising SDKs.</string>
+    <string name="privacy_policy_body">Notelikeus is offline-first. Notes stay on this device unless you sign in.\n\nWhen you enable cloud sync, note text is stored in Supabase (PostgreSQL) under your account. Attachments may be stored in Cloudflare R2. Synced notes are not end-to-end encrypted.\n\nGoogle sign-in is optional and is used only as an identity provider. The app does not include analytics or advertising SDKs.
+
+Sync diagnostics shows counts and version numbers only — never note text, tokens or your account id — and is never sent anywhere. Copying it is up to you.</string>
 
     <!-- Filters -->
     <string name="all_colors">All Colors</string>
@@ -250,6 +258,11 @@
     <string name="reminder_in_one_hour">In 1 hour</string>
     <string name="reminder_tomorrow_morning">Tomorrow 9:00</string>
     <string name="reminder_next_week">Next week</string>
+    <string name="reminder_pick_exact">Choose date &amp; time</string>
+    <string name="reminder_pick_date">Pick a date</string>
+    <string name="reminder_pick_time">Pick a time</string>
+    <string name="reminder_pick_next">Next</string>
+    <string name="reminder_pick_back">Back</string>
     <string name="reminder_at">Reminder %1$s %2$s</string>
     <string name="cd_selected">Selected</string>
     <string name="cd_filter_by_label">Filter by %1$s</string>

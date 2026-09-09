@@ -50,6 +50,17 @@ actual object DateUtils {
         return cal.timeInMillis
     }
 
+    actual fun localDateTimeFields(timestamp: Long): LocalDateTimeFields {
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }
+        return LocalDateTimeFields(
+            year = cal.get(java.util.Calendar.YEAR),
+            month = cal.get(java.util.Calendar.MONTH) + 1,
+            day = cal.get(java.util.Calendar.DAY_OF_MONTH),
+            hour = cal.get(java.util.Calendar.HOUR_OF_DAY),
+            minute = cal.get(java.util.Calendar.MINUTE),
+        )
+    }
+
     actual fun isToday(timestamp: Long): Boolean {
         val now = Calendar.getInstance()
         val then = Calendar.getInstance().apply { timeInMillis = timestamp }

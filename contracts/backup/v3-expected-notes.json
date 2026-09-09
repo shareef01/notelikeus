@@ -1,0 +1,56 @@
+{
+  "comment": "Client-neutral normal form. Both importers must produce exactly these notes from either v3 fixture. Local row ids are excluded: they are assigned per device. 'position' is excluded too, because both importers renumber imported notes onto the end of the existing list.",
+  "labelsCreated": 2,
+  "notes": [
+    {
+      "title": "Trip",
+      "content": "**pack** bags",
+      "timestamp": 1767225000000,
+      "color": -2955,
+      "isPinned": true,
+      "isArchived": false,
+      "isTrashed": false,
+      "reminderTimestamp": 4102444800000,
+      "labels": [
+        "Travel",
+        "Work"
+      ],
+      "checklist": [
+        {
+          "text": "Passport",
+          "isChecked": true,
+          "position": 0
+        },
+        {
+          "text": "Charger",
+          "isChecked": false,
+          "position": 1
+        }
+      ]
+    },
+    {
+      "title": "",
+      "content": "plain",
+      "timestamp": 1767225111000,
+      "color": -15198181,
+      "isPinned": false,
+      "isArchived": true,
+      "isTrashed": false,
+      "reminderTimestamp": null,
+      "labels": [],
+      "checklist": []
+    },
+    {
+      "title": "Elapsed reminder",
+      "content": "",
+      "timestamp": 1767225222000,
+      "color": -15198181,
+      "isPinned": false,
+      "isArchived": false,
+      "isTrashed": false,
+      "reminderTimestamp": null,
+      "labels": [],
+      "checklist": []
+    }
+  ]
+}
