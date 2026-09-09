@@ -19,7 +19,7 @@
     "deploy:staging-pages": "node scripts/ops/deploy-staging-pages.mjs",
     "test:retry-on-connect": "bash scripts/ops/retry-on-connect.test.sh",
     "test:attachments-worker": "npm --prefix workers/attachments test",
-    "pages:verify": "VITE_SUPABASE_URL=https://placeholder.supabase.co VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiJ9.payload.signature npm --prefix web run build && node web/scripts/verifyPagesArtifacts.mjs && node cloudflare/scripts/verify-headers-parity.mjs"
+    "pages:verify": "node scripts/ops/verify-pages.mjs"
   },
   "devDependencies": {
     "supabase": "^2.67.1"

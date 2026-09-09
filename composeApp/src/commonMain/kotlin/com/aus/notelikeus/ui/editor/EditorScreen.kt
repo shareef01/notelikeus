@@ -68,6 +68,7 @@ import com.aus.notelikeus.ui.components.ConfirmDialog
 import com.aus.notelikeus.util.rememberPlatformShare
 import com.aus.notelikeus.util.AppConfig
 import androidx.compose.material3.ListItemDefaults
+import com.aus.notelikeus.domain.reminder.ReminderTime
 import androidx.compose.ui.semantics.Role
 
 private val EditorHorizontalPadding = Spacing.xl
@@ -548,6 +549,7 @@ fun EditorScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReminderDialog(
     initialTimestamp: Long,
@@ -555,6 +557,40 @@ fun ReminderDialog(
     onRemove: (() -> Unit)?,
     onDismiss: () -> Unit
 ) {
+    // The exact picker is a second step rather than a fourth row, so the quick choices stay one
+    // tap and the calendar does not push them off a phone screen.
+    var step by remember { mutableStateOf(ReminderDialogStep.CHOICES) }
+    val existingReminder = initialTimestamp.takeIf { onRemove != null }
+    val start = remember(existingReminder) { ReminderTime.initialPickerState(existingReminder) }
+    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = start.dateUtcMillis)
+    val timePickerState = rememberTimePickerState(
+        initialHour = start.hour,
+        initialMinute = start.minute,
+        is24Hour = false,
+    )
+
+    if (step != ReminderDialogStep.CHOICES) {
+        ExactReminderDialog(
+            step = step,
+            datePickerState = datePickerState,
+            timePickerState = timePickerState,
+            onStep = { step = it },
+            onConfirm = { selectedDateUtcMillis ->
+                // A date that does not exist cannot be produced by the picker, but resolving to
+                // null must not silently do nothing either -- fall back to the step the user is
+                // still on rather than closing on a value nobody chose.
+                val resolved = ReminderTime.exactReminder(
+                    selectedDateUtcMillis,
+                    timePickerState.hour,
+                    timePickerState.minute,
+                )
+                if (resolved != null) onConfirm(resolved) else step = ReminderDialogStep.DATE
+            },
+            onDismiss = { step = ReminderDialogStep.CHOICES },
+        )
+        return
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(Res.string.set_reminder)) },
@@ -601,6 +637,15 @@ fun ReminderDialog(
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     modifier = Modifier.clickable(role = Role.Button) { onConfirm(DateUtils.getNextWeek()) }
                 )
+                HorizontalDivider(modifier = Modifier.padding(vertical = Spacing.xs))
+                ListItem(
+                    headlineContent = { Text(stringResource(Res.string.reminder_pick_exact)) },
+                    leadingContent = { Icon(Icons.Filled.Event, contentDescription = null) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable(role = Role.Button) {
+                        step = ReminderDialogStep.DATE
+                    }
+                )
             }
         },
         // No confirm button. Choosing a preset *is* the confirmation -- the "OK" that used to sit
@@ -619,6 +664,95 @@ fun ReminderDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
         }
+    )
+}
+
+/** Which half of the exact picker is on screen. */
+enum class ReminderDialogStep { CHOICES, DATE, TIME }
+
+/**
+ * The exact date and time step, as two dialogs rather than one scrolling sheet.
+ *
+ * Material's date and time pickers are both tall; stacking them in one dialog leaves neither
+ * fully reachable on a phone in landscape, and a `TimePicker` inside a scrolling column fights
+ * the dial's own drag gesture. Two steps keep each picker at its natural size, and keep every
+ * control reachable by keyboard on the desktop build.
+ *
+ * The selection lives in the caller's `DatePickerState` / `TimePickerState`, so stepping back and
+ * forward does not discard what has been chosen.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExactReminderDialog(
+    step: ReminderDialogStep,
+    datePickerState: DatePickerState,
+    timePickerState: TimePickerState,
+    onStep: (ReminderDialogStep) -> Unit,
+    onConfirm: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val selectedDate = datePickerState.selectedDateMillis
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(
+                    if (step == ReminderDialogStep.DATE) {
+                        Res.string.reminder_pick_date
+                    } else {
+                        Res.string.reminder_pick_time
+                    }
+                )
+            )
+        },
+        text = {
+            if (step == ReminderDialogStep.DATE) {
+                DatePicker(state = datePickerState, title = null, headline = null, showModeToggle = true)
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    TimePicker(state = timePickerState)
+                }
+            }
+        },
+        confirmButton = {
+            if (step == ReminderDialogStep.DATE) {
+                TextButton(
+                    // Material lets a date picker hold no selection at all; advancing from one
+                    // would leave the time step with no day to attach itself to.
+                    enabled = selectedDate != null,
+                    onClick = { onStep(ReminderDialogStep.TIME) },
+                ) { Text(stringResource(Res.string.reminder_pick_next)) }
+            } else {
+                TextButton(
+                    enabled = selectedDate != null,
+                    onClick = { selectedDate?.let(onConfirm) },
+                ) { Text(stringResource(Res.string.action_ok)) }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    if (step == ReminderDialogStep.TIME) {
+                        onStep(ReminderDialogStep.DATE)
+                    } else {
+                        onDismiss()
+                    }
+                }
+            ) {
+                Text(
+                    stringResource(
+                        if (step == ReminderDialogStep.TIME) {
+                            Res.string.reminder_pick_back
+                        } else {
+                            Res.string.action_cancel
+                        }
+                    )
+                )
+            }
+        },
     )
 }
 

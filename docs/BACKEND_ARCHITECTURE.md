@@ -49,6 +49,8 @@ The server owns a monotonic `sync_revision_seq`.
 
 Failed cloud reads must not be treated as an empty database. A successful empty snapshot is distinct from auth, timeout, HTTP, or RPC failure. An empty snapshot also does not prove deletion: clients keep unsynced local notes and refuse to overwrite when known cloud ids are unexplained.
 
+**Unexplained** is the operative word, and it is a tombstone question. A previously-known id that is missing from the snapshot *and* has no tombstone is evidence of a bad read; one that a tombstone accounts for is evidence of a deletion that really happened. Both clients subtract the explained ids before deciding, so an account whose notes were all genuinely deleted — the last note removed on another device, the trash emptied there — syncs normally instead of being refused. Comparing against the whole known set was a permanent failure rather than a cautious one: the known-id set is only rewritten at the end of a *successful* sync, so a client that refused on this could never get out of it. See `docs/AUDIT_2026.md` A-2.
+
 Tombstones prevent resurrection of deleted notes. They remain required. A restore marker survives process death so a stale tombstone snapshot cannot hide a note the user just brought back.
 
 Clients persist `knownCloudIds` with the notes+cursor write. Only ids that were actually on the server are stored.
@@ -83,6 +85,42 @@ Bytes that have not reached R2 are staged durably before the note references the
 - **Android / Windows**: `pending-attachments/<ownerId>/<attachmentId>` under app storage, written through `AttachmentStagingStore`.
 
 The invariant is the same on both: a locally persisted note never references attachment bytes that exist only in process memory, so an attachment cannot survive a restart as metadata pointing at nothing. Staging is namespaced per owner, so signing into a different account cannot read or upload the previous account's staged bytes. Staged bytes are released only when the upload is committed, the user removes the attachment, or reconciliation finds no note referencing them — never on age alone.
+
+## Backup formats
+
+Two, and the second contains the first.
+
+- **v3 JSON** — note content, checklists, labels and reminders. Written and read by every client. Unchanged.
+- **v4 `.nlkbak`** — a ZIP holding `manifest.json` plus `media/<attachmentId>` entries. `manifest.backup` is a v3 document **verbatim**, so a v4 reader hands it to the unchanged v3 importer, and anyone with only an older build can rename the file to `.zip` and lift the JSON out. Attachments are strictly additive: a corrupt, missing or unverifiable one is dropped with a reason and the note still imports.
+
+Both are additive on import — new local ids, and for a bundle, freshly minted attachment ids — so importing the same file twice produces two independent copies. A bundle never carries tokens, keys, sessions, sync cursors, server revisions or an owner id. Entry names are validated (`^[A-Za-z0-9_-]{1,128}$` for an attachment id) and media is located by that validated id rather than by any path in the archive, which is what makes traversal structurally impossible rather than merely checked for.
+
+Export reads only **locally staged** bytes. It never fetches from R2: a backup must work offline, and turning one into a cloud operation would break that. Images that live only in the cloud are reported as skipped.
+
+The format is pinned by `contracts/backup/v4-bundle-manifest.json`. Bundle export/import is implemented on Web; the Kotlin clients read a bundle's manifest (recovering the notes and reporting the image count) and do not yet write one.
+
+## Diagnostics
+
+Every client can render a local diagnostics report: counts, cursors, schema and app versions, sync
+and realtime state, staged-attachment totals. It is shown before it can be copied and is never
+transmitted.
+
+It carries **no** access or refresh tokens, JWTs, passwords, note or checklist or label text,
+attachment bytes or paths, email addresses, OAuth profile data, or the account id. A guard runs
+over the rendered report and *throws* rather than scrubbing, so a field added later that leaks
+fails a test instead of shipping. Sync failures are recorded as a category, never a message —
+`apply_note_change`'s conflict error embeds the remote note's title.
+
+The account appears as a redacted tag (FNV-1a over the id). Both clients derive it identically,
+pinned by `contracts/diagnostics/owner-tag-vectors.json`, so two reports from one user can be
+matched to each other without either identifying anyone.
+
+## Cross-client contracts
+
+`contracts/` holds canonical JSON read by **both** test suites — the Kotlin clients and the web
+client are separate implementations of one backup format and one set of Supabase payloads, and
+they can drift silently. A field renamed, defaulted differently, or coerced differently on one side
+now fails a test on both. See `contracts/README.md`.
 
 ## Web hosting
 

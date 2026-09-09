@@ -126,6 +126,8 @@ interface ProfileSheetProps {
   userEmail: string | null;
   syncStatus: string;
   onExportBackup: () => void;
+  onExportCompleteBackup: () => void;
+  onShowDiagnostics: () => void;
   onImportBackup: () => void;
   onPrivacyPolicy: () => void;
   onSignIn: () => void;
@@ -150,6 +152,8 @@ export function ProfileSheet({
   userEmail,
   syncStatus,
   onExportBackup,
+  onExportCompleteBackup,
+  onShowDiagnostics,
   onImportBackup,
   onPrivacyPolicy,
   onSignIn,
@@ -259,6 +263,12 @@ export function ProfileSheet({
                 onClick={onPrivacyPolicy}
                 icon={<PrivacyIcon size={18} />}
               />
+              <SettingsRow
+                title="Sync diagnostics"
+                subtitle="Technical state for troubleshooting — no note content"
+                onClick={onShowDiagnostics}
+                icon={<InfoIcon size={18} />}
+              />
               <SettingsRow title="Version" subtitle={`${version} (web)`} icon={<InfoIcon size={18} />} />
             </SettingsSection>
           </div>
@@ -304,14 +314,20 @@ export function ProfileSheet({
                 </>
               )}
               <SettingsRow
-                title="Export backup"
-                subtitle="Download notes as JSON"
+                title="Export backup with images"
+                subtitle="Download notes and images as one .nlkbak file"
+                onClick={onExportCompleteBackup}
+                icon={<BackupIcon size={18} />}
+              />
+              <SettingsRow
+                title="Export notes only"
+                subtitle="Download notes as JSON, without images"
                 onClick={onExportBackup}
                 icon={<BackupIcon size={18} />}
               />
               <SettingsRow
                 title="Import backup"
-                subtitle="Merge notes from a JSON file"
+                subtitle="Merge notes from a .nlkbak or .json file"
                 onClick={onImportBackup}
                 icon={<AddIcon size={18} />}
               />

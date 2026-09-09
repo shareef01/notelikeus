@@ -5,7 +5,12 @@ import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.util.DateUtils
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.intOrNull
 
 class NoteBackupImporter(
     private val repository: NoteRepository
@@ -28,7 +33,32 @@ class NoteBackupImporter(
                 return BackupImportResult.InvalidFormat("Backup file is too deeply nested")
             }
 
-            val backupData = json.decodeFromString<BackupData>(jsonStr)
+            // A `.nlkbak` bundle's manifest.json wraps a v3 document rather than replacing it,
+            // so an extracted manifest imports here with its notes intact. The archive's image
+            // bytes are the part this platform cannot restore yet; they are counted and reported
+            // rather than passed over in silence.
+            val unwrapped = try {
+                unwrapBundleManifest(jsonStr)
+            } catch (e: SerializationException) {
+                return BackupImportResult.InvalidFormat(
+                    "Backup file could not be read: ${e.message ?: "unrecognised structure"}"
+                )
+            }
+            unwrapped.rejection?.let { return it }
+            val documentJson = unwrapped.document
+            val attachmentsSkipped = unwrapped.attachmentsSkipped
+
+            val backupData = try {
+                json.decodeFromString<BackupData>(documentJson)
+            } catch (e: SerializationException) {
+                // A field of the wrong type fails the whole document, and the bare exception
+                // surfaced as an unexplained "import failed". The decoder already knows which
+                // path it choked on, so say so — that is the difference between a user who can
+                // fix or report the file and one who cannot.
+                return BackupImportResult.InvalidFormat(
+                    "Backup file could not be read: ${e.message ?: "unrecognised structure"}"
+                )
+            }
             
             if (backupData.version > NoteBackupExporter.BACKUP_VERSION) {
                 return BackupImportResult.InvalidFormat("Unsupported backup version: ${backupData.version}")
@@ -103,10 +133,46 @@ class NoteBackupImporter(
             }
 
             repository.finalizeImportedNotes(importedIds)
-            BackupImportResult.Success(notesImported = notesImported, labelsCreated = labelsCreated)
+            BackupImportResult.Success(
+                notesImported = notesImported,
+                labelsCreated = labelsCreated,
+                attachmentsSkipped = attachmentsSkipped,
+            )
         } catch (e: Exception) {
             BackupImportResult.Error(e)
         }
+    }
+
+    private class Unwrapped(
+        val document: String,
+        val attachmentsSkipped: Int,
+        val rejection: BackupImportResult.InvalidFormat? = null,
+    )
+
+    /**
+     * Peels a bundle manifest down to the v3 document inside it, or passes a plain backup through.
+     *
+     * A manifest is recognised by `formatVersion`, which a v3 document does not have (it carries
+     * `version`). Nothing else about the file is assumed: a manifest from a newer format is
+     * refused by number rather than parsed hopefully.
+     */
+    private fun unwrapBundleManifest(jsonStr: String): Unwrapped {
+        val root = runCatching { json.parseToJsonElement(jsonStr) as? JsonObject }.getOrNull()
+            ?: return Unwrapped(jsonStr, 0)
+        val formatVersion = root["formatVersion"]?.jsonPrimitive?.intOrNull
+            ?: return Unwrapped(jsonStr, 0)
+        if (formatVersion > BackupBundleManifest.BUNDLE_FORMAT_VERSION) {
+            return Unwrapped(
+                jsonStr,
+                0,
+                BackupImportResult.InvalidFormat("Unsupported backup version: $formatVersion"),
+            )
+        }
+        val manifest = json.decodeFromString<BackupBundleManifest>(jsonStr)
+        return Unwrapped(
+            document = manifest.backup.toString(),
+            attachmentsSkipped = manifest.attachments.size,
+        )
     }
 
     /**
