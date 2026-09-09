@@ -5,6 +5,7 @@ import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.util.DateUtils
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 
 class NoteBackupExporter(
     private val repository: NoteRepository,
@@ -26,7 +27,9 @@ class NoteBackupExporter(
             exportedAt = DateUtils.currentTimeMillis(),
             app = appName,
             appVersion = appVersion,
-            labels = labels,
+            labels = labels.map { label ->
+                LabelBackupDto(id = label.id?.let(::JsonPrimitive), name = label.name)
+            },
             notes = notes.map { it.toDto() }
         )
 

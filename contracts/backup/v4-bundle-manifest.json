@@ -1,0 +1,58 @@
+{
+  "comment": "The manifest.json inside a .nlkbak bundle. `backup` is a v3 backup document embedded VERBATIM — byte-for-byte what the JSON exporter writes — so a v4 reader hands it to the unchanged v3 importer and a v3-only client can recover the notes by extracting this one field. `attachments` is an additive index; it never changes what `backup` means.",
+  "manifest": {
+    "formatVersion": 4,
+    "app": "Notelikeus",
+    "appVersion": "1.0.3",
+    "exportedAt": 1767225600000,
+    "backup": {
+      "version": 3,
+      "exportedAt": 1767225600000,
+      "app": "Notelikeus",
+      "appVersion": "1.0.3",
+      "labels": [
+        {
+          "id": 4,
+          "name": "Travel"
+        }
+      ],
+      "notes": [
+        {
+          "id": 12,
+          "title": "Trip",
+          "content": "**pack** bags",
+          "timestamp": 1767225000000,
+          "color": -2955,
+          "isPinned": true,
+          "isArchived": false,
+          "isTrashed": false,
+          "position": 2,
+          "reminderTimestamp": 4102444800000,
+          "labels": [
+            "Travel"
+          ],
+          "checklist": []
+        }
+      ]
+    },
+    "attachments": [
+      {
+        "noteId": 12,
+        "attachmentId": "2f1c4b6e-0d3a-4d5f-9a71-6c8e2b4d1f03",
+        "path": "media/2f1c4b6e-0d3a-4d5f-9a71-6c8e2b4d1f03",
+        "type": "image",
+        "mimeType": "image/png",
+        "sizeBytes": 84,
+        "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+      }
+    ]
+  },
+  "rules": {
+    "archive": "ZIP. Entries are stored (method 0) on write; a reader also accepts deflate (method 8) so a bundle re-zipped by the operating system still imports.",
+    "entryNames": "manifest.json at the archive root, and media/<attachmentId> for each attachment. attachmentId must match ^[A-Za-z0-9_-]{1,128}$, which is what makes zip-slip structurally impossible: a reader resolves media entries from the validated id in the manifest, never from a path in the archive.",
+    "noteId": "The note's id inside `backup.notes`. Import reassigns local ids, so a reader must map old note id -> newly assigned id and rewrite the attachment's owner accordingly.",
+    "sha256": "Lowercase hex of the entry's bytes. A mismatch drops that one attachment and is reported; it must never drop the note.",
+    "additive": "Import is additive, exactly as v3 import is: notes arrive as new notes with newly allocated ids. Importing the same bundle twice yields two copies, and the attachment ids are re-minted so the second copy does not collide with the first.",
+    "excluded": "A bundle never carries access tokens, refresh tokens, encryption keys, cached sessions, sync cursors, server revisions, knownCloudIds, or any owner identifier."
+  }
+}

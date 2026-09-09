@@ -46,6 +46,8 @@ interface MainDialogsProps {
   syncStatus: React.ComponentProps<typeof ProfileSheet>['syncStatus'];
 
   onExportBackup: () => void;
+  onExportCompleteBackup: () => void;
+  onShowDiagnostics: () => void;
   onImportBackup: () => void;
   onSignIn: () => void;
   onSignUp: () => void;
@@ -84,6 +86,8 @@ export function MainDialogs({
   userEmail,
   syncStatus,
   onExportBackup,
+  onExportCompleteBackup,
+  onShowDiagnostics,
   onImportBackup,
   onSignIn,
   onSignUp,
@@ -110,6 +114,8 @@ export function MainDialogs({
         userEmail={userEmail}
         syncStatus={syncStatus}
         onExportBackup={onExportBackup}
+        onExportCompleteBackup={onExportCompleteBackup}
+        onShowDiagnostics={onShowDiagnostics}
         onImportBackup={onImportBackup}
         onPrivacyPolicy={() => onOpenChange({ privacyPolicy: true })}
         onSignIn={onSignIn}
