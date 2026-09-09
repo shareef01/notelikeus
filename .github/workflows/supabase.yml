@@ -1,6 +1,14 @@
 name: Supabase CI
 
 on:
+  # Owner-operated migration deploy. The hosted database has no preview to rehearse
+  # against, so the ref you dispatch from is the ref that reaches production.
+  workflow_dispatch:
+    inputs:
+      confirm_project_ref:
+        description: 'Type the Supabase project ref to confirm (must match the SUPABASE_PROJECT_REF secret)'
+        required: true
+        type: string
   push:
     branches: [main, master]
     paths:
@@ -19,12 +27,53 @@ on:
 permissions:
   contents: read
 
+# A burst of pushes should supersede itself, but a deploy must never be cancelled
+# part-way through `db push`, and must not be superseded by an unrelated push either.
 concurrency:
-  group: supabase-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: supabase-ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
+  # Gates database-tests rather than running beside it, so a dispatch with a missing
+  # secret or a mistyped ref fails in seconds instead of after a full Supabase stack
+  # boot. On push and pull_request it is an empty job that just succeeds.
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+    steps:
+      - name: Require Supabase secrets and a matching confirmation
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          # Through env, never interpolated into the script: this one is operator input.
+          CONFIRM_PROJECT_REF: ${{ inputs.confirm_project_ref }}
+        run: |
+          missing=0
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF; do
+            if [ -z "${!name}" ]; then
+              echo "Missing GitHub secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Add those secrets, or run locally: npx supabase link --project-ref <ref> && npx supabase db push"
+            exit 1
+          fi
+          # Typing the ref is what makes this a decision rather than a misclick, and it
+          # catches a dispatch aimed at the wrong project before anything is applied.
+          if [ "$CONFIRM_PROJECT_REF" != "$SUPABASE_PROJECT_REF" ]; then
+            echo "confirm_project_ref does not match the SUPABASE_PROJECT_REF secret. Nothing was applied."
+            exit 1
+          fi
+          echo "Secrets present and confirmation matches; proceeding to database tests."
+
   database-tests:
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -55,3 +104,49 @@ jobs:
       - name: Stop local Supabase stack
         if: always()
         run: npm run supabase:stop
+
+  # Applies committed migrations to the hosted project. Gated on database-tests so a
+  # migration set that cannot rebuild a fresh database never reaches the real one.
+  #
+  # `environment: production` is where to attach required reviewers if this should ever
+  # need a second pair of eyes; it works unconfigured today.
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    needs: [preflight, database-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Link hosted project
+        run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Show pending migrations
+        run: npx supabase migration list --linked
+
+      - name: Apply migrations
+        run: npx supabase db push
+
+      # `db push` failing is what fails this job; this prints the resulting local/remote
+      # table as the record of what landed. Read it before deploying the attachments
+      # Worker -- a Worker calling an RPC its database does not have yet answers 503.
+      - name: Record applied migrations
+        run: npx supabase migration list --linked

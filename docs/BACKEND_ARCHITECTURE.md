@@ -145,3 +145,22 @@ Owner-operated (credentials required):
 5. Create a Cloudflare Pages project with build `cd web && npm ci && npm run build`, output `web/dist`.
 6. Set Pages env vars listed above.
 7. Attach a custom domain and add it to the Supabase Auth redirect allowlist.
+
+### Applying migrations to an existing project
+
+Once the project exists, later migrations go out through the `workflow_dispatch` deploy
+job in `.github/workflows/supabase.yml` rather than by hand. It runs the pgTAP suite
+against a fresh database first, then `supabase db push` against the hosted one, and asks
+you to type the project ref so a dispatch cannot be a misclick. It needs three repository
+secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_REF`.
+
+Running it locally is equivalent and still supported:
+
+```bash
+npx supabase link --project-ref <ref>
+npx supabase migration list --linked   # what is pending
+npx supabase db push
+```
+
+Note that `db.<ref>.supabase.co` publishes AAAA records only, so an IPv4-only host
+cannot reach it directly and needs the IPv4 pooler.
