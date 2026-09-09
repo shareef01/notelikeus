@@ -39,7 +39,7 @@ jobs:
   # boot. On push and pull_request it is an empty job that just succeeds.
   preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -47,6 +47,16 @@ jobs:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
       - name: Require Supabase secrets and a matching confirmation
         if: github.event_name == 'workflow_dispatch'
         env:
@@ -70,7 +80,44 @@ jobs:
             echo "confirm_project_ref does not match the SUPABASE_PROJECT_REF secret. Nothing was applied."
             exit 1
           fi
-          echo "Secrets present and confirmation matches; proceeding to database tests."
+          echo "Secrets present and confirmation matches."
+
+      # A wrong SUPABASE_DB_PASSWORD and a *right* one carrying a stray newline or
+      # non-breaking space from a copy-paste both fail identically, as an opaque
+      # `FATAL: password authentication failed`. These two steps tell those apart
+      # without ever printing the value: the first characterises the secret, the
+      # second proves it actually authenticates before the stack boot is paid for.
+      - name: Characterise the database password without revealing it
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          chars=${#SUPABASE_DB_PASSWORD}
+          bytes=$(printf '%s' "$SUPABASE_DB_PASSWORD" | wc -c | tr -d ' ')
+          printable=$(printf '%s' "$SUPABASE_DB_PASSWORD" | LC_ALL=C tr -cd '[:print:]' | wc -c | tr -d ' ')
+          trimmed=$(printf '%s' "$SUPABASE_DB_PASSWORD" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          echo "characters: $chars"
+          echo "bytes:      $bytes"
+          if [ "$trimmed" != "$SUPABASE_DB_PASSWORD" ]; then
+            echo "WARNING: leading or trailing whitespace -- the secret has a stray space,"
+            echo "tab or newline around the value. Re-save it with nothing either side."
+          else
+            echo "No surrounding whitespace."
+          fi
+          if [ "$bytes" != "$printable" ]; then
+            echo "WARNING: $((bytes - printable)) non-printable or non-ASCII byte(s)."
+            echo "A value pasted from a password manager or a document can carry a"
+            echo "newline, or a typographic character that looks like an ordinary one."
+          else
+            echo "All bytes are printable ASCII."
+          fi
+
+      - name: Prove the password authenticates
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          npm ci
+          npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          # Read-only, and the same connection db push will make. Failing here costs
+          # forty seconds; failing in deploy costs the whole pgTAP run first.
+          npx supabase migration list --linked
 
   database-tests:
     needs: preflight
