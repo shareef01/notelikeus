@@ -1,0 +1,73 @@
+{
+  "version": 3,
+  "exportedAt": 1767225600000,
+  "app": "Notelikeus",
+  "appVersion": "1.0.0 (web)",
+  "labels": [
+    {
+      "id": "label-travel",
+      "name": "Travel"
+    },
+    {
+      "id": "label-work",
+      "name": "Work"
+    }
+  ],
+  "notes": [
+    {
+      "id": 12,
+      "title": "Trip",
+      "content": "**pack** bags",
+      "timestamp": 1767225000000,
+      "color": -2955,
+      "isPinned": true,
+      "isArchived": false,
+      "isTrashed": false,
+      "position": 2,
+      "labels": [
+        "Travel",
+        "Work"
+      ],
+      "checklist": [
+        {
+          "text": "Passport",
+          "isChecked": true,
+          "position": 0
+        },
+        {
+          "text": "Charger",
+          "isChecked": false,
+          "position": 1
+        }
+      ],
+      "reminderTimestamp": 4102444800000
+    },
+    {
+      "id": 13,
+      "title": "",
+      "content": "plain",
+      "timestamp": 1767225111000,
+      "color": -15198181,
+      "isPinned": false,
+      "isArchived": true,
+      "isTrashed": false,
+      "position": 0,
+      "labels": [],
+      "checklist": []
+    },
+    {
+      "id": 14,
+      "title": "Elapsed reminder",
+      "content": "",
+      "timestamp": 1767225222000,
+      "color": -15198181,
+      "isPinned": false,
+      "isArchived": false,
+      "isTrashed": false,
+      "position": 1,
+      "labels": [],
+      "checklist": [],
+      "reminderTimestamp": 1262304000000
+    }
+  ]
+}

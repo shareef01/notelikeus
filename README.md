@@ -35,13 +35,15 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 | Manual reorder in list view | ✓ | ✓ | ✓ |
 | Image attachments | ✓ | ✓ | ✓ |
 | Theme, accent, pure black | ✓ | ✓ | ✓ |
-| Reminders | Notifications | Tray, while the app runs | Service worker |
+| Reminders, with presets and an exact date & time | Notifications | Tray, while the app runs | Service worker |
 | Encrypted local database | SQLCipher | — | — |
 | Biometric app lock | ✓ | — | — |
 | Home-screen widget | Glance | — | — |
 | Google sign-in and cloud sync | Optional | Optional | Optional |
 | Usable with no account | ✓ | ✓ | ✓ |
 | JSON backup import / export | ✓ | ✓ | ✓ |
+| Backup with attachment bytes (`.nlkbak`) | Import notes only | Import notes only | ✓ |
+| Sync diagnostics | ✓ | ✓ | ✓ |
 | Installable PWA | — | — | ✓ |
 
 ## How it works
@@ -58,7 +60,9 @@ Saved locally and synced are reported as different things. An edit counts as sav
 
 Attachments are written to durable local storage before the note references them, so a note that points at an image still has the bytes after a restart and the upload can resume. Blobs live in Cloudflare R2 behind a Worker that verifies the Supabase session and derives the object key from the authenticated user. Staged bytes are scoped to the account that created them.
 
-Importing a JSON backup adds its notes as new notes rather than replacing what is on the device, so importing the same file twice gives you two copies. The format carries note content, not attachments.
+Importing a backup adds its notes as new notes rather than replacing what is on the device, so importing the same file twice gives you two copies. A JSON backup carries note content only. The web client can also export a `.nlkbak` bundle — a plain ZIP holding the same JSON document plus the attachment bytes this device actually has — and import one back, images and all. Android and Windows read the notes out of a bundle's manifest and say how many images they could not restore; exporting one there is not built yet.
+
+Something not syncing has a settings screen for it. Sync diagnostics shows counts, cursors and version numbers — never note text, tokens or your account id — and copying it anywhere is up to you.
 
 ## Stack
 
@@ -117,16 +121,22 @@ Production builds need a hosted `VITE_SUPABASE_URL` and the public `VITE_SUPABAS
 
 | Suite | Covers | Command |
 |---|---|---|
-| Kotlin unit | Sync engine, mappers, repositories, backup, key management, Room migrations | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest :androidApp:testDebugUnitTest` |
+| Kotlin unit | Sync engine, mappers, repositories, backup, key management, Room migrations, reminder time zones | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest :androidApp:testDebugUnitTest` |
+| Cross-client contracts | Backup and cloud payload formats, asserted from the same fixtures by Kotlin and TypeScript | part of the Kotlin unit and web unit suites |
+| Sync invariants | Crash, offline, account-switch and restore interleavings against a fault-injecting transport | part of the Kotlin unit suite |
 | Instrumented | Database quarantine and encryption migration, on a device | `./gradlew :composeApp:connectedDebugAndroidTest` |
 | Minified release | R8 and resource shrinking | `./gradlew :androidApp:assembleRelease` |
-| Web unit | Merge logic, conflict resolution, backup parsing, search | `cd web && npm test` |
+| Web unit | Merge logic, conflict resolution, backup parsing, bundle archives, diagnostics redaction, search | `cd web && npm test` |
 | Web end-to-end | Built bundle in Chromium against local Supabase | `cd web && npm run test:e2e` |
 | Database | RLS, sync RPCs, tombstones, attachments (pgTAP) | `npm run supabase:test` |
 | Attachments Worker | JWT auth, path isolation, size and MIME limits | `npm run test:attachments-worker` |
 | Pages artifacts | `_headers` and `_redirects` in `web/dist` | `npm run pages:verify` |
 
-The instrumented suite needs a connected device or emulator; the database and end-to-end suites need a running local Supabase (`npm run supabase:start`).
+The instrumented suite needs a connected device or emulator; the database and end-to-end suites need a running local Supabase (`npm run supabase:start`), which needs Docker.
+
+The cross-client fixtures live in [`contracts/`](contracts/) and are read by both test suites, so a
+field renamed or defaulted differently on one client fails on both. The most recent audit of the
+whole system is [`docs/AUDIT_2026.md`](docs/AUDIT_2026.md).
 
 ## Repository layout
 
@@ -138,7 +148,8 @@ The instrumented suite needs a connected device or emulator; the database and en
 | `supabase/` | Postgres migrations, seed data, pgTAP tests |
 | `workers/attachments/` | Cloudflare Worker for R2 authorization |
 | `cloudflare/` | Pages header parity check |
-| `docs/` | Architecture, design decisions, known defects, device QA |
+| `contracts/` | Canonical JSON fixtures both clients are tested against |
+| `docs/` | Architecture, design decisions, known defects, audits, device QA |
 | `store/` | Play Store listing copy and publishing notes |
 
 ## Privacy
