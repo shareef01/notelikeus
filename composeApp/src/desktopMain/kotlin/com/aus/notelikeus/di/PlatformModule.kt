@@ -1,5 +1,8 @@
 package com.aus.notelikeus.di
 
+import com.aus.notelikeus.data.local.NOTELIKEUS_DATABASE_VERSION
+import com.aus.notelikeus.domain.diagnostics.DiagnosticsCollector
+import com.aus.notelikeus.domain.repository.NoteRepository
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
@@ -38,7 +41,6 @@ import com.aus.notelikeus.di.DesktopNoteSyncStateStore
 import com.aus.notelikeus.domain.platform.PlatformWidgetManager
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.domain.platform.SyncCoordinator
-import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.platform.DesktopGoogleSignInHelper
 import com.aus.notelikeus.platform.DesktopReminderManager
@@ -178,6 +180,24 @@ actual val platformModule = module {
     }
 
     single { LocalAccountIsolator(get(), get(), get()) }
+    /**
+     * Diagnostics read the same stores sync does, and nothing else. Registered per platform
+     * because only the platform knows what its storage is and whether it is encrypted — the two
+     * facts a user troubleshooting "where are my notes" most needs stated plainly.
+     */
+    single {
+        DiagnosticsCollector(
+            loadNotes = { get<NoteRepository>().getAllNotesForBackup() },
+            syncStateStore = get(),
+            staging = get(),
+            ownerIdProvider = { get<CloudSessionManager>().getCurrentAccount().userId },
+            isSignedIn = { get<CloudSessionManager>().getCurrentAccount().userId != null },
+            databaseSchemaVersion = NOTELIKEUS_DATABASE_VERSION,
+            storageKind = "Room",
+            encryptedAtRest = false,
+        )
+    }
+
     single<SyncManager> {
         DesktopSyncManager(
             get<NoteSyncEngine>(),

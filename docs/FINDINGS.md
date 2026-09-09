@@ -1180,3 +1180,199 @@ the new one; replacement content uses a new attachment id, exactly as the archit
 documented.
 
 **Severity:** high (silent resurrection of destroyed data; unreachable by any sweeper).
+
+---
+
+## F53 — A backup exported by the web client could not be imported on Android or Windows — **FIXED**
+
+`BackupData.labels` was typed `List<Label>`, whose `id` is `Long?`. The web exporter writes its own
+label ids into the same field, and those are slugs (`"label-travel"`). `ignoreUnknownKeys` does not
+help with a *type* mismatch, so `decodeFromString` threw at `$.labels[0].id` and
+`importFromJson`'s outer `catch (e: Exception)` turned it into a generic
+`BackupImportResult.Error` — "Import failed", with no reason.
+
+Reproduced against the real importer, not inferred:
+
+```
+expected:<Success(notesImported=3, labelsCreated=2)>
+but was:<Error(throwable=JsonDecodingException: Unexpected symbol 'l' in numeric literal
+  at path: $.labels[0].id ... "id": "label-travel" ...)>
+```
+
+Total and silent: every user who exported on the web and tried to restore on a phone or on Windows
+lost the transfer, while `README.md`'s feature table claimed JSON backup import/export on all three
+clients.
+
+**Fixed** with a `LabelBackupDto` whose `id` is a raw `JsonElement`, accepting a number and a string
+alike. Neither importer has ever read that field — labels are matched by name — so it is carried
+rather than dropped, and what Kotlin *writes* is byte-for-byte unchanged, so a file from this build
+still imports into the previous one. A genuinely malformed file now reports the decoder's own path
+instead of an unexplained failure.
+
+Guarded by `CrossClientContractTest` against `contracts/backup/v3-web-export.json`.
+
+**Severity:** high (documented cross-platform path completely broken in one direction).
+
+---
+
+## F54 — Deleting every cloud note broke sync permanently — **FIXED**
+
+`SuspectEmptyCloudException` exists to stop a fetch that fails *open* from being read as
+"everything was deleted elsewhere". Its own comment names the distinguishing fact — a genuine
+remote delete leaves tombstones, which `mergeCloudTombstones` has already applied — and the guard
+never used it. Both `downloadAllNotes` and `uploadAllNotes` compared the whole `knownCloudIds` set
+against an empty fetch without subtracting the ids those tombstones explain.
+
+Worse, it could not heal. `setKnownCloudIds` only runs at the end of a *successful* download, so
+the set that trips the guard was never updated, and `uploadAllNotes` carried the same check — so
+creating a new note did not clear it either. Delete your last note (or empty the trash) on another
+device and this device answered "Check the connection or sign in again" on every sync, forever.
+
+The web client was already correct: `supabaseRemoteNotesDataSource.ts` computes
+`unexplained = knownIds.filter(id => !snapshotIds.has(id) && !tombstoneIds.has(id))` and has the
+test `'lets a snapshot empty by deletion through once every note is tombstoned'`. This was
+Kotlin-only drift from a decision the other client had already made.
+
+**Fixed** with one helper, `unexplainedMissingCloudIds`, used by both guards. The safety property is
+untouched — a failed-open read leaves the previously-known ids unexplained, so it still refuses.
+
+Guarded by `EmptyCloudAfterDeletingEverythingTest`, whose four cases include two that would fail
+against a naive "just drop the check" fix.
+
+**Severity:** high (unrecoverable sync failure).
+
+---
+
+## F55 — The web reminder picker pre-filled a time in the past — **FIXED**
+
+`ReminderPickerDialog.toInputValue`'s null branch built the default from
+`nextHour.toISOString().slice(0, 16)`. A `datetime-local` value is **local wall-clock time**;
+`toISOString()` is UTC. Measured in `Asia/Kolkata`, the offered value parsed back as more than 240
+minutes in the past. `buildSwReminders` filters `fireAt > now`, so a user who accepted the offered
+time got no reminder and no warning. West of UTC the reminder landed hours late instead.
+
+The non-null branch was already correct, so this only affected setting a *new* reminder — the
+common case. Same family as F25, different site.
+
+**Fixed** by `web/src/lib/reminders/reminderTime.ts`, which builds the value from the local getters
+and parses it back as local time. Covered across five zones including `Australia/Eucla`, whose
+:45 offset catches offset arithmetic that lands on the wrong minute.
+
+**Severity:** medium.
+
+---
+
+## F56 — `putNotes` could hang instead of failing — **FIXED**
+
+`web/src/lib/local/notesLocalRepository.ts`'s `putNotes` handled `tx.onerror` but not
+`tx.onabort`. An IndexedDB transaction can abort with no request having errored — the browser
+reclaiming storage, an internal fault — and `error` does not fire for those, so the promise never
+settled. `withStore`, `clearOwner`, `replaceAllNotes` and `applyRemotePageAtomically` all already
+handled both.
+
+`hydrateFromRemote` awaits it before the app reports ready, so a hang left the app stuck on boot;
+`applyNotes` rolls the optimistic UI back in `.catch`, so a hang left the store claiming a durable
+write that never happened.
+
+**Fixed** with an `onabort` handler and a test hook matching the file's existing
+`abortNextRemotePageApplyForTests` convention.
+
+**Severity:** medium (a local write that never settles is worse than one that fails).
+
+---
+
+## F57 — Web and Kotlin disagreed about an elapsed reminder on import — **FIXED**
+
+Kotlin's importer dropped a `reminderTimestamp` already in the past
+(`takeIf { it > currentTimeMillis() }`); the web importer kept it. The same backup produced
+different notes on different platforms — on web, a reminder chip for an alarm that can never fire.
+
+**Fixed** by converging web onto Kotlin's behaviour, which is the older and better-reasoned one.
+Pinned in `contracts/backup/v3-expected-notes.json` as a note whose reminder is in the past.
+
+**Severity:** low (cross-client divergence).
+
+---
+
+## F58 — `npm run pages:verify` could not run on Windows — **FIXED**
+
+The script used a `VAR=value command` prefix, which is POSIX shell syntax. npm runs scripts through
+`cmd.exe` on Windows, where that is not an assignment:
+
+```
+'VITE_SUPABASE_URL' is not recognized as an internal or external command
+```
+
+CI runs on ubuntu, so it stayed green and hid this from the one platform the desktop app is built
+for. **Fixed** with `scripts/ops/verify-pages.mjs`, which sets the placeholders itself — no new
+dependency, runnable from a fresh clone.
+
+**Severity:** low (tooling; a documented verification command unusable by its own maintainer).
+
+---
+
+## F59 — Kotlin's cloud fetch has no structural completeness check — **OPEN**
+
+The web client validates its snapshot structurally: `fetch_full_snapshot` returns a separate
+`note_count`, and a mismatch against the row count is refused as
+`Incomplete snapshot: expected N notes, got M`. The Kotlin transport has no equivalent.
+
+Its `SuspectEmptyCloudException` only fires when the collection is **entirely** empty. A
+*partially* truncated read still reaches `downloadAllNotes`, where every previously-known id
+missing from it is deleted locally and tombstoned.
+
+Not hypothetical: a truncated `jsonb_agg` is precisely the failure `note_count` was added to catch,
+and the guard exists on only one client. Same class as F54.
+
+**Not fixed here.** It needs a transport change (read `note_count` from the same RPC) plus an
+engine assertion, and it is the last known asymmetry between the two sync implementations — worth
+doing as its own change with its own contract test rather than folded into an audit. Recorded as
+the second recommended project in [`AUDIT_2026.md`](AUDIT_2026.md).
+
+**Severity:** medium-high (silent local deletion on a partially failed read).
+
+---
+
+## F60 — Bundle export is not implemented on Android or Windows — **DEFERRED, STAGED**
+
+The `.nlkbak` backup bundle (notes plus attachment bytes) is implemented end-to-end on the web
+client. The Kotlin clients read a bundle's **manifest** — recovering the notes through the
+unchanged v3 path and reporting how many images they could not restore — but cannot read or write
+the archive itself.
+
+`commonMain` has no ZIP reader. `java.util.zip` is available on both JVM targets but not from
+`commonMain`, so this needs either an intermediate `jvmShared` source set (a build change) or an
+`expect`/`actual` pair with duplicated implementations. Both are defensible; neither should be
+decided in the same change as the format, and shipping a second hand-rolled ZIP implementation
+before the format has been exercised in the field would be the wrong order.
+
+Android is where the photos are, so this is the first recommended project in
+[`AUDIT_2026.md`](AUDIT_2026.md).
+
+---
+
+## F61 — `partialRemoteSnapshot.test.ts` fails under CPU contention — **OPEN**
+
+Observed once during the 2026 audit: the full web suite failed a single assertion
+(`partialRemoteSnapshot.test.ts:140`) on a run that took 220s instead of its usual 24s because it
+was competing with an R8 release build for CPU. The same file passes 7/7 in isolation, twice, and
+the full suite passes 540/540 with nothing else running.
+
+The cause is the file's own `settle(ms)` helper:
+
+```ts
+await new Promise((resolve) => setTimeout(resolve, ms));
+```
+
+A fixed real-time sleep standing in for "the async work has finished". Under starvation the work
+does not complete inside it, `emitted` is still empty, and the assertion fails. Two tests in the
+same file already use `vi.waitFor`, which is the correct form and is not load-sensitive.
+
+Not introduced by the audit: the file is untouched by it (`b6e619c6`, #168). Not a product defect
+— nothing about the application is wrong. But it is a real CI hazard: a shared runner under load
+produces a red build that reruns green, which is how a suite starts being ignored.
+
+**Fix when convenient:** replace the remaining `settle()` calls with `vi.waitFor` on the condition
+each one is actually waiting for, as the same file already does at lines 170 and 208.
+
+**Severity:** low (test infrastructure).

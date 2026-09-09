@@ -1,0 +1,10 @@
+{
+  "comment": "The redacted account tag a diagnostics report carries instead of the account id. Both clients must produce the same tag for the same account, so a user troubleshooting across a phone and a browser produces reports that can be told apart from someone else's and matched to each other. FNV-1a, 32 bit, over the UTF-16 code units, rendered as 8 lowercase hex digits.",
+  "vectors": [
+    { "ownerId": "user-a", "tag": "acct-2553c504" },
+    { "ownerId": "user-b", "tag": "acct-2853c9bd" },
+    { "ownerId": "9c1f7a3e-2b44-4d1a-9f6e-0c8b2d4e6a10", "tag": "acct-efce8d44" },
+    { "ownerId": "__guest__", "tag": "guest" },
+    { "ownerId": "", "tag": "none" }
+  ]
+}

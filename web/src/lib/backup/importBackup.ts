@@ -93,6 +93,7 @@ function noteFromBackupEntry(
   localId: number,
   position: number,
   labelResolver: (name: string) => ReturnType<typeof labelFromName>,
+  now: number,
 ): Note | null {
   if (!entry || typeof entry !== 'object') return null;
 
@@ -119,6 +120,14 @@ function noteFromBackupEntry(
     id: String(localId),
     localId,
     position,
+    // A reminder whose moment has already passed is dropped, matching Kotlin's
+    // `NoteBackupImporter`. Keeping it left the note showing a reminder chip for an alarm that
+    // can never fire (`buildSwReminders` filters `fireAt > now`), and on the clients that do
+    // schedule from stored reminders it would fire the instant the import finished.
+    reminderTimestamp:
+      mapped.reminderTimestamp != null && mapped.reminderTimestamp > now
+        ? mapped.reminderTimestamp
+        : null,
     title: mapped.title.slice(0, MAX_NOTE_TITLE_CHARS),
     content: mapped.content.slice(0, MAX_NOTE_CONTENT_CHARS),
     checklist: mapped.checklist
@@ -128,7 +137,12 @@ function noteFromBackupEntry(
   });
 }
 
-export function importNotesFromBackup(json: unknown, existingNotes: Note[]): {
+export function importNotesFromBackup(
+  json: unknown,
+  existingNotes: Note[],
+  /** Injectable so the elapsed-reminder rule can be tested without moving the wall clock. */
+  now: number = Date.now(),
+): {
   merged: Note[];
   result: BackupImportResult;
 } {
@@ -187,7 +201,7 @@ export function importNotesFromBackup(json: unknown, existingNotes: Note[]): {
     const localId = nextLocalNoteIdAfter(runningMaxId);
     runningMaxId = localId;
     const position = basePosition + imported.length;
-    const note = noteFromBackupEntry(entry, localId, position, resolveLabel);
+    const note = noteFromBackupEntry(entry, localId, position, resolveLabel, now);
     if (!note) continue;
     imported.push(note);
   }

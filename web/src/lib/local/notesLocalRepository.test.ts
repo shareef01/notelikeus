@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { GUEST_OWNER_ID, NOTES_DB_NAME } from '@/lib/local/constants';
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
 import {
+  abortNextPutNotesForTests,
   abortNextRemotePageApplyForTests,
   applyRemotePageAtomically,
   clearOwner,
   getOwnerMeta,
   listNotes,
   putNote,
+  putNotes,
   replaceAllNotes,
   setOwnerMeta,
 } from '@/lib/local/notesLocalRepository';
@@ -48,6 +50,31 @@ describe('notesLocalRepository', () => {
     expect(await listNotes('user-a')).toHaveLength(0);
     expect(await listNotes('user-b')).toHaveLength(1);
     expect(await getOwnerMeta('user-a')).toBeNull();
+  });
+
+  /**
+   * An aborted transaction must reject, not hang.
+   *
+   * IndexedDB fires `abort` with no preceding `error` when the browser reclaims storage or hits an
+   * internal fault, so a handler on `error` alone leaves the promise unsettled forever. That is
+   * worse than a failure everywhere this is awaited: `hydrateIndexedDbFromRemote` waits on it
+   * before the app reports ready, and `applyNotes` rolls the optimistic UI back in its `.catch`,
+   * so a hang leaves the store claiming a durable write that never happened.
+   */
+  it('rejects rather than hanging when the write transaction aborts', async () => {
+    abortNextPutNotesForTests();
+
+    await expect(putNotes('user-a', [makeNote('1', 1)])).rejects.toThrow();
+    expect(await listNotes('user-a')).toHaveLength(0);
+  });
+
+  it('recovers on the next write after an abort', async () => {
+    abortNextPutNotesForTests();
+    await expect(putNotes('user-a', [makeNote('1', 1)])).rejects.toThrow();
+
+    // The flag is consumed, not sticky: a retry must go through.
+    await putNotes('user-a', [makeNote('1', 1), makeNote('2', 2)]);
+    expect((await listNotes('user-a')).map((note) => note.id).sort()).toEqual(['1', '2']);
   });
 
   it('replaces all notes atomically for hydration', async () => {
