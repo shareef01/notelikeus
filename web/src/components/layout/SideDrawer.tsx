@@ -1,4 +1,5 @@
 import { BrandMark } from '@/components/brand/BrandMark';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import {
   ArchiveIcon,
   ChevronRightIcon,
@@ -8,6 +9,7 @@ import {
   SettingsIcon,
   TrashIcon,
 } from '@/components/icons/Icons';
+import { GoogleIcon } from '@/components/icons/GoogleIcon';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
@@ -97,16 +99,29 @@ function NavButton({
   );
 }
 
-function NavSection({ title, children }: { title?: string; children: ReactNode }) {
+function NavSection({
+  title,
+  divided = false,
+  children,
+}: {
+  title?: string;
+  divided?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex flex-col gap-1">
+    <section
+      className={`flex flex-col gap-0.5 ${
+        divided ? 'mt-1 border-t border-brand-outline/40 pt-4' : ''
+      }`}
+      aria-label={title}
+    >
       {title ? (
-        <p className="px-3 pb-2 pt-1 text-chrome-label">
+        <h2 className="px-3 pb-2 text-section-label uppercase tracking-wider text-brand-muted">
           {title}
-        </p>
+        </h2>
       ) : null}
       {children}
-    </div>
+    </section>
   );
 }
 
@@ -176,20 +191,22 @@ export function SideDrawer({
         aria-label="Navigation"
       >
         {/* Header */}
-        <div className={`flex items-center gap-3 pb-5 pt-safe md:pt-7 ${
-          showCollapsed ? 'justify-center' : 'justify-between px-4 md:px-5'
-        }`}>
+        <header
+          className={`flex shrink-0 items-center gap-3 border-b border-brand-outline/40 pb-4 pt-[max(1.75rem,env(safe-area-inset-top,0px))] ${
+            showCollapsed ? 'justify-center px-1.5' : 'justify-between px-4 md:px-5'
+          }`}
+        >
           {showCollapsed ? (
             <BrandMark size={32} />
           ) : (
-            <div className="flex min-w-0 items-center gap-2.5">
-              <BrandMark size={36} />
-              <div className="min-w-0">
-                <p className="truncate text-[15px] font-bold tracking-tight text-brand-primary">
+            <div className="flex min-w-0 items-center gap-3">
+              <BrandMark size={40} />
+              <div className="min-w-0 leading-none">
+                <p className="truncate text-[17px] font-semibold tracking-tight text-brand-primary">
                   Notelikeus
                 </p>
-                <p className="text-chrome-label">
-                  Capture
+                <p className="mt-1 truncate text-[12px] font-medium tracking-tight text-brand-secondary">
+                  Capture what matters
                 </p>
               </div>
             </div>
@@ -198,19 +215,19 @@ export function SideDrawer({
             <button
               type="button"
               onClick={onClose}
-              className={`flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 md:hidden ${CHROME_FOCUS}`}
+              className={`flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary md:hidden ${CHROME_FOCUS}`}
               aria-label="Close menu"
             >
               <CloseIcon size={20} />
             </button>
           )}
-        </div>
+        </header>
 
         {/* Nav */}
-        <nav className={`flex flex-1 flex-col overflow-y-auto px-2.5 pb-5 ${
-          showCollapsed ? 'gap-3 md:px-1.5' : 'gap-5 md:px-3'
+        <nav className={`flex flex-1 flex-col overflow-y-auto px-2.5 pb-5 pt-4 ${
+          showCollapsed ? 'gap-2 md:px-1.5' : 'gap-1 md:px-3'
         }`}>
-          <NavSection title={showCollapsed ? undefined : undefined}>
+          <NavSection title={showCollapsed ? undefined : 'Library'}>
             {NAV_ITEMS.map(({ filter, label, Icon }) => {
               const active = currentFilter === filter;
               const count = navCounts?.[filter];
@@ -237,7 +254,7 @@ export function SideDrawer({
           </NavSection>
 
           {(onEditLabels || onOpenSettings) ? (
-            <NavSection title={showCollapsed ? undefined : 'Manage'}>
+            <NavSection title={showCollapsed ? undefined : 'Manage'} divided>
               {onEditLabels ? (
                 <NavButton
                   collapsed={showCollapsed}
@@ -266,25 +283,27 @@ export function SideDrawer({
 
         {/* Collapse toggle — desktop only */}
         {isTabletUp ? (
-          <div className={`border-t border-brand-outline/40 ${showCollapsed ? 'px-1 py-3' : 'px-4 py-2 md:px-5'}`}>
+          <div className={`border-t border-brand-outline/40 ${showCollapsed ? 'px-1.5 py-2' : 'px-2.5 py-2 md:px-3'}`}>
             <button
               type="button"
               onClick={onToggleCollapse}
-              className={`group flex w-full items-center rounded-xl border border-brand-secondary/25 bg-brand-primary/[0.06] font-medium text-brand-primary/85 transition-colors hover:border-brand-secondary/45 hover:bg-brand-primary/[0.1] hover:text-brand-primary ${CHROME_FOCUS} ${
+              className={`group flex w-full items-center rounded-xl text-sm font-medium tracking-tight text-brand-muted transition-colors hover:bg-brand-primary/[0.06] hover:text-brand-primary ${CHROME_FOCUS} ${
                 showCollapsed
-                  ? 'min-h-11 justify-center py-2.5'
-                  : 'min-h-11 gap-2.5 py-2.5 pl-3 pr-2.5'
+                  ? 'min-h-11 justify-center px-0 py-2.5'
+                  : 'min-h-11 gap-3 py-2.5 pl-3 pr-2.5'
               }`}
               aria-label={showCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               title={showCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
-              <span className={`flex size-6 shrink-0 items-center justify-center transition-transform duration-300 ${
-                showCollapsed ? '' : 'rotate-180'
-              }`}>
+              <span
+                className={`flex size-6 shrink-0 items-center justify-center text-brand-muted transition-transform duration-300 group-hover:text-brand-primary ${
+                  showCollapsed ? '' : 'rotate-180'
+                }`}
+              >
                 <ChevronRightIcon size={20} />
               </span>
               {!showCollapsed && (
-                <span className="min-w-0 flex-1 truncate text-left text-sm tracking-tight">
+                <span className="min-w-0 flex-1 truncate text-left">
                   Collapse
                 </span>
               )}
@@ -325,13 +344,10 @@ export function SideDrawer({
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
+              <GoogleSignInButton
+                label="Sign in with Google"
                 onClick={onSignIn}
-                className="w-full rounded-xl bg-brand-primary px-3 py-2.5 text-sm font-semibold text-true-surface transition-opacity hover:opacity-90"
-              >
-                Sign in with Google
-              </button>
+              />
             )}
           </div>
         )}
@@ -351,11 +367,11 @@ export function SideDrawer({
             <button
               type="button"
               onClick={onSignIn}
-              className="mx-auto flex size-8 items-center justify-center rounded-full bg-brand-primary/10 text-brand-primary transition-opacity hover:opacity-80"
-              aria-label="Sign in"
+              className={`mx-auto flex size-8 items-center justify-center rounded-full border border-[#747775]/40 bg-white shadow-sm transition-opacity hover:opacity-90 ${CHROME_FOCUS}`}
+              aria-label="Sign in with Google"
               title="Sign in with Google"
             >
-              <span className="text-[14px] font-bold">G</span>
+              <GoogleIcon size={16} />
             </button>
           </div>
         ) : null}

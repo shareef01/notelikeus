@@ -57,27 +57,42 @@ const REHYDRATE_TIMEOUT_MS = 8_000;
 const OPTIONAL_REHYDRATE_TIMEOUT_MS = 4_000;
 
 function withTimeout(promise: Promise<void>, ms: number, label: string): Promise<void> {
-  return Promise.race([
-    promise,
-    new Promise<void>((resolve) => {
-      window.setTimeout(() => {
+  return new Promise<void>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
         console.warn(`[Notelikeus] ${label} timed out after ${ms}ms — continuing startup.`);
         resolve();
-      }, ms);
-    }),
-  ]);
+    }, ms);
+    promise.then(
+      () => {
+        window.clearTimeout(timeoutId);
+        resolve();
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
 }
 
 /** Fail closed on timeout so sync never runs against a half-empty tombstone/label store. */
 function requireRehydrate(promise: Promise<void>, ms: number, label: string): Promise<void> {
-  return Promise.race([
-    promise,
-    new Promise<void>((_, reject) => {
-      window.setTimeout(() => {
-        reject(new Error(`${label} timed out after ${ms}ms`));
-      }, ms);
-    }),
-  ]);
+  return new Promise<void>((resolve, reject) => {
+    const timeoutId = window.setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
+    promise.then(
+      () => {
+        window.clearTimeout(timeoutId);
+        resolve();
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
 }
 
 async function rehydrateStores(): Promise<void> {

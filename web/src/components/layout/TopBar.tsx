@@ -30,6 +30,8 @@ interface TopBarProps {
   onClearFilters: () => void;
   onMenuClick: () => void;
   onProfileClick: () => void;
+  /** Shown as an avatar initial on the settings control when signed in. */
+  userEmail?: string | null;
   viewColumns: ViewColumns;
   onViewColumnsChange: (columns: ViewColumns) => void;
   onNewNote?: () => void;
@@ -68,6 +70,7 @@ export function TopBar({
   onClearFilters,
   onMenuClick,
   onProfileClick,
+  userEmail = null,
   viewColumns,
   onViewColumnsChange,
   onNewNote,
@@ -168,20 +171,28 @@ export function TopBar({
             <button
               type="button"
               onClick={onProfileClick}
-              className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary ${CHROME_FOCUS}`}
+              className={`flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-brand-primary transition-colors hover:bg-brand-primary/18 ${CHROME_FOCUS}`}
               aria-label="Open settings"
+              title={userEmail ? userEmail : 'Settings'}
             >
-              <SettingsIcon size={22} />
+              {userEmail ? (
+                <span className="text-[13px] font-bold uppercase leading-none" aria-hidden>
+                  {userEmail.charAt(0)}
+                </span>
+              ) : (
+                <SettingsIcon size={20} />
+              )}
             </button>
 
             {showNewNote && onNewNote ? (
               <button
                 type="button"
                 onClick={onNewNote}
-                className={`hidden size-10 shrink-0 items-center justify-center rounded-note border border-brand-outline/40 bg-brand-primary/10 text-brand-primary shadow-sm transition-all duration-150 hover:border-brand-outline/60 hover:bg-brand-primary/18 hover:shadow active:scale-[0.97] md:inline-flex ${CHROME_FOCUS}`}
+                className={`hidden size-10 shrink-0 items-center justify-center rounded-full bg-brand-primary text-true-surface shadow-sm transition-all duration-150 hover:opacity-90 active:scale-[0.97] md:inline-flex ${CHROME_FOCUS}`}
                 aria-label="New note"
+                title="New note"
               >
-                <AddIcon size={20} />
+                <AddIcon size={22} />
               </button>
             ) : null}
           </div>

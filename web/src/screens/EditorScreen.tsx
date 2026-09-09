@@ -312,10 +312,14 @@ export function EditorScreen({ route }: EditorScreenProps) {
           role="dialog"
           aria-modal="true"
           aria-label="Note editor"
-          className="fixed inset-0 z-40 flex flex-col"
-          style={surface}
+          className="fixed inset-0 z-40 flex justify-center bg-[rgb(var(--background-rgb))]"
         >
-          {children}
+          <div
+            className="relative flex h-full w-full max-w-4xl flex-col border-brand-outline/25 sm:border-x"
+            style={surface}
+          >
+            {children}
+          </div>
         </div>
       );
     }
@@ -369,7 +373,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
   const layoutControls = isTabletUp ? (
     <div
-      className="flex h-9 shrink-0 items-center gap-0.5 rounded-full border border-[color-mix(in_srgb,currentColor_12%,transparent)] bg-[color-mix(in_srgb,currentColor_8%,transparent)] p-0.5"
+      className="flex shrink-0 items-center"
       role="radiogroup"
       aria-label="Editor layout"
     >
@@ -411,15 +415,15 @@ export function EditorScreen({ route }: EditorScreenProps) {
                   break;
               }
             }}
-            className={`flex size-8 items-center justify-center rounded-full transition-[background-color,opacity] duration-150 ${CHROME_FOCUS} ${
+            className={`flex size-9 items-center justify-center rounded-full transition-opacity duration-150 ${CHROME_FOCUS} ${
               active
-                ? 'bg-[color-mix(in_srgb,currentColor_18%,transparent)] opacity-100'
-                : 'opacity-60 hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] hover:opacity-80'
+                ? 'opacity-100'
+                : 'opacity-45 hover:bg-[color-mix(in_srgb,currentColor_8%,transparent)] hover:opacity-80'
             }`}
             aria-label={button.label}
             title={button.label}
           >
-            <Icon size={16} />
+            <Icon size={18} />
           </button>
         );
       })}
@@ -430,7 +434,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
   return editorShell(
     <>
       <header
-        className="flex items-center justify-between px-2 pt-safe lg:px-4"
+        className="flex shrink-0 items-center justify-between px-2 pt-safe sm:px-3 lg:px-4"
         style={{ color: contentColor }}
       >
         <button
@@ -476,8 +480,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
       </header>
 
       <div
-        className="flex-1 overflow-y-auto px-layout-gap pt-5 sm:pt-6"
-        style={{ paddingBottom: `calc(7rem + ${effectiveKeyboardInset}px)` }}
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-layout-gap pt-4 sm:px-6 sm:pt-6 lg:px-8"
+        style={{ paddingBottom: `calc(5.5rem + ${effectiveKeyboardInset}px)` }}
         onClick={(event) => {
           const target = event.target as HTMLElement;
           if (
@@ -490,7 +494,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           focusContentField();
         }}
       >
-        <div className="flex min-h-full flex-col">
+        <div className="flex w-full flex-col">
           {state.saveFailed ? (
             <div
               role="alert"
@@ -527,14 +531,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
             onChange={(event) => editor.setTitle(event.target.value)}
             placeholder="Title"
             maxLength={MAX_NOTE_TITLE_CHARS}
-            className="w-full bg-transparent text-[22px] font-semibold leading-snug tracking-[-0.03em] outline-none placeholder:opacity-35"
+            className="w-full bg-transparent text-[24px] font-semibold leading-tight tracking-[-0.03em] outline-none placeholder:opacity-30 sm:text-[26px]"
             style={{ color: contentColor }}
-          />
-
-          <div
-            className="mt-4 h-px w-full opacity-[0.12]"
-            style={{ backgroundColor: contentColor }}
-            aria-hidden
           />
 
           {state.labels.length > 0 ? (
@@ -651,7 +649,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
                   placeholder="Start writing…"
                   rows={1}
                   maxLength={MAX_NOTE_CONTENT_CHARS}
-                  className="mt-4 w-full min-h-52 resize-none overflow-hidden bg-transparent text-[17px] leading-[1.55] tracking-[0.01em] outline-none placeholder:opacity-35 sm:min-h-[320px] sm:text-[18px]"
+                  className="mt-4 w-full min-h-[min(60vh,32rem)] resize-none overflow-hidden bg-transparent text-[17px] leading-[1.65] tracking-[0.005em] outline-none placeholder:opacity-30 sm:text-[18px]"
                   style={{ color: contentColor }}
                 />
               ) : (
@@ -661,7 +659,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
                     focusContentField();
                   }}
                   aria-label="Edit note body"
-                  className={`mt-4 w-full min-h-52 rounded-note text-left transition-opacity hover:opacity-95 sm:min-h-[320px] ${CHROME_FOCUS}`}
+                  className={`mt-4 w-full min-h-[min(60vh,32rem)] rounded-note text-left transition-opacity hover:opacity-95 ${CHROME_FOCUS}`}
                 >
                   <MarkdownBody text={state.content} contentColor={contentColor} />
                 </button>
@@ -670,7 +668,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
               <button
                 type="button"
                 onClick={editor.convertContentToChecklist}
-                className={`mt-auto pt-8 pb-1 text-left text-sm font-medium opacity-55 transition-opacity hover:opacity-90 ${CHROME_FOCUS}`}
+                className={`mt-10 self-start text-left text-sm font-medium opacity-45 transition-opacity hover:opacity-80 ${CHROME_FOCUS}`}
                 style={{ color: contentColor }}
               >
                 {state.content.trim() ? 'Convert to checklist' : '+ Add checklist'}
