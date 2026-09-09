@@ -1,0 +1,37 @@
+{
+  "comment": "The argument object both clients send to apply_note_change. Key names and value types are the contract; p_base_revision is null on a note the server has never seen.",
+  "args": {
+    "p_note_id": "12",
+    "p_local_id": 12,
+    "p_base_revision": null,
+    "p_title": "Trip",
+    "p_content": "**pack** bags",
+    "p_client_timestamp": 1767225000000,
+    "p_color": -2955,
+    "p_is_pinned": true,
+    "p_is_archived": false,
+    "p_is_trashed": false,
+    "p_position": 2,
+    "p_reminder_timestamp": 4102444800000,
+    "p_labels": [
+      {
+        "name": "Travel"
+      },
+      {
+        "name": "Work"
+      }
+    ],
+    "p_checklist": [
+      {
+        "text": "Passport",
+        "isChecked": true,
+        "position": 0
+      },
+      {
+        "text": "Charger",
+        "isChecked": false,
+        "position": 1
+      }
+    ]
+  }
+}

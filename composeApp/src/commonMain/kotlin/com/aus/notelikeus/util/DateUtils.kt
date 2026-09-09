@@ -33,6 +33,17 @@ expect object DateUtils {
      */
     fun startOfDay(year: Int, month: Int, day: Int): Long?
 
+    /**
+     * The local wall-clock fields of [timestamp].
+     *
+     * Needed to pre-populate a date/time picker from a reminder that is already set: the picker
+     * speaks in civil date and time-of-day, and only the platform knows which ones a given instant
+     * shows as. Deriving them in commonMain by dividing epoch millis is the same mistake
+     * [startOfDay] documents — it answers in UTC, so every reminder east or west of it opens the
+     * picker on the wrong day or hour.
+     */
+    fun localDateTimeFields(timestamp: Long): LocalDateTimeFields
+
     fun isToday(timestamp: Long): Boolean
     fun formatDateTime(timestamp: Long, showYear: Boolean = true): String
     fun formatTime(timestamp: Long): String
@@ -41,3 +52,16 @@ expect object DateUtils {
     fun combineDateAndTime(dateMillis: Long, hour: Int, minute: Int): Long
     val DAY_IN_MILLIS: Long
 }
+
+/**
+ * A local wall-clock date and time of day, as a picker presents it.
+ *
+ * [month] is 1-based, matching [DateUtils.startOfDay] and unlike `Calendar.MONTH`.
+ */
+data class LocalDateTimeFields(
+    val year: Int,
+    val month: Int,
+    val day: Int,
+    val hour: Int,
+    val minute: Int,
+)

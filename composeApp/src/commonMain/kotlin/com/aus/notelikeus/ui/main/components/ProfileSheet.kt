@@ -107,7 +107,8 @@ fun ProfileSheet(
     onCloudRestoreClick: () -> Unit = {},
     onGoogleSignInClick: () -> Unit = {},
     onGoogleSignOutClick: () -> Unit = {},
-    onCloudAutoSyncChange: (Boolean) -> Unit = {}
+    onCloudAutoSyncChange: (Boolean) -> Unit = {},
+    onDiagnosticsClick: () -> Unit = {},
 ) {
     val haptic = LocalHapticFeedback.current
     var showPrivacyPolicy by remember { mutableStateOf(false) }
@@ -365,6 +366,15 @@ fun ProfileSheet(
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     showPrivacyPolicy = true
+                }
+            )
+            SettingsRow(
+                icon = Icons.Default.Info,
+                title = stringResource(Res.string.diagnostics_title),
+                subtitle = stringResource(Res.string.diagnostics_subtitle),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onDiagnosticsClick()
                 }
             )
             SettingsRow(

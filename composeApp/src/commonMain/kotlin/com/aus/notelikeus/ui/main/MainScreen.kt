@@ -1,4 +1,5 @@
 package com.aus.notelikeus.ui.main
+import com.aus.notelikeus.ui.main.components.DiagnosticsDialog
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
 import com.aus.notelikeus.ui.theme.Elevation
@@ -551,7 +552,25 @@ fun MainScreen(
             onGoogleSignOutClick = {
                 showCloudSignOutConfirm = true
             },
-            onCloudAutoSyncChange = { viewModel.setCloudAutoSyncEnabled(it) }
+            onCloudAutoSyncChange = { viewModel.setCloudAutoSyncEnabled(it) },
+            onDiagnosticsClick = {
+                showProfileSheet = false
+                viewModel.openDiagnostics()
+            }
+        )
+    }
+
+    if (state.isDiagnosticsOpen) {
+        val diagnosticsCopiedMsg = stringResource(Res.string.diagnostics_copied)
+        DiagnosticsDialog(
+            // Blank means collection finished and produced nothing; null means still collecting.
+            report = state.diagnosticsReport?.takeIf { it.isNotEmpty() },
+            collectionFailed = state.diagnosticsReport?.isEmpty() == true,
+            onCopied = {
+                viewModel.closeDiagnostics()
+                scope.launch { snackbarHostState.showSnackbar(diagnosticsCopiedMsg) }
+            },
+            onDismiss = { viewModel.closeDiagnostics() }
         )
     }
 
