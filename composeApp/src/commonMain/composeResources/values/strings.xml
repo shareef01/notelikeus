@@ -187,7 +187,6 @@
     <string name="action_retry">Retry</string>
     <string name="cloud_auto_sync">Auto-sync</string>
     <string name="cloud_auto_sync_subtitle">Upload note changes automatically when signed in with Google</string>
-    <string name="default_web_client_id">404285880902-cpiu3nj2itndnh0kkouvn374ec5ecl9v.apps.googleusercontent.com</string>
     <string name="coming_soon">Soon</string>
     <string name="coming_soon_detail">Coming soon</string>
     <string name="backup_export">Backup &amp; Export</string>
