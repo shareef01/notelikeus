@@ -47,7 +47,7 @@ export function RichTextToolbar({
 
   return (
     <div
-      className="sticky top-0 z-10 mt-4 inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-full border border-[color-mix(in_srgb,currentColor_10%,transparent)] bg-[color-mix(in_srgb,currentColor_8%,transparent)] p-1 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-[color-mix(in_srgb,currentColor_6%,transparent)]"
+      className="sticky top-0 z-10 mt-5 inline-flex max-w-full flex-wrap items-center gap-0.5 py-0.5"
       style={{ color: contentColor }}
       role="toolbar"
       aria-label="Text formatting"
@@ -55,12 +55,12 @@ export function RichTextToolbar({
       {formatButton('Bold', <BoldIcon size={18} />, onBold)}
       {formatButton('Italic', <ItalicIcon size={18} />, onItalic)}
       {formatButton('Link', <LinkIcon size={18} />, onLink)}
-      <span className="mx-0.5 h-5 w-px shrink-0 bg-current opacity-20" aria-hidden />
+      <span className="mx-1 h-4 w-px shrink-0 bg-current opacity-20" aria-hidden />
       {formatButton('Bullet list', <BulletListIcon size={18} />, onBullet)}
       {formatButton('Checklist', <ChecklistIcon size={18} />, onChecklist)}
       {onAddImage ? (
         <>
-          <span className="mx-0.5 h-5 w-px shrink-0 bg-current opacity-20" aria-hidden />
+          <span className="mx-1 h-4 w-px shrink-0 bg-current opacity-20" aria-hidden />
           {formatButton('Add image', <ImageIcon size={18} />, onAddImage)}
         </>
       ) : null}

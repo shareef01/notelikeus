@@ -1,5 +1,5 @@
 import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
-import { SortIcon } from '@/components/icons/Icons';
+import { ChevronRightIcon, SortIcon } from '@/components/icons/Icons';
 import type { Label } from '@/types/label';
 import type { ReactNode } from 'react';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
@@ -10,9 +10,12 @@ interface FilterChipProps {
   onClick?: () => void;
   disabled?: boolean;
   leading?: ReactNode;
+  trailing?: ReactNode;
   compact?: boolean;
   /** Toggle chips only. Action chips (Clear, sort cycle) omit this. */
   pressed?: boolean;
+  ariaLabel?: string;
+  title?: string;
 }
 
 function FilterChip({
@@ -21,8 +24,11 @@ function FilterChip({
   onClick,
   disabled = false,
   leading,
+  trailing,
   compact = false,
   pressed,
+  ariaLabel,
+  title,
 }: FilterChipProps) {
   return (
     <button
@@ -30,12 +36,15 @@ function FilterChip({
       disabled={disabled}
       onClick={onClick}
       aria-pressed={pressed}
+      aria-label={ariaLabel}
+      title={title}
       className={`filter-chip shrink-0 gap-1.5 ${CHROME_FOCUS} ${compact ? 'px-3 text-xs sm:px-3.5' : ''} ${
         selected ? 'filter-chip-active' : 'filter-chip-inactive'
       } ${disabled ? 'cursor-default opacity-70' : 'cursor-pointer'}`}
     >
       {leading}
-      {label}
+      <span className="whitespace-nowrap">{label}</span>
+      {trailing}
     </button>
   );
 }
@@ -72,15 +81,32 @@ export function FilterRow({
   hasActiveFilters,
   onClearFilters,
 }: FilterRowProps) {
+  const sortLabel = sortDisabled ? 'Relevance' : SORT_LABELS[sortOrder];
+
   return (
     <div className="flex flex-col gap-1.5 pb-2">
       <div className="flex items-center gap-2.5 overflow-x-auto px-3 py-1.5 scrollbar-none sm:px-4 lg:px-6">
         <FilterChip
           compact
-          label={sortDisabled ? 'Relevance' : SORT_LABELS[sortOrder]}
+          label={sortLabel}
+          selected={!sortDisabled}
           onClick={onSortOrderCycle}
           disabled={sortDisabled}
-          leading={<SortIcon size={14} className="opacity-80" />}
+          ariaLabel={
+            sortDisabled
+              ? 'Sort locked to relevance while searching'
+              : `Sort by ${SORT_LABELS[sortOrder]}. Tap to change`
+          }
+          title={sortDisabled ? 'Relevance while searching' : 'Tap to change sort'}
+          leading={<SortIcon size={14} />}
+          trailing={
+            sortDisabled ? null : (
+              <ChevronRightIcon
+                size={14}
+                className="rotate-90 opacity-70"
+              />
+            )
+          }
         />
 
         {hasActiveFilters ? (
@@ -88,7 +114,7 @@ export function FilterRow({
         ) : null}
 
         <div
-          className="flex h-9 min-w-0 items-center rounded-full border border-brand-outline/25 bg-true-surface-variant/20 px-1.5 shadow-sm"
+          className="flex min-h-9 min-w-0 items-center"
           role="group"
           aria-label="Color filter"
         >
