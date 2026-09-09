@@ -1,7 +1,14 @@
-import { BlockIcon, CheckIcon } from '@/components/icons/Icons';
+import { BlockIcon, CheckIcon, PaletteIcon } from '@/components/icons/Icons';
 import { argbToCss, NOTE_COLOR_NAMES, noteColorsForTheme, noteColorsMatch } from '@/theme/colors';
 import { contentColorForBackground } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
+
+const SWATCH_BASE =
+  'relative flex size-7 shrink-0 items-center justify-center rounded-full border transition-[box-shadow,transform,border-color]';
+const SWATCH_SELECTED =
+  'scale-105 border-brand-primary shadow-[0_0_0_2px_rgb(var(--surface-rgb)),0_0_0_4px_rgb(var(--primary-rgb))]';
+const SWATCH_IDLE = 'border-black/15 hover:scale-105 dark:border-white/15';
 
 interface ColorSwatchProps {
   argb: number;
@@ -20,11 +27,7 @@ export function ColorSwatch({ argb, selected, onClick, label }: ColorSwatchProps
       onClick={onClick}
       aria-label={label ?? (isDefault ? 'No color' : 'Note color')}
       aria-pressed={selected}
-      className={`relative flex size-[26px] shrink-0 items-center justify-center rounded-full transition-[box-shadow,transform] ${
-        selected
-          ? 'scale-105 ring-2 ring-brand-primary ring-offset-2 ring-offset-true-surface'
-          : 'hover:scale-105 hover:ring-1 hover:ring-brand-outline/50 hover:ring-offset-1 hover:ring-offset-true-surface'
-      }`}
+      className={`${SWATCH_BASE} ${CHROME_FOCUS} ${selected ? SWATCH_SELECTED : SWATCH_IDLE}`}
       style={{ backgroundColor: isDefault ? 'rgb(var(--surface-variant-rgb))' : argbToCss(argb) }}
     >
       {isDefault && !selected ? <BlockIcon size={11} className="text-brand-muted/55" /> : null}
@@ -33,7 +36,7 @@ export function ColorSwatch({ argb, selected, onClick, label }: ColorSwatchProps
           className={isDefault ? 'text-brand-primary' : undefined}
           style={checkColor ? { color: checkColor } : undefined}
         >
-          <CheckIcon size={11} />
+          <CheckIcon size={12} />
         </span>
       ) : null}
     </button>
@@ -46,6 +49,8 @@ interface ColorSwatchRowProps {
   /** When true, highlight the “all colors” control instead of a specific swatch. */
   allSelected?: boolean;
   onSelectAll?: () => void;
+  /** Allow the palette to wrap in constrained sheet layouts. */
+  wrap?: boolean;
 }
 
 export function ColorSwatchRow({
@@ -53,34 +58,30 @@ export function ColorSwatchRow({
   onSelect,
   allSelected = false,
   onSelectAll,
+  wrap = false,
 }: ColorSwatchRowProps) {
   const isDark = useNotePaletteDark();
   const colors = noteColorsForTheme(isDark).filter((argb) => !(onSelectAll && argb === 0));
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className={`flex items-center gap-2 ${wrap ? 'flex-wrap' : ''}`}>
       {onSelectAll ? (
-        <>
-          <button
-            type="button"
-            onClick={onSelectAll}
-            aria-label="All colors"
-            aria-pressed={allSelected}
-            className={`shrink-0 rounded-full px-2.5 py-1 text-overline uppercase transition-colors ${
-              allSelected
-                ? 'bg-brand-primary/15 text-brand-primary'
-                : 'text-brand-muted hover:bg-brand-primary/[0.04] hover:text-brand-secondary'
-            }`}
-          >
-            All
-          </button>
-          <span className="mx-0.5 h-4 w-px shrink-0 bg-brand-outline/45" aria-hidden />
-        </>
+        <button
+          type="button"
+          onClick={onSelectAll}
+          aria-label="All colors"
+          aria-pressed={allSelected}
+          title="All colors"
+          className={`${SWATCH_BASE} bg-true-surface-variant/40 text-brand-muted ${CHROME_FOCUS} ${
+            allSelected ? `${SWATCH_SELECTED} text-brand-primary` : SWATCH_IDLE
+          }`}
+        >
+          {allSelected ? <CheckIcon size={12} /> : <PaletteIcon size={14} />}
+        </button>
       ) : null}
-      <div className="flex items-center gap-1.5 pr-0.5">
-        {colors.map((argb, index) => {
-          const nameIndex = onSelectAll ? index + 1 : index;
-          return (
+      {colors.map((argb, index) => {
+        const nameIndex = onSelectAll ? index + 1 : index;
+        return (
           <ColorSwatch
             key={argb}
             argb={argb}
@@ -98,9 +99,8 @@ export function ColorSwatchRow({
               )
             }
           />
-          );
-        })}
-      </div>
+        );
+      })}
     </div>
   );
 }
