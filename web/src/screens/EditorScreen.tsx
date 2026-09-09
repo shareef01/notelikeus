@@ -668,7 +668,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
               <button
                 type="button"
                 onClick={editor.convertContentToChecklist}
-                className={`mt-10 self-start text-left text-sm font-medium opacity-45 transition-opacity hover:opacity-80 ${CHROME_FOCUS}`}
+                className={`mt-10 self-start text-left text-sm font-medium opacity-60 transition-opacity hover:opacity-80 ${CHROME_FOCUS}`}
                 style={{ color: contentColor }}
               >
                 {state.content.trim() ? 'Convert to checklist' : '+ Add checklist'}
