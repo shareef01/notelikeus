@@ -377,6 +377,7 @@ export function MainScreen() {
           onMenuClick={() => setDrawerOpen(true)}
 
           onProfileClick={() => openDialogs({ profile: true })}
+          userEmail={user?.email ?? null}
           viewColumns={viewColumns}
           onViewColumnsChange={setViewColumns}
           onNewNote={openNewNote}
