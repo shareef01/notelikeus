@@ -1,5 +1,8 @@
 package com.aus.notelikeus.di
 
+import com.aus.notelikeus.data.local.NOTELIKEUS_DATABASE_VERSION
+import com.aus.notelikeus.domain.diagnostics.DiagnosticsCollector
+import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.data.ReminderScheduler
 import com.aus.notelikeus.data.local.DatabaseKeyManager
 import com.aus.notelikeus.data.local.DatabaseMigrations
@@ -14,7 +17,6 @@ import com.aus.notelikeus.platform.AndroidWidgetManager
 import com.aus.notelikeus.platform.ForegroundActivityTracker
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
-import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.data.remote.SharedPrefsNoteSyncStateStore
 import com.aus.notelikeus.data.remote.AndroidSupabaseRpcClient
 import com.aus.notelikeus.data.remote.AndroidSupabaseSessionPersistence
@@ -176,6 +178,24 @@ actual val platformModule = module {
     single { PendingCloudSyncStore(get()) }
     single<SyncCoordinator> { CloudNoteSyncCoordinator(get(), get(), get(), get(), get()) }
     single { LocalAccountIsolator(get(), get(), get()) }
+    /**
+     * Diagnostics read the same stores sync does, and nothing else. Registered per platform
+     * because only the platform knows what its storage is and whether it is encrypted — the two
+     * facts a user troubleshooting "where are my notes" most needs stated plainly.
+     */
+    single {
+        DiagnosticsCollector(
+            loadNotes = { get<NoteRepository>().getAllNotesForBackup() },
+            syncStateStore = get(),
+            staging = get(),
+            ownerIdProvider = { get<CloudSessionManager>().getCurrentAccount().userId },
+            isSignedIn = { get<CloudSessionManager>().getCurrentAccount().userId != null },
+            databaseSchemaVersion = NOTELIKEUS_DATABASE_VERSION,
+            storageKind = "Room + SQLCipher",
+            encryptedAtRest = true,
+        )
+    }
+
     single<SyncManager> { AndroidSyncManager(get(), get(), get()) }
 
     single<GoogleSignInHelper> {

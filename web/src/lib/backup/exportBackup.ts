@@ -30,16 +30,30 @@ function noteToBackupMap(note: Note): Record<string, unknown> {
   return payload;
 }
 
-export function exportNotesBackup(notes: Note[]): void {
+/**
+ * The v3 backup document, without the DOM download around it.
+ *
+ * Split out so the serialized shape can be asserted directly — it is a cross-client wire format
+ * (`contracts/backup/v3-web-export.json`), and the only other way to see it was to intercept a
+ * Blob constructor.
+ */
+export function exportBackupPayload(
+  notes: Note[],
+  exportedAt: number = Date.now(),
+): Record<string, unknown> {
   const labels = collectUniqueLabels(notes);
-  const payload = {
+  return {
     version: BACKUP_VERSION,
-    exportedAt: Date.now(),
+    exportedAt,
     app: 'Notelikeus',
     appVersion: '1.0.0 (web)',
     labels: labels.map((label) => ({ id: label.id, name: label.name })),
     notes: notes.map(noteToBackupMap),
   };
+}
+
+export function exportNotesBackup(notes: Note[]): void {
+  const payload = exportBackupPayload(notes);
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');

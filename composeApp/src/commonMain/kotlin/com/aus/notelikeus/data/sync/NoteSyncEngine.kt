@@ -109,9 +109,9 @@ class NoteSyncEngine(
             // than throwing) makes that reachable, so refuse the sync instead; the next successful
             // one reconciles normally.
             if (accountUidBridge.isSameAccountAsLastMerge(uid)) {
-                val knownCloudIds = syncStateStore.knownCloudIds()
-                if (remoteRecords.isEmpty() && knownCloudIds.isNotEmpty()) {
-                    throw SuspectEmptyCloudException(knownCloudIds.size)
+                val unexplained = unexplainedMissingCloudIds(syncStateStore.knownCloudIds())
+                if (remoteRecords.isEmpty() && unexplained.isNotEmpty()) {
+                    throw SuspectEmptyCloudException(unexplained.size)
                 }
             }
 
@@ -309,11 +309,12 @@ class NoteSyncEngine(
             // A whole collection vanishing is far more often a failed fetch than a real deletion:
             // a genuine remote delete leaves tombstones, which mergeCloudTombstones has already
             // applied above. Refuse to reconcile rather than delete notes on a bad read.
+            val unexplainedMissing = unexplainedMissingCloudIds(previouslyKnownCloudIds)
             if (isSameAccountAsLastMerge &&
                 remoteRecords.isEmpty() &&
-                previouslyKnownCloudIds.isNotEmpty()
+                unexplainedMissing.isNotEmpty()
             ) {
-                throw SuspectEmptyCloudException(previouslyKnownCloudIds.size)
+                throw SuspectEmptyCloudException(unexplainedMissing.size)
             }
 
             for (record in remoteRecords) {
@@ -411,6 +412,23 @@ class NoteSyncEngine(
             noteCount
         }
     }
+
+    /**
+     * Of the ids that were in the cloud last time, the ones whose absence now is *unaccounted for*.
+     *
+     * This is the distinction [SuspectEmptyCloudException] was always meant to draw. Both guards
+     * used the whole known-id set, so an account whose notes were all genuinely deleted — the last
+     * note deleted on another device, or the trash emptied there — looked exactly like a fetch that
+     * had failed open, and the sync was refused. That refusal was not self-healing either:
+     * `setKnownCloudIds` only runs at the end of a *successful* download, so the set that tripped
+     * the guard was never updated and every later sync, upload included, failed the same way.
+     *
+     * A tombstone is the explanation. [mergeCloudTombstones] has already run by both call sites, so
+     * a remotely-deleted note is locally tombstoned by the time this is asked, and only ids with no
+     * tombstone at all count towards "the collection vanished for no reason".
+     */
+    private fun unexplainedMissingCloudIds(knownCloudIds: Set<Long>): Set<Long> =
+        knownCloudIds.filterTo(mutableSetOf()) { !syncStateStore.isDeleted(it) }
 
     /**
      * `lastMergedUserId == null` is a first sync (guest notes may upload). A non-null value that

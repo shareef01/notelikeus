@@ -731,3 +731,117 @@ restored, and any database that has run this migration may hold rows the repair 
 deleted. Those rows were already inconsistent — their bytes were claimed for destruction — so the
 repair is not information that can be recovered by reverting.
 
+
+---
+
+## D21 — Cross-client formats are pinned by a directory of JSON, not by generated code.
+
+**Decided:** `contracts/` holds canonical JSON fixtures. The Kotlin suite and the TypeScript suite
+each read the same files and assert against them. No schema language, no code generation, no
+build step.
+
+**Why:** the two P1 findings in [`AUDIT_2026.md`](AUDIT_2026.md) were both drift between two
+implementations of one format — a label id typed `Long` on one side and a slug on the other, and
+an empty-cloud guard that one client had already got right. Nothing in the repository could have
+caught either, because nothing compared the two.
+
+A schema language would express the *shape* and still miss what actually broke: the **defaults**.
+`contracts/cloud/note-row-sparse.json` pins what each client falls back to for an absent field,
+which is not a type question and is exactly the drift that stays invisible until a note comes back
+the wrong colour. A fixture pins the shape, the defaults, and the coercions in one artefact a
+maintainer can read.
+
+Code generation was rejected for the reason the brief that prompted this states plainly: a
+directory of canonical JSON plus a test on each side is sufficient, and a generation platform is a
+second thing to maintain in exchange for guarantees these two clients do not need. The clients are
+hand-written on both sides and will stay that way.
+
+**Consequence to remember:** changing a fixture *is* changing the wire format. Both suites must be
+updated in the same change, and a field that older data may not carry needs a default that agrees
+on both sides — which is the whole point.
+
+**Cost to reverse:** none. Deleting the directory deletes the tests that read it. Nothing in
+production depends on it.
+
+---
+
+## D22 — The backup bundle wraps the v3 document verbatim rather than replacing it.
+
+**Decided:** `.nlkbak` is a ZIP whose `manifest.json` carries a field `backup` holding a **v3
+backup document, byte-for-byte as the JSON exporter writes it**, alongside an `attachments` index
+and `media/<attachmentId>` entries.
+
+**Why:** the alternative — a v4 note format that supersedes v3 — buys nothing and costs three
+things. It needs a second note parser, which is a second place for the drift D21 exists to prevent.
+It makes the new format a one-way door for anyone on an older build. And it entangles "we can now
+carry images" with "we changed how notes are written", which are unrelated changes that would then
+have to be reasoned about together forever.
+
+Wrapping gets the opposite of all three. Import hands `backup` to the **unchanged** v3 importer, so
+every cap, coercion and validation it already performs applies to a bundle without being restated.
+A user with only an older build can rename the file to `.zip`, open it, and lift the JSON out —
+which is also why the manifest is pretty-printed. And attachments stay strictly additive: they can
+fail, be dropped, or be absent, and the notes still import.
+
+**What this makes possible today, and is the reason it was worth doing this way:** the Kotlin
+clients have no ZIP reader yet, and still recover the notes from a bundle — `NoteBackupImporter`
+recognises the wrapper by `formatVersion` and unwraps it. A superseding format would have left
+those users with a file their app could say nothing about.
+
+**Cost to reverse:** low while `formatVersion` is 4 and nothing has shipped a v5. The wrapper is
+one field; a future format that genuinely needs to change how notes are written can raise
+`formatVersion` and keep `backup` as the compatibility path.
+
+**Trade accepted:** the manifest repeats note data that a purpose-built format would store once.
+Notes are small text; the images beside them are three orders of magnitude larger, and entries are
+stored uncompressed anyway. The duplication is not measurable.
+
+---
+
+## D23 — Diagnostics redaction throws instead of scrubbing.
+
+**Decided:** `assertNoSensitiveValues` runs over the *rendered* report and raises if it finds a
+token, a JWT, an email, a raw identifier, or a storage-path prefix. It does not remove them.
+
+**Why:** scrubbing makes the symptom disappear and leaves the cause in place. The field that leaked
+is still being collected, still being rendered, and the next field added beside it is the one
+nobody checks. A throw fails a test in CI, on a report that is small and entirely under this
+repository's control, which is an affordable place to be strict.
+
+Checking the rendered text rather than field by field is the other half: a nested object added
+later is covered without anyone remembering to extend a list of property paths.
+
+**Related:** sync failures are recorded as a category, never a message. `apply_note_change`'s
+conflict error embeds the remote note's **title**, so a report that carried error strings would
+carry note content — a test asserts that a conflict over a note called "Divorce paperwork"
+produces `conflict` and nothing else.
+
+**Cost to reverse:** trivial, and would be a mistake.
+
+---
+
+## D24 — A picked calendar date is converted to an instant in UTC first, then in the local zone.
+
+**Decided:** `ReminderTime.exactReminder` reads the civil date out of Material3's
+`selectedDateMillis` **in UTC**, then hands that year/month/day to
+`DateUtils.startOfDay(year, month, day)` and `combineDateAndTime`.
+
+**Why:** `DatePickerState.selectedDateMillis` is midnight **UTC** on the selected civil date — that
+is the picker's documented contract, not an accident. Passing it to a local-calendar conversion
+reads it as a local instant, and for anyone west of UTC `2026-07-08T00:00Z` is the evening of
+July 7 locally. The reminder then lands a day early, for half the world, silently.
+
+Recovering the civil date in UTC is exact precisely because the value is UTC midnight by contract —
+no zone is involved, so the arithmetic cannot be wrong. Only after that does the platform decide
+where local midnight on that date falls, using the two functions [`F25`](FINDINGS.md) already made
+correct for typed search dates.
+
+This is the third time this project has met the same bug (F25, then the web reminder prefill in
+[`AUDIT_2026.md`](AUDIT_2026.md) A-3, now this). The rule worth keeping: **a civil date and an
+instant are different types, and every conversion between them names a zone.**
+
+**Cost to reverse:** none, and reversing it re-creates a day-boundary error that no test in a
+UTC+0 CI runner would ever show.
+
+**Consequence to remember:** the tests run in `Pacific/Kiritimati` (UTC+14) and `Pacific/Niue`
+(UTC−11) deliberately. A CI machine on UTC proves nothing about this code.
