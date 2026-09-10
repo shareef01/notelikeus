@@ -6,6 +6,7 @@ import {
   loadLastMergedUserId,
   saveLastMergedUserId,
 } from '@/lib/notes/lastMergedUser';
+import { formatUnknownError } from '@/lib/errors/formatUnknownError';
 import { startNotesRealtimeSync, stopNotesRealtimeSync } from '@/lib/notes/notesSyncService';
 import { useAuthStore, selectUserId } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
@@ -58,7 +59,7 @@ export function useNotesSync(enabled: boolean) {
       console.error('[Notelikeus] Notes sync startup failed:', error);
       useNotesStore
         .getState()
-        .setError(error instanceof Error ? error.message : 'Could not start syncing notes');
+        .setError(formatUnknownError(error, 'Could not start syncing notes'));
     });
 
     return () => {
