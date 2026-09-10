@@ -10,6 +10,69 @@ import kotlin.test.assertTrue
 
 class LocalAccountIsolatorTest {
 
+    /**
+     * A picture attached before signing in must survive signing in.
+     *
+     * Staged attachment bytes are filed under an owner namespace, so anything staged while signed
+     * out sits under the guest one. `AttachmentSyncService.adoptGuestStagedAttachments` exists to
+     * move them across at sign-in — and for months nothing called it, from either platform. The
+     * upload path then looked only under the new account, found nothing, and left the note pointing
+     * at a picture that could never arrive: a permanent broken image, no error, no request ever
+     * made for it, and no amount of re-syncing would fix it.
+     */
+    @Test
+    fun `a first sign-in adopts what the guest session staged`() = runTest {
+        val adopted = mutableListOf<String>()
+        val isolator = LocalAccountIsolator(
+            FakeNoteRepository(),
+            FakeNoteSyncStateStore(),
+            RecordingSyncCoordinator(),
+            adoptGuestStagedAttachments = { uid -> adopted.add(uid) },
+        )
+
+        isolator.isolateIfAccountChanged("bob")
+
+        assertEquals(listOf("bob"), adopted)
+    }
+
+    @Test
+    fun `signing in again as the same account still adopts anything left staged`() = runTest {
+        val stateStore = FakeNoteSyncStateStore()
+        stateStore.setLastMergedUserId("alice")
+        val adopted = mutableListOf<String>()
+        val isolator = LocalAccountIsolator(
+            FakeNoteRepository(),
+            stateStore,
+            RecordingSyncCoordinator(),
+            adoptGuestStagedAttachments = { uid -> adopted.add(uid) },
+        )
+
+        isolator.isolateIfAccountChanged("alice")
+
+        assertEquals(listOf("alice"), adopted)
+    }
+
+    /**
+     * The mirror case, and the one that would be a privacy bug: a different account signing in
+     * wipes the device, and must not inherit the previous session's staged pictures either.
+     */
+    @Test
+    fun `a different account does not adopt the previous session's staged bytes`() = runTest {
+        val stateStore = FakeNoteSyncStateStore()
+        stateStore.setLastMergedUserId("alice")
+        val adopted = mutableListOf<String>()
+        val isolator = LocalAccountIsolator(
+            FakeNoteRepository(),
+            stateStore,
+            RecordingSyncCoordinator(),
+            adoptGuestStagedAttachments = { uid -> adopted.add(uid) },
+        )
+
+        isolator.isolateIfAccountChanged("bob")
+
+        assertTrue(adopted.isEmpty(), "isolating wipes the device; staged bytes must not follow")
+    }
+
     @Test
     fun `isolate clears notes, sync state, and the pending queue`() = runTest {
         val repository = FakeNoteRepository()
