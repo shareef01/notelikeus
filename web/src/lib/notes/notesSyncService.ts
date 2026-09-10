@@ -1,5 +1,6 @@
 import { recordSyncFailure, recordSyncSuccess } from '@/lib/diagnostics/collectDiagnostics';
 import { categorizeSyncError } from '@/lib/diagnostics/diagnosticsReport';
+import { formatUnknownError } from '@/lib/errors/formatUnknownError';
 import { deleteNote, putNotes } from '@/lib/local/notesLocalRepository';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
 import { shouldUploadOverRemote } from '@/lib/notes/remoteMerge';
@@ -171,7 +172,7 @@ async function reconcileNow(userId: string): Promise<void> {
       // title, and diagnostics must never carry note content.
       recordSyncFailure(categorizeSyncError(error));
       useNotesStore.getState().setError(
-        error instanceof Error ? error.message : 'Reconcile failed',
+        formatUnknownError(error, 'Could not sync notes. Please try again.'),
       );
     } finally {
       reconcileInFlight = null;
@@ -279,7 +280,9 @@ export function startNotesRealtimeSync(userId: string): void {
     },
     (error) => {
       recordSyncFailure(categorizeSyncError(error));
-      useNotesStore.getState().setError(error.message);
+      useNotesStore
+        .getState()
+        .setError(formatUnknownError(error, 'Could not sync notes. Please try again.'));
     },
   );
 }

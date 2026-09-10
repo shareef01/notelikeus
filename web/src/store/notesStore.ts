@@ -14,7 +14,8 @@ interface NotesState {
   upsertLocalNote: (note: Note) => void;
   removeLocalNote: (noteId: string) => void;
   setStatus: (status: NotesLoadStatus) => void;
-  setError: (error: string | null) => void;
+  setError: (error: string) => void;
+  clearError: () => void;
   setFilters: (patch: Partial<NoteQueryFilters>) => void;
   reset: () => void;
 }
@@ -57,18 +58,34 @@ export const useNotesStore = create<NotesState>()(
         const notes = [...current];
         if (index >= 0) notes[index] = note;
         else notes.push(note);
-        set({ notes, status: 'ready' });
+        // Local durability succeeded — drop a stale sync banner so edits are not blocked by it.
+        set({ notes, status: 'ready', error: null });
       },
       removeLocalNote: (noteId) => {
         const next = get().notes.filter((note) => note.id !== noteId);
         if (next.length === get().notes.length) return;
-        set({ notes: next, status: 'ready' });
+        set({ notes: next, status: 'ready', error: null });
       },
-      setStatus: (status) => set((state) => (state.status === status ? state : { status })),
+      setStatus: (status) =>
+        set((state) => {
+          if (status === 'loading') {
+            if (state.status === 'loading' && state.error == null) return state;
+            return { status, error: null };
+          }
+          return state.status === status ? state : { status };
+        }),
       setError: (error) =>
         set((state) =>
           state.error === error && state.status === 'error' ? state : { error, status: 'error' },
         ),
+      clearError: () =>
+        set((state) => {
+          if (state.error == null && state.status !== 'error') return state;
+          return {
+            error: null,
+            status: state.status === 'error' ? 'ready' : state.status,
+          };
+        }),
       setFilters: (patch) => {
         const next = { ...get().filters, ...patch };
         const current = get().filters;

@@ -29,7 +29,7 @@ export function NotesLoadingGrid({ viewPreference }: NotesLoadingGridProps) {
 
   return (
     <div
-      className={`w-full px-3 pb-24 pt-2 sm:px-4 lg:px-6 ${
+      className={`w-full px-shell pb-24 pt-2 ${
         isList
           ? `mx-auto grid max-w-content grid-cols-1 ${gapClass}`
           : 'mx-auto max-w-content'
