@@ -17,6 +17,7 @@ side that reads it is enough to make drift a failing test rather than a support 
 | `backup/v3-web-export.json` | A v3 backup exactly as `exportNotesBackup` writes it |
 | `backup/v3-expected-notes.json` | The notes both importers must produce from **either** file |
 | `backup/v4-bundle-manifest.json` | The `manifest.json` inside a `.nlkbak` bundle (see below) |
+| `backup/import-limits.json` | Soft caps both importers must enforce (depth, notes, labels, field sizes) |
 | `cloud/note-rpc-args.json` | The `apply_note_change` argument object |
 | `cloud/note-row.json` | A note row as `pull_changes` / `fetch_full_snapshot` return it |
 | `cloud/note-row-expected.json` | The note both cloud mappers must produce from that row |

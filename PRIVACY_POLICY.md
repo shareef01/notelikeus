@@ -9,7 +9,7 @@ Notelikeus is an offline-first notes application across Android, Windows (Deskto
 - **Offline-first by default:** On Android, Windows, and Web, notes are stored **locally on your device**. You can use the full application without creating an account or providing personal details.
 - **Optional Cloud Sync:** When you sign in and enable cloud sync, note text, checklists, and metadata are synchronized to **Supabase (PostgreSQL)** under your authenticated identity. Attachment files may be stored in **Cloudflare R2**.
 - **Local Data Isolation:** Signing out clears local cached notes from the active session so a subsequent user cannot inherit your data.
-- **Encryption:** Android local databases are encrypted at rest with **SQLCipher** backed by Android Keystore.
+- **Encryption:** Android local databases are encrypted at rest with **SQLCipher** backed by Android Keystore. Attachment image files stored beside that database on Android (and attachment files on Windows / in the browser profile on Web) are **not** encrypted by the app at the file layer; they rely on OS / profile permissions. See `docs/LOCAL_ENCRYPTION_AT_REST.md`.
 - Synced cloud notes are **not end-to-end encrypted** by the app; they rely on TLS plus Supabase Auth, row-level security, authorized RPCs, and Worker JWT checks for attachments.
 - **Diagnostics stay local:** an optional sync-diagnostics report shows counts and version numbers, never note content or credentials, and is never transmitted.
 - The app does **not** include third-party tracking, analytics, or advertising SDKs.
@@ -34,7 +34,7 @@ When you choose to sign in and use sync:
 
 ## Security
 
-- **Android:** Notes are stored in a **SQLCipher-encrypted** Room database. An optional app-wide lock uses the device’s biometric APIs to gate opening the app.
+- **Android:** Notes are stored in a **SQLCipher-encrypted** Room database. Attachment bytes under the app’s attachments directory are not covered by SQLCipher. An optional app-wide lock uses the device’s biometric APIs to gate opening the app.
 - **Windows Desktop & Web:** Local storage is bound to the user's OS / browser profile permissions.
 - **Cloud Security:** PostgreSQL row-level security and authorized RPCs restrict read and write operations to the authenticated owner.
 
