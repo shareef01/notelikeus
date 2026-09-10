@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   crc32,
+  extractZipEntry,
   isSafeZipEntryName,
+  listZipCentralDirectory,
   MAX_ZIP_ENTRIES,
+  MAX_ZIP_TOTAL_BYTES,
   readZip,
   writeZip,
   ZipFormatError,
@@ -218,5 +221,127 @@ describe('readZip accepts a deflated archive', () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]!.data.byteLength).toBe(payload.byteLength);
     expect(decoder.decode(entries[0]!.data)).toBe(decoder.decode(payload));
+  });
+});
+
+describe('listZipCentralDirectory / extractZipEntry', () => {
+  it('lists every entry without requiring extraction', () => {
+    const archive = writeZip([
+      { name: 'manifest.json', data: bytes('{}') },
+      { name: 'media/one', data: bytes('abc') },
+      { name: 'media/two', data: bytes('defg') },
+    ]);
+
+    const central = listZipCentralDirectory(archive);
+    expect(central.map((entry) => entry.name)).toEqual([
+      'manifest.json',
+      'media/one',
+      'media/two',
+    ]);
+    expect(central.map((entry) => entry.uncompressedSize)).toEqual([2, 3, 4]);
+  });
+
+  it('extracts a single named entry on demand', async () => {
+    const archive = writeZip([
+      { name: 'manifest.json', data: bytes('{"ok":true}') },
+      { name: 'media/one', data: bytes('payload-one') },
+      { name: 'media/two', data: bytes('payload-two') },
+    ]);
+    const central = listZipCentralDirectory(archive);
+    const only = central.find((entry) => entry.name === 'media/one')!;
+    const extracted = await extractZipEntry(archive, only);
+    expect(decoder.decode(extracted.data)).toBe('payload-one');
+  });
+
+  it('rejects duplicate entry names in the central directory', () => {
+    const archive = writeZip([
+      { name: 'media/one', data: bytes('first') },
+      { name: 'media/two', data: bytes('second') },
+    ]);
+    const hostile = new Uint8Array(archive);
+    // Overwrite the second central-directory name with the first entry's name.
+    const view = new DataView(hostile.buffer);
+    const eocd = hostile.byteLength - 22;
+    const centralOffset = view.getUint32(eocd + 16, true);
+    // First central header is 46 + nameLen('media/one'=9) = 55 bytes.
+    const secondNameOffset = centralOffset + 55 + 46;
+    hostile.set(bytes('media/one'), secondNameOffset);
+    expect(() => listZipCentralDirectory(hostile)).toThrow(/duplicate entry name/);
+  });
+
+  it('rejects a truncated central directory', () => {
+    const archive = writeZip([{ name: 'media/one', data: bytes('x') }]);
+    const hostile = new Uint8Array(archive);
+    const view = new DataView(hostile.buffer);
+    const eocd = hostile.byteLength - 22;
+    // Claim the central directory is longer than the file.
+    view.setUint32(eocd + 12, 0xffffff, true);
+    expect(() => listZipCentralDirectory(hostile)).toThrow(/central directory out of bounds/);
+  });
+
+  it('rejects when declared total uncompressed size exceeds the aggregate ceiling', () => {
+    const archive = writeZip([{ name: 'media/one', data: bytes('0123456789') }]);
+    const hostile = new Uint8Array(archive);
+    const view = new DataView(hostile.buffer);
+    const eocd = hostile.byteLength - 22;
+    const centralOffset = view.getUint32(eocd + 16, true);
+    view.setUint32(centralOffset + 24, MAX_ZIP_TOTAL_BYTES + 1, true);
+    expect(() => listZipCentralDirectory(hostile)).toThrow(
+      /too large|expands to more/,
+    );
+  });
+
+  it('accepts a large number of tiny valid entries up to the cap', () => {
+    const many = Array.from({ length: 200 }, (_, index) => ({
+      name: `media/${index}`,
+      data: new Uint8Array([index & 0xff]),
+    }));
+    const archive = writeZip(many);
+    const central = listZipCentralDirectory(archive);
+    expect(central).toHaveLength(200);
+  });
+
+  it('does not invoke inflate when only listing the central directory', async () => {
+    if (typeof CompressionStream === 'undefined') return;
+    const payload = bytes('note note note note note note note note ');
+    const compressed = new Uint8Array(
+      await new Response(
+        new Blob([payload as BlobPart]).stream().pipeThrough(new CompressionStream('deflate-raw')),
+      ).arrayBuffer(),
+    );
+    const stored = writeZip([{ name: 'media/one', data: payload }]);
+    const view = new DataView(stored.buffer);
+    const eocd = stored.byteLength - 22;
+    const centralOffset = view.getUint32(eocd + 16, true);
+    const nameLength = 'media/one'.length;
+    const head = stored.slice(0, 30 + nameLength);
+    new DataView(head.buffer).setUint16(8, 8, true);
+    new DataView(head.buffer).setUint32(18, compressed.byteLength, true);
+    const central = stored.slice(centralOffset, eocd);
+    const centralView = new DataView(central.buffer);
+    centralView.setUint16(10, 8, true);
+    centralView.setUint32(20, compressed.byteLength, true);
+    const tail = stored.slice(eocd);
+    const rebuilt = new Uint8Array(
+      head.byteLength + compressed.byteLength + central.byteLength + tail.byteLength,
+    );
+    let at = 0;
+    rebuilt.set(head, at);
+    at += head.byteLength;
+    rebuilt.set(compressed, at);
+    at += compressed.byteLength;
+    const newCentralOffset = at;
+    rebuilt.set(central, at);
+    at += central.byteLength;
+    rebuilt.set(tail, at);
+    const rebuiltView = new DataView(rebuilt.buffer);
+    rebuiltView.setUint32(at + 12, central.byteLength, true);
+    rebuiltView.setUint32(at + 16, newCentralOffset, true);
+
+    const inflateSpy = vi.spyOn(globalThis, 'DecompressionStream');
+    const listed = listZipCentralDirectory(rebuilt);
+    expect(listed).toHaveLength(1);
+    expect(inflateSpy).not.toHaveBeenCalled();
+    inflateSpy.mockRestore();
   });
 });

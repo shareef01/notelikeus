@@ -1,0 +1,10 @@
+{
+  "description": "Shared soft caps for backup import. Kotlin NoteBackupImporter and web importBackup/constants must stay equal; drift here is a failing contract test on both sides.",
+  "maxJsonDepth": 64,
+  "maxBackupNotes": 5000,
+  "maxBackupLabels": 2000,
+  "maxNoteTitleChars": 2000,
+  "maxNoteContentChars": 100000,
+  "maxNoteChecklistItems": 500,
+  "maxNoteLabels": 100
+}
