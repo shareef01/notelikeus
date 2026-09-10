@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useId } from 'react';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 /** Shared button styling for dialog footers. */
@@ -24,6 +25,12 @@ interface ModalDialogProps {
 /**
  * Centered modal panel over a dimmed backdrop (bottom-anchored on mobile), with focus trapped
  * inside it. The scaffold every small dialog shares; sheets use ResponsiveSheet instead.
+ *
+ * Locks the page behind it, as every other overlay in the app does — this was the one that did
+ * not. `aria-modal` is a promise to assistive technology that the rest of the page is inert, and
+ * leaving it scrollable breaks that for everyone: on a mobile viewport the page underneath can
+ * still pan, and panning moves the visual viewport out from under this `position: fixed` panel, so
+ * a tap aimed at a footer button lands where the button no longer is.
  */
 export function ModalDialog({
   open,
@@ -33,6 +40,7 @@ export function ModalDialog({
   children,
 }: ModalDialogProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
+  useBodyScrollLock(open);
 
   if (!open) return null;
 
