@@ -15,7 +15,13 @@ export function useGuestLocalNotesBootstrap(enabled: boolean) {
     const ownerId = resolveOwnerId();
     if (!ownerId) return;
     useNotesStore.getState().setStatus('loading');
-    void loadLocalNotesIntoStore(ownerId).catch((error: unknown) => {
+    void loadLocalNotesIntoStore(ownerId)
+      .then(() => {
+        if (useNotesStore.getState().status === 'loading') {
+          useNotesStore.getState().setStatus('ready');
+        }
+      })
+      .catch((error: unknown) => {
       console.error('[Notelikeus] Guest local notes bootstrap failed:', error);
       useNotesStore
         .getState()
