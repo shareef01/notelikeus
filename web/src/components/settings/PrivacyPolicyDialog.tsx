@@ -8,7 +8,7 @@ Summary
 • Offline-first by default: On Android, Windows, and Web, notes are stored locally on your device. You can use the full application without creating an account.
 • Optional cloud sync: When you sign in, note text, checklists, and metadata sync to Supabase (PostgreSQL) under your user account. Attachment files may be stored in Cloudflare R2.
 • Local data isolation: Signing out clears locally cached notes from the active session so a subsequent user cannot inherit your data.
-• Encryption: Android local databases are encrypted at rest with SQLCipher backed by Android Keystore.
+• Encryption: Android local databases are encrypted at rest with SQLCipher backed by Android Keystore. Attachment image files on disk are not encrypted by the app at the file layer; they rely on OS / profile permissions.
 • Synced cloud notes are not end-to-end encrypted by the app; they rely on TLS plus Supabase Auth, row-level security, and Worker authorization for attachments.
 • Diagnostics stay local: an optional sync-diagnostics report shows counts and version numbers, never note content or credentials, and is never transmitted.
 • The app does not include third-party tracking, analytics, or advertising SDKs.
@@ -21,7 +21,7 @@ Cloud sync (optional)
 When you choose to sign in and use sync, note content is stored in Supabase under your authenticated identity. Signing out clears locally cached notes on this device so the next account cannot inherit them; cloud data remains until you delete it.
 
 Security
-• Android: SQLCipher-encrypted Room database. Optional app-wide lock uses device biometric APIs.
+• Android: SQLCipher-encrypted Room database. Attachment bytes under the app’s attachments directory are not covered by SQLCipher. Optional app-wide lock uses device biometric APIs.
 • Windows Desktop & Web: Local storage is bound to the user's OS / browser profile permissions.
 • Cloud security: PostgreSQL row-level security and authorized RPCs restrict read and write operations to the authenticated owner.
 

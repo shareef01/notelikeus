@@ -5,11 +5,11 @@ the engineering case for and against doing it, so the decision is a decision and
 
 ## What is true today
 
-| Client | Note store | Encrypted at rest by the app? |
-|---|---|---|
-| Android | Room + SQLCipher | **Yes.** 32-byte random passphrase, sealed by an AndroidKeyStore AES-GCM key (`DatabaseKeyManager`), with a legacy `EncryptedSharedPreferences` migration path. |
-| Windows (Desktop) | Room + `BundledSQLiteDriver` | **No.** Plain SQLite file under the user's data directory. |
-| Web | IndexedDB (+ `localStorage` for preferences) | **No.** Plain records in the browser profile. |
+| Client | Note store | Encrypted at rest by the app? | Attachment bytes on disk |
+|---|---|---|---|
+| Android | Room + SQLCipher | **Yes.** 32-byte random passphrase, sealed by an AndroidKeyStore AES-GCM key (`DatabaseKeyManager`), with a legacy `EncryptedSharedPreferences` migration path. | **No.** Files under `files/attachments/` and staged pending bytes are plaintext. SQLCipher does **not** cover them. |
+| Windows (Desktop) | Room + `BundledSQLiteDriver` | **No.** Plain SQLite file under the user's data directory. | **No.** `~/.notelikeus/attachments` and pending staging are plaintext. |
+| Web | IndexedDB (+ `localStorage` for preferences) | **No.** Plain records in the browser profile. | Pending attachment blobs live in IndexedDB (plaintext at the profile boundary). |
 
 Two things on Windows *are* protected: the Supabase session token file is sealed with DPAPI
 (`platform/Dpapi.kt`, used by `DesktopSupabaseSessionPersistence`), and the OS enforces the
@@ -20,6 +20,46 @@ attachment bytes are not.
 says Windows and Web rely on "OS / browser profile permissions". No policy change is required to
 leave things as they are; a policy change *is* required if either client gains encryption, and
 the wording must not overstate what it buys (see the threat model below).
+
+## Android attachment bytes — deferred (do not ship a half-migration)
+
+### Boundary
+
+SQLCipher encrypts the Room database only. Image bytes written by
+`AndroidAttachmentLocalStorage` under internal storage and by `FileAttachmentStagingStore` under
+the pending-attachments root remain application-level plaintext. A backup / `adb backup` /
+rooted-device offline read of those files recovers the pixels even when the note rows are sealed.
+
+### Preferred design (not implemented in this pass)
+
+1. **AEAD:** AES-GCM, random 12-byte nonce per attachment file, explicit version byte prefix
+   (`0x01 || nonce || ciphertext+tag`).
+2. **Key:** dedicated Android Keystore AES key (separate from the SQLCipher passphrase key),
+   non-exportable, unlocked with the same device-credential / biometric gate the DB key uses
+   where practical.
+3. **Atomic writes:** write temp sibling → fsync → rename into place (already the staging-store
+   pattern).
+4. **Authenticated associated data:** attachment id + note id (or owner id) as GCM AAD so a
+   swapped ciphertext cannot be renamed onto another attachment's path unnoticed.
+5. **Migration:** on first open after upgrade, enumerate the attachments root, encrypt each
+   plaintext file in place via temp+rename, write a marker file only after the whole tree
+   succeeds. Crash mid-migration must leave either all-plaintext or all-ciphertext for each
+   individual file — never truncate. Files that fail verification are quarantined, never deleted.
+6. **Read path:** try versioned ciphertext first; if the version marker is absent, treat as
+   legacy plaintext only while the migrator has not finished (or refuse after migration completes).
+
+### Why it is deferred here
+
+Encrypting attachment files without the migrator, the quarantine path, instrumented tests, and a
+privacy-policy wording update would create silent data loss for existing libraries and a false
+sense of coverage. That is a project, not a patch — same class of decision as desktop DB
+encryption below. Tracked as deferred hardening, not as an open vulnerability with a trivial fix.
+
+### Desktop / Windows threat model (do not copy Keystore design)
+
+Desktop has no Android Keystore. DPAPI-sealed per-file keys are possible but inherit the same
+same-user malware limits documented for the database proposal. Prefer one coherent "local
+secrets" design for DB + attachments rather than bolting Keystore-shaped code onto Windows.
 
 ## Windows: SQLCipher + a DPAPI-protected random key
 
