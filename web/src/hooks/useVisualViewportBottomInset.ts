@@ -1,44 +1,64 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
- * The smallest occlusion worth moving the UI for.
+ * How long the occlusion must stay smaller before the UI follows it down.
  *
- * An on-screen keyboard takes a third of the screen — 150px on the smallest phone in use, usually
- * far more. Anything an order of magnitude below that is not a keyboard: it is the URL bar
- * settling, a scrollbar, or sub-pixel rounding in the visual viewport, and reacting to it moves
- * chrome around for no reason a user can perceive.
+ * The inset positions the editor's floating action bar. A CI trace of the mobile editor caught the
+ * raw value alternating between 0 and 16 across 57 consecutive DOM snapshots, which dragged the bar
+ * back and forth 16px — and a control that moves between the moment a tap is aimed and the moment
+ * it lands cannot be tapped at all. Six mobile end-to-end tests failed on exactly that, with the
+ * scrolling content underneath reported as swallowing every click.
  *
- * It is also actively harmful. A CI trace of the mobile editor caught this value flip-flopping
- * between 0 and 16 across 57 consecutive DOM snapshots, which left the bottom action bar
- * oscillating between two positions 16px apart. Every attempt to tap "More options" computed a
- * point while the bar was in one position and landed while it was in the other, hitting the
- * scrolling content underneath — so the button was permanently unclickable while looking perfectly
- * normal in a screenshot. Six mobile end-to-end tests failed on exactly that.
+ * Growth is applied at once, because occlusion appearing means something is now covering the
+ * controls and they have to move immediately. Shrinkage waits, because that is the direction a
+ * flickering measurement oscillates through, and being briefly too high is harmless while being
+ * briefly too low is what puts a control under the fold. Ignoring the small values outright is not
+ * an option: on a mobile layout viewport that is a few percent taller than the visible one, 16px
+ * is exactly the correction that keeps the bar reachable.
  */
-const KEYBOARD_OCCLUSION_MIN_PX = 120;
+const INSET_SHRINK_SETTLE_MS = 400;
 
 /**
  * Keyboard occlusion inset from the visual viewport (mobile Safari/Chrome).
  * Returns pixels the OS UI (usually the IME) covers at the bottom of the layout viewport.
  *
- * Quantised to keyboard scale, and with hysteresis, so a jittering viewport cannot translate into
- * jittering chrome. See [KEYBOARD_OCCLUSION_MIN_PX].
+ * Follows occlusion up immediately and down only once the viewport settles, so a jittering
+ * measurement cannot translate into jittering chrome. See [INSET_SHRINK_SETTLE_MS].
  */
 export function useVisualViewportBottomInset(): number {
   const [inset, setInset] = useState(0);
+  // Mirrors the rendered value so `update` can compare against it without a side effect inside a
+  // state updater, which React is free to run more than once.
+  const appliedRef = useRef(0);
 
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
 
+    let shrinkTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const measure = () =>
+      Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+
+    const apply = (next: number) => {
+      if (next === appliedRef.current) return;
+      appliedRef.current = next;
+      setInset(next);
+    };
+
     const update = () => {
-      const raw = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
-      const measured = raw < KEYBOARD_OCCLUSION_MIN_PX ? 0 : raw;
-      // Hysteresis on top of the floor: a keyboard opening or closing clears this easily, while
-      // the small oscillations that made the bar unclickable never do, so the bar holds still.
-      setInset((previous) =>
-        Math.abs(measured - previous) < KEYBOARD_OCCLUSION_MIN_PX ? previous : measured,
-      );
+      const measured = measure();
+      clearTimeout(shrinkTimer);
+      if (measured >= appliedRef.current) {
+        apply(measured);
+        return;
+      }
+      // Smaller than what is on screen: hold, and only follow it down if it is still smaller once
+      // the viewport has stopped moving. An oscillation never survives that wait.
+      shrinkTimer = setTimeout(() => {
+        const settled = measure();
+        if (settled < appliedRef.current) apply(settled);
+      }, INSET_SHRINK_SETTLE_MS);
     };
 
     update();
@@ -46,6 +66,7 @@ export function useVisualViewportBottomInset(): number {
     vv.addEventListener('scroll', update);
     window.addEventListener('resize', update);
     return () => {
+      clearTimeout(shrinkTimer);
       vv.removeEventListener('resize', update);
       vv.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
