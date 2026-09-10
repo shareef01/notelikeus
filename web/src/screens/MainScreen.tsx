@@ -326,7 +326,7 @@ export function MainScreen() {
   ]);
 
   return (
-    <div className="flex min-h-dvh w-full bg-true-surface lg:mx-auto lg:max-w-shell">
+    <div className="flex min-h-screen w-full bg-true-surface lg:mx-auto lg:max-w-shell">
 
       <SideDrawer
         open={drawerOpen}
@@ -352,7 +352,7 @@ export function MainScreen() {
 
 
 
-      <div className="flex min-h-dvh min-w-0 flex-1">
+      <div className="flex min-h-screen min-w-0 flex-1">
         <div
           className={`flex min-w-0 flex-1 flex-col transition-[max-width] duration-300 ease-out ${
             dockedEditor

@@ -32,7 +32,7 @@ export function EditorBottomBar({
 
   return (
     <footer
-      className="flex items-center justify-between px-2 pb-safe pt-2 sm:px-3 lg:px-4"
+      className="relative z-10 flex shrink-0 items-center justify-between px-2 pb-safe pt-2 sm:px-3 lg:px-4"
       style={{ color: contentColor }}
     >
       <div className="flex-1" />
