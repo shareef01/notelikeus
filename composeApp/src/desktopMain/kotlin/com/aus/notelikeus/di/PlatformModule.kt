@@ -179,7 +179,18 @@ actual val platformModule = module {
         )
     }
 
-    single { LocalAccountIsolator(get(), get(), get()) }
+    single {
+        LocalAccountIsolator(
+            get(),
+            get(),
+            get(),
+            // Resolved lazily: AttachmentSyncService is built from the sync graph this
+            // isolator belongs to, so taking it as a constructor argument would cycle.
+            adoptGuestStagedAttachments = { uid ->
+                get<AttachmentSyncService>().adoptGuestStagedAttachments(uid)
+            },
+        )
+    }
     /**
      * Diagnostics read the same stores sync does, and nothing else. Registered per platform
      * because only the platform knows what its storage is and whether it is encrypted — the two
