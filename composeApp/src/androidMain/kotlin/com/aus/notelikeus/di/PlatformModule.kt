@@ -28,7 +28,10 @@ import com.aus.notelikeus.data.remote.SupabaseNoteTransport
 import com.aus.notelikeus.data.remote.SupabaseSessionAccessTokenProvider
 import com.aus.notelikeus.data.remote.SupabaseSessionManager
 import com.aus.notelikeus.data.remote.SupabaseSessionStore
+import com.aus.notelikeus.data.attachments.AndroidAttachmentBytesProtector
 import com.aus.notelikeus.data.attachments.AndroidAttachmentLocalStorage
+import com.aus.notelikeus.data.attachments.AttachmentAtRestMigrator
+import com.aus.notelikeus.data.attachments.AttachmentBytesProtector
 import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentStagingStore
 import com.aus.notelikeus.data.attachments.AttachmentSyncService
@@ -105,7 +108,16 @@ actual val platformModule = module {
     single { SupabaseSessionManager(get(), get()) }
     single<SupabaseAccessTokenProvider> { SupabaseSessionAccessTokenProvider(get(), get()) }
     single<CloudSessionManager> { get<SupabaseSessionManager>() }
-    single<AttachmentLocalStorage> { AndroidAttachmentLocalStorage(get()) }
+    single<AttachmentBytesProtector> { AndroidAttachmentBytesProtector() }
+    single<AttachmentLocalStorage> {
+        val context = get<android.content.Context>()
+        val protector = get<AttachmentBytesProtector>()
+        val attachmentsDir = File(context.filesDir, "attachments")
+        val stagingRoot = File(context.filesDir, "pending-attachments")
+        AttachmentAtRestMigrator.migrateAttachmentsRoot(attachmentsDir, protector)
+        AttachmentAtRestMigrator.migratePendingStagingRoot(stagingRoot, protector)
+        AndroidAttachmentLocalStorage(context, protector)
+    }
     single<AttachmentBlobTransport> {
         if (BackendConfig.attachmentsWorkerUrl.isNotEmpty()) {
             val rpcClient = AndroidSupabaseRpcClient(
@@ -128,6 +140,7 @@ actual val platformModule = module {
             root = File(get<android.content.Context>().filesDir, "pending-attachments")
                 .absolutePath.toPath(),
             ioDispatcher = get(),
+            protector = get(),
         )
     }
     single {

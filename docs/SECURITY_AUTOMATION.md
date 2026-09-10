@@ -26,4 +26,5 @@ Open [Code security and analysis](https://github.com/shareef01/notelikeus/settin
 - **Gradle dependency verification** (`verification-metadata.xml`): valuable, but regenerating and
   maintaining checksums for the full Android/Desktop graph is a dedicated ops task and was not
   added in this pass to avoid breaking CI on every plugin bump.
-- **Attachment file encryption at rest:** see `docs/LOCAL_ENCRYPTION_AT_REST.md`.
+- **Desktop/Web attachment encryption at rest:** Android is sealed; Desktop/Web still rely on OS /
+  profile permissions — see `docs/LOCAL_ENCRYPTION_AT_REST.md`.
