@@ -124,6 +124,67 @@ describe('bundle parsing refuses what it cannot trust', () => {
     ]);
     await expect(parseBackupBundle(archive)).rejects.toThrow(/Unsupported bundle version/);
   });
+
+  it('rejects an oversized manifest before extracting media', async () => {
+    const { MAX_BUNDLE_MANIFEST_BYTES } = await import('@/lib/backup/bundle/backupBundle');
+    const huge = new Uint8Array(MAX_BUNDLE_MANIFEST_BYTES + 1);
+    huge.fill(0x20); // spaces — valid-ish payload shape, refused by size alone
+    const archive = writeZip([
+      { name: 'manifest.json', data: huge },
+      { name: 'media/att-one', data: PNG },
+    ]);
+    await expect(parseBackupBundle(archive)).rejects.toThrow(/manifest is too large/);
+  });
+
+  it('warns about unreferenced media without importing it', async () => {
+    const document = exportBackupPayload([note('7', { title: 'Trip' })], 1);
+    const archive = writeZip([
+      {
+        name: 'manifest.json',
+        data: encoder.encode(
+          JSON.stringify({
+            formatVersion: 4,
+            backup: document,
+            attachments: [],
+          }),
+        ),
+      },
+      { name: 'media/stray-one', data: new Uint8Array(64 * 1024).fill(7) },
+      { name: 'media/stray-two', data: new Uint8Array(64 * 1024).fill(8) },
+    ]);
+
+    const parsed = await parseBackupBundle(archive);
+    expect(parsed.media.size).toBe(0);
+    expect(parsed.warnings.join(' ')).toMatch(/not listed in its manifest/);
+    const plan = await applyBundle(parsed, [], { ownerId: GUEST_OWNER_ID });
+    expect(plan.notesImported).toBe(1);
+  });
+
+  it('extracts attachments only after the manifest validates', async () => {
+    const archive = writeZip([
+      {
+        name: 'manifest.json',
+        data: encoder.encode(
+          JSON.stringify({
+            formatVersion: BUNDLE_FORMAT_VERSION + 1,
+            backup: { version: 3, notes: [] },
+            attachments: [
+              {
+                noteId: 7,
+                attachmentId: 'att-one',
+                path: 'media/att-one',
+                type: 'image',
+                sizeBytes: PNG.byteLength,
+              },
+            ],
+          }),
+        ),
+      },
+      { name: 'media/att-one', data: PNG },
+    ]);
+    // Future format version fails on the manifest; media must not be required to reach that error.
+    await expect(parseBackupBundle(archive)).rejects.toThrow(/Unsupported bundle version/);
+  });
 });
 
 describe('a corrupt attachment never costs a note', () => {
