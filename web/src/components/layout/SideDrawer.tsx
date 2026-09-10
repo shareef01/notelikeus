@@ -174,10 +174,10 @@ export function SideDrawer({
 
       <aside
         ref={panelRef}
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-true-surface transition-all duration-300 ease-out md:static md:z-auto md:shrink-0 md:translate-x-0 md:border-r md:border-brand-outline/50 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-true-surface transition-[width,transform,box-shadow] duration-300 ease-out md:static md:z-auto md:shrink-0 md:translate-x-0 md:border-r md:border-brand-outline/50 ${
           showCollapsed
-            ? 'w-[min(300px,88vw)] md:w-16'
-            : 'w-[min(300px,88vw)] md:w-56 lg:w-60 xl:w-64'
+            ? 'w-[min(300px,88vw)] md:w-14'
+            : 'w-[min(300px,88vw)] md:w-52 lg:w-56 xl:w-60'
         } ${
           open ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0 md:shadow-none'
         }`}
@@ -224,7 +224,7 @@ export function SideDrawer({
         </header>
 
         {/* Nav */}
-        <nav className={`flex flex-1 flex-col overflow-y-auto px-2.5 pb-5 pt-4 ${
+        <nav className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 pb-5 pt-4 ${
           showCollapsed ? 'gap-2 md:px-1.5' : 'gap-1 md:px-3'
         }`}>
           <NavSection title={showCollapsed ? undefined : 'Library'}>
@@ -313,9 +313,9 @@ export function SideDrawer({
 
         {/* Bottom — user section */}
         {!showCollapsed && (
-          <div className="mt-auto border-t border-brand-outline/40 px-4 py-4 pb-safe md:px-5 md:pb-6">
+          <div className="mt-auto shrink-0 border-t border-brand-outline/40 px-4 py-4 pb-safe-action md:px-5 md:pb-6">
             {userEmail ? (
-              <div className="space-y-3">
+              <div className="relative z-10 space-y-3">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <span
                     className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-[12px] font-bold uppercase text-brand-primary"

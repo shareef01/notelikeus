@@ -49,7 +49,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
       className="fixed inset-0 z-50 flex flex-col bg-true-surface animate-in fade-in duration-300"
     >
       <header className="border-b border-transparent lg:border-brand-outline/40">
-        <div className="mx-auto flex w-full max-w-2xl items-center justify-between px-4 py-4 pt-safe lg:px-0">
+        <div className="mx-auto flex w-full max-w-2xl items-center justify-between px-shell py-4 pt-safe">
           <h2 className="text-xl font-bold tracking-tight text-brand-primary">Edit labels</h2>
           <button
             type="button"
@@ -62,7 +62,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-24 lg:px-0">
+      <div className="flex-1 overflow-y-auto px-shell pb-24">
         <div className="mx-auto w-full max-w-2xl">
           <form onSubmit={handleCreate} className="mb-8 flex items-center gap-3 border-b border-brand-outline pb-6 pt-6">
             <div className="flex size-10 items-center justify-center text-brand-primary/40">

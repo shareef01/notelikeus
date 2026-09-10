@@ -8,6 +8,7 @@ import {
   planBundleImport,
   readBundleFile,
 } from '@/lib/backup/bundle/bundleTransfer';
+import { formatUnknownError } from '@/lib/errors/formatUnknownError';
 import { useToastStore } from '@/store/toastStore';
 import type { Note } from '@/types/note';
 import { useState } from 'react';
@@ -18,7 +19,7 @@ function toast(message: string, kind?: 'error') {
 }
 
 function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
+  return formatUnknownError(error, fallback);
 }
 
 function plural(count: number, noun: string): string {

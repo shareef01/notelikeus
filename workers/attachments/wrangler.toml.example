@@ -12,12 +12,22 @@ SUPABASE_URL = "http://127.0.0.1:54321"
 # ALLOWED_ORIGINS = "https://notes.example.com"
 # Set via `wrangler secret put SUPABASE_ANON_KEY` in real deployments.
 # Optional hosted orphan sweep: `wrangler secret put SUPABASE_SERVICE_ROLE_KEY`.
-# The cron is a no-op until that secret exists.
+# The cron is a no-op until that secret exists — deliberately, because a service-role key bypasses
+# row-level security, so the sweep is opt-in per deployment rather than something every deploy
+# turns on. `.github/workflows/attachments-worker.yml` uploads it only when the repository has a
+# SUPABASE_SERVICE_ROLE_KEY secret, and says which way it went in the job log.
 
-# Optional abuse control. Cloudflare counts these at the edge, so the limit holds across every
-# isolate the Worker runs in — an in-process counter would not. The Worker applies it twice per
-# request: keyed by client IP before it spends a Supabase Auth call, and keyed by the
-# authenticated user id afterwards. Without this binding there is no Worker-level throttling.
+# Abuse control. Cloudflare counts these at the edge, so the limit holds across every isolate the
+# Worker runs in — an in-process counter would not. The Worker applies it twice per request: keyed
+# by client IP before it spends a Supabase Auth call, and keyed by the authenticated user id
+# afterwards. Without this binding there is no Worker-level throttling.
+#
+# Uncomment for a local or hand-rolled deployment. The official deploy workflow writes this same
+# block from its `rate_limit_requests` / `rate_limit_period` inputs (120 per 60s by default; 0
+# leaves it out entirely), so an owner-operated Worker gets it without editing anything here.
+#
+# Throttling is independent of authorization in both directions: it only ever returns 429, it
+# fails open when the limiter cannot answer, and the object-key/ownership checks run regardless.
 #
 # Pick any namespace_id unique within this Worker. `simple` is requests per `period` seconds
 # (period must be 10 or 60). The values below allow roughly two requests a second per key, which

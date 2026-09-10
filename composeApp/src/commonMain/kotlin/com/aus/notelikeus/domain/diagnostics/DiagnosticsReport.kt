@@ -98,6 +98,11 @@ fun categorizeSyncError(error: Throwable?): SyncErrorCategory {
     when (error) {
         is com.aus.notelikeus.data.sync.SuspectEmptyCloudException ->
             return SyncErrorCategory.EMPTY_CLOUD_REFUSED
+        // Same category on purpose rather than a new enum value: both are "the cloud read looked
+        // like it had lost notes, so reconciliation was refused", which is what a maintainer reads
+        // this field to learn, and the categories are a stable cross-client vocabulary.
+        is com.aus.notelikeus.data.sync.IncompleteCloudSnapshotException ->
+            return SyncErrorCategory.EMPTY_CLOUD_REFUSED
         is com.aus.notelikeus.data.sync.WrongAccountSyncException ->
             return SyncErrorCategory.WRONG_ACCOUNT
     }

@@ -152,6 +152,19 @@ class SyncChaosHarness(
         cloud.tombstones.clear()
     }
 
+    /**
+     * The cloud read comes back *short*: some rows are missing, but the server still reports the
+     * true count. The failure mode the empty-cloud guards cannot see, because the answer is not
+     * empty — it just quietly lost notes on the way.
+     */
+    fun simulateTruncatedCloudRead(missingNotes: Int) {
+        cloud.truncateSnapshotBy = missingNotes
+    }
+
+    fun stopTruncatingCloudReads() {
+        cloud.truncateSnapshotBy = 0
+    }
+
     // ---- account lifecycle ----
 
     /**
@@ -224,6 +237,12 @@ class FaultInjectingTransport(
 
     override suspend fun fetchNotes(uid: String): List<CloudNoteRecord> =
         gateSuspend("fetchNotes") { delegateFor(uid).fetchNotes(uid) }
+
+    // Forwarded rather than left to the interface default, which would call *this* wrapper's
+    // fetchNotes and so report no authoritative count — the delegate's completeness proof would
+    // vanish at the wrapper and no scenario could exercise it.
+    override suspend fun fetchNotesSnapshot(uid: String): CloudNoteSnapshot =
+        gateSuspend("fetchNotes") { delegateFor(uid).fetchNotesSnapshot(uid) }
 
     override suspend fun fetchNote(uid: String, noteId: Long): CloudNoteRecord? =
         gateSuspend("fetchNote") { delegateFor(uid).fetchNote(uid, noteId) }

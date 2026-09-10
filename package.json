@@ -19,6 +19,7 @@
     "deploy:staging-pages": "node scripts/ops/deploy-staging-pages.mjs",
     "test:retry-on-connect": "bash scripts/ops/retry-on-connect.test.sh",
     "test:attachments-worker": "npm --prefix workers/attachments test",
+    "test:attachments-worker-deploy": "node --test scripts/ops/attachments-worker-deploy.test.mjs",
     "pages:verify": "node scripts/ops/verify-pages.mjs"
   },
   "devDependencies": {

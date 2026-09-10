@@ -85,7 +85,7 @@ export function FilterRow({
 
   return (
     <div className="flex flex-col gap-1.5 pb-2">
-      <div className="flex items-center gap-2.5 overflow-x-auto px-3 py-1.5 scrollbar-none sm:px-4 lg:px-6">
+      <div className="flex items-center gap-2.5 overflow-x-auto px-shell py-1.5 scrollbar-none">
         <FilterChip
           compact
           label={sortLabel}

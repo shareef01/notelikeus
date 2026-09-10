@@ -12,6 +12,8 @@
  * the owner id in unredacted form.
  */
 
+import { formatUnknownError } from '@/lib/errors/formatUnknownError';
+
 export type SyncErrorCategory =
   | 'none'
   | 'offline'
@@ -109,7 +111,8 @@ export function ownerTag(ownerId: string | null | undefined): string {
  */
 export function categorizeSyncError(error: unknown): SyncErrorCategory {
   if (error == null) return 'none';
-  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  const message = formatUnknownError(error, '').toLowerCase();
+  if (!message) return 'unknown';
   if (message.includes('refusing to overwrite') || message.includes('refusing to delete')) {
     return 'empty-cloud-refused';
   }
