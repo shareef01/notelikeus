@@ -26,12 +26,21 @@ class LocalAccountIsolator(
      * — tests, platforms without attachments — stay unchanged.
      */
     private val adoptGuestStagedAttachments: suspend (String) -> Unit = {},
+    /**
+     * Drops attachment bytes cached in memory, so a session's images do not outlive it.
+     *
+     * Injected for the same reason as the adoption hook above, and defaulted the same way.
+     */
+    private val clearStagedAttachmentCache: suspend () -> Unit = {},
 ) {
     suspend fun isolate() {
         // Cancel in-flight workers before dropping rows they would otherwise upload as the new uid.
         syncCoordinator.clearPending()
         syncStateStore.clear()
         noteRepository.clearAllUserData()
+        // Notes and staged bytes are gone from disk; the in-memory image cache has to go too, or
+        // decrypted picture bytes outlive the session that was entitled to them.
+        clearStagedAttachmentCache()
     }
 
     suspend fun isolateIfAccountChanged(incomingUid: String) {

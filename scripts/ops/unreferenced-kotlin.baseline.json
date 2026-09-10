@@ -1,0 +1,9 @@
+{
+  "unreferenced": [
+    "noteColorsMatch",
+    "rememberNoteColorRole",
+    "setInitialNoteColor",
+    "toggleTrash",
+    "undoArchive"
+  ]
+}
