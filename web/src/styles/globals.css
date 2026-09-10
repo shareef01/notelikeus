@@ -231,6 +231,24 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
+  /*
+   * `pb-safe` for a row that holds tappable controls.
+   *
+   * `env(safe-area-inset-bottom)` falls back to 0 wherever there is no notch or gesture bar —
+   * every desktop browser, and a headless one — which leaves a control row flush against the very
+   * bottom edge of the viewport with no tolerance at all. A 40px button pinned there has its
+   * centre 20px from the edge, so any disagreement between the layout viewport and the visible
+   * one puts the point a tap (or a synthetic click) actually lands on outside the reachable area.
+   * That is what made the editor's "More options" button unclickable in the mobile e2e run while
+   * looking perfectly visible in a screenshot.
+   *
+   * The floor is a design minimum as much as a fix: controls should not sit hard against a screen
+   * edge, where a gesture bar or a rounded corner can swallow them.
+   */
+  .pb-safe-action {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 1rem);
+  }
+
   .pl-safe {
     padding-left: env(safe-area-inset-left, 0px);
   }

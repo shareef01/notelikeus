@@ -313,7 +313,7 @@ export function SideDrawer({
 
         {/* Bottom — user section */}
         {!showCollapsed && (
-          <div className="mt-auto shrink-0 border-t border-brand-outline/40 px-4 py-4 pb-safe md:px-5 md:pb-6">
+          <div className="mt-auto shrink-0 border-t border-brand-outline/40 px-4 py-4 pb-safe-action md:px-5 md:pb-6">
             {userEmail ? (
               <div className="relative z-10 space-y-3">
                 <div className="flex min-w-0 items-center gap-2.5">
