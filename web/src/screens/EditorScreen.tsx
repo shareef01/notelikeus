@@ -679,7 +679,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
       </div>
 
       <div
-        className="absolute inset-x-0 bottom-0"
+        className="absolute inset-x-0 bottom-0 z-20"
         style={{ color: contentColor, bottom: effectiveKeyboardInset }}
       >
         <EditorBottomBar
