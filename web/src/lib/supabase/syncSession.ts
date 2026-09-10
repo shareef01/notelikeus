@@ -67,7 +67,3 @@ export function getActiveNotesSyncSession(): NotesSyncSession | null {
   return currentSession;
 }
 
-export function invalidateNotesSyncSession(): void {
-  currentSession?.invalidate();
-  currentSession = null;
-}

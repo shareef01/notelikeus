@@ -29,12 +29,4 @@ export function saveLastMergedUserId(userId: string): void {
   }
 }
 
-export function clearLastMergedUserId(): void {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}
-
 export const LAST_MERGED_USER_STORAGE_KEY = STORAGE_KEY;

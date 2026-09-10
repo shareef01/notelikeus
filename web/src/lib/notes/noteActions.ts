@@ -156,14 +156,6 @@ export async function archiveNoteById(noteId: string): Promise<Note | null> {
   return updated;
 }
 
-export async function unarchiveNoteById(noteId: string): Promise<Note | null> {
-  const note = getNote(noteId);
-  if (!note) return null;
-  const updated = withTimestamp(note, { isArchived: false });
-  await pushNote(updated);
-  return updated;
-}
-
 export async function emptyTrash(): Promise<number> {
   const trashed = useNotesStore.getState().notes.filter((note) => note.isTrashed);
   await Promise.all(trashed.map((note) => removeNote(note.id)));

@@ -1,9 +1,6 @@
 package com.aus.notelikeus.ui.theme
 
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 
 /**
@@ -105,24 +102,3 @@ data class NoteColorRole(
 fun noteColorRole(container: Color): NoteColorRole =
     NoteColorRole(container = container, onContainer = container.getContentColor())
 
-/**
- * The role pair for a stored note colour, resolved against the active theme.
- *
- * Handles the two cases every caller was previously handling inline, identically, in
- * `NoteCard` and `EditorScreen`: [NO_NOTE_COLOR] falls back to the theme's own surface, and a
- * palette colour swaps to its light or dark variant for the current theme.
- */
-@Composable
-fun rememberNoteColorRole(noteColorArgb: Int): NoteColorRole {
-    val isDarkPalette = isNoteColorDarkTheme()
-    val surface = MaterialTheme.colorScheme.surface
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val displayArgb = noteColorForTheme(noteColorArgb, isDarkPalette)
-    return remember(displayArgb, surface, onSurface) {
-        if (displayArgb == NO_NOTE_COLOR) {
-            NoteColorRole(container = surface, onContainer = onSurface)
-        } else {
-            noteColorRole(Color(displayArgb.toLong() and 0xffffffffL))
-        }
-    }
-}
