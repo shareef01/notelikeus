@@ -11,6 +11,43 @@ import kotlin.test.assertTrue
 class LocalAccountIsolatorTest {
 
     /**
+     * Isolating wipes the notes and the staged bytes from disk. The in-memory image cache holds
+     * decrypted picture bytes and has to go with them, or a session's images outlive the session.
+     * The clear existed, documented as doing exactly this, and nothing called it.
+     */
+    @Test
+    fun `isolating drops the cached attachment bytes`() = runTest {
+        var cleared = 0
+        val isolator = LocalAccountIsolator(
+            FakeNoteRepository(),
+            FakeNoteSyncStateStore(),
+            RecordingSyncCoordinator(),
+            clearStagedAttachmentCache = { cleared++ },
+        )
+
+        isolator.isolate()
+
+        assertEquals(1, cleared)
+    }
+
+    @Test
+    fun `a different account signing in also drops the previous session's cached bytes`() = runTest {
+        val stateStore = FakeNoteSyncStateStore()
+        stateStore.setLastMergedUserId("alice")
+        var cleared = 0
+        val isolator = LocalAccountIsolator(
+            FakeNoteRepository(),
+            stateStore,
+            RecordingSyncCoordinator(),
+            clearStagedAttachmentCache = { cleared++ },
+        )
+
+        isolator.isolateIfAccountChanged("bob")
+
+        assertEquals(1, cleared)
+    }
+
+    /**
      * A picture attached before signing in must survive signing in.
      *
      * Staged attachment bytes are filed under an owner namespace, so anything staged while signed

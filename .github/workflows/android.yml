@@ -57,6 +57,12 @@ jobs:
       - name: Test Kotlin staging properties writer
         run: node --test scripts/ops/write-kotlin-staging-properties.test.mjs
 
+      # Whole-project reachability, which a linter does not give us: detekt's unused-declaration
+      # rules cover private members only, and the two bugs this guards against were both public
+      # methods that nothing called — a documented sign-in step, and a documented privacy control.
+      - name: Check for Kotlin declarations nothing calls
+        run: node scripts/ops/unreferenced-kotlin.mjs
+
       - name: Run unit tests
         run: ./gradlew :composeApp:testDebugUnitTest --stacktrace
 

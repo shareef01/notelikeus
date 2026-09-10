@@ -88,6 +88,12 @@ jobs:
         working-directory: workers/attachments
         run: npm test
 
+      # Runs the deploy job's own wrangler.toml generator and asserts the rate-limit binding is
+      # emitted. Worth running on every change: the binding it guards shipped unbound for the whole
+      # life of the feature, because nothing checked that the generated config still carried it.
+      - name: Test the generated deploy config (rate-limit binding, no secrets in vars)
+        run: node --test scripts/ops/attachments-worker-deploy.test.mjs
+
   # wrangler.toml is gitignored -- it carries an account id and the environment's bucket
   # name -- so the deploy writes one from the same shape scripts/ops/setup-staging.sh
   # uses, rather than expecting a file the repository does not have.

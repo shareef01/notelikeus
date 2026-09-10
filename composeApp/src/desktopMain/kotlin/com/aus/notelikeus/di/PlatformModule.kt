@@ -189,6 +189,7 @@ actual val platformModule = module {
             adoptGuestStagedAttachments = { uid ->
                 get<AttachmentSyncService>().adoptGuestStagedAttachments(uid)
             },
+            clearStagedAttachmentCache = { get<AttachmentSyncService>().clearStagingCache() },
         )
     }
     /**
