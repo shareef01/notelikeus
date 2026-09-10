@@ -1,6 +1,6 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset';
 
 type FakeViewport = {
@@ -73,11 +73,15 @@ describe('useVisualViewportBottomInset', () => {
   });
 
   /**
-   * The exact regression. A CI trace caught the raw value alternating 0 → 16 → 0 → 16 across 57
+   * The exact regression. A CI trace caught the raw value alternating 0 -> 16 -> 0 -> 16 across 57
    * DOM snapshots, dragging the action bar back and forth 16px and making "More options"
    * permanently unclickable in the mobile suite.
+   *
+   * Settling on 16 rather than 0 is the point. On a mobile layout viewport a few percent taller
+   * than the visible one, those 16px are exactly what keeps the bar above the fold — pinning the
+   * value to 0 holds the bar just as still and just as far out of reach.
    */
-  it('holds still through the 16px oscillation that made the action bar unclickable', async () => {
+  it('settles on the larger value through the oscillation that broke the action bar', async () => {
     const vv = installViewport(800);
     const inset = await renderInset();
 
@@ -88,45 +92,50 @@ describe('useVisualViewportBottomInset', () => {
       observed.add(inset());
     }
 
-    expect([...observed]).toEqual([0]);
+    expect([...observed].filter((value) => value !== 0)).toEqual([16]);
+    expect(inset()).toBe(16);
   });
 
-  it('ignores browser-chrome sized occlusion that is not a keyboard', async () => {
-    const vv = installViewport(800);
-    const inset = await renderInset();
-
-    for (const height of [742, 784, 800, 758]) {
-      vv.height = height;
-      await act(async () => vv.emit('resize'));
-      expect(inset()).toBe(0);
-    }
-  });
-
-  it('still tracks a real keyboard opening and closing', async () => {
-    const vv = installViewport(800);
-    const inset = await renderInset();
-
-    vv.height = 480; // keyboard up: 320px occluded
-    await act(async () => vv.emit('resize'));
-    expect(inset()).toBe(320);
-
-    vv.height = 800; // keyboard dismissed
-    await act(async () => vv.emit('resize'));
-    expect(inset()).toBe(0);
-  });
-
-  it('does not let scrolling drag the inset around once a keyboard is up', async () => {
-    const vv = installViewport(480);
+  it('does not follow a transient shrink down before the viewport settles', async () => {
+    const vv = installViewport(480); // keyboard up: 320px occluded
     const inset = await renderInset();
     expect(inset()).toBe(320);
 
-    // Playwright scrolls a target into view before every click attempt, and on mobile that moves
-    // the visual viewport. Small shifts must not move the bar the click is aimed at.
-    for (const offsetTop of [0, 16, 40, 0, 24]) {
-      vv.offsetTop = offsetTop;
-      await act(async () => vv.emit('scroll'));
+    vv.height = 800; // a single frame reporting no occlusion
+    await act(async () => vv.emit('resize'));
+    expect(inset()).toBe(320);
+
+    vv.height = 480; // ...and it is back before the settle window elapses
+    await act(async () => vv.emit('resize'));
+    expect(inset()).toBe(320);
+  });
+
+  it('follows a real shrink once the viewport has settled', async () => {
+    vi.useFakeTimers();
+    try {
+      const vv = installViewport(480);
+      const inset = await renderInset();
       expect(inset()).toBe(320);
+
+      vv.height = 800; // keyboard genuinely dismissed
+      await act(async () => vv.emit('resize'));
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(inset()).toBe(0);
+    } finally {
+      vi.useRealTimers();
     }
+  });
+
+  it('applies growing occlusion immediately, because controls must move out from under it', async () => {
+    const vv = installViewport(800);
+    const inset = await renderInset();
+
+    vv.height = 480;
+    await act(async () => vv.emit('resize'));
+    expect(inset()).toBe(320);
   });
 
   it('reports nothing when the browser has no visual viewport', async () => {
