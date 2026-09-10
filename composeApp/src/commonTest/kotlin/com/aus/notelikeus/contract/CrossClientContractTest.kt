@@ -341,4 +341,16 @@ class CrossClientContractTest {
             record.checklistItems,
         )
     }
+
+    @Test
+    fun importSoftCapsMatchTheSharedFixture() {
+        val limits = fixture("backup/import-limits.json")
+        assertEquals(limits.getValue("maxJsonDepth").jsonPrimitive.int, NoteBackupImporter.MAX_JSON_DEPTH)
+        assertEquals(limits.getValue("maxBackupNotes").jsonPrimitive.int, NoteBackupImporter.MAX_BACKUP_NOTES)
+        assertEquals(limits.getValue("maxBackupLabels").jsonPrimitive.int, NoteBackupImporter.MAX_BACKUP_LABELS)
+        assertEquals(limits.getValue("maxNoteTitleChars").jsonPrimitive.int, NoteBackupImporter.MAX_FIELD_CHARS)
+        assertEquals(limits.getValue("maxNoteContentChars").jsonPrimitive.int, NoteBackupImporter.MAX_CONTENT_CHARS)
+        assertEquals(limits.getValue("maxNoteChecklistItems").jsonPrimitive.int, NoteBackupImporter.MAX_NOTE_CHECKLIST)
+        assertEquals(limits.getValue("maxNoteLabels").jsonPrimitive.int, NoteBackupImporter.MAX_NOTE_LABELS)
+    }
 }
