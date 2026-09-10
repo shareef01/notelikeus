@@ -79,6 +79,20 @@ class FileAttachmentStagingStore(
             }
         }
 
+    override suspend fun isStaged(attachmentId: String, ownerId: String): Boolean? =
+        withContext(ioDispatcher) {
+            val id = safeSegment(attachmentId) ?: return@withContext false
+            val owner = ownerDir(ownerId) ?: return@withContext false
+            try {
+                fileSystem.exists(owner / "$id$BYTES_SUFFIX")
+            } catch (error: okio.IOException) {
+                // Could not look. Not the same as "not there", and the caller may be deciding
+                // whether to discard a picture, so say so rather than guessing.
+                AppLog.warn(TAG, "Could not determine whether staged bytes exist", error)
+                null
+            }
+        }
+
     override suspend fun metadata(attachmentId: String, ownerId: String): StagedAttachment? =
         withContext(ioDispatcher) {
             val id = safeSegment(attachmentId) ?: return@withContext null
