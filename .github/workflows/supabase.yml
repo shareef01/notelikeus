@@ -82,37 +82,17 @@ jobs:
           fi
           echo "Secrets present and confirmation matches."
 
-      # A wrong SUPABASE_DB_PASSWORD and a *right* one carrying a stray newline or
-      # non-breaking space from a copy-paste both fail identically, as an opaque
-      # `FATAL: password authentication failed`. These two steps tell those apart
-      # without ever printing the value: the first characterises the secret, the
-      # second proves it actually authenticates before the stack boot is paid for.
-      - name: Characterise the database password without revealing it
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          chars=${#SUPABASE_DB_PASSWORD}
-          bytes=$(printf '%s' "$SUPABASE_DB_PASSWORD" | wc -c | tr -d ' ')
-          printable=$(printf '%s' "$SUPABASE_DB_PASSWORD" | LC_ALL=C tr -cd '[:print:]' | wc -c | tr -d ' ')
-          trimmed=$(printf '%s' "$SUPABASE_DB_PASSWORD" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-          echo "characters: $chars"
-          echo "bytes:      $bytes"
-          if [ "$trimmed" != "$SUPABASE_DB_PASSWORD" ]; then
-            echo "WARNING: leading or trailing whitespace -- the secret has a stray space,"
-            echo "tab or newline around the value. Re-save it with nothing either side."
-          else
-            echo "No surrounding whitespace."
-          fi
-          if [ "$bytes" != "$printable" ]; then
-            echo "WARNING: $((bytes - printable)) non-printable or non-ASCII byte(s)."
-            echo "A value pasted from a password manager or a document can carry a"
-            echo "newline, or a typographic character that looks like an ordinary one."
-          else
-            echo "All bytes are printable ASCII."
-          fi
-
+      # A wrong SUPABASE_DB_PASSWORD and a *right* one carrying a stray newline from a
+      # copy-paste both fail as an opaque `FATAL: password authentication failed`. Prove the
+      # password authenticates with a read-only link check before paying for the stack boot.
+      # Do not print length, whitespace, or character-class metadata about the secret.
       - name: Prove the password authenticates
         if: github.event_name == 'workflow_dispatch'
         run: |
+          if [ -z "$SUPABASE_DB_PASSWORD" ]; then
+            echo "SUPABASE_DB_PASSWORD is missing."
+            exit 1
+          fi
           npm ci
           npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
           # Read-only, and the same connection db push will make. Failing here costs
