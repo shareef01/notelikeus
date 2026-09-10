@@ -80,6 +80,51 @@ abstract class CloudNoteTransportContractTest {
         assertTrue(transport.fetchTombstones(uid).isEmpty())
     }
 
+    /**
+     * The completeness proof the engine reconciles against.
+     *
+     * A transport may legitimately answer `null` — it cannot all prove completeness — but a
+     * transport that *does* report a count must report the server's own, and it must agree with
+     * the records it delivered. A count recomputed from `records.size` would satisfy this
+     * assertion while proving nothing, so the fake is asked to drop a record and the count is
+     * expected to stay put.
+     */
+    @Test
+    fun fetchNotesSnapshot_carriesRecordsAndAnyAuthoritativeCount() = runTest {
+        val transport = createTransport()
+        val uid = "user-contract"
+
+        transport.putNotes(uid, listOf(sampleNote(1), sampleNote(2)))
+        val snapshot = transport.fetchNotesSnapshot(uid)
+
+        assertEquals(
+            transport.fetchNotes(uid).map { it.noteId }.toSet(),
+            snapshot.records.map { it.noteId }.toSet(),
+            "the snapshot must carry the same records fetchNotes returns",
+        )
+        val count = snapshot.authoritativeNoteCount
+        if (count != null) {
+            assertEquals(snapshot.records.size, count, "a complete read must agree with its count")
+        }
+    }
+
+    @Test
+    fun fetchNotesSnapshot_reportsTheServerCountEvenWhenRecordsAreLost() = runTest {
+        val fake = createTransport() as? FakeCloudNoteTransport ?: return@runTest
+        val uid = "user-contract"
+
+        fake.putNotes(uid, listOf(sampleNote(1), sampleNote(2), sampleNote(3)))
+        fake.truncateSnapshotBy = 1
+        val snapshot = fake.fetchNotesSnapshot(uid)
+
+        assertEquals(2, snapshot.records.size)
+        assertEquals(
+            3,
+            snapshot.authoritativeNoteCount,
+            "the count must come from the server, not from the records that arrived",
+        )
+    }
+
     @Test
     fun syncMeta_writesAndDeletes() = runTest {
         val transport = createTransport()
