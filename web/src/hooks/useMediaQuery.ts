@@ -17,10 +17,6 @@ export function useMediaQuery(query: string): boolean {
   return matches;
 }
 
-export function useIsDesktop(): boolean {
-  return useMediaQuery('(min-width: 1024px)');
-}
-
 /** Tablet and up — permanent drawer, desktop-style editor chrome (float/dock). */
 export function useIsTabletUp(): boolean {
   return useMediaQuery('(min-width: 768px)');
