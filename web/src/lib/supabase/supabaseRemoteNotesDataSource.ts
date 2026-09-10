@@ -17,6 +17,7 @@ import {
   pullIncrementalChanges,
 } from '@/lib/supabase/supabaseSyncEngine';
 import { beginNotesSyncSession, getActiveNotesSyncSession } from '@/lib/supabase/syncSession';
+import { toError } from '@/lib/errors/formatUnknownError';
 import { applyRemoteSnapshotAtomically, listNotes } from '@/lib/local/notesLocalRepository';
 import {
   collectPreservedRestoredNotes,
@@ -175,7 +176,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       try {
         await loadBaseline();
       } catch (error: unknown) {
-        onError?.(error instanceof Error ? error : new Error(String(error)));
+        onError?.(toError(error, 'Notes sync failed'));
       }
       if (!session.isActive()) return;
       unsubscribeRealtime = subscribeSupabaseNoteRealtime(
