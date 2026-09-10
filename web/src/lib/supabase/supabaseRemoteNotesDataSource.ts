@@ -17,6 +17,7 @@ import {
   pullIncrementalChanges,
 } from '@/lib/supabase/supabaseSyncEngine';
 import { beginNotesSyncSession, getActiveNotesSyncSession } from '@/lib/supabase/syncSession';
+import { toError } from '@/lib/errors/formatUnknownError';
 import { applyRemoteSnapshotAtomically, listNotes } from '@/lib/local/notesLocalRepository';
 import {
   collectPreservedRestoredNotes,
@@ -25,6 +26,7 @@ import {
 } from '@/lib/notes/restoreRetry';
 import type { RemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSource';
 import { useNotesStore } from '@/store/notesStore';
+import { unexplainedMissingCloudIds } from '@/lib/notes/unexplainedMissingCloudIds';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 import { isCloudSyncEligible } from '@/types/note';
@@ -86,8 +88,8 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       const knownIds = [
         ...new Set([...Object.keys(prior.noteRevisions), ...prior.knownCloudIds]),
       ];
-      const unexplained = knownIds.filter(
-        (id) => !snapshotIds.has(id) && !tombstoneIds.has(id),
+      const unexplained = unexplainedMissingCloudIds(knownIds, snapshotIds, (id) =>
+        tombstoneIds.has(id),
       );
       if (snapshot.notes.length === 0 && unexplained.length > 0) {
         throw new Error(
@@ -175,7 +177,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       try {
         await loadBaseline();
       } catch (error: unknown) {
-        onError?.(error instanceof Error ? error : new Error(String(error)));
+        onError?.(toError(error, 'Notes sync failed'));
       }
       if (!session.isActive()) return;
       unsubscribeRealtime = subscribeSupabaseNoteRealtime(
@@ -340,16 +342,26 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     );
     await retryPendingCloudRestores(userId, [...remoteNotes, ...localNotes]);
 
-    if (remoteNotes.length === 0 && previouslyKnownCloudIds.size > 0) {
-      throw new Error(
-        `Cloud returned no notes but ${previouslyKnownCloudIds.size} were expected — refusing to ` +
-          `delete local copies. Check the connection or sign in again.`,
-      );
-    }
-
     const remoteById = new Map(remoteNotes.map((note) => [note.id, note]));
     const cloudIds = new Set(remoteById.keys());
     const isDeleted = (id: string) => useTombstoneStore.getState().isDeleted(id);
+
+    // The same rule loadBaseline() applies, and for the same reason: refusing on the raw size of
+    // the known-id set turned a user who deleted their last note on another device into a
+    // permanently failing sync, because every one of those ids has a tombstone explaining it.
+    // Ids with no tombstone at all still trip the guard, which is the case it exists for.
+    const tombstonedRemotely = new Set(Object.keys(tombstones));
+    const unexplainedMissing = unexplainedMissingCloudIds(
+      previouslyKnownCloudIds,
+      cloudIds,
+      (id) => tombstonedRemotely.has(id) || isDeleted(id),
+    );
+    if (remoteNotes.length === 0 && unexplainedMissing.length > 0) {
+      throw new Error(
+        `Cloud returned no notes but ${unexplainedMissing.length} were expected — refusing to ` +
+          `delete local copies. Check the connection or sign in again.`,
+      );
+    }
 
     let merged = await mergeRemoteNotes(localNotes, remoteNotes);
     merged = merged.filter((note) => !isDeleted(note.id));

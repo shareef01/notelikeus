@@ -40,6 +40,9 @@ import { getEmptyState } from '@/screens/main/mainEmptyState';
 import { ConfirmDialog } from '@/components/ui/ModalDialog';
 import { useAccountActions } from '@/screens/main/useAccountActions';
 import { useNoteActions } from '@/screens/main/useNoteActions';
+import { formatUnknownError } from '@/lib/errors/formatUnknownError';
+import { retryNotesLoad } from '@/lib/notes/retryNotesLoad';
+import { resolveNotesViewState } from '@/screens/main/notesViewState';
 
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { useShortcuts } from '@/hooks/useShortcuts';
@@ -147,6 +150,8 @@ export function MainScreen() {
     isLoading,
 
     error,
+
+    syncError,
 
   } = useNotes();
 
@@ -350,7 +355,13 @@ export function MainScreen() {
 
 
       <div className="flex min-h-screen min-w-0 flex-1">
-        <div className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ${dockedEditor ? 'max-w-[min(32rem,46%)] border-r border-brand-outline xl:max-w-[min(36rem,42%)]' : ''}`}>
+        <div
+          className={`flex min-w-0 flex-1 flex-col transition-[max-width] duration-300 ease-out ${
+            dockedEditor
+              ? 'max-w-[min(26rem,38%)] border-r border-brand-outline/60 xl:max-w-[min(30rem,36%)]'
+              : ''
+          }`}
+        >
           <TopBar
             searchQuery={filters.searchQuery ?? ''}
 
@@ -428,88 +439,133 @@ export function MainScreen() {
 
         >
 
-          <div className="mx-auto w-full max-w-content">
+          <div
+            className={`mx-auto w-full ${
+              viewColumns === 1 ? 'max-w-3xl' : dockedEditor ? 'max-w-full' : 'max-w-content'
+            }`}
+          >
+            {(() => {
+              // Both channels go through the formatter, not just the blocking one: either can
+              // carry a value that came out of a thrown object, and `[object Object]` is not a
+              // sentence to put in front of a user.
+              const displayError = error
+                ? formatUnknownError(error, 'Could not load notes. Please try again.')
+                : null;
+              const displaySyncError = syncError
+                ? formatUnknownError(syncError, 'Could not sync notes. Please try again.')
+                : null;
+              const view = resolveNotesViewState({
+                isLoading,
+                error: displayError,
+                syncError: displaySyncError,
+                notesCount: notes.length,
+                filteredCount: filteredNotes.length,
+              });
 
-            {error ? (
-              <div className="px-4 py-6 text-center">
-                <p className="text-sm text-red-500 dark:text-red-400 mb-3">{error}</p>
-                <button
-                  type="button"
-                  onClick={() => window.location.reload()}
-                  className="rounded-full border border-brand-outline/50 bg-brand-primary/10 px-4 py-2 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : null}
+              if (view.kind === 'loading') {
+                return <NotesLoadingGrid viewPreference={viewColumns} />;
+              }
 
-            {isLoading ? (
-              <NotesLoadingGrid viewPreference={viewColumns} />
-            ) : filteredNotes.length === 0 ? (
-
-              <NotesEmptyState
-                message={emptyState.message}
-                subtitle={emptyState.subtitle}
-                icon={emptyState.icon}
-                recentSearches={recentSearches}
-                onRecentSearchClick={(query) => {
-                  setSearchQuery(query);
-                  addRecentSearch(query);
-                }}
-                action={
-                  emptyState.showClearFilters ? (
+              if (view.kind === 'blocking-error') {
+                return (
+                  <div className="flex flex-col items-center justify-center px-shell py-16 text-center">
+                    <p role="alert" className="mb-4 max-w-md text-sm text-red-500 dark:text-red-400">
+                      {view.message}
+                    </p>
                     <button
                       type="button"
-                      onClick={clearFilters}
-                      className="min-h-11 rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5"
+                      onClick={() => void retryNotesLoad()}
+                      className="rounded-full border border-brand-outline/50 bg-brand-primary/10 px-4 py-2 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
                     >
-                      Clear filters
+                      Retry
                     </button>
-                  ) : emptyState.showCreate ? (
-                    <button
-                      type="button"
-                      onClick={openNewNote}
-                      className="min-h-11 rounded-note bg-brand-primary px-5 py-2.5 text-sm font-semibold text-true-surface transition-transform active:scale-95"
-                    >
-                      New note
-                    </button>
-                  ) : undefined
-                }
+                  </div>
+                );
+              }
 
-              />
+              return (
+                <>
+                  {view.syncWarning ? (
+                    <div className="px-shell mb-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-note border border-red-500/25 bg-red-500/5 px-3 py-2.5 sm:px-4">
+                      <p role="status" className="min-w-0 flex-1 text-sm text-red-500 dark:text-red-400">
+                        {view.syncWarning}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void retryNotesLoad()}
+                        className="shrink-0 rounded-full border border-brand-outline/50 bg-brand-primary/10 px-3 py-1.5 text-xs font-semibold text-brand-primary transition-colors hover:bg-brand-primary/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+                      >
+                        Retry
+                      </button>
+                      </div>
+                    </div>
+                  ) : null}
 
-            ) : (
-              <>
-                {isFuzzyResult ? (
-                  <SearchNotice query={filters.searchQuery ?? ''} />
-                ) : null}
-                <NoteStaggeredGrid
-                  notes={filteredNotes}
-                  viewPreference={viewColumns}
-                  filter={filters.filter}
-                  sortOrder={filters.sortOrder ?? 'manual'}
-                  onNoteClick={handleNoteClick}
-                onNoteLongPress={handleNoteLongPress}
-                selectedNoteIds={selectedNoteIds}
-                selectionMode={selectionMode}
-                onLabelClick={(name) => {
-                  setNoteFilter('active');
-                  setLabelFilter(name);
-                }}
-                listActions={{
-                  onArchive: (note) => void archiveNote(note),
-                  onTrash: (note) => void trashNote(note),
-                  onRestore: (note) => void restoreNote(note),
-                  onPermanentDelete: (note) => void permanentlyDeleteNote(note),
-                }}
-                searchQuery={filters.searchQuery ?? ''}
-                allowReorder={allowReorder}
-                onMoveNote={moveNote}
-                onReorderComplete={reorderComplete}
-              />
-              </>
-            )}
-
+                  {view.kind === 'empty' ? (
+                    <NotesEmptyState
+                      message={emptyState.message}
+                      subtitle={emptyState.subtitle}
+                      icon={emptyState.icon}
+                      recentSearches={recentSearches}
+                      onRecentSearchClick={(query) => {
+                        setSearchQuery(query);
+                        addRecentSearch(query);
+                      }}
+                      action={
+                        emptyState.showClearFilters ? (
+                          <button
+                            type="button"
+                            onClick={clearFilters}
+                            className="min-h-11 rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5"
+                          >
+                            Clear filters
+                          </button>
+                        ) : emptyState.showCreate ? (
+                          <button
+                            type="button"
+                            onClick={openNewNote}
+                            className="min-h-11 rounded-note bg-brand-primary px-5 py-2.5 text-sm font-semibold text-true-surface transition-transform active:scale-95"
+                          >
+                            New note
+                          </button>
+                        ) : undefined
+                      }
+                    />
+                  ) : (
+                    <>
+                      {isFuzzyResult ? (
+                        <SearchNotice query={filters.searchQuery ?? ''} />
+                      ) : null}
+                      <NoteStaggeredGrid
+                        notes={filteredNotes}
+                        viewPreference={viewColumns}
+                        filter={filters.filter}
+                        sortOrder={filters.sortOrder ?? 'manual'}
+                        onNoteClick={handleNoteClick}
+                        onNoteLongPress={handleNoteLongPress}
+                        selectedNoteIds={selectedNoteIds}
+                        selectionMode={selectionMode}
+                        onLabelClick={(name) => {
+                          setNoteFilter('active');
+                          setLabelFilter(name);
+                        }}
+                        listActions={{
+                          onArchive: (note) => void archiveNote(note),
+                          onTrash: (note) => void trashNote(note),
+                          onRestore: (note) => void restoreNote(note),
+                          onPermanentDelete: (note) => void permanentlyDeleteNote(note),
+                        }}
+                        searchQuery={filters.searchQuery ?? ''}
+                        allowReorder={allowReorder}
+                        onMoveNote={moveNote}
+                        onReorderComplete={reorderComplete}
+                      />
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
         </main>
