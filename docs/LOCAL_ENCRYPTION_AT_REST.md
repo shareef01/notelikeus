@@ -1,7 +1,9 @@
 # Local encryption at rest — where it stands, and what it would take
 
-Written 2026-09-08 after auditing the three clients. Nothing here has been implemented; this is
-the engineering case for and against doing it, so the decision is a decision and not a default.
+Written 2026-09-08 after auditing the three clients; updated after Android attachment AES-GCM
+landed. Android notes DB and attachment bytes are encrypted at rest. Desktop DB encryption and
+Desktop/Web attachment sealing remain deferred — this document is the engineering case for those
+next steps, so the decision stays a decision and not a default.
 
 ## What is true today
 
