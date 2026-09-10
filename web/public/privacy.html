@@ -77,7 +77,7 @@
         <li><strong>Offline-first by default:</strong> On Android, Windows, and Web, notes are stored <strong>locally on your device</strong>. You can use the full application without creating an account or providing personal details.</li>
         <li><strong>Optional Cloud Sync:</strong> When you sign in and enable cloud sync, note text, checklists, and metadata are synchronized to <strong>Supabase (PostgreSQL)</strong> under your authenticated identity. Attachment files may be stored in <strong>Cloudflare R2</strong>.</li>
         <li><strong>Local Data Isolation:</strong> Signing out clears local cached notes from the active session so a subsequent user cannot inherit your data.</li>
-        <li><strong>Encryption:</strong> Android local databases are encrypted at rest with <strong>SQLCipher</strong> backed by Android Keystore. Attachment image files on disk are <strong>not</strong> encrypted by the app at the file layer; they rely on OS / profile permissions.</li>
+        <li><strong>Encryption:</strong> Android local databases are encrypted at rest with <strong>SQLCipher</strong> backed by Android Keystore. Attachment image files and staged pending bytes on Android are encrypted with <strong>AES-GCM</strong> under a dedicated Android Keystore key. Attachment files on Windows / Web rely on OS / profile permissions.</li>
         <li>Synced cloud notes are <strong>not end-to-end encrypted</strong> by the app; they rely on TLS plus Supabase Auth, row-level security, authorized RPCs, and Worker JWT checks for attachments.</li>
         <li>The app does <strong>not</strong> include third-party tracking, analytics, or advertising SDKs.</li>
       </ul>
@@ -105,7 +105,7 @@
 
       <h2>Security</h2>
       <ul>
-        <li><strong>Android:</strong> Notes are stored in a <strong>SQLCipher-encrypted</strong> Room database. Attachment bytes under the app’s attachments directory are not covered by SQLCipher. An optional app-wide lock uses the device’s biometric APIs to gate opening the app.</li>
+        <li><strong>Android:</strong> Notes are stored in a <strong>SQLCipher-encrypted</strong> Room database. Attachment bytes under the app’s attachments directory (and pending staging) are sealed with AES-GCM under Android Keystore. An optional app-wide lock uses the device’s biometric APIs to gate opening the app.</li>
         <li><strong>Windows Desktop &amp; Web:</strong> Local storage is bound to the user's OS / browser profile permissions.</li>
         <li><strong>Cloud:</strong> PostgreSQL row-level security and authorized RPCs restrict read and write operations to the authenticated owner.</li>
       </ul>
