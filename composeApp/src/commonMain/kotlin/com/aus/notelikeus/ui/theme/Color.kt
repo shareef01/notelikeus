@@ -1,6 +1,5 @@
 package com.aus.notelikeus.ui.theme
 
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
@@ -216,9 +215,6 @@ fun noteColorCounterpart(argb: Int): Int? {
     }
     return null
 }
-
-fun noteColorsMatch(noteArgb: Int, filterArgb: Int): Boolean =
-    noteArgb == filterArgb || noteColorCounterpart(noteArgb) == filterArgb
 
 val SwipeArchiveLight = Color(0xFF2A2A2A)
 val SwipeArchiveDark = Color(0xFFE8E8E8)

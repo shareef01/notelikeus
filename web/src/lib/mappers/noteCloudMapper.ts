@@ -2,7 +2,6 @@ import type { ChecklistItem } from '@/types/checklist';
 import type { Label } from '@/types/label';
 import type { Note } from '@/types/note';
 import { labelFromName } from '@/types/label';
-import { isCloudSyncEligible } from '@/types/note';
 
 /**
  * Portable note document used by JSON backups and historical cloud maps.
@@ -165,18 +164,5 @@ export function cloudMapToNote(
     labels,
     attachments,
     checklist,
-  };
-}
-
-export function noteToFirestorePayload(note: Note): FirestoreNoteDocument | null {
-  if (!isCloudSyncEligible(note)) return null;
-  return noteToCloudMap(note);
-}
-
-export function syncMetaMap(noteCount: number, platform: 'web' | 'android' = 'web') {
-  return {
-    lastSyncAt: Date.now(),
-    noteCount,
-    platform,
   };
 }

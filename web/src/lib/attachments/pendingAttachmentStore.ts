@@ -91,13 +91,6 @@ export async function getPendingAttachmentBlob(
  * Deprecated: prefer peekPendingAttachment + releasePendingAttachment after confirmed upload
  * to prevent data loss on upload failures.
  */
-export function takePendingAttachment(
-  attachmentId: string,
-): { blob: Blob; mimeType: string } | undefined {
-  const value = pending.get(attachmentId);
-  if (value) pending.delete(attachmentId);
-  return value;
-}
 
 export async function releasePendingAttachment(
   attachmentId: string,
