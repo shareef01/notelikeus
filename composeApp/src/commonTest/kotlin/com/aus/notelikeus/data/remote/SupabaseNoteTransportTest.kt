@@ -223,4 +223,62 @@ class SupabaseNoteTransportTest {
             SupabaseNoteTransport(rpc).fetchNotes(UID)
         }
     }
+
+    /**
+     * `note_count` agreeing with the raw `notes` array proves the aggregate was not truncated, but
+     * the row mapping still drops anything whose id cannot be read. The engine reconciles against
+     * the *records*, so the count has to travel out with them rather than being consumed here —
+     * otherwise a snapshot that lost a note to an unreadable id looks complete to the engine and
+     * every previously-known id it omits is applied as a deletion.
+     */
+    @Test
+    fun aRowWithNoReadableIdIsReportedAsAShortSnapshot() = runTest {
+        val rpc = RecordingRpcClient().on(
+            "fetch_full_snapshot",
+            buildJsonObject {
+                put(
+                    "notes",
+                    buildJsonArray {
+                        add(
+                            buildJsonObject {
+                                put("note_id", JsonPrimitive("7"))
+                                put("local_id", JsonPrimitive(7L))
+                                put("revision", JsonPrimitive(1L))
+                                put("title", JsonPrimitive("readable"))
+                            },
+                        )
+                        add(
+                            buildJsonObject {
+                                put("note_id", JsonPrimitive("not-a-number"))
+                                put("revision", JsonPrimitive(2L))
+                                put("title", JsonPrimitive("unreadable id"))
+                            },
+                        )
+                    },
+                )
+                put("tombstones", buildJsonArray { })
+                put("note_count", JsonPrimitive(2))
+            },
+        )
+
+        val snapshot = SupabaseNoteTransport(rpc).fetchNotesSnapshot(UID)
+
+        assertEquals(1, snapshot.records.size, "the unreadable row cannot become a record")
+        assertEquals(
+            2,
+            snapshot.authoritativeNoteCount,
+            "so the server count must reach the engine, which is what refuses the reconcile",
+        )
+    }
+
+    @Test
+    fun aCompleteSnapshotReportsAMatchingCount() = runTest {
+        val rpc = RecordingRpcClient()
+            .on("fetch_full_snapshot", snapshotWith(noteId = 7L, revision = 10_042L))
+
+        val snapshot = SupabaseNoteTransport(rpc).fetchNotesSnapshot(UID)
+
+        assertEquals(1, snapshot.records.size)
+        assertEquals(1, snapshot.authoritativeNoteCount)
+    }
 }

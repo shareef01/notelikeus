@@ -3,6 +3,20 @@ package com.aus.notelikeus.data.sync
 import com.aus.notelikeus.domain.model.Note
 
 /**
+ * The result of a full-library read: the records that arrived, and — when the backend can say so
+ * — how many there should have been.
+ *
+ * @property records every note document the transport managed to produce.
+ * @property authoritativeNoteCount the server's own count of the account's note rows, derived
+ *   independently of [records] (not `records.size` recomputed). `null` means this transport cannot
+ *   prove completeness, and the engine reconciles on the records alone as it always has.
+ */
+data class CloudNoteSnapshot(
+    val records: List<CloudNoteRecord>,
+    val authoritativeNoteCount: Int? = null,
+)
+
+/**
  * Platform-agnostic transport for cloud note sync.
  *
  * Every method takes an explicit [uid] so the engine (commonMain) controls
@@ -13,6 +27,26 @@ interface CloudNoteTransport {
 
     /** Returns every note document for [uid], in no guaranteed order. */
     suspend fun fetchNotes(uid: String): List<CloudNoteRecord>
+
+    /**
+     * A full-library read together with the transport's proof that it is complete.
+     *
+     * [fetchNotes] returns a bare list, and a list carries no evidence of what it left out. The
+     * engine's whole reconciliation reads an absent id as "deleted elsewhere", so a snapshot that
+     * lost rows in transit — a truncated aggregate, a page that never arrived, a row the parser
+     * could not read — is indistinguishable from a real deletion and gets applied as one. The
+     * empty-cloud guards do not help: they only fire when *nothing* came back.
+     *
+     * [CloudNoteSnapshot.authoritativeNoteCount] is that missing evidence. Transports whose
+     * backend can state the true row count independently of the payload (Supabase's
+     * `fetch_full_snapshot` returns a separate `note_count`) report it; the engine refuses to
+     * reconcile when it disagrees with what actually arrived.
+     *
+     * Defaulted so transports and test doubles that cannot prove completeness keep working
+     * unchanged — they report `null` and the engine behaves exactly as before for them.
+     */
+    suspend fun fetchNotesSnapshot(uid: String): CloudNoteSnapshot =
+        CloudNoteSnapshot(records = fetchNotes(uid), authoritativeNoteCount = null)
 
     /** Returns the single note document, or null if absent. */
     suspend fun fetchNote(uid: String, noteId: Long): CloudNoteRecord?

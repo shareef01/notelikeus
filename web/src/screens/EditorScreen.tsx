@@ -31,6 +31,10 @@ import {
 } from '@/lib/text/markdown';
 import { shareText } from '@/lib/share/shareText';
 import { noteSurfaceStyle } from '@/theme/contrast';
+import {
+  FULLSCREEN_EDITOR_SHELL_CLASS,
+  editorWritingColumnClass,
+} from '@/screens/main/editorShellLayout';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { useUiStore, type EditorLayout, type EditorRoute } from '@/store/uiStore';
 import { useToastStore } from '@/store/toastStore';
@@ -159,6 +163,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
     state.color === 0 ? 'rgb(var(--primary-rgb))' : surface.color;
   const hasChecklist = state.checklist.length > 0;
   const isFloatLayout = isTabletUp && editorLayout === 'float';
+  const writingColumnClass = editorWritingColumnClass(editorLayout, isTabletUp);
   const isOverlayShell = !isTabletUp || editorLayout === 'fullscreen' || isFloatLayout;
   // Full-window shells need IME lift; float/dock panels sit in a constrained box.
   const effectiveKeyboardInset =
@@ -312,14 +317,10 @@ export function EditorScreen({ route }: EditorScreenProps) {
           role="dialog"
           aria-modal="true"
           aria-label="Note editor"
-          className="fixed inset-0 z-40 flex justify-center bg-[rgb(var(--background-rgb))]"
+          className={FULLSCREEN_EDITOR_SHELL_CLASS}
+          style={surface}
         >
-          <div
-            className="relative flex h-full w-full max-w-4xl flex-col border-brand-outline/25 sm:border-x"
-            style={surface}
-          >
-            {children}
-          </div>
+          <div className="relative flex h-full w-full flex-col">{children}</div>
         </div>
       );
     }
@@ -494,7 +495,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           focusContentField();
         }}
       >
-        <div className="flex w-full flex-col">
+        <div className={['flex w-full flex-col', writingColumnClass].filter(Boolean).join(' ')}>
           {state.saveFailed ? (
             <div
               role="alert"
@@ -679,7 +680,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
       </div>
 
       <div
-        className="absolute inset-x-0 bottom-0"
+        className="absolute inset-x-0 bottom-0 z-20"
         style={{ color: contentColor, bottom: effectiveKeyboardInset }}
       >
         <EditorBottomBar
