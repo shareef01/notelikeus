@@ -104,12 +104,23 @@ class AttachmentSyncService(
             when {
                 isPendingAttachment(attachment.storagePath) -> {
                     val pendingId = pendingId(attachment.storagePath)
-                    // Keep the only local copy until the note revision commits. A miss here means
-                    // the bytes belong to another account's namespace, or were never staged by a
-                    // build that predates durable staging — either way there is nothing to upload,
-                    // and the reference is left alone rather than dropped from the user's note.
+                    // Keep the only local copy until the note revision commits. A miss here used
+                    // to mean the bytes belonged to another account's namespace — sign-in now
+                    // adopts those — so what remains is bytes a pre-staging build never wrote, or
+                    // bytes that are genuinely gone.
                     val pending = loadStaged(owner, pendingId)
                     if (pending == null) {
+                        // Nothing readable. Discard the reference only when the bytes are provably
+                        // gone — an unreadable store, or one that cannot say, keeps the attachment
+                        // so a failing disk or a locked encrypted store cannot quietly delete a
+                        // user's picture. A kept reference is retried on every later sync.
+                        if (staging.isStaged(pendingId, owner) == false) {
+                            AppLog.warn(
+                                TAG,
+                                "Dropping attachment ${attachment.id}: staged bytes are gone",
+                            )
+                            continue
+                        }
                         synced.add(attachment)
                         continue
                     }
@@ -129,6 +140,14 @@ class AttachmentSyncService(
                 }
                 isFileAttachment(attachment.storagePath) -> {
                     val bytes = localStorage.readBytes(attachment.storagePath) ?: run {
+                        // Same rule as staged bytes: drop only on proven absence.
+                        if (localStorage.exists(attachment.storagePath) == false) {
+                            AppLog.warn(
+                                TAG,
+                                "Dropping attachment ${attachment.id}: local file is gone",
+                            )
+                            continue
+                        }
                         synced.add(attachment)
                         continue
                     }

@@ -26,6 +26,11 @@ class DesktopAttachmentLocalStorage : AttachmentLocalStorage {
         return runCatching { file.readBytes() }.getOrNull()
     }
 
+    override fun exists(storagePath: String): Boolean? {
+        val path = localFilePath(storagePath) ?: return false
+        return runCatching { File(path).exists() }.getOrNull()
+    }
+
     override fun deleteIfLocal(storagePath: String) {
         val path = localFilePath(storagePath) ?: return
         runCatching { File(path).delete() }
