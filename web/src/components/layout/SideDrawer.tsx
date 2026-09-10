@@ -174,10 +174,10 @@ export function SideDrawer({
 
       <aside
         ref={panelRef}
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-true-surface transition-all duration-300 ease-out md:static md:z-auto md:shrink-0 md:translate-x-0 md:border-r md:border-brand-outline/50 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-true-surface transition-[width,transform,box-shadow] duration-300 ease-out md:static md:z-auto md:shrink-0 md:translate-x-0 md:border-r md:border-brand-outline/50 ${
           showCollapsed
-            ? 'w-[min(300px,88vw)] md:w-16'
-            : 'w-[min(300px,88vw)] md:w-56 lg:w-60 xl:w-64'
+            ? 'w-[min(300px,88vw)] md:w-14'
+            : 'w-[min(300px,88vw)] md:w-52 lg:w-56 xl:w-60'
         } ${
           open ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0 md:shadow-none'
         }`}

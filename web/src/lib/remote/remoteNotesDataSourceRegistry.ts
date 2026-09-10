@@ -1,4 +1,5 @@
 import type { RemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSource';
+import { toError } from '@/lib/errors/formatUnknownError';
 
 let activeOverride: RemoteNotesDataSource | null = null;
 let sourcePromise: Promise<RemoteNotesDataSource> | null = null;
@@ -24,7 +25,7 @@ const lazySupabaseRemoteNotesDataSource: RemoteNotesDataSource = {
         unsub = source.subscribeToNotes(userId, onData, onError);
       })
       .catch((error: unknown) => {
-        onError?.(error instanceof Error ? error : new Error(String(error)));
+        onError?.(toError(error, 'Notes sync failed'));
       });
     return () => {
       cancelled = true;
