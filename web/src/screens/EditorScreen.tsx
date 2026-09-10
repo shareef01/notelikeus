@@ -495,7 +495,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           focusContentField();
         }}
       >
-        <div className={`flex w-full flex-col ${writingColumnClass}`}>
+        <div className={['flex w-full flex-col', writingColumnClass].filter(Boolean).join(' ')}>
           {state.saveFailed ? (
             <div
               role="alert"
