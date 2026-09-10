@@ -18,10 +18,6 @@ export function isPendingAttachment(storagePath: string): boolean {
   return storagePath.startsWith(ATTACHMENT_PENDING_PREFIX);
 }
 
-export function isR2Attachment(storagePath: string): boolean {
-  return storagePath.startsWith(ATTACHMENT_R2_PREFIX);
-}
-
 export function attachmentFromMetadata(
   note: Pick<Note, 'localId'>,
   row: NoteAttachmentMetadata,

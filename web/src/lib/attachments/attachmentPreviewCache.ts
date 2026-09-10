@@ -50,14 +50,6 @@ export function revokeAttachmentPreviewUrl(noteId: string, attachmentId: string)
   }
 }
 
-export function revokeAttachmentPreviewUrlsForNote(noteId: string): void {
-  for (const [key, url] of previewUrls.entries()) {
-    if (!key.startsWith(`${noteId}:`)) continue;
-    URL.revokeObjectURL(url);
-    previewUrls.delete(key);
-  }
-}
-
 /** Test hook — revokes and clears all preview URLs. */
 export function clearAttachmentPreviewCacheForTests(): void {
   for (const url of previewUrls.values()) {

@@ -1,7 +1,5 @@
 package com.aus.notelikeus.ui.editor
 
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.SavedStateHandle
@@ -18,7 +16,6 @@ import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
-import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.ui.theme.NO_NOTE_COLOR
@@ -83,7 +80,6 @@ class EditorViewModel(
     private var noteId: Long? = savedStateHandle.get<Long>("noteId")?.takeIf { it != -1L }
     private var routedInitialColor: Int? =
         savedStateHandle.get<Int>("initialColor")?.takeIf { it != Int.MIN_VALUE }
-    private var hasAppliedInitialColor = false
 
     /**
      * Which fields the user has authored, tracked per field.
@@ -237,12 +233,6 @@ class EditorViewModel(
             .launchIn(viewModelScope)
     }
 
-    fun setInitialNoteColor(color: Int) {
-        if (hasAppliedInitialColor || _state.value.id != null || !_state.value.isNoteLoaded) return
-        hasAppliedInitialColor = true
-        _state.update { it.copy(color = color) }
-    }
-
     fun onTitleChange(title: String) {
         titleEdited = true
         val clamped = title.take(NoteBackupImporter.MAX_FIELD_CHARS)
@@ -301,11 +291,6 @@ class EditorViewModel(
                 persistNoteReportingFailure()
             }
         }
-    }
-
-    fun toggleTrash() {
-        _state.update { it.copy(isTrashed = !it.isTrashed) }
-        saveNote()
     }
 
     suspend fun trashNoteForDelete(): Note? {
@@ -564,11 +549,6 @@ class EditorViewModel(
         )
         _state.value = next
         return next
-    }
-
-    suspend fun undoArchive(snapshot: Note) {
-        _state.update { it.copy(isArchived = false) }
-        repository.updateNote(snapshot)
     }
 
     fun setReminder(timestamp: Long?) {

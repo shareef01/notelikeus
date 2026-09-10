@@ -9,6 +9,3 @@ export function resolveOwnerId(): string | null {
   return null;
 }
 
-export function isGuestOwner(ownerId: string): boolean {
-  return ownerId === GUEST_OWNER_ID;
-}
