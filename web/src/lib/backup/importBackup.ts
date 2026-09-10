@@ -13,6 +13,7 @@ import {
   MAX_NOTE_LABELS,
   MAX_NOTE_TITLE_CHARS,
 } from '@/lib/backup/constants';
+import { assertJsonNestingWithinLimit, objectNestingDepth } from '@/lib/backup/jsonNesting';
 
 export interface BackupImportResult {
   notesImported: number;
@@ -32,17 +33,6 @@ export function parseBackupVersion(value: unknown): number {
     throw new Error('Invalid backup version');
   }
   return value;
-}
-
-function jsonNestingDepth(value: unknown, depth = 1): number {
-  if (value === null || typeof value !== 'object') return depth;
-  let max = depth;
-  const children = Array.isArray(value) ? value : Object.values(value as Record<string, unknown>);
-  for (const child of children) {
-    max = Math.max(max, jsonNestingDepth(child, depth + 1));
-    if (max > MAX_JSON_DEPTH) return max;
-  }
-  return max;
 }
 
 function nextNotePosition(notes: Note[]): number {
@@ -150,7 +140,7 @@ export function importNotesFromBackup(
     throw new Error('Invalid backup file');
   }
 
-  if (jsonNestingDepth(json) > MAX_JSON_DEPTH) {
+  if (objectNestingDepth(json) > MAX_JSON_DEPTH) {
     throw new Error('Backup file is too deeply nested');
   }
 
@@ -217,6 +207,10 @@ export async function readBackupFile(file: File): Promise<unknown> {
     throw new Error('Backup file is too large');
   }
   const text = await file.text();
+  // Reject excessive nesting on the raw input before JSON.parse, matching Kotlin's
+  // NoteBackupImporter — a recursive walk of the parsed graph can overflow the call stack
+  // before the depth limit is reported.
+  assertJsonNestingWithinLimit(text);
   try {
     return JSON.parse(text) as unknown;
   } catch {

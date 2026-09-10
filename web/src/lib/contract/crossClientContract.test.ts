@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { readContractFixture } from '@/lib/contract/contractFixtures';
 import { importNotesFromBackup } from '@/lib/backup/importBackup';
 import { exportBackupPayload } from '@/lib/backup/exportBackup';
+import {
+  MAX_BACKUP_LABELS,
+  MAX_BACKUP_NOTES,
+  MAX_JSON_DEPTH,
+  MAX_NOTE_CHECKLIST_ITEMS,
+  MAX_NOTE_CONTENT_CHARS,
+  MAX_NOTE_LABELS,
+  MAX_NOTE_TITLE_CHARS,
+} from '@/lib/backup/constants';
 import { noteToSupabaseRpcArgs, parseTombstoneMap, supabaseNoteToNote } from '@/lib/supabase/supabaseNoteMapper';
 import { createEmptyNote, type Note } from '@/types/note';
 import { ownerTag } from '@/lib/diagnostics/diagnosticsReport';
@@ -97,6 +106,26 @@ describe('backup v3 contract', () => {
     expect(payload.app).toBe('Notelikeus');
     expect(payload.notes).toEqual(web.notes);
     expect(payload.labels).toEqual(web.labels);
+  });
+
+  it('keeps import soft caps aligned with the shared fixture and Kotlin', () => {
+    const limits = readContractFixture<{
+      maxJsonDepth: number;
+      maxBackupNotes: number;
+      maxBackupLabels: number;
+      maxNoteTitleChars: number;
+      maxNoteContentChars: number;
+      maxNoteChecklistItems: number;
+      maxNoteLabels: number;
+    }>('backup/import-limits.json');
+
+    expect(MAX_JSON_DEPTH).toBe(limits.maxJsonDepth);
+    expect(MAX_BACKUP_NOTES).toBe(limits.maxBackupNotes);
+    expect(MAX_BACKUP_LABELS).toBe(limits.maxBackupLabels);
+    expect(MAX_NOTE_TITLE_CHARS).toBe(limits.maxNoteTitleChars);
+    expect(MAX_NOTE_CONTENT_CHARS).toBe(limits.maxNoteContentChars);
+    expect(MAX_NOTE_CHECKLIST_ITEMS).toBe(limits.maxNoteChecklistItems);
+    expect(MAX_NOTE_LABELS).toBe(limits.maxNoteLabels);
   });
 });
 
