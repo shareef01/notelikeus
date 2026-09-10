@@ -1,5 +1,6 @@
 import { recordSyncFailure, recordSyncSuccess } from '@/lib/diagnostics/collectDiagnostics';
 import { categorizeSyncError } from '@/lib/diagnostics/diagnosticsReport';
+import { formatUnknownError } from '@/lib/errors/formatUnknownError';
 import { deleteNote, putNotes } from '@/lib/local/notesLocalRepository';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
 import { shouldUploadOverRemote } from '@/lib/notes/remoteMerge';
@@ -164,14 +165,21 @@ async function reconcileNow(userId: string): Promise<void> {
       const isDeleted = useTombstoneStore.getState().isDeleted;
       applyNotes(userId, result.merged.filter((note) => !isDeleted(note.id)));
       recordSyncSuccess();
+      // Recovery has to clear the banner explicitly: applyNotes may find nothing changed and
+      // return without touching the store, so a stale "could not sync" would otherwise outlive
+      // the failure that raised it.
+      useNotesStore.getState().clearSyncError();
     } catch (error) {
       if (reconcileUserId !== userId) return;
       lastReconcileStartedAt = 0; // allow immediate retry on the next trigger
       // The category, not the error: a revision conflict's message embeds the remote note's
       // title, and diagnostics must never carry note content.
       recordSyncFailure(categorizeSyncError(error));
-      useNotesStore.getState().setError(
-        error instanceof Error ? error.message : 'Reconcile failed',
+      // Non-blocking. The notes are in IndexedDB and the store already holds them; a failed
+      // reconcile means the cloud is behind, not that the library is unreadable, and taking the
+      // screen away would also take away the offline edits waiting to be pushed.
+      useNotesStore.getState().setSyncError(
+        formatUnknownError(error, 'Could not sync notes. Please try again.'),
       );
     } finally {
       reconcileInFlight = null;
@@ -266,6 +274,8 @@ export function startNotesRealtimeSync(userId: string): void {
       }
 
       lastSnapshotAppliedAt = Date.now();
+      // A snapshot arrived, so whatever the last subscription or reconcile error was is stale.
+      useNotesStore.getState().clearSyncError();
 
       // Same rule as the delete-on-absence guard above, for the notes themselves: an empty
       // snapshot must not replace a library this device is still holding. That happens for real
@@ -279,7 +289,9 @@ export function startNotesRealtimeSync(userId: string): void {
     },
     (error) => {
       recordSyncFailure(categorizeSyncError(error));
-      useNotesStore.getState().setError(error.message);
+      useNotesStore
+        .getState()
+        .setSyncError(formatUnknownError(error, 'Could not sync notes. Please try again.'));
     },
   );
 }

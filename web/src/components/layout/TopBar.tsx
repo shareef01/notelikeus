@@ -112,7 +112,7 @@ export function TopBar({
         listScrolled ? 'shadow-header-scroll' : ''
       }`}
     >
-      <div className="mx-auto w-full max-w-content px-3 sm:px-4 lg:px-6">
+      <div className="mx-auto flex w-full max-w-content px-shell">
         {selectionMode && onClearSelection && onToggleSelectAll ? (
           <SelectionBar
             selectedCount={selectedCount}
@@ -201,7 +201,7 @@ export function TopBar({
 
       <div className="mx-auto w-full max-w-content overflow-hidden">
         {showRecent ? (
-          <div className="flex items-center gap-2 px-4 py-2 animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-2 px-shell py-2 animate-in slide-in-from-top-2">
             <span className="text-xs font-medium text-brand-muted">Recent</span>
             <div className="flex flex-1 gap-2 overflow-x-auto scrollbar-none py-1">
               {recentSearches.map((query) => (

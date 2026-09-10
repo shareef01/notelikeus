@@ -29,8 +29,30 @@ class FakeCloudNoteTransport : CloudNoteTransport {
     var restoreNoteFailure: Throwable? = null
     var restoreNoteCalls = 0
 
+    /**
+     * When set, [fetchNotesSnapshot] drops this many records from the end of the snapshot while
+     * still reporting the full count. Models the payload a truncated aggregate or an unparseable
+     * row produces: a non-empty library that is quietly missing notes.
+     */
+    var truncateSnapshotBy: Int = 0
+
+    /**
+     * When false, the fake reports no authoritative count — the legacy transport shape, where the
+     * engine has only the records to go on.
+     */
+    var reportsAuthoritativeCount: Boolean = true
+
     override suspend fun fetchNotes(uid: String): List<CloudNoteRecord> =
         notes.values.toList()
+
+    override suspend fun fetchNotesSnapshot(uid: String): CloudNoteSnapshot {
+        val all = notes.values.toList()
+        val delivered = all.dropLast(truncateSnapshotBy.coerceIn(0, all.size))
+        return CloudNoteSnapshot(
+            records = delivered,
+            authoritativeNoteCount = if (reportsAuthoritativeCount) all.size else null,
+        )
+    }
 
     override suspend fun fetchNote(uid: String, noteId: Long): CloudNoteRecord? =
         notes[noteId]
