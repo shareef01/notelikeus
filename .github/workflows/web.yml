@@ -45,6 +45,9 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      - name: Coverage gates for security-critical modules
+        run: npm run test:coverage
+
       - name: Typecheck and build
         run: npm run build
         env:
