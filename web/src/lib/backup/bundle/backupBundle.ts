@@ -12,8 +12,15 @@
  *
  * See `contracts/backup/v4-bundle-manifest.json` for the wire format itself.
  */
-import { BACKUP_VERSION } from '@/lib/backup/constants';
-import { readZip, writeZip, ZipFormatError } from '@/lib/backup/bundle/zip';
+import { BACKUP_VERSION, MAX_BACKUP_FILE_BYTES } from '@/lib/backup/constants';
+import {
+  extractZipEntry,
+  listZipCentralDirectory,
+  writeZip,
+  ZipFormatError,
+  type ZipCentralEntry,
+} from '@/lib/backup/bundle/zip';
+import { assertJsonNestingWithinLimit } from '@/lib/backup/jsonNesting';
 
 export const BUNDLE_FORMAT_VERSION = 4;
 export const BUNDLE_FILE_EXTENSION = '.nlkbak';
@@ -26,6 +33,11 @@ export const MAX_BUNDLE_FILE_BYTES = 256 * 1024 * 1024;
 export const MAX_BUNDLE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 /** More attachments than any real library has; bounds the manifest and the extraction loop. */
 export const MAX_BUNDLE_ATTACHMENTS = 5_000;
+/**
+ * Manifest entry ceiling: the embedded v3 backup (already capped at {@link MAX_BACKUP_FILE_BYTES})
+ * plus a modest attachment index. Enforced before the entry is decompressed.
+ */
+export const MAX_BUNDLE_MANIFEST_BYTES = MAX_BACKUP_FILE_BYTES + 2 * 1024 * 1024;
 
 /**
  * The only attachment ids a bundle may name.
@@ -173,6 +185,11 @@ export function looksLikeBundle(file: { name?: string }, head: Uint8Array): bool
 /**
  * Parses a `.nlkbak` archive into its manifest and verified media.
  *
+ * Manifest-first and selective: the central directory is listed without decompressing payloads,
+ * `manifest.json` is extracted and validated on its own, and only media entries the manifest
+ * names are then extracted — one at a time. Unreferenced archive members are never held in
+ * memory as decompressed bytes.
+ *
  * The whole-file guarantee is one-sided on purpose: a malformed *manifest* fails the import,
  * because without it there are no notes to recover; a malformed *attachment* is dropped with a
  * warning, because the notes are still there and losing a photo is not a reason to lose the text
@@ -183,22 +200,43 @@ export async function parseBackupBundle(archive: Uint8Array): Promise<ParsedBund
     throw new BundleFormatError('Backup bundle is too large');
   }
 
-  let entries;
+  let central: ZipCentralEntry[];
   try {
-    entries = await readZip(archive);
+    central = listZipCentralDirectory(archive);
   } catch (error) {
     if (error instanceof ZipFormatError) throw new BundleFormatError(error.message);
     throw error;
   }
 
-  const manifestEntry = entries.find((entry) => entry.name === BUNDLE_MANIFEST_ENTRY);
-  if (!manifestEntry) {
+  const byName = new Map(central.map((entry) => [entry.name, entry]));
+  const manifestCentral = byName.get(BUNDLE_MANIFEST_ENTRY);
+  if (!manifestCentral) {
     throw new BundleFormatError('Backup bundle has no manifest.json');
+  }
+  if (manifestCentral.uncompressedSize > MAX_BUNDLE_MANIFEST_BYTES) {
+    throw new BundleFormatError('Backup bundle manifest is too large');
+  }
+
+  let manifestBytes: Uint8Array;
+  try {
+    manifestBytes = (await extractZipEntry(archive, manifestCentral)).data;
+  } catch (error) {
+    if (error instanceof ZipFormatError) throw new BundleFormatError(error.message);
+    throw error;
+  }
+
+  const manifestText = new TextDecoder().decode(manifestBytes);
+  try {
+    assertJsonNestingWithinLimit(manifestText);
+  } catch (error) {
+    throw new BundleFormatError(
+      error instanceof Error ? error.message : 'Backup bundle manifest is too deeply nested',
+    );
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(new TextDecoder().decode(manifestEntry.data));
+    parsed = JSON.parse(manifestText);
   } catch {
     throw new BundleFormatError('Backup bundle manifest is not valid JSON');
   }
@@ -218,9 +256,9 @@ export async function parseBackupBundle(archive: Uint8Array): Promise<ParsedBund
 
   const warnings: string[] = [];
   let droppedAttachments = 0;
-  const byName = new Map(entries.map((entry) => [entry.name, entry.data]));
   const media: ParsedBundle['media'] = new Map();
   const attachments: BundleAttachmentEntry[] = [];
+  const referencedNames = new Set<string>([BUNDLE_MANIFEST_ENTRY]);
 
   const rawAttachments = Array.isArray(raw.attachments) ? raw.attachments : [];
   if (rawAttachments.length > MAX_BUNDLE_ATTACHMENTS) {
@@ -242,12 +280,34 @@ export async function parseBackupBundle(archive: Uint8Array): Promise<ParsedBund
 
     // Derived from the validated id, never from `entry.path`. The manifest's `path` is
     // informational; trusting it is exactly how zip-slip gets in.
-    const bytes = byName.get(mediaEntryName(attachmentId));
-    if (!bytes) {
+    const mediaName = mediaEntryName(attachmentId);
+    referencedNames.add(mediaName);
+    const mediaCentral = byName.get(mediaName);
+    if (!mediaCentral) {
       droppedAttachments++;
       warnings.push(`Attachment ${attachmentId} is listed but its file is missing`);
       continue;
     }
+    if (mediaCentral.uncompressedSize > MAX_BUNDLE_ATTACHMENT_BYTES) {
+      droppedAttachments++;
+      warnings.push(`Attachment ${attachmentId} is too large to import`);
+      continue;
+    }
+
+    let bytes: Uint8Array;
+    try {
+      // eslint-disable-next-line no-await-in-loop -- attachments are extracted one at a time
+      bytes = (await extractZipEntry(archive, mediaCentral)).data;
+    } catch (error) {
+      droppedAttachments++;
+      warnings.push(
+        error instanceof ZipFormatError
+          ? `Attachment ${attachmentId} failed archive checks and was skipped`
+          : `Attachment ${attachmentId} could not be read and was skipped`,
+      );
+      continue;
+    }
+
     if (bytes.byteLength > MAX_BUNDLE_ATTACHMENT_BYTES) {
       droppedAttachments++;
       warnings.push(`Attachment ${attachmentId} is too large to import`);
@@ -284,7 +344,7 @@ export async function parseBackupBundle(archive: Uint8Array): Promise<ParsedBund
     attachments.push({
       noteId: record.noteId,
       attachmentId,
-      path: mediaEntryName(attachmentId),
+      path: mediaName,
       type: record.type,
       mimeType: record.mimeType,
       sizeBytes: bytes.byteLength,
@@ -292,10 +352,8 @@ export async function parseBackupBundle(archive: Uint8Array): Promise<ParsedBund
     });
   }
 
-  const strayMedia = entries.filter(
-    (entry) =>
-      entry.name.startsWith(BUNDLE_MEDIA_PREFIX) &&
-      !media.has(entry.name.slice(BUNDLE_MEDIA_PREFIX.length)),
+  const strayMedia = central.filter(
+    (entry) => entry.name.startsWith(BUNDLE_MEDIA_PREFIX) && !referencedNames.has(entry.name),
   ).length;
   if (strayMedia > 0) {
     warnings.push(`${strayMedia} file(s) in the bundle are not listed in its manifest`);
