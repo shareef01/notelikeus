@@ -151,6 +151,8 @@ export function MainScreen() {
 
     error,
 
+    syncError,
+
   } = useNotes();
 
 
@@ -443,12 +445,19 @@ export function MainScreen() {
             }`}
           >
             {(() => {
+              // Both channels go through the formatter, not just the blocking one: either can
+              // carry a value that came out of a thrown object, and `[object Object]` is not a
+              // sentence to put in front of a user.
               const displayError = error
                 ? formatUnknownError(error, 'Could not load notes. Please try again.')
+                : null;
+              const displaySyncError = syncError
+                ? formatUnknownError(syncError, 'Could not sync notes. Please try again.')
                 : null;
               const view = resolveNotesViewState({
                 isLoading,
                 error: displayError,
+                syncError: displaySyncError,
                 notesCount: notes.length,
                 filteredCount: filteredNotes.length,
               });
@@ -460,7 +469,7 @@ export function MainScreen() {
               if (view.kind === 'blocking-error') {
                 return (
                   <div className="flex flex-col items-center justify-center px-shell py-16 text-center">
-                    <p className="mb-4 max-w-md text-sm text-red-500 dark:text-red-400">
+                    <p role="alert" className="mb-4 max-w-md text-sm text-red-500 dark:text-red-400">
                       {view.message}
                     </p>
                     <button
@@ -476,11 +485,11 @@ export function MainScreen() {
 
               return (
                 <>
-                  {view.showErrorBanner ? (
+                  {view.syncWarning ? (
                     <div className="px-shell mb-3">
                       <div className="flex flex-wrap items-center justify-between gap-3 rounded-note border border-red-500/25 bg-red-500/5 px-3 py-2.5 sm:px-4">
-                      <p className="min-w-0 flex-1 text-sm text-red-500 dark:text-red-400">
-                        {view.showErrorBanner}
+                      <p role="status" className="min-w-0 flex-1 text-sm text-red-500 dark:text-red-400">
+                        {view.syncWarning}
                       </p>
                       <button
                         type="button"
@@ -493,7 +502,7 @@ export function MainScreen() {
                     </div>
                   ) : null}
 
-                  {view.empty ? (
+                  {view.kind === 'empty' ? (
                     <NotesEmptyState
                       message={emptyState.message}
                       subtitle={emptyState.subtitle}
