@@ -86,7 +86,7 @@ export function ConfirmDialog({
         {title}
       </h2>
       <p className="mt-2 text-sm text-brand-muted">{description}</p>
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="relative z-10 mt-5 flex justify-end gap-2">
         <button type="button" onClick={onCancel} className={dialogCancelButtonClass}>
           Cancel
         </button>
