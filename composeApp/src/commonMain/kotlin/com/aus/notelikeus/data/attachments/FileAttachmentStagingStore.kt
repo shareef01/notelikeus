@@ -28,6 +28,7 @@ class FileAttachmentStagingStore(
     private val ioDispatcher: CoroutineDispatcher,
     private val fileSystem: FileSystem = FileSystem.SYSTEM,
     private val now: () -> Long = { DateUtils.currentTimeMillis() },
+    private val protector: AttachmentBytesProtector = NoopAttachmentBytesProtector,
 ) : AttachmentStagingStore {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -53,7 +54,9 @@ class FileAttachmentStagingStore(
             fileSystem.createDirectories(owner)
             val target = owner / "$id$BYTES_SUFFIX"
             val temp = owner / "$id$TEMP_SUFFIX"
-            fileSystem.write(temp) { write(bytes) }
+            val aad = stagingAad(ownerId = ownerId, attachmentId = attachmentId)
+            val sealed = protector.seal(bytes, aad)
+            fileSystem.write(temp) { write(sealed) }
             fileSystem.atomicMove(temp, target)
             writeMetadata(owner, id, staged)
             staged
@@ -72,7 +75,9 @@ class FileAttachmentStagingStore(
             val target = owner / "$id$BYTES_SUFFIX"
             try {
                 if (!fileSystem.exists(target)) return@withContext null
-                fileSystem.read(target) { readByteArray() }
+                val raw = fileSystem.read(target) { readByteArray() }
+                val aad = stagingAad(ownerId = ownerId, attachmentId = attachmentId)
+                protector.open(raw, aad)
             } catch (error: okio.IOException) {
                 AppLog.warn(TAG, "Reading staged attachment bytes failed", error)
                 null
@@ -157,6 +162,9 @@ class FileAttachmentStagingStore(
     }
 
     private fun ownerDir(ownerId: String): Path? = safeSegment(ownerId)?.let { root / it }
+
+    private fun stagingAad(ownerId: String, attachmentId: String): ByteArray =
+        "$ownerId/$attachmentId".toByteArray()
 
     /**
      * Owner and attachment ids arrive from Supabase and from note rows. Anything that is not a
