@@ -8,23 +8,18 @@ and cannot be expressed as source in this tree.
 | Workflow | What it does |
 |---|---|
 | `.github/workflows/codeql.yml` | CodeQL `security-extended` for JavaScript/TypeScript and Java/Kotlin |
+| `.github/workflows/dependency-review.yml` | PR dependency review; fails on high+ severity advisories |
 | Existing CI (`web.yml`, `android.yml`, `desktop.yml`, `supabase.yml`, …) | Lint, unit, build, pgTAP, Playwright |
 
 Actions are pinned to immutable commit SHAs, consistent with the rest of this repository.
 
-## Enable in GitHub settings, then re-add
+## Account / repo settings
 
-Open [Code security and analysis](https://github.com/shareef01/notelikeus/settings/security_analysis) and ensure:
+Open [Code security and analysis](https://github.com/shareef01/notelikeus/settings/security_analysis):
 
-- **Dependency graph** is enabled (required before any dependency-review workflow can run)
-- **Dependabot alerts** / security updates (optional; already useful without a PR Action)
-- **Secret scanning** and push protection (already enabled on this repository as of 2026-09)
-
-A `dependency-review` workflow was attempted and removed: GitHub returned
-`Dependency review is not supported on this repository` until Dependency graph is on.
-After enabling it, restore a SHA-pinned
-`actions/dependency-review-action` workflow (see git history on
-`security/audit-hardening-pass` / PR #194 for a ready template with `fail-on-severity: high`).
+- **Dependency graph** — required for dependency-review (enabled; the compare API is live)
+- **Dependabot alerts** / security updates — optional companion to PR review
+- **Secret scanning** and push protection — enabled on this repository as of 2026-09
 
 ## Deferred
 
