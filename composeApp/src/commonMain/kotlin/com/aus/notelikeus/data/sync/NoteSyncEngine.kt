@@ -33,6 +33,27 @@ class SuspectEmptyCloudException(
 )
 
 /**
+ * A full snapshot came back holding fewer notes than the server says the account has.
+ *
+ * The dangerous case [SuspectEmptyCloudException] does not cover. That guard only fires when the
+ * cloud returns *nothing*; a snapshot that lost some of its rows still looks like a perfectly good
+ * library, and [NoteSyncEngine.downloadAllNotes] reads every previously-known id missing from it as
+ * deleted-elsewhere — deleting the local copy, writing a tombstone, and propagating that deletion
+ * to every other device. Nothing about the payload distinguishes "these notes were deleted" from
+ * "these notes did not arrive", so only a count the server produced separately can tell them apart.
+ *
+ * Refusing costs one skipped sync; the next successful one reconciles normally.
+ */
+class IncompleteCloudSnapshotException(
+    val expectedNoteCount: Int,
+    val receivedNoteCount: Int,
+) : Exception(
+    "Cloud snapshot is incomplete: the server reports $expectedNoteCount notes but only " +
+        "$receivedNoteCount arrived — refusing to delete local copies. Check the connection or " +
+        "try again."
+)
+
+/**
  * Local sync state still belongs to a different Google account than the current session.
  *
  * Native note ids are small autoincrements and tombstones are keyed by those ids, so applying
@@ -99,7 +120,7 @@ class NoteSyncEngine(
                 return@runCatching 0
             }
 
-            val remoteRecords = transport.fetchNotes(uid)
+            val remoteRecords = fetchCompleteSnapshot(uid)
 
             // The same hazard downloadAllNotes guards against, pointing the other way. Here an
             // empty fetch does not delete anything directly — it empties the timestamp maps below,
@@ -276,7 +297,9 @@ class NoteSyncEngine(
             val localNotesBeforePurge = noteDao.getAllNotesForBackup().map { it.toNote() }
             val purgedIds = purgeLocalTombstonedNotes(localNotesBeforePurge)
             var changes = purgedIds.size
-            val remoteRecords = transport.fetchNotes(uid)
+            // Before anything is compared, let alone deleted: a short snapshot must not reach the
+            // reconciliation loops below, which read every absent known id as a remote deletion.
+            val remoteRecords = fetchCompleteSnapshot(uid)
 
             val labelMap = labelDao.getAllLabelsOnce()
                 .associateBy { it.name.lowercase() }
@@ -411,6 +434,25 @@ class NoteSyncEngine(
             syncStateStore.clear()
             noteCount
         }
+    }
+
+    /**
+     * Reads the whole library and refuses to hand back a snapshot the transport itself says is short.
+     *
+     * The check has to happen here rather than inside the transport because the decision is policy:
+     * "fewer rows than the server counted" only matters to the code that would otherwise treat the
+     * gap as a set of deletions. Transports that report no count (`null`) are unaffected.
+     */
+    private suspend fun fetchCompleteSnapshot(uid: String): List<CloudNoteRecord> {
+        val snapshot = transport.fetchNotesSnapshot(uid)
+        val expected = snapshot.authoritativeNoteCount
+        if (expected != null && expected != snapshot.records.size) {
+            throw IncompleteCloudSnapshotException(
+                expectedNoteCount = expected,
+                receivedNoteCount = snapshot.records.size,
+            )
+        }
+        return snapshot.records
     }
 
     /**

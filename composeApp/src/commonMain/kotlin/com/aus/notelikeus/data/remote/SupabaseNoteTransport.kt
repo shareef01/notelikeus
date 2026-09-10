@@ -2,6 +2,7 @@ package com.aus.notelikeus.data.remote
 
 import com.aus.notelikeus.data.sync.ChecklistItemData
 import com.aus.notelikeus.data.sync.CloudNoteRecord
+import com.aus.notelikeus.data.sync.CloudNoteSnapshot
 import com.aus.notelikeus.data.sync.CloudNoteTransport
 import com.aus.notelikeus.domain.model.Note
 import kotlinx.serialization.json.JsonArray
@@ -29,7 +30,12 @@ class SupabaseNoteTransport(
     private fun revisionMap(uid: String): MutableMap<Long, Long> =
         revisions.getOrPut(uid) { mutableMapOf() }
 
-    private data class SnapshotPayload(val notes: List<JsonElement>, val tombstones: List<JsonElement>)
+    private data class SnapshotPayload(
+        val notes: List<JsonElement>,
+        val tombstones: List<JsonElement>,
+        /** The server's own COUNT(*), already checked against [notes]. */
+        val noteCount: Int,
+    )
 
     private fun parsedSnapshot(snapshot: JsonObject): SnapshotPayload {
         val notes = snapshot["notes"]?.jsonArray.orEmpty()
@@ -40,10 +46,26 @@ class SupabaseNoteTransport(
         if (expectedCount != notes.size.toLong()) {
             error("Incomplete snapshot: expected $expectedCount notes, got ${notes.size}")
         }
-        return SnapshotPayload(notes, snapshot["tombstones"]?.jsonArray.orEmpty())
+        return SnapshotPayload(
+            notes = notes,
+            tombstones = snapshot["tombstones"]?.jsonArray.orEmpty(),
+            noteCount = expectedCount.toInt(),
+        )
     }
 
-    override suspend fun fetchNotes(uid: String): List<CloudNoteRecord> {
+    override suspend fun fetchNotes(uid: String): List<CloudNoteRecord> =
+        fetchNotesSnapshot(uid).records
+
+    /**
+     * Carries `note_count` out to the engine rather than only checking it here.
+     *
+     * Matching `note_count` against the raw `notes` array proves the *aggregate* was not truncated,
+     * but the mapping below still drops any row whose id cannot be read — a row with neither a
+     * numeric `local_id` nor a numeric `note_id` yields no record at all. That silent drop produces
+     * exactly the payload the engine cannot tell from a deletion, so the authoritative count has to
+     * travel with the records and be re-checked against what survived parsing.
+     */
+    override suspend fun fetchNotesSnapshot(uid: String): CloudNoteSnapshot {
         val snapshot = parsedSnapshot(rpc.callRpc("fetch_full_snapshot", buildJsonObject { }))
         val map = revisionMap(uid)
         map.clear()
@@ -63,7 +85,7 @@ class SupabaseNoteTransport(
             val revision = element.jsonObject.longId("revision")
             if (revision != null) maxRevision = maxOf(maxRevision, revision)
         }
-        return records
+        return CloudNoteSnapshot(records = records, authoritativeNoteCount = snapshot.noteCount)
     }
 
     override suspend fun fetchNote(uid: String, noteId: Long): CloudNoteRecord? =
