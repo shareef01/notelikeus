@@ -73,7 +73,7 @@ export function InstallPrompt() {
   };
 
   return (
-    <div className="border-b border-brand-outline/40 bg-true-surface-variant/50 px-4 py-3">
+    <div className="border-b border-brand-outline/40 bg-true-surface-variant/50 px-shell py-3">
       <div className="mx-auto flex max-w-content items-center justify-between gap-3">
         <p className="min-w-0 text-sm text-brand-secondary">
           {iosHint

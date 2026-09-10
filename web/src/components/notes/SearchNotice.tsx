@@ -13,7 +13,7 @@ export function SearchNotice({ query }: SearchNoticeProps) {
   return (
     <p
       role="status"
-      className="px-4 py-2 text-sm text-brand-on-surface-variant"
+      className="px-shell py-2 text-sm text-brand-muted"
     >
       {`No exact match for “${query}” — showing near matches`}
     </p>

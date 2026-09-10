@@ -1,3 +1,5 @@
+import { toError } from '@/lib/errors/formatUnknownError';
+
 /**
  * Narrow coordinator for one signed-in web sync session.
  *
@@ -35,7 +37,7 @@ export class NotesSyncSession {
     this.queue = this.queue
       .then(() => (this.active ? task() : undefined))
       .catch((error: unknown) => {
-        onError?.(error instanceof Error ? error : new Error(String(error)));
+        onError?.(toError(error, 'Notes sync failed'));
       });
     return this.queue;
   }
