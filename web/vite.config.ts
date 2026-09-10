@@ -27,6 +27,33 @@ export default defineConfig(({ mode }) => {
       // just the files a given run happened to import.
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.test.ts', 'src/test/**', 'src/main.tsx', 'src/sw.ts', 'src/vite-env.d.ts'],
+      thresholds: {
+        // Security-critical modules only — not a vanity global percentage.
+        'src/lib/backup/bundle/zip.ts': {
+          lines: 80,
+          functions: 80,
+          statements: 80,
+          branches: 70,
+        },
+        'src/lib/backup/jsonNesting.ts': {
+          lines: 90,
+          functions: 90,
+          statements: 90,
+          branches: 80,
+        },
+        'src/lib/backup/importBackup.ts': {
+          lines: 80,
+          functions: 80,
+          statements: 80,
+          branches: 70,
+        },
+        'src/lib/auth/authUser.ts': {
+          lines: 90,
+          functions: 90,
+          statements: 90,
+          branches: 40,
+        },
+      },
     },
   },
   plugins: [
