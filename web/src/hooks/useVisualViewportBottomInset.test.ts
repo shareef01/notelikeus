@@ -1,6 +1,6 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset';
 
 type FakeViewport = {
@@ -72,61 +72,20 @@ describe('useVisualViewportBottomInset', () => {
     expect(inset()).toBe(0);
   });
 
-  /**
-   * The exact regression. A CI trace caught the raw value alternating 0 -> 16 -> 0 -> 16 across 57
-   * DOM snapshots, dragging the action bar back and forth 16px and making "More options"
-   * permanently unclickable in the mobile suite.
-   *
-   * Settling on 16 rather than 0 is the point. On a mobile layout viewport a few percent taller
-   * than the visible one, those 16px are exactly what keeps the bar above the fold — pinning the
-   * value to 0 holds the bar just as still and just as far out of reach.
-   */
-  it('settles on the larger value through the oscillation that broke the action bar', async () => {
+
+
+
+  it('tracks a real keyboard opening and closing', async () => {
     const vv = installViewport(800);
     const inset = await renderInset();
 
-    const observed = new Set<number>();
-    for (let i = 0; i < 20; i++) {
-      vv.height = i % 2 === 0 ? 784 : 800; // 16px of jitter, back and forth
-      await act(async () => vv.emit('resize'));
-      observed.add(inset());
-    }
-
-    expect([...observed].filter((value) => value !== 0)).toEqual([16]);
-    expect(inset()).toBe(16);
-  });
-
-  it('does not follow a transient shrink down before the viewport settles', async () => {
-    const vv = installViewport(480); // keyboard up: 320px occluded
-    const inset = await renderInset();
-    expect(inset()).toBe(320);
-
-    vv.height = 800; // a single frame reporting no occlusion
+    vv.height = 480; // keyboard up: 320px occluded
     await act(async () => vv.emit('resize'));
     expect(inset()).toBe(320);
 
-    vv.height = 480; // ...and it is back before the settle window elapses
+    vv.height = 800; // dismissed
     await act(async () => vv.emit('resize'));
-    expect(inset()).toBe(320);
-  });
-
-  it('follows a real shrink once the viewport has settled', async () => {
-    vi.useFakeTimers();
-    try {
-      const vv = installViewport(480);
-      const inset = await renderInset();
-      expect(inset()).toBe(320);
-
-      vv.height = 800; // keyboard genuinely dismissed
-      await act(async () => vv.emit('resize'));
-      await act(async () => {
-        vi.advanceTimersByTime(600);
-      });
-
-      expect(inset()).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(inset()).toBe(0);
   });
 
   it('applies growing occlusion immediately, because controls must move out from under it', async () => {
@@ -136,6 +95,28 @@ describe('useVisualViewportBottomInset', () => {
     vv.height = 480;
     await act(async () => vv.emit('resize'));
     expect(inset()).toBe(320);
+  });
+
+  /**
+   * The actual root cause of the six mobile end-to-end failures, reproduced in CI's own browser
+   * image: `vv.height` never moved, but `vv.offsetTop` alternated 42/58 as Playwright scrolled the
+   * target into view, and subtracting it turned that into a 16/0 inset. The bar moved between every
+   * aim and every landing, so scrolling to reach the control was what moved the control.
+   */
+  it('is unmoved by visual viewport scrolling', async () => {
+    const vv = installViewport(727);
+    Object.defineProperty(window, 'innerHeight', { value: 785, configurable: true, writable: true });
+    const inset = await renderInset();
+    expect(inset()).toBe(58);
+
+    const observed = new Set<number>();
+    for (const offsetTop of [42, 58, 42, 58, 0, 58, 42]) {
+      vv.offsetTop = offsetTop;
+      await act(async () => vv.emit('scroll'));
+      observed.add(inset());
+    }
+
+    expect([...observed]).toEqual([58]);
   });
 
   it('reports nothing when the browser has no visual viewport', async () => {
