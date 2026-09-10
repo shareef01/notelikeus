@@ -51,6 +51,21 @@ interface AttachmentStagingStore {
     /** Staged metadata for [attachmentId] within [ownerId], or null if nothing is staged. */
     suspend fun metadata(attachmentId: String, ownerId: String): StagedAttachment?
 
+    /**
+     * Whether anything is staged for [attachmentId] under [ownerId] — `null` when that cannot be
+     * determined.
+     *
+     * [readBytes] and [metadata] both answer `null` for two different situations: the bytes are
+     * genuinely absent, and the bytes could not be read this time (a failing disk, an encrypted
+     * store that is locked). Callers that only want to display something can treat those alike;
+     * a caller deciding whether to *discard the user's picture* cannot, so this reports absence
+     * separately from ignorance.
+     *
+     * Defaulted to `null`, so an implementation that has not considered the question can never
+     * cause an attachment to be dropped.
+     */
+    suspend fun isStaged(attachmentId: String, ownerId: String): Boolean? = null
+
     /** Records the Room id a staged attachment belongs to, once the insert has issued one. */
     suspend fun bindNote(attachmentId: String, ownerId: String, noteId: Long)
 
