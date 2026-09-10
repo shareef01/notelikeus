@@ -11,8 +11,3 @@ export type LocalSaveResult =
   | { status: 'unchanged' }
   | { status: 'failed'; error: unknown };
 
-export function isLocalSaveFailure(
-  result: LocalSaveResult,
-): result is { status: 'failed'; error: unknown } {
-  return result.status === 'failed';
-}
