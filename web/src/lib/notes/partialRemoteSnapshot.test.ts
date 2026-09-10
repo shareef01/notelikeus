@@ -31,7 +31,11 @@ vi.mock('@/lib/supabase/client', () => ({
 }));
 
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
-import { startNotesRealtimeSync, stopNotesRealtimeSync } from '@/lib/notes/notesSyncService';
+import {
+  startNotesRealtimeSync,
+  stopNotesRealtimeSync,
+  waitForRealtimeMirrorWriteForTests,
+} from '@/lib/notes/notesSyncService';
 import { SUPABASE_PULL_DEBOUNCE_MS } from '@/lib/supabase/constants';
 import { saveRevisionState } from '@/lib/supabase/revisionStore';
 import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNotesDataSource';
@@ -74,13 +78,27 @@ function fullSnapshot() {
   };
 }
 
-async function settle(ms = 30) {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+function rpcCallCount(functionName: string): number {
+  return rpc.mock.calls.filter((call) => call[0] === functionName).length;
 }
 
+/** Every RPC a wake can lead to: an incremental pull, or a fresh snapshot when none has landed. */
+function wakeWorkCount(): number {
+  return rpcCallCount('pull_changes') + rpcCallCount('fetch_full_snapshot');
+}
+
+/**
+ * Wakes the subscription and waits for the work the wake actually schedules.
+ *
+ * The realtime handler debounces by [SUPABASE_PULL_DEBOUNCE_MS] before it does anything, so
+ * sleeping for "the debounce plus a bit" is a bet that the machine gets there in the slack — it
+ * passes on a quiet laptop and flakes on a loaded runner, and the failure reads as a sync bug
+ * rather than as a slow CI box. Waiting for the RPC the wake causes has no such ceiling.
+ */
 async function fireRealtimeWake() {
+  const before = wakeWorkCount();
   realtimeHandlers.forEach((handler) => handler());
-  await settle(SUPABASE_PULL_DEBOUNCE_MS + 80);
+  await vi.waitFor(() => expect(wakeWorkCount()).toBeGreaterThan(before), { timeout: 5_000 });
 }
 
 /**
@@ -123,20 +141,23 @@ describe('partial remote snapshot must never be emitted as the full library', ()
     });
 
     const emitted: string[][] = [];
+    const errors: Error[] = [];
     const stop = supabaseRemoteNotesDataSource.subscribeToNotes(
       USER,
       (notes) => emitted.push(notes.map((note) => note.id)),
-      () => {},
+      (error) => errors.push(error),
     );
 
-    await settle();
+    // The reported failure is what proves the bootstrap finished, so the emptiness below is a
+    // statement about a completed bootstrap rather than about one that had not started yet.
+    await vi.waitFor(() => expect(errors).toHaveLength(1));
     expect(emitted).toEqual([]); // a failed bootstrap emits nothing at all
 
     await fireRealtimeWake();
+    await vi.waitFor(() => expect(emitted).toHaveLength(1));
     stop();
 
     // The wake must recover through a fresh snapshot, never through a delta-only map.
-    expect(emitted).toHaveLength(1);
     expect([...emitted[0]].sort()).toEqual([...CLOUD_IDS].sort());
   });
 
@@ -163,7 +184,8 @@ describe('partial remote snapshot must never be emitted as the full library', ()
     });
 
     startNotesRealtimeSync(USER);
-    await settle();
+    // The failed snapshot call is the observable edge of the failed bootstrap.
+    await vi.waitFor(() => expect(snapshotCalls).toBe(1));
 
     // Tab refocus reconciles successfully and records all five ids as known-in-cloud.
     document.dispatchEvent(new Event('visibilitychange'));
@@ -173,6 +195,14 @@ describe('partial remote snapshot must never be emitted as the full library', ()
 
     // Another device edits n3.
     await fireRealtimeWake();
+
+    // The RPC the wake chose is the property under test, and it is a fact rather than a deadline:
+    // with no baseline the wake must re-fetch the whole library, never apply `pull_changes` as if
+    // its one changed note were the library. Asserting the call counts also removes the vacuous
+    // pass a sleep allows, where the assertions below run before the wake did anything at all.
+    expect(rpcCallCount('pull_changes')).toBe(0);
+    await vi.waitFor(() => expect(rpcCallCount('fetch_full_snapshot')).toBe(2));
+    await waitForRealtimeMirrorWriteForTests();
     stopNotesRealtimeSync();
 
     expect(Object.keys(useTombstoneStore.getState().deletedAtById)).toEqual([]);
@@ -208,9 +238,9 @@ describe('partial remote snapshot must never be emitted as the full library', ()
     await vi.waitFor(() => expect(emitted).toHaveLength(1));
 
     await fireRealtimeWake();
+    await vi.waitFor(() => expect(emitted).toHaveLength(2));
     stop();
 
-    expect(emitted).toHaveLength(2);
     expect([...emitted[1]].sort()).toEqual([...CLOUD_IDS, 'n6'].sort());
   });
 
@@ -240,15 +270,18 @@ describe('partial remote snapshot must never be emitted as the full library', ()
 
     // A wake arrives while the very first snapshot is still in flight.
     realtimeHandlers.forEach((handler) => handler());
-    await settle(SUPABASE_PULL_DEBOUNCE_MS + 40);
+    // The one wait here that cannot key off an observable: the queued pull is behind the blocked
+    // bootstrap in the session queue, so it issues no RPC and changes no state to wait for. A
+    // false pass would need the debounce to still be pending, so the window is generous and the
+    // real assertion is the one about `emitted[0]` below, which no timing can fake.
+    await new Promise((resolve) => setTimeout(resolve, SUPABASE_PULL_DEBOUNCE_MS * 3));
     expect(emitted).toEqual([]);
 
     releaseSnapshot?.();
-    await settle(80);
+    await vi.waitFor(() => expect(emitted.length).toBeGreaterThan(0));
     stop();
 
     // The first emission is always the complete library, never the queued delta.
-    expect(emitted.length).toBeGreaterThan(0);
     expect([...emitted[0]].sort()).toEqual([...CLOUD_IDS].sort());
   });
 
@@ -275,7 +308,7 @@ describe('partial remote snapshot must never be emitted as the full library', ()
       (error) => errors.push(error),
     );
 
-    await settle();
+    await vi.waitFor(() => expect(errors).not.toHaveLength(0));
     stop();
 
     expect(emitted).toEqual([]);
@@ -298,7 +331,7 @@ describe('partial remote snapshot must never be emitted as the full library', ()
       (error) => errors.push(error),
     );
 
-    await settle();
+    await vi.waitFor(() => expect(errors).not.toHaveLength(0));
     stop();
 
     expect(emitted).toEqual([]);
@@ -324,7 +357,7 @@ describe('partial remote snapshot must never be emitted as the full library', ()
       (error) => errors.push(error),
     );
 
-    await settle();
+    await vi.waitFor(() => expect(errors).not.toHaveLength(0));
     stop();
 
     expect(emitted).toEqual([]);
