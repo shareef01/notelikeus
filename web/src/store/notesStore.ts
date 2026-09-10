@@ -8,7 +8,22 @@ export type NotesLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 interface NotesState {
   notes: Note[];
   status: NotesLoadStatus;
+  /**
+   * A failure of the *local* store — IndexedDB unavailable, the bootstrap read throwing.
+   *
+   * Blocking, because when it fires there is nothing to show and no edit that could be kept:
+   * the durable local database is the app. Kept separate from {@link syncError} so a network
+   * problem can never take the screen away from notes that are sitting on the device.
+   */
   error: string | null;
+  /**
+   * A failure to reach or reconcile with the cloud — offline, realtime dropped, a refused
+   * reconcile.
+   *
+   * Never blocking. Local IndexedDB data stays readable and editable throughout; the cloud
+   * catching up later is what fixes it, and the next successful sync clears this.
+   */
+  syncError: string | null;
   filters: NoteQueryFilters;
   setNotes: (notes: Note[]) => void;
   upsertLocalNote: (note: Note) => void;
@@ -16,6 +31,8 @@ interface NotesState {
   setStatus: (status: NotesLoadStatus) => void;
   setError: (error: string) => void;
   clearError: () => void;
+  setSyncError: (error: string) => void;
+  clearSyncError: () => void;
   setFilters: (patch: Partial<NoteQueryFilters>) => void;
   reset: () => void;
 }
@@ -38,6 +55,7 @@ export const useNotesStore = create<NotesState>()(
       notes: [],
       status: 'ready',
       error: null,
+      syncError: null,
       filters: defaultFilters,
       setNotes: (incoming) => {
         const current = get().notes;
@@ -86,6 +104,12 @@ export const useNotesStore = create<NotesState>()(
             status: state.status === 'error' ? 'ready' : state.status,
           };
         }),
+      // Deliberately leaves `status` alone. Sync trouble is a banner over a working screen, not a
+      // load state, so it must not turn a 'ready' store into an 'error' one and hide the notes.
+      setSyncError: (syncError) =>
+        set((state) => (state.syncError === syncError ? state : { syncError })),
+      clearSyncError: () =>
+        set((state) => (state.syncError == null ? state : { syncError: null })),
       setFilters: (patch) => {
         const next = { ...get().filters, ...patch };
         const current = get().filters;
@@ -98,7 +122,14 @@ export const useNotesStore = create<NotesState>()(
         if (unchanged) return;
         set({ filters: next });
       },
-      reset: () => set({ notes: [], status: 'ready', error: null, filters: defaultFilters }),
+      reset: () =>
+        set({
+          notes: [],
+          status: 'ready',
+          error: null,
+          syncError: null,
+          filters: defaultFilters,
+        }),
     }),
     {
       name: 'notelikeus-note-filters',

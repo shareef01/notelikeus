@@ -12,6 +12,7 @@ export function useNotes() {
   const notes = useNotesStore((state) => state.notes);
   const status = useNotesStore((state) => state.status);
   const error = useNotesStore((state) => state.error);
+  const syncError = useNotesStore((state) => state.syncError);
   const filters = useNotesStore((state) => state.filters);
 
   const { filteredNotes, isFuzzyResult } = useMemo(() => {
@@ -50,6 +51,7 @@ export function useNotes() {
     labels,
     status,
     error,
+    syncError,
     filters,
     isLoading: status === 'loading',
     isEmpty: filteredNotes.length === 0,
