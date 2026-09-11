@@ -1327,18 +1327,17 @@ reconcile / local deletes / tombstones. Covered by `SupabaseNoteTransportTest`,
 
 ---
 
-## F60 — Bundle export is not implemented on Android or Windows — **DEFERRED, STAGED**
+## F60 — Bundle export is not implemented on Android or Windows — **PARTIALLY FIXED**
 
 The `.nlkbak` backup bundle (notes plus attachment bytes) is implemented end-to-end on the web
-client. The Kotlin clients read a bundle's **manifest** — recovering the notes through the
-unchanged v3 path and reporting how many images they could not restore — but cannot read or write
-the archive itself.
+client. Kotlin clients could already peel a bare `manifest.json` for notes.
 
-`composeApp` now has a shared `jvmMain` source set (Android + Desktop) that already hosts
-`java.io` attachment crypto; `java.util.zip` belongs there — no further source-set decision.
+**Codec landed:** shared `jvmMain` now hosts `BackupBundleCodec` / `BackupBundleLimits` using
+`java.util.zip`, matching the web format limits (stored write, selective id-keyed media, checksum
+drops). Desktop unit tests cover round-trip, missing media, checksum mismatch, and unsafe names.
 
-Android is where the photos are, so this remains the first recommended project in
-[`AUDIT_2026.md`](AUDIT_2026.md): codec in `jvmMain`, then SAF / file-chooser wiring.
+**Still open:** SAF / Desktop file-chooser wiring and staging transfer (`buildBundleFromNotes` /
+`applyBundle` equivalents) so users can actually export and import `.nlkbak` files with images.
 
 ---
 
