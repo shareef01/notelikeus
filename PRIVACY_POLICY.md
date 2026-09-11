@@ -9,7 +9,7 @@ Notelikeus is an offline-first notes application across Android, Windows (Deskto
 - **Offline-first by default:** On Android, Windows, and Web, notes are stored **locally on your device**. You can use the full application without creating an account or providing personal details.
 - **Optional Cloud Sync:** When you sign in and enable cloud sync, note text, checklists, and metadata are synchronized to **Supabase (PostgreSQL)** under your authenticated identity. Attachment files may be stored in **Cloudflare R2**.
 - **Local Data Isolation:** Signing out clears local cached notes from the active session so a subsequent user cannot inherit your data.
-- **Encryption:** Android local databases are encrypted at rest with **SQLCipher** backed by Android Keystore. Attachment image files and staged pending attachment bytes on Android are encrypted at rest with **AES-GCM** under a dedicated Android Keystore key (separate from the database key). Attachment files on Windows and in the browser profile on Web are **not** encrypted by the app at the file layer; they rely on OS / profile permissions. See `docs/LOCAL_ENCRYPTION_AT_REST.md`.
+- **Encryption:** Android local databases are encrypted at rest with **SQLCipher** backed by Android Keystore. Attachment image files and staged pending attachment bytes on Android are encrypted at rest with **AES-GCM** under a dedicated Android Keystore key (separate from the database key). On Windows Desktop, attachment image files and staged pending bytes are sealed with **AES-GCM** under a DPAPI-protected key (bound to the Windows user account). Attachment files in the browser profile on Web are **not** encrypted by the app at the file layer; they rely on profile permissions. The Desktop notes database remains plaintext at the app layer. See `docs/LOCAL_ENCRYPTION_AT_REST.md`.
 - Synced cloud notes are **not end-to-end encrypted** by the app; they rely on TLS plus Supabase Auth, row-level security, authorized RPCs, and Worker JWT checks for attachments.
 - **Diagnostics stay local:** an optional sync-diagnostics report shows counts and version numbers, never note content or credentials, and is never transmitted.
 - The app does **not** include third-party tracking, analytics, or advertising SDKs.
@@ -35,7 +35,8 @@ When you choose to sign in and use sync:
 ## Security
 
 - **Android:** Notes are stored in a **SQLCipher-encrypted** Room database. Attachment bytes under the app’s attachments directory (and pending staging) are sealed with AES-GCM under Android Keystore. An optional app-wide lock uses the device’s biometric APIs to gate opening the app.
-- **Windows Desktop & Web:** Local storage is bound to the user's OS / browser profile permissions.
+- **Windows Desktop:** The notes database is plaintext at the app layer (OS profile permissions). Attachment bytes under `~/.notelikeus/` are sealed with AES-GCM under a DPAPI-protected key bound to the Windows user. The Supabase session token file is also DPAPI-sealed.
+- **Web:** Local storage is bound to the browser profile permissions; attachment blobs are not app-encrypted at the file layer.
 - **Cloud Security:** PostgreSQL row-level security and authorized RPCs restrict read and write operations to the authenticated owner.
 
 ## Permissions

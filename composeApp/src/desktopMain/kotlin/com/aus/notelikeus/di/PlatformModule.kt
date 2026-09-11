@@ -22,9 +22,12 @@ import com.aus.notelikeus.data.remote.SupabaseNoteTransport
 import com.aus.notelikeus.data.remote.SupabaseSessionAccessTokenProvider
 import com.aus.notelikeus.data.remote.SupabaseSessionManager
 import com.aus.notelikeus.data.remote.SupabaseSessionStore
+import com.aus.notelikeus.data.attachments.AttachmentBytesProtector
 import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentStagingStore
 import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.attachments.AttachmentAtRestMigrator
+import com.aus.notelikeus.data.attachments.DesktopAttachmentBytesProtector
 import com.aus.notelikeus.data.attachments.DesktopAttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.FileAttachmentStagingStore
 import okio.Path.Companion.toPath
@@ -102,7 +105,18 @@ actual val platformModule = module {
     single<SupabaseAccessTokenProvider> { SupabaseSessionAccessTokenProvider(get(), get()) }
     single<CloudSessionManager> { get<SupabaseSessionManager>() }
 
-    single<AttachmentLocalStorage> { DesktopAttachmentLocalStorage() }
+    single<AttachmentBytesProtector> {
+        DesktopAttachmentBytesProtector(
+            keyDir = File(System.getProperty("user.home"), ".notelikeus"),
+        )
+    }
+    single<AttachmentLocalStorage> {
+        val home = File(System.getProperty("user.home"), ".notelikeus")
+        val protector = get<AttachmentBytesProtector>()
+        AttachmentAtRestMigrator.migrateAttachmentsRoot(File(home, "attachments"), protector)
+        AttachmentAtRestMigrator.migratePendingStagingRoot(File(home, "pending-attachments"), protector)
+        DesktopAttachmentLocalStorage(protector = protector, homeDir = File(System.getProperty("user.home")))
+    }
     single<AttachmentBlobTransport> {
         if (BackendConfig.attachmentsWorkerUrl.isNotEmpty()) {
             val rpcClient = DesktopSupabaseRpcClient(
@@ -125,6 +139,7 @@ actual val platformModule = module {
             root = File(System.getProperty("user.home"), ".notelikeus/pending-attachments")
                 .absolutePath.toPath(),
             ioDispatcher = get(),
+            protector = get(),
         )
     }
     single {
