@@ -26,5 +26,6 @@ Open [Code security and analysis](https://github.com/shareef01/notelikeus/settin
 - **Gradle dependency verification** (`verification-metadata.xml`): valuable, but regenerating and
   maintaining checksums for the full Android/Desktop graph is a dedicated ops task and was not
   added in this pass to avoid breaking CI on every plugin bump.
-- **Desktop/Web attachment encryption at rest:** Android is sealed; Desktop/Web still rely on OS /
-  profile permissions — see `docs/LOCAL_ENCRYPTION_AT_REST.md`.
+- **Desktop/Web attachment encryption at rest:** Desktop attachments are sealed (DPAPI + AES-GCM);
+  Web still relies on browser profile permissions — see `docs/LOCAL_ENCRYPTION_AT_REST.md`.
+- **Desktop notes DB SQLCipher:** still deferred (no JVM encrypted-SQLite driver in the Room stack).
