@@ -1,0 +1,41 @@
+﻿name: Configure Google Auth (one-shot)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  patch-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Enable Google provider + site URLs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          CLIENT_ID: ${{ secrets.SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_SECRET }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          test -n "$CLIENT_ID"
+          test -n "$CLIENT_SECRET"
+          test -n "$REF"
+          body=$(jq -n \
+            --arg id "$CLIENT_ID" \
+            --arg secret "$CLIENT_SECRET" \
+            '{
+              external_google_enabled: true,
+              external_google_client_id: $id,
+              external_google_secret: $secret,
+              site_url: "https://notelikeus.pages.dev",
+              uri_allow_list: "https://notelikeus.pages.dev/**,https://notelikeus.pages.dev,https://notelikeus-dev.pages.dev/**,https://notelikeus-dev.pages.dev,http://localhost:5173/**,http://127.0.0.1:5173/**"
+            }')
+          code=$(curl -sS -o /tmp/auth-config.json -w "%{http_code}" -X PATCH \
+            "https://api.supabase.com/v1/projects/${REF}/config/auth" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$body")
+          echo "HTTP $code"
+          # Never print secret fields from the response
+          jq 'del(.external_google_secret) | {external_google_enabled, external_google_client_id, site_url, uri_allow_list}' /tmp/auth-config.json || cat /tmp/auth-config.json
+          test "$code" = "200"

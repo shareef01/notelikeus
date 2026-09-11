@@ -22,7 +22,7 @@ Use this list before submitting Notelikeus to Google Play.
 
 ## Policy & compliance
 
-- [ ] **Privacy policy URL** — `https://notelikeus-dev.pages.dev/privacy.html` (or a custom domain once attached). The old Firebase Hosting URL is retired.
+- [ ] **Privacy policy URL** — `https://notelikeus.pages.dev/privacy.html` (or a custom domain once attached). The old Firebase Hosting URL is retired.
 - [ ] **Data safety** — complete form using `DATA_SAFETY.md`
 - [ ] **Content rating** — complete IARC questionnaire (notes app, no user-generated public content)
 - [ ] **Target audience** — set age group (likely 13+ or all ages; no child-directed content)

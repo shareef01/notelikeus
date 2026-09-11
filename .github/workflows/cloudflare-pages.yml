@@ -105,7 +105,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
 
-      - name: Deploy to Cloudflare Pages (dev preview)
+      - name: Deploy to Cloudflare Pages (staging project)
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -164,9 +164,9 @@ jobs:
       - name: Verify Pages artifacts
         run: node web/scripts/verifyPagesArtifacts.mjs
 
-      - name: Deploy to Cloudflare Pages (production alias)
+      - name: Deploy to Cloudflare Pages (production)
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy web/dist --project-name=notelikeus-dev --branch=main
+          command: pages deploy web/dist --project-name=notelikeus --branch=main
