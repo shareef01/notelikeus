@@ -70,6 +70,21 @@ plaintext until a separate SQLCipher/Desktop driver project lands.
 
 ## Windows: SQLCipher + a DPAPI-protected random key
 
+### Status (2026-09-11)
+
+| Slice | State |
+|---|---|
+| 1. DPAPI-sealed 32-byte passphrase (`DesktopDatabaseKeyManager`, `~/.notelikeus/notes-db.key`) | **Landed** — not yet consumed by Room |
+| 2. Custom Room `SQLiteDriver` over `sqlite-jdbc-crypt` (sqlcipher cipher), flag off / plaintext path | Not started |
+| 3. One-way plaintext → encrypted migration + quarantine | Not started |
+| 4. Flip default; Windows CI job for DPAPI + native driver | Not started |
+
+**Chosen driver (decision).** Use Willena / community `sqlite-jdbc-crypt` (SQLite3 Multiple Ciphers)
+with `cipher=sqlcipher` and a custom `androidx.sqlite.SQLiteDriver` adapter — there is no
+`sqlcipher-android` JVM artifact, and `BundledSQLiteDriver` cannot take a passphrase. Guest mode
+gets the same encryption as signed-in users (same as Android); key loss for guests is unrecoverable
+except via prior JSON / `.nlkbak` export — cloud re-sync covers signed-in accounts.
+
 ### Threat model it addresses
 
 Offline access to the database file by someone who is not the logged-in Windows user:

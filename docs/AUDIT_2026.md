@@ -584,23 +584,19 @@ concurrency still needs committed fixtures plus `dblink`/`pg_background`; pgTAP'
 
 The original three in §8 are done. Next priorities by risk × feasibility:
 
-### 1. Gradle dependency verification (`verification-metadata.xml`) — **IN PROGRESS**
+### 1. Gradle dependency verification (`verification-metadata.xml`) — **DONE**
 
-**Why.** Supply-chain integrity for the Android/Desktop graph is still trust-on-first-use from
-Maven Central / Google. Dependency-review catches known advisories on PRs; checksum pinning
-catches substitution.
+Landed in PR #203: `gradle/verification-metadata.xml` (sha256 pins), regenerate-on-bump documented
+in [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md).
 
-**Scope.** Generate `gradle/verification-metadata.xml` (sha256), document regenerate-on-bump in
-[`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md). Expect CI churn on plugin bumps — that is the
-cost of the control.
-
-### 2. Desktop notes DB SQLCipher + DPAPI key
+### 2. Desktop notes DB SQLCipher + DPAPI key — **IN PROGRESS**
 
 **Why.** Attachment bytes on Windows are sealed; the Room notes file is still plaintext under
 `~/.notelikeus/`. See [`LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md).
 
-**Scope.** Large: JVM encrypted SQLite driver (or custom Room driver), DPAPI-wrapped passphrase,
-migration, guest-mode / key-loss policy, Desktop CI.
+**Slice 1 landed:** `DesktopDatabaseKeyManager` (DPAPI-sealed `notes-db.key`, dedicated entropy).
+Driver choice recorded: `sqlite-jdbc-crypt` + custom Room `SQLiteDriver`; guest mode encrypts
+like Android. Next: JDBC driver behind a flag (no format change), then migration, then default on.
 
 ### 3. Web attachment sealing (honest threat model)
 

@@ -845,3 +845,24 @@ UTC+0 CI runner would ever show.
 
 **Consequence to remember:** the tests run in `Pacific/Kiritimati` (UTC+14) and `Pacific/Niue`
 (UTC−11) deliberately. A CI machine on UTC proves nothing about this code.
+
+---
+
+## D25 — Desktop notes-DB encryption uses sqlite-jdbc-crypt; guests encrypt like Android.
+
+**Decided:** When Desktop Room encryption lands, the driver is **`sqlite-jdbc-crypt`** (SQLite3
+Multiple Ciphers) with `cipher=sqlcipher`, behind a custom Room `SQLiteDriver` adapter. The
+passphrase is 32 random bytes sealed with DPAPI under dedicated entropy
+(`com.aus.notelikeus/notes-db-key/v1`), never the session or attachment entropies. **Guest mode
+encrypts the same way signed-in accounts do** — matching Android. Key loss for guests is
+unrecoverable except via a prior plaintext export; signed-in users re-sync from the cloud.
+
+**Why:** `BundledSQLiteDriver` and `sqlcipher-android` do not give a JVM encrypted SQLite path.
+Shipping a second native SQLite is unavoidable; Multiple Ciphers' JDBC jar is the least custom
+distribution. Encrypting guests avoids a dual-format trap (plaintext guest DB + encrypted signed-in
+DB) that would complicate migration and leak notes on disk for the mode most likely to lack a
+cloud copy *until* the user exports — which is already the recovery story.
+
+**Cost to reverse:** high once encrypted files ship; the key manager alone (slice 1) is cheap to
+drop. Reversing the guest policy after encryption would require a decrypt-and-rewrite path.
+
