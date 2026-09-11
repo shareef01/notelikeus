@@ -7,6 +7,7 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.data.local.DesktopDatabaseKeyManager
+import com.aus.notelikeus.data.local.DesktopPlaintextDatabaseMigrator
 import com.aus.notelikeus.data.local.DesktopSqliteFlags
 import com.aus.notelikeus.data.local.DatabaseMigrations
 import com.aus.notelikeus.data.local.JdbcSQLiteDriver
@@ -74,8 +75,8 @@ actual val platformModule = module {
     single { WindowMetricsStore(get()) }
     single { SidebarCollapsedStore(get()) }
 
-    // Slice 1: DPAPI-sealed passphrase (unused by Room until encryption).
-    // Slice 2: optional JdbcSQLiteDriver behind DesktopSqliteFlags (still plaintext).
+    // Slice 1: DPAPI-sealed passphrase.
+    // Slice 2–3: optional encrypted JDBC path behind DesktopSqliteFlags (default off).
     single {
         DesktopDatabaseKeyManager(
             keyDir = File(System.getProperty("user.home"), ".notelikeus"),
@@ -83,8 +84,15 @@ actual val platformModule = module {
     }
 
     single<NotelikeusDatabase> {
-        val driver = if (DesktopSqliteFlags.useJdbcSqlite()) {
-            JdbcSQLiteDriver()
+        val useEncrypted = DesktopSqliteFlags.useJdbcSqlite()
+        val driver = if (useEncrypted) {
+            val passphrase = get<DesktopDatabaseKeyManager>().getPassphrase()
+            val dbFile = File(
+                DesktopPathProvider.getDataDirectory(),
+                NotelikeusDatabase.DATABASE_NAME,
+            )
+            DesktopPlaintextDatabaseMigrator.migrateToEncryptedIfNeeded(dbFile, passphrase)
+            JdbcSQLiteDriver(passphrase)
         } else {
             BundledSQLiteDriver()
         }
@@ -248,7 +256,7 @@ actual val platformModule = module {
             isSignedIn = { get<CloudSessionManager>().getCurrentAccount().userId != null },
             databaseSchemaVersion = NOTELIKEUS_DATABASE_VERSION,
             storageKind = "Room",
-            encryptedAtRest = false,
+            encryptedAtRest = DesktopSqliteFlags.useJdbcSqlite(),
         )
     }
 

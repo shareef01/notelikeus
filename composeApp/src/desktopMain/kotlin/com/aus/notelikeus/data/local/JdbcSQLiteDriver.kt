@@ -4,6 +4,7 @@ import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.SQLiteDriver
 import androidx.sqlite.SQLiteStatement
 import org.sqlite.JDBC
+import org.sqlite.mc.SQLiteMCSqlCipherConfig
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.PreparedStatement
@@ -12,40 +13,31 @@ import java.sql.SQLException
 import java.sql.Types
 
 /**
- * Room [SQLiteDriver] backed by Willena `sqlite-jdbc` (Multiple Ciphers build).
+ * Room [SQLiteDriver] backed by Willena `sqlite-jdbc` (Multiple Ciphers / SQLCipher v4).
  *
- * Slice 2 of Desktop notes-DB encryption: prove Room can run on this JDBC stack **without**
- * applying a key, so the on-disk format stays plaintext SQLite. A later slice passes the
- * [DesktopDatabaseKeyManager] passphrase via SQLCipher URI parameters.
+ * When [passphrase] is null the file stays plaintext. When non-null, opens with SQLCipher v4
+ * defaults; the 32-byte secret is hex-encoded for Willena's string key API (binary `\0` would
+ * truncate a C passphrase). Desktop-only — not the same wire format as Android's raw `byte[]` key.
  *
- * [hasConnectionPool] is false — each [open] owns one JDBC connection; Room's pool manages
- * concurrency, matching [androidx.sqlite.driver.bundled.BundledSQLiteDriver]'s contract for
- * unpooled drivers.
+ * [hasConnectionPool] is false — each [open] owns one JDBC connection.
  */
-class JdbcSQLiteDriver : SQLiteDriver {
+class JdbcSQLiteDriver(
+    private val passphrase: ByteArray? = null,
+) : SQLiteDriver {
     override val hasConnectionPool: Boolean
         get() = false
 
     override fun open(fileName: String): SQLiteConnection {
-        // Ensure the Willena driver is registered even if ServiceLoader is stripped in a fat jar.
-        DriverManager.registerDriver(JDBC())
-        val url = jdbcUrl(fileName)
-        val connection = DriverManager.getConnection(url)
+        val connection = openJdbcConnection(fileName, passphrase)
         connection.autoCommit = true
         return JdbcSQLiteConnection(connection)
     }
 
     companion object {
-        /**
-         * Builds a JDBC URL for a plaintext database. Encryption parameters are intentionally
-         * omitted in this slice.
-         */
         fun jdbcUrl(fileName: String): String {
             if (fileName == ":memory:" || fileName.startsWith("file:")) {
                 return "jdbc:sqlite:$fileName"
             }
-            // Absolute Windows paths need the file: URI form so the driver does not treat the
-            // drive letter as a URL scheme.
             val normalized = fileName.replace('\\', '/')
             return if (normalized.length >= 2 && normalized[1] == ':') {
                 "jdbc:sqlite:file:/$normalized"
@@ -53,6 +45,32 @@ class JdbcSQLiteDriver : SQLiteDriver {
                 "jdbc:sqlite:$normalized"
             }
         }
+
+        /**
+         * Opens a JDBC connection, optionally under SQLCipher v4.
+         * Shared by Room and [DesktopPlaintextDatabaseMigrator].
+         */
+        fun openJdbcConnection(fileName: String, passphrase: ByteArray?): Connection {
+            DriverManager.registerDriver(JDBC())
+            val url = jdbcUrl(fileName)
+            return if (passphrase == null) {
+                DriverManager.getConnection(url)
+            } else {
+                SQLiteMCSqlCipherConfig.getV4Defaults()
+                    .withKey(passphraseAsHexKey(passphrase))
+                    .build()
+                    .createConnection(url)
+            }
+        }
+
+        /**
+         * Hex-encodes the 32-byte secret for Willena's string `withKey`.
+         * ISO-8859-1 is unsafe: a random `\0` truncates the C passphrase.
+         */
+        fun passphraseAsHexKey(passphrase: ByteArray): String =
+            passphrase.joinToString(separator = "") { byte ->
+                "%02x".format(byte.toInt() and 0xff)
+            }
     }
 }
 
@@ -166,7 +184,6 @@ private class JdbcSQLiteStatement(
         resultSet ?: error("No active result row; call step() first")
 
     companion object {
-        // Matches androidx.sqlite.SQLite.SQLITE_DATA_* (JVM facade is not a Kotlin type).
         private const val SQLITE_DATA_INTEGER = 1
         private const val SQLITE_DATA_FLOAT = 2
         private const val SQLITE_DATA_TEXT = 3
