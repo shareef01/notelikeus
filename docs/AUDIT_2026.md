@@ -433,27 +433,21 @@ bundle with no images, or, far worse, with the previous account's.
 
 #### Staged roadmap — what is and is not implemented
 
-Implemented as a **complete vertical slice on the web client**, with the format and its contracts
-implemented on both. Stated plainly rather than pretended:
+**Update (post–F60):** archive I/O landed on Android and Windows Desktop. The table below is kept
+as the audit-time snapshot; current state is ✅ on all three clients for export and import.
+
+Implemented as a **complete vertical slice on the web client** first, with the format and its
+contracts shared. Stated plainly rather than pretended (audit-time):
 
 | Platform | Export bundle | Import bundle | Import an extracted `manifest.json` |
 |---|:---:|:---:|:---:|
 | Web | ✅ | ✅ | ✅ |
-| Android | ❌ staged | ❌ staged | ✅ (notes recovered; images reported as skipped) |
-| Windows | ❌ staged | ❌ staged | ✅ (notes recovered; images reported as skipped) |
+| Android | ✅ (F60) | ✅ (F60) | ✅ |
+| Windows | ✅ (F60) | ✅ (F60) | ✅ |
 
-The Kotlin clients understand the **manifest** today: `NoteBackupImporter` recognises the wrapper
-by `formatVersion`, imports the embedded v3 document through the unchanged path, refuses a newer
-format by number, and reports `attachmentsSkipped` so the images are named rather than silently
-lost. That is real capability, not a stub, and it makes the format's "the notes are always
-recoverable" promise true on every platform today.
-
-**What archive I/O on Kotlin still needs**, and why it was not bundled into this change:
-`commonMain` has no ZIP reader. `java.util.zip` is available on both JVM targets but not from
-`commonMain`, so it needs either an intermediate `jvmShared` source set (a build change) or an
-`expect`/`actual` pair with duplicated implementations. Both are defensible; neither should be
-decided in the same change as the format itself, and shipping a second hand-rolled ZIP
-implementation without the format having been exercised in the field would be the wrong order.
+The Kotlin clients understand the **manifest** and write/read the ZIP via `jvmMain`
+(`BackupBundleCodec` / `BackupBundleTransfer`). `NoteBackupImporter` still recognises the wrapper
+by `formatVersion` for extracted JSON manifests.
 
 ### Local diagnostics (Phase 7)
 
@@ -505,20 +499,17 @@ Everything not verified in this environment, with the exact command to run it.
 | **Bundle import in a real browser** | `fake-indexeddb` and happy-dom back the tests; `DecompressionStream` and real `Blob`/`File` behaviour are not exercised | Manual, or a new e2e spec |
 | **Private/incognito quota behaviour** | Not modelled | Manual |
 | **Production Supabase, Cloudflare zone config** | Owner-operated | See `BACKEND_ARCHITECTURE.md` |
-| **Desktop/Web encryption at rest** | Deliberately untouched — see below | — |
+| **Web note bodies in IndexedDB** | Still plaintext at the app layer (F51 residual). Attachment pending blobs and Desktop/Android DBs are encrypted — see §9 | — |
 
 ### On Phase 8 (desktop/web encryption at rest)
 
-Not implemented, and **not** because it was skipped for time. `docs/LOCAL_ENCRYPTION_AT_REST.md`
-already contains the feasibility assessment the brief asks for — the Room KMP driver problem, the
-native packaging cost, the plaintext-migration path, DPAPI key lifecycle, lost-key behaviour, the
-Windows CI job, and the explicit statement that browser-side encryption must **not** be described
-as an XSS mitigation. That analysis is current and correct at HEAD.
+**Largely landed after the audit.** Desktop notes DB SQLCipher + DPAPI (Windows default) and Web
+pending-attachment sealing shipped in PRs #205–#210; see §9 and
+[`LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md).
 
-Nothing found in this audit changes its conclusion, and the recovery semantics for a guest-mode
-user (key loss is unrecoverable data loss, with no account to recover from) remain the blocking
-question. `D-F51` stands. Adding an encryption library and declaring it done is exactly what the
-brief warns against.
+**Still open by design:** Web **note** records in IndexedDB remain plaintext at the app layer
+(F51). Browser-side encryption must **not** be described as an XSS mitigation — that limit stands.
+Guest-mode key-loss for Desktop encryption was accepted in D25.
 
 ---
 
@@ -605,3 +596,10 @@ XSS mitigation — browser JS can always unwrap a key it can use.
 
 **Landed.** WebCrypto AES-GCM (`NLA1`) for IndexedDB pending blobs + dual-read migration;
 privacy / diagnostics / LOCAL_ENCRYPTION copy updated for profile-at-rest only.
+
+### Residuals (not in §9 scope)
+
+- **F50** — zone-level Worker abuse controls (Cloudflare account/ops; not in-repo).
+- **F51 remainder** — Web note bodies in IndexedDB (product decision; not an XSS control if added).
+- True two-session pgTAP for attachment delete races — ordered interleavings + CHECK already cover
+  the windows that mattered; `dblink` would fight the suite’s outer transaction.
