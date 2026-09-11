@@ -59,9 +59,10 @@ data class ChecklistItemBackupDto(
  * The bundle wraps a v3 backup document **verbatim** rather than replacing it, which is what lets
  * this client read one without an archive reader: the notes are recoverable from the manifest
  * alone, and [NoteBackupImporter] hands [backup] straight to the unchanged v3 path. Attachment
- * bytes live in the archive's `media/` entries and are the part this platform cannot yet restore
- * — [attachments] is decoded only so the importer can say how many images were left behind
- * instead of silently dropping them.
+ * bytes live in the archive's `media/` entries. JVM targets can build/parse those archives via
+ * [com.aus.notelikeus.data.backup.bundle.BackupBundleCodec]; UI wiring for export/import is separate.
+ * Until that ships, [NoteBackupImporter] still peels the embedded v3 document from a bare
+ * `manifest.json` and reports how many images were left behind.
  *
  * The format itself is pinned by `contracts/backup/v4-bundle-manifest.json`.
  */
