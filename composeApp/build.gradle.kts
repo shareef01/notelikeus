@@ -211,6 +211,7 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.coroutines.swing)
                 implementation(libs.androidx.sqlite.bundled)
+                implementation(libs.sqlite.jdbc.crypt)
                 implementation(libs.jna)
                 implementation(libs.jna.platform)
             }

@@ -7,7 +7,9 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.data.local.DesktopDatabaseKeyManager
+import com.aus.notelikeus.data.local.DesktopSqliteFlags
 import com.aus.notelikeus.data.local.DatabaseMigrations
+import com.aus.notelikeus.data.local.JdbcSQLiteDriver
 import com.aus.notelikeus.data.local.NotelikeusDatabase
 import com.aus.notelikeus.data.local.SETTINGS_DATASTORE_FILENAME
 import com.aus.notelikeus.data.local.createDataStore
@@ -72,8 +74,8 @@ actual val platformModule = module {
     single { WindowMetricsStore(get()) }
     single { SidebarCollapsedStore(get()) }
 
-    // Slice 1 of Desktop notes-DB encryption: DPAPI-sealed passphrase only. The Room builder
-    // still uses BundledSQLiteDriver (plaintext) until the JDBC-crypt driver + migration land.
+    // Slice 1: DPAPI-sealed passphrase (unused by Room until encryption).
+    // Slice 2: optional JdbcSQLiteDriver behind DesktopSqliteFlags (still plaintext).
     single {
         DesktopDatabaseKeyManager(
             keyDir = File(System.getProperty("user.home"), ".notelikeus"),
@@ -81,8 +83,13 @@ actual val platformModule = module {
     }
 
     single<NotelikeusDatabase> {
+        val driver = if (DesktopSqliteFlags.useJdbcSqlite()) {
+            JdbcSQLiteDriver()
+        } else {
+            BundledSQLiteDriver()
+        }
         getDatabaseBuilder()
-            .setDriver(BundledSQLiteDriver())
+            .setDriver(driver)
             .addMigrations(*DatabaseMigrations.ALL)
             .build()
     }

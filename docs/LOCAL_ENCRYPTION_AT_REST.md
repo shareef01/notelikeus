@@ -75,7 +75,7 @@ plaintext until a separate SQLCipher/Desktop driver project lands.
 | Slice | State |
 |---|---|
 | 1. DPAPI-sealed 32-byte passphrase (`DesktopDatabaseKeyManager`, `~/.notelikeus/notes-db.key`) | **Landed** — not yet consumed by Room |
-| 2. Custom Room `SQLiteDriver` over `sqlite-jdbc-crypt` (sqlcipher cipher), flag off / plaintext path | Not started |
+| 2. Custom Room `SQLiteDriver` over `sqlite-jdbc-crypt` (sqlcipher cipher), flag off / plaintext path | **Landed** — `JdbcSQLiteDriver` + `notelikeus.desktop.jdbcSqlite` (default off); still no passphrase |
 | 3. One-way plaintext → encrypted migration + quarantine | Not started |
 | 4. Flip default; Windows CI job for DPAPI + native driver | Not started |
 
