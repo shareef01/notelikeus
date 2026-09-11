@@ -1327,17 +1327,15 @@ reconcile / local deletes / tombstones. Covered by `SupabaseNoteTransportTest`,
 
 ---
 
-## F60 — Bundle export is not implemented on Android or Windows — **PARTIALLY FIXED**
+## F60 — Bundle export is not implemented on Android or Windows — **FIXED**
 
 The `.nlkbak` backup bundle (notes plus attachment bytes) is implemented end-to-end on the web
-client. Kotlin clients could already peel a bare `manifest.json` for notes.
+client and on Android/Desktop.
 
-**Codec landed:** shared `jvmMain` now hosts `BackupBundleCodec` / `BackupBundleLimits` using
-`java.util.zip`, matching the web format limits (stored write, selective id-keyed media, checksum
-drops). Desktop unit tests cover round-trip, missing media, checksum mismatch, and unsafe names.
-
-**Still open:** SAF / Desktop file-chooser wiring and staging transfer (`buildBundleFromNotes` /
-`applyBundle` equivalents) so users can actually export and import `.nlkbak` files with images.
+**Fixed:** shared `jvmMain` hosts `BackupBundleCodec` / `BackupBundleTransfer`. Export includes
+local pending and `file:` attachment bytes (never R2). Import remints attachment ids onto newly
+allocated note ids. Profile sheet offers `.nlkbak` export (primary), JSON notes-only (secondary),
+and a single import that sniffs PK / `.nlkbak` vs JSON.
 
 ---
 

@@ -98,22 +98,51 @@ class MainActivity : FragmentActivity() {
                 // permission. Until this was wired, App()'s no-op defaults applied and both
                 // rows in the profile sheet did nothing at all when tapped.
                 var pendingExportJson by remember { mutableStateOf<String?>(null) }
+                var pendingExportBytes by remember { mutableStateOf<ByteArray?>(null) }
+                var pendingBundleIncluded by remember { mutableStateOf(0) }
+                var pendingBundleSkipped by remember { mutableStateOf(0) }
                 var backupViewModel by remember { mutableStateOf<MainViewModel?>(null) }
 
-                val exportBackupLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.CreateDocument(BACKUP_MIME_TYPE),
+                val exportJsonLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.CreateDocument(BACKUP_JSON_MIME_TYPE),
                 ) { uri ->
                     val json = pendingExportJson
                     val viewModel = backupViewModel
                     pendingExportJson = null
                     backupViewModel = null
-                    // A cancelled picker is the user changing their mind, not a failure.
                     if (uri == null || json == null) return@rememberLauncherForActivityResult
                     scope.launch(Dispatchers.IO) {
                         val written = BackupDocumentIo.write(contentResolver, uri, json)
                         viewModel?.reportBackupTransfer(
                             if (written) BackupTransferEvent.Exported
                             else BackupTransferEvent.ExportFailed,
+                        )
+                    }
+                }
+
+                val exportBundleLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.CreateDocument(BACKUP_BUNDLE_MIME_TYPE),
+                ) { uri ->
+                    val bytes = pendingExportBytes
+                    val viewModel = backupViewModel
+                    val included = pendingBundleIncluded
+                    val skipped = pendingBundleSkipped
+                    pendingExportBytes = null
+                    pendingBundleIncluded = 0
+                    pendingBundleSkipped = 0
+                    backupViewModel = null
+                    if (uri == null || bytes == null) return@rememberLauncherForActivityResult
+                    scope.launch(Dispatchers.IO) {
+                        val written = BackupDocumentIo.writeBytes(contentResolver, uri, bytes)
+                        viewModel?.reportBackupTransfer(
+                            if (written) {
+                                BackupTransferEvent.BundleExported(
+                                    attachmentsIncluded = included,
+                                    attachmentsSkipped = skipped,
+                                )
+                            } else {
+                                BackupTransferEvent.ExportFailed
+                            },
                         )
                     }
                 }
@@ -125,11 +154,23 @@ class MainActivity : FragmentActivity() {
                     backupViewModel = null
                     if (uri == null || viewModel == null) return@rememberLauncherForActivityResult
                     scope.launch(Dispatchers.IO) {
-                        val json = BackupDocumentIo.read(contentResolver, uri)
-                        // importBackup reports its own outcome; an unreadable or oversized
-                        // document never reaches it, so it is reported here instead.
-                        if (json != null) viewModel.importBackup(json)
-                        else viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
+                        val bytes = BackupDocumentIo.readBytes(contentResolver, uri)
+                        if (bytes == null) {
+                            viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
+                            return@launch
+                        }
+                        val name = uri.lastPathSegment
+                        val head = bytes.copyOf(minOf(2, bytes.size))
+                        if (viewModel.looksLikeBackupBundle(name, head)) {
+                            viewModel.importBackupBundle(bytes)
+                        } else {
+                            val json = bytes.toString(Charsets.UTF_8)
+                            if (json.length > BackupDocumentIo.MAX_BACKUP_DOCUMENT_CHARS) {
+                                viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
+                            } else {
+                                viewModel.importBackup(json)
+                            }
+                        }
                     }
                 }
 
@@ -137,17 +178,31 @@ class MainActivity : FragmentActivity() {
                     windowSizeClass = windowSizeClass,
                     onExportBackup = { viewModel ->
                         scope.launch {
+                            val result = viewModel.exportBackupBundle()
+                            result.fold(
+                                onSuccess = { outcome ->
+                                    pendingExportBytes = outcome.bytes
+                                    pendingBundleIncluded = outcome.attachmentsIncluded
+                                    pendingBundleSkipped = outcome.attachmentsSkipped
+                                    backupViewModel = viewModel
+                                    exportBundleLauncher.launch(viewModel.bundleFileName())
+                                },
+                                onFailure = { error ->
+                                    Log.w(TAG, "Building the backup bundle failed", error)
+                                    viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
+                                },
+                            )
+                        }
+                    },
+                    onExportNotesOnly = { viewModel ->
+                        scope.launch {
                             val result = viewModel.exportBackup()
                             if (result is BackupExportResult.Success) {
-                                // Held rather than passed: the launcher only carries the
-                                // filename, and the document does not exist until the user has
-                                // picked where it goes. The view model is held for the same
-                                // reason — the result arrives in the launcher's callback.
                                 pendingExportJson = result.json
                                 backupViewModel = viewModel
-                                exportBackupLauncher.launch(BACKUP_FILE_NAME)
+                                exportJsonLauncher.launch(BACKUP_JSON_FILE_NAME)
                             } else {
-                                Log.w(TAG, "Building the backup failed: $result")
+                                Log.w(TAG, "Building the JSON backup failed: $result")
                                 viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
                             }
                         }
@@ -286,18 +341,20 @@ class MainActivity : FragmentActivity() {
 
     private companion object {
         const val TAG = "MainActivity"
-        const val BACKUP_MIME_TYPE = "application/json"
-        const val BACKUP_FILE_NAME = "notelikeus-backup.json"
+        const val BACKUP_JSON_MIME_TYPE = "application/json"
+        const val BACKUP_BUNDLE_MIME_TYPE = "application/zip"
+        const val BACKUP_JSON_FILE_NAME = "notelikeus-backup.json"
 
         /**
-         * Providers disagree about what a `.json` file is — Drive and Downloads commonly report
-         * `application/octet-stream`, and some report `text/plain` — so the picker accepts the
-         * types a JSON backup realistically arrives as. Content is validated on import either way.
+         * Providers disagree about what a backup file is — Drive and Downloads commonly report
+         * `application/octet-stream` — so the picker accepts the types a JSON or `.nlkbak`
+         * realistically arrives as. Content is sniffed and validated on import either way.
          */
         val BACKUP_IMPORT_MIME_TYPES = arrayOf(
             "application/json",
-            "text/plain",
+            "application/zip",
             "application/octet-stream",
+            "text/plain",
         )
 
     }

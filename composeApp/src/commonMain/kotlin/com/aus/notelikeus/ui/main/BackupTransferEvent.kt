@@ -9,8 +9,16 @@ package com.aus.notelikeus.ui.main
  */
 sealed class BackupTransferEvent {
     data object Exported : BackupTransferEvent()
+    data class BundleExported(
+        val attachmentsIncluded: Int,
+        val attachmentsSkipped: Int,
+    ) : BackupTransferEvent()
     data object ExportFailed : BackupTransferEvent()
-    data class Imported(val notesImported: Int) : BackupTransferEvent()
+    data class Imported(
+        val notesImported: Int,
+        val attachmentsImported: Int = 0,
+        val attachmentsSkipped: Int = 0,
+    ) : BackupTransferEvent()
     data object ImportFailed : BackupTransferEvent()
 
     /** The file parsed but was not a backup this build accepts; [message] says why. */
