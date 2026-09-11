@@ -1,6 +1,13 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { closeNotesDatabaseForTests, resetNotesDatabaseForTests } from '@/lib/local/idb';
+import { looksSealed } from '@/lib/crypto/attachmentBytesCodec';
+import { resetAttachmentCryptoKeyForTests } from '@/lib/crypto/attachmentCryptoKey';
+import { PENDING_ATTACHMENTS_STORE } from '@/lib/local/constants';
+import {
+  closeNotesDatabaseForTests,
+  resetNotesDatabaseForTests,
+  withStore,
+} from '@/lib/local/idb';
 import {
   clearPendingAttachmentsForOwner,
   deletePendingAttachment,
@@ -13,6 +20,7 @@ import {
 describe('pendingAttachmentRepository', () => {
   beforeEach(async () => {
     await resetNotesDatabaseForTests();
+    await resetAttachmentCryptoKeyForTests();
   });
 
   it('stores and retrieves pending attachment blobs', async () => {
@@ -109,5 +117,77 @@ describe('pendingAttachmentRepository', () => {
 
     await deletePendingAttachment('user-del', 'note-del', 'att-del');
     expect(await getPendingAttachment('user-del', 'note-del', 'att-del')).toBeNull();
+  });
+
+  it('seals bytes at rest in IndexedDB while returning plaintext to callers', async () => {
+    const blob = new Blob(['secret-bytes'], { type: 'image/png' });
+    await putPendingAttachment({
+      ownerId: 'user-seal',
+      noteId: 'note-seal',
+      attachmentId: 'att-seal',
+      blob,
+      mimeType: 'image/png',
+      sizeBytes: blob.size,
+      createdAt: 1,
+    });
+
+    const raw = await withStore<{ blob: Blob | ArrayBuffer } | undefined>(
+      PENDING_ATTACHMENTS_STORE,
+      'readonly',
+      (store) => store.get(['user-seal', 'note-seal', 'att-seal']),
+    );
+    expect(raw?.blob).toBeDefined();
+    const rawBytes =
+      raw!.blob instanceof ArrayBuffer
+        ? new Uint8Array(raw!.blob)
+        : new Uint8Array(await raw!.blob.arrayBuffer());
+    expect(looksSealed(rawBytes)).toBe(true);
+    expect(new TextDecoder().decode(rawBytes)).not.toContain('secret-bytes');
+
+    const retrieved = await getPendingAttachment('user-seal', 'note-seal', 'att-seal');
+    expect(await retrieved?.blob.text()).toBe('secret-bytes');
+    expect(retrieved?.sizeBytes).toBe(blob.size);
+  });
+
+  it('dual-reads legacy plaintext and migrates it to sealed form', async () => {
+    const plain = new TextEncoder().encode('legacy-plain');
+    const legacy = {
+      ownerId: 'user-legacy',
+      noteId: 'note-legacy',
+      attachmentId: 'att-legacy',
+      // Pre-sealing rows held plaintext bytes (Blob or ArrayBuffer). ArrayBuffer survives
+      // IndexedDB structured clone reliably in this test environment.
+      blob: plain.buffer.slice(plain.byteOffset, plain.byteOffset + plain.byteLength),
+      mimeType: 'text/plain',
+      sizeBytes: plain.byteLength,
+      createdAt: 1,
+    };
+    await withStore(PENDING_ATTACHMENTS_STORE, 'readwrite', (store) => {
+      store.put(legacy);
+    });
+
+    const retrieved = await getPendingAttachment('user-legacy', 'note-legacy', 'att-legacy');
+    expect(await retrieved?.blob.text()).toBe('legacy-plain');
+
+    let sealed = false;
+    for (let i = 0; i < 40; i++) {
+      const raw = await withStore<{ blob: Blob | ArrayBuffer } | undefined>(
+        PENDING_ATTACHMENTS_STORE,
+        'readonly',
+        (store) => store.get(['user-legacy', 'note-legacy', 'att-legacy']),
+      );
+      const payload = raw!.blob;
+      expect(payload).toBeInstanceOf(ArrayBuffer);
+      const rawBytes = new Uint8Array(payload as ArrayBuffer);
+      if (looksSealed(rawBytes)) {
+        sealed = true;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(sealed).toBe(true);
+
+    const again = await getPendingAttachment('user-legacy', 'note-legacy', 'att-legacy');
+    expect(await again?.blob.text()).toBe('legacy-plain');
   });
 });
