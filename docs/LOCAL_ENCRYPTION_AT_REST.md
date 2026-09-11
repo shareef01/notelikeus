@@ -1,24 +1,25 @@
 # Local encryption at rest — where it stands, and what it would take
 
 Written 2026-09-08 after auditing the three clients; updated after Android and Desktop
-attachment AES-GCM landed. Android notes DB and attachment bytes are encrypted at rest.
-Desktop attachment bytes are sealed under a DPAPI-protected AES key. Desktop DB encryption
-and Web attachment sealing remain deferred — this document is the engineering case for those
-next steps, so the decision stays a decision and not a default.
+attachment AES-GCM landed, and again when Desktop notes-DB SQLCipher (Windows default) landed.
+Android notes DB and attachment bytes are encrypted at rest. Desktop attachment bytes and the
+Windows notes database are sealed under DPAPI-backed keys. Web attachment sealing remains
+deferred — this document is the engineering case for that remaining gap, so the decision stays
+a decision and not a default.
 
 ## What is true today
 
 | Client | Note store | Encrypted at rest by the app? | Attachment bytes on disk |
 |---|---|---|---|
 | Android | Room + SQLCipher | **Yes.** 32-byte random passphrase, sealed by an AndroidKeyStore AES-GCM key (`DatabaseKeyManager`), with a legacy `EncryptedSharedPreferences` migration path. | **Yes (app-level).** AES-GCM under a dedicated Keystore alias (`AndroidAttachmentBytesProtector`); dual-read accepts legacy plaintext during migration. |
-| Windows (Desktop) | Room + `BundledSQLiteDriver` | **No.** Plain SQLite file under the user's data directory. | **Yes (app-level).** AES-GCM under a DPAPI-sealed AES key (`DesktopAttachmentBytesProtector`); dual-read accepts legacy plaintext during migration. |
+| Windows (Desktop) | Room + Willena `sqlite-jdbc` (SQLCipher v4) | **Yes (default on Windows).** 32-byte passphrase in `~/.notelikeus/notes-db.key`, sealed with DPAPI (`DesktopDatabaseKeyManager`); one-way plaintext→encrypted migration via `PRAGMA rekey`. Opt out with `notelikeus.desktop.jdbcSqlite=false`. | **Yes (app-level).** AES-GCM under a DPAPI-sealed AES key (`DesktopAttachmentBytesProtector`); dual-read accepts legacy plaintext during migration. |
 | Web | IndexedDB (+ `localStorage` for preferences) | **No.** Plain records in the browser profile. | Pending attachment blobs live in IndexedDB (plaintext at the profile boundary). |
 
 Two things on Windows *are* protected beyond OS ACLs: the Supabase session token file is sealed
-with DPAPI (`platform/Dpapi.kt`, used by `DesktopSupabaseSessionPersistence`), and attachment
+with DPAPI (`platform/Dpapi.kt`, used by `DesktopSupabaseSessionPersistence`), attachment
 image / staging bytes under `~/.notelikeus/` are AES-GCM sealed under a separate DPAPI-wrapped
-key file (`attachment-aes.key`). Note bodies, titles, checklists, labels, and reminders in the
-Room database file remain plaintext at the app layer.
+key file (`attachment-aes.key`), and the notes Room database is SQLCipher-encrypted under
+`notes-db.key` (also DPAPI) when running on Windows (the default).
 
 `PRIVACY_POLICY.md` states platform encryption accurately — SQLCipher for Android notes,
 AES-GCM attachments on Android and Desktop, Web/Desktop notes DB limits, and no E2E claim for
@@ -65,8 +66,7 @@ replacement key (that would orphan sealed files).
 ### Threat model (honest limits)
 
 DPAPI binds the key to the Windows user account. It helps against offline disk copies and other
-local accounts; it does **not** stop malware running as that user. The notes database remains
-plaintext until a separate SQLCipher/Desktop driver project lands.
+local accounts; it does **not** stop malware running as that user.
 
 ## Windows: SQLCipher + a DPAPI-protected random key
 
@@ -75,9 +75,9 @@ plaintext until a separate SQLCipher/Desktop driver project lands.
 | Slice | State |
 |---|---|
 | 1. DPAPI-sealed 32-byte passphrase (`DesktopDatabaseKeyManager`, `~/.notelikeus/notes-db.key`) | **Landed** |
-| 2. Custom Room `SQLiteDriver` over `sqlite-jdbc-crypt` (sqlcipher cipher), flag off / plaintext path | **Landed** (superseded by slice 3 when flag on) |
-| 3. One-way plaintext → encrypted migration + quarantine | **Landed** behind `notelikeus.desktop.jdbcSqlite` (default **off**) |
-| 4. Flip default; Windows CI job for DPAPI + native driver | Not started |
+| 2. Custom Room `SQLiteDriver` over `sqlite-jdbc-crypt` (sqlcipher cipher), flag off / plaintext path | **Landed** |
+| 3. One-way plaintext → encrypted migration + quarantine | **Landed** |
+| 4. Flip default on Windows; opt-out via flag; Linux CI stays bundled | **Landed** — default `useJdbcSqlite()` is `isWindows()` |
 
 **Chosen driver (decision).** Use Willena / community `sqlite-jdbc-crypt` (SQLite3 Multiple Ciphers)
 with `cipher=sqlcipher` and a custom `androidx.sqlite.SQLiteDriver` adapter — there is no
@@ -223,7 +223,7 @@ preferable to shipping encryption that reads stronger than it is.
 
 | | Android | Windows | Web |
 |---|---|---|---|
-| Notes DB today | SQLCipher + Keystore | Plaintext DB, DPAPI-sealed session token | Plaintext IndexedDB |
-| Attachment files today | AES-GCM + dedicated Keystore alias | AES-GCM + DPAPI-sealed key file | Plaintext IndexedDB blobs |
-| Proposed next | no change | SQLCipher + DPAPI-sealed random key for the notes DB | no change for now |
-| Blocker | — | no JVM encrypted-SQLite driver in the current Room stack; guest-mode key-loss trade | protects the profile at rest only; not an XSS control |
+| Notes DB today | SQLCipher + Keystore | SQLCipher v4 + DPAPI `notes-db.key` (Windows default) | Plaintext IndexedDB |
+| Attachments today | AES-GCM + Keystore | AES-GCM + DPAPI | Profile permissions |
+| Proposed next | no change | no change | WebCrypto for pending blobs (honest XSS limits; not an XSS control) |
+| Blocker | — | — | protects the profile at rest only |

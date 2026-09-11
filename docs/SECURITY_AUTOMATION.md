@@ -24,7 +24,8 @@ Open [Code security and analysis](https://github.com/shareef01/notelikeus/settin
 
 ## Deferred
 
-- **Desktop notes DB SQLCipher:** still deferred (no JVM encrypted-SQLite driver in the Room stack).
+- **Desktop notes DB SQLCipher:** landed for Windows (default on; opt-out via
+  `notelikeus.desktop.jdbcSqlite=false`). See `docs/LOCAL_ENCRYPTION_AT_REST.md`.
 - **Web attachment sealing:** still deferred — see `docs/LOCAL_ENCRYPTION_AT_REST.md` (must not be
   described as an XSS mitigation).
 

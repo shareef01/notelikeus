@@ -15,7 +15,7 @@ Three clients over one Supabase schema:
 | | Android | Windows | Web |
 |---|---|---|---|
 | UI / domain | Compose Multiplatform, shared `commonMain` | same | React 19 + Zustand, separate implementation |
-| Local store | Room + SQLCipher | Room (plaintext) | IndexedDB |
+| Local store | Room + SQLCipher | Room + SQLCipher (Windows default) | IndexedDB |
 | Sync engine | `NoteSyncEngine` (shared) | same | `supabaseSyncEngine.ts` + `notesSyncService.ts` |
 | Attachments | `AttachmentSyncService` → Worker → R2 | same | `attachmentSyncService.ts` → Worker → R2 |
 
@@ -590,16 +590,12 @@ Landed in PR #203: `gradle/verification-metadata.xml` (sha256 pins), regenerate-
 in [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md). Linux CI platform artifacts (`aapt2`,
 Skiko, Compose JDK probe, plugin BOM parents) are pinned alongside Windows generation.
 
-### 2. Desktop notes DB SQLCipher + DPAPI key — **IN PROGRESS**
+### 2. Desktop notes DB SQLCipher + DPAPI key — **DONE**
 
-**Why.** Attachment bytes on Windows are sealed; the Room notes file is still plaintext under
-`~/.notelikeus/`. See [`LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md).
-
-**Slice 1 landed:** `DesktopDatabaseKeyManager` (DPAPI-sealed `notes-db.key`).
-**Slice 2–3 landed:** `JdbcSQLiteDriver` + `DesktopPlaintextDatabaseMigrator` behind
-`notelikeus.desktop.jdbcSqlite` (default **off**). Flag on → migrate plaintext → SQLCipher v4 and
-open with the DPAPI passphrase. Guest mode encrypts like Android (D25).
-Next: flip the default on and add a Windows CI job for DPAPI + native driver.
+Landed across PRs #205–#208: DPAPI key, JDBC driver, `PRAGMA rekey` migration, and **default on
+for Windows** (`DesktopSqliteFlags.useJdbcSqlite()` → `isWindows()`). Linux/mac Desktop CI keeps
+`BundledSQLiteDriver`. Opt out with `notelikeus.desktop.jdbcSqlite=false`. See
+[`LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md) and D25.
 
 ### 3. Web attachment sealing (honest threat model)
 
