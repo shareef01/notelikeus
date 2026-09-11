@@ -10,18 +10,31 @@ import com.sun.jna.platform.win32.Kernel32
 
 internal object Dpapi {
     private val sessionEntropy: ByteArray = "com.aus.notelikeus/session/v1".encodeToByteArray()
+    val attachmentKeyEntropy: ByteArray = "com.aus.notelikeus/attachment-key/v1".encodeToByteArray()
 
-    fun protect(data: ByteArray): ByteArray = protect(data, sessionEntropy)
+    fun protect(data: ByteArray): ByteArray =
+        cryptProtect(data, sessionEntropy, "Notelikeus session")
 
     fun unprotect(data: ByteArray): ByteArray =
-        runCatching { unprotect(data, sessionEntropy) }
-            .getOrElse { unprotect(data, null) }
+        runCatching { cryptUnprotect(data, sessionEntropy) }
+            .getOrElse { cryptUnprotect(data, null) }
 
-    private fun protect(data: ByteArray, entropy: ByteArray?): ByteArray {
+    /** Protects [data] under a caller-chosen entropy (e.g. the attachment AES key). */
+    fun protect(data: ByteArray, entropy: ByteArray, description: String): ByteArray =
+        cryptProtect(data, entropy, description)
+
+    fun unprotect(data: ByteArray, entropy: ByteArray): ByteArray =
+        cryptUnprotect(data, entropy)
+
+    private fun cryptProtect(
+        data: ByteArray,
+        entropy: ByteArray?,
+        description: String,
+    ): ByteArray {
         val outData = DataBlob()
         val result = Crypt32.INSTANCE.CryptProtectData(
             makeDataBlob(data),
-            WString("Notelikeus session"),
+            WString(description),
             entropy?.let { makeDataBlob(it) },
             null,
             null,
@@ -34,7 +47,7 @@ internal object Dpapi {
         return readAndFreeDataBlob(outData)
     }
 
-    private fun unprotect(data: ByteArray, entropy: ByteArray?): ByteArray {
+    private fun cryptUnprotect(data: ByteArray, entropy: ByteArray?): ByteArray {
         val outData = DataBlob()
         val result = Crypt32.INSTANCE.CryptUnprotectData(
             makeDataBlob(data),
