@@ -1311,25 +1311,19 @@ dependency, runnable from a fresh clone.
 
 ---
 
-## F59 — Kotlin's cloud fetch has no structural completeness check — **OPEN**
+## F59 — Kotlin's cloud fetch has no structural completeness check — **FIXED**
 
 The web client validates its snapshot structurally: `fetch_full_snapshot` returns a separate
 `note_count`, and a mismatch against the row count is refused as
-`Incomplete snapshot: expected N notes, got M`. The Kotlin transport has no equivalent.
+`Incomplete snapshot: expected N notes, got M`.
 
-Its `SuspectEmptyCloudException` only fires when the collection is **entirely** empty. A
-*partially* truncated read still reaches `downloadAllNotes`, where every previously-known id
-missing from it is deleted locally and tombstoned.
+**Fixed** (`67080b3c`): `SupabaseNoteTransport.parsedSnapshot` requires `note_count` and refuses a
+raw-array mismatch; `CloudNoteSnapshot.authoritativeNoteCount` survives parse drops;
+`NoteSyncEngine.fetchCompleteSnapshot` throws `IncompleteCloudSnapshotException` before
+reconcile / local deletes / tombstones. Covered by `SupabaseNoteTransportTest`,
+`TruncatedCloudSnapshotTest`, and `CloudNoteTransportContractTest`.
 
-Not hypothetical: a truncated `jsonb_agg` is precisely the failure `note_count` was added to catch,
-and the guard exists on only one client. Same class as F54.
-
-**Not fixed here.** It needs a transport change (read `note_count` from the same RPC) plus an
-engine assertion, and it is the last known asymmetry between the two sync implementations — worth
-doing as its own change with its own contract test rather than folded into an audit. Recorded as
-the second recommended project in [`AUDIT_2026.md`](AUDIT_2026.md).
-
-**Severity:** medium-high (silent local deletion on a partially failed read).
+**Severity was:** medium-high (silent local deletion on a partially failed read).
 
 ---
 
@@ -1340,39 +1334,25 @@ client. The Kotlin clients read a bundle's **manifest** — recovering the notes
 unchanged v3 path and reporting how many images they could not restore — but cannot read or write
 the archive itself.
 
-`commonMain` has no ZIP reader. `java.util.zip` is available on both JVM targets but not from
-`commonMain`, so this needs either an intermediate `jvmShared` source set (a build change) or an
-`expect`/`actual` pair with duplicated implementations. Both are defensible; neither should be
-decided in the same change as the format, and shipping a second hand-rolled ZIP implementation
-before the format has been exercised in the field would be the wrong order.
+`composeApp` now has a shared `jvmMain` source set (Android + Desktop) that already hosts
+`java.io` attachment crypto; `java.util.zip` belongs there — no further source-set decision.
 
-Android is where the photos are, so this is the first recommended project in
-[`AUDIT_2026.md`](AUDIT_2026.md).
+Android is where the photos are, so this remains the first recommended project in
+[`AUDIT_2026.md`](AUDIT_2026.md): codec in `jvmMain`, then SAF / file-chooser wiring.
 
 ---
 
-## F61 — `partialRemoteSnapshot.test.ts` fails under CPU contention — **OPEN**
+## F61 — `partialRemoteSnapshot.test.ts` fails under CPU contention — **MOSTLY FIXED**
 
 Observed once during the 2026 audit: the full web suite failed a single assertion
 (`partialRemoteSnapshot.test.ts:140`) on a run that took 220s instead of its usual 24s because it
-was competing with an R8 release build for CPU. The same file passes 7/7 in isolation, twice, and
-the full suite passes 540/540 with nothing else running.
+was competing with an R8 release build for CPU.
 
-The cause is the file's own `settle(ms)` helper:
+**Fixed for the common cases:** wake helpers and bootstrap waits now use `vi.waitFor` /
+`fireRealtimeWake()` keyed on RPC counts and emissions, not fixed sleeps.
 
-```ts
-await new Promise((resolve) => setTimeout(resolve, ms));
-```
+One remaining `setTimeout(SUPABASE_PULL_DEBOUNCE_MS * 3)` is intentional in the in-flight-bootstrap
+race test: the queued pull issues no RPC while the snapshot gate is held, so there is no
+observable to wait on. The real assertion is that `emitted[0]` is the full library after release.
 
-A fixed real-time sleep standing in for "the async work has finished". Under starvation the work
-does not complete inside it, `emitted` is still empty, and the assertion fails. Two tests in the
-same file already use `vi.waitFor`, which is the correct form and is not load-sensitive.
-
-Not introduced by the audit: the file is untouched by it (`b6e619c6`, #168). Not a product defect
-— nothing about the application is wrong. But it is a real CI hazard: a shared runner under load
-produces a red build that reruns green, which is how a suite starts being ignored.
-
-**Fix when convenient:** replace the remaining `settle()` calls with `vi.waitFor` on the condition
-each one is actually waiting for, as the same file already does at lines 170 and 208.
-
-**Severity:** low (test infrastructure).
+**Severity:** low (test infrastructure; residual timing only in that race case).
