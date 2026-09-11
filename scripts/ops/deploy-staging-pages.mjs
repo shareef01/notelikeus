@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Build a Cloudflare Pages bundle (Supabase + R2) and deploy it to notelikeus-dev.
+ * Build a Cloudflare Pages bundle (Supabase + R2) and deploy it to notelikeus-dev
+ * (staging). Production is the `notelikeus` project — see web `npm run deploy:pages`
+ * or Cloudflare Pages CI on push to main.
  *
  * Requires gitignored env files:
  *   web/.env.staging  — hosted Supabase URL, anon JWT, optional attachments worker
