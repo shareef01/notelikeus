@@ -9,14 +9,16 @@ sealed class BackupExportResult {
 sealed class BackupImportResult {
     /**
      * @param attachmentsSkipped images the file carried that this platform did not restore.
-     *   Reported rather than ignored: a bundle exported from the web client lists its images in
-     *   the manifest, and a user who imports it here needs to be told the pictures did not come
-     *   with the text.
+     * @param attachmentsImported images staged successfully from a `.nlkbak` bundle (0 for JSON).
+     * @param newNoteIdByOldId maps backup note ids to newly inserted Room ids (bundle remapping).
      */
     data class Success(
         val notesImported: Int,
         val labelsCreated: Int,
         val attachmentsSkipped: Int = 0,
+        val attachmentsImported: Int = 0,
+        val newNoteIdByOldId: Map<Long, Long> = emptyMap(),
+        val warnings: List<String> = emptyList(),
     ) : BackupImportResult()
     data object ReadFailed : BackupImportResult()
     data class InvalidFormat(val message: String) : BackupImportResult()

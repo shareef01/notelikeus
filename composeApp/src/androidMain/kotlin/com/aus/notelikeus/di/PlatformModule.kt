@@ -99,6 +99,18 @@ actual val platformModule = module {
         )
     }
     single { NoteBackupImporter(get<NoteRepository>()) }
+    single<com.aus.notelikeus.data.backup.BackupBundleOperations> {
+        com.aus.notelikeus.data.backup.bundle.BackupBundleTransfer(
+            repository = get(),
+            exporter = get(),
+            importer = get(),
+            staging = get(),
+            localStorage = get(),
+            ownerIdProvider = { get<CloudSessionManager>().getCurrentAccount().userId },
+            appName = get<android.content.Context>().getString(com.aus.notelikeus.shared.R.string.app_name),
+            appVersion = com.aus.notelikeus.util.AppConfig.versionName,
+        )
+    }
     single { SharedPrefsNoteSyncStateStore(get()) }
     single<NoteSyncStateStore> { get<SharedPrefsNoteSyncStateStore>() }
     single { androidx.work.WorkManager.getInstance(get<android.content.Context>()) }
