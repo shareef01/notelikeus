@@ -70,6 +70,7 @@ class NoteBackupImporter(
             validate(backupData)?.let { return it }
 
             val importedIds = mutableListOf<Long>()
+            val newNoteIdByOldId = linkedMapOf<Long, Long>()
             var labelsCreated = 0
             var notesImported = 0
 
@@ -127,7 +128,13 @@ class NoteBackupImporter(
                         checklist = checklist
                     )
 
-                    importedIds += repository.insertNoteWithoutSync(note)
+                    val newId = repository.insertNoteWithoutSync(note)
+                    importedIds += newId
+                    noteDto.id?.let { oldId ->
+                        if (!newNoteIdByOldId.containsKey(oldId)) {
+                            newNoteIdByOldId[oldId] = newId
+                        }
+                    }
                     notesImported++
                 }
             }
@@ -137,6 +144,7 @@ class NoteBackupImporter(
                 notesImported = notesImported,
                 labelsCreated = labelsCreated,
                 attachmentsSkipped = attachmentsSkipped,
+                newNoteIdByOldId = newNoteIdByOldId,
             )
         } catch (e: Exception) {
             BackupImportResult.Error(e)

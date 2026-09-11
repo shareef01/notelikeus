@@ -3,6 +3,7 @@ package com.aus.notelikeus
 import android.content.ContentResolver
 import android.net.Uri
 import android.util.Log
+import java.io.ByteArrayOutputStream
 
 /**
  * Reading and writing the backup document the user picked through the Storage Access Framework.
@@ -16,13 +17,19 @@ object BackupDocumentIo {
     /** Matches `NoteBackupImporter.MAX_BACKUP_CHARS`. */
     const val MAX_BACKUP_DOCUMENT_CHARS = 10 * 1024 * 1024
 
+    /** Matches `BackupBundleLimits.MAX_BUNDLE_FILE_BYTES`. */
+    const val MAX_BUNDLE_DOCUMENT_BYTES = 256L * 1024 * 1024
+
     private const val TAG = "BackupDocumentIo"
 
     /** Writes [json] to [uri], reporting whether the bytes actually landed. */
     fun write(resolver: ContentResolver, uri: Uri, json: String): Boolean =
+        writeBytes(resolver, uri, json.toByteArray())
+
+    fun writeBytes(resolver: ContentResolver, uri: Uri, bytes: ByteArray): Boolean =
         runCatching {
             resolver.openOutputStream(uri)?.use { output ->
-                output.write(json.toByteArray())
+                output.write(bytes)
             } ?: error("no output stream for $uri")
         }.onFailure { Log.w(TAG, "Writing the backup document failed", it) }.isSuccess
 
@@ -51,4 +58,24 @@ object BackupDocumentIo {
                 text.toString()
             }
         }.onFailure { Log.w(TAG, "Reading the backup document failed", it) }.getOrNull()
+
+    fun readBytes(resolver: ContentResolver, uri: Uri): ByteArray? =
+        runCatching {
+            resolver.openInputStream(uri)?.use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                val out = ByteArrayOutputStream()
+                var total = 0L
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    total += read
+                    if (total > MAX_BUNDLE_DOCUMENT_BYTES) {
+                        Log.w(TAG, "Backup bundle exceeds the import limit; refusing it")
+                        return null
+                    }
+                    out.write(buffer, 0, read)
+                }
+                out.toByteArray()
+            }
+        }.onFailure { Log.w(TAG, "Reading the backup bytes failed", it) }.getOrNull()
 }

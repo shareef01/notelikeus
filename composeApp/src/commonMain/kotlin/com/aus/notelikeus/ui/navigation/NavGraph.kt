@@ -66,6 +66,7 @@ fun NavGraph(
     onRequestAppUnlock: (onSuccess: () -> Unit) -> Unit = {},
     onAppLockEnabled: () -> Unit = {},
     onExportBackup: () -> Unit = {},
+    onExportNotesOnly: () -> Unit = {},
     onImportBackup: () -> Unit = {},
     pendingSharedTitle: String? = null,
     pendingSharedContent: String? = null,
@@ -101,6 +102,7 @@ fun NavGraph(
                 onRequestAppUnlock = onRequestAppUnlock,
                 onAppLockEnabled = onAppLockEnabled,
                 onExportBackup = onExportBackup,
+                onExportNotesOnly = onExportNotesOnly,
                 onImportBackup = onImportBackup
             )
         }

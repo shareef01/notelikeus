@@ -59,12 +59,17 @@
 
     <!-- Export / Import -->
     <string name="export_success">Backup exported</string>
+    <string name="export_bundle_success">Backup exported (%1$d images)</string>
+    <string name="export_bundle_success_skipped">Backup exported (%1$d images; %2$d skipped)</string>
     <string name="export_failed">Export failed</string>
-    <string name="export_backup_subtitle">Save notes as JSON</string>
+    <string name="export_backup_subtitle">Save notes and local images as .nlkbak</string>
+    <string name="export_notes_only">Export notes only</string>
+    <string name="export_notes_only_subtitle">Save notes as JSON (no images)</string>
     <string name="import_success">%1$d notes imported</string>
+    <string name="import_bundle_success">%1$d notes imported (%2$d images)</string>
     <string name="import_failed">Import failed</string>
     <string name="import_invalid_format">Invalid backup: %1$s</string>
-    <string name="import_backup_subtitle">Restore notes from JSON (adds to existing notes)</string>
+    <string name="import_backup_subtitle">Restore from .nlkbak or JSON (adds to existing notes)</string>
     <string name="backup_import">Import backup</string>
 
     <!-- Settings sections -->
