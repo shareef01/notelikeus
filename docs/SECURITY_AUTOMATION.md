@@ -10,7 +10,7 @@ and cannot be expressed as source in this tree.
 | `.github/workflows/codeql.yml` | CodeQL `security-extended` for JavaScript/TypeScript and Java/Kotlin |
 | `.github/workflows/dependency-review.yml` | PR dependency review; fails on high+ severity advisories |
 | `gradle/verification-metadata.xml` | sha256 pins for the Android/Desktop Gradle graph (see below) |
-| Existing CI (`web.yml`, `android.yml`, `desktop.yml`, `supabase.yml`, …) | Lint, unit, build, pgTAP, Playwright |
+| Existing CI (`web.yml`, `android.yml`, `desktop.yml`, `supabase.yml`, …) | Lint, unit, build, pgTAP, Playwright; Desktop also runs `windows-crypto` (`desktopTest` on `windows-latest` for real DPAPI) |
 
 Actions are pinned to immutable commit SHAs, consistent with the rest of this repository.
 
@@ -24,8 +24,6 @@ Open [Code security and analysis](https://github.com/shareef01/notelikeus/settin
 
 ## Deferred
 
-- Optional Windows CI coverage for DPAPI + native SQLCipher driver (Desktop default-on already
-  landed for Windows).
 - Zone-level Worker abuse controls remain account/ops configuration (F50).
 
 ## Gradle dependency verification
