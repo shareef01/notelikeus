@@ -93,6 +93,17 @@ actual val platformModule = module {
 
     single { NoteBackupExporter(get<NoteRepository>(), "Notelikeus", AppConfig.versionName) }
     single { NoteBackupImporter(get<NoteRepository>()) }
+    single<com.aus.notelikeus.data.backup.BackupBundleOperations> {
+        com.aus.notelikeus.data.backup.bundle.BackupBundleTransfer(
+            repository = get(),
+            exporter = get(),
+            importer = get(),
+            staging = get(),
+            localStorage = get(),
+            ownerIdProvider = { get<CloudSessionManager>().getCurrentAccount().userId },
+            appVersion = AppConfig.versionName,
+        )
+    }
 
     // Cloud sync
     single {
