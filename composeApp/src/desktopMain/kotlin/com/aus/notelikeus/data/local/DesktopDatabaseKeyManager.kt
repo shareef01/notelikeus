@@ -7,12 +7,11 @@ import java.io.File
 import java.security.SecureRandom
 
 /**
- * Holds the future Desktop SQLCipher / sqlite-jdbc-crypt passphrase.
+ * Holds the Desktop SQLCipher / sqlite-jdbc-crypt passphrase.
  *
- * Slice 1 of Desktop notes-DB encryption: mint and persist a 32-byte key under DPAPI with
- * dedicated entropy ([Dpapi.databaseKeyEntropy]), separate from the session token and attachment
- * AES key. The Room driver still uses plaintext [androidx.sqlite.driver.bundled.BundledSQLiteDriver]
- * until a later slice lands the encrypted driver and migration.
+ * Mints and persists a 32-byte key under DPAPI with dedicated entropy
+ * ([Dpapi.databaseKeyEntropy]), separate from the session token and attachment AES key.
+ * Consumed when [DesktopSqliteFlags.useJdbcSqlite] is true (default on Windows).
  *
  * Failure policy matches attachments: a present key file that DPAPI cannot unwrap is preserved
  * (renamed aside), never silently replaced — minting a new key would orphan an encrypted DB.
