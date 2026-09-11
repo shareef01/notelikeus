@@ -24,10 +24,9 @@ Open [Code security and analysis](https://github.com/shareef01/notelikeus/settin
 
 ## Deferred
 
-- **Desktop notes DB SQLCipher:** landed for Windows (default on; opt-out via
-  `notelikeus.desktop.jdbcSqlite=false`). See `docs/LOCAL_ENCRYPTION_AT_REST.md`.
-- **Web attachment sealing:** still deferred — see `docs/LOCAL_ENCRYPTION_AT_REST.md` (must not be
-  described as an XSS mitigation).
+- Optional Windows CI coverage for DPAPI + native SQLCipher driver (Desktop default-on already
+  landed for Windows).
+- Zone-level Worker abuse controls remain account/ops configuration (F50).
 
 ## Gradle dependency verification
 
