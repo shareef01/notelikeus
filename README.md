@@ -36,7 +36,7 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 | Image attachments | ✓ | ✓ | ✓ |
 | Theme, accent, pure black | ✓ | ✓ | ✓ |
 | Reminders, with presets and an exact date & time | Notifications | Tray, while the app runs | Service worker |
-| Encrypted local database | SQLCipher | SQLCipher (DPAPI key) | — |
+| Encrypted local database | SQLCipher | SQLCipher (DPAPI key) | WebCrypto (note bodies) |
 | Biometric app lock | ✓ | — | — |
 | Home-screen widget | Glance | — | — |
 | Google sign-in and cloud sync | Optional | Optional | Optional |
@@ -48,7 +48,7 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 
 ## How it works
 
-Notes are stored on the device. Android and Windows use Room with SQLCipher: Android seals the passphrase in the Android Keystore; Windows seals it with DPAPI. Attachment image bytes are AES-GCM sealed on both. The web client keeps note bodies in IndexedDB (plaintext at the app layer) and seals staged pending attachment blobs with WebCrypto AES-GCM. Nothing about the app requires an account.
+Notes are stored on the device. Android and Windows use Room with SQLCipher: Android seals the passphrase in the Android Keystore; Windows seals it with DPAPI. Attachment image bytes are AES-GCM sealed on both. The web client seals note titles, bodies, and checklists in IndexedDB (and staged pending attachment blobs) with WebCrypto AES-GCM — profile-at-rest only, not an XSS control. Nothing about the app requires an account.
 
 Sync sits above that. When you sign in, notes replicate through Supabase: Postgres RPCs for mutations, Realtime as a wake-up signal, row-level security for isolation.
 
@@ -70,7 +70,7 @@ Something not syncing has a settings screen for it. Sync diagnostics shows count
 |---|---|---|
 | UI | Compose Multiplatform | React 19, TypeScript, Tailwind |
 | Structure | MVVM with shared repositories | Hooks and Zustand stores |
-| Local data | Room + SQLCipher (Keystore / DPAPI) | IndexedDB (pending attachments sealed) |
+| Local data | Room + SQLCipher (Keystore / DPAPI) | IndexedDB (notes + pending attachments sealed) |
 | Cloud | Supabase Auth, Postgres RPC, Realtime | Supabase Auth, Postgres RPC, Realtime |
 | Attachments | Cloudflare Worker and R2 | Cloudflare Worker and R2 |
 | Hosting | MSI installer | Cloudflare Pages |

@@ -1,10 +1,11 @@
 # Local encryption at rest — where it stands, and what it would take
 
 Written 2026-09-08 after auditing the three clients; updated after Android and Desktop
-attachment AES-GCM landed, Desktop notes-DB SQLCipher (Windows default), and Web pending-attachment
-sealing. Android notes DB and attachment bytes are encrypted at rest. Desktop attachment bytes and
-the Windows notes database are sealed under DPAPI-backed keys. Web staged pending attachment blobs
-are sealed with WebCrypto AES-GCM (profile-at-rest only).
+attachment AES-GCM landed, Desktop notes-DB SQLCipher (Windows default), Web pending-attachment
+sealing, and Web note-body sealing. Android notes DB and attachment bytes are encrypted at rest.
+Desktop attachment bytes and the Windows notes database are sealed under DPAPI-backed keys. Web
+note titles/bodies/checklists and staged pending attachment blobs are sealed with WebCrypto
+AES-GCM (profile-at-rest only).
 
 ## What is true today
 
@@ -12,7 +13,7 @@ are sealed with WebCrypto AES-GCM (profile-at-rest only).
 |---|---|---|---|
 | Android | Room + SQLCipher | **Yes.** 32-byte random passphrase, sealed by an AndroidKeyStore AES-GCM key (`DatabaseKeyManager`), with a legacy `EncryptedSharedPreferences` migration path. | **Yes (app-level).** AES-GCM under a dedicated Keystore alias (`AndroidAttachmentBytesProtector`); dual-read accepts legacy plaintext during migration. |
 | Windows (Desktop) | Room + Willena `sqlite-jdbc` (SQLCipher v4) | **Yes (default on Windows).** 32-byte passphrase in `~/.notelikeus/notes-db.key`, sealed with DPAPI (`DesktopDatabaseKeyManager`); one-way plaintext→encrypted migration via `PRAGMA rekey`. Opt out with `notelikeus.desktop.jdbcSqlite=false`. | **Yes (app-level).** AES-GCM under a DPAPI-sealed AES key (`DesktopAttachmentBytesProtector`); dual-read accepts legacy plaintext during migration. |
-| Web | IndexedDB (+ `localStorage` for preferences) | **No.** Plain note records in the browser profile. | **Yes (app-level) for staged pending blobs.** AES-GCM (`NLA1`) under a non-extractable WebCrypto key in IndexedDB; dual-read accepts legacy plaintext. |
+| Web | IndexedDB (+ `localStorage` for preferences) | **Yes (app-level) for note bodies.** Title/content/checklist sealed (`NLN1`) under a non-extractable WebCrypto key; dual-read accepts legacy plaintext. Flags/colors/sync metadata stay readable. | **Yes (app-level) for staged pending blobs.** AES-GCM (`NLA1`) under a separate non-extractable WebCrypto key; dual-read accepts legacy plaintext. |
 
 Two things on Windows *are* protected beyond OS ACLs: the Supabase session token file is sealed
 with DPAPI (`platform/Dpapi.kt`, used by `DesktopSupabaseSessionPersistence`), attachment
@@ -197,7 +198,8 @@ the driver swap in one release.
 The web client does not keep a durable `file:` attachment tree; only **staged pending** blobs live
 in IndexedDB (`pendingAttachments`). Those blobs are sealed by
 `pendingAttachmentRepository` using the shared `NLA1` layout and AAD `ownerId/attachmentId`.
-Note bodies, titles, checklists, and labels in IndexedDB remain plaintext at the app layer.
+Note titles, bodies, and checklists are sealed separately (see Web notes below). Labels and
+attachment metadata on the note shell remain readable at the profile boundary.
 
 ### Key
 
@@ -216,6 +218,26 @@ sealed form when possible. Callers always receive plaintext `Blob`s.
 Same class as DPAPI: helps against offline copies of the browser profile directory. **Same-origin
 XSS can still decrypt** while the page holds the key — encryption at rest is not an XSS mitigation.
 CSP, no `dangerouslySetInnerHTML`, and the service-worker cache policy remain the XSS controls.
+
+## Web notes — implemented (AES-GCM + non-extractable WebCrypto key)
+
+### Boundary
+
+`notesLocalRepository` seals **title**, **content**, and **checklist** into an `NLN1` blob on the
+stored note (`sealedBody`), with AAD `ownerId/noteId`. A dedicated key DB
+(`notelikeus-notes-crypto`) holds a non-extractable AES-GCM-256 key — never the attachment key or
+the legacy lock key. Flags, colors, positions, timestamps, labels, and attachment refs stay on the
+plaintext shell so sync and listing still work if decrypt fails.
+
+### Migration and dual-read
+
+Same pattern as pending attachments: seal on write when WebCrypto is available; dual-read legacy
+plaintext; rewrite when possible. Callers always receive a full plaintext `Note`.
+
+### Threat model
+
+Profile-at-rest only. **Not an XSS mitigation.** Cloud-synced note text remains plaintext on the
+server by product design (no E2E claim).
 
 ## Web: say what it protects, and do not overstate it
 
@@ -241,15 +263,14 @@ authenticated response.
 
 ### Recommendation
 
-Web pending-attachment sealing is implemented for the profile-at-rest case. Privacy copy must keep
-saying that precisely, and must not claim protection against a compromised page. Note bodies in
-IndexedDB remain a separate decision.
+Web pending-attachment and note-body sealing are implemented for the profile-at-rest case. Privacy
+copy must keep saying that precisely, and must not claim protection against a compromised page.
 
 ## Summary
 
 | | Android | Windows | Web |
 |---|---|---|---|
-| Notes DB today | SQLCipher + Keystore | SQLCipher v4 + DPAPI `notes-db.key` (Windows default) | Plaintext IndexedDB |
+| Notes DB today | SQLCipher + Keystore | SQLCipher v4 + DPAPI `notes-db.key` (Windows default) | IndexedDB: title/content/checklist sealed (`NLN1`) |
 | Attachments today | AES-GCM + Keystore | AES-GCM + DPAPI | AES-GCM (`NLA1`) pending blobs + non-extractable WebCrypto key |
-| Proposed next | no change | no change (Windows CI covers DPAPI + JDBC) | no change for notes; attachments done |
-| Blocker | — | — | notes encryption still profile-only / not XSS |
+| Proposed next | no change | no change (Windows CI covers DPAPI + JDBC) | no change |
+| Blocker | — | — | profile-at-rest only / not XSS |
