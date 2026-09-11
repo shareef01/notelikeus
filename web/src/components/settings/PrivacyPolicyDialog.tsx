@@ -8,7 +8,7 @@ Summary
 • Offline-first by default: On Android, Windows, and Web, notes are stored locally on your device. You can use the full application without creating an account.
 • Optional cloud sync: When you sign in, note text, checklists, and metadata sync to Supabase (PostgreSQL) under your user account. Attachment files may be stored in Cloudflare R2.
 • Local data isolation: Signing out clears locally cached notes from the active session so a subsequent user cannot inherit your data.
-• Encryption: Android local databases are encrypted at rest with SQLCipher backed by Android Keystore. Attachment image files and staged pending bytes on Android are encrypted with AES-GCM under a dedicated Android Keystore key. Attachment files on Windows / Web rely on OS / profile permissions.
+• Encryption: Android local databases are encrypted at rest with SQLCipher backed by Android Keystore. Attachment image files and staged pending bytes on Android are encrypted with AES-GCM under a dedicated Android Keystore key. On Windows Desktop, attachment files are sealed with AES-GCM under a DPAPI-protected key; the Desktop notes database remains plaintext at the app layer. Web attachment blobs rely on browser profile permissions.
 • Synced cloud notes are not end-to-end encrypted by the app; they rely on TLS plus Supabase Auth, row-level security, and Worker authorization for attachments.
 • Diagnostics stay local: an optional sync-diagnostics report shows counts and version numbers, never note content or credentials, and is never transmitted.
 • The app does not include third-party tracking, analytics, or advertising SDKs.
@@ -22,7 +22,8 @@ When you choose to sign in and use sync, note content is stored in Supabase unde
 
 Security
 • Android: SQLCipher-encrypted Room database; attachment bytes sealed with AES-GCM under Android Keystore. Optional app-wide lock uses device biometric APIs.
-• Windows Desktop & Web: Local storage is bound to the user's OS / browser profile permissions.
+• Windows Desktop: Notes database plaintext at the app layer; attachment bytes sealed with AES-GCM under a DPAPI-protected key. Session token file is also DPAPI-sealed.
+• Web: Local storage bound to browser profile permissions; attachment blobs are not app-encrypted at the file layer.
 • Cloud security: PostgreSQL row-level security and authorized RPCs restrict read and write operations to the authenticated owner.
 
 Permissions
