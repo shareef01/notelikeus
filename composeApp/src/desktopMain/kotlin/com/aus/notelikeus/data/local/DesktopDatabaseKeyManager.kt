@@ -33,9 +33,6 @@ class DesktopDatabaseKeyManager(
         return loaded.copyOf()
     }
 
-    /** True when a key file exists on disk (encrypted DB expected after migration lands). */
-    fun hasPersistedKey(): Boolean = keyFile().exists()
-
     private fun loadOrCreate(): ByteArray {
         keyDir.mkdirs()
         val file = keyFile()
