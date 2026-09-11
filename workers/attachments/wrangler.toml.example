@@ -42,7 +42,8 @@ SUPABASE_URL = "http://127.0.0.1:54321"
 # Request body size, connection, and CPU limits are Cloudflare platform limits, and zone-level
 # WAF rules, bot protection, and per-endpoint rate limiting live in the Cloudflare dashboard or
 # API for the zone in front of this Worker. None of those are configurable from this repository;
-# the upload cap the Worker itself enforces is in `src/limits.ts`.
+# the upload cap the Worker itself enforces is in `src/limits.ts`. Operator checklist:
+# docs/CLOUDFLARE_ZONE_CONTROLS.md
 
 [triggers]
 crons = ["15 */6 * * *"]
