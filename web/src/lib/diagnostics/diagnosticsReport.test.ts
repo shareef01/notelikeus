@@ -122,6 +122,7 @@ describe('assertNoSensitiveValues', () => {
         stagedBytes: 2048,
         pendingUploadCount: 1,
         unresolvedCleanupCount: 0,
+        encryptedAtRest: true,
       },
       serviceWorker: { state: 'active', updateAvailable: false },
     };
@@ -182,6 +183,7 @@ describe('collectDiagnostics', () => {
     expect(report.account.state).toBe('guest');
     expect(report.account.ownerTag).toBe('guest');
     expect(report.attachments.pendingUploadCount).toBe(1);
+    expect(report.attachments.encryptedAtRest).toBe(true);
     expect(report.storage.encryptedAtRest).toBe(false);
 
     for (const secret of ['Divorce', 'paperwork', 'sensitive body', 'Medical', 'att-one']) {
