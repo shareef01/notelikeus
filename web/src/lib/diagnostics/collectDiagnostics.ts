@@ -134,9 +134,8 @@ export async function collectDiagnostics(
       kind: 'IndexedDB',
       schemaVersion: NOTES_DB_VERSION,
       available: typeof indexedDB !== 'undefined',
-      // Stated plainly rather than omitted: the web client does not encrypt notes at rest, and a
-      // diagnostics report that stays quiet about it invites the opposite assumption.
-      encryptedAtRest: false,
+      // Notes are AES-GCM sealed at rest (NLN1). Profile-at-rest only — not an XSS control.
+      encryptedAtRest: true,
     },
     account: {
       state: auth.user ? 'signed-in' : auth.guestMode ? 'guest' : 'signed-out',
@@ -167,7 +166,7 @@ export async function collectDiagnostics(
       stagedBytes: staged.bytes,
       pendingUploadCount: pendingUploads,
       unresolvedCleanupCount: Math.max(0, staged.count - pendingUploads),
-      // Pending IndexedDB blobs are AES-GCM sealed (NLA1). Notes remain plaintext at rest.
+      // Pending IndexedDB blobs are AES-GCM sealed (NLA1).
       encryptedAtRest: true,
     },
     serviceWorker,
