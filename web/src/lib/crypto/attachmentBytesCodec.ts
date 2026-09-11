@@ -10,6 +10,13 @@ const IV_SIZE = 12;
 const GCM_TAG_BYTES = 16;
 const MIN_SEALED = MAGIC.length + IV_SIZE + GCM_TAG_BYTES;
 
+/** WebCrypto BufferSource rejects Uint8Array<ArrayBufferLike> under strict DOM typings. */
+function toBufferSource(bytes: Uint8Array): BufferSource {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy;
+}
+
 export function attachmentAad(ownerId: string, attachmentId: string): Uint8Array {
   return new TextEncoder().encode(`${ownerId}/${attachmentId}`);
 }
@@ -33,10 +40,10 @@ export async function sealAttachmentBytes(
       {
         name: 'AES-GCM',
         iv,
-        additionalData: aad,
+        additionalData: toBufferSource(aad),
       },
       key,
-      plaintext,
+      toBufferSource(plaintext),
     ),
   );
   const out = new Uint8Array(MAGIC.length + iv.length + ciphertext.length);
@@ -60,11 +67,11 @@ export async function openAttachmentBytes(
     await crypto.subtle.decrypt(
       {
         name: 'AES-GCM',
-        iv,
-        additionalData: aad,
+        iv: toBufferSource(iv),
+        additionalData: toBufferSource(aad),
       },
       key,
-      ciphertext,
+      toBufferSource(ciphertext),
     ),
   );
 }
