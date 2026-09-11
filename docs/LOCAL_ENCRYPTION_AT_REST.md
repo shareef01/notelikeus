@@ -1,8 +1,9 @@
 # Local encryption at rest — where it stands, and what it would take
 
-Written 2026-09-08 after auditing the three clients; updated after Android attachment AES-GCM
-landed. Android notes DB and attachment bytes are encrypted at rest. Desktop DB encryption and
-Desktop/Web attachment sealing remain deferred — this document is the engineering case for those
+Written 2026-09-08 after auditing the three clients; updated after Android and Desktop
+attachment AES-GCM landed. Android notes DB and attachment bytes are encrypted at rest.
+Desktop attachment bytes are sealed under a DPAPI-protected AES key. Desktop DB encryption
+and Web attachment sealing remain deferred — this document is the engineering case for those
 next steps, so the decision stays a decision and not a default.
 
 ## What is true today
@@ -10,18 +11,18 @@ next steps, so the decision stays a decision and not a default.
 | Client | Note store | Encrypted at rest by the app? | Attachment bytes on disk |
 |---|---|---|---|
 | Android | Room + SQLCipher | **Yes.** 32-byte random passphrase, sealed by an AndroidKeyStore AES-GCM key (`DatabaseKeyManager`), with a legacy `EncryptedSharedPreferences` migration path. | **Yes (app-level).** AES-GCM under a dedicated Keystore alias (`AndroidAttachmentBytesProtector`); dual-read accepts legacy plaintext during migration. |
-| Windows (Desktop) | Room + `BundledSQLiteDriver` | **No.** Plain SQLite file under the user's data directory. | **No.** `~/.notelikeus/attachments` and pending staging are plaintext. |
+| Windows (Desktop) | Room + `BundledSQLiteDriver` | **No.** Plain SQLite file under the user's data directory. | **Yes (app-level).** AES-GCM under a DPAPI-sealed AES key (`DesktopAttachmentBytesProtector`); dual-read accepts legacy plaintext during migration. |
 | Web | IndexedDB (+ `localStorage` for preferences) | **No.** Plain records in the browser profile. | Pending attachment blobs live in IndexedDB (plaintext at the profile boundary). |
 
-Two things on Windows *are* protected: the Supabase session token file is sealed with DPAPI
-(`platform/Dpapi.kt`, used by `DesktopSupabaseSessionPersistence`), and the OS enforces the
-profile's file permissions. Note bodies, titles, checklists, labels, reminders, and staged
-attachment bytes are not.
+Two things on Windows *are* protected beyond OS ACLs: the Supabase session token file is sealed
+with DPAPI (`platform/Dpapi.kt`, used by `DesktopSupabaseSessionPersistence`), and attachment
+image / staging bytes under `~/.notelikeus/` are AES-GCM sealed under a separate DPAPI-wrapped
+key file (`attachment-aes.key`). Note bodies, titles, checklists, labels, and reminders in the
+Room database file remain plaintext at the app layer.
 
-`PRIVACY_POLICY.md` already states this accurately — it claims SQLCipher for Android only, and
-says Windows and Web rely on "OS / browser profile permissions". No policy change is required to
-leave things as they are; a policy change *is* required if either client gains encryption, and
-the wording must not overstate what it buys (see the threat model below).
+`PRIVACY_POLICY.md` states platform encryption accurately — SQLCipher for Android notes,
+AES-GCM attachments on Android and Desktop, Web/Desktop notes DB limits, and no E2E claim for
+cloud sync. Update that file whenever a client gains or loses encryption.
 
 ## Android attachment bytes — implemented (AES-GCM + Keystore)
 
@@ -30,8 +31,7 @@ the wording must not overstate what it buys (see the threat model below).
 SQLCipher encrypts the Room database only. Attachment image bytes under
 `files/attachments/` and staged pending bytes under `files/pending-attachments/` are sealed
 separately by `AndroidAttachmentBytesProtector` (AES-GCM, dedicated Keystore alias
-`notelikeus_attachment_aes`). Desktop and Web attachment files remain plaintext at the OS /
-profile boundary.
+`notelikeus_attachment_aes`). Web attachment files remain plaintext at the profile boundary.
 
 ### On-disk format
 
@@ -46,13 +46,27 @@ plaintext files are sealed via temp+rename after a decrypt round-trip check; fai
 to a quarantine sibling directory and never deleted silently. Already-sealed files are skipped.
 Read paths still accept legacy plaintext so an interrupted migration cannot strand the library.
 
-### Desktop / Windows threat model (do not copy Keystore design)
+## Desktop attachment bytes — implemented (AES-GCM + DPAPI-sealed key)
 
-Desktop has no Android Keystore. DPAPI-sealed per-file keys are possible but inherit the same
-same-user malware limits documented for the database proposal. Prefer one coherent "local
-secrets" design for DB + attachments rather than bolting Keystore-shaped code onto Windows.
-Staging and `file:` attachment bytes on Desktop stay plaintext for now
-(`NoopAttachmentBytesProtector`).
+### Boundary
+
+Same on-disk `NLA1` format and AAD rules as Android (`AttachmentBytesCodec` in shared `jvmMain`).
+`DesktopAttachmentBytesProtector` holds a random AES-256 key in `~/.notelikeus/attachment-aes.key`,
+wrapped with DPAPI under dedicated entropy (`com.aus.notelikeus/attachment-key/v1`) — never the
+session-token entropy. Per-file DPAPI is intentionally not used.
+
+### Migration and dual-read
+
+Desktop Koin mirrors Android: migrate `~/.notelikeus/attachments` and
+`pending-attachments` on first attachment-graph resolve, then seal all new writes. Reads still
+accept legacy plaintext. A DPAPI unwrap failure on an existing key file does **not** mint a
+replacement key (that would orphan sealed files).
+
+### Threat model (honest limits)
+
+DPAPI binds the key to the Windows user account. It helps against offline disk copies and other
+local accounts; it does **not** stop malware running as that user. The notes database remains
+plaintext until a separate SQLCipher/Desktop driver project lands.
 
 ## Windows: SQLCipher + a DPAPI-protected random key
 
@@ -84,8 +98,8 @@ This is where the honest limits are, and they are large:
   database is decrypted.
 - **Cloud data.** Synced notes live in Supabase and R2 under server-side controls; local
   encryption says nothing about them.
-- **Attachment staging.** `pending-attachments/<ownerId>/<attachmentId>` files are written
-  outside the database and would stay plaintext unless separately handled.
+- **Attachment staging.** Attachment and pending-staging files under `~/.notelikeus/` are
+  sealed separately (`DesktopAttachmentBytesProtector`); this section is about the notes DB only.
 - **Backups the user exports.** JSON export is deliberately plaintext and stays that way.
 
 In short it converts "anyone who gets the file gets the notes" into "anyone who gets the file
@@ -195,6 +209,6 @@ preferable to shipping encryption that reads stronger than it is.
 | | Android | Windows | Web |
 |---|---|---|---|
 | Notes DB today | SQLCipher + Keystore | Plaintext DB, DPAPI-sealed session token | Plaintext IndexedDB |
-| Attachment files today | AES-GCM + dedicated Keystore alias | Plaintext under profile permissions | Plaintext IndexedDB blobs |
-| Proposed next | no change | SQLCipher + DPAPI-sealed random key (and then attachments) | no change for now |
+| Attachment files today | AES-GCM + dedicated Keystore alias | AES-GCM + DPAPI-sealed key file | Plaintext IndexedDB blobs |
+| Proposed next | no change | SQLCipher + DPAPI-sealed random key for the notes DB | no change for now |
 | Blocker | — | no JVM encrypted-SQLite driver in the current Room stack; guest-mode key-loss trade | protects the profile at rest only; not an XSS control |

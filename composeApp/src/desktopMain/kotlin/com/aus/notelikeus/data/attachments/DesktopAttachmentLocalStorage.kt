@@ -3,17 +3,29 @@ package com.aus.notelikeus.data.attachments
 import java.io.File
 import java.util.UUID
 
-class DesktopAttachmentLocalStorage : AttachmentLocalStorage {
+class DesktopAttachmentLocalStorage(
+    private val protector: AttachmentBytesProtector = NoopAttachmentBytesProtector,
+    private val homeDir: File = File(System.getProperty("user.home")),
+) : AttachmentLocalStorage {
     private val attachmentsDir: File
-        get() = File(System.getProperty("user.home"), ".notelikeus/attachments").also { it.mkdirs() }
+        get() = File(homeDir, ".notelikeus/attachments").also { it.mkdirs() }
 
     override fun persistImageBytes(bytes: ByteArray, extension: String): String? {
         val safeExtension = extension.ifBlank { "jpg" }
         val destFile = File(attachmentsDir, "${UUID.randomUUID()}.$safeExtension")
+        val tempFile = File(attachmentsDir, "${destFile.name}.tmp")
         return try {
-            destFile.writeBytes(bytes)
+            val aad = destFile.name.toByteArray(Charsets.UTF_8)
+            val sealed = protector.seal(bytes, aad)
+            tempFile.writeBytes(sealed)
+            if (destFile.exists()) destFile.delete()
+            if (!tempFile.renameTo(destFile)) {
+                destFile.writeBytes(sealed)
+                tempFile.delete()
+            }
             fileStoragePath(destFile.absolutePath)
         } catch (_: Exception) {
+            tempFile.delete()
             destFile.delete()
             null
         }
@@ -22,7 +34,9 @@ class DesktopAttachmentLocalStorage : AttachmentLocalStorage {
     override fun readBytes(storagePath: String): ByteArray? {
         val file = resolveContainedFile(storagePath) ?: return null
         if (!file.exists()) return null
-        return runCatching { file.readBytes() }.getOrNull()
+        val raw = runCatching { file.readBytes() }.getOrNull() ?: return null
+        val aad = file.name.toByteArray(Charsets.UTF_8)
+        return protector.open(raw, aad)
     }
 
     override fun exists(storagePath: String): Boolean? {
