@@ -167,6 +167,8 @@ export async function collectDiagnostics(
       stagedBytes: staged.bytes,
       pendingUploadCount: pendingUploads,
       unresolvedCleanupCount: Math.max(0, staged.count - pendingUploads),
+      // Pending IndexedDB blobs are AES-GCM sealed (NLA1). Notes remain plaintext at rest.
+      encryptedAtRest: true,
     },
     serviceWorker,
   };
