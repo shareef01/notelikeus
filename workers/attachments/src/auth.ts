@@ -7,7 +7,7 @@ export interface WorkerEnv {
    * still use the caller's bearer + anon key.
    */
   SUPABASE_SERVICE_ROLE_KEY?: string;
-  /** Comma-separated extra Origins (beyond localhost and notelikeus-dev.pages.dev). */
+  /** Comma-separated extra Origins (beyond localhost and notelikeus[.pages.dev] projects). */
   ALLOWED_ORIGINS?: string;
   /**
    * Optional Cloudflare rate-limiting binding. Cloudflare counts these at the edge rather than

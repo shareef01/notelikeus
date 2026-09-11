@@ -9,7 +9,14 @@ function extraOriginsFromEnv(allowedOrigins: string | undefined): string[] {
     .filter((origin) => origin.length > 0);
 }
 
-const PAGES_PROJECT_HOST = 'notelikeus-dev.pages.dev';
+/** Production + staging Pages projects (preview subdomains included). */
+const PAGES_PROJECT_HOSTS = ['notelikeus.pages.dev', 'notelikeus-dev.pages.dev'] as const;
+
+function isPagesProjectHost(host: string): boolean {
+  return PAGES_PROJECT_HOSTS.some(
+    (projectHost) => host === projectHost || host.endsWith(`.${projectHost}`),
+  );
+}
 
 export function isAllowedAttachmentOrigin(
   origin: string,
@@ -21,10 +28,7 @@ export function isAllowedAttachmentOrigin(
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
     const host = url.hostname.toLowerCase();
     if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
-    if (
-      url.protocol === 'https:' &&
-      (host === PAGES_PROJECT_HOST || host.endsWith(`.${PAGES_PROJECT_HOST}`))
-    ) {
+    if (url.protocol === 'https:' && isPagesProjectHost(host)) {
       return true;
     }
     return extraOriginsFromEnv(allowedOrigins).includes(origin);
