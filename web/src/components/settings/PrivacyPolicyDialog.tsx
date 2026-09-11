@@ -8,13 +8,13 @@ Summary
 • Offline-first by default: On Android, Windows, and Web, notes are stored locally on your device. You can use the full application without creating an account.
 • Optional cloud sync: When you sign in, note text, checklists, and metadata sync to Supabase (PostgreSQL) under your user account. Attachment files may be stored in Cloudflare R2.
 • Local data isolation: Signing out clears locally cached notes from the active session so a subsequent user cannot inherit your data.
-• Encryption: Android local databases are encrypted at rest with SQLCipher backed by Android Keystore. Attachment image files and staged pending bytes on Android are encrypted with AES-GCM under a dedicated Android Keystore key. On Windows Desktop, attachment files are sealed with AES-GCM under a DPAPI-protected key; the Desktop notes database remains plaintext at the app layer. Web attachment blobs rely on browser profile permissions.
+• Encryption: Android local databases are encrypted at rest with SQLCipher backed by Android Keystore. Attachment image files and staged pending bytes on Android are encrypted with AES-GCM under a dedicated Android Keystore key. On Windows Desktop, the notes database is encrypted at rest with SQLCipher under a DPAPI-sealed passphrase; attachment files are sealed with AES-GCM under a separate DPAPI-protected key. On Web, staged pending attachment blobs in IndexedDB are sealed with AES-GCM under a non-extractable WebCrypto key (profile-at-rest only; not an XSS mitigation). Note bodies in Web IndexedDB remain plaintext at the app layer.
 • Synced cloud notes are not end-to-end encrypted by the app; they rely on TLS plus Supabase Auth, row-level security, and Worker authorization for attachments.
 • Diagnostics stay local: an optional sync-diagnostics report shows counts and version numbers, never note content or credentials, and is never transmitted.
 • The app does not include third-party tracking, analytics, or advertising SDKs.
 
 Information stored on your device
-• Android & Windows Desktop: Note titles, body text, colors, checklists, labels, and reminder timestamps in a local database (encrypted on Android). Local app preferences (theme, view mode, app lock status).
+• Android & Windows Desktop: Note titles, body text, colors, checklists, labels, and reminder timestamps in a local database (encrypted at rest with SQLCipher on Android and Windows Desktop). Local app preferences (theme, view mode, app lock status).
 • Web: Note content, checklists, labels, and preferences stored in local browser storage (IndexedDB / localStorage). Operates fully as a guest / local-first PWA without requiring sign-in.
 
 Cloud sync (optional)
@@ -22,8 +22,8 @@ When you choose to sign in and use sync, note content is stored in Supabase unde
 
 Security
 • Android: SQLCipher-encrypted Room database; attachment bytes sealed with AES-GCM under Android Keystore. Optional app-wide lock uses device biometric APIs.
-• Windows Desktop: Notes database plaintext at the app layer; attachment bytes sealed with AES-GCM under a DPAPI-protected key. Session token file is also DPAPI-sealed.
-• Web: Local storage bound to browser profile permissions; attachment blobs are not app-encrypted at the file layer.
+• Windows Desktop: Notes database encrypted at rest with SQLCipher under a DPAPI-sealed passphrase; attachment bytes sealed with AES-GCM under a separate DPAPI-protected key. Session token file is also DPAPI-sealed. Key loss without a cloud account makes the local database unrecoverable — signed-in users re-sync; guests should keep a JSON / .nlkbak export.
+• Web: Local note storage bound to browser profile permissions and not app-encrypted at rest. Staged pending attachment blobs in IndexedDB are sealed with AES-GCM under a non-extractable WebCrypto key (profile-at-rest only; not an XSS control).
 • Cloud security: PostgreSQL row-level security and authorized RPCs restrict read and write operations to the authenticated owner.
 
 Permissions
