@@ -95,7 +95,7 @@ describe('assertNoSensitiveValues', () => {
       schemaVersion: 1,
       generatedAt: 1767225600000,
       app: { version: '1.0.3', platform: 'web' },
-      storage: { kind: 'IndexedDB', schemaVersion: 2, available: true, encryptedAtRest: false },
+      storage: { kind: 'IndexedDB', schemaVersion: 2, available: true, encryptedAtRest: true },
       account: { state: 'signed-in', ownerTag: 'acct-deadbeef' },
       notes: {
         total: 3,
@@ -184,7 +184,7 @@ describe('collectDiagnostics', () => {
     expect(report.account.ownerTag).toBe('guest');
     expect(report.attachments.pendingUploadCount).toBe(1);
     expect(report.attachments.encryptedAtRest).toBe(true);
-    expect(report.storage.encryptedAtRest).toBe(false);
+    expect(report.storage.encryptedAtRest).toBe(true);
 
     for (const secret of ['Divorce', 'paperwork', 'sensitive body', 'Medical', 'att-one']) {
       expect(text, `report must not contain ${secret}`).not.toContain(secret);
