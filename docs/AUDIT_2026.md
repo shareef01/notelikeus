@@ -272,7 +272,7 @@ not spend the same time.
 | **CI secret exposure on pull requests** | **Safe.** No `pull_request_target` anywhere. Every workflow declares `permissions: contents: read` at the top. Deploy jobs are gated on `github.event_name == 'push'` or `workflow_dispatch`. The Pages `verify` job builds with placeholder credentials specifically so PRs never need secrets — and a comment says so, and says the resulting artifact must never be deployed. |
 | **Unpinned GitHub Actions** | **Safe.** Every `uses:` is pinned to a full commit SHA with the version in a trailing comment. |
 | **Worker trusting a returned `object_key`** | **Safe.** All four call sites compare the RPC's `object_key` against the locally derived key and 403 on mismatch. The key is derived from the *authenticated* user id, never from input. |
-| **Attachment delete/PUT race (F46, F52 follow-up)** | **Fixed at HEAD.** The claim-first ordering, the `delete_claimed_at` / `purge_claimed_at` terminal markers, the CHECK constraint making it structural, and the `terminally_deleted` value-not-exception are all present and covered by pgTAP. |
+| **Attachment delete/PUT race (F46, F52 follow-up)** | **Fixed at HEAD.** The claim-first ordering, the `delete_claimed_at` / `purge_claimed_at` terminal markers, the CHECK constraint making it structural, and the `terminally_deleted` value-not-exception are all present and covered by pgTAP, including ordered interleavings in `notelikeus_attachment_delete_concurrency.test.sql`. |
 | **Web `syncNoteAttachments` releasing staged bytes before the note is persisted** | **Safe, though weaker than Kotlin's.** The release happens after R2 has the bytes *and* `finalize_note_attachment_put` committed, so the metadata row exists and `hydrateNotesWithAttachments` restores the reference on the next pull. Kotlin's `confirmCommittedAttachments` is stricter (it waits for the note revision), but the web path is recoverable rather than lossy. Not changed. |
 | **`applyRemotePageAtomically` dropping a stale page silently** | **Correct by design.** `page.lastRemoteRevision < currentCursor` means the page is behind the durable cursor; applying it would move state backwards. |
 | **Attachment `pending:`/`r2:` prefix handling across clients** | **Consistent.** Same prefixes, same semantics, same staging-before-reference invariant on all three. |
@@ -560,32 +560,25 @@ before merging, because that is the standing rule and not because anything here 
 
 Prioritised by user value × risk reduction. Each is scoped, not a gesture.
 
-### 1. Kotlin archive I/O, completing the bundle across all three clients
+### 1. Kotlin archive I/O, completing the bundle across all three clients — **DONE**
 
-**Why first.** Android is where the photos are. A user's images are the part of their library that
-cannot be retyped, and the platform most likely to be lost or replaced is the one that currently
-cannot export them.
-
-**Scope.** Decide was already taken: shared `jvmMain` (Android + Desktop) hosts `java.util.zip`.
-Port `buildBackupBundle` / `parseBackupBundle`, then wire SAF / file-chooser and
-`AttachmentStagingStore` for bytes. The contract fixture and the manifest DTO already exist.
+Landed as F60: shared `jvmMain` codec (`BackupBundleCodec`) plus Android SAF / Desktop chooser
+wiring (`BackupBundleTransfer`). See [`FINDINGS.md`](FINDINGS.md) F60 and PRs #200 / #201.
 
 ### 2. Make `fetchNotes` on Kotlin as untrusting as the web snapshot is — **DONE**
 
 Landed in `67080b3c` (`IncompleteCloudSnapshotException` + `authoritativeNoteCount`). See
 [`FINDINGS.md`](FINDINGS.md) F59.
 
-### 3. A pgTAP concurrency pass over `restore_note` versus attachment deletion
+### 3. A pgTAP concurrency pass over `restore_note` versus attachment deletion — **IN PROGRESS**
 
 **Why.** The attachment lifecycle's interleavings were fixed the hard way — F46 and F52 were both
 found by follow-up review, not by tests, and both were high severity. The existing pgTAP suite
-covers each operation and the sequential orderings. What it does not cover is two **concurrent**
-sessions: F52's reproduction did that by hand, in two real sessions, and found a case the
-sequential tests missed.
+covers each operation and the sequential orderings. What it does not cover is the race *windows*
+those bugs sat in: claim visible before restore, claim visible before finalize of the same identity.
 
-**Scope.** A pgTAP file using two connections (`pg_background` or `dblink`, whichever the local
-Supabase image carries) that interleaves `begin_note_attachment_delete` against
-`finalize_note_attachment_put` and against `restore_note`, asserting the CHECK-constraint invariant
-holds at every interleaving: *no live row ever carries a claim*. That invariant is already
-structural in the schema; this proves no ordering can reach a state where it must be enforced by
-rollback rather than by design.
+**Scope (adjusted).** True two-connection concurrency needs `dblink`/`pg_background` and
+*committed* fixtures — pgTAP's outer `begin`/`rollback` hides uncommitted rows from a second
+session. The landed approach is a dedicated file of **ordered interleavings** that recreate those
+windows on one connection and assert the CHECK invariant (`no live row carries a claim`) after
+every step: `supabase/tests/database/notelikeus_attachment_delete_concurrency.test.sql`.
