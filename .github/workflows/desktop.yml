@@ -48,6 +48,34 @@ jobs:
       - name: Run desktop tests
         run: ./gradlew :composeApp:desktopTest --stacktrace
 
+  # Linux CI uses IdentitySecureBlobStore stand-ins and keeps BundledSQLiteDriver by default.
+  # Windows is where Crypt32 DPAPI and the JDBC SQLCipher default actually ship — exercise them.
+  windows-crypto:
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Cache Gradle
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Run desktop tests (real DPAPI + Windows SQLCipher default)
+        run: ./gradlew.bat :composeApp:desktopTest --stacktrace
+
   # The jobs above run against the full JDK, where every module is on hand. The MSI does not:
   # jlink builds its runtime from the `modules` list in composeApp/build.gradle.kts, and anything
   # missing there fails only once the app is installed. That is how the packaged build lost
