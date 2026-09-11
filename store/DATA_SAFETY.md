@@ -42,7 +42,7 @@ Attachments are a build-time capability: they exist only when the build is confi
 
 | Practice | Answer |
 |----------|--------|
-| Data encrypted at rest on device | **Yes** (SQLCipher, key wrapped by the Android Keystore) |
+| Data encrypted at rest on device | **Yes** — notes DB via SQLCipher (Keystore-wrapped passphrase); attachment image files and pending staging via AES-GCM under a dedicated Keystore alias |
 | Data encrypted in transit | **Yes** (HTTPS/TLS to Supabase and the attachments Worker) |
 | Users can request data deletion | **Yes** (delete notes / sign out and delete cloud data / uninstall) |
 
@@ -61,8 +61,8 @@ same way the privacy policy does — do not claim E2E encryption.
 
 `android:allowBackup="false"`, so Android cloud backup and adb backup capture nothing. The backup
 rule files stay wired to encode the exclusions that must hold if backup is ever enabled — the
-SQLCipher database and the Keystore-wrapped passphrase must never leave the device together. Users
-may export JSON backups manually.
+SQLCipher database, the Keystore-wrapped DB passphrase, and the dedicated attachment Keystore key
+must never leave the device together. Users may export JSON backups manually.
 
 ## Privacy policy URL
 
