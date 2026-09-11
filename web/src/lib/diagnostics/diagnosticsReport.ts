@@ -75,6 +75,8 @@ export interface DiagnosticsReport {
     stagedBytes: number;
     pendingUploadCount: number;
     unresolvedCleanupCount: number;
+    /** Whether staged pending blobs are sealed by the app (profile-at-rest only). */
+    encryptedAtRest: boolean;
   };
   serviceWorker: { state: ServiceWorkerState; updateAvailable: boolean };
 }

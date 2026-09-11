@@ -597,10 +597,10 @@ for Windows** (`DesktopSqliteFlags.useJdbcSqlite()` → `isWindows()`). Linux/ma
 `BundledSQLiteDriver`. Opt out with `notelikeus.desktop.jdbcSqlite=false`. See
 [`LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md) and D25.
 
-### 3. Web attachment sealing (honest threat model)
+### 3. Web attachment sealing (honest threat model) — **DONE**
 
 **Why.** Closes the last client gap for attachment bytes at rest. Must **not** be marketed as an
 XSS mitigation — browser JS can always unwrap a key it can use.
 
-**Scope.** WebCrypto AES-GCM for IndexedDB pending blobs + dual-read migration; privacy copy
-updates. Prefer after Desktop DB encryption so the three-client story stays coherent.
+**Landed.** WebCrypto AES-GCM (`NLA1`) for IndexedDB pending blobs + dual-read migration;
+privacy / diagnostics / LOCAL_ENCRYPTION copy updated for profile-at-rest only.
