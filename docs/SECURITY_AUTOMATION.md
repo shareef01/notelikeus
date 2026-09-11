@@ -24,7 +24,8 @@ Open [Code security and analysis](https://github.com/shareef01/notelikeus/settin
 
 ## Deferred
 
-- Zone-level Worker abuse controls remain account/ops configuration (F50).
+- Zone-level Worker abuse controls (F50) — not expressible as source; operator checklist in
+  [`CLOUDFLARE_ZONE_CONTROLS.md`](CLOUDFLARE_ZONE_CONTROLS.md).
 
 ## Gradle dependency verification
 
