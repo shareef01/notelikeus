@@ -3,10 +3,10 @@ package com.aus.notelikeus.data.local
 /**
  * Feature flags for Desktop notes-DB driver selection.
  *
- * Default remains [androidx.sqlite.driver.bundled.BundledSQLiteDriver] (plaintext, current format).
+ * Default remains [androidx.sqlite.driver.bundled.BundledSQLiteDriver] (plaintext).
  * Set `notelikeus.desktop.jdbcSqlite=true` (system property) or `NOTELIKEUS_DESKTOP_JDBC_SQLITE=true`
- * to open Room through [JdbcSQLiteDriver] — still **without** a passphrase — so the JDBC path can
- * be exercised before encryption/migration lands.
+ * to migrate the Room file to SQLCipher (v4) and open it through [JdbcSQLiteDriver] with the
+ * DPAPI-sealed passphrase from [DesktopDatabaseKeyManager].
  */
 object DesktopSqliteFlags {
     fun useJdbcSqlite(): Boolean =
