@@ -22,7 +22,7 @@ on:
         default: notelikeus-attachments-dev
         type: string
       allowed_origins:
-        description: 'Extra CORS origins, comma-separated. localhost and notelikeus-dev.pages.dev are always allowed; a custom domain must be listed here.'
+        description: 'Extra CORS origins, comma-separated. localhost and notelikeus[.pages.dev] projects are always allowed; a custom domain must be listed here.'
         required: false
         default: ''
         type: string

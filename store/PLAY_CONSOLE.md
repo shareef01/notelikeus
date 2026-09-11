@@ -7,7 +7,7 @@ Copy these values into Google Play Console when creating the listing.
 | **App name** | See `listing/en-US/title.txt` |
 | **Package name** | `com.aus.notelikeus` |
 | **Category** | Productivity |
-| **Privacy policy URL** | https://notelikeus-dev.pages.dev/privacy.html |
+| **Privacy policy URL** | https://notelikeus.pages.dev/privacy.html |
 | **Default language** | English (United States) |
 
 ## Listing text

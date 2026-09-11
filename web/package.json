@@ -17,7 +17,7 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "deploy:pages": "npm run lint && npm test && npm run build && npx wrangler pages deploy dist --project-name=notelikeus-dev",
+    "deploy:pages": "npm run lint && npm test && npm run build && npx wrangler pages deploy dist --project-name=notelikeus --branch=main",
     "test:e2e": "node scripts/assertLocalSupabaseE2e.mjs && npm run e2e:run",
     "e2e:run": "vite build --mode e2e --outDir dist-e2e && playwright test",
     "verify:pages": "node scripts/verifyPagesArtifacts.mjs"
