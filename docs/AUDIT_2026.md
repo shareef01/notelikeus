@@ -499,17 +499,16 @@ Everything not verified in this environment, with the exact command to run it.
 | **Bundle import in a real browser** | `fake-indexeddb` and happy-dom back the tests; `DecompressionStream` and real `Blob`/`File` behaviour are not exercised | Manual, or a new e2e spec |
 | **Private/incognito quota behaviour** | Not modelled | Manual |
 | **Production Supabase, Cloudflare zone config** | Owner-operated | See `BACKEND_ARCHITECTURE.md` |
-| **Web note bodies in IndexedDB** | Still plaintext at the app layer (F51 residual). Attachment pending blobs and Desktop/Android DBs are encrypted — see §9 | — |
+| **Web note bodies in IndexedDB** | Sealed (`NLN1`) — see §9 / F51 | — |
 
 ### On Phase 8 (desktop/web encryption at rest)
 
-**Largely landed after the audit.** Desktop notes DB SQLCipher + DPAPI (Windows default) and Web
-pending-attachment sealing shipped in PRs #205–#210; see §9 and
+**Landed after the audit.** Desktop notes DB SQLCipher + DPAPI (Windows default), Web pending
+attachments, and Web note-body sealing shipped in PRs #205–#213; see §9 and
 [`LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md).
 
-**Still open by design:** Web **note** records in IndexedDB remain plaintext at the app layer
-(F51). Browser-side encryption must **not** be described as an XSS mitigation — that limit stands.
-Guest-mode key-loss for Desktop encryption was accepted in D25.
+Browser-side encryption must **not** be described as an XSS mitigation — that limit stands.
+Guest-mode key-loss for Desktop encryption was accepted in D25. Cloud sync is still not E2E.
 
 ---
 
@@ -600,6 +599,5 @@ privacy / diagnostics / LOCAL_ENCRYPTION copy updated for profile-at-rest only.
 ### Residuals (not in §9 scope)
 
 - **F50** — zone-level Worker abuse controls (Cloudflare account/ops; not in-repo).
-- **F51 remainder** — Web note bodies in IndexedDB (product decision; not an XSS control if added).
 - True two-session pgTAP for attachment delete races — ordered interleavings + CHECK already cover
   the windows that mattered; `dblink` would fight the suite’s outer transaction.
