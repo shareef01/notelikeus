@@ -584,15 +584,11 @@ concurrency still needs committed fixtures plus `dblink`/`pg_background`; pgTAP'
 
 The original three in §8 are done. Next priorities by risk × feasibility:
 
-### 1. Gradle dependency verification (`verification-metadata.xml`) — **IN PROGRESS**
+### 1. Gradle dependency verification (`verification-metadata.xml`) — **DONE**
 
-**Why.** Supply-chain integrity for the Android/Desktop graph is still trust-on-first-use from
-Maven Central / Google. Dependency-review catches known advisories on PRs; checksum pinning
-catches substitution.
-
-**Scope.** Generate `gradle/verification-metadata.xml` (sha256), document regenerate-on-bump in
-[`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md). Expect CI churn on plugin bumps — that is the
-cost of the control.
+Landed in PR #203: `gradle/verification-metadata.xml` (sha256 pins), regenerate-on-bump documented
+in [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md). Linux CI platform artifacts (`aapt2`,
+Skiko, Compose JDK probe, plugin BOM parents) are pinned alongside Windows generation.
 
 ### 2. Desktop notes DB SQLCipher + DPAPI key
 
