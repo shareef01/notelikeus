@@ -3,8 +3,8 @@ package com.aus.notelikeus.data.attachments
 /**
  * Seals attachment bytes before they hit disk and opens them on read.
  *
- * Desktop and tests use [NoopAttachmentBytesProtector]. Android supplies an AES-GCM
- * implementation backed by a dedicated Keystore key.
+ * Tests use [NoopAttachmentBytesProtector] or a software-key double. Android supplies AES-GCM
+ * backed by a dedicated Keystore key; Desktop supplies AES-GCM under a DPAPI-sealed key file.
  */
 interface AttachmentBytesProtector {
     /** Whether [payload] looks like a sealed attachment blob (magic prefix). */
@@ -20,7 +20,7 @@ interface AttachmentBytesProtector {
     fun open(payload: ByteArray, aad: ByteArray): ByteArray?
 }
 
-/** Identity protector — Desktop / tests / builds without a Keystore. */
+/** Identity protector — tests and builds without a platform seal. */
 object NoopAttachmentBytesProtector : AttachmentBytesProtector {
     override fun looksSealed(payload: ByteArray): Boolean = false
 

@@ -147,7 +147,13 @@ kotlin {
             }
         }
         
+        // Shared JVM code for Android + Desktop (AES-GCM attachment codec / migrator).
+        val jvmMain by creating {
+            dependsOn(commonMain)
+        }
+
         val androidMain by getting {
+            dependsOn(jvmMain)
             dependencies {
                 implementation(libs.androidx.activity.compose)
                 implementation(libs.androidx.core.ktx)
@@ -198,6 +204,7 @@ kotlin {
         }
         
         val desktopMain by getting {
+            dependsOn(jvmMain)
             kotlin.srcDir(generateDesktopSecrets)
             dependencies {
                 implementation(compose.desktop.currentOs)
