@@ -1127,19 +1127,17 @@ repository. Deployments that want them must set them there.
 
 ---
 
-## F51 — Windows and Web store notes unencrypted at rest — **DESIGN / PRODUCT DECISION**
+## F51 — Windows and Web store notes unencrypted at rest — **PARTIALLY FIXED**
 
 Android encrypts its Room database with SQLCipher under an AndroidKeyStore-sealed passphrase.
-Windows uses `BundledSQLiteDriver` against a plaintext file (only the Supabase session token is
-DPAPI-sealed), and Web stores plain records in IndexedDB. `PRIVACY_POLICY.md` already describes
-this accurately.
+**Windows Desktop** now does too by default: SQLCipher v4 via Willena `sqlite-jdbc`, passphrase in
+`~/.notelikeus/notes-db.key` sealed with DPAPI (`DesktopDatabaseKeyManager`), one-way migration via
+`PRAGMA rekey`. Opt out with `notelikeus.desktop.jdbcSqlite=false`. Linux/mac Desktop builds keep
+`BundledSQLiteDriver` (no DPAPI). See [`docs/LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md)
+and D25.
 
-Not implemented here, deliberately: the desktop Room stack has no JVM-capable encrypted SQLite
-driver to swap in, so it would mean a new native dependency plus a custom Room KMP driver, a
-Windows CI job, and a decision about guest-mode users for whom key loss is unrecoverable data
-loss. The full threat model, migration plan, recovery/backup/key-loss implications, and testing
-requirements are in [`docs/LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md), which also
-records why browser-side encryption must not be described as an XSS mitigation.
+**Still open:** Web stores plain records in IndexedDB. Browser-side encryption must **not** be
+described as an XSS mitigation — that threat model and the remaining work are in the same doc.
 
 ---
 
