@@ -36,19 +36,19 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 | Image attachments | ✓ | ✓ | ✓ |
 | Theme, accent, pure black | ✓ | ✓ | ✓ |
 | Reminders, with presets and an exact date & time | Notifications | Tray, while the app runs | Service worker |
-| Encrypted local database | SQLCipher | — | — |
+| Encrypted local database | SQLCipher | SQLCipher (DPAPI key) | — |
 | Biometric app lock | ✓ | — | — |
 | Home-screen widget | Glance | — | — |
 | Google sign-in and cloud sync | Optional | Optional | Optional |
 | Usable with no account | ✓ | ✓ | ✓ |
 | JSON backup import / export | ✓ | ✓ | ✓ |
-| Backup with attachment bytes (`.nlkbak`) | Import notes only | Import notes only | ✓ |
+| Backup with attachment bytes (`.nlkbak`) | ✓ | ✓ | ✓ |
 | Sync diagnostics | ✓ | ✓ | ✓ |
 | Installable PWA | — | — | ✓ |
 
 ## How it works
 
-Notes are stored on the device. Android and Windows use Room; on Android the database is encrypted with SQLCipher under a key held in the Android Keystore. The web client keeps notes in IndexedDB, for guests and signed-in users alike. Nothing about the app requires an account.
+Notes are stored on the device. Android and Windows use Room with SQLCipher: Android seals the passphrase in the Android Keystore; Windows seals it with DPAPI. Attachment image bytes are AES-GCM sealed on both. The web client keeps note bodies in IndexedDB (plaintext at the app layer) and seals staged pending attachment blobs with WebCrypto AES-GCM. Nothing about the app requires an account.
 
 Sync sits above that. When you sign in, notes replicate through Supabase: Postgres RPCs for mutations, Realtime as a wake-up signal, row-level security for isolation.
 
@@ -60,7 +60,7 @@ Saved locally and synced are reported as different things. An edit counts as sav
 
 Attachments are written to durable local storage before the note references them, so a note that points at an image still has the bytes after a restart and the upload can resume. Blobs live in Cloudflare R2 behind a Worker that verifies the Supabase session and derives the object key from the authenticated user. Staged bytes are scoped to the account that created them.
 
-Importing a backup adds its notes as new notes rather than replacing what is on the device, so importing the same file twice gives you two copies. A JSON backup carries note content only. The web client can also export a `.nlkbak` bundle — a plain ZIP holding the same JSON document plus the attachment bytes this device actually has — and import one back, images and all. Android and Windows read the notes out of a bundle's manifest and say how many images they could not restore; exporting one there is not built yet.
+Importing a backup adds its notes as new notes rather than replacing what is on the device, so importing the same file twice gives you two copies. A JSON backup carries note content only. Every client can also export and import a `.nlkbak` bundle — a plain ZIP holding the same JSON document plus the attachment bytes this device actually has. Images that exist only in the cloud are left out and reported as skipped.
 
 Something not syncing has a settings screen for it. Sync diagnostics shows counts, cursors and version numbers — never note text, tokens or your account id — and copying it anywhere is up to you.
 
@@ -70,7 +70,7 @@ Something not syncing has a settings screen for it. Sync diagnostics shows count
 |---|---|---|
 | UI | Compose Multiplatform | React 19, TypeScript, Tailwind |
 | Structure | MVVM with shared repositories | Hooks and Zustand stores |
-| Local data | Room, SQLCipher on Android | IndexedDB |
+| Local data | Room + SQLCipher (Keystore / DPAPI) | IndexedDB (pending attachments sealed) |
 | Cloud | Supabase Auth, Postgres RPC, Realtime | Supabase Auth, Postgres RPC, Realtime |
 | Attachments | Cloudflare Worker and R2 | Cloudflare Worker and R2 |
 | Hosting | MSI installer | Cloudflare Pages |
