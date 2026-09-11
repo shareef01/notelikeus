@@ -594,8 +594,9 @@ Skiko, Compose JDK probe, plugin BOM parents) are pinned alongside Windows gener
 
 Landed across PRs #205–#208: DPAPI key, JDBC driver, `PRAGMA rekey` migration, and **default on
 for Windows** (`DesktopSqliteFlags.useJdbcSqlite()` → `isWindows()`). Linux/mac Desktop CI keeps
-`BundledSQLiteDriver`. Opt out with `notelikeus.desktop.jdbcSqlite=false`. See
-[`LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md) and D25.
+`BundledSQLiteDriver`. Opt out with `notelikeus.desktop.jdbcSqlite=false`. Windows CI job
+`windows-crypto` runs `:composeApp:desktopTest` on `windows-latest` (real Crypt32 DPAPI + JDBC
+default). See [`LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md) and D25.
 
 ### 3. Web attachment sealing (honest threat model) — **DONE**
 
