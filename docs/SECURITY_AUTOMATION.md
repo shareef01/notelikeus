@@ -42,5 +42,9 @@ gradlew.bat --no-configuration-cache --write-verification-metadata sha256 ^
   :androidApp:assembleDebug :androidApp:assembleRelease help
 ```
 
+Then fill any **CI-only platform artifacts** (Linux `aapt2`, `skiko-awt-runtime-linux-*`,
+`desktop-jvm-linux-*`, and usually macOS `aapt2-osx`) by downloading from Google/Maven Central
+and adding `<sha256>` entries — Windows generation alone will not pin them.
+
 Signatures (`verify-signatures`) stay off for now — many Android artifacts are not signed in a
 way Gradle's keyring expects; checksum pinning is the control we want.
