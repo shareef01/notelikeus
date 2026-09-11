@@ -27,6 +27,21 @@ class DesktopSqliteFlagsTest {
             }
         }
     }
+
+    @Test
+    fun defaultFollowsWindowsHostWhenUnset() {
+        val previous = System.getProperty(DesktopSqliteFlags.PROPERTY)
+        try {
+            System.clearProperty(DesktopSqliteFlags.PROPERTY)
+            assertEquals(DesktopSqliteFlags.isWindows(), DesktopSqliteFlags.useJdbcSqlite())
+        } finally {
+            if (previous == null) {
+                System.clearProperty(DesktopSqliteFlags.PROPERTY)
+            } else {
+                System.setProperty(DesktopSqliteFlags.PROPERTY, previous)
+            }
+        }
+    }
 }
 
 class JdbcSQLiteDriverTest {
