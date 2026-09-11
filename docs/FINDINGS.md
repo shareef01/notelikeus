@@ -1136,8 +1136,9 @@ Android encrypts its Room database with SQLCipher under an AndroidKeyStore-seale
 `BundledSQLiteDriver` (no DPAPI). See [`docs/LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md)
 and D25.
 
-**Still open:** Web stores plain records in IndexedDB. Browser-side encryption must **not** be
-described as an XSS mitigation — that threat model and the remaining work are in the same doc.
+**Web notes** remain plaintext in IndexedDB. **Staged pending attachment blobs** on Web are AES-GCM
+sealed under a non-extractable WebCrypto key (profile-at-rest only — not an XSS mitigation).
+`PRIVACY_POLICY.md` describes this accurately.
 
 ---
 
