@@ -1123,7 +1123,8 @@ It fails open by design — throttling is a mitigation, not the authorization bo
 
 **Not fixed, and not fixable here:** zone-level WAF rules, bot management, per-endpoint rate
 limiting, and platform request/CPU limits are configured on the Cloudflare zone, not in this
-repository. Deployments that want them must set them there.
+repository. Deployments that want them must set them there — see the operator checklist in
+[`docs/CLOUDFLARE_ZONE_CONTROLS.md`](CLOUDFLARE_ZONE_CONTROLS.md).
 
 ---
 
