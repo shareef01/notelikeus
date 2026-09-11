@@ -11,6 +11,7 @@ import com.sun.jna.platform.win32.Kernel32
 internal object Dpapi {
     private val sessionEntropy: ByteArray = "com.aus.notelikeus/session/v1".encodeToByteArray()
     val attachmentKeyEntropy: ByteArray = "com.aus.notelikeus/attachment-key/v1".encodeToByteArray()
+    val databaseKeyEntropy: ByteArray = "com.aus.notelikeus/notes-db-key/v1".encodeToByteArray()
 
     fun protect(data: ByteArray): ByteArray =
         cryptProtect(data, sessionEntropy, "Notelikeus session")
