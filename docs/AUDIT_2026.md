@@ -595,10 +595,11 @@ Skiko, Compose JDK probe, plugin BOM parents) are pinned alongside Windows gener
 **Why.** Attachment bytes on Windows are sealed; the Room notes file is still plaintext under
 `~/.notelikeus/`. See [`LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md).
 
-**Slice 1 landed:** `DesktopDatabaseKeyManager` (DPAPI-sealed `notes-db.key`, dedicated entropy).
-**Slice 2 landed:** `JdbcSQLiteDriver` (Willena `sqlite-jdbc`) behind `notelikeus.desktop.jdbcSqlite`
-(default off) — still plaintext, no passphrase. Guest mode encrypts like Android (D25).
-Next: passphrase URI + migration, then default on.
+**Slice 1 landed:** `DesktopDatabaseKeyManager` (DPAPI-sealed `notes-db.key`).
+**Slice 2–3 landed:** `JdbcSQLiteDriver` + `DesktopPlaintextDatabaseMigrator` behind
+`notelikeus.desktop.jdbcSqlite` (default **off**). Flag on → migrate plaintext → SQLCipher v4 and
+open with the DPAPI passphrase. Guest mode encrypts like Android (D25).
+Next: flip the default on and add a Windows CI job for DPAPI + native driver.
 
 ### 3. Web attachment sealing (honest threat model)
 
