@@ -598,6 +598,7 @@ privacy / diagnostics / LOCAL_ENCRYPTION copy updated for profile-at-rest only.
 
 ### Residuals (not in §9 scope)
 
-- **F50** — zone-level Worker abuse controls (Cloudflare account/ops; not in-repo).
+- **F50** — zone-level Worker abuse controls (Cloudflare account/ops; not in-repo). Operator
+  checklist: [`CLOUDFLARE_ZONE_CONTROLS.md`](CLOUDFLARE_ZONE_CONTROLS.md).
 - True two-session pgTAP for attachment delete races — ordered interleavings + CHECK already cover
   the windows that mattered; `dblink` would fight the suite’s outer transaction.
