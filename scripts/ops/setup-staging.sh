@@ -112,7 +112,8 @@ print(anon)
 }
 
 print_manual_steps() {
-  local pages_origin="https://notelikeus-dev.pages.dev"
+  local pages_origin="https://notelikeus.pages.dev"
+  local pages_staging_origin="https://notelikeus-dev.pages.dev"
   cat <<EOF
 
 Manual dashboard steps (agent cannot complete these via CLI):
@@ -126,6 +127,8 @@ Supabase Auth → Providers → Google:
        ${STAGING_WEB_ORIGIN}
        ${pages_origin}/**
        ${pages_origin}
+       ${pages_staging_origin}/**
+       ${pages_staging_origin}
 
 Supabase Auth → URL configuration:
   - Site URL: ${STAGING_WEB_ORIGIN}  (keep localhost for Vite smoke)
@@ -254,7 +257,7 @@ bucket_name = "${R2_BUCKET}"
 
 [vars]
 SUPABASE_URL = "${SUPABASE_URL}"
-# localhost and notelikeus-dev.pages.dev are allowed in worker CORS.
+# localhost and notelikeus[.pages.dev] projects are allowed in worker CORS.
 # A production custom domain must be listed here — wildcard *.pages.dev is not.
 # ALLOWED_ORIGINS = "${STAGING_WEB_ORIGIN}"
 EOF
