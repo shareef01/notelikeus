@@ -21,8 +21,7 @@ class DesktopAttachmentLocalStorageContainmentTest {
     val temp = TemporaryFolder()
 
     private fun storageWithHome(home: File): DesktopAttachmentLocalStorage {
-        System.setProperty("user.home", home.absolutePath)
-        return DesktopAttachmentLocalStorage()
+        return DesktopAttachmentLocalStorage(homeDir = home)
     }
 
     @Test
