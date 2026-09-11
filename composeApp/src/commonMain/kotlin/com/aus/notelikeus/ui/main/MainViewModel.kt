@@ -2,10 +2,13 @@ package com.aus.notelikeus.ui.main
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aus.notelikeus.data.backup.BackupBundleOperations
+import com.aus.notelikeus.data.backup.NoopBackupBundleOperations
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.BackupExportResult
 import com.aus.notelikeus.data.backup.BackupImportResult
 import com.aus.notelikeus.data.backup.NoteBackupImporter
+import com.aus.notelikeus.data.backup.BundleExportOutcome
 import com.aus.notelikeus.domain.diagnostics.DiagnosticsCollector
 import com.aus.notelikeus.domain.diagnostics.formatDiagnosticsReport
 import com.aus.notelikeus.domain.model.AppTheme
@@ -58,6 +61,7 @@ class MainViewModel(
     syncManager: SyncManager,
     private val defaultDispatcher: CoroutineDispatcher,
     private val diagnostics: DiagnosticsCollector? = null,
+    private val bundleOperations: BackupBundleOperations = NoopBackupBundleOperations,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(MainState())
@@ -650,6 +654,14 @@ class MainViewModel(
         }
     }
 
+    suspend fun exportBackupBundle(): Result<BundleExportOutcome> =
+        runCatching { bundleOperations.exportBundle() }
+
+    fun bundleFileName(): String = bundleOperations.bundleFileName()
+
+    fun looksLikeBackupBundle(fileName: String?, head: ByteArray): Boolean =
+        bundleOperations.looksLikeBundle(fileName, head)
+
     /**
      * Opens the diagnostics dialog and collects the report in the background.
      *
@@ -680,18 +692,36 @@ class MainViewModel(
         } catch (e: Exception) {
             BackupImportResult.Error(e)
         }
+        publishImportResult(result)
+        return result
+    }
+
+    suspend fun importBackupBundle(archive: ByteArray): BackupImportResult {
+        val result = try {
+            bundleOperations.importBundle(archive)
+        } catch (e: Exception) {
+            BackupImportResult.Error(e)
+        }
+        publishImportResult(result)
+        return result
+    }
+
+    private fun publishImportResult(result: BackupImportResult) {
         _state.update {
             it.copy(
                 pendingBackupTransferEvent = when (result) {
                     is BackupImportResult.Success ->
-                        BackupTransferEvent.Imported(result.notesImported)
+                        BackupTransferEvent.Imported(
+                            notesImported = result.notesImported,
+                            attachmentsImported = result.attachmentsImported,
+                            attachmentsSkipped = result.attachmentsSkipped,
+                        )
                     is BackupImportResult.InvalidFormat ->
                         BackupTransferEvent.ImportRejected(result.message)
                     else -> BackupTransferEvent.ImportFailed
                 },
             )
         }
-        return result
     }
 
     /**
