@@ -1127,18 +1127,19 @@ repository. Deployments that want them must set them there.
 
 ---
 
-## F51 — Windows and Web store notes unencrypted at rest — **PARTIALLY FIXED**
+## F51 — Windows and Web store notes unencrypted at rest — **FIXED**
 
 Android encrypts its Room database with SQLCipher under an AndroidKeyStore-sealed passphrase.
-**Windows Desktop** now does too by default: SQLCipher v4 via Willena `sqlite-jdbc`, passphrase in
+**Windows Desktop** does too by default: SQLCipher v4 via Willena `sqlite-jdbc`, passphrase in
 `~/.notelikeus/notes-db.key` sealed with DPAPI (`DesktopDatabaseKeyManager`), one-way migration via
 `PRAGMA rekey`. Opt out with `notelikeus.desktop.jdbcSqlite=false`. Linux/mac Desktop builds keep
 `BundledSQLiteDriver` (no DPAPI). See [`docs/LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md)
 and D25.
 
-**Web notes** remain plaintext in IndexedDB. **Staged pending attachment blobs** on Web are AES-GCM
-sealed under a non-extractable WebCrypto key (profile-at-rest only — not an XSS mitigation).
-`PRIVACY_POLICY.md` describes this accurately.
+**Web** seals note titles, bodies, and checklists in IndexedDB (`NLN1` under a non-extractable
+WebCrypto key) and seals staged pending attachment blobs (`NLA1`, separate key). Profile-at-rest
+only — not an XSS mitigation. `PRIVACY_POLICY.md` describes this accurately. Cloud-synced note
+text remains plaintext on the server by product design (no E2E claim).
 
 ---
 
