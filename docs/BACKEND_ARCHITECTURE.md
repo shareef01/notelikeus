@@ -97,7 +97,9 @@ Both are additive on import — new local ids, and for a bundle, freshly minted 
 
 Export reads only **locally staged** bytes. It never fetches from R2: a backup must work offline, and turning one into a cloud operation would break that. Images that live only in the cloud are reported as skipped.
 
-The format is pinned by `contracts/backup/v4-bundle-manifest.json`. Bundle export/import is implemented on Web; the Kotlin clients read a bundle's manifest (recovering the notes and reporting the image count) and do not yet write one.
+The format is pinned by `contracts/backup/v4-bundle-manifest.json`. Bundle export and import are
+implemented on Web, Android, and Windows Desktop (`BackupBundleCodec` / `BackupBundleTransfer` on
+Kotlin; the web client’s ZIP path). All three read and write the same v4 layout.
 
 ## Diagnostics
 

@@ -132,8 +132,17 @@
 
       <h2>Backups</h2>
       <p>
-        JSON backup export/import is <strong>manual</strong>. Backup files are written to a location
+        Backup export and import are <strong>manual</strong>. Backup files are written to a location
         you choose. You are responsible for securing copied files.
+      </p>
+      <ul>
+        <li><strong>JSON</strong> — note titles, bodies, checklists, labels, colours and reminder times. No images.</li>
+        <li><strong><code>.nlkbak</code></strong> — a plain ZIP holding the same JSON document plus the attachment image bytes stored on that device (Android, Windows Desktop, and Web). Rename it to <code>.zip</code> and you can open it and see exactly what it contains.</li>
+      </ul>
+      <p>
+        Neither format contains sign-in tokens, session data, encryption keys, sync cursors, or your
+        account identifier. An export never contacts the network — images that exist only in the cloud
+        are left out and reported as skipped.
       </p>
 
       <h2>Links in notes</h2>
