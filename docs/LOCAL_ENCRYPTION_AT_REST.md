@@ -1,11 +1,9 @@
-# Local encryption at rest — where it stands, and what it would take
+# Local encryption at rest — where it stands
 
-Written 2026-09-08 after auditing the three clients; updated after Android and Desktop
-attachment AES-GCM landed, Desktop notes-DB SQLCipher (Windows default), Web pending-attachment
-sealing, and Web note-body sealing. Android notes DB and attachment bytes are encrypted at rest.
-Desktop attachment bytes and the Windows notes database are sealed under DPAPI-backed keys. Web
-note titles/bodies/checklists and staged pending attachment blobs are sealed with WebCrypto
-AES-GCM (profile-at-rest only).
+Written 2026-09-08 after auditing the three clients; updated as Android/Desktop attachments,
+Desktop notes-DB SQLCipher (Windows default), Web pending-attachment sealing, and Web note-body
+sealing landed. This document records the threat model and how each client encrypts — not a
+remaining feasibility study.
 
 ## What is true today
 
@@ -122,39 +120,35 @@ In short it converts "anyone who gets the file gets the notes" into "anyone who 
 *and* the account gets the notes". That is a real improvement against device theft and stray
 copies, and no improvement at all against malware.
 
-### Why it is not a small change
+### Why it was not a small change
 
-The desktop target opens Room through `BundledSQLiteDriver` (`androidx.sqlite:sqlite-bundled`,
-wired in `desktopMain/di/PlatformModule.kt`). That driver bundles upstream SQLite, which has no
-encryption extension, and `net.zetetic:sqlcipher-android` is Android-only — there is no JVM
-artifact to swap in. Encrypting the desktop database therefore means:
+The desktop target previously opened Room through `BundledSQLiteDriver`
+(`androidx.sqlite:sqlite-bundled`). That driver bundles upstream SQLite with no encryption
+extension, and `net.zetetic:sqlcipher-android` is Android-only. Encrypting the desktop database
+therefore required:
 
-1. Choosing a JVM-capable encrypted SQLite build (SQLite Multiple Ciphers / `sqlite-jdbc-crypt`,
-   or shipping a self-built SQLCipher native library per architecture).
-2. Writing a Room KMP `SQLiteDriver` for it, because Room 2.8's desktop path expects the
+1. A JVM-capable encrypted SQLite build — Willena `sqlite-jdbc-crypt` (SQLite3 Multiple Ciphers)
+   with `cipher=sqlcipher`.
+2. A custom Room KMP `SQLiteDriver` adapter (`JdbcSQLiteDriver`), because Room expects the
    `androidx.sqlite` driver API, not JDBC.
-3. Shipping and signing that native library inside the MSI/packaged distribution, per
-   architecture, and keeping it current with CVEs.
-4. Owning the Room-vs-SQLite version pairing the repo already flags in
-   `gradle/libs.versions.toml` — a second native SQLite makes that pairing harder, not easier.
+3. Shipping that native library inside the MSI/packaged distribution and keeping the
+   Room-vs-SQLite pairing in `gradle/libs.versions.toml` honest.
+4. One-way plaintext → encrypted migration (`DesktopPlaintextDatabaseMigrator` / `PRAGMA rekey`)
+   with quarantine on failure, plus a Windows CI job (`windows-crypto`) for real Crypt32 DPAPI.
 
-That is a new native dependency in the release artifact plus a custom driver. It is a project, not
-a patch, and it is why this document is a recommendation rather than a diff.
+That work landed behind a flag, then flipped default-on for Windows (opt out with
+`notelikeus.desktop.jdbcSqlite=false`). Linux/mac Desktop CI keep `BundledSQLiteDriver`.
 
-### Migration strategy, if it is adopted
+### Migration (as shipped)
 
-Mirror what Android already does, because that code has been through this once:
+Mirrors Android's precedent:
 
-1. On first launch after the upgrade, generate 32 random bytes, seal with DPAPI, publish the key
-   file **by atomic rename** (Android's `publishByRename` exists because a half-written key file
-   reads as corrupt and orphans the database).
-2. Open the existing plaintext database, `ATTACH` an encrypted target, copy with
-   `sqlcipher_export`, verify row counts, then swap files atomically.
-3. **Quarantine, never delete**, any database that cannot be opened with the current key —
-   `PlaintextDatabaseMigrator` sets that precedent on Android and it is the reason a key mishap
-   there is recoverable.
-4. Keep the migration one-way and idempotent: interrupted at any point, the next launch either
-   finds the plaintext original or the finished encrypted file, never a half-converted one.
+1. On first launch after the upgrade, mint 32 random bytes, seal with DPAPI, publish
+   `~/.notelikeus/notes-db.key` by atomic rename.
+2. Open the existing plaintext database, rekey / export into an encrypted file, verify, then swap.
+3. **Quarantine, never delete**, any database that cannot be opened with the current key.
+4. Migration is one-way and idempotent: interrupted at any point, the next launch finds either the
+   plaintext original or the finished encrypted file.
 
 ### Recovery, backup, and key loss
 
@@ -163,33 +157,20 @@ Mirror what Android already does, because that code has been through this once:
   file to a new machine. Without the key the database is gone.
 - The mitigation is the cloud: a signed-in user re-syncs from Supabase. A guest-mode user has no
   copy anywhere else, so for them encryption converts a recoverable file into an unrecoverable
-  one. That trade is a **product decision**, not an engineering one.
+  one — accepted in D25 (guests encrypt like Android).
 - File-level backup tools (File History, OneDrive, a copied folder) keep working but produce
-  backups that only restore onto the same account. Users must be told this; today a copied
-  `.db` file restores anywhere.
-- The JSON export path becomes the only portable backup, and it is plaintext — so encrypting the
-  database while advertising export as the backup story needs a matching warning.
+  backups that only restore onto the same Windows account. A copied `.db` plus key file is not
+  portable across machines or users.
+- JSON / `.nlkbak` export remains the portable backup path and is deliberately plaintext.
 
-### Testing requirements
+### Testing (as shipped)
 
-- Migration: plaintext → encrypted, with row-count and content equality assertions.
-- Interrupted migration at each step (before the copy, mid-copy, after copy before swap), each
-  resuming cleanly on the next launch.
-- Missing key file, corrupt key file, and a key file DPAPI refuses — each must quarantine rather
-  than delete, and each must be asserted.
-- A database from another Windows account must fail to open, proving the protection is real.
-- Fresh install, upgrade-with-data, and guest-mode paths.
-- The native library must be exercised on every architecture that ships, in CI, on Windows.
-
-Note that Windows-only DPAPI tests cannot run on the Linux CI runners this repo uses today; a
-Windows job is part of the cost.
-
-### Recommendation
-
-Do it **only** alongside a decision about guest-mode data loss, and only with the Windows CI job
-and the migration tests above in place. Ordering: pick the driver, land the driver behind a flag
-with no format change, then the migration, then flip the default. Do not ship the key handling and
-the driver swap in one release.
+- Unit suites cover key mint/reload, unwrap-failure quarantine, JDBC round-trips, and plaintext →
+  encrypted migration on Linux (identity blob store stand-in for DPAPI).
+- `DesktopDpapiWindowsTest` + the `windows-crypto` job on `windows-latest` exercise real Crypt32
+  DPAPI and the Windows JDBC default.
+- Cross-account open failure is implied by DPAPI binding; guest and upgrade paths follow the
+  migrator’s quarantine rules rather than silent delete.
 
 ## Web pending attachments — implemented (AES-GCM + non-extractable WebCrypto key)
 
