@@ -1,9 +1,10 @@
 # Cloudflare Pages scaffold. Copy to wrangler.toml and set account_id after
 # creating a Pages project.
 #
-#   npx wrangler pages project create notelikeus-dev
+#   npx wrangler pages project create notelikeus --production-branch main
 #   cd web && npm run build
-#   npx wrangler pages deploy dist --project-name=notelikeus-dev
+#   npx wrangler pages deploy dist --project-name=notelikeus --branch=main
+# Staging project (optional): notelikeus-dev
 
 name = "notelikeus-web"
 pages_build_output_dir = "../web/dist"
