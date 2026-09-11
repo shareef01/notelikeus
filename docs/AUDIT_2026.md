@@ -587,7 +587,8 @@ The original three in §8 are done. Next priorities by risk × feasibility:
 ### 1. Gradle dependency verification (`verification-metadata.xml`) — **DONE**
 
 Landed in PR #203: `gradle/verification-metadata.xml` (sha256 pins), regenerate-on-bump documented
-in [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md).
+in [`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md). Linux CI platform artifacts (`aapt2`,
+Skiko, Compose JDK probe, plugin BOM parents) are pinned alongside Windows generation.
 
 ### 2. Desktop notes DB SQLCipher + DPAPI key — **IN PROGRESS**
 
