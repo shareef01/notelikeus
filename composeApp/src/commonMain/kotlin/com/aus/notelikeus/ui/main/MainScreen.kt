@@ -67,6 +67,7 @@ fun MainScreen(
     onRequestAppUnlock: (onSuccess: () -> Unit) -> Unit = {},
     onAppLockEnabled: () -> Unit = {},
     onExportBackup: () -> Unit = {},
+    onExportNotesOnly: () -> Unit = {},
     onImportBackup: () -> Unit = {},
     onGoogleSignIn: () -> Unit = {}
 ) {
@@ -129,9 +130,27 @@ fun MainScreen(
         snackbarHostState.showSnackbar(
             when (event) {
                 BackupTransferEvent.Exported -> getString(Res.string.export_success)
+                is BackupTransferEvent.BundleExported -> when {
+                    event.attachmentsSkipped > 0 ->
+                        getString(
+                            Res.string.export_bundle_success_skipped,
+                            event.attachmentsIncluded,
+                            event.attachmentsSkipped,
+                        )
+                    else ->
+                        getString(Res.string.export_bundle_success, event.attachmentsIncluded)
+                }
                 BackupTransferEvent.ExportFailed -> getString(Res.string.export_failed)
                 is BackupTransferEvent.Imported ->
-                    getString(Res.string.import_success, event.notesImported)
+                    if (event.attachmentsImported > 0) {
+                        getString(
+                            Res.string.import_bundle_success,
+                            event.notesImported,
+                            event.attachmentsImported,
+                        )
+                    } else {
+                        getString(Res.string.import_success, event.notesImported)
+                    }
                 BackupTransferEvent.ImportFailed -> getString(Res.string.import_failed)
                 // The parser's own reason is more use than a generic failure: it says whether the
                 // file was too large, too deeply nested, or from a newer build.
@@ -534,6 +553,10 @@ fun MainScreen(
             onExportClick = {
                 showProfileSheet = false
                 onExportBackup()
+            },
+            onExportNotesOnlyClick = {
+                showProfileSheet = false
+                onExportNotesOnly()
             },
             onImportClick = {
                 showProfileSheet = false

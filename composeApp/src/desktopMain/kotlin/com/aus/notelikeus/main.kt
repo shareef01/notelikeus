@@ -28,6 +28,7 @@ import com.aus.notelikeus.di.initKoin
 import com.aus.notelikeus.platform.DesktopBiometricPrompt
 import com.aus.notelikeus.platform.DesktopReminderManager
 import com.aus.notelikeus.data.backup.BackupExportResult
+import com.aus.notelikeus.util.AppLog
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.SidebarCollapsedStore
@@ -229,6 +230,35 @@ private fun launchApp(
             },
             onExportBackup = { viewModel ->
                 coroutineScope.launch(Dispatchers.IO) {
+                    val outcome = viewModel.exportBackupBundle().getOrElse { error ->
+                        AppLog.warn("DesktopBackup", "Building the backup bundle failed", error)
+                        viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
+                        return@launch
+                    }
+                    withContext(Dispatchers.Main) {
+                        val chooser = javax.swing.JFileChooser().apply {
+                            selectedFile = java.io.File(viewModel.bundleFileName())
+                        }
+                        if (chooser.showSaveDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                            val written = runCatching {
+                                chooser.selectedFile.writeBytes(outcome.bytes)
+                            }
+                            viewModel.reportBackupTransfer(
+                                if (written.isSuccess) {
+                                    BackupTransferEvent.BundleExported(
+                                        attachmentsIncluded = outcome.attachmentsIncluded,
+                                        attachmentsSkipped = outcome.attachmentsSkipped,
+                                    )
+                                } else {
+                                    BackupTransferEvent.ExportFailed
+                                },
+                            )
+                        }
+                    }
+                }
+            },
+            onExportNotesOnly = { viewModel ->
+                coroutineScope.launch(Dispatchers.IO) {
                     val result = viewModel.exportBackup()
                     if (result is BackupExportResult.Success) {
                         withContext(Dispatchers.Main) {
@@ -245,6 +275,8 @@ private fun launchApp(
                                 )
                             }
                         }
+                    } else {
+                        viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
                     }
                 }
             },
@@ -254,15 +286,22 @@ private fun launchApp(
                         val chooser = javax.swing.JFileChooser()
                         if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
                             launch(Dispatchers.IO) {
-                                // Reading can fail on its own — an unreadable file, or one large
-                                // enough that holding it as a String is the problem. importBackup
-                                // reports every outcome it reaches, so this only covers the case
-                                // where the text never gets that far.
-                                val json = runCatching { chooser.selectedFile.readText() }.getOrNull()
-                                if (json != null) viewModel.importBackup(json)
-                                else viewModel.reportBackupTransfer(
-                                    BackupTransferEvent.ImportFailed,
-                                )
+                                val file = chooser.selectedFile
+                                val bytes = runCatching { file.readBytes() }.getOrNull()
+                                if (bytes == null) {
+                                    viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
+                                    return@launch
+                                }
+                                val head = bytes.copyOf(minOf(2, bytes.size))
+                                if (viewModel.looksLikeBackupBundle(file.name, head)) {
+                                    viewModel.importBackupBundle(bytes)
+                                } else {
+                                    val json = runCatching { bytes.toString(Charsets.UTF_8) }.getOrNull()
+                                    if (json != null) viewModel.importBackup(json)
+                                    else viewModel.reportBackupTransfer(
+                                        BackupTransferEvent.ImportFailed,
+                                    )
+                                }
                             }
                         }
                     }

@@ -104,22 +104,18 @@ class CrossClientContractTest {
     @Test
     fun importsItsOwnExportIntoTheSharedNormalForm() = runTest {
         val (repository, result) = importFixture("backup/v3-kotlin-export.json")
-        assertEquals(
-            BackupImportResult.Success(notesImported = 3, labelsCreated = 2),
-            result,
-            "Kotlin-exported v3 backup must import cleanly",
-        )
+        val success = result as BackupImportResult.Success
+        assertEquals(3, success.notesImported, "Kotlin-exported v3 backup must import cleanly")
+        assertEquals(2, success.labelsCreated)
         assertEquals(expectedBackupNotes(), repository.insertedNotes.map { it.normalized() })
     }
 
     @Test
     fun importsAWebExportedBackupIntoTheSharedNormalForm() = runTest {
         val (repository, result) = importFixture("backup/v3-web-export.json")
-        assertEquals(
-            BackupImportResult.Success(notesImported = 3, labelsCreated = 2),
-            result,
-            "A backup written by the web client must import on Android and Windows",
-        )
+        val success = result as BackupImportResult.Success
+        assertEquals(3, success.notesImported, "A backup written by the web client must import on Android and Windows")
+        assertEquals(2, success.labelsCreated)
         assertEquals(expectedBackupNotes(), repository.insertedNotes.map { it.normalized() })
     }
 
@@ -220,10 +216,10 @@ class CrossClientContractTest {
     fun aPlainV3BackupIsStillImportedUnwrapped() = runTest {
         // The unwrap step must be invisible to the format that has no wrapper.
         val (repository, result) = importFixture("backup/v3-kotlin-export.json")
-        assertEquals(
-            BackupImportResult.Success(notesImported = 3, labelsCreated = 2, attachmentsSkipped = 0),
-            result,
-        )
+        val success = result as BackupImportResult.Success
+        assertEquals(3, success.notesImported)
+        assertEquals(2, success.labelsCreated)
+        assertEquals(0, success.attachmentsSkipped)
         assertEquals(3, repository.insertedNotes.size)
     }
 
