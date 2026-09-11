@@ -1333,21 +1333,17 @@ the second recommended project in [`AUDIT_2026.md`](AUDIT_2026.md).
 
 ---
 
-## F60 — Bundle export is not implemented on Android or Windows — **DEFERRED, STAGED**
+## F60 — Bundle export is not implemented on Android or Windows — **PARTIALLY FIXED**
 
 The `.nlkbak` backup bundle (notes plus attachment bytes) is implemented end-to-end on the web
-client. The Kotlin clients read a bundle's **manifest** — recovering the notes through the
-unchanged v3 path and reporting how many images they could not restore — but cannot read or write
-the archive itself.
+client. Kotlin clients could already peel a bare `manifest.json` for notes.
 
-`commonMain` has no ZIP reader. `java.util.zip` is available on both JVM targets but not from
-`commonMain`, so this needs either an intermediate `jvmShared` source set (a build change) or an
-`expect`/`actual` pair with duplicated implementations. Both are defensible; neither should be
-decided in the same change as the format, and shipping a second hand-rolled ZIP implementation
-before the format has been exercised in the field would be the wrong order.
+**Codec landed:** shared `jvmMain` now hosts `BackupBundleCodec` / `BackupBundleLimits` using
+`java.util.zip`, matching the web format limits (stored write, selective id-keyed media, checksum
+drops). Desktop unit tests cover round-trip, missing media, checksum mismatch, and unsafe names.
 
-Android is where the photos are, so this is the first recommended project in
-[`AUDIT_2026.md`](AUDIT_2026.md).
+**Still open:** SAF / Desktop file-chooser wiring and staging transfer (`buildBundleFromNotes` /
+`applyBundle` equivalents) so users can actually export and import `.nlkbak` files with images.
 
 ---
 
