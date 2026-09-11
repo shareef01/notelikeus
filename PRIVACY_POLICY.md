@@ -56,9 +56,9 @@ Backup export and import are **manual**. Backup files are written to a location 
 Two formats:
 
 - **JSON** — note titles, bodies, checklists, labels, colours and reminder times. No images.
-- **`.nlkbak`** (web export) — a plain ZIP holding the same JSON document plus the **attachment
-  image bytes stored on that device**. It is a normal archive: rename it to `.zip` and you can open
-  it and see exactly what it contains.
+- **`.nlkbak`** — a plain ZIP holding the same JSON document plus the **attachment
+  image bytes stored on that device**. Available on Android, Windows Desktop, and Web. It is a
+  normal archive: rename it to `.zip` and you can open it and see exactly what it contains.
 
 Neither format contains sign-in tokens, session data, encryption keys, sync cursors, or your
 account identifier. An export never contacts the network — images that exist only in the cloud are
