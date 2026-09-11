@@ -596,8 +596,9 @@ Skiko, Compose JDK probe, plugin BOM parents) are pinned alongside Windows gener
 `~/.notelikeus/`. See [`LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md).
 
 **Slice 1 landed:** `DesktopDatabaseKeyManager` (DPAPI-sealed `notes-db.key`, dedicated entropy).
-Driver choice recorded: `sqlite-jdbc-crypt` + custom Room `SQLiteDriver`; guest mode encrypts
-like Android. Next: JDBC driver behind a flag (no format change), then migration, then default on.
+**Slice 2 landed:** `JdbcSQLiteDriver` (Willena `sqlite-jdbc`) behind `notelikeus.desktop.jdbcSqlite`
+(default off) — still plaintext, no passphrase. Guest mode encrypts like Android (D25).
+Next: passphrase URI + migration, then default on.
 
 ### 3. Web attachment sealing (honest threat model)
 
