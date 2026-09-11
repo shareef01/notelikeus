@@ -1,7 +1,9 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { GUEST_OWNER_ID, NOTES_DB_NAME } from '@/lib/local/constants';
-import { resetNotesDatabaseForTests } from '@/lib/local/idb';
+import { resetNotesCryptoKeyForTests } from '@/lib/crypto/notesCryptoKey';
+import { isSealedStoredNote } from '@/lib/local/notesSealing';
+import { GUEST_OWNER_ID, NOTES_DB_NAME, NOTES_STORE } from '@/lib/local/constants';
+import { resetNotesDatabaseForTests, withStore } from '@/lib/local/idb';
 import {
   abortNextPutNotesForTests,
   abortNextRemotePageApplyForTests,
@@ -17,12 +19,13 @@ import {
 import { createEmptyNote } from '@/types/note';
 
 function makeNote(id: string, localId: number) {
-  return createEmptyNote({ id, localId, title: `Note ${id}` });
+  return createEmptyNote({ id, localId, title: `Note ${id}`, content: `Body ${id}` });
 }
 
 describe('notesLocalRepository', () => {
   beforeEach(async () => {
     await resetNotesDatabaseForTests();
+    await resetNotesCryptoKeyForTests();
     indexedDB.deleteDatabase(NOTES_DB_NAME);
     await resetNotesDatabaseForTests();
   });
@@ -160,5 +163,55 @@ describe('notesLocalRepository', () => {
     });
     expect((await getOwnerMeta('user-a'))?.lastRemoteRevision).toBe(101);
     expect((await listNotes('user-a')).map((note) => note.id)).toEqual(['2']);
+  });
+
+  it('seals title/content at rest while returning plaintext to callers', async () => {
+    const note = makeNote('seal-1', 10);
+    await putNote('user-seal', note);
+
+    const raw = await withStore<{ note: { title?: string; content?: string; sealedBody?: ArrayBuffer } } | undefined>(
+      NOTES_STORE,
+      'readonly',
+      (store) => store.get(['user-seal', 'seal-1']),
+    );
+    expect(raw?.note).toBeDefined();
+    expect(isSealedStoredNote(raw!.note as never)).toBe(true);
+    expect(raw?.note.title).toBe('');
+    expect(raw?.note.content).toBe('');
+    expect(JSON.stringify(raw?.note)).not.toContain('Body seal-1');
+
+    const listed = await listNotes('user-seal');
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.title).toBe('Note seal-1');
+    expect(listed[0]?.content).toBe('Body seal-1');
+  });
+
+  it('dual-reads legacy plaintext and migrates it', async () => {
+    const legacy = makeNote('legacy-1', 11);
+    await withStore(NOTES_STORE, 'readwrite', (store) => {
+      store.put({ ownerId: 'user-legacy', id: legacy.id, note: legacy });
+    });
+
+    const listed = await listNotes('user-legacy');
+    expect(listed[0]?.title).toBe('Note legacy-1');
+    expect(listed[0]?.content).toBe('Body legacy-1');
+
+    let sealed = false;
+    for (let i = 0; i < 40; i++) {
+      const raw = await withStore<{ note: { sealedBody?: ArrayBuffer } } | undefined>(
+        NOTES_STORE,
+        'readonly',
+        (store) => store.get(['user-legacy', 'legacy-1']),
+      );
+      if (raw?.note && isSealedStoredNote(raw.note as never)) {
+        sealed = true;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(sealed).toBe(true);
+
+    const again = await listNotes('user-legacy');
+    expect(again[0]?.content).toBe('Body legacy-1');
   });
 });

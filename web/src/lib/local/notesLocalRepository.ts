@@ -1,3 +1,10 @@
+import {
+  isSealedStoredNote,
+  maybeMigrateStoredNote,
+  openStoredNote,
+  sealNoteForStorage,
+  type StoredNotePayload,
+} from '@/lib/local/notesSealing';
 import { META_STORE, NOTES_STORE } from '@/lib/local/constants';
 import { withStore } from '@/lib/local/idb';
 import type { Note } from '@/types/note';
@@ -27,7 +34,15 @@ export interface LocalOwnerMeta {
 interface StoredNoteRecord {
   ownerId: string;
   id: string;
-  note: Note;
+  note: StoredNotePayload;
+}
+
+async function toStoredRecord(ownerId: string, note: Note): Promise<StoredNoteRecord> {
+  return {
+    ownerId,
+    id: note.id,
+    note: await sealNoteForStorage(ownerId, note),
+  };
 }
 
 export async function listNotes(ownerId: string): Promise<Note[]> {
@@ -39,11 +54,24 @@ export async function listNotes(ownerId: string): Promise<Note[]> {
       .then((result) => resolve((result as StoredNoteRecord[]) ?? []))
       .catch(reject);
   });
-  return records.map((record) => record.note);
+
+  const notes: Note[] = [];
+  for (const record of records) {
+    const opened = await openStoredNote(ownerId, record.note);
+    notes.push(opened);
+    if (!isSealedStoredNote(record.note)) {
+      void maybeMigrateStoredNote(ownerId, record.note, async (next) => {
+        await withStore(NOTES_STORE, 'readwrite', (store) =>
+          store.put({ ownerId, id: record.id, note: next } satisfies StoredNoteRecord),
+        );
+      });
+    }
+  }
+  return notes;
 }
 
 export async function putNote(ownerId: string, note: Note): Promise<void> {
-  const record: StoredNoteRecord = { ownerId, id: note.id, note };
+  const record = await toStoredRecord(ownerId, note);
   await withStore(NOTES_STORE, 'readwrite', (store) => store.put(record));
 }
 
@@ -55,6 +83,7 @@ export function abortNextPutNotesForTests(): void {
 }
 
 export async function putNotes(ownerId: string, notes: Note[]): Promise<void> {
+  const records = await Promise.all(notes.map((note) => toStoredRecord(ownerId, note)));
   const db = await import('@/lib/local/idb').then((m) => m.getNotesDatabase());
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(NOTES_STORE, 'readwrite');
@@ -74,8 +103,8 @@ export async function putNotes(ownerId: string, notes: Note[]): Promise<void> {
       tx.abort();
       return;
     }
-    for (const note of notes) {
-      store.put({ ownerId, id: note.id, note } satisfies StoredNoteRecord);
+    for (const record of records) {
+      store.put(record);
     }
   });
 }
@@ -120,6 +149,7 @@ export async function clearOwner(ownerId: string): Promise<void> {
  * leaving a note the server never sent.
  */
 export async function replaceAllNotes(ownerId: string, notes: Note[]): Promise<void> {
+  const records = await Promise.all(notes.map((note) => toStoredRecord(ownerId, note)));
   const db = await import('@/lib/local/idb').then((m) => m.getNotesDatabase());
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(NOTES_STORE, 'readwrite');
@@ -134,8 +164,8 @@ export async function replaceAllNotes(ownerId: string, notes: Note[]): Promise<v
       }
       // Writes go after the sweep completes, so a replacement note is never deleted by the
       // cursor that is still walking the same index.
-      for (const note of notes) {
-        store.put({ ownerId, id: note.id, note } satisfies StoredNoteRecord);
+      for (const record of records) {
+        store.put(record);
       }
     };
     tx.oncomplete = () => resolve();
@@ -174,6 +204,9 @@ export interface RemotePageApply {
  * Attachment hydration is not part of this transaction.
  */
 export async function applyRemotePageAtomically(page: RemotePageApply): Promise<void> {
+  const records = await Promise.all(
+    page.upserts.map((note) => toStoredRecord(page.ownerId, note)),
+  );
   const db = await import('@/lib/local/idb').then((m) => m.getNotesDatabase());
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction([NOTES_STORE, META_STORE], 'readwrite');
@@ -203,8 +236,8 @@ export async function applyRemotePageAtomically(page: RemotePageApply): Promise<
       }
 
       const writePage = () => {
-        for (const note of page.upserts) {
-          notes.put({ ownerId: page.ownerId, id: note.id, note } satisfies StoredNoteRecord);
+        for (const record of records) {
+          notes.put(record);
         }
         for (const noteId of page.deletedNoteIds) {
           notes.delete([page.ownerId, noteId]);
