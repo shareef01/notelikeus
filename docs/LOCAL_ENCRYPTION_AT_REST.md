@@ -77,6 +77,7 @@ local accounts; it does **not** stop malware running as that user.
 | 2. Custom Room `SQLiteDriver` over `sqlite-jdbc-crypt` (sqlcipher cipher), flag off / plaintext path | **Landed** |
 | 3. One-way plaintext → encrypted migration + quarantine | **Landed** |
 | 4. Flip default on Windows; opt-out via flag; Linux CI stays bundled | **Landed** — default `useJdbcSqlite()` is `isWindows()` |
+| 5. Windows CI job for real DPAPI + `desktopTest` | **Landed** — `windows-crypto` in `.github/workflows/desktop.yml` |
 
 **Chosen driver (decision).** Use Willena / community `sqlite-jdbc-crypt` (SQLite3 Multiple Ciphers)
 with `cipher=sqlcipher` and a custom `androidx.sqlite.SQLiteDriver` adapter — there is no
@@ -250,5 +251,5 @@ IndexedDB remain a separate decision.
 |---|---|---|---|
 | Notes DB today | SQLCipher + Keystore | SQLCipher v4 + DPAPI `notes-db.key` (Windows default) | Plaintext IndexedDB |
 | Attachments today | AES-GCM + Keystore | AES-GCM + DPAPI | AES-GCM (`NLA1`) pending blobs + non-extractable WebCrypto key |
-| Proposed next | no change | optional Windows CI for DPAPI + native driver | no change for notes; attachments done |
+| Proposed next | no change | no change (Windows CI covers DPAPI + JDBC) | no change for notes; attachments done |
 | Blocker | — | — | notes encryption still profile-only / not XSS |
