@@ -783,10 +783,11 @@ A user with only an older build can rename the file to `.zip`, open it, and lift
 which is also why the manifest is pretty-printed. And attachments stay strictly additive: they can
 fail, be dropped, or be absent, and the notes still import.
 
-**What this makes possible today, and is the reason it was worth doing this way:** the Kotlin
-clients have no ZIP reader yet, and still recover the notes from a bundle — `NoteBackupImporter`
-recognises the wrapper by `formatVersion` and unwraps it. A superseding format would have left
-those users with a file their app could say nothing about.
+**What this made possible early, and is the reason it was worth doing this way:** before Kotlin
+had a ZIP reader, `NoteBackupImporter` could still recover notes from a bundle by recognising the
+wrapper via `formatVersion` and unwrapping it. A superseding format would have left those users
+with a file their app could say nothing about. Archive I/O has since landed on Android and Desktop
+(`BackupBundleTransfer`); the wrapper decision still stands.
 
 **Cost to reverse:** low while `formatVersion` is 4 and nothing has shipped a v5. The wrapper is
 one field; a future format that genuinely needs to change how notes are written can raise
@@ -850,12 +851,13 @@ UTC+0 CI runner would ever show.
 
 ## D25 — Desktop notes-DB encryption uses sqlite-jdbc-crypt; guests encrypt like Android.
 
-**Decided:** When Desktop Room encryption lands, the driver is **`sqlite-jdbc-crypt`** (SQLite3
-Multiple Ciphers) with `cipher=sqlcipher`, behind a custom Room `SQLiteDriver` adapter. The
-passphrase is 32 random bytes sealed with DPAPI under dedicated entropy
-(`com.aus.notelikeus/notes-db-key/v1`), never the session or attachment entropies. **Guest mode
-encrypts the same way signed-in accounts do** — matching Android. Key loss for guests is
-unrecoverable except via a prior plaintext export; signed-in users re-sync from the cloud.
+**Decided:** Desktop Room encryption uses **`sqlite-jdbc-crypt`** (SQLite3 Multiple Ciphers) with
+`cipher=sqlcipher`, behind a custom Room `SQLiteDriver` adapter. The passphrase is 32 random bytes
+sealed with DPAPI under dedicated entropy (`com.aus.notelikeus/notes-db-key/v1`), never the session
+or attachment entropies. **Guest mode encrypts the same way signed-in accounts do** — matching
+Android. Key loss for guests is unrecoverable except via a prior plaintext export; signed-in users
+re-sync from the cloud. Default on for Windows; Linux/mac Desktop CI keeps `BundledSQLiteDriver`
+(opt out with `notelikeus.desktop.jdbcSqlite=false`).
 
 **Why:** `BundledSQLiteDriver` and `sqlcipher-android` do not give a JVM encrypted SQLite path.
 Shipping a second native SQLite is unavoidable; Multiple Ciphers' JDBC jar is the least custom
