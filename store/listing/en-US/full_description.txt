@@ -25,7 +25,7 @@ PRIVATE BY DESIGN
 CLOUD SYNC (OPTIONAL)
 • Sign in with Google to sync notes across your devices
 • Auto-sync when signed in, or sync manually from Settings
-• Use the web app at notelikeus-dev.pages.dev when signed in
+• Use the web app at notelikeus.pages.dev when signed in
 
 BACKUP & WIDGET
 • Export and import notes as JSON anytime

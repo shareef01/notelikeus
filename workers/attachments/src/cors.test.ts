@@ -13,7 +13,9 @@ describe('attachment CORS', () => {
     expect(isAllowedAttachmentOrigin('not-a-url')).toBe(false);
   });
 
-  it('allows Cloudflare Pages preview hosts for this project only', () => {
+  it('allows Cloudflare Pages hosts for production and staging projects only', () => {
+    expect(isAllowedAttachmentOrigin('https://notelikeus.pages.dev')).toBe(true);
+    expect(isAllowedAttachmentOrigin('https://abc.notelikeus.pages.dev')).toBe(true);
     expect(isAllowedAttachmentOrigin('https://notelikeus-dev.pages.dev')).toBe(true);
     expect(isAllowedAttachmentOrigin('https://abc.notelikeus-dev.pages.dev')).toBe(true);
     expect(isAllowedAttachmentOrigin('https://evil.pages.dev')).toBe(false);
