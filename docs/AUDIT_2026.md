@@ -566,29 +566,14 @@ Prioritised by user value × risk reduction. Each is scoped, not a gesture.
 cannot be retyped, and the platform most likely to be lost or replaced is the one that currently
 cannot export them.
 
-**Scope.** Decide the source-set question — an intermediate `jvmShared` set that both `androidMain`
-and `desktopMain` depend on, giving `java.util.zip` to one implementation, versus `expect`/`actual`
-with two. Recommend the former: one implementation, one place for the limits. Then port
-`buildBundleFromNotes` / `applyBundle`, reusing `AttachmentStagingStore` for the bytes and the
-existing SAF / file-chooser layer for the file. The contract fixture and the manifest DTO already
-exist, and `CrossClientContractTest` will hold the new code to the same format on the first run.
+**Scope.** Decide was already taken: shared `jvmMain` (Android + Desktop) hosts `java.util.zip`.
+Port `buildBackupBundle` / `parseBackupBundle`, then wire SAF / file-chooser and
+`AttachmentStagingStore` for bytes. The contract fixture and the manifest DTO already exist.
 
-### 2. Make `fetchNotes` on Kotlin as untrusting as the web snapshot is
+### 2. Make `fetchNotes` on Kotlin as untrusting as the web snapshot is — **DONE**
 
-**Why.** The web client validates its snapshot structurally: `fetch_full_snapshot` returns a
-separate `note_count`, and a mismatch against the row count is refused as
-`Incomplete snapshot: expected N notes, got M`. The Kotlin transport has no equivalent. Its
-`SuspectEmptyCloudException` only fires when the collection is **entirely** empty — a *partially*
-truncated read still reaches `downloadAllNotes`, where every previously-known id missing from it is
-deleted locally and tombstoned.
-
-This is the same class as A-2 and is not hypothetical: a truncated `jsonb_agg` is precisely the
-failure `note_count` was added to catch, and the guard exists on only one client.
-
-**Scope.** Have the Kotlin transport read `note_count` from the same RPC and refuse a mismatch,
-with the same exception type. One transport change, one engine assertion, and a
-`CloudNoteTransportContractTest` case. Small, and it closes the last known asymmetry between the
-two sync implementations.
+Landed in `67080b3c` (`IncompleteCloudSnapshotException` + `authoritativeNoteCount`). See
+[`FINDINGS.md`](FINDINGS.md) F59.
 
 ### 3. A pgTAP concurrency pass over `restore_note` versus attachment deletion
 
