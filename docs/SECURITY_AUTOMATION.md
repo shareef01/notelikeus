@@ -9,6 +9,7 @@ and cannot be expressed as source in this tree.
 |---|---|
 | `.github/workflows/codeql.yml` | CodeQL `security-extended` for JavaScript/TypeScript and Java/Kotlin |
 | `.github/workflows/dependency-review.yml` | PR dependency review; fails on high+ severity advisories |
+| `gradle/verification-metadata.xml` | sha256 pins for the Android/Desktop Gradle graph (see below) |
 | Existing CI (`web.yml`, `android.yml`, `desktop.yml`, `supabase.yml`, …) | Lint, unit, build, pgTAP, Playwright |
 
 Actions are pinned to immutable commit SHAs, consistent with the rest of this repository.
@@ -23,9 +24,27 @@ Open [Code security and analysis](https://github.com/shareef01/notelikeus/settin
 
 ## Deferred
 
-- **Gradle dependency verification** (`verification-metadata.xml`): valuable, but regenerating and
-  maintaining checksums for the full Android/Desktop graph is a dedicated ops task and was not
-  added in this pass to avoid breaking CI on every plugin bump.
-- **Desktop/Web attachment encryption at rest:** Desktop attachments are sealed (DPAPI + AES-GCM);
-  Web still relies on browser profile permissions — see `docs/LOCAL_ENCRYPTION_AT_REST.md`.
 - **Desktop notes DB SQLCipher:** still deferred (no JVM encrypted-SQLite driver in the Room stack).
+- **Web attachment sealing:** still deferred — see `docs/LOCAL_ENCRYPTION_AT_REST.md` (must not be
+  described as an XSS mitigation).
+
+## Gradle dependency verification
+
+`gradle/verification-metadata.xml` pins **sha256** checksums for artifacts resolved by the
+Android/Desktop Gradle graph. Once this file is present, Gradle verifies every download.
+
+**Regenerate after dependency / AGP / KGP bumps** (merge the updated file in the same PR):
+
+```bat
+gradlew.bat --no-configuration-cache --write-verification-metadata sha256 ^
+  :composeApp:compileDebugKotlinAndroid :composeApp:compileKotlinDesktop ^
+  :composeApp:desktopTest :composeApp:testDebugUnitTest ^
+  :androidApp:assembleDebug :androidApp:assembleRelease help
+```
+
+Then fill any **CI-only platform artifacts** (Linux `aapt2`, `skiko-awt-runtime-linux-*`,
+`desktop-jvm-linux-*`, and usually macOS `aapt2-osx`) by downloading from Google/Maven Central
+and adding `<sha256>` entries — Windows generation alone will not pin them.
+
+Signatures (`verify-signatures`) stay off for now — many Android artifacts are not signed in a
+way Gradle's keyring expects; checksum pinning is the control we want.

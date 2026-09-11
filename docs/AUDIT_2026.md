@@ -570,15 +570,42 @@ wiring (`BackupBundleTransfer`). See [`FINDINGS.md`](FINDINGS.md) F60 and PRs #2
 Landed in `67080b3c` (`IncompleteCloudSnapshotException` + `authoritativeNoteCount`). See
 [`FINDINGS.md`](FINDINGS.md) F59.
 
-### 3. A pgTAP concurrency pass over `restore_note` versus attachment deletion — **IN PROGRESS**
+### 3. A pgTAP concurrency pass over `restore_note` versus attachment deletion — **DONE**
 
-**Why.** The attachment lifecycle's interleavings were fixed the hard way — F46 and F52 were both
-found by follow-up review, not by tests, and both were high severity. The existing pgTAP suite
-covers each operation and the sequential orderings. What it does not cover is the race *windows*
-those bugs sat in: claim visible before restore, claim visible before finalize of the same identity.
+Landed in PR #202 as ordered single-connection interleavings
+(`notelikeus_attachment_delete_concurrency.test.sql`): claim→restore, claim→finalize same id,
+and confirmed-delete→restore, asserting the CHECK invariant after each step. True two-session
+concurrency still needs committed fixtures plus `dblink`/`pg_background`; pgTAP's outer
+`begin`/`rollback` hides uncommitted rows from a second session.
 
-**Scope (adjusted).** True two-connection concurrency needs `dblink`/`pg_background` and
-*committed* fixtures — pgTAP's outer `begin`/`rollback` hides uncommitted rows from a second
-session. The landed approach is a dedicated file of **ordered interleavings** that recreate those
-windows on one connection and assert the CHECK invariant (`no live row carries a claim`) after
-every step: `supabase/tests/database/notelikeus_attachment_delete_concurrency.test.sql`.
+---
+
+## 9. Recommended next three projects (post–audit close-out)
+
+The original three in §8 are done. Next priorities by risk × feasibility:
+
+### 1. Gradle dependency verification (`verification-metadata.xml`) — **IN PROGRESS**
+
+**Why.** Supply-chain integrity for the Android/Desktop graph is still trust-on-first-use from
+Maven Central / Google. Dependency-review catches known advisories on PRs; checksum pinning
+catches substitution.
+
+**Scope.** Generate `gradle/verification-metadata.xml` (sha256), document regenerate-on-bump in
+[`SECURITY_AUTOMATION.md`](SECURITY_AUTOMATION.md). Expect CI churn on plugin bumps — that is the
+cost of the control.
+
+### 2. Desktop notes DB SQLCipher + DPAPI key
+
+**Why.** Attachment bytes on Windows are sealed; the Room notes file is still plaintext under
+`~/.notelikeus/`. See [`LOCAL_ENCRYPTION_AT_REST.md`](LOCAL_ENCRYPTION_AT_REST.md).
+
+**Scope.** Large: JVM encrypted SQLite driver (or custom Room driver), DPAPI-wrapped passphrase,
+migration, guest-mode / key-loss policy, Desktop CI.
+
+### 3. Web attachment sealing (honest threat model)
+
+**Why.** Closes the last client gap for attachment bytes at rest. Must **not** be marketed as an
+XSS mitigation — browser JS can always unwrap a key it can use.
+
+**Scope.** WebCrypto AES-GCM for IndexedDB pending blobs + dual-read migration; privacy copy
+updates. Prefer after Desktop DB encryption so the three-client story stays coherent.
