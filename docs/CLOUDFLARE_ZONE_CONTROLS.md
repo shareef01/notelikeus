@@ -39,13 +39,21 @@ not a note with twenty images syncing once.
 - [ ] Enable Bot Fight Mode (free) or Super Bot Fight / Bot Management (paid) on the zone.
 - [ ] Prefer “managed challenge” for likely bots rather than silent drop while monitoring.
 
-### 3. Platform / Worker limits
+### 3. R2 bucket access
+
+- [ ] Confirm the R2 bucket used for attachments (`notelikeus-attachments`) has **public access
+      disabled** in the Cloudflare Dashboard (Storage → R2 → bucket → Settings). Public R2 buckets
+      bypass the Worker entirely: any URL of the form `pub-<hash>.r2.dev/<object-key>` would serve
+      attachment bytes to anyone without authentication. This cannot be verified from source control
+      — it must be checked in the dashboard after every environment provisioning step.
+- [ ] Keep R2 CORS and `ALLOWED_ORIGINS` tight — only Pages / app origins that need attachment PUT.
+
+### 4. Platform / Worker limits
 
 - [ ] Confirm Worker **CPU time** and **subrequest** limits match expected upload concurrency
       (account plan defaults usually suffice; raise only if legitimate syncs hit 503s).
-- [ ] Keep R2 CORS and `ALLOWED_ORIGINS` tight — only Pages / app origins that need attachment PUT.
 
-### 4. Observability
+### 5. Observability
 
 - [ ] Watch Worker analytics / logs for sustained 429 spikes (binding working) vs 401/403 floods
       (auth probing — WAF/bot rules help more than raising the rate limit).
