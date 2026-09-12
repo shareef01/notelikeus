@@ -21,7 +21,7 @@ const workflow = readFileSync(WORKFLOW, 'utf8');
 
 /** Pulls the inline `node --input-type=module -e '...'` generator out of the workflow. */
 function generatorSource() {
-  const match = workflow.match(/node --input-type=module -e '([\s\S]*?)'\n/);
+  const match = workflow.match(/node --input-type=module -e '([\s\S]*?)'\r?\n/);
   assert.ok(match, 'the deploy workflow must still generate wrangler.toml from an inline script');
   return match[1].replace(
     'import { writeFileSync } from "node:fs";',
