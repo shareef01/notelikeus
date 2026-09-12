@@ -24,6 +24,6 @@
     "pages:verify": "node scripts/ops/verify-pages.mjs"
   },
   "devDependencies": {
-    "supabase": "^2.67.1"
+    "supabase": "^2.117.0"
   }
 }
