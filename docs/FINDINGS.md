@@ -1398,3 +1398,21 @@ the workflow file and threw an assertion error, failing 5 out of 7 test assertio
 CRLF line terminations. All 7 tests pass on Windows and Linux.
 
 **Severity:** low (developer tooling / local verification hazard on Windows).
+
+---
+
+## F64 — ProfileSheet "Sign in with Google" click did nothing due to unwired `onGoogleSignIn` in `NavGraph` — **FIXED**
+
+When a user on Android or Desktop opened `ProfileSheet` (from `MainScreen`'s profile icon) and clicked "Sign in with Google", nothing happened.
+
+**Root cause:**
+- `MainScreen` exposes `onGoogleSignIn: () -> Unit = {}`, which `ProfileSheet` calls on sign-in clicks.
+- `NavGraph` constructs `MainScreen` but omitted `onGoogleSignIn`, causing it to default to an empty no-op lambda `{}`.
+- `AppContent` in `App.kt` received `onGoogleSignInClick: (MainViewModel) -> Unit`, but only passed it to `SignInGate` (the initial gate), leaving `NavGraph` without the callback.
+
+**Fixed:**
+- Added `onGoogleSignIn: () -> Unit = {}` parameter to `NavGraph` in `NavGraph.kt` and passed `onGoogleSignIn = onGoogleSignIn` to `MainScreen`.
+- In `App.kt`, passed `onGoogleSignIn = { onGoogleSignInClick(viewModel) }` to `NavGraph`.
+- Clicking "Sign in with Google" now correctly triggers `DesktopGoogleSignInHelper.requestIdToken()` on Desktop (and Google Credential Manager on Android).
+
+**Severity:** medium (critical functional defect in Google sign-in entry point from the main screen).
