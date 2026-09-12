@@ -55,3 +55,7 @@ database-debug.log
 .claude/
 reasonix.toml
 skills-lock.json
+
+# local smoke artifacts
+web/smoke-production.png
+
