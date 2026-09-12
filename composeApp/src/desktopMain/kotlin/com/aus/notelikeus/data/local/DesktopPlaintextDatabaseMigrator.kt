@@ -1,5 +1,6 @@
 package com.aus.notelikeus.data.local
 
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.aus.notelikeus.util.AppLog
 import java.io.File
 import java.sql.Connection
@@ -7,10 +8,12 @@ import java.sql.Connection
 /**
  * One-way plaintext → SQLCipher migration for the Desktop Room database.
  *
- * Mirrors the Android migrator's safety rules (quarantine, never delete; rename-swap), but uses
- * Willena's `PRAGMA rekey` to encrypt an existing plaintext file in place into a temp path copy
- * is unnecessary when rekey rewrites the open file — we still copy-then-swap so a failed rekey
- * cannot corrupt the only copy: open a byte-copy as the working file, rekey it, then swap.
+ * Willena / SQLite3 Multiple Ciphers encrypts an existing plaintext file with
+ * `PRAGMA cipher` + `PRAGMA rekey` (there is no `sqlcipher_export` in this build).
+ *
+ * Plaintext probe and WAL checkpoint use [BundledSQLiteDriver] so a database created by the
+ * previous Bundled desktop path is recognized even when JDBC's encrypted probe path is tried
+ * first. The copy is then rekeyed through [JdbcSQLiteDriver].
  */
 object DesktopPlaintextDatabaseMigrator {
     private const val TAG = "DesktopDbMigrate"
@@ -43,8 +46,9 @@ object DesktopPlaintextDatabaseMigrator {
         }
 
         try {
+            // SQLCipher/MC cannot rekey while journal_mode is WAL.
+            leaveWalJournalMode(databaseFile)
             databaseFile.copyTo(encryptedTemp, overwrite = true)
-            // Drop WAL/SHM companions for the temp name so rekey sees a consistent main file.
             for (suffix in listOf("-journal", "-shm", "-wal")) {
                 File(parent, encryptedTemp.name + suffix).delete()
             }
@@ -53,7 +57,6 @@ object DesktopPlaintextDatabaseMigrator {
                     applySqlCipherV4(connection)
                     val key = JdbcSQLiteDriver.passphraseAsHexKey(passphrase).replace("'", "''")
                     connection.createStatement().use { stmt ->
-                        // Encrypt the open plaintext database under the SQLCipher v4 key.
                         stmt.execute("PRAGMA rekey = '$key'")
                     }
                 }
@@ -96,7 +99,16 @@ object DesktopPlaintextDatabaseMigrator {
         return true
     }
 
-    /** Selects SQLCipher v4 before the first key/rekey on a plaintext connection. */
+    private fun leaveWalJournalMode(databaseFile: File) {
+        BundledSQLiteDriver().open(databaseFile.absolutePath).use { connection ->
+            connection.prepare("PRAGMA wal_checkpoint(TRUNCATE)").use { it.step() }
+            connection.prepare("PRAGMA journal_mode=DELETE").use { it.step() }
+        }
+        for (suffix in listOf("-journal", "-shm", "-wal")) {
+            File(databaseFile.parentFile, databaseFile.name + suffix).delete()
+        }
+    }
+
     private fun applySqlCipherV4(connection: Connection) {
         connection.createStatement().use { stmt ->
             stmt.execute("PRAGMA cipher = 'sqlcipher'")
@@ -107,12 +119,22 @@ object DesktopPlaintextDatabaseMigrator {
     }
 
     private fun canOpenEncrypted(databaseFile: File, passphrase: ByteArray): Boolean =
-        tryOpen(databaseFile) { JdbcSQLiteDriver.openJdbcConnection(it, passphrase) }
+        tryOpenJdbc(databaseFile) { JdbcSQLiteDriver.openJdbcConnection(it, passphrase) }
 
     private fun canOpenPlaintext(databaseFile: File): Boolean =
-        tryOpen(databaseFile) { JdbcSQLiteDriver.openJdbcConnection(it, passphrase = null) }
+        try {
+            BundledSQLiteDriver().open(databaseFile.absolutePath).use { connection ->
+                connection.prepare("SELECT count(*) FROM sqlite_master").use { stmt ->
+                    stmt.step()
+                }
+            }
+            true
+        } catch (error: Exception) {
+            AppLog.warn(TAG, "Database probe failed for ${databaseFile.name}", error)
+            false
+        }
 
-    private fun tryOpen(databaseFile: File, open: (String) -> Connection): Boolean =
+    private fun tryOpenJdbc(databaseFile: File, open: (String) -> Connection): Boolean =
         try {
             open(databaseFile.absolutePath).use { connection ->
                 connection.createStatement().use { stmt ->
