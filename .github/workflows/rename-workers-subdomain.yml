@@ -32,9 +32,9 @@ jobs:
           echo "Deleting existing subdomain (required before rename)…"
           del_code="$(curl -sS -o /tmp/del.json -w "%{http_code}" -X DELETE "$base" "${auth[@]}")"
           echo "DELETE HTTP ${del_code}"
-          jq '{success, errors, result}' /tmp/del.json || true
-          # 200/ok, or 404 if somehow already gone
-          test "$del_code" = "200" -o "$del_code" = "404"
+          if [ -s /tmp/del.json ]; then jq '{success, errors, result}' /tmp/del.json || true; fi
+          # Cloudflare returns 200 or 204 on success; 404 if already gone
+          test "$del_code" = "200" -o "$del_code" = "204" -o "$del_code" = "404"
 
           echo "Creating subdomain ${SUBDOMAIN}…"
           put_code="$(curl -sS -o /tmp/put.json -w "%{http_code}" -X PUT "$base" "${auth[@]}" \
