@@ -243,6 +243,7 @@ private fun AppContent(
                         onExportBackup = { onExportBackup(viewModel) },
                         onExportNotesOnly = { onExportNotesOnly(viewModel) },
                         onImportBackup = { onImportBackup(viewModel) },
+                        onGoogleSignIn = { onGoogleSignInClick(viewModel) },
                         pendingSharedTitle = pendingSharedTitle,
                         pendingSharedContent = pendingSharedContent,
                         onConsumeSharedContent = onConsumeSharedContent
