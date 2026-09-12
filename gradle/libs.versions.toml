@@ -25,7 +25,7 @@ datastore = "1.2.1"
 biometric = "1.1.0"
 glance = "1.1.1"
 appfunctions = "1.0.0-alpha09"
-sqlcipher = "4.18.0"
+sqlcipher = "4.19.0"
 # Willena sqlite-jdbc with Multiple Ciphers (Desktop Room JDBC driver path; encryption later).
 sqliteJdbcCrypt = "3.53.4.0"
 securityCrypto = "1.1.0"
@@ -39,7 +39,7 @@ securityCrypto = "1.1.0"
 # downgrading. It does still mean Room runs against a sqlite it was not built with, so keep pairing
 # the next Room bump with a check of this line.
 sqlite = "2.7.0"
-okio = "3.18.1"
+okio = "3.18.2"
 jna = "5.19.1"
 appcompat = "1.8.0"
 fragment = "1.9.0"
