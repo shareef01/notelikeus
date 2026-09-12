@@ -68,6 +68,7 @@ fun NavGraph(
     onExportBackup: () -> Unit = {},
     onExportNotesOnly: () -> Unit = {},
     onImportBackup: () -> Unit = {},
+    onGoogleSignIn: () -> Unit = {},
     pendingSharedTitle: String? = null,
     pendingSharedContent: String? = null,
     onConsumeSharedContent: () -> Unit = {}
@@ -103,7 +104,8 @@ fun NavGraph(
                 onAppLockEnabled = onAppLockEnabled,
                 onExportBackup = onExportBackup,
                 onExportNotesOnly = onExportNotesOnly,
-                onImportBackup = onImportBackup
+                onImportBackup = onImportBackup,
+                onGoogleSignIn = onGoogleSignIn
             )
         }
         composable(
