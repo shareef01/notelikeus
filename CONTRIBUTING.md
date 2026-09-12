@@ -10,6 +10,11 @@ Open a GitHub issue for bugs and suggestions. Include the platform (Android, Win
 
 Fork, branch, and keep the change focused on one thing. Before opening the PR, run whichever suites your change touches:
 
+### Prerequisites
+
+- **Docker** is required for the Supabase local stack (`supabase:start`, `supabase:reset`, `supabase:test`). Without a running Docker daemon those commands fail immediately. The CI matrix runs them regardless — a PR that only touches Kotlin or web JavaScript does not need Docker locally, but any change to `supabase/migrations/` must be verified against the local stack before merge.
+- **Android emulator or device** is required for `connectedDebugAndroidTest`. The Kotlin unit suites (`:testDebugUnitTest`, `:desktopTest`) run on the host JVM without one.
+
 ```bash
 cd web && npm run lint && npm run typecheck && npm test
 npm run supabase:start && npm run supabase:reset && npm run supabase:test
