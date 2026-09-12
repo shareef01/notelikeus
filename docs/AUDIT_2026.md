@@ -599,6 +599,85 @@ privacy / diagnostics / LOCAL_ENCRYPTION copy updated for profile-at-rest only.
 ### Residuals (not in §9 scope)
 
 - **F50** — zone-level Worker abuse controls (Cloudflare account/ops; not in-repo). Operator
-  checklist: [`CLOUDFLARE_ZONE_CONTROLS.md`](CLOUDFLARE_ZONE_CONTROLS.md).
+  checklist: [`CLOUDFLARE_ZONE_CONTROLS.md`](CLOUDFLARE_ZONE_CONTROLS.md). A new item was added
+  (`105f3c3f`): R2 bucket public-access must be confirmed disabled in the dashboard after every
+  environment provisioning step.
 - True two-session pgTAP for attachment delete races — ordered interleavings + CHECK already cover
-  the windows that mattered; `dblink` would fight the suite’s outer transaction.
+  the windows that mattered; `dblink` would fight the suite's outer transaction.
+
+---
+
+## 10. Third-pass adversarial re-audit (2026-09-12)
+
+**HEAD at re-audit start:** `bf7822d0`  
+**Head after re-audit:** `105f3c3f`
+
+A subsequent adversarial pass against the fully-implemented codebase. All prior fixes (A-1 through
+A-6 from §2–§7 above, and the §8–§9 recommended projects) were independently re-verified against
+the source — not against this document.
+
+### New findings confirmed and fixed
+
+#### F62 — Desktop WAL mode prevented SQLCipher rekey (P2)
+
+`PRAGMA rekey` was issued while the database was in WAL journal mode. SQLite silently ignores a
+rekey in WAL mode, so the `-wal` and `-shm` files retained the pre-encryption page cache in
+plaintext even after the rekey was claimed to have succeeded. The plaintext migration from
+`BundledSQLiteDriver` to SQLCipher therefore did not fully encrypt the database.
+
+**Fix.** The migrator now:
+1. `PRAGMA wal_checkpoint(TRUNCATE)` — flushes the WAL back to the main file and resets it.
+2. `PRAGMA journal_mode=DELETE` — leaves WAL mode before any rekey operation.
+3. Deletes the orphaned `-wal` and `-shm` auxiliary files.
+4. Issues `PRAGMA rekey` against the now-quiesced, DELETE-journal database.
+
+Landed in PR #224. Covered by `DesktopPlaintextDatabaseMigratorTest`. Desktop test suite
+(437 tests) passes.
+
+#### F63 — Deploy test regex failed on Windows due to CRLF line endings (P3)
+
+`scripts/ops/attachments-worker-deploy.test.mjs` used a strict `\n` boundary in a regex that was
+matched against a git-checked-out workflow file. On Windows, git's `core.autocrlf` produces
+`\r\n`, causing 5 of 7 test assertions to fail with a misleading assertion error. Fixed in PR #224
+by normalising the regex to `\r?\n`. See [`FINDINGS.md`](FINDINGS.md) F63.
+
+#### F64 — `onGoogleSignIn` callback silently no-op in NavGraph (P2)
+
+`NavGraph` constructed `MainScreen` without forwarding the `onGoogleSignIn` parameter, so clicking
+"Sign in with Google" from the profile sheet that lives inside the main screen after initial auth
+did nothing — no error, no navigation, no credential flow. The callback defaulted to `{}`.
+
+**Fix.** `NavGraph` now accepts `onGoogleSignIn: () -> Unit = {}` and forwards it to
+`MainScreen`. `App.kt` wires `{ onGoogleSignInClick(viewModel) }` through to `NavGraph`. Landed in
+PR #234. See [`FINDINGS.md`](FINDINGS.md) F64.
+
+### Prior-pass claims verified against HEAD
+
+| Claim | Verdict |
+|---|---|
+| A-4 (IndexedDB transaction settlement) — all handlers present | **All five transaction sites verified**: `withStore`, `putNotes`, `clearOwner`, `replaceAllNotes`, `applyRemotePageAtomically` — each handles `oncomplete`, `onerror`, `onabort`. |
+| `firebase_uid_proven_elsewhere` SECURITY DEFINER justified | **Confirmed necessary and correctly scoped**: only function with this modifier in the migration history; boolean return; `SET search_path = public`; `anon` revoked. |
+| CORS origin reflection safe | **Confirmed**: reflection only after `isAllowedAttachmentOrigin` returns true; `Vary: Origin` set. |
+| Upload/delete race cannot resurrect retired identity | **Confirmed**: `finalize_note_attachment_put` issues `SELECT … FOR UPDATE` before the conflicting insert; returns `terminally_deleted` as a value (not exception) so the Worker can compensate unconditionally. |
+| R2 object key cannot be spoofed via DB response | **Confirmed**: Worker derives key locally from `auth.uid()` + path segments; asserts DB-returned key equals locally derived key; three separate assertion points (PUT precheck, PUT finalize, GET, DELETE). |
+| Streaming body read prevents memory exhaustion | **Confirmed**: `readBodyWithinLimit` exits the loop and releases the stream lock at `limitBytes`; no `arrayBuffer()` call anywhere in the PUT path. |
+
+### Test baseline at re-audit close (`105f3c3f`)
+
+| Suite | Result | Count |
+|---|---|---|
+| Web unit tests | PASS | 84 files, 628 tests |
+| Attachments Worker unit tests | PASS | 5 files, 110 tests |
+| Desktop unit tests (Windows DPAPI/SQLCipher) | PASS | 437 tests |
+| Android JVM unit tests | PASS | 507 tests |
+| Supabase pgTAP | PASS in CI | (Docker not available locally) |
+| Web Playwright E2E | PASS in CI | (Docker/headless not available locally) |
+| Android instrumentation | PASS in CI | (No device attached locally) |
+
+### Documentation improvements (`105f3c3f`)
+
+- `CONTRIBUTING.md`: Docker and Android emulator prerequisites documented before the test command
+  block. Any migration change must be verified against the local Supabase stack before merge.
+- `docs/CLOUDFLARE_ZONE_CONTROLS.md`: New section 3 — R2 bucket public access must be confirmed
+  disabled in the Cloudflare dashboard. Explains the bypass path (public R2 URLs serve bytes
+  without Worker authentication) and why this cannot be verified from source control.
