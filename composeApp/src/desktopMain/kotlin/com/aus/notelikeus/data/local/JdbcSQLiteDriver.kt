@@ -96,6 +96,7 @@ private class JdbcSQLiteStatement(
 ) : SQLiteStatement {
     private var resultSet: ResultSet? = null
     private var executed = false
+    private var onRow = false
 
     override fun bindBlob(index: Int, value: ByteArray) {
         statement.setBytes(index, value)
@@ -118,26 +119,36 @@ private class JdbcSQLiteStatement(
     }
 
     override fun getBlob(index: Int): ByteArray =
-        resultSet().getBytes(index + 1) ?: ByteArray(0)
+        requireRow().getBytes(index + 1) ?: ByteArray(0)
 
-    override fun getDouble(index: Int): Double = resultSet().getDouble(index + 1)
+    override fun getDouble(index: Int): Double = requireRow().getDouble(index + 1)
 
-    override fun getLong(index: Int): Long = resultSet().getLong(index + 1)
+    override fun getLong(index: Int): Long = requireRow().getLong(index + 1)
 
-    override fun getText(index: Int): String = resultSet().getString(index + 1).orEmpty()
+    override fun getText(index: Int): String = requireRow().getString(index + 1).orEmpty()
 
     override fun isNull(index: Int): Boolean {
-        val rs = resultSet()
+        val rs = requireRow()
         rs.getObject(index + 1)
         return rs.wasNull()
     }
 
-    override fun getColumnCount(): Int = resultSet().metaData.columnCount
+    /**
+     * Room asks for column metadata after [prepare] and before [step]. Execute once so the
+     * JDBC [ResultSet] exists, without consuming the first row (that is [step]'s job).
+     */
+    override fun getColumnCount(): Int {
+        ensureExecuted()
+        return resultSet?.metaData?.columnCount ?: 0
+    }
 
-    override fun getColumnName(index: Int): String = resultSet().metaData.getColumnLabel(index + 1)
+    override fun getColumnName(index: Int): String {
+        ensureExecuted()
+        return resultSet?.metaData?.getColumnLabel(index + 1).orEmpty()
+    }
 
     override fun getColumnType(index: Int): Int {
-        val rs = resultSet()
+        val rs = requireRow()
         if (rs.getObject(index + 1) == null || rs.wasNull()) return SQLITE_DATA_NULL
         return when (rs.metaData.getColumnType(index + 1)) {
             Types.BLOB, Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> SQLITE_DATA_BLOB
@@ -149,25 +160,17 @@ private class JdbcSQLiteStatement(
     }
 
     override fun step(): Boolean {
-        if (!executed) {
-            executed = true
-            return if (statement.execute()) {
-                val rs = statement.resultSet
-                resultSet = rs
-                rs != null && rs.next()
-            } else {
-                resultSet = null
-                false
-            }
-        }
+        ensureExecuted()
         val rs = resultSet ?: return false
-        return rs.next()
+        onRow = rs.next()
+        return onRow
     }
 
     override fun reset() {
         resultSet?.close()
         resultSet = null
         executed = false
+        onRow = false
     }
 
     override fun clearBindings() {
@@ -180,8 +183,21 @@ private class JdbcSQLiteStatement(
         statement.close()
     }
 
-    private fun resultSet(): ResultSet =
-        resultSet ?: error("No active result row; call step() first")
+    private fun ensureExecuted() {
+        if (executed) return
+        executed = true
+        if (statement.execute()) {
+            resultSet = statement.resultSet
+        } else {
+            resultSet = null
+        }
+    }
+
+    private fun requireRow(): ResultSet {
+        ensureExecuted()
+        check(onRow) { "No active result row; call step() first" }
+        return resultSet ?: error("No active result row; call step() first")
+    }
 
     companion object {
         private const val SQLITE_DATA_INTEGER = 1
