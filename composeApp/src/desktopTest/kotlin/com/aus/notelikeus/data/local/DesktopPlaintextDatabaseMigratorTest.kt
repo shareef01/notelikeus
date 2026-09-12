@@ -60,6 +60,75 @@ class DesktopPlaintextDatabaseMigratorTest {
     }
 
     @Test
+    fun migratesPlaintextThatWasLeftInWalMode() {
+        val dbFile = File(temp.root, "wal.db")
+        val passphrase = ByteArray(32).also { SecureRandom().nextBytes(it) }
+
+        JdbcSQLiteDriver(passphrase = null).open(dbFile.absolutePath).use { connection ->
+            connection.prepare("PRAGMA journal_mode=WAL").use { assertTrue(it.step()) }
+            connection.prepare(
+                "CREATE TABLE note (id INTEGER PRIMARY KEY NOT NULL, title TEXT NOT NULL)",
+            ).use { assertFalse(it.step()) }
+            connection.prepare("INSERT INTO note (id, title) VALUES (?, ?)").use { stmt ->
+                stmt.bindLong(1, 3L)
+                stmt.bindText(2, "from-wal")
+                assertFalse(stmt.step())
+            }
+        }
+        assertTrue(File(temp.root, "wal.db-wal").exists() || dbFile.exists())
+
+        DesktopPlaintextDatabaseMigrator.migrateToEncryptedIfNeeded(dbFile, passphrase)
+
+        assertTrue(dbFile.exists())
+        assertFalse(File(temp.root, "wal.db.pre-encrypt").exists())
+        assertFalse(
+            temp.root.listFiles()?.any { it.name.startsWith("wal.db.quarantined-") } == true,
+        )
+
+        JdbcSQLiteDriver(passphrase).open(dbFile.absolutePath).use { connection ->
+            connection.prepare("SELECT id, title FROM note").use { stmt ->
+                assertTrue(stmt.step())
+                assertEquals(3L, stmt.getLong(0))
+                assertEquals("from-wal", stmt.getText(1))
+            }
+        }
+    }
+
+    @Test
+    fun migratesBundledSqliteWalDatabaseWithNotes() {
+        val dbFile = File(temp.root, "bundled-wal.db")
+        val passphrase = ByteArray(32).also { SecureRandom().nextBytes(it) }
+
+        androidx.sqlite.driver.bundled.BundledSQLiteDriver().open(dbFile.absolutePath).use { connection ->
+            connection.prepare("PRAGMA journal_mode=WAL").use { assertTrue(it.step()) }
+            connection.prepare(
+                "CREATE TABLE notes (id INTEGER PRIMARY KEY NOT NULL, title TEXT NOT NULL)",
+            ).use { assertFalse(it.step()) }
+            connection.prepare("INSERT INTO notes (id, title) VALUES (?, ?)").use { stmt ->
+                stmt.bindLong(1, 42L)
+                stmt.bindText(2, "bundled-note")
+                assertFalse(stmt.step())
+            }
+        }
+        assertTrue(File(temp.root, "bundled-wal.db-wal").exists() || dbFile.exists())
+
+        DesktopPlaintextDatabaseMigrator.migrateToEncryptedIfNeeded(dbFile, passphrase)
+
+        assertTrue(dbFile.exists())
+        assertFalse(
+            temp.root.listFiles()?.any { it.name.startsWith("bundled-wal.db.quarantined-") } == true,
+        )
+
+        JdbcSQLiteDriver(passphrase).open(dbFile.absolutePath).use { connection ->
+            connection.prepare("SELECT id, title FROM notes").use { stmt ->
+                assertTrue(stmt.step())
+                assertEquals(42L, stmt.getLong(0))
+                assertEquals("bundled-note", stmt.getText(1))
+            }
+        }
+    }
+
+    @Test
     fun alreadyEncryptedIsIdempotent() {
         val dbFile = File(temp.root, "already.db")
         val passphrase = ByteArray(32).also { SecureRandom().nextBytes(it) }

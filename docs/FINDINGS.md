@@ -1354,3 +1354,47 @@ race test: the queued pull issues no RPC while the snapshot gate is held, so the
 observable to wait on. The real assertion is that `emitted[0]` is the full library after release.
 
 **Severity:** low (test infrastructure; residual timing only in that race case).
+
+---
+
+## F62 — Desktop plaintext database left in WAL mode fails SQLCipher rekey — **FIXED**
+
+When an existing desktop Room database was previously opened by `BundledSQLiteDriver`, SQLite leaves
+it in write-ahead logging mode (`PRAGMA journal_mode=WAL`). SQLite3 Multiple Ciphers / Willena
+cannot execute `PRAGMA rekey` to encrypt a database in place while `journal_mode` is WAL. Probing
+via JDBC also did not cleanly recognize databases created by the Bundled driver.
+
+**Fixed:**
+- `DesktopPlaintextDatabaseMigrator.kt`: `leaveWalJournalMode()` checkpoints WAL frames using
+  `BundledSQLiteDriver` (`PRAGMA wal_checkpoint(TRUNCATE)`), transitions journal mode to `DELETE`,
+  and cleans up any lingering `-wal` or `-shm` files before creating the temp copy and rekeying.
+  Plaintext probing now also uses `BundledSQLiteDriver`.
+- `JdbcSQLiteDriver.kt`: Room queries column metadata (`getColumnCount()`, `getColumnName()`) after
+  preparing a statement and before `step()`. Added `ensureExecuted()` and explicit row-tracking
+  (`onRow`) so column metadata can be read on JDBC ResultSets without prematurely consuming the
+  first row.
+- Covered by `migratesPlaintextThatWasLeftInWalMode` and `migratesBundledSqliteWalDatabaseWithNotes`
+  in `DesktopPlaintextDatabaseMigratorTest.kt`.
+
+**Severity:** medium-high (desktop database migration failure / data quarantine on existing installs).
+
+---
+
+## F63 — `attachments-worker-deploy.test.mjs` failed on Windows due to strict LF regex — **FIXED**
+
+`scripts/ops/attachments-worker-deploy.test.mjs` extracts the inline generator script from
+`.github/workflows/attachments-worker.yml` using a regex. The regex strictly matched POSIX `\n` line
+endings:
+
+```js
+const match = workflow.match(/node --input-type=module -e '([\s\S]*?)'\n/);
+```
+
+On Windows machines where Git checks out working copies with CRLF (`\r\n`), the regex failed to match
+the workflow file and threw an assertion error, failing 5 out of 7 test assertions in
+`npm run test:attachments-worker-deploy`.
+
+**Fixed:** Updated regex to `/node --input-type=module -e '([\s\S]*?)'\r?\n/`, allowing both LF and
+CRLF line terminations. All 7 tests pass on Windows and Linux.
+
+**Severity:** low (developer tooling / local verification hazard on Windows).
