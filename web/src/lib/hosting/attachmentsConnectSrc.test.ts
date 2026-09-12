@@ -17,9 +17,9 @@ describe('attachmentsConnectSrcOrigin', () => {
   it('pins the staging workers.dev host, not a platform wildcard', () => {
     expect(
       attachmentsConnectSrcOrigin(
-        'https://notelikeus-attachments.error-endpoint.workers.dev',
+        'https://notelikeus-attachments.notelikeus.workers.dev',
       ),
-    ).toBe('https://notelikeus-attachments.error-endpoint.workers.dev');
+    ).toBe('https://notelikeus-attachments.notelikeus.workers.dev');
   });
 
   it('strips a path from the configured Worker URL', () => {
@@ -51,11 +51,11 @@ describe('applyAttachmentsConnectSrc', () => {
   it('inserts the pinned Worker origin after the Supabase wss host', () => {
     const next = applyAttachmentsConnectSrc(
       BASE_HEADERS,
-      'https://notelikeus-attachments.error-endpoint.workers.dev',
+      'https://notelikeus-attachments.notelikeus.workers.dev',
     );
     expect(next).not.toContain('https://*.workers.dev');
     expect(next).toContain(
-      'wss://abcd.supabase.co https://notelikeus-attachments.error-endpoint.workers.dev https://accounts.google.com',
+      'wss://abcd.supabase.co https://notelikeus-attachments.notelikeus.workers.dev https://accounts.google.com',
     );
   });
 });
