@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import kotlin.test.Test
@@ -91,5 +92,71 @@ class EditorBottomBarTest {
 
         assertEquals(1, clicks)
         assertTrue(clicks > 0)
+    }
+
+    @Test
+    fun `shows saving locally when write is in flight`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                EditorBottomBar(
+                    timestamp = timestamp,
+                    isSaving = true,
+                    onMoreClick = {},
+                    contentColor = Color.White
+                )
+            }
+        }
+        onNodeWithText("Saving locally…").assertExists()
+    }
+
+    @Test
+    fun `shows local save failed and handles retry click`() = runComposeUiTest {
+        var retried = false
+        setContent {
+            MaterialTheme {
+                EditorBottomBar(
+                    timestamp = timestamp,
+                    saveFailed = true,
+                    onRetrySave = { retried = true },
+                    onMoreClick = {},
+                    contentColor = Color.White
+                )
+            }
+        }
+        onNodeWithText("Tap to retry").performClick()
+        assertTrue(retried)
+    }
+
+    @Test
+    fun `shows sync pending when attachments are pending upload`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                EditorBottomBar(
+                    timestamp = timestamp,
+                    isGuest = false,
+                    cloudSyncStatus = com.aus.notelikeus.ui.main.CloudSyncStatus.Connected,
+                    attachmentSyncPending = true,
+                    onMoreClick = {},
+                    contentColor = Color.White
+                )
+            }
+        }
+        onNodeWithText("Saved locally • Sync pending").assertExists()
+    }
+
+    @Test
+    fun `shows offline status when cloud is offline`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                EditorBottomBar(
+                    timestamp = timestamp,
+                    isGuest = false,
+                    cloudSyncStatus = com.aus.notelikeus.ui.main.CloudSyncStatus.Offline,
+                    onMoreClick = {},
+                    contentColor = Color.White
+                )
+            }
+        }
+        onNodeWithText("Saved locally • Offline").assertExists()
     }
 }

@@ -158,12 +158,19 @@ export function TopBar({
                 <button
                   type="button"
                   onClick={() => onSearchQueryChange('')}
-                  className={`mr-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
+                  className={`mr-0.5 flex size-10 sm:size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
                   aria-label="Clear search"
                 >
                   <CloseIcon size={18} />
                 </button>
-              ) : null}
+              ) : (
+                <kbd
+                  className="mr-2 hidden select-none rounded border border-brand-outline/25 bg-brand-primary/5 px-1.5 py-0.5 text-[10px] font-semibold text-brand-muted/75 md:inline-flex"
+                  aria-hidden
+                >
+                  Ctrl K
+                </kbd>
+              )}
             </form>
 
             <ViewModeToggle value={viewColumns} onChange={onViewColumnsChange} />
