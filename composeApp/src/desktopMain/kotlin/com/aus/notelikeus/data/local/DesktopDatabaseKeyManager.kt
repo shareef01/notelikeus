@@ -1,4 +1,4 @@
-package com.aus.notelikeus.data.local
+﻿package com.aus.notelikeus.data.local
 
 import com.aus.notelikeus.data.attachments.SecureBlobStore
 import com.aus.notelikeus.platform.Dpapi
@@ -12,9 +12,9 @@ import java.security.SecureRandom
  * Mints and persists a 32-byte key under DPAPI with dedicated entropy
  * ([Dpapi.databaseKeyEntropy]), separate from the session token and attachment AES key.
  * Consumed when [DesktopSqliteFlags.useJdbcSqlite] is true (default on Windows).
- *
- * Failure policy matches attachments: a present key file that DPAPI cannot unwrap is preserved
- * (renamed aside), never silently replaced — minting a new key would orphan an encrypted DB.
+ * Failure policy: a present key file that DPAPI cannot unwrap is preserved in place intact,
+ * never silently replaced or moved aside ÔÇö minting a new key would orphan an encrypted DB,
+ * and moving it aside would cause a subsequent launch to mint a fresh key and quarantine the DB.
  * Inject [blobStore] so Linux CI can exercise persistence without Crypt32.
  */
 class DesktopDatabaseKeyManager(
@@ -39,9 +39,8 @@ class DesktopDatabaseKeyManager(
             val plaintext = try {
                 blobStore.unprotect(file.readBytes())
             } catch (error: Exception) {
-                AppLog.warn(TAG, "Database key file present but DPAPI unwrap failed", error)
-                preserveUnreadableKeyFile()
-                throw error
+                AppLog.warn(TAG, "Database key file present but DPAPI unwrap failed; preserving key file intact", error)
+                throw IllegalStateException("Database key file present but DPAPI unwrap failed; preserving key file intact to prevent data loss", error)
             }
             require(plaintext.size == KEY_BYTES) {
                 "Database key unwrap produced ${plaintext.size} bytes; expected $KEY_BYTES"
@@ -55,15 +54,6 @@ class DesktopDatabaseKeyManager(
             throw IllegalStateException("Could not publish desktop database key file")
         }
         return generated
-    }
-
-    private fun preserveUnreadableKeyFile() {
-        val file = keyFile()
-        if (!file.exists()) return
-        val preserved = File(keyDir, "$KEY_FILE_NAME.unrecoverable-${System.currentTimeMillis()}")
-        if (!file.renameTo(preserved)) {
-            AppLog.warn(TAG, "Failed to preserve unreadable database key file")
-        }
     }
 
     private fun publishByRename(payload: ByteArray): Boolean {
