@@ -69,8 +69,8 @@ describe('NoteCard', () => {
   it('renders checklist items in grid view and applies line-through to completed items', () => {
     const note = createTestNote({
       checklist: [
-        { id: '1', text: 'First task', isChecked: true },
-        { id: '2', text: 'Second task', isChecked: false },
+        { id: '1', text: 'First task', isChecked: true, position: 0 },
+        { id: '2', text: 'Second task', isChecked: false, position: 1 },
       ],
     });
     const { container, cleanup } = renderCard(note, { density: 'grid' });
@@ -95,11 +95,11 @@ describe('NoteCard', () => {
   it('renders +N more when checklist has more than 3 items in grid view', () => {
     const note = createTestNote({
       checklist: [
-        { id: '1', text: 'Task 1', isChecked: false },
-        { id: '2', text: 'Task 2', isChecked: false },
-        { id: '3', text: 'Task 3', isChecked: false },
-        { id: '4', text: 'Task 4', isChecked: false },
-        { id: '5', text: 'Task 5', isChecked: false },
+        { id: '1', text: 'Task 1', isChecked: false, position: 0 },
+        { id: '2', text: 'Task 2', isChecked: false, position: 1 },
+        { id: '3', text: 'Task 3', isChecked: false, position: 2 },
+        { id: '4', text: 'Task 4', isChecked: false, position: 3 },
+        { id: '5', text: 'Task 5', isChecked: false, position: 4 },
       ],
     });
     const { container, cleanup } = renderCard(note, { density: 'grid' });
@@ -115,8 +115,8 @@ describe('NoteCard', () => {
   it('renders checked count in list view', () => {
     const note = createTestNote({
       checklist: [
-        { id: '1', text: 'Task 1', isChecked: true },
-        { id: '2', text: 'Task 2', isChecked: false },
+        { id: '1', text: 'Task 1', isChecked: true, position: 0 },
+        { id: '2', text: 'Task 2', isChecked: false, position: 1 },
       ],
     });
     const { container, cleanup } = renderCard(note, { density: 'list' });
