@@ -1,4 +1,4 @@
-import 'fake-indexeddb/auto';
+﻿import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   BUNDLE_FORMAT_VERSION,
@@ -128,7 +128,7 @@ describe('bundle parsing refuses what it cannot trust', () => {
   it('rejects an oversized manifest before extracting media', async () => {
     const { MAX_BUNDLE_MANIFEST_BYTES } = await import('@/lib/backup/bundle/backupBundle');
     const huge = new Uint8Array(MAX_BUNDLE_MANIFEST_BYTES + 1);
-    huge.fill(0x20); // spaces — valid-ish payload shape, refused by size alone
+    huge.fill(0x20); // spaces ÔÇö valid-ish payload shape, refused by size alone
     const archive = writeZip([
       { name: 'manifest.json', data: huge },
       { name: 'media/att-one', data: PNG },
@@ -195,7 +195,7 @@ describe('a corrupt attachment never costs a note', () => {
     ]);
     // Rebuild the archive with different bytes under the same name, so the manifest's sha256
     // and sizeBytes no longer describe the file. This is what bit rot or a hand-edited archive
-    // looks like — the ZIP's own CRC still matches, so only the manifest catches it.
+    // looks like ÔÇö the ZIP's own CRC still matches, so only the manifest catches it.
     const entries = await readZip(archive);
     return writeZip(
       entries.map((entry) =>
@@ -401,10 +401,45 @@ describe('bundle import stays additive and deterministic', () => {
 
     expect(exported.attachmentsIncluded).toBe(0);
     expect(exported.attachmentsSkipped).toBe(1);
-    expect(exported.warnings.join(' ')).toMatch(/only in the cloud/);
+    expect(exported.warnings.join(' ')).toMatch(/only available in cloud storage on this device/);
     // The note itself is still fully in the bundle.
     const plan = await applyBundle(await parseBackupBundle(exported.bytes), [], { ownerId: GUEST_OWNER_ID });
     expect(plan.merged[0]!.title).toBe('Trip');
+  });
+
+  it('cloudOnlyAttachmentWarningDoesNotGiveFalseRecoveryInstructions', async () => {
+    const singleCloudNote = note('1', {
+      title: 'Cloud Attachment 1',
+      attachments: [
+        { id: 'att-1', noteId: 1, storagePath: 'r2:owners/u/notes/1/att-1', type: 'image' },
+      ],
+    });
+
+    const singleExport = await buildBundleFromNotes([singleCloudNote], GUEST_OWNER_ID);
+    expect(singleExport.attachmentsSkipped).toBe(1);
+    expect(singleExport.warnings).toHaveLength(1);
+    expect(singleExport.warnings[0]).toBe(
+      '1 image was not included because its bytes are only available in cloud storage on this device.',
+    );
+    expect(singleExport.warnings[0]).not.toMatch(/Open those notes/);
+    expect(singleExport.warnings[0]).not.toMatch(/export again/);
+
+    const multiCloudNote = note('2', {
+      title: 'Cloud Attachment 2',
+      attachments: [
+        { id: 'att-2', noteId: 2, storagePath: 'r2:owners/u/notes/2/att-2', type: 'image' },
+        { id: 'att-3', noteId: 2, storagePath: 'r2:owners/u/notes/2/att-3', type: 'image' },
+      ],
+    });
+
+    const multiExport = await buildBundleFromNotes([multiCloudNote], GUEST_OWNER_ID);
+    expect(multiExport.attachmentsSkipped).toBe(2);
+    expect(multiExport.warnings).toHaveLength(1);
+    expect(multiExport.warnings[0]).toBe(
+      '2 images were not included because their bytes are only available in cloud storage on this device.',
+    );
+    expect(multiExport.warnings[0]).not.toMatch(/Open those notes/);
+    expect(multiExport.warnings[0]).not.toMatch(/export again/);
   });
 
   it('carries checklists, labels, colours and reminders through the bundle', async () => {

@@ -1,4 +1,4 @@
-export interface WorkerEnv {
+﻿export interface WorkerEnv {
   ATTACHMENTS_BUCKET: R2Bucket;
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
@@ -12,7 +12,7 @@ export interface WorkerEnv {
   /**
    * Optional Cloudflare rate-limiting binding. Cloudflare counts these at the edge rather than
    * in isolate memory, so the limit holds across every isolate the Worker runs in. Absent
-   * binding means no Worker-level throttling at all — see `wrangler.toml.example`.
+   * binding means no Worker-level throttling at all ÔÇö see `wrangler.toml.example`.
    */
   ATTACHMENT_RATE_LIMITER?: RateLimiterBinding;
 }
@@ -29,6 +29,35 @@ export class UpstreamServiceError extends Error {
     super(message);
     this.name = 'UpstreamServiceError';
   }
+}
+
+function parseAndValidateUserId(rawBody: string): string {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    throw new UpstreamServiceError('Upstream auth service returned malformed JSON', 502);
+  }
+
+  if (
+    typeof payload !== 'object' ||
+    payload === null ||
+    Array.isArray(payload)
+  ) {
+    throw new UpstreamServiceError('Upstream auth service returned malformed response shape', 502);
+  }
+
+  const record = payload as Record<string, unknown>;
+  if (typeof record.id !== 'string') {
+    throw new UpstreamServiceError('Upstream auth service returned missing or non-string user id', 502);
+  }
+
+  const trimmed = record.id.trim();
+  if (trimmed.length === 0) {
+    throw new UpstreamServiceError('Upstream auth service returned blank user id', 502);
+  }
+
+  return trimmed;
 }
 
 export async function resolveAuthenticatedUserId(
@@ -61,6 +90,6 @@ export async function resolveAuthenticatedUserId(
   }
   if (!response.ok) return null;
 
-  const payload = (await response.json()) as { id?: string };
-  return payload.id?.trim() || null;
+  const rawBody = await response.text();
+  return parseAndValidateUserId(rawBody);
 }
