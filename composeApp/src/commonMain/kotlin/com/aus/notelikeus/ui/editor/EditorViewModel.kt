@@ -17,7 +17,9 @@ import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.domain.platform.ReminderManager
+import com.aus.notelikeus.ui.main.CloudSyncStatus
 import com.aus.notelikeus.ui.theme.NO_NOTE_COLOR
 import com.aus.notelikeus.util.AppLog
 import com.aus.notelikeus.util.DateUtils
@@ -47,6 +49,8 @@ data class EditorState(
     val position: Int = 0,
     val isNoteLoaded: Boolean = false,
     val noteNotFound: Boolean = false,
+    val isSaving: Boolean = false,
+    val isSavedLocally: Boolean = false,
     /** A save (autosave included) failed: the editor still holds the only copy of the edit. */
     val saveFailed: Boolean = false,
     /**
@@ -58,6 +62,8 @@ data class EditorState(
     val attachmentStagingFailed: Boolean = false,
     /** Title or body was shortened to the Postgres / sync caps. */
     val truncatedToSyncLimit: Boolean = false,
+    val cloudSyncStatus: CloudSyncStatus = CloudSyncStatus.Unknown,
+    val isGuest: Boolean = true,
 )
 
 class EditorViewModel(
@@ -70,6 +76,7 @@ class EditorViewModel(
      * without a Worker URL baked into the build under test.
      */
     private val attachmentsEnabled: () -> Boolean = ::isR2AttachmentsEnabled,
+    private val syncManager: SyncManager? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(EditorState())
@@ -105,6 +112,17 @@ class EditorViewModel(
 
     init {
         loadNote()
+        observeSync()
+    }
+
+    private fun observeSync() {
+        val sync = syncManager ?: return
+        sync.syncStatus.onEach { status ->
+            _state.update { it.copy(cloudSyncStatus = status) }
+        }.launchIn(viewModelScope)
+        sync.cloudAccount.onEach { account ->
+            _state.update { it.copy(isGuest = account.email.isNullOrBlank()) }
+        }.launchIn(viewModelScope)
     }
 
     fun setNoteId(id: Long?) = setRouteArgs(id, routedInitialColor)
@@ -204,6 +222,9 @@ class EditorViewModel(
                             timestamp = note.timestamp,
                             position = note.position,
                             isNoteLoaded = true,
+                            isSavedLocally = true,
+                            cloudSyncStatus = current.cloudSyncStatus,
+                            isGuest = current.isGuest,
                         )
                         // The stored note still supplies every field the user has not touched, so
                         // the editor is fully populated either way; it simply cannot overwrite
@@ -408,8 +429,11 @@ class EditorViewModel(
             currentState.checklist.isEmpty() &&
             currentState.attachments.isEmpty()
         ) {
+            _state.update { it.copy(isSaving = false) }
             return@withLock null
         }
+
+        _state.update { it.copy(isSaving = true, saveFailed = false) }
 
         val position = if (currentState.id == null) {
             repository.getNextNotePosition()
@@ -453,6 +477,7 @@ class EditorViewModel(
 
         // Local save has succeeded. Everything below is remote or best-effort cleanup, and must
         // not be able to turn this into a failed save.
+        _state.update { it.copy(isSaving = false, isSavedLocally = true, saveFailed = false) }
         if (savedId != null) {
             runCatching { attachmentSync?.bindStagedAttachmentsToNote(savedId, note.attachments) }
             syncRemoteAttachments(note)
@@ -511,10 +536,11 @@ class EditorViewModel(
             persistNote()
             true
         } catch (cancellation: CancellationException) {
+            _state.update { it.copy(isSaving = false) }
             throw cancellation
         } catch (error: Exception) {
             AppLog.warn(TAG, "Saving the note failed", error)
-            _state.update { it.copy(saveFailed = true) }
+            _state.update { it.copy(isSaving = false, saveFailed = true) }
             false
         }
     }
@@ -762,16 +788,18 @@ class EditorViewModel(
         return try {
             val id = persistNote()
             if (id == null) {
+                _state.update { it.copy(isSaving = false) }
                 LocalSaveResult.Unchanged
             } else {
-                if (_state.value.saveFailed) _state.update { it.copy(saveFailed = false) }
+                _state.update { it.copy(isSaving = false, saveFailed = false, isSavedLocally = true) }
                 LocalSaveResult.Saved(id)
             }
         } catch (cancellation: CancellationException) {
+            _state.update { it.copy(isSaving = false) }
             throw cancellation
         } catch (error: Exception) {
             AppLog.warn(TAG, "Saving the note failed", error)
-            _state.update { it.copy(saveFailed = true) }
+            _state.update { it.copy(isSaving = false, saveFailed = true) }
             LocalSaveResult.Failed(error)
         }
     }

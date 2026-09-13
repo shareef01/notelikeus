@@ -25,10 +25,10 @@ val sharedModule = module {
     
     viewModel { MainViewModel(get(), get(), get(), get(), get(), get(), get(), get()) }
     viewModel { params -> 
-        EditorViewModel(get(), get(), params.get(), get()) 
+        EditorViewModel(get(), get(), params.get(), get(), syncManager = getOrNull()) 
     }
     factory(named("windowEditor")) {
-        EditorViewModel(get(), get(), SavedStateHandle(), get())
+        EditorViewModel(get(), get(), SavedStateHandle(), get(), syncManager = getOrNull())
     }
     viewModel { LabelsViewModel(get()) }
 }

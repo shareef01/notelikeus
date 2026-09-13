@@ -25,7 +25,7 @@ export function useShortcuts(bindings: ShortcutBinding[]): void {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       for (const binding of latest.current) {
-        if (event.key !== binding.key) continue;
+        if (event.key.toLowerCase() !== binding.key.toLowerCase()) continue;
         if (binding.ctrlOrMeta) {
           if (!event.ctrlKey && !event.metaKey) continue;
           if (event.shiftKey || event.altKey) continue;

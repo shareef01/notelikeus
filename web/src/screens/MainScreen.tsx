@@ -310,6 +310,20 @@ export function MainScreen() {
       },
     },
     {
+      key: 'k',
+      ctrlOrMeta: true,
+      action: () => {
+        if (editorRoute.mode === 'closed') searchInputRef.current?.focus();
+      },
+    },
+    {
+      key: 'f',
+      ctrlOrMeta: true,
+      action: () => {
+        if (editorRoute.mode === 'closed') searchInputRef.current?.focus();
+      },
+    },
+    {
       key: 'n',
       action: () => {
         if (editorRoute.mode === 'closed' && filters.filter === 'active') openNewNote();

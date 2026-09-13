@@ -71,7 +71,9 @@ fun NavGraph(
     onGoogleSignIn: () -> Unit = {},
     pendingSharedTitle: String? = null,
     pendingSharedContent: String? = null,
-    onConsumeSharedContent: () -> Unit = {}
+    onConsumeSharedContent: () -> Unit = {},
+    pendingFocusSearch: Boolean = false,
+    pendingOpenSettings: Boolean = false
 ) {
     NavHost(
         navController = navController,
@@ -84,6 +86,8 @@ fun NavGraph(
         ) {
             MainScreen(
                 viewModel = mainViewModel,
+                pendingFocusSearch = pendingFocusSearch,
+                pendingOpenSettings = pendingOpenSettings,
                 initialSidebarCollapsed = initialSidebarCollapsed,
                 onSidebarCollapsedChange = onSidebarCollapsedChange,
                 onNoteClick = { noteId ->

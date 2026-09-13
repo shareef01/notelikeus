@@ -9,8 +9,10 @@ import com.aus.notelikeus.domain.model.SavedFilter
 
     import androidx.compose.animation.core.animateDpAsState
     import androidx.compose.foundation.background
+    import androidx.compose.foundation.focusable
     import androidx.compose.foundation.layout.*
     import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+    import androidx.compose.ui.focus.focusRequester
     import androidx.compose.material3.*
     import androidx.compose.material3.adaptive.layout.AnimatedPane
     import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
@@ -69,7 +71,9 @@ fun MainScreen(
     onExportBackup: () -> Unit = {},
     onExportNotesOnly: () -> Unit = {},
     onImportBackup: () -> Unit = {},
-    onGoogleSignIn: () -> Unit = {}
+    onGoogleSignIn: () -> Unit = {},
+    pendingFocusSearch: Boolean = false,
+    pendingOpenSettings: Boolean = false
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val gridState = rememberLazyStaggeredGridState()
@@ -296,11 +300,30 @@ fun MainScreen(
         )
     }
 
+    val screenFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) {
+        screenFocusRequester.requestFocus()
+    }
+
+    LaunchedEffect(pendingFocusSearch) {
+        if (pendingFocusSearch) {
+            searchFocusRequester.requestFocus()
+        }
+    }
+
+    LaunchedEffect(pendingOpenSettings) {
+        if (pendingOpenSettings) {
+            openSettings()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .focusRequester(screenFocusRequester)
+            .focusable()
             .onKeyEvent {
-                if (it.isCtrlPressed && it.key == Key.F) {
+                if (it.isCtrlPressed && (it.key == Key.F || it.key == Key.K)) {
                     searchFocusRequester.requestFocus()
                     true
                 } else if (it.isCtrlPressed && it.key == Key.N) {

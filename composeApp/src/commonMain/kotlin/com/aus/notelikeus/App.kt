@@ -44,6 +44,8 @@ fun App(
     pendingSharedTitle: String? = null,
     pendingSharedContent: String? = null,
     onConsumeSharedContent: () -> Unit = {},
+    pendingFocusSearch: Boolean = false,
+    pendingOpenSettings: Boolean = false,
     navigationRequest: Long = 0L,
     /**
      * Window chrome drawn above the app content. Desktop passes its custom title bar here rather
@@ -113,6 +115,8 @@ fun App(
                         pendingSharedTitle = pendingSharedTitle,
                         pendingSharedContent = pendingSharedContent,
                         onConsumeSharedContent = onConsumeSharedContent,
+                        pendingFocusSearch = pendingFocusSearch,
+                        pendingOpenSettings = pendingOpenSettings,
                         navigationRequest = navigationRequest,
                         isUnlocked = isUnlocked,
                         onUnlocked = { isUnlocked = true },
@@ -142,6 +146,8 @@ private fun AppContent(
     pendingSharedTitle: String?,
     pendingSharedContent: String?,
     onConsumeSharedContent: () -> Unit,
+    pendingFocusSearch: Boolean = false,
+    pendingOpenSettings: Boolean = false,
     navigationRequest: Long,
     isUnlocked: Boolean,
     onUnlocked: () -> Unit,
@@ -246,7 +252,9 @@ private fun AppContent(
                         onGoogleSignIn = { onGoogleSignInClick(viewModel) },
                         pendingSharedTitle = pendingSharedTitle,
                         pendingSharedContent = pendingSharedContent,
-                        onConsumeSharedContent = onConsumeSharedContent
+                        onConsumeSharedContent = onConsumeSharedContent,
+                        pendingFocusSearch = pendingFocusSearch,
+                        pendingOpenSettings = pendingOpenSettings
                     )
 
                     if (!isUnlocked) {

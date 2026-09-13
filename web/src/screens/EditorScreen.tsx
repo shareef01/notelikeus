@@ -18,6 +18,8 @@ import { ReminderPickerDialog } from '@/components/editor/ReminderPickerDialog';
 import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
 import { useNoteEditor } from '@/hooks/useNoteEditor';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
+import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
+import { useCloudSync } from '@/hooks/useCloudSync';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
@@ -90,8 +92,10 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const setEditorLayout = useUiStore((s) => s.setEditorLayout);
   const isTabletUp = useIsTabletUp();
   const keyboardInset = useVisualViewportBottomInset();
+  const { userId, isGuest, online } = useCloudSync();
   const editor = useNoteEditor(noteId);
   const { state } = editor;
+  const hasPendingAttachments = state.attachments.some((a) => isPendingAttachment(a.storagePath));
 
   // Closing on a failed write would discard the only copy of the edit, so navigation is
   // conditional on the local save landing. The failure banner below is then the way out:
@@ -482,7 +486,9 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
       <div
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-layout-gap pt-4 sm:px-6 sm:pt-6 lg:px-8"
-        style={{ paddingBottom: `calc(5.5rem + ${effectiveKeyboardInset}px)` }}
+        style={{
+          paddingBottom: `calc(5.5rem + max(env(safe-area-inset-bottom, 0px), 1rem) + ${effectiveKeyboardInset}px)`,
+        }}
         onClick={(event) => {
           const target = event.target as HTMLElement;
           if (
@@ -680,16 +686,29 @@ export function EditorScreen({ route }: EditorScreenProps) {
       </div>
 
       <div
-        className="absolute inset-x-0 bottom-0 z-20"
+        className="absolute inset-x-0 bottom-0 z-20 pointer-events-none"
         style={{ color: contentColor, bottom: effectiveKeyboardInset }}
       >
-        <EditorBottomBar
-          timestamp={state.timestamp}
-          isSaving={state.isSaving}
-          contentColor={contentColor}
-          reminderTimestamp={state.reminderTimestamp}
-          onMoreClick={() => setShowOptions(true)}
-        />
+        <div
+          className="pointer-events-auto"
+          style={{
+            background: `linear-gradient(to top, ${surface.backgroundColor} 70%, transparent 100%)`,
+          }}
+        >
+          <EditorBottomBar
+            timestamp={state.timestamp}
+            isSaving={state.isSaving}
+            saveFailed={state.saveFailed}
+            isSavedLocally={state.lastSavedAt != null}
+            isSignedIn={Boolean(userId) && !isGuest}
+            isOnline={online}
+            hasPendingAttachments={hasPendingAttachments}
+            contentColor={contentColor}
+            reminderTimestamp={state.reminderTimestamp}
+            onRetrySave={() => void editor.flushSave()}
+            onMoreClick={() => setShowOptions(true)}
+          />
+        </div>
       </div>
 
       <EditorOptionsSheet

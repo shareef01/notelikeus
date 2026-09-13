@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -258,11 +259,12 @@ fun NoteCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val isHovered by interactionSource.collectIsHoveredAsState()
+    val isFocused by interactionSource.collectIsFocusedAsState()
 
     val elevation by animateDpAsState(
         targetValue = when {
             isSelected -> Spacing.xxs
-            isHovered -> 6.dp
+            isHovered || isFocused -> 6.dp
             else -> Spacing.none
         },
         label = "elevation"
@@ -271,7 +273,7 @@ fun NoteCard(
     val scale by animateFloatAsState(
         targetValue = when {
             isPressed -> 0.98f
-            isHovered -> 1.01f
+            isHovered || isFocused -> 1.01f
             isSelected -> 0.995f
             else -> 1f
         },
@@ -354,6 +356,7 @@ fun NoteCard(
         elevation = CardDefaults.cardElevation(defaultElevation = elevation),
         border = when {
             isSelected -> BorderStroke(Spacing.xxs, MaterialTheme.colorScheme.primary)
+            isFocused -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
             displayColorArgb == 0 -> hairlineBorder
             else -> null
         }

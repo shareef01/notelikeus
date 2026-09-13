@@ -327,6 +327,13 @@ fun EditorScreen(
                 EditorBottomBar(
                     timestamp = state.timestamp,
                     reminderTimestamp = state.reminderTimestamp,
+                    isSaving = state.isSaving,
+                    saveFailed = state.saveFailed,
+                    isSavedLocally = state.isSavedLocally,
+                    cloudSyncStatus = state.cloudSyncStatus,
+                    isGuest = state.isGuest,
+                    attachmentSyncPending = state.attachmentSyncPending,
+                    onRetrySave = { viewModel.saveNote() },
                     onMoreClick = { showBottomSheet = true },
                     contentColor = contentColor
                 )

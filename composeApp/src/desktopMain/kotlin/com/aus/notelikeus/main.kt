@@ -111,6 +111,8 @@ private fun launchApp(
     val trayState = rememberTrayState()
     
     var pendingCreateNote by remember { mutableStateOf(false) }
+    var pendingFocusSearch by remember { mutableStateOf(false) }
+    var pendingOpenSettings by remember { mutableStateOf(false) }
     var navigationRequest by remember { mutableLongStateOf(0L) }
     
     var biometricTitle by remember { mutableStateOf<String?>(null) }
@@ -177,6 +179,14 @@ private fun launchApp(
         pendingCreateNote = true
         navigationRequest++
     }
+    val onSearch: () -> Unit = {
+        pendingFocusSearch = true
+        navigationRequest++
+    }
+    val onSettings: () -> Unit = {
+        pendingOpenSettings = true
+        navigationRequest++
+    }
 
     Window(
         onCloseRequest = ::exitApplication,
@@ -187,11 +197,24 @@ private fun launchApp(
         // window draws its own (see NotelikeusTitleBar) and keeps one continuous surface.
         undecorated = true,
         resizable = true,
-        // Replaces the MenuBar's Ctrl+N accelerator, which went away with the native chrome.
+        // Global desktop accelerators matching the title bar menu.
         onPreviewKeyEvent = { event ->
-            if (event.type == KeyEventType.KeyDown && event.isCtrlPressed && event.key == Key.N) {
-                newNote()
-                true
+            if (event.type == KeyEventType.KeyDown && event.isCtrlPressed) {
+                when (event.key) {
+                    Key.N -> {
+                        newNote()
+                        true
+                    }
+                    Key.F, Key.K -> {
+                        onSearch()
+                        true
+                    }
+                    Key.Comma -> {
+                        onSettings()
+                        true
+                    }
+                    else -> false
+                }
             } else {
                 false
             }
@@ -308,6 +331,8 @@ private fun launchApp(
                 }
             },
             pendingCreateNote = pendingCreateNote,
+            pendingFocusSearch = pendingFocusSearch,
+            pendingOpenSettings = pendingOpenSettings,
             navigationRequest = navigationRequest,
             titleBar = {
                 NotelikeusTitleBar(
@@ -319,6 +344,8 @@ private fun launchApp(
                     },
                     onClose = ::exitApplication,
                     onNewNote = newNote,
+                    onSearch = onSearch,
+                    onSettings = onSettings,
                     onAbout = { showAboutDialog = true }
                 )
             }
@@ -328,6 +355,8 @@ private fun launchApp(
             if (navigationRequest > 0) {
                 delay(100.milliseconds)
                 pendingCreateNote = false
+                pendingFocusSearch = false
+                pendingOpenSettings = false
             }
         }
     }

@@ -5,7 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -63,6 +68,8 @@ fun FrameWindowScope.NotelikeusTitleBar(
     onClose: () -> Unit,
     onNewNote: () -> Unit,
     onAbout: () -> Unit,
+    onSearch: (() -> Unit)? = null,
+    onSettings: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
@@ -105,6 +112,7 @@ fun FrameWindowScope.NotelikeusTitleBar(
             Box {
                 CaptionButton(
                     onClick = { menuOpen = true },
+                    contentDescription = "Window menu",
                     hoverColor = colors.onSurface.copy(alpha = Chrome.SoftWash),
                     contentColor = colors.onSurface
                 ) { color -> DrawOverflow(color) }
@@ -121,6 +129,33 @@ fun FrameWindowScope.NotelikeusTitleBar(
                         },
                         onClick = { menuOpen = false; onNewNote() }
                     )
+                    if (onSearch != null) {
+                        DropdownMenuItem(
+                            text = { Text("Search") },
+                            trailingIcon = {
+                                Text(
+                                    "Ctrl+K",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colors.onSurfaceVariant
+                                )
+                            },
+                            onClick = { menuOpen = false; onSearch() }
+                        )
+                    }
+                    if (onSettings != null) {
+                        DropdownMenuItem(
+                            text = { Text("Settings") },
+                            trailingIcon = {
+                                Text(
+                                    "Ctrl+,",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colors.onSurfaceVariant
+                                )
+                            },
+                            onClick = { menuOpen = false; onSettings() }
+                        )
+                    }
+                    HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text("About Notelikeus") },
                         onClick = { menuOpen = false; onAbout() }
@@ -135,18 +170,21 @@ fun FrameWindowScope.NotelikeusTitleBar(
 
             CaptionButton(
                 onClick = onMinimize,
+                contentDescription = "Minimize",
                 hoverColor = colors.onSurface.copy(alpha = Chrome.SoftWash),
                 contentColor = colors.onSurface
             ) { color -> DrawMinimize(color) }
 
             CaptionButton(
                 onClick = onToggleMaximize,
+                contentDescription = if (isMaximized) "Restore" else "Maximize",
                 hoverColor = colors.onSurface.copy(alpha = Chrome.SoftWash),
                 contentColor = colors.onSurface
             ) { color -> if (isMaximized) DrawRestore(color) else DrawMaximize(color) }
 
             CaptionButton(
                 onClick = onClose,
+                contentDescription = "Close",
                 hoverColor = CLOSE_HOVER,
                 contentColor = colors.onSurface,
                 hoverContentColor = Color.White
@@ -167,6 +205,7 @@ fun FrameWindowScope.NotelikeusTitleBar(
 @Composable
 private fun CaptionButton(
     onClick: () -> Unit,
+    contentDescription: String,
     hoverColor: Color,
     contentColor: Color,
     hoverContentColor: Color? = null,
@@ -174,11 +213,16 @@ private fun CaptionButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
+    val focused by interaction.collectIsFocusedAsState()
     val background by animateColorAsState(
-        targetValue = if (hovered) hoverColor else Color.Transparent,
+        targetValue = when {
+            hovered -> hoverColor
+            focused -> hoverColor.copy(alpha = 0.5f)
+            else -> Color.Transparent
+        },
         label = "captionHover"
     )
-    val tint = if (hovered && hoverContentColor != null) hoverContentColor else contentColor
+    val tint = if ((hovered || focused) && hoverContentColor != null) hoverContentColor else contentColor
 
     Box(
         modifier = Modifier
@@ -190,7 +234,11 @@ private fun CaptionButton(
                 indication = null,
                 onClick = onClick
             )
-            .background(background),
+            .background(background)
+            .semantics {
+                this.contentDescription = contentDescription
+                role = Role.Button
+            },
         contentAlignment = Alignment.Center
     ) {
         content(tint)

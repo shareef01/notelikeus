@@ -1,8 +1,14 @@
 interface EditorBottomBarProps {
   timestamp: number;
   isSaving: boolean;
+  saveFailed?: boolean;
+  isSavedLocally?: boolean;
+  isSignedIn?: boolean;
+  isOnline?: boolean;
+  hasPendingAttachments?: boolean;
   contentColor: string;
   reminderTimestamp?: number | null;
+  onRetrySave?: () => void;
   onMoreClick: () => void;
 }
 
@@ -20,8 +26,13 @@ function formatReminderLabel(timestamp: number | null | undefined): string | nul
 export function EditorBottomBar({
   timestamp,
   isSaving,
+  saveFailed = false,
+  isSignedIn = false,
+  isOnline = true,
+  hasPendingAttachments = false,
   contentColor,
   reminderTimestamp = null,
+  onRetrySave,
   onMoreClick,
 }: EditorBottomBarProps) {
   const editedLabel = new Intl.DateTimeFormat(undefined, {
@@ -30,14 +41,49 @@ export function EditorBottomBar({
   }).format(new Date(timestamp));
   const reminderLabel = formatReminderLabel(reminderTimestamp);
 
+  let statusText = `Saved locally • ${editedLabel}`;
+  let isError = false;
+
+  if (saveFailed) {
+    statusText = 'Local save failed';
+    isError = true;
+  } else if (isSaving) {
+    statusText = 'Saving locally…';
+  } else if (!isSignedIn) {
+    statusText = `Saved locally • ${editedLabel}`;
+  } else if (!isOnline) {
+    statusText = 'Saved locally • Offline';
+  } else if (hasPendingAttachments) {
+    statusText = 'Saved locally • Sync pending';
+  } else {
+    statusText = 'Saved locally • Synced';
+  }
+
   return (
     <footer
       className="relative z-10 flex shrink-0 items-center justify-between px-2 pb-safe-action pt-2 sm:px-3 lg:px-4"
       style={{ color: contentColor }}
     >
       <div className="flex-1" />
-      <div className="text-center text-xs font-medium opacity-70">
-        <div>{isSaving ? 'Saving…' : `Edited ${editedLabel}`}</div>
+      <div className="text-center text-xs font-medium">
+        {isError ? (
+          <div className="flex items-center justify-center gap-1 text-red-500 dark:text-red-400">
+            <span>{statusText}</span>
+            {onRetrySave ? (
+              <button
+                type="button"
+                onClick={onRetrySave}
+                className="underline underline-offset-2 hover:opacity-80 font-semibold ml-1 cursor-pointer"
+              >
+                Retry
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <div className="opacity-75 tracking-tight flex items-center justify-center gap-1.5">
+            <span>{statusText}</span>
+          </div>
+        )}
         {reminderLabel ? (
           <div className="mt-0.5 font-semibold opacity-90">{reminderLabel}</div>
         ) : null}
@@ -57,3 +103,4 @@ export function EditorBottomBar({
     </footer>
   );
 }
+
