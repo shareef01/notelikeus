@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { handleAttachmentRequest, type WorkerEnv } from './index';
+﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import worker, { handleAttachmentRequest, type WorkerEnv } from './index';
 import { MAX_ATTACHMENT_BYTES } from './limits';
 
 const USER_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -376,8 +376,8 @@ describe('attachment worker authentication', () => {
 /**
  * Cheap local validation runs before anything is spent upstream.
  *
- * Everything decided here is a property of the request alone — the route shape, the method, the
- * upload headers — so refusing early cannot tell an anonymous caller anything about which notes
+ * Everything decided here is a property of the request alone ÔÇö the route shape, the method, the
+ * upload headers ÔÇö so refusing early cannot tell an anonymous caller anything about which notes
  * or attachments exist.
  */
 describe('attachment worker request ordering', () => {
@@ -795,7 +795,7 @@ describe('PUT retry against a committed attachment', () => {
     await commitAttachment();
     const originalBytes = bucket.objects.get(key)!.body;
 
-    // Metadata row exists but the object vanished, so the retry genuinely re-uploads — and then
+    // Metadata row exists but the object vanished, so the retry genuinely re-uploads ÔÇö and then
     // finalization fails. The regression: compensation deleted the object the live row needs.
     bucket.objects.delete(key);
     mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
@@ -859,7 +859,7 @@ describe('PUT retry against a committed attachment', () => {
  * DELETE is claimed before a byte moves.
  *
  * The old order deleted the R2 object first and then asked the database to mark the metadata
- * deleted, without checking the answer — so a refused, failing, or timed-out finalization still
+ * deleted, without checking the answer ÔÇö so a refused, failing, or timed-out finalization still
  * produced 200 {"deleted":true} over a live row whose object was gone. Recording the deletion
  * first turns every remaining failure into an orphaned object, which is recoverable, and lets a
  * retry converge from any point.
@@ -1097,8 +1097,8 @@ describe('attachment DELETE protocol', () => {
  *
  * The delete protocol makes a claimed deletion terminal, but the object key is derived from the
  * attachment id, so a PUT of that same id lands right back on the retired identity. The database
- * is the authority here — a DELETE can be claimed at any point after the Worker's preflight said
- * yes, including while the bytes are still uploading — and it answers `terminally_deleted` as a
+ * is the authority here ÔÇö a DELETE can be claimed at any point after the Worker's preflight said
+ * yes, including while the bytes are still uploading ÔÇö and it answers `terminally_deleted` as a
  * value so the Worker can act on it without guessing.
  */
 describe('PUT against a terminally deleted attachment identity', () => {
@@ -1175,7 +1175,7 @@ describe('PUT against a terminally deleted attachment identity', () => {
    * it. A DELETE lands between this PUT's authorization and its R2 lookup, so the Worker sees a
    * live row, finds the object missing, and re-uploads to "repair" an attachment that has in fact
    * just been retired. `ownedByThisRequest` is false on that path, so ordinary compensation would
-   * decline to remove the bytes — and nothing would ever collect them: the row's object deletion
+   * decline to remove the bytes ÔÇö and nothing would ever collect them: the row's object deletion
    * is already confirmed, so the unconfirmed-delete sweep skips it, and its note is still live, so
    * the orphan sweep never looks at it either.
    */
@@ -1213,8 +1213,8 @@ describe('PUT against a terminally deleted attachment identity', () => {
   });
 
   it('leaves a live attachment bytes alone when finalization is merely untrustworthy', async () => {
-    // The conservative path must survive the new forced one. Same shape as the race above — live
-    // row, missing object, re-upload — but finalization times out instead of answering, so the
+    // The conservative path must survive the new forced one. Same shape as the race above ÔÇö live
+    // row, missing object, re-upload ÔÇö but finalization times out instead of answering, so the
     // Worker cannot know whether the row survived and must not destroy bytes it may still need.
     expect((await upload('1', 'att1', USER_A)).status).toBe(200);
     bucket.objects.delete(key);
@@ -1229,5 +1229,39 @@ describe('PUT against a terminally deleted attachment identity', () => {
 
     expect(response.status).toBe(503);
     expect(bucket.objects.has(key)).toBe(true);
+  });
+
+  it('outer worker returns 502 with CORS headers on upstream Auth 200 malformed JSON without leaking body or secrets', async () => {
+    mockSupabaseAuth({}, (url) => {
+      if (url.includes('/auth/v1/user')) {
+        return new Response('<html>gateway error</html>', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return undefined;
+    });
+
+    const request = new Request('https://worker.example.com/v1/attachments/1/att1', {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer secret-bearer-token',
+        Origin: 'https://notelikeus.pages.dev',
+      },
+    });
+
+    const response = await worker.fetch(request, env);
+
+    // Controlled 502 Bad Gateway
+    expect(response.status).toBe(502);
+
+    // Preserves CORS headers
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://notelikeus.pages.dev');
+
+    // Error body privacy: does not leak bearer token, raw response body, or internal secrets
+    const body = await response.text();
+    expect(body).toBe('Upstream auth service returned malformed JSON');
+    expect(body).not.toContain('secret-bearer-token');
+    expect(body).not.toContain('<html>');
   });
 });

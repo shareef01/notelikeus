@@ -1,4 +1,4 @@
-package com.aus.notelikeus.data.backup.bundle
+﻿package com.aus.notelikeus.data.backup.bundle
 
 import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentStagingStore
@@ -24,7 +24,7 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * JVM port of `web/src/lib/backup/bundle/bundleTransfer.ts`.
  *
- * Export includes only bytes already on this device (pending staging or local `file:` paths) —
+ * Export includes only bytes already on this device (pending staging or local `file:` paths) ÔÇö
  * never fetches R2. Import remints attachment ids onto freshly allocated note ids.
  */
 class BackupBundleTransfer(
@@ -81,8 +81,8 @@ class BackupBundleTransfer(
 
         if (skipped > 0) {
             warnings.add(
-                "$skipped image${if (skipped == 1) "" else "s"} could not be included: the bytes " +
-                    "are only in the cloud on this device. Open those notes while online first, then export again.",
+                "$skipped image${if (skipped == 1) " was" else "s were"} not included because " +
+                    "${if (skipped == 1) "its bytes are" else "their bytes are"} only available in cloud storage on this device.",
             )
         }
 

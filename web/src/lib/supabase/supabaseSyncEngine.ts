@@ -1,4 +1,4 @@
-import { applyRemotePageAtomically } from '@/lib/local/notesLocalRepository';
+﻿import { applyRemotePageAtomically } from '@/lib/local/notesLocalRepository';
 import {
   retryPendingCloudRestores,
   withoutRestoredDeletes,
@@ -48,7 +48,7 @@ export async function ensureSupabaseAuthenticated(): Promise<void> {
   if (error) throw error;
   if (!data.session) {
     throw new Error(
-      'Supabase session missing — sign in via Supabase Auth (Phase 5) before using the Supabase backend.',
+      'Supabase session missing ÔÇö sign in via Supabase Auth (Phase 5) before using the Supabase backend.',
     );
   }
 }
@@ -72,7 +72,7 @@ export async function fetchSnapshotNotes(options?: {
   const { data, error } = await getSupabaseClient().rpc('fetch_full_snapshot');
   if (error) throw error;
   // SQL NULL used to mean "zero notes" because fetch_full_snapshot's outer FROM notes
-  // matched nothing — that also dropped tombstones. Refuse it; the RPC must return JSON.
+  // matched nothing ÔÇö that also dropped tombstones. Refuse it; the RPC must return JSON.
   if (data == null) {
     throw new Error('Incomplete snapshot: fetch_full_snapshot returned null');
   }
@@ -123,12 +123,16 @@ export async function applyNoteChange(
       throw new Error(`Note ${note.id} was deleted in the cloud`);
     }
     if (result.current) {
-      const remote = supabaseNoteToNote(result.current);
-      if (result.current.revision != null) {
-        await rememberNoteRevision(userId, note.id, result.current.revision);
+      const remoteRevision = result.current.revision;
+      if (remoteRevision != null) {
+        await rememberNoteRevision(userId, note.id, remoteRevision);
       }
+      const localRevStr =
+        baseRevision != null ? `local revision ${baseRevision}` : 'no local revision';
+      const remoteRevStr =
+        remoteRevision != null ? `remote revision ${remoteRevision}` : 'unknown remote revision';
       throw new Error(
-        `Revision conflict for note ${note.id}: remote title "${remote.title}"`,
+        `Revision conflict for note ${note.id} (${localRevStr}, ${remoteRevStr})`,
       );
     }
     throw new Error(`Revision conflict for note ${note.id}`);

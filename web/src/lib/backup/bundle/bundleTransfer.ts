@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Turning notes into a `.nlkbak` bundle and back, on the web client.
  *
  * The two invariants this file exists to hold:
@@ -6,7 +6,7 @@
  * 1. **A note never depends on its attachment.** Export skips bytes it cannot read; import drops
  *    attachments it cannot verify. Neither loses a note, and both say what they dropped.
  * 2. **Import stays additive**, exactly as JSON import is. Notes arrive with newly allocated ids,
- *    and attachments are re-minted onto those ids — so importing the same bundle twice produces
+ *    and attachments are re-minted onto those ids ÔÇö so importing the same bundle twice produces
  *    two independent copies rather than two notes fighting over one attachment id.
  */
 import { exportBackupPayload } from '@/lib/backup/exportBackup';
@@ -44,7 +44,7 @@ export interface BundleExportResult {
  *
  * Only locally-staged bytes are reachable without the network. An attachment already committed to
  * R2 lives behind an authenticated Worker call, and fetching it would make an export depend on
- * being online and signed in — which the product principles rule out. Those are reported as
+ * being online and signed in ÔÇö which the product principles rule out. Those are reported as
  * skipped rather than silently omitted.
  */
 async function readLocalAttachmentBytes(
@@ -70,7 +70,7 @@ export async function buildBundleFromNotes(
   /**
    * The staging namespace to read from. Explicit rather than ambient because staged bytes are
    * namespaced per account: reading the wrong one would silently export a bundle with no images,
-   * or — far worse — with the previous account's.
+   * or ÔÇö far worse ÔÇö with the previous account's.
    */
   ownerId: string | null = resolveOwnerId(),
 ): Promise<BundleExportResult> {
@@ -101,8 +101,9 @@ export async function buildBundleFromNotes(
 
   if (skipped > 0) {
     warnings.push(
-      `${skipped} image${skipped === 1 ? '' : 's'} could not be included: the bytes are only in ` +
-        `the cloud on this device. Open those notes while online first, then export again.`,
+      `${skipped} image${skipped === 1 ? ' was' : 's were'} not included because ${
+        skipped === 1 ? 'its bytes are' : 'their bytes are'
+      } only available in cloud storage on this device.`,
     );
   }
 
@@ -149,7 +150,7 @@ export async function readBundleFile(file: File): Promise<Uint8Array> {
  * Applies a parsed bundle on top of [existingNotes].
  *
  * Notes go through the ordinary v3 importer, which allocates fresh local ids. Attachments are then
- * re-attached by mapping the bundle's *old* note id to the id the importer just assigned — and
+ * re-attached by mapping the bundle's *old* note id to the id the importer just assigned ÔÇö and
  * given **new** attachment ids, so a second import of the same file cannot collide with the first
  * and cannot point two notes at one staged blob.
  *
