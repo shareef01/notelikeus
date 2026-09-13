@@ -1,4 +1,4 @@
-import {
+﻿import {
   looksSealedNote,
   noteAad,
   openNoteBytes,
@@ -37,6 +37,10 @@ function payloadToBytes(value: unknown): Uint8Array | null {
   return null;
 }
 
+export function hasSealedBody(stored: StoredNotePayload): boolean {
+  return 'sealedBody' in stored && stored.sealedBody !== undefined;
+}
+
 export function isSealedStoredNote(note: StoredNotePayload): boolean {
   const bytes = payloadToBytes(note.sealedBody);
   return bytes != null && looksSealedNote(bytes);
@@ -46,12 +50,50 @@ function blankSecrets(note: Note): Note {
   return { ...note, title: '', content: '', checklist: [] };
 }
 
+export class NoteDecryptionError extends Error {
+  readonly noteId: string;
+  readonly reason: 'missing_key' | 'decrypt_failed' | 'invalid_payload';
+
+  constructor(
+    noteId: string,
+    reason: 'missing_key' | 'decrypt_failed' | 'invalid_payload',
+    message?: string,
+  ) {
+    super(message ?? `Failed to decrypt note ${noteId}: ${reason}`);
+    this.name = 'NoteDecryptionError';
+    this.noteId = noteId;
+    this.reason = reason;
+  }
+}
+
+export class NoteSealingError extends Error {
+  readonly noteId: string;
+  readonly reason: 'missing_key' | 'seal_failed';
+
+  constructor(
+    noteId: string,
+    reason: 'missing_key' | 'seal_failed',
+    message?: string,
+  ) {
+    super(message ?? `Failed to seal note ${noteId}: ${reason}`);
+    this.name = 'NoteSealingError';
+    this.noteId = noteId;
+    this.reason = reason;
+  }
+}
+
 export async function sealNoteForStorage(
   ownerId: string,
   note: Note,
 ): Promise<StoredNotePayload> {
   const key = await getNotesCryptoKey();
-  if (!key) return note;
+  if (!key) {
+    throw new NoteSealingError(
+      note.id,
+      'missing_key',
+      'Encryption key unavailable; refusing to persist unencrypted note',
+    );
+  }
 
   const secrets: NoteSecrets = {
     title: note.title,
@@ -71,31 +113,58 @@ export async function openStoredNote(
   ownerId: string,
   stored: StoredNotePayload,
 ): Promise<Note> {
-  if (!isSealedStoredNote(stored)) {
+  if (!hasSealedBody(stored)) {
     const { sealedBody: _drop, ...note } = stored;
     return note;
   }
 
   const key = await getNotesCryptoKey();
-  const bytes = payloadToBytes(stored.sealedBody)!;
   if (!key) {
-    const { sealedBody: _drop, ...shell } = stored;
-    return blankSecrets(shell);
+    throw new NoteDecryptionError(
+      stored.id,
+      'missing_key',
+      `Cannot open sealed note ${stored.id}: encryption key is unavailable`,
+    );
   }
+
+  const bytes = payloadToBytes(stored.sealedBody);
+  if (!bytes || !looksSealedNote(bytes)) {
+    throw new NoteDecryptionError(
+      stored.id,
+      'invalid_payload',
+      `Cannot open sealed note ${stored.id}: sealed body payload is corrupted or malformed`,
+    );
+  }
+
+  let plain: Uint8Array;
   try {
-    const plain = await openNoteBytes(key, bytes, noteAad(ownerId, stored.id));
-    const parsed = JSON.parse(new TextDecoder().decode(plain)) as Partial<NoteSecrets>;
-    const { sealedBody: _drop, ...shell } = stored;
-    return {
-      ...shell,
-      title: typeof parsed.title === 'string' ? parsed.title : '',
-      content: typeof parsed.content === 'string' ? parsed.content : '',
-      checklist: Array.isArray(parsed.checklist) ? parsed.checklist : [],
-    };
+    plain = await openNoteBytes(key, bytes, noteAad(ownerId, stored.id));
   } catch {
-    const { sealedBody: _drop, ...shell } = stored;
-    return blankSecrets(shell);
+    throw new NoteDecryptionError(
+      stored.id,
+      'decrypt_failed',
+      `Cannot open sealed note ${stored.id}: decryption failed`,
+    );
   }
+
+  let parsed: Partial<NoteSecrets>;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(plain)) as Partial<NoteSecrets>;
+  } catch {
+    throw new NoteDecryptionError(
+      stored.id,
+      'invalid_payload',
+      `Cannot open sealed note ${stored.id}: decrypted payload was not valid JSON`,
+    );
+  }
+
+  const { sealedBody: _drop, ...shell } = stored;
+  return {
+    ...shell,
+    title: typeof parsed.title === 'string' ? parsed.title : '',
+    content: typeof parsed.content === 'string' ? parsed.content : '',
+    checklist: Array.isArray(parsed.checklist) ? parsed.checklist : [],
+  };
 }
 
 /** Rewrite a legacy plaintext row to sealed form when a key is available. */
@@ -104,7 +173,7 @@ export async function maybeMigrateStoredNote(
   stored: StoredNotePayload,
   write: (next: StoredNotePayload) => Promise<void>,
 ): Promise<void> {
-  if (isSealedStoredNote(stored)) return;
+  if (hasSealedBody(stored)) return;
   const key = await getNotesCryptoKey();
   if (!key) return;
   try {
