@@ -1,4 +1,4 @@
-import {
+﻿import {
   mergeRemoteNotes,
   shouldUploadOverRemote,
 } from '@/lib/notes/remoteMerge';
@@ -40,12 +40,28 @@ interface ApplyNoteResult {
   revision?: number;
   idempotent?: boolean;
   error?: string;
+  current?: {
+    note_id?: string;
+    revision?: number;
+  };
 }
 
 function accountStillOwnsDelete(userId: string): boolean {
   const session = getActiveNotesSyncSession();
   return !session || (session.isActive() && session.ownerId === userId);
 }
+
+function isValidRevision(rev: unknown): rev is number {
+  return (
+    typeof rev === 'number' &&
+    Number.isInteger(rev) &&
+    rev > 0 &&
+    Number.isSafeInteger(rev)
+  );
+}
+
+const MAX_DELETE_CONFLICT_RETRIES = 1;
+
 
 export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
   subscribeToNotes(userId, onData, onError) {
@@ -57,7 +73,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
      * `onData` is contractually the caller's *complete* note set: notesSyncService diffs it
      * against the previously known cloud ids and tombstones everything missing. `pull_changes`
      * only returns notes above the persisted revision cursor, so layering it on a map that the
-     * snapshot never filled emits "the library is now just these two notes" — and the diff then
+     * snapshot never filled emits "the library is now just these two notes" ÔÇö and the diff then
      * deletes the rest on this device and, via the tombstone purge, in the cloud and on every
      * other device. Nothing may be emitted until a snapshot has actually landed.
      */
@@ -93,7 +109,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       );
       if (snapshot.notes.length === 0 && unexplained.length > 0) {
         throw new Error(
-          `Cloud returned no notes but ${unexplained.length} were expected — ` +
+          `Cloud returned no notes but ${unexplained.length} were expected ÔÇö ` +
             `refusing to overwrite local copies. Check the connection or sign in again.`,
         );
       }
@@ -259,42 +275,66 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       throw new Error('Account changed during delete');
     }
     const { getSupabaseClient } = await import('@/lib/supabase/client');
-    const { data, error } = await getSupabaseClient().rpc('apply_note_delete', {
-      p_note_id: noteId,
-      p_base_revision: baseRevision,
-    });
-    if (error) throw error;
-    if (!accountStillOwnsDelete(userId)) {
-      throw new Error('Account changed during delete');
-    }
-    const result = (data ?? {}) as ApplyNoteResult;
-    // apply_note_delete answers an already-tombstoned note with
-    // {status: 'applied', idempotent: true} and no revision — not 'conflict'. Reading `idempotent`
-    // off the conflict branch made that cleanup unreachable and left a stale revision behind.
-    if (result.idempotent) {
-      await forgetNoteRevision(userId, noteId);
-      useTombstoneStore.getState().markDeleted(noteId);
-      return;
-    }
-    if (result.status === 'conflict') {
-      // The server has neither the note nor a tombstone (e.g. after an account wipe): there is
-      // nothing left to delete, so drop the stale local revision instead of failing forever.
-      if (result.error === 'note_not_found') {
-        await forgetNoteRevision(userId, noteId);
+    let currentBaseRevision: number = baseRevision;
+
+    try {
+      for (let attempt = 0; attempt <= MAX_DELETE_CONFLICT_RETRIES; attempt++) {
+        const { data, error } = await getSupabaseClient().rpc('apply_note_delete', {
+          p_note_id: noteId,
+          p_base_revision: currentBaseRevision,
+        });
+        if (error) {
+          throw error;
+        }
+        if (!accountStillOwnsDelete(userId)) {
+          throw new Error('Account changed during delete');
+        }
+        const result = (data ?? {}) as ApplyNoteResult;
+        // apply_note_delete answers an already-tombstoned note with
+        // {status: 'applied', idempotent: true} and no revision ÔÇö not 'conflict'. Reading `idempotent`
+        // off the conflict branch made that cleanup unreachable and left a stale revision behind.
+        if (result.idempotent) {
+          await forgetNoteRevision(userId, noteId);
+          useTombstoneStore.getState().markDeleted(noteId);
+          return;
+        }
+        if (result.status === 'conflict') {
+          // The server has neither the note nor a tombstone (e.g. after an account wipe): there is
+          // nothing left to delete, so drop the stale local revision instead of failing forever.
+          if (result.error === 'note_not_found') {
+            await forgetNoteRevision(userId, noteId);
+            useTombstoneStore.getState().markDeleted(noteId);
+            return;
+          }
+          const rawServerRevision = (result.current as Record<string, unknown> | undefined)?.revision;
+          if (
+            attempt < MAX_DELETE_CONFLICT_RETRIES &&
+            isValidRevision(rawServerRevision) &&
+            rawServerRevision !== currentBaseRevision
+          ) {
+            // Bounded retry with the validated authoritative revision reported by server
+            currentBaseRevision = rawServerRevision;
+            continue;
+          }
+          throw new Error(`Delete conflict for note ${noteId}`);
+        }
+        if (result.revision != null) {
+          await rememberNoteRevision(userId, noteId, result.revision);
+          await forgetNoteRevision(userId, noteId);
+          await saveRevisionState(userId, {
+            lastRemoteRevision: Math.max(state.lastRemoteRevision, result.revision),
+          });
+        }
         useTombstoneStore.getState().markDeleted(noteId);
         return;
       }
-      throw new Error(`Delete conflict for note ${noteId}`);
+    } catch (error) {
+      useTombstoneStore.getState().markDeleted(noteId);
+      throw error;
     }
-    if (result.revision != null) {
-      await rememberNoteRevision(userId, noteId, result.revision);
-      await forgetNoteRevision(userId, noteId);
-      await saveRevisionState(userId, {
-        lastRemoteRevision: Math.max(state.lastRemoteRevision, result.revision),
-      });
-    }
-    useTombstoneStore.getState().markDeleted(noteId);
   },
+
+
 
   async uploadAllNotes(userId, notes) {
     await ensureSupabaseAuthenticated();
@@ -302,10 +342,10 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     const snapshot = await fetchSnapshotNotes();
     // Same fail-open hazard Kotlin already closed: an empty snapshot must not look like
     // "local wins every id". upsertNote would then push the whole library over whatever the
-    // cloud actually holds — including a newer copy the fetch just failed to return.
+    // cloud actually holds ÔÇö including a newer copy the fetch just failed to return.
     if (snapshot.notes.length === 0 && Object.keys(prior.noteRevisions).length > 0) {
       throw new Error(
-        `Cloud returned no notes but ${Object.keys(prior.noteRevisions).length} were expected — ` +
+        `Cloud returned no notes but ${Object.keys(prior.noteRevisions).length} were expected ÔÇö ` +
           `refusing to overwrite the cloud. Check the connection or sign in again.`,
       );
     }
@@ -358,7 +398,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     );
     if (remoteNotes.length === 0 && unexplainedMissing.length > 0) {
       throw new Error(
-        `Cloud returned no notes but ${unexplainedMissing.length} were expected — refusing to ` +
+        `Cloud returned no notes but ${unexplainedMissing.length} were expected ÔÇö refusing to ` +
           `delete local copies. Check the connection or sign in again.`,
       );
     }
@@ -383,7 +423,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
             merged = merged.map((note) => (note.id === localNote.id ? updated : note));
             changes++;
           } catch {
-            // Conflict — keep merged remote winner from mergeRemoteNotes.
+            // Conflict ÔÇö keep merged remote winner from mergeRemoteNotes.
           }
         }
         continue;

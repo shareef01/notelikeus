@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react';
+﻿import { useEffect, useRef } from 'react';
 import { clearLocalUserDataForAccountSwitch } from '@/lib/bootstrap';
 import { hydrateIndexedDbFromRemote, loadLocalNotesIntoStore } from '@/lib/local/hydrateFromRemote';
+import { adoptGuestNotesIntoAccount } from '@/lib/local/adoptGuestNotes';
+import { hasGuestAdoptionIntent } from '@/lib/local/guestAdoptionIntent';
 import { migrateLegacyLocalNotes } from '@/lib/notes/legacyLocalMigration';
 import {
   loadLastMergedUserId,
@@ -45,10 +47,16 @@ export function useNotesSync(enabled: boolean) {
         await migrateLegacyLocalNotes(userId);
         if (cancelled) return;
 
+        if (hasGuestAdoptionIntent()) {
+          await adoptGuestNotesIntoAccount(userId);
+          if (cancelled) return;
+        }
+
+
         // The remote snapshot is the only step here that can fail for a reason the device could
         // ride out. IndexedDB already holds this account's notes on every run after the first, so
         // an unreachable cloud must degrade to "showing your local copy" rather than to an error
-        // screen over data that is sitting right there — and realtime still attaches below, so a
+        // screen over data that is sitting right there ÔÇö and realtime still attaches below, so a
         // recovered connection fixes it without the user doing anything.
         try {
           await hydrateIndexedDbFromRemote(userId);
@@ -76,7 +84,7 @@ export function useNotesSync(enabled: boolean) {
       startNotesRealtimeSync(userId);
     };
 
-    // Everything that reaches here failed a *local* step — the account-switch wipe, the legacy
+    // Everything that reaches here failed a *local* step ÔÇö the account-switch wipe, the legacy
     // migration, or reading IndexedDB. There is nothing on the device to fall back to, so this is
     // the blocking error; cloud trouble is handled above and never lands here.
     void bootstrap().catch((error: unknown) => {
