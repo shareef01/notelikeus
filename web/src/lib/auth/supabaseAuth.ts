@@ -1,4 +1,4 @@
-import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
+﻿import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { clearLocalUserData } from '@/lib/bootstrap';
 import type { AuthUser } from '@/lib/auth/authUser';
 import { authUserFromSupabase } from '@/lib/auth/authUser';
@@ -38,57 +38,116 @@ export function initSupabaseAuthListener(
   return () => subscription.unsubscribe();
 }
 
+import { markGuestAdoptionIntent, clearGuestAdoptionIntent } from '@/lib/local/guestAdoptionIntent';
+import { useAuthStore } from '@/store/authStore';
+
 /** Completes an OAuth redirect when the page reloads after Google sign-in. */
 export async function completeSupabaseOAuthRedirect(): Promise<void> {
   const client = getSupabaseClient();
   const url = new URL(window.location.href);
+
+  const errorParam = url.searchParams.get('error') || url.searchParams.get('error_description');
+  if (errorParam) {
+    clearGuestAdoptionIntent();
+    url.searchParams.delete('error');
+    url.searchParams.delete('error_code');
+    url.searchParams.delete('error_description');
+    window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+    throw new Error(errorParam);
+  }
+
   const code = url.searchParams.get('code');
   if (!code) return;
 
-  const { error } = await client.auth.exchangeCodeForSession(code);
-  if (error) throw error;
-
-  url.searchParams.delete('code');
-  url.searchParams.delete('state');
-  window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+  try {
+    const { error } = await client.auth.exchangeCodeForSession(code);
+    if (error) {
+      clearGuestAdoptionIntent();
+      throw error;
+    }
+  } catch (err) {
+    clearGuestAdoptionIntent();
+    throw err;
+  } finally {
+    url.searchParams.delete('code');
+    url.searchParams.delete('state');
+    window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+  }
 }
 
 export async function signInWithGoogleSupabase(): Promise<void> {
-  const { error } = await getSupabaseClient().auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: window.location.origin,
-    },
-  });
-  if (error) throw error;
+  const wasGuest = useAuthStore.getState().guestMode;
+  if (wasGuest) {
+    markGuestAdoptionIntent('oauth');
+  }
+  try {
+    const { error } = await getSupabaseClient().auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) {
+      if (wasGuest) clearGuestAdoptionIntent();
+      throw error;
+    }
+  } catch (error) {
+    if (wasGuest) clearGuestAdoptionIntent();
+    throw error;
+  }
 }
 
 export async function signInWithEmailPasswordSupabase(
   email: string,
   password: string,
 ): Promise<void> {
-  const { error } = await getSupabaseClient().auth.signInWithPassword({
-    email: email.trim(),
-    password,
-  });
-  if (error) throw error;
+  const wasGuest = useAuthStore.getState().guestMode;
+  if (wasGuest) {
+    markGuestAdoptionIntent('password');
+  }
+  try {
+    const { error } = await getSupabaseClient().auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    if (error) {
+      if (wasGuest) clearGuestAdoptionIntent();
+      throw error;
+    }
+  } catch (error) {
+    if (wasGuest) clearGuestAdoptionIntent();
+    throw error;
+  }
 }
 
 export async function createEmailPasswordAccountSupabase(
   email: string,
   password: string,
 ): Promise<void> {
-  const client = getSupabaseClient();
-  const trimmed = email.trim();
-  const { error } = await client.auth.signUp({ email: trimmed, password });
-  if (error?.message?.includes('already registered')) {
-    await signInWithEmailPasswordSupabase(trimmed, password);
-    return;
+  const wasGuest = useAuthStore.getState().guestMode;
+  if (wasGuest) {
+    markGuestAdoptionIntent('signup');
   }
-  if (error) throw error;
+  try {
+    const client = getSupabaseClient();
+    const trimmed = email.trim();
+    const { error } = await client.auth.signUp({ email: trimmed, password });
+    if (error?.message?.includes('already registered')) {
+      await signInWithEmailPasswordSupabase(trimmed, password);
+      return;
+    }
+    if (error) {
+      if (wasGuest) clearGuestAdoptionIntent();
+      throw error;
+    }
+  } catch (error) {
+    if (wasGuest) clearGuestAdoptionIntent();
+    throw error;
+  }
 }
 
 export async function signOutSupabase(): Promise<void> {
+  clearGuestAdoptionIntent();
   const { error } = await getSupabaseClient().auth.signOut();
   if (error) throw error;
   stopNotesRealtimeSync();

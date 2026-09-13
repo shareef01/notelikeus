@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+﻿import { useEffect } from 'react';
 import type { AuthUser } from '@/lib/auth/authUser';
 import { formatAuthError } from '@/lib/auth/authErrors';
 import { clearLocalUserData } from '@/lib/bootstrap';
+import { markGuestAdoptionIntent, clearGuestAdoptionIntent } from '@/lib/local/guestAdoptionIntent';
 import { hadSessionLastLoad, forgetSignedIn, rememberSignedIn } from '@/lib/auth/sessionHint';
 import { shouldStartSupabaseAuthOnBoot } from '@/lib/auth/supabaseAuthBoot';
 import { useAuthStore } from '@/store/authStore';
@@ -10,12 +11,14 @@ import { useToastStore } from '@/store/toastStore';
 function handleAuthUser(nextUser: AuthUser | null): void {
   if (nextUser) {
     if (useAuthStore.getState().guestMode) {
+      markGuestAdoptionIntent('auth-transition');
       clearLocalUserData();
       useAuthStore.getState().exitGuestMode();
     }
     rememberSignedIn();
   } else {
     forgetSignedIn();
+    clearGuestAdoptionIntent();
   }
   useAuthStore.setState((state) => {
     if (state.user?.uid === nextUser?.uid && state.isReady) {
@@ -37,6 +40,7 @@ export function ensureSupabaseAuthStarted(): Promise<void> {
     try {
       await completeSupabaseOAuthRedirect();
     } catch (error) {
+      clearGuestAdoptionIntent();
       useToastStore.getState().show(formatAuthError(error), 'error');
     }
     stopAuthListener = initSupabaseAuthListener(handleAuthUser);
@@ -44,7 +48,7 @@ export function ensureSupabaseAuthStarted(): Promise<void> {
   return authStart;
 }
 
-/** Mount once in App — registers the only auth listener (Supabase) when a session is likely. */
+/** Mount once in App ÔÇö registers the only auth listener (Supabase) when a session is likely. */
 export function useAuthSync() {
   useEffect(() => {
     if (!shouldStartSupabaseAuthOnBoot(hadSessionLastLoad(), window.location.search)) {
