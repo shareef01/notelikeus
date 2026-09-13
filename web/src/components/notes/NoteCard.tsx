@@ -71,10 +71,13 @@ function NoteCardImpl({
   const hasReminder =
     note.reminderTimestamp != null && note.reminderTimestamp > Date.now() && !note.isTrashed;
   const showStatusCluster = !isSelected && (note.isPinned || hasReminder);
-  const checkedCount = note.checklist.filter((item) => item.isChecked).length;
-  const showChecklist = note.checklist.length > 0;
-  const showAttachments = note.attachments.length > 0;
-  const showLabels = note.labels.length > 0;
+  const checklist = note.checklist ?? [];
+  const attachments = note.attachments ?? [];
+  const labels = note.labels ?? [];
+  const checkedCount = checklist.filter((item) => item.isChecked).length;
+  const showChecklist = checklist.length > 0;
+  const showAttachments = attachments.length > 0;
+  const showLabels = labels.length > 0;
   const labelLimit = isDense ? 1 : isList ? 3 : 2;
   const timeLabel = formatListTimestamp(note.timestamp);
 
@@ -198,45 +201,36 @@ function NoteCardImpl({
         isList ? 'flex-row items-stretch' : 'flex-col'
       }`}>
       {isList ? (
-        <>
-          <span
-            className={`my-2 ml-2.5 w-0.5 shrink-0 rounded-full ${
-              note.color !== 0 ? 'bg-[color-mix(in_srgb,currentColor_30%,transparent)]' : 'bg-brand-outline/70'
-            }`}
-            aria-hidden
-          />
-
-          <div className="flex min-w-0 flex-1 items-start gap-3 px-3.5 py-3.5 sm:gap-4 sm:px-4 sm:py-4">
-            <div className="min-w-0 flex-1">
-              {title ? (
-                <h2 className="line-clamp-2 break-words text-note-title tracking-[-0.02em] sm:line-clamp-2">
-                  {highlight(title)}
-                </h2>
-              ) : null}
-              {showBody ? (
-                <p className={`break-words text-note-body opacity-80 sm:line-clamp-3 ${title ? 'mt-2 line-clamp-2 sm:mt-2.5' : 'line-clamp-3 font-semibold'}`}>
-                  {highlight(previewBody)}
-                </p>
-              ) : null}
-              {showChecklist ? (
-                <p className="mt-1.5 text-[11px] font-medium tracking-wide opacity-80">
-                  {checkedCount}/{note.checklist.length} checked
-                </p>
-              ) : null}
-              {labelChips}
-            </div>
-
-            <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
-              {statusIcons(15)}
-              <time
-                dateTime={new Date(note.timestamp).toISOString()}
-                className="text-[11px] font-medium tabular-nums tracking-wide opacity-80 sm:text-[12px]"
-              >
-                {timeLabel}
-              </time>
-            </div>
+        <div className="flex min-w-0 flex-1 items-start gap-3 px-3.5 py-3.5 sm:gap-4 sm:px-4 sm:py-4">
+          <div className="min-w-0 flex-1">
+            {title ? (
+              <h2 className="line-clamp-2 break-words text-note-title tracking-[-0.02em] sm:line-clamp-2">
+                {highlight(title)}
+              </h2>
+            ) : null}
+            {showBody ? (
+              <p className={`break-words text-note-body opacity-80 sm:line-clamp-3 ${title ? 'mt-2 line-clamp-2 sm:mt-2.5' : 'line-clamp-3 font-semibold'}`}>
+                {highlight(previewBody)}
+              </p>
+            ) : null}
+            {showChecklist ? (
+              <p className="mt-1.5 text-[11px] font-medium tracking-wide opacity-80">
+                {checkedCount}/{note.checklist.length} checked
+              </p>
+            ) : null}
+            {labelChips}
           </div>
-        </>
+
+          <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
+            {statusIcons(15)}
+            <time
+              dateTime={new Date(note.timestamp).toISOString()}
+              className="text-[11px] font-medium tabular-nums tracking-wide opacity-80 sm:text-[12px]"
+            >
+              {timeLabel}
+            </time>
+          </div>
+        </div>
       ) : (
         <>
           <div className="flex items-start gap-2">
@@ -293,11 +287,20 @@ function NoteCardImpl({
                     ) : (
                       <CheckCircleOutlineIcon size={14} className="shrink-0 opacity-60" />
                     )}
-                    <span className="line-clamp-1 break-words text-note-body opacity-80">
+                    <span
+                      className={`line-clamp-1 break-words text-note-body ${
+                        item.isChecked ? 'line-through opacity-50' : 'opacity-80'
+                      }`}
+                    >
                       {highlight(stripMarkdownForPreview(item.text))}
                     </span>
                   </div>
                 ))}
+                {note.checklist.length > 3 ? (
+                  <p className="text-[11px] font-medium tracking-wide opacity-60">
+                    +{note.checklist.length - 3} more
+                  </p>
+                ) : null}
               </div>
             )
           ) : null}
