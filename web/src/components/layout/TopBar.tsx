@@ -165,7 +165,7 @@ export function TopBar({
                 </button>
               ) : (
                 <kbd
-                  className="mr-2 hidden select-none rounded border border-brand-outline/25 bg-brand-primary/5 px-1.5 py-0.5 text-[10px] font-semibold text-brand-muted/75 md:inline-flex"
+                  className="mr-2 hidden select-none rounded border border-brand-outline/25 bg-brand-primary/5 px-1.5 py-0.5 text-[10px] font-semibold text-brand-muted md:inline-flex"
                   aria-hidden
                 >
                   Ctrl K
