@@ -99,8 +99,8 @@ class MainActivity : FragmentActivity() {
                 // rows in the profile sheet did nothing at all when tapped.
                 var pendingExportJson by remember { mutableStateOf<String?>(null) }
                 var pendingExportBytes by remember { mutableStateOf<ByteArray?>(null) }
-                var pendingBundleIncluded by remember { mutableStateOf(0) }
-                var pendingBundleSkipped by remember { mutableStateOf(0) }
+                var pendingBundleIncluded by remember { mutableIntStateOf(0) }
+                var pendingBundleSkipped by remember { mutableIntStateOf(0) }
                 var backupViewModel by remember { mutableStateOf<MainViewModel?>(null) }
 
                 val exportJsonLauncher = rememberLauncherForActivityResult(
