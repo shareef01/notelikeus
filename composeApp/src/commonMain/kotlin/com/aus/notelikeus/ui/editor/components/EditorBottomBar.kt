@@ -20,20 +20,49 @@ import com.aus.notelikeus.util.DateUtils
 import com.aus.notelikeus.ui.theme.NoteEmphasis
 import com.aus.notelikeus.ui.theme.Spacing
 
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.font.FontWeight
+import com.aus.notelikeus.ui.main.CloudSyncStatus
+
 @Composable
 fun EditorBottomBar(
     timestamp: Long,
     reminderTimestamp: Long? = null,
+    isSaving: Boolean = false,
+    saveFailed: Boolean = false,
+    isSavedLocally: Boolean = false,
+    cloudSyncStatus: CloudSyncStatus = CloudSyncStatus.Unknown,
+    isGuest: Boolean = true,
+    attachmentSyncPending: Boolean = false,
+    onRetrySave: (() -> Unit)? = null,
     onMoreClick: () -> Unit,
     contentColor: Color,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
-    val editedLabel = stringResource(
-        Res.string.edited_at,
-        DateUtils.formatTime(timestamp),
-        "" // Placeholder for second arg if any
-    )
+    val editedTime = DateUtils.formatTime(timestamp)
+    val statusText = when {
+        saveFailed -> stringResource(Res.string.local_save_failed)
+        isSaving -> stringResource(Res.string.saving_locally)
+        isGuest || cloudSyncStatus == CloudSyncStatus.Unknown -> {
+            stringResource(Res.string.saved_locally_edited, editedTime)
+        }
+        attachmentSyncPending -> {
+            stringResource(Res.string.saved_locally_sync_pending)
+        }
+        cloudSyncStatus == CloudSyncStatus.Syncing -> {
+            stringResource(Res.string.saved_locally_syncing)
+        }
+        cloudSyncStatus == CloudSyncStatus.Offline -> {
+            stringResource(Res.string.saved_locally_offline)
+        }
+        cloudSyncStatus == CloudSyncStatus.Error -> {
+            stringResource(Res.string.saved_locally_sync_failed)
+        }
+        else -> {
+            stringResource(Res.string.saved_locally_synced)
+        }
+    }
     val reminderLabel = reminderTimestamp?.let {
         stringResource(
             Res.string.reminder_at,
@@ -57,12 +86,34 @@ fun EditorBottomBar(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.align(Alignment.Center)
             ) {
-                Text(
-                    text = editedLabel,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = contentColor.copy(alpha = NoteEmphasis.Secondary),
-                    textAlign = TextAlign.Center
-                )
+                if (saveFailed && onRetrySave != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.clickable { onRetrySave() }
+                    ) {
+                        Text(
+                            text = "$statusText • ",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = stringResource(Res.string.tap_to_retry),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                } else {
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (saveFailed) MaterialTheme.colorScheme.error else contentColor.copy(alpha = NoteEmphasis.Secondary),
+                        textAlign = TextAlign.Center
+                    )
+                }
                 if (reminderLabel != null) {
                     Text(
                         text = reminderLabel,
