@@ -63,6 +63,22 @@ jobs:
       - name: Check for Kotlin declarations nothing calls
         run: node scripts/ops/unreferenced-kotlin.mjs
 
+      # Kotlin static analysis, matching the oxlint pass the web and Worker packages run.
+      # Existing findings live in config/detekt/baseline-*.xml, so anything reported here is new.
+      # Non-blocking for now (`ignoreFailures` in the root build script) — drop that flag to make
+      # a new finding fail the build.
+      - name: Run detekt
+        run: ./gradlew detekt --stacktrace
+
+      - name: Upload detekt reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: detekt-reports
+          path: '**/build/reports/detekt/*.html'
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Run unit tests
         run: ./gradlew :composeApp:testDebugUnitTest --stacktrace
 
