@@ -70,7 +70,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -100,7 +99,6 @@ private val TopBarRowHeight = 56.dp
 fun MainTopAppBar(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
-    viewMode: NoteViewMode,
     onViewModeChange: (NoteViewMode) -> Unit,
     selectedCount: Int,
     allFilteredSelected: Boolean = false,
@@ -137,7 +135,6 @@ fun MainTopAppBar(
 ) {
     val haptic = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
     var isSearchFocused by remember { mutableStateOf(false) }
     
     val internalFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }

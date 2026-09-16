@@ -1,6 +1,5 @@
 package com.aus.notelikeus.data.remote
 
-import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.domain.platform.SyncCoordinator
 import androidx.work.*
@@ -17,7 +16,6 @@ import java.util.concurrent.TimeUnit
 private const val DEBOUNCE_MS = 2_000L
 
 class CloudNoteSyncCoordinator(
-    private val syncEngine: NoteSyncEngine,
     private val sessionManager: CloudSessionManager,
     private val settingsRepository: SettingsRepository,
     private val workManager: WorkManager,
