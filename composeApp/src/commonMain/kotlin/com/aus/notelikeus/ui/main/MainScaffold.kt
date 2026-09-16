@@ -84,7 +84,6 @@ internal fun MainScaffold(
     onNoteClick: (Long?) -> Unit,
     gridState: LazyStaggeredGridState,
     snackbarHostState: SnackbarHostState,
-    showProfileSheet: Boolean,
     onShowProfileSheet: (Boolean) -> Unit,
     onShowDeleteConfirm: (Boolean) -> Unit,
     onShowFiltersSheet: (Boolean) -> Unit,
@@ -137,7 +136,6 @@ internal fun MainScaffold(
             MainTopAppBar(
                 searchQuery = state.searchQuery,
                 onSearchQueryChange = viewModel::onSearchQueryChange,
-                viewMode = state.viewMode,
                 onViewModeChange = viewModel::setViewMode,
                 selectedCount = state.selectedNotes.size,
                 allFilteredSelected = allFilteredSelected,

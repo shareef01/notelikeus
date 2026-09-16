@@ -28,6 +28,12 @@ style:
   MaxLineLength:
     active: true
     excludes: ['**/test/**', '**/*Test.kt']
+  # `@AppFunction` methods take an `AppFunctionContext` because the App Functions runtime passes
+  # one; the signature is the framework's, not ours, and dropping the parameter breaks the
+  # integration. `@Composable` is here for the same reason — Compose passes what it passes.
+  UnusedParameter:
+    active: true
+    ignoreAnnotated: ['AppFunction', 'Composable']
 
 naming:
   # Two separate reasons PascalCase functions are correct here: `@Composable` functions are

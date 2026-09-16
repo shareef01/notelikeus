@@ -132,15 +132,9 @@ actual val platformModule = module {
     }
     single<AttachmentBlobTransport> {
         if (BackendConfig.attachmentsWorkerUrl.isNotEmpty()) {
-            val rpcClient = AndroidSupabaseRpcClient(
-                supabaseUrl = BackendConfig.supabaseUrl,
-                anonKey = BackendConfig.supabaseAnonKey,
-                accessTokenProvider = get<SupabaseAccessTokenProvider>(),
-            )
             R2AttachmentBlobTransport(
                 workerBaseUrl = BackendConfig.attachmentsWorkerUrl,
                 accessTokenProvider = get(),
-                metadata = SupabaseAttachmentMetadata(rpcClient),
                 ownerIdProvider = { get<SupabaseSessionManager>().ensureSignedIn().getOrThrow() },
             )
         } else {
@@ -201,7 +195,7 @@ actual val platformModule = module {
     
     // Sync
     single { PendingCloudSyncStore(get()) }
-    single<SyncCoordinator> { CloudNoteSyncCoordinator(get(), get(), get(), get(), get()) }
+    single<SyncCoordinator> { CloudNoteSyncCoordinator(get(), get(), get(), get()) }
     single {
         LocalAccountIsolator(
             get(),
