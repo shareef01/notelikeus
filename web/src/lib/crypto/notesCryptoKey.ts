@@ -52,15 +52,55 @@ async function readStoredKey(db: IDBDatabase): Promise<unknown> {
   });
 }
 
-async function writeStoredKey(db: IDBDatabase, key: CryptoKey): Promise<boolean> {
+/**
+ * Claims the key slot in one transaction: reads it and, only when it is empty, writes
+ * [candidate]. Resolves to whatever the slot holds afterwards.
+ *
+ * One `readwrite` transaction is the whole point. Re-reading in its own transaction and then
+ * writing in another narrows the window between two tabs minting at once but does not close it,
+ * and the tab that loses goes on sealing rows with a key that is no longer the stored one —
+ * stranding every row it writes. IndexedDB serializes readwrite transactions over the same
+ * store, so doing both halves inside one makes the claim atomic.
+ *
+ * The candidate is generated before this opens: awaiting anything mid-transaction lets
+ * IndexedDB auto-commit, which would split the halves apart again.
+ */
+function claimKeySlot(db: IDBDatabase, candidate: CryptoKey): Promise<unknown> {
   return new Promise((resolve) => {
+    let outcome: unknown;
+    let tx: IDBTransaction;
     try {
-      const request = db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).put(key, DB_KEY);
-      request.onsuccess = () => resolve(true);
-      request.onerror = () => resolve(false);
+      tx = db.transaction(DB_STORE, 'readwrite');
     } catch {
-      resolve(false);
+      resolve(undefined);
+      return;
     }
+    const store = tx.objectStore(DB_STORE);
+    const read = store.get(DB_KEY);
+    read.onsuccess = () => {
+      const existing = read.result;
+      // Anything already here wins, corrupt included — the caller refuses rather than
+      // overwriting a record that sealed blobs may still depend on.
+      if (existing !== undefined && existing !== null) {
+        outcome = existing;
+        return;
+      }
+      const write = store.put(candidate, DB_KEY);
+      // Resolving the candidate itself, not a read-back: this is the exact key object the
+      // caller will seal with, and the stored copy is a structured clone of it.
+      write.onsuccess = () => {
+        outcome = candidate;
+      };
+      write.onerror = () => {
+        outcome = undefined;
+      };
+    };
+    read.onerror = () => {
+      outcome = undefined;
+    };
+    tx.oncomplete = () => resolve(outcome);
+    tx.onerror = () => resolve(undefined);
+    tx.onabort = () => resolve(undefined);
   });
 }
 
@@ -74,16 +114,13 @@ export async function getNotesCryptoKey(): Promise<CryptoKey | null> {
         const stored = await readStoredKey(db);
         if (isCryptoKey(stored)) return stored;
         if (stored !== undefined && stored !== null) return null;
-        const key = await crypto.subtle.generateKey(
+        const candidate = await crypto.subtle.generateKey(
           { name: 'AES-GCM', length: 256 },
           false,
           ['encrypt', 'decrypt'],
         );
-        const raced = await readStoredKey(db);
-        if (isCryptoKey(raced)) return raced;
-        if (raced !== undefined && raced !== null) return null;
-        const written = await writeStoredKey(db, key);
-        return written ? key : null;
+        const claimed = await claimKeySlot(db, candidate);
+        return isCryptoKey(claimed) ? claimed : null;
       } finally {
         db.close();
       }
