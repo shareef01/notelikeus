@@ -162,7 +162,7 @@ jobs:
           VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
 
       - name: Verify Pages artifacts
-        run: node web/scripts/verifyPagesArtifacts.mjs
+        run: node web/scripts/verifyPagesArtifacts.mjs --deployable
 
       - name: Deploy to Cloudflare Pages (production)
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
