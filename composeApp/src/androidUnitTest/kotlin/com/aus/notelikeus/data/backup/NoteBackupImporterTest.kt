@@ -266,7 +266,7 @@ private class RecordingNoteRepository(
 
     override suspend fun insertNoteWithoutSync(note: Note): Long {
         if (insertedWithoutSync.size >= failAfterNotes) {
-            throw IllegalStateException("insert failed")
+            error("insert failed")
         }
         val id = nextNoteId++
         insertedWithoutSync += note.copy(id = id)
