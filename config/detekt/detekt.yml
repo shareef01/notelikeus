@@ -45,8 +45,13 @@ naming:
   # `Foo.android.kt`, so the file name legitimately differs from the declaration.
   MatchingDeclarationName:
     active: false
+  # Private top-level constants are PascalCase throughout this codebase — CascadeStepUnits,
+  # NewNoteContentKey, EmptyStateIconAlpha — which is the Compose convention rather than an
+  # oversight. The pattern accepts that alongside SCREAMING_SNAKE rather than baselining five
+  # instances of a deliberate house style.
   TopLevelPropertyNaming:
     active: true
+    constantPattern: '[A-Z][_A-Za-z0-9]*'
 
 exceptions:
   # `catch (error: Exception)` is used deliberately and narrowly here: the crypto, storage and

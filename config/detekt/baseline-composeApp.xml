@@ -109,29 +109,11 @@
     <ID>MaxLineLength:SupabaseBackendSelection.kt$"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0"</ID>
     <ID>MaxLineLength:SupabaseNoteTransport.kt$SupabaseNoteTransport$else -&gt; error("restore_note failed for $noteId: ${response.stringField("error") ?: response.stringField("status")}")</ID>
     <ID>MaxLineLength:WidgetNoteLoader.kt$WidgetNoteLoader$return context.getString(com.aus.notelikeus.shared.R.string.checklist_progress, checked, item.checklist.size)</ID>
-    <ID>MayBeConst:EditorWindowLauncher.desktop.kt$private val CaptionStrokePx = 1.1f</ID>
     <ID>NestedBlockDepth:AttachmentSyncService.kt$AttachmentSyncService$suspend fun syncNoteAttachments(note: Note): Note</ID>
     <ID>NestedBlockDepth:DesktopPlaintextDatabaseMigrator.kt$DesktopPlaintextDatabaseMigrator$private fun tryOpenJdbc(databaseFile: File, open: (String) -&gt; Connection): Boolean</ID>
     <ID>NestedBlockDepth:DesktopSyncCoordinator.kt$DesktopSyncCoordinator$private suspend fun runQueue( queue: MutableSet&lt;Long&gt;, operation: suspend (Long) -&gt; Result&lt;Unit&gt; ): Boolean</ID>
     <ID>NestedBlockDepth:NoteContentColorTest.kt$NoteContentColorTest$@Test fun `both drawer icon roles clear 3 to 1 in every theme`()</ID>
     <ID>NestedBlockDepth:SupabaseNoteTransport.kt$SupabaseNoteTransport$override suspend fun deleteNotes(uid: String, noteIds: List&lt;Long&gt;)</ID>
-    <ID>NewLineAtEndOfFile:PlatformShare.android.kt$com.aus.notelikeus.util.PlatformShare.android.kt</ID>
-    <ID>NewLineAtEndOfFile:PlatformShare.desktop.kt$com.aus.notelikeus.util.PlatformShare.desktop.kt</ID>
-    <ID>NewLineAtEndOfFile:PlatformShare.kt$com.aus.notelikeus.util.PlatformShare.kt</ID>
     <ID>SpreadOperator:PlatformModule.kt$(*DatabaseMigrations.ALL)</ID>
-    <ID>TooGenericExceptionThrown:DesktopDatabaseKeyQuarantineReproductionTest.kt$DesktopDatabaseKeyQuarantineReproductionTest.&lt;no name provided&gt;$throw RuntimeException("Transient Windows DPAPI RPC failure (e.g. RPC_S_SERVER_UNAVAILABLE)")</ID>
-    <ID>TooGenericExceptionThrown:Dpapi.kt$Dpapi$throw RuntimeException("CryptProtectData failed: ${Kernel32.INSTANCE.GetLastError()}")</ID>
-    <ID>TooGenericExceptionThrown:Dpapi.kt$Dpapi$throw RuntimeException("CryptUnprotectData failed: ${Kernel32.INSTANCE.GetLastError()}")</ID>
-    <ID>TopLevelPropertyNaming:EditorWindowLauncher.desktop.kt$/** Diagonal offset between successive note windows, and how many before the cascade restarts. */ private const val CascadeStepUnits = 28f</ID>
-    <ID>TopLevelPropertyNaming:EditorWindowLauncher.desktop.kt$private const val CascadeWrapAfter = 8</ID>
-    <ID>TopLevelPropertyNaming:MainScreen.kt$/** * Detail-pane key standing in for "compose a new note". * * The two-pane scaffold treats a null content key as "nothing selected", so a new note — which the * editor represents as a null id — cannot be passed through directly. Matches the -1L the Editor * nav route already uses for the same purpose. */ private const val NewNoteContentKey = -1L</ID>
-    <ID>TopLevelPropertyNaming:NotesEmptyState.kt$private const val EmptyStateIconAlpha = 0.2f</ID>
-    <ID>UseCheckOrError:DesktopAttachmentBytesProtector.kt$DesktopAttachmentBytesProtector$throw IllegalStateException("Could not publish attachment AES key file")</ID>
-    <ID>UseCheckOrError:DesktopDatabaseKeyManager.kt$DesktopDatabaseKeyManager$throw IllegalStateException("Could not publish desktop database key file")</ID>
-    <ID>UseCheckOrError:DesktopDatabaseKeyManagerTest.kt$DesktopDatabaseKeyManagerTest.&lt;no name provided&gt;$throw IllegalStateException("unwrap refused")</ID>
-    <ID>UseCheckOrError:DesktopGoogleSignInHelper.kt$DesktopGoogleSignInHelper$throw IllegalStateException("Token exchange failed: ${response.statusCode()} ${response.body()}")</ID>
-    <ID>UseCheckOrError:FakeNoteRepository.kt$FakeNoteRepository$throw IllegalStateException("delete failed")</ID>
-    <ID>UseCheckOrError:FakeNoteRepository.kt$FakeNoteRepository$throw IllegalStateException("update failed")</ID>
-    <ID>UseCheckOrError:NoteBackupImporterTest.kt$RecordingNoteRepository$throw IllegalStateException("insert failed")</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -52,7 +52,7 @@ class DesktopDatabaseKeyManagerTest {
         val failing = object : SecureBlobStore {
             override fun protect(plaintext: ByteArray): ByteArray = plaintext.copyOf()
             override fun unprotect(sealed: ByteArray): ByteArray {
-                throw IllegalStateException("unwrap refused")
+                error("unwrap refused")
             }
         }
 

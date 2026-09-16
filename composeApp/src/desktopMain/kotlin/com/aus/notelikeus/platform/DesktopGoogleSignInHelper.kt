@@ -301,7 +301,7 @@ class DesktopGoogleSignInHelper(
 
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         if (response.statusCode() != 200) {
-            throw IllegalStateException("Token exchange failed: ${response.statusCode()} ${response.body()}")
+            error("Token exchange failed: ${response.statusCode()} ${response.body()}")
         }
         return json.decodeFromString<JsonObject>(response.body())
     }

@@ -8,6 +8,22 @@ import com.sun.jna.Structure
 import com.sun.jna.WString
 import com.sun.jna.platform.win32.Kernel32
 
+/**
+ * A Win32 DPAPI call refused.
+ *
+ * A distinct type because the callers have to tell this apart from a programming error in the
+ * same `try`. `DesktopDatabaseKeyManager` preserves the key file and refuses to mint a new one
+ * when an unwrap fails, and that decision is only correct for an actual DPAPI refusal — a
+ * `RuntimeException` from anywhere else in the block would have taken the same branch.
+ *
+ * [lastError] is the `GetLastError()` value, kept as a field rather than only in the message so
+ * a caller can act on the code.
+ */
+internal class DpapiException(
+    val operation: String,
+    val lastError: Int,
+) : RuntimeException("$operation failed: $lastError")
+
 internal object Dpapi {
     private val sessionEntropy: ByteArray = "com.aus.notelikeus/session/v1".encodeToByteArray()
     val attachmentKeyEntropy: ByteArray = "com.aus.notelikeus/attachment-key/v1".encodeToByteArray()
@@ -43,7 +59,7 @@ internal object Dpapi {
             outData,
         )
         if (result == 0) {
-            throw RuntimeException("CryptProtectData failed: ${Kernel32.INSTANCE.GetLastError()}")
+            throw DpapiException("CryptProtectData", Kernel32.INSTANCE.GetLastError())
         }
         return readAndFreeDataBlob(outData)
     }
@@ -60,7 +76,7 @@ internal object Dpapi {
             outData,
         )
         if (result == 0) {
-            throw RuntimeException("CryptUnprotectData failed: ${Kernel32.INSTANCE.GetLastError()}")
+            throw DpapiException("CryptUnprotectData", Kernel32.INSTANCE.GetLastError())
         }
         return readAndFreeDataBlob(outData)
     }

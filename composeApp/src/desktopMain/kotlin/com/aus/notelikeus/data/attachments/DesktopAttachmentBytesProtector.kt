@@ -69,7 +69,7 @@ class DesktopAttachmentBytesProtector(
         val plaintext = ByteArray(KEY_BYTES).also { SecureRandom().nextBytes(it) }
         val sealed = blobStore.protect(plaintext)
         if (!publishByRename(sealed)) {
-            throw IllegalStateException("Could not publish attachment AES key file")
+            error("Could not publish attachment AES key file")
         }
         return SecretKeySpec(plaintext, "AES")
     }

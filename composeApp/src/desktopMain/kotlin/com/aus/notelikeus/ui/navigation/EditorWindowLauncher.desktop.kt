@@ -90,7 +90,7 @@ private val NoteChromeInset = 16.dp
 private val NoteCornerRadius = 18.dp
 private val NoteShadowElevation = 24.dp
 private val CloseHover = Color(0xFFE81123)
-private val CaptionStrokePx = 1.1f
+private const val CaptionStrokePx = 1.1f
 
 /** Diagonal offset between successive note windows, and how many before the cascade restarts. */
 private const val CascadeStepUnits = 28f

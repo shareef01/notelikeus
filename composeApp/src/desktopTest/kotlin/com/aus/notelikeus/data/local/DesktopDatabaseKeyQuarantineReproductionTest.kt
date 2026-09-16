@@ -10,6 +10,10 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import com.aus.notelikeus.platform.DpapiException
+
+/** `RPC_S_SERVER_UNAVAILABLE` — the transient DPAPI failure this reproduces. */
+private const val RPC_S_SERVER_UNAVAILABLE = 1722
 
 class DesktopDatabaseKeyQuarantineReproductionTest {
 
@@ -58,7 +62,7 @@ class DesktopDatabaseKeyQuarantineReproductionTest {
         // =========================================================================
         val transientFailingBlobStore = object : SecureBlobStore by normalBlobStore {
             override fun unprotect(sealed: ByteArray): ByteArray {
-                throw RuntimeException("Transient Windows DPAPI RPC failure (e.g. RPC_S_SERVER_UNAVAILABLE)")
+                throw DpapiException("CryptUnprotectData", RPC_S_SERVER_UNAVAILABLE)
             }
         }
 
