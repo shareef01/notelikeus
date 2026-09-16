@@ -3,6 +3,9 @@ package com.aus.notelikeus.data
 import android.app.AlarmManager
 import android.content.Context
 import com.aus.notelikeus.data.remote.ReminderReceiver
+import com.aus.notelikeus.domain.platform.ReminderDelivery
+import org.robolectric.Shadows
+import org.robolectric.shadows.ShadowAlarmManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -62,5 +65,52 @@ class ReminderSchedulerTest {
 
         scheduler.cancelReminder(noteId = 42L)
         assertNull(shadowOf(alarmManager).nextScheduledAlarm)
+    }
+
+    /**
+     * Delivery, not scheduling. Every case below schedules successfully — the alarm is handed to
+     * the OS regardless — so nothing about the scheduling call distinguishes them. The editor
+     * confirms a reminder to the user off this answer, and before it existed the confirmation
+     * said "Reminder set" even when notifications were switched off and nothing would be shown.
+     */
+    @Test
+    fun `delivery is blocked when notifications are switched off`() {
+        Shadows.shadowOf(
+            context.getSystemService(android.app.NotificationManager::class.java)
+        ).setNotificationsEnabled(false)
+
+        assertEquals(ReminderDelivery.Blocked, scheduler.reminderDelivery())
+    }
+
+    @Test
+    fun `notifications being off outranks exact-alarm availability`() {
+        Shadows.shadowOf(
+            context.getSystemService(android.app.NotificationManager::class.java)
+        ).setNotificationsEnabled(false)
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
+
+        // An app that shows nothing delivers nothing; how precisely it would have fired is not
+        // the thing to tell the user about.
+        assertEquals(ReminderDelivery.Blocked, scheduler.reminderDelivery())
+    }
+
+    @Test
+    fun `delivery is approximate without the exact-alarm permission`() {
+        Shadows.shadowOf(
+            context.getSystemService(android.app.NotificationManager::class.java)
+        ).setNotificationsEnabled(true)
+        ShadowAlarmManager.setCanScheduleExactAlarms(false)
+
+        assertEquals(ReminderDelivery.Approximate, scheduler.reminderDelivery())
+    }
+
+    @Test
+    fun `delivery is exact when notifications are on and exact alarms are allowed`() {
+        Shadows.shadowOf(
+            context.getSystemService(android.app.NotificationManager::class.java)
+        ).setNotificationsEnabled(true)
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
+
+        assertEquals(ReminderDelivery.Exact, scheduler.reminderDelivery())
     }
 }
