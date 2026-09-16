@@ -61,7 +61,7 @@ function main() {
   const buildEnv = { ...staging };
   console.log('Building Pages bundle…');
   run('npm', ['run', 'build'], { cwd: WEB, env: buildEnv });
-  run('node', [resolve(WEB, 'scripts/verifyPagesArtifacts.mjs')], { env: {} });
+  run('node', [resolve(WEB, 'scripts/verifyPagesArtifacts.mjs'), '--deployable'], { env: {} });
 
   console.log('Deploying to Cloudflare Pages project notelikeus-dev (Production alias)…');
   run(

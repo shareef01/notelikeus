@@ -153,6 +153,8 @@ export function MainScreen() {
 
     syncError,
 
+    unreadableNoteIds,
+
   } = useNotes();
 
 
@@ -499,6 +501,24 @@ export function MainScreen() {
 
               return (
                 <>
+                  {unreadableNoteIds.length > 0 ? (
+                    <div className="px-shell mb-3">
+                      {/* Not a sync warning and not a load error: retrying re-reads the same
+                          rows with the same key. The one thing worth saying is that the notes
+                          have not been deleted, so nobody wipes the profile trying to fix it. */}
+                      <p
+                        role="status"
+                        className="rounded-note border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-sm text-amber-700 sm:px-4 dark:text-amber-400"
+                      >
+                        {unreadableNoteIds.length === 1
+                          ? '1 note could not be unlocked on this device and is not shown.'
+                          : `${unreadableNoteIds.length} notes could not be unlocked on this device and are not shown.`}{' '}
+                        They are still saved here, and still in the cloud if you sync. Signing in
+                        on this browser, or opening the app where it already works, restores them.
+                      </p>
+                    </div>
+                  ) : null}
+
                   {view.syncWarning ? (
                     <div className="px-shell mb-3">
                       <div className="flex flex-wrap items-center justify-between gap-3 rounded-note border border-red-500/25 bg-red-500/5 px-3 py-2.5 sm:px-4">
