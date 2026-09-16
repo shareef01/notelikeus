@@ -5,5 +5,9 @@
     "correctness": "error",
     "suspicious": "warn",
     "perf": "warn"
+  },
+  "rules": {
+    "unicorn/prefer-add-event-listener": "off",
+    "no-await-in-loop": "off"
   }
 }
