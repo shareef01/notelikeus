@@ -1,0 +1,66 @@
+# Overrides on top of detekt's defaults (`buildUponDefaultConfig = true`).
+#
+# The goal is signal, not a style opinion. Rules that fire on choices this codebase makes
+# deliberately are off, with the reason next to each; everything correctness- and
+# complexity-shaped is left switched on and held in the baseline instead, so it stays visible.
+
+comments:
+  # This codebase comments *why*, at length, and does not write KDoc for its own sake.
+  UndocumentedPublicClass:
+    active: false
+  UndocumentedPublicFunction:
+    active: false
+  UndocumentedPublicProperty:
+    active: false
+
+style:
+  # Compose UI is full of dimensions and durations that are clearer inline than named.
+  MagicNumber:
+    active: false
+  # Guard clauses that return early are the house style, and they read better than nesting.
+  ReturnCount:
+    active: false
+  ThrowsCount:
+    active: false
+  # `import androidx.compose.material3.*` is the Compose convention, not an oversight.
+  WildcardImport:
+    active: false
+  MaxLineLength:
+    active: true
+    excludes: ['**/test/**', '**/*Test.kt']
+
+naming:
+  # Two separate reasons PascalCase functions are correct here: `@Composable` functions are
+  # PascalCase by Compose convention, and the JNA bindings in `Dpapi.kt` / `NativeCaptionDrag.kt`
+  # must match the Win32 symbol exactly (`CryptProtectData`), or the lookup fails at runtime.
+  FunctionNaming:
+    active: false
+  # Kotlin Multiplatform splits one declaration across `Foo.kt`, `Foo.desktop.kt` and
+  # `Foo.android.kt`, so the file name legitimately differs from the declaration.
+  MatchingDeclarationName:
+    active: false
+  TopLevelPropertyNaming:
+    active: true
+
+exceptions:
+  # `catch (error: Exception)` is used deliberately and narrowly here: the crypto, storage and
+  # sync paths have to stay closed when an unexpected failure arrives, and each site says in a
+  # comment what it is riding out. Flagging the type would push them toward catching less than
+  # they mean to.
+  TooGenericExceptionCaught:
+    active: false
+
+empty-blocks:
+  # Test seams and no-op platform overrides, where the empty body is the point.
+  EmptyFunctionBlock:
+    active: false
+
+complexity:
+  LongParameterList:
+    active: true
+    ignoreAnnotated: ['Composable']
+  LongMethod:
+    active: true
+    ignoreAnnotated: ['Composable']
+  TooManyFunctions:
+    active: false
