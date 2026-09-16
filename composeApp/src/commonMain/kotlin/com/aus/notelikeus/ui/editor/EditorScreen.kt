@@ -144,6 +144,8 @@ fun EditorScreen(
         }
     }
 
+    val requestNotificationPermission = rememberNotificationPermissionRequest()
+
     val reminderSetMsg = stringResource(Res.string.reminder_set_confirmation)
     val reminderSetApproxMsg = stringResource(Res.string.reminder_set_confirmation_approximate)
     val reminderPermissionDeniedMsg = stringResource(Res.string.reminder_permission_denied)
@@ -172,18 +174,27 @@ fun EditorScreen(
     // within a window rather than on the minute. Both strings for saying so already existed.
     fun scheduleReminderIfAllowed(millis: Long) {
         showReminderDialog = false
-        scope.launch {
-            viewModel.setReminder(millis)
-            when (viewModel.saveLocallyAndAwait()) {
-                is LocalSaveResult.Saved -> snackbarHostState.showSnackbar(
-                    when (viewModel.reminderDelivery()) {
-                        ReminderDelivery.Blocked -> reminderPermissionDeniedMsg
-                        ReminderDelivery.Approximate -> reminderSetApproxMsg
-                        ReminderDelivery.Exact -> reminderSetMsg
-                    }
-                )
-                LocalSaveResult.Unchanged -> Unit
-                is LocalSaveResult.Failed -> Unit // Reported by the save-failure snackbar below.
+        // Ask before saving, not after. The permission dialog decides what the confirmation is
+        // allowed to claim, and a confirmation that appears while the system dialog is still on
+        // screen has announced a delivery nobody has agreed to. On every platform without a
+        // runtime permission this calls back immediately and the flow is unchanged.
+        requestNotificationPermission { _ ->
+            scope.launch {
+                viewModel.setReminder(millis)
+                when (viewModel.saveLocallyAndAwait()) {
+                    // Re-read rather than trusting the grant result: the permission is only one of
+                    // the two things that decide delivery, and being granted still leaves the
+                    // reminder approximate on Android 12+.
+                    is LocalSaveResult.Saved -> snackbarHostState.showSnackbar(
+                        when (viewModel.reminderDelivery()) {
+                            ReminderDelivery.Blocked -> reminderPermissionDeniedMsg
+                            ReminderDelivery.Approximate -> reminderSetApproxMsg
+                            ReminderDelivery.Exact -> reminderSetMsg
+                        }
+                    )
+                    LocalSaveResult.Unchanged -> Unit
+                    is LocalSaveResult.Failed -> Unit // Reported by the save-failure snackbar below.
+                }
             }
         }
     }
