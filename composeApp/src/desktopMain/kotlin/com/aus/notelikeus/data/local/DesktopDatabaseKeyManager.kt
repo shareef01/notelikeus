@@ -51,7 +51,7 @@ class DesktopDatabaseKeyManager(
         val generated = ByteArray(KEY_BYTES).also { SecureRandom().nextBytes(it) }
         val sealed = blobStore.protect(generated)
         if (!publishByRename(sealed)) {
-            throw IllegalStateException("Could not publish desktop database key file")
+            error("Could not publish desktop database key file")
         }
         return generated
     }

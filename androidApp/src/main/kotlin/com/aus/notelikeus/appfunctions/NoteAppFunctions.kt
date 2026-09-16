@@ -40,7 +40,7 @@ class NoteAppFunctions : KoinComponent {
      */
     private suspend fun requireUnlocked() {
         if (settingsRepository.isAppLockEnabled.first()) {
-            throw IllegalStateException("Notelikeus is locked. Unlock the app to use this action.")
+            error("Notelikeus is locked. Unlock the app to use this action.")
         }
     }
 
@@ -137,8 +137,8 @@ class NoteAppFunctions : KoinComponent {
         //
         // Checked after the lookup so an unknown id still answers "not found", which is the more
         // specific thing to tell a caller that got both wrong.
-        if (timestamp <= System.currentTimeMillis()) {
-            throw IllegalArgumentException("Reminder time must be in the future.")
+        require(timestamp > System.currentTimeMillis()) {
+            "Reminder time must be in the future."
         }
         val updatedNote = note.copy(
             reminderTimestamp = timestamp,
@@ -179,11 +179,11 @@ class NoteAppFunctions : KoinComponent {
      * with nothing in the UI to say why.
      */
     private fun requireWithinLimits(title: String, content: String) {
-        if (title.length > MAX_TITLE_CHARS) {
-            throw IllegalArgumentException("Title is limited to $MAX_TITLE_CHARS characters.")
+        require(title.length <= MAX_TITLE_CHARS) {
+            "Title is limited to $MAX_TITLE_CHARS characters."
         }
-        if (content.length > MAX_CONTENT_CHARS) {
-            throw IllegalArgumentException("Content is limited to $MAX_CONTENT_CHARS characters.")
+        require(content.length <= MAX_CONTENT_CHARS) {
+            "Content is limited to $MAX_CONTENT_CHARS characters."
         }
     }
 
