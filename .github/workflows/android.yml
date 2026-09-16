@@ -64,9 +64,8 @@ jobs:
         run: node scripts/ops/unreferenced-kotlin.mjs
 
       # Kotlin static analysis, matching the oxlint pass the web and Worker packages run.
-      # Existing findings live in config/detekt/baseline-*.xml, so anything reported here is new.
-      # Non-blocking for now (`ignoreFailures` in the root build script) — drop that flag to make
-      # a new finding fail the build.
+      # Existing findings live in config/detekt/baseline-*.xml, so a failure here is always
+      # something the change under test introduced.
       - name: Run detekt
         run: ./gradlew detekt --stacktrace
 

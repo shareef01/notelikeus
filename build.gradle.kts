@@ -16,11 +16,14 @@ plugins {
 /**
  * Kotlin static analysis, to match the oxlint pass the two TypeScript packages already run.
  *
- * Deliberately non-blocking to start with. `ignoreFailures` keeps a finding from breaking a build
- * that is otherwise green, and the baselines in `config/detekt/baseline-<module>.xml` hold the
- * 149 findings the tree already had, so the signal is *new* findings rather than a backlog nobody
- * asked for. Drop `ignoreFailures`, or start deleting from a baseline, whenever the appetite is
- * there — a new finding already prints, it just does not fail the build.
+ * Blocking, because the baselines make that safe. `config/detekt/baseline-<module>.xml` holds the
+ * 149 findings the tree already had, so a failure here is always something this change
+ * introduced, never a backlog nobody asked for. A non-blocking linter in CI is a linter nobody
+ * reads.
+ *
+ * Two ways to deal with a new finding: fix it, or — if it is a rule that is wrong for this
+ * codebase the way `FunctionNaming` is for Compose — turn the rule off in `detekt.yml` with the
+ * reason written next to it. Adding to a baseline is the last resort, not the first.
  *
  * No type resolution: it needs a compiled classpath per Kotlin target, which on a multiplatform
  * module means building everything before linting anything. The rules that need it are off.
@@ -31,7 +34,7 @@ subprojects {
     extensions.configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
         parallel = true
         buildUponDefaultConfig = true
-        ignoreFailures = true
+        ignoreFailures = false
         config.setFrom(rootProject.files("config/detekt/detekt.yml"))
         // Per project, not one shared file: `detektBaseline` writes the baseline for the project
         // it ran in, so a single shared path has each module overwrite the previous module's.
