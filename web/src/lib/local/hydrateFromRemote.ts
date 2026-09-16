@@ -1,7 +1,7 @@
 import {
   deleteNote,
   getOwnerMeta,
-  listNotes,
+  listStoredNotes,
   putNotes,
   setOwnerMeta,
 } from '@/lib/local/notesLocalRepository';
@@ -14,9 +14,22 @@ import type { Note } from '@/types/note';
  * Loads notes from IndexedDB into the in-memory store.
  * Suppresses tombstoned notes and cleans stale tombstoned rows so the mirror converges.
  * Safe to call on every owner change / app resume.
+ *
+ * Reads with {@link listStoredNotes} rather than `listNotes`: a row that cannot be opened must
+ * not take the whole screen down with it. The sealing key lives in a separate IndexedDB database
+ * from the notes, so losing it leaves every row intact but unopenable — and the all-or-nothing
+ * read turned that into "you have no notes", behind a Retry that could never succeed. The
+ * readable notes go on screen; the rest are reported so the UI can say they are still on disk.
  */
 export async function loadLocalNotesIntoStore(ownerId: string): Promise<Note[]> {
-  const notes = await listNotes(ownerId);
+  const { notes, unreadable } = await listStoredNotes(ownerId);
+  useNotesStore.getState().setUnreadableNoteIds(unreadable.map((row) => row.id));
+  if (unreadable.length > 0) {
+    console.warn(
+      `[Notelikeus] ${unreadable.length} note(s) could not be decrypted and were left on disk:`,
+      unreadable,
+    );
+  }
   const isDeleted = useTombstoneStore.getState().isDeleted;
   const liveNotes = notes.filter((note) => !isDeleted(note.id));
 
@@ -55,7 +68,8 @@ export async function hydrateIndexedDbFromRemote(userId: string): Promise<void> 
   // `putNotes` upserts; it does not delete local-only rows. The UI store is what the upload
   // path reads, so those extras must stay visible. An empty snapshot is also not authoritative
   // over a populated local namespace (Firebase→Supabase migration, or the wrong account).
-  const local = await listNotes(userId);
+  const { notes: local, unreadable } = await listStoredNotes(userId);
+  useNotesStore.getState().setUnreadableNoteIds(unreadable.map((row) => row.id));
   const isDeleted = useTombstoneStore.getState().isDeleted;
   const liveLocal = local.filter((note) => !isDeleted(note.id));
   if (snapshot.length === 0) {

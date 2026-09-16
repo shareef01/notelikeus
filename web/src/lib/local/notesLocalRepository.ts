@@ -1,6 +1,7 @@
 import {
   isSealedStoredNote,
   maybeMigrateStoredNote,
+  NoteDecryptionError,
   openStoredNote,
   sealNoteForStorage,
   type StoredNotePayload,
@@ -45,8 +46,24 @@ async function toStoredRecord(ownerId: string, note: Note): Promise<StoredNoteRe
   };
 }
 
-export async function listNotes(ownerId: string): Promise<Note[]> {
-  const records = await new Promise<StoredNoteRecord[]>((resolve, reject) => {
+/** A row that is on disk and owned by this owner, but whose body could not be opened. */
+export interface UnreadableNoteRef {
+  id: string;
+  reason: NoteDecryptionError['reason'];
+}
+
+export interface StoredNotesReadResult {
+  notes: Note[];
+  /**
+   * Rows that failed to open, in store order. Never silently dropped: a caller that merges or
+   * overwrites by id has to know these ids are taken, or it will write over a row whose
+   * ciphertext is still intact and still recoverable.
+   */
+  unreadable: UnreadableNoteRef[];
+}
+
+async function readOwnerRecords(ownerId: string): Promise<StoredNoteRecord[]> {
+  return new Promise<StoredNoteRecord[]>((resolve, reject) => {
     void withStore(NOTES_STORE, 'readonly', (store) => {
       const index = store.index('ownerId');
       return index.getAll(ownerId) as IDBRequest<StoredNoteRecord[]>;
@@ -54,10 +71,37 @@ export async function listNotes(ownerId: string): Promise<Note[]> {
       .then((result) => resolve((result as StoredNoteRecord[]) ?? []))
       .catch(reject);
   });
+}
+
+/**
+ * Reads every row for [ownerId], separating the ones that opened from the ones that did not.
+ *
+ * A row can fail to open without anything being wrong with the rest of the store — the sealing
+ * key lives in its own IndexedDB database (`notelikeus-notes-crypto`), so the key can be lost
+ * while every note row survives. Treating that as a whole-store failure is what
+ * {@link listNotes} does, and it is right for callers that merge by id; it is wrong for the
+ * screen, which then shows nothing at all when most notes are perfectly readable.
+ *
+ * Failure is still closed per row: an unopenable body is reported, never rendered as blank and
+ * never re-sealed. The ciphertext stays on disk exactly as it was.
+ */
+export async function listStoredNotes(ownerId: string): Promise<StoredNotesReadResult> {
+  const records = await readOwnerRecords(ownerId);
 
   const notes: Note[] = [];
+  const unreadable: UnreadableNoteRef[] = [];
   for (const record of records) {
-    const opened = await openStoredNote(ownerId, record.note);
+    let opened: Note;
+    try {
+      // eslint-disable-next-line no-await-in-loop -- one row at a time; the store is the bottleneck
+      opened = await openStoredNote(ownerId, record.note);
+    } catch (error: unknown) {
+      if (error instanceof NoteDecryptionError) {
+        unreadable.push({ id: error.noteId, reason: error.reason });
+        continue;
+      }
+      throw error;
+    }
     notes.push(opened);
     if (!isSealedStoredNote(record.note)) {
       void maybeMigrateStoredNote(ownerId, record.note, async (next) => {
@@ -66,6 +110,22 @@ export async function listNotes(ownerId: string): Promise<Note[]> {
         );
       });
     }
+  }
+  return { notes, unreadable };
+}
+
+/**
+ * Every note for [ownerId], or a throw if any single row cannot be opened.
+ *
+ * All-or-nothing on purpose. The callers left on this function adopt, merge, or reconcile by
+ * note id, and each of them would overwrite a row it could not see. Display paths want
+ * {@link listStoredNotes} instead.
+ */
+export async function listNotes(ownerId: string): Promise<Note[]> {
+  const { notes, unreadable } = await listStoredNotes(ownerId);
+  const first = unreadable[0];
+  if (first) {
+    throw new NoteDecryptionError(first.id, first.reason);
   }
   return notes;
 }
