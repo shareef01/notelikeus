@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import androidx.core.app.NotificationManagerCompat
+import com.aus.notelikeus.domain.platform.ReminderDelivery
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.data.remote.ReminderReceiver
 import com.aus.notelikeus.data.remote.ReminderScheduleResult
@@ -40,6 +42,19 @@ class ReminderScheduler(
 
     fun canScheduleExactAlarms(): Boolean {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
+    }
+
+    /**
+     * Read at confirmation time rather than cached: both answers can change while the app is
+     * running, because both are toggled from Settings and neither restarts the process.
+     *
+     * Notifications first. An app whose notifications are off delivers nothing at all, so how
+     * precisely the alarm would have fired is not the thing worth telling the user about.
+     */
+    override fun reminderDelivery(): ReminderDelivery = when {
+        !NotificationManagerCompat.from(context).areNotificationsEnabled() -> ReminderDelivery.Blocked
+        !canScheduleExactAlarms() -> ReminderDelivery.Approximate
+        else -> ReminderDelivery.Exact
     }
 
     override fun cancelReminder(noteId: Long) {

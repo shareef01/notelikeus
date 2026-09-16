@@ -58,6 +58,7 @@ import com.aus.notelikeus.ui.theme.getContentColor
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
+import com.aus.notelikeus.domain.platform.ReminderDelivery
 import com.aus.notelikeus.util.DateUtils
 import com.aus.notelikeus.ui.theme.AppType
 import com.aus.notelikeus.ui.theme.NoteEmphasis
@@ -163,12 +164,24 @@ fun EditorScreen(
 
     // The reminder is only confirmed once the note carrying it is in the database. Confirming off
     // the state change alone announced reminders that a failed write meant did not exist.
+    //
+    // What the confirmation *says* is then a second question. Scheduling succeeds even when the
+    // OS will never show the notification, so "Reminder set" was a promise the app had not
+    // checked: on Android 13+ notifications are off until the user turns them on, and on
+    // Android 12+ this app deliberately ships without SCHEDULE_EXACT_ALARM, so the alarm fires
+    // within a window rather than on the minute. Both strings for saying so already existed.
     fun scheduleReminderIfAllowed(millis: Long) {
         showReminderDialog = false
         scope.launch {
             viewModel.setReminder(millis)
             when (viewModel.saveLocallyAndAwait()) {
-                is LocalSaveResult.Saved -> snackbarHostState.showSnackbar(reminderSetMsg)
+                is LocalSaveResult.Saved -> snackbarHostState.showSnackbar(
+                    when (viewModel.reminderDelivery()) {
+                        ReminderDelivery.Blocked -> reminderPermissionDeniedMsg
+                        ReminderDelivery.Approximate -> reminderSetApproxMsg
+                        ReminderDelivery.Exact -> reminderSetMsg
+                    }
+                )
                 LocalSaveResult.Unchanged -> Unit
                 is LocalSaveResult.Failed -> Unit // Reported by the save-failure snackbar below.
             }
