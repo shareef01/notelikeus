@@ -8,7 +8,6 @@ import kotlinx.serialization.json.longOrNull
 class R2AttachmentBlobTransport(
     private val workerBaseUrl: String,
     private val accessTokenProvider: SupabaseAccessTokenProvider,
-    private val metadata: SupabaseAttachmentMetadata? = null,
     private val ownerIdProvider: suspend () -> String,
 ) : AttachmentBlobTransport {
 

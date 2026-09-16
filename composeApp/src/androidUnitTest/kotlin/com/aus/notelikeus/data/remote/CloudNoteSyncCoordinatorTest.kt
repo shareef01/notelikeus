@@ -3,7 +3,6 @@ package com.aus.notelikeus.data.remote
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
-import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import io.mockk.every
 import io.mockk.mockk
@@ -17,7 +16,6 @@ import org.junit.Test
 
 class CloudNoteSyncCoordinatorTest {
 
-    private lateinit var syncEngine: NoteSyncEngine
     private lateinit var sessionManager: CloudSessionManager
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var workManager: WorkManager
@@ -25,12 +23,10 @@ class CloudNoteSyncCoordinatorTest {
 
     @Before
     fun setup() {
-        syncEngine = mockk(relaxed = true)
         sessionManager = mockk()
         settingsRepository = mockk()
         workManager = mockk(relaxed = true)
         coordinator = CloudNoteSyncCoordinator(
-            syncEngine,
             sessionManager,
             settingsRepository,
             workManager,

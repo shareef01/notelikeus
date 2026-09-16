@@ -48,7 +48,7 @@ object NoteQueryMatcher {
             matchesColors(note, query.colors) &&
             matchesLabels(note, query) &&
             matchesFlags(note, query.flags, now) &&
-            matchesDate(note, query, now)
+            matchesDate(note, query)
 
     private fun matchesScope(note: Note, scope: NoteScope): Boolean = when (scope) {
         NoteScope.ACTIVE -> !note.isArchived && !note.isTrashed
@@ -98,7 +98,7 @@ object NoteQueryMatcher {
     private fun matchesFlags(note: Note, flags: Set<NoteFlag>, now: Long): Boolean =
         flags.all { flag -> note.satisfies(flag, now) }
 
-    private fun matchesDate(note: Note, query: NoteQuery, now: Long): Boolean {
+    private fun matchesDate(note: Note, query: NoteQuery): Boolean {
         val range = query.dateRange ?: return true
         val value = when (query.dateField) {
             // The schema has one timestamp per note and it moves on edit, so CREATED and EDITED

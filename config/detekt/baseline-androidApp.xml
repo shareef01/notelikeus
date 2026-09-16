@@ -5,7 +5,6 @@
     <ID>CyclomaticComplexMethod:MainActivity.kt$MainActivity$@OptIn(ExperimentalMaterial3WindowSizeClassApi::class) override fun onCreate(savedInstanceState: Bundle?)</ID>
     <ID>LongMethod:MainActivity.kt$MainActivity$@OptIn(ExperimentalMaterial3WindowSizeClassApi::class) override fun onCreate(savedInstanceState: Bundle?)</ID>
     <ID>MaxLineLength:NoteAppFunctions.kt$NoteAppFunctions$*</ID>
-    <ID>UnusedParameter:NoteAppFunctions.kt$NoteAppFunctions$context: AppFunctionContext</ID>
     <ID>UseCheckOrError:NoteAppFunctions.kt$NoteAppFunctions$throw IllegalStateException("Notelikeus is locked. Unlock the app to use this action.")</ID>
     <ID>UseRequire:NoteAppFunctions.kt$NoteAppFunctions$throw IllegalArgumentException("Content is limited to $MAX_CONTENT_CHARS characters.")</ID>
     <ID>UseRequire:NoteAppFunctions.kt$NoteAppFunctions$throw IllegalArgumentException("Reminder time must be in the future.")</ID>

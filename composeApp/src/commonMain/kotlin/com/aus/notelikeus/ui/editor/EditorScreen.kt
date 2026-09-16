@@ -29,7 +29,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import org.jetbrains.compose.resources.stringResource
 import notelikeus.composeapp.generated.resources.Res
@@ -92,10 +91,8 @@ fun EditorScreen(
     isExpanded: Boolean = false
 ) {
     val state by viewModel.state.collectAsState()
-    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val undoLabel = stringResource(Res.string.action_undo)
     val attachmentsEnabled = viewModel.isAttachmentsEnabled()
     val pickAttachment = rememberAttachmentImagePicker(attachmentsEnabled) { bytes, mimeType ->
         viewModel.addAttachment(bytes, mimeType)
