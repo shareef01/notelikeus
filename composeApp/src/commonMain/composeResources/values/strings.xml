@@ -42,6 +42,7 @@
     <string name="attachment_staging_failed">Couldn’t add that image</string>
     <string name="attachment_sync_pending">Saved on this device. Image will upload when you’re online.</string>
     <string name="note_truncated_to_sync_limit">Note was shortened to the sync limit</string>
+    <string name="not_saved_yet">Not saved yet</string>
     <string name="saving_locally">Saving locally…</string>
     <string name="local_save_failed">Local save failed</string>
     <string name="saved_locally_edited">Saved locally • %1$s</string>

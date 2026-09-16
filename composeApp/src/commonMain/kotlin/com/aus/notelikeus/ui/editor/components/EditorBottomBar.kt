@@ -44,6 +44,11 @@ fun EditorBottomBar(
     val statusText = when {
         saveFailed -> stringResource(Res.string.local_save_failed)
         isSaving -> stringResource(Res.string.saving_locally)
+        // Every branch below claims the note is on disk, so the flag that says whether it
+        // actually is has to be read before any of them. A new note sits here with nothing
+        // saving and nothing failed, and reporting it as "Saved locally" was the editor
+        // promising durability it did not have yet.
+        !isSavedLocally -> stringResource(Res.string.not_saved_yet)
         isGuest || cloudSyncStatus == CloudSyncStatus.Unknown -> {
             stringResource(Res.string.saved_locally_edited, editedTime)
         }

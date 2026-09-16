@@ -18,6 +18,7 @@ import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SyncManager
+import com.aus.notelikeus.domain.platform.ReminderDelivery
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.ui.main.CloudSyncStatus
 import com.aus.notelikeus.ui.theme.NO_NOTE_COLOR
@@ -819,6 +820,14 @@ class EditorViewModel(
         }
         _state.update { it.copy(saveFailed = false) }
     }
+
+    /**
+     * How a reminder set right now would actually be delivered, for the confirmation the editor
+     * shows. Queried at the moment of confirming rather than held in [EditorState]: the answer
+     * depends on OS settings the user can change while this screen is open, and a stale copy
+     * would confirm the wrong thing.
+     */
+    fun reminderDelivery(): ReminderDelivery = reminderManager.reminderDelivery()
 
     private fun syncReminder(noteId: Long, state: EditorState) {
         if (state.isTrashed || state.isArchived || state.reminderTimestamp == null) {

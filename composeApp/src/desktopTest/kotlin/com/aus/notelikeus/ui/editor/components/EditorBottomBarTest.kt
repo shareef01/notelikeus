@@ -133,6 +133,7 @@ class EditorBottomBarTest {
             MaterialTheme {
                 EditorBottomBar(
                     timestamp = timestamp,
+                    isSavedLocally = true,
                     isGuest = false,
                     cloudSyncStatus = com.aus.notelikeus.ui.main.CloudSyncStatus.Connected,
                     attachmentSyncPending = true,
@@ -150,6 +151,7 @@ class EditorBottomBarTest {
             MaterialTheme {
                 EditorBottomBar(
                     timestamp = timestamp,
+                    isSavedLocally = true,
                     isGuest = false,
                     cloudSyncStatus = com.aus.notelikeus.ui.main.CloudSyncStatus.Offline,
                     onMoreClick = {},
@@ -158,5 +160,73 @@ class EditorBottomBarTest {
             }
         }
         onNodeWithText("Saved locally • Offline").assertExists()
+    }
+
+    @Test
+    fun `does not claim a new note is saved before any write has landed`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                EditorBottomBar(
+                    timestamp = timestamp,
+                    // A note the editor has just opened: nothing in flight, nothing failed, and
+                    // nothing written yet. Every "Saved locally" string would be a lie here.
+                    isSavedLocally = false,
+                    onMoreClick = {},
+                    contentColor = Color.White
+                )
+            }
+        }
+        onNodeWithText("Not saved yet").assertExists()
+    }
+
+    @Test
+    fun `an unsaved note reports unsaved even when the cloud looks healthy`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                EditorBottomBar(
+                    timestamp = timestamp,
+                    isSavedLocally = false,
+                    isGuest = false,
+                    cloudSyncStatus = com.aus.notelikeus.ui.main.CloudSyncStatus.Connected,
+                    onMoreClick = {},
+                    contentColor = Color.White
+                )
+            }
+        }
+        // Local durability is the claim being made, so a connected cloud must not upgrade it.
+        onNodeWithText("Not saved yet").assertExists()
+    }
+
+    @Test
+    fun `a saved note still reports the local save`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                EditorBottomBar(
+                    timestamp = timestamp,
+                    isSavedLocally = true,
+                    isGuest = false,
+                    cloudSyncStatus = com.aus.notelikeus.ui.main.CloudSyncStatus.Connected,
+                    onMoreClick = {},
+                    contentColor = Color.White
+                )
+            }
+        }
+        onNodeWithText("Saved locally • Synced").assertExists()
+    }
+
+    @Test
+    fun `an in-flight save outranks the unsaved state`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                EditorBottomBar(
+                    timestamp = timestamp,
+                    isSaving = true,
+                    isSavedLocally = false,
+                    onMoreClick = {},
+                    contentColor = Color.White
+                )
+            }
+        }
+        onNodeWithText("Saving locally…").assertExists()
     }
 }

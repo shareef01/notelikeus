@@ -24,8 +24,20 @@ interface NotesState {
    * catching up later is what fixes it, and the next successful sync clears this.
    */
   syncError: string | null;
+  /**
+   * Ids of rows that are on disk for this owner but could not be opened — almost always the
+   * sealing key going missing while the note rows survived.
+   *
+   * Never blocking, for the same reason {@link syncError} is not: the readable notes are on
+   * screen and editable, and the unreadable ciphertext is still on disk and still recoverable if
+   * the key comes back. Blocking here would hide working notes over rows nothing can fix right
+   * now. Matches what Android does with a quarantined database rather than what it does with a
+   * broken one.
+   */
+  unreadableNoteIds: string[];
   filters: NoteQueryFilters;
   setNotes: (notes: Note[]) => void;
+  setUnreadableNoteIds: (ids: string[]) => void;
   upsertLocalNote: (note: Note) => void;
   removeLocalNote: (noteId: string) => void;
   setStatus: (status: NotesLoadStatus) => void;
@@ -56,7 +68,18 @@ export const useNotesStore = create<NotesState>()(
       status: 'ready',
       error: null,
       syncError: null,
+      unreadableNoteIds: [],
       filters: defaultFilters,
+      setUnreadableNoteIds: (ids) =>
+        set((state) => {
+          if (
+            state.unreadableNoteIds.length === ids.length &&
+            state.unreadableNoteIds.every((id, index) => id === ids[index])
+          ) {
+            return state;
+          }
+          return { unreadableNoteIds: ids };
+        }),
       setNotes: (incoming) => {
         const current = get().notes;
         if (notesContentEqual(current, incoming)) {
@@ -128,6 +151,7 @@ export const useNotesStore = create<NotesState>()(
           status: 'ready',
           error: null,
           syncError: null,
+          unreadableNoteIds: [],
           filters: defaultFilters,
         }),
     }),
