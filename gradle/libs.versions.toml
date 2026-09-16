@@ -21,6 +21,8 @@ coroutines = "1.11.0"
 # `coroutines`. Kept as a separate ref so production code never resolves to a test variable.
 coroutinesTest = "1.11.0"
 robolectric = "4.16.1"
+# Kotlin static analysis. Kept non-blocking behind a baseline: see the root build script.
+detekt = "1.23.8"
 datastore = "1.2.1"
 biometric = "1.1.0"
 glance = "1.1.1"
@@ -143,4 +145,5 @@ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 
