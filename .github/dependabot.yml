@@ -49,3 +49,18 @@ updates:
         versions: [">= 2.10"]
       - dependency-name: "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose"
         versions: [">= 2.10"]
+
+      # Same hazard, different package. Koin 4.2.2 depends on Compose UI 1.10.2 directly, and a
+      # direct dependency wins conflict resolution, so `org.jetbrains.compose.ui:ui` resolves
+      # 1.8.2 -> 1.10.2 while the Compose compiler plugin stays on the CMP 1.8.x it targets. The
+      # desktop UI tests then die with
+      #   NoSuchFieldError: PlatformContext does not have member field 'Companion'
+      # Verified on 2026-09-16 by bumping it and running :composeApp:desktopTest.
+      #
+      # Unlike the lifecycle entry above, this one IS caught by CI — NoteReorderSemanticsTest and
+      # ReminderDialogTest fail — so it cannot land silently. Held anyway to stop it being
+      # re-proposed and re-diagnosed every week.
+      #
+      # REMOVE THIS ENTRY with the lifecycle one, when Compose Multiplatform moves off 1.8.x.
+      - dependency-name: "io.insert-koin:*"
+        versions: [">= 4.2"]
