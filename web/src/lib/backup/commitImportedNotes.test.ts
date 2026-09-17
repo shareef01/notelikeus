@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const { remoteMocks } = vi.hoisted(() => ({
   remoteMocks: {
@@ -162,5 +162,47 @@ describe('commitImportedNotes', () => {
     // Neither guest nor user namespace in IndexedDB was polluted
     expect(await listNotes(GUEST_OWNER_ID)).toEqual([]);
     expect(await listNotes('user-xyz')).toEqual([]);
+  });
+
+  // F2: authenticatedBackupImportPersistsAcrossReload
+  it('authenticatedBackupImportPersistsAcrossReload', async () => {
+    const { listNotes, putNotes } = await import('@/lib/local/notesLocalRepository');
+    const USER = 'user-auth-1';
+
+    // 1. Seed IndexedDB with existing note A
+    const existingA = note('note-A');
+    await putNotes(USER, [existingA]);
+
+    // 2. Import backup containing B (merged list is A + B)
+    const importedB = note('note-B');
+    const merged = [existingA, importedB];
+    const success = await commitImportedNotes(merged, 1, USER);
+
+    expect(success).toBe(true);
+    expect(remoteMocks.uploadAllNotes).toHaveBeenCalledWith(USER, merged);
+    expect(useNotesStore.getState().notes).toEqual(merged);
+
+    // 3. Simulate full in-memory loss/reload
+    useNotesStore.getState().reset();
+    expect(useNotesStore.getState().notes).toEqual([]);
+
+    // 4. Reload directly from IndexedDB for USER without remote or realtime dependency
+    const persisted = await listNotes(USER);
+    expect(persisted).toHaveLength(2);
+    expect(persisted.map((n) => n.id).sort()).toEqual(['note-A', 'note-B']);
+  });
+
+  it('failedAuthenticatedPersistenceDoesNotReportSuccessfulImport', async () => {
+    const notesLocalRepository = await import('@/lib/local/notesLocalRepository');
+    const putNotesSpy = vi.spyOn(notesLocalRepository, 'putNotes').mockRejectedValueOnce(new Error('IndexedDB disk full'));
+
+    const merged = [note('auth-disk-full-1')];
+    await expect(commitImportedNotes(merged, 1, 'user-auth-fail')).rejects.toThrow('IndexedDB disk full');
+
+    // Ephemeral store must not be updated if local persistence fails
+    expect(useNotesStore.getState().notes).toEqual([]);
+    // Realtime pause/resume must be balanced
+    expect(resumeRealtimeSnapshots).toHaveBeenCalled();
+    putNotesSpy.mockRestore();
   });
 });

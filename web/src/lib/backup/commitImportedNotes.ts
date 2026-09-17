@@ -1,4 +1,4 @@
-﻿import {
+import {
   pauseRealtimeSnapshots,
   resumeRealtimeSnapshots,
 } from '@/lib/notes/notesSyncService';
@@ -34,6 +34,7 @@ export async function commitImportedNotes(
   try {
     if (userId) {
       await getRemoteNotesDataSource().uploadAllNotes(userId, merged);
+      await putNotes(userId, merged);
       useNotesStore.getState().setNotes(merged);
       return true;
     }
