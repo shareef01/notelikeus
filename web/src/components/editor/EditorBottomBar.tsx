@@ -27,6 +27,7 @@ export function EditorBottomBar({
   timestamp,
   isSaving,
   saveFailed = false,
+  isSavedLocally = false,
   isSignedIn = false,
   isOnline = true,
   hasPendingAttachments = false,
@@ -49,6 +50,8 @@ export function EditorBottomBar({
     isError = true;
   } else if (isSaving) {
     statusText = 'Saving locally…';
+  } else if (!isSavedLocally) {
+    statusText = 'Not saved yet';
   } else if (!isSignedIn) {
     statusText = `Saved locally • ${editedLabel}`;
   } else if (!isOnline) {
