@@ -120,4 +120,51 @@ describe('EditorBottomBar', () => {
     expect(onMoreClick).toHaveBeenCalledTimes(1);
     cleanup();
   });
+
+  // F3: Truthful local save indicator tests
+  it('shows "Not saved yet" for unauthenticated guest when isSavedLocally is false', () => {
+    const { container, cleanup } = render({
+      isSavedLocally: false,
+      isSignedIn: false,
+      isSaving: false,
+      saveFailed: false,
+    });
+    expect(container.textContent).toContain('Not saved yet');
+    expect(container.textContent).not.toContain('Saved locally');
+    cleanup();
+  });
+
+  it('shows "Not saved yet" for authenticated online user when isSavedLocally is false', () => {
+    const { container, cleanup } = render({
+      isSavedLocally: false,
+      isSignedIn: true,
+      isOnline: true,
+      isSaving: false,
+      saveFailed: false,
+    });
+    expect(container.textContent).toContain('Not saved yet');
+    expect(container.textContent).not.toContain('Saved locally');
+    expect(container.textContent).not.toContain('Synced');
+    cleanup();
+  });
+
+  it('prioritizes saveFailed over isSavedLocally false', () => {
+    const { container, cleanup } = render({
+      saveFailed: true,
+      isSavedLocally: false,
+      isSaving: false,
+    });
+    expect(container.textContent).toContain('Local save failed');
+    cleanup();
+  });
+
+  it('prioritizes isSaving over isSavedLocally false', () => {
+    const { container, cleanup } = render({
+      isSaving: true,
+      isSavedLocally: false,
+      saveFailed: false,
+    });
+    expect(container.textContent).toContain('Saving locally…');
+    cleanup();
+  });
 });
