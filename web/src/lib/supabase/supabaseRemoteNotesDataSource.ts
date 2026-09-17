@@ -1,4 +1,4 @@
-﻿import {
+import {
   mergeRemoteNotes,
   shouldUploadOverRemote,
 } from '@/lib/notes/remoteMerge';
@@ -340,12 +340,20 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     await ensureSupabaseAuthenticated();
     const prior = await loadRevisionState(userId);
     const snapshot = await fetchSnapshotNotes();
+    const snapshotIds = new Set(snapshot.notes.map((note) => note.id));
+    const tombstoneIds = new Set(Object.keys(snapshot.tombstones));
+    const knownIds = [
+      ...new Set([...Object.keys(prior.noteRevisions), ...prior.knownCloudIds]),
+    ];
+    const unexplained = unexplainedMissingCloudIds(knownIds, snapshotIds, (id) =>
+      tombstoneIds.has(id),
+    );
     // Same fail-open hazard Kotlin already closed: an empty snapshot must not look like
     // "local wins every id". upsertNote would then push the whole library over whatever the
-    // cloud actually holds ÔÇö including a newer copy the fetch just failed to return.
-    if (snapshot.notes.length === 0 && Object.keys(prior.noteRevisions).length > 0) {
+    // cloud actually holds — including a newer copy the fetch just failed to return.
+    if (snapshot.notes.length === 0 && unexplained.length > 0) {
       throw new Error(
-        `Cloud returned no notes but ${Object.keys(prior.noteRevisions).length} were expected ÔÇö ` +
+        `Cloud returned no notes but ${unexplained.length} were expected — ` +
           `refusing to overwrite the cloud. Check the connection or sign in again.`,
       );
     }

@@ -17,7 +17,7 @@ vi.mock('@/lib/supabase/supabaseRealtimeSync', () => ({
 
 import { NOTES_DB_NAME } from '@/lib/local/constants';
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
-import { rememberNoteRevision } from '@/lib/supabase/revisionStore';
+import { loadRevisionState, rememberNoteRevision } from '@/lib/supabase/revisionStore';
 import { applyNoteChange, fetchSnapshotNotes } from '@/lib/supabase/supabaseSyncEngine';
 import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNotesDataSource';
 import { useTombstoneStore } from '@/store/tombstoneStore';
@@ -151,5 +151,122 @@ describe('supabaseRemoteNotesDataSource.uploadAllNotes', () => {
 
     expect(uploaded).toBe(0);
     expect(applyNoteChange).not.toHaveBeenCalled();
+  });
+
+  // F1-A: all missing IDs explained by remote tombstones
+  it('F1-A: accepts upload when all missing cloud IDs are explained by remote tombstones', async () => {
+    await rememberNoteRevision(USER, 'note-A', 10_001);
+    await rememberNoteRevision(USER, 'note-B', 10_002);
+
+    vi.mocked(fetchSnapshotNotes).mockResolvedValue({
+      notes: [],
+      tombstones: {
+        'note-A': 1_700_000_000_000,
+        'note-B': 1_700_000_000_100,
+      },
+      noteRevisions: {},
+      maxRevision: 10_002,
+    });
+
+    const validNewNote = note({ id: 'note-C', localId: 3, title: 'New Valid Note' });
+    const uploaded = await supabaseRemoteNotesDataSource.uploadAllNotes(USER, [validNewNote]);
+
+    expect(uploaded).toBe(1);
+    expect(applyNoteChange).toHaveBeenCalledWith(USER, validNewNote, null);
+  });
+
+  // F1-B: unexplained empty cloud remains blocked
+  it('F1-B: rejects upload when empty cloud has unexplained missing IDs (preserves suspect-empty protection)', async () => {
+    await rememberNoteRevision(USER, 'note-A', 10_001);
+    await rememberNoteRevision(USER, 'note-B', 10_002);
+
+    vi.mocked(fetchSnapshotNotes).mockResolvedValue({
+      notes: [],
+      tombstones: {},
+      noteRevisions: {},
+      maxRevision: 0,
+    });
+
+    const validNewNote = note({ id: 'note-C', localId: 3, title: 'New Valid Note' });
+    await expect(
+      supabaseRemoteNotesDataSource.uploadAllNotes(USER, [validNewNote]),
+    ).rejects.toThrow(/refusing to overwrite the cloud/);
+
+    expect(applyNoteChange).not.toHaveBeenCalled();
+  });
+
+  // F1-C: partially explained disappearance remains blocked
+  it('F1-C: rejects upload when cloud disappearance is only partially explained by tombstones', async () => {
+    await rememberNoteRevision(USER, 'note-A', 10_001);
+    await rememberNoteRevision(USER, 'note-B', 10_002);
+
+    // note-A is explained by tombstone, but note-B is mysteriously absent
+    vi.mocked(fetchSnapshotNotes).mockResolvedValue({
+      notes: [],
+      tombstones: {
+        'note-A': 1_700_000_000_000,
+      },
+      noteRevisions: {},
+      maxRevision: 10_001,
+    });
+
+    const validNewNote = note({ id: 'note-C', localId: 3, title: 'New Valid Note' });
+    await expect(
+      supabaseRemoteNotesDataSource.uploadAllNotes(USER, [validNewNote]),
+    ).rejects.toThrow(/1 were expected/);
+
+    expect(applyNoteChange).not.toHaveBeenCalled();
+  });
+
+  // F1-D: complete cloud state consisting of live + tombstoned notes
+  it('F1-D: accepts upload when cloud state consists of live notes and tombstoned notes', async () => {
+    await rememberNoteRevision(USER, 'note-A', 10_001);
+    await rememberNoteRevision(USER, 'note-B', 10_002);
+
+    const liveA = note({ id: 'note-A', localId: 1, title: 'Live A', serverUpdatedAt: 100 });
+    vi.mocked(fetchSnapshotNotes).mockResolvedValue({
+      notes: [liveA],
+      tombstones: {
+        'note-B': 1_700_000_000_000,
+      },
+      noteRevisions: { 'note-A': 10_001 },
+      maxRevision: 10_002,
+    });
+
+    const validNewNote = note({ id: 'note-C', localId: 3, title: 'New Valid Note' });
+    const uploaded = await supabaseRemoteNotesDataSource.uploadAllNotes(USER, [validNewNote]);
+
+    expect(uploaded).toBe(1);
+    expect(applyNoteChange).toHaveBeenCalledWith(USER, validNewNote, null);
+  });
+
+  // F1-E: persistent-lockout reproduction
+  it('F1-E: reproduces persistent lockout when legitimately tombstoned cloud rejects and retains stale revisions', async () => {
+    // 1. Seed prior revision state with A and B
+    await rememberNoteRevision(USER, 'note-A', 10_001);
+    await rememberNoteRevision(USER, 'note-B', 10_002);
+
+    // 2. Return remote empty snapshot with tombstones A and B
+    vi.mocked(fetchSnapshotNotes).mockResolvedValue({
+      notes: [],
+      tombstones: {
+        'note-A': 1_700_000_000_000,
+        'note-B': 1_700_000_000_100,
+      },
+      noteRevisions: {},
+      maxRevision: 10_002,
+    });
+
+    const validNewNote = note({ id: 'note-C', localId: 3, title: 'New Valid Note' });
+
+    // 3. Call uploadAllNotes - on audited code, this erroneously rejects
+    // We expect this call to succeed once remediated; here we test that after remediation it does NOT lock out,
+    // and we verify the revision state is updated properly.
+    const uploaded = await supabaseRemoteNotesDataSource.uploadAllNotes(USER, [validNewNote]);
+    expect(uploaded).toBe(1);
+
+    // 4. Stored revision state should now be updated with the latest snapshot
+    const updatedState = await loadRevisionState(USER);
+    expect(updatedState.lastRemoteRevision).toBe(10_002);
   });
 });
