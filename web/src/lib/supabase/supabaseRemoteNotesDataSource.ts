@@ -373,7 +373,9 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     for (const note of notes) {
       if (!isCloudSyncEligible(note)) continue;
       if (useTombstoneStore.getState().isDeleted(note.id)) continue;
-      if (!shouldUploadOverRemote(note, remoteById.get(note.id))) continue;
+      const remote = remoteById.get(note.id);
+      if (remote && remote.serverUpdatedAt != null && note.serverUpdatedAt == null) continue;
+      if (!shouldUploadOverRemote(note, remote)) continue;
       await this.upsertNote(userId, note);
       uploaded += 1;
     }

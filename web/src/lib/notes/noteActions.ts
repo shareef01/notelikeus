@@ -10,20 +10,24 @@ import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 
-async function persistLocalNote(note: Note): Promise<void> {
-  const ownerId = resolveOwnerId();
+async function persistLocalNote(note: Note, targetOwnerId?: string): Promise<void> {
+  const ownerId = targetOwnerId ?? resolveOwnerId();
   if (!ownerId) return;
   await putNote(ownerId, note);
 }
 
 async function pushNote(note: Note): Promise<void> {
-  // Persist-first: commit to IndexedDB before mutating memory
-  await persistLocalNote(note);
+  const ownerId = resolveOwnerId();
+  if (ownerId) {
+    // Persist-first: commit to IndexedDB before mutating memory
+    await persistLocalNote(note, ownerId);
+  }
+  if (resolveOwnerId() !== ownerId) return;
   useNotesStore.getState().upsertLocalNote(note);
-  const userId = useAuthStore.getState().user?.uid;
-  if (!userId) return;
+  const currentUid = useAuthStore.getState().user?.uid;
+  if (!currentUid || currentUid !== ownerId) return;
   try {
-    await getRemoteNotesDataSource().upsertNote(userId, note);
+    await getRemoteNotesDataSource().upsertNote(currentUid, note);
   } catch (error) {
     // If Supabase fails, DO NOT rollback local note.
     // Local edit remains committed. Reconciliation retries remote later.
@@ -41,6 +45,7 @@ function withTimestamp(note: Note, patch: Partial<Note>): Note {
 
 /** Save locally and optionally push to the cloud when signed in — no React hooks. */
 export async function saveNote(note: Note): Promise<void> {
+  const sessionOwnerId = resolveOwnerId();
   const existing = getNote(note.id);
   const toSave = note;
 
@@ -61,6 +66,7 @@ export async function saveNote(note: Note): Promise<void> {
   // Local data is primary: text note persistence must NOT wait for cloud attachment upload!
   if (existing && notesEqual(existing, toSave)) return;
   await pushNote(toSave);
+  if (resolveOwnerId() !== sessionOwnerId) return;
 
   // If there are pending attachments and R2 is enabled, attempt upload
   const hasPending = toSave.attachments.some((a) => isPendingAttachment(a.storagePath));
@@ -70,13 +76,18 @@ export async function saveNote(note: Note): Promise<void> {
     );
     try {
       const synced = await syncNoteAttachments(toSave);
+      // Verify session ownership has not changed during the attachment upload
+      if (resolveOwnerId() !== sessionOwnerId) {
+        console.warn('[Notelikeus] Session changed during attachment upload; dropping stale note write');
+        return;
+      }
       if (!notesEqual(toSave, synced)) {
-        await persistLocalNote(synced);
+        await persistLocalNote(synced, sessionOwnerId ?? undefined);
         useNotesStore.getState().upsertLocalNote(synced);
-        const userId = useAuthStore.getState().user?.uid;
-        if (userId) {
+        const currentUid = useAuthStore.getState().user?.uid;
+        if (currentUid && currentUid === sessionOwnerId) {
           try {
-            await getRemoteNotesDataSource().upsertNote(userId, synced);
+            await getRemoteNotesDataSource().upsertNote(currentUid, synced);
           } catch {
             // Transient network failure; retry on reconciliation
           }

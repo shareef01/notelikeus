@@ -1,4 +1,4 @@
-﻿import { useEffect } from 'react';
+import { useEffect } from 'react';
 import type { AuthUser } from '@/lib/auth/authUser';
 import { formatAuthError } from '@/lib/auth/authErrors';
 import { clearLocalUserData } from '@/lib/bootstrap';
@@ -9,6 +9,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
 
 function handleAuthUser(nextUser: AuthUser | null): void {
+  const previousUser = useAuthStore.getState().user;
   if (nextUser) {
     if (useAuthStore.getState().guestMode) {
       markGuestAdoptionIntent('auth-transition');
@@ -19,6 +20,9 @@ function handleAuthUser(nextUser: AuthUser | null): void {
   } else {
     forgetSignedIn();
     clearGuestAdoptionIntent();
+    if (previousUser) {
+      clearLocalUserData();
+    }
   }
   useAuthStore.setState((state) => {
     if (state.user?.uid === nextUser?.uid && state.isReady) {
