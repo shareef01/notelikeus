@@ -119,6 +119,16 @@ export function useNoteActions({
     [closeEmptyTrashConfirm, notes],
   );
 
+  const togglePinNote = useCallback(
+    (note: Note) =>
+      runNoteAction('Pin', async () => {
+        const pin = !note.isPinned;
+        await saveNote({ ...note, isPinned: pin, timestamp: Date.now() });
+        useToastStore.getState().show(pin ? 'Note pinned' : 'Note unpinned');
+      }),
+    [],
+  );
+
   const bulkPinToggle = useCallback(
     () =>
       runNoteAction('Pin', async () => {
@@ -230,6 +240,7 @@ export function useNoteActions({
     restoreNote,
     permanentlyDeleteNote,
     emptyTheTrash,
+    togglePinNote,
     bulkPinToggle,
     bulkArchive,
     bulkTrash,
