@@ -13,7 +13,12 @@ export function shouldUploadOverRemote(note: Note, remote: Note | undefined): bo
     }
     return note.timestamp > remote.timestamp;
   }
-  if (remote.serverUpdatedAt != null) return false;
+  if (remote.serverUpdatedAt != null) {
+    if (note.serverUpdatedAt == null && note.timestamp > remote.serverUpdatedAt) {
+      return true;
+    }
+    return false;
+  }
   if (note.serverUpdatedAt != null) return true;
   return note.timestamp >= remote.timestamp;
 }

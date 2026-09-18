@@ -68,4 +68,33 @@ describe('offline deletion durability across sign-out', () => {
     // deletion, holding one would block legitimately re-creating that id.
     expect(useTombstoneStore.getState().isDeleted('note-synced-delete')).toBe(false);
   });
+
+  it('preserves last merged user id across normal sign out so the next account switch purges tombstones', async () => {
+    const { loadLastMergedUserId, saveLastMergedUserId } = await import('@/lib/notes/lastMergedUser');
+
+    // 1. User A is active and deletes a note offline
+    saveLastMergedUserId('user-a');
+    useTombstoneStore.getState().markDeleted('note-offline-deleted-by-a');
+
+    // 2. User A signs out normally
+    clearLocalUserData();
+
+    // Tombstones stay for user A re-login:
+    expect(useTombstoneStore.getState().isDeleted('note-offline-deleted-by-a')).toBe(true);
+
+    // But last merged user ID is preserved so account switch can be detected:
+    expect(loadLastMergedUserId()).toBe('user-a');
+
+    // 3. User B signs in -> useNotesSync checks loadLastMergedUserId()
+    const incomingUser = 'user-b';
+    const lastMerged = loadLastMergedUserId();
+    if (lastMerged != null && lastMerged !== incomingUser) {
+      await clearLocalUserDataForAccountSwitch(lastMerged);
+    }
+
+    // After account switch, User A's tombstones are purged and cannot suppress User B's notes:
+    expect(useTombstoneStore.getState().isDeleted('note-offline-deleted-by-a')).toBe(false);
+    expect(localStorage.getItem('notelikeus-deleted-notes')).toBeNull();
+    expect(loadLastMergedUserId()).toBeNull();
+  });
 });
