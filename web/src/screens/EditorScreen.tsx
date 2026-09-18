@@ -4,6 +4,7 @@ import {
   DockIcon,
   FloatWindowIcon,
   FullscreenIcon,
+  ImageIcon,
   NotificationActiveIcon,
   NotificationIcon,
   PinIcon,
@@ -17,6 +18,7 @@ import { MarkdownBody } from '@/components/editor/MarkdownPreview';
 import { ReminderPickerDialog } from '@/components/editor/ReminderPickerDialog';
 import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
 import { useNoteEditor } from '@/hooks/useNoteEditor';
+import { useImagePasteAndDrop } from '@/hooks/useImagePasteAndDrop';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
 import { useCloudSync } from '@/hooks/useCloudSync';
@@ -178,6 +180,17 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectionRef = useRef({ start: 0, end: 0 });
   const attachmentsEnabled = isR2AttachmentsEnabled();
+  const {
+    isDragActive,
+    handlePaste,
+    handleDragEnter,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = useImagePasteAndDrop({
+    addAttachment: editor.addAttachment,
+    attachmentsEnabled,
+  });
   const isDarkPalette = useNotePaletteDark();
   const surface = noteSurfaceStyle(state.color, { solid: true, isDarkPalette });
   const contentColor =
@@ -303,10 +316,33 @@ export function EditorScreen({ route }: EditorScreenProps) {
     useToastStore.getState().show(`Exported ${filename}`);
   };
 
+  const dropOverlay = isDragActive ? (
+    <div
+      data-testid="editor-drop-overlay"
+      className="absolute inset-0 z-30 pointer-events-none flex flex-col items-center justify-center rounded-inherit border-2 border-dashed border-brand-primary/60 bg-brand-surface/85 backdrop-blur-[2px] transition-opacity duration-150 animate-in fade-in"
+      aria-hidden="true"
+    >
+      <div
+        className="flex items-center gap-2.5 rounded-full bg-brand-surface px-4 py-2 text-sm font-medium shadow-lg border border-brand-outline/40"
+        style={{ color: contentColor }}
+      >
+        <ImageIcon size={20} />
+        <span>Drop image to attach</span>
+      </div>
+    </div>
+  ) : null;
+
   const editorShell = (children: ReactNode) => {
     if (!isTabletUp) {
       return (
-        <div className="fixed inset-0 z-40 flex flex-col bg-black/40">
+        <div
+          className="fixed inset-0 z-40 flex flex-col bg-black/40"
+          onPaste={handlePaste}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => void handleDrop(e)}
+        >
           <div
             ref={overlayPanelRef}
             role="dialog"
@@ -315,6 +351,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             className="relative flex h-full w-full flex-col"
             style={surface}
           >
+            {dropOverlay}
             {children}
           </div>
         </div>
@@ -323,8 +360,16 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
     if (editorLayout === 'dock') {
       return (
-        <div className="relative flex h-full w-full flex-col">
+        <div
+          className="relative flex h-full w-full flex-col"
+          onPaste={handlePaste}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => void handleDrop(e)}
+        >
           <div className="relative mx-auto flex h-full w-full max-w-editor flex-col" style={surface}>
+            {dropOverlay}
             {children}
           </div>
         </div>
@@ -340,7 +385,13 @@ export function EditorScreen({ route }: EditorScreenProps) {
           aria-label="Note editor"
           className={FULLSCREEN_EDITOR_SHELL_CLASS}
           style={surface}
+          onPaste={handlePaste}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => void handleDrop(e)}
         >
+          {dropOverlay}
           <div className="relative flex h-full w-full flex-col">{children}</div>
         </div>
       );
@@ -350,6 +401,11 @@ export function EditorScreen({ route }: EditorScreenProps) {
       <div
         className="fixed inset-0 z-40 flex items-center justify-center bg-black/45 p-4 sm:p-6"
         onClick={onFloatClose}
+        onPaste={handlePaste}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={(e) => void handleDrop(e)}
       >
         <div
           ref={floatPanelRef}
@@ -360,6 +416,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           aria-modal="true"
           aria-label="Note editor"
         >
+          {dropOverlay}
           {children}
         </div>
       </div>
