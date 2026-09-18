@@ -13,6 +13,10 @@ const MODES: {
   { value: 3, label: 'Compact — more columns', shortLabel: 'Compact', icon: ViewDenseIcon },
 ];
 
+import { useRovingRadioGroup } from '@/hooks/useRovingRadioGroup';
+
+const MODE_VALUES: ViewColumns[] = [1, 2, 3];
+
 interface ViewModeToggleProps {
   value: ViewColumns;
   onChange: (value: ViewColumns) => void;
@@ -26,6 +30,11 @@ function nextMode(value: ViewColumns): ViewColumns {
 export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
   const current = MODES.find((mode) => mode.value === value) ?? MODES[1];
   const CurrentIcon = current.icon;
+  const { getContainerProps, getRadioProps } = useRovingRadioGroup({
+    items: MODE_VALUES,
+    value,
+    onChange,
+  });
 
   return (
     <>
@@ -43,6 +52,7 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
         className="hidden shrink-0 items-center md:flex"
         role="radiogroup"
         aria-label="Notes view size"
+        {...getContainerProps()}
       >
         {MODES.map(({ value: mode, label, icon: Icon }) => {
           const selected = value === mode;
@@ -55,6 +65,7 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
               aria-label={label}
               title={label}
               onClick={() => onChange(mode)}
+              {...getRadioProps(mode)}
               className={`flex size-9 items-center justify-center rounded-full transition-colors ${CHROME_FOCUS} ${
                 selected
                   ? 'text-brand-primary'
