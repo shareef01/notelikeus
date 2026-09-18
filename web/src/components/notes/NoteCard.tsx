@@ -1,10 +1,16 @@
 import {
+  ArchiveIcon,
   CheckCircleIcon,
   CheckCircleOutlineIcon,
   DragHandleIcon,
+  ImageIcon,
+  NotesIcon,
   NotificationIcon,
   PinIcon,
+  PinOffIcon,
+  TrashIcon,
 } from '@/components/icons/Icons';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import { useLongPress } from '@/hooks/useLongPress';
 import { formatListTimestamp } from '@/lib/text/dateTime';
 import { highlightSearchText } from '@/lib/text/highlightSearch';
@@ -24,7 +30,7 @@ export interface NoteReorderHandleProps {
 
 export type NoteCardDensity = 'list' | 'grid' | 'dense';
 
-interface NoteCardProps {
+export interface NoteCardProps {
   note: Note;
   onClick: () => void;
   /** @deprecated use density */
@@ -34,6 +40,12 @@ interface NoteCardProps {
   searchQuery?: string;
   isSelected?: boolean;
   onLongPress?: () => void;
+  onToggleSelect?: () => void;
+  onPinToggle?: () => void;
+  onArchive?: () => void;
+  onRestore?: () => void;
+  onTrash?: () => void;
+  isPermanentDelete?: boolean;
   showReorderHandle?: boolean;
   reorderHandleProps?: NoteReorderHandleProps;
 }
@@ -47,6 +59,12 @@ function NoteCardImpl({
   searchQuery = '',
   isSelected = false,
   onLongPress,
+  onToggleSelect,
+  onPinToggle,
+  onArchive,
+  onRestore,
+  onTrash,
+  isPermanentDelete = false,
   showReorderHandle = false,
   reorderHandleProps,
 }: NoteCardProps) {
@@ -64,19 +82,17 @@ function NoteCardImpl({
   const showBody = note.content.length > 0;
   const previewBody = stripMarkdownForPreview(note.content);
   // D15: don't render "Untitled" in the card — an empty-title note leads with
-  // its first line of content. Only use it as an a11y fallback when *both* are empty.
   const title = note.title;
   const firstBodyLine = previewBody.split('\n')[0]?.trim() ?? '';
   const highlight = (text: string) => highlightSearchText(text, searchQuery);
-  const hasReminder =
-    note.reminderTimestamp != null && note.reminderTimestamp > Date.now() && !note.isTrashed;
-  const showStatusCluster = !isSelected && (note.isPinned || hasReminder);
-  const checklist = note.checklist ?? [];
+  const hasReminder = Boolean(note.reminderTimestamp);
   const attachments = note.attachments ?? [];
+  const showAttachments = attachments.length > 0;
+  const showStatusCluster = !isSelected && (note.isPinned || hasReminder || showAttachments);
+  const checklist = note.checklist ?? [];
   const labels = note.labels ?? [];
   const checkedCount = checklist.filter((item) => item.isChecked).length;
   const showChecklist = checklist.length > 0;
-  const showAttachments = attachments.length > 0;
   const showLabels = labels.length > 0;
   const labelLimit = isDense ? 1 : isList ? 3 : 2;
   const timeLabel = formatListTimestamp(note.timestamp);
@@ -85,8 +101,12 @@ function NoteCardImpl({
     onLongPress: () => onLongPress?.(),
   });
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
     if (shouldSuppressClick()) return;
+    if (e.shiftKey && onToggleSelect) {
+      onToggleSelect();
+      return;
+    }
     onClick();
   };
 
@@ -98,21 +118,22 @@ function NoteCardImpl({
   ].filter(Boolean);
 
   const statusIcons = (size: number): ReactNode => {
-    if (isSelected) {
-      return (
-        <div
-          className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-primary text-[11px] font-bold text-true-surface"
-          aria-hidden
-        >
-          ✓
-        </div>
-      );
-    }
     if (!showStatusCluster) return null;
     return (
       <div className="flex shrink-0 items-center gap-1.5 opacity-60" aria-hidden>
         {note.isPinned ? <PinIcon size={size} /> : null}
         {hasReminder ? <NotificationIcon size={size} /> : null}
+        {showAttachments ? (
+          <span
+            className="flex items-center gap-0.5"
+            title={`${attachments.length} attachment${attachments.length > 1 ? 's' : ''}`}
+          >
+            <ImageIcon size={size} />
+            {attachments.length > 1 ? (
+              <span className="text-[10px] font-bold">{attachments.length}</span>
+            ) : null}
+          </span>
+        ) : null}
       </div>
     );
   };
@@ -128,8 +149,8 @@ function NoteCardImpl({
               event.stopPropagation();
               onLabelClick(label.name);
             }}
-            className={`rounded-full font-semibold uppercase tracking-wider hover:opacity-80 pointer-events-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
-              isDense || isList ? 'px-1.5 py-px text-[9px]' : 'px-2 py-0.5 text-[10px]'
+            className={`inline-flex min-h-[24px] items-center rounded-full font-semibold uppercase tracking-wider hover:opacity-80 pointer-events-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
+              isDense || isList ? 'px-2 py-0.5 text-[9px]' : 'px-2.5 py-0.5 text-[10px]'
             }`}
             style={labelChipStyle}
           >
@@ -138,7 +159,7 @@ function NoteCardImpl({
         ) : (
           <span
             key={label.id}
-            className={`rounded-full font-semibold uppercase tracking-wider ${
+            className={`inline-flex min-h-[20px] items-center rounded-full font-semibold uppercase tracking-wider ${
               isDense || isList ? 'px-1.5 py-px text-[9px]' : 'px-2 py-0.5 text-[10px]'
             }`}
             style={labelChipStyle}
@@ -159,7 +180,7 @@ function NoteCardImpl({
 
   return (
     <article
-      className={`relative flex h-auto w-full overflow-hidden rounded-note text-left transition-all duration-200 hover:shadow-lg ${
+      className={`group relative flex h-auto w-full overflow-hidden rounded-note text-left transition-all duration-200 hover:shadow-lg ${
         isList
           ? 'flex-row items-stretch gap-0'
           : isDense
@@ -183,6 +204,31 @@ function NoteCardImpl({
         aria-label={openLabel}
         {...(onLongPress ? longPressProps : {})}
       />
+
+      {/* Selection checkbox button (UX-B) */}
+      {onToggleSelect ? (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={isSelected}
+          aria-label={isSelected ? 'Deselect note' : 'Select note'}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleSelect();
+          }}
+          className={`absolute left-2.5 top-2.5 z-10 flex size-6 items-center justify-center rounded-full pointer-events-auto transition-all ${CHROME_FOCUS} ${
+            isSelected
+              ? 'bg-brand-primary text-true-surface opacity-100 shadow-sm'
+              : 'opacity-0 group-hover:opacity-100 focus:opacity-100 group-focus-within:opacity-100 bg-true-surface/85 text-brand-muted hover:text-brand-primary hover:bg-true-surface shadow-sm border border-brand-outline/40'
+          }`}
+        >
+          {isSelected ? (
+            <span className="text-[12px] font-bold">✓</span>
+          ) : (
+            <span className="size-2 rounded-full border border-current opacity-60" />
+          )}
+        </button>
+      ) : null}
 
       {showReorderHandle && reorderHandleProps ? (
         <button
@@ -309,6 +355,72 @@ function NoteCardImpl({
         </>
       )}
       </div>
+
+      {/* Desktop hover/focus quick actions (UX-05) */}
+      {!isSelected && (onPinToggle || onArchive || onRestore || onTrash) ? (
+        <div
+          className="absolute right-2 bottom-2 z-10 hidden sm:flex items-center gap-0.5 rounded-full bg-true-surface/90 backdrop-blur-sm border border-brand-outline/30 p-0.5 shadow-sm opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-auto"
+          role="toolbar"
+          aria-label="Note quick actions"
+        >
+          {onPinToggle ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPinToggle();
+              }}
+              aria-label={note.isPinned ? 'Unpin note' : 'Pin note'}
+              title={note.isPinned ? 'Unpin note' : 'Pin note'}
+              className={`flex size-6 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+            >
+              {note.isPinned ? <PinOffIcon size={14} /> : <PinIcon size={14} />}
+            </button>
+          ) : null}
+          {onArchive ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onArchive();
+              }}
+              aria-label="Archive note"
+              title="Archive note"
+              className={`flex size-6 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+            >
+              <ArchiveIcon size={14} />
+            </button>
+          ) : null}
+          {onRestore ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRestore();
+              }}
+              aria-label="Restore note"
+              title="Restore note"
+              className={`flex size-6 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+            >
+              <NotesIcon size={14} />
+            </button>
+          ) : null}
+          {onTrash ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTrash();
+              }}
+              aria-label={isPermanentDelete ? 'Delete permanently' : 'Delete note'}
+              title={isPermanentDelete ? 'Delete permanently' : 'Delete note'}
+              className={`flex size-6 items-center justify-center rounded-full text-brand-muted hover:text-red-500 hover:bg-red-500/10 transition-colors ${CHROME_FOCUS}`}
+            >
+              <TrashIcon size={14} />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -322,7 +434,13 @@ function noteCardPropsAreEqual(prev: NoteCardProps, next: NoteCardProps): boolea
     prev.isSelected === next.isSelected &&
     prev.showReorderHandle === next.showReorderHandle &&
     prev.reorderHandleProps === next.reorderHandleProps &&
-    prev.onLabelClick === next.onLabelClick
+    prev.onLabelClick === next.onLabelClick &&
+    prev.onToggleSelect === next.onToggleSelect &&
+    prev.onPinToggle === next.onPinToggle &&
+    prev.onArchive === next.onArchive &&
+    prev.onRestore === next.onRestore &&
+    prev.onTrash === next.onTrash &&
+    prev.isPermanentDelete === next.isPermanentDelete
   );
 }
 

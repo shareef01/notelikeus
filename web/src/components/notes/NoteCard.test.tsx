@@ -139,4 +139,84 @@ describe('NoteCard', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
     cleanup();
   });
+
+  it('triggers onToggleSelect when the selection checkbox is activated without calling onClick (UX-B)', () => {
+    const note = createTestNote();
+    const onClick = vi.fn();
+    const onToggleSelect = vi.fn();
+    const { container, cleanup } = renderCard(note, { onClick, onToggleSelect });
+
+    const selectCheckbox = container.querySelector('button[role="checkbox"]');
+    expect(selectCheckbox).not.toBeNull();
+    act(() => {
+      selectCheckbox?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onToggleSelect).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it('renders label chips with minimum 24px touch/click target class (C5 / UX-08)', () => {
+    const note = createTestNote({
+      labels: [{ id: 'l1', name: 'Personal' }],
+    });
+    const onLabelClick = vi.fn();
+    const { container, cleanup } = renderCard(note, { onLabelClick });
+
+    const labelChip = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Personal'),
+    );
+    expect(labelChip).toBeDefined();
+    expect(labelChip?.className).toContain('min-h-[24px]');
+    cleanup();
+  });
+
+  it('renders attachment indicator with count when attachments are present (Phase 6)', () => {
+    const note = createTestNote({
+      attachments: [
+        { id: 'att-1', noteId: 1, storagePath: 'path1', type: 'image', mimeType: 'image/png', sizeBytes: 1000 },
+        { id: 'att-2', noteId: 1, storagePath: 'path2', type: 'image', mimeType: 'image/jpeg', sizeBytes: 2000 },
+      ],
+    });
+    const { container, cleanup } = renderCard(note);
+
+    expect(container.textContent).toContain('2');
+    cleanup();
+  });
+
+  it('provides desktop quick actions (archive, trash, pin) that do not trigger card onClick (UX-05)', () => {
+    const note = createTestNote();
+    const onClick = vi.fn();
+    const onArchive = vi.fn();
+    const onTrash = vi.fn();
+    const onPinToggle = vi.fn();
+    const { container, cleanup } = renderCard(note, { onClick, onArchive, onTrash, onPinToggle });
+
+    const archiveBtn = container.querySelector('button[aria-label="Archive note"]');
+    expect(archiveBtn).not.toBeNull();
+    act(() => {
+      archiveBtn?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onArchive).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+
+    const trashBtn = container.querySelector('button[aria-label="Delete note"]');
+    expect(trashBtn).not.toBeNull();
+    act(() => {
+      trashBtn?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onTrash).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+
+    const pinBtn = container.querySelector('button[aria-label="Pin note"]');
+    expect(pinBtn).not.toBeNull();
+    act(() => {
+      pinBtn?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onPinToggle).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+
+    cleanup();
+  });
 });
