@@ -113,6 +113,23 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
   const savingRef = useRef(false);
 
+  const handleRetrySave = useCallback(async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try {
+      const result = await editor.flushSave();
+      if (result.status === 'saved') {
+        useToastStore.getState().show('Note saved');
+      } else if (result.status === 'failed') {
+        useToastStore
+          .getState()
+          .show('Could not save this note — your changes are still here', 'error');
+      }
+    } finally {
+      savingRef.current = false;
+    }
+  }, [editor]);
+
   useShortcuts([
     {
       key: 'Escape',
@@ -512,7 +529,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
               <span className="flex shrink-0 gap-2">
                 <button
                   type="button"
-                  onClick={() => void handleBack()}
+                  onClick={() => void handleRetrySave()}
                   className={`rounded-full bg-[color-mix(in_srgb,currentColor_14%,transparent)] px-3 py-1.5 font-medium ${CHROME_FOCUS}`}
                 >
                   Retry save
@@ -705,7 +722,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             hasPendingAttachments={hasPendingAttachments}
             contentColor={contentColor}
             reminderTimestamp={state.reminderTimestamp}
-            onRetrySave={() => void editor.flushSave()}
+            onRetrySave={() => void handleRetrySave()}
             onMoreClick={() => setShowOptions(true)}
           />
         </div>
