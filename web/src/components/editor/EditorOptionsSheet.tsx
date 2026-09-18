@@ -2,6 +2,7 @@ import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
 import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';
 import { TrashIcon, AddIcon, ShareIcon, DownloadIcon } from '@/components/icons/Icons';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { reminderPresets } from '@/lib/reminders/reminderTime';
 import type { Label } from '@/types/label';
 import { useState, useId } from 'react';
 
@@ -138,32 +139,16 @@ export function EditorOptionsSheet({
           </p>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => onReminderChange(Date.now() + 3600000)}
-              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-brand-primary/5"
-            >
-              In 1 hour
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const date = new Date();
-                date.setDate(date.getDate() + 1);
-                date.setHours(9, 0, 0, 0);
-                onReminderChange(date.getTime());
-              }}
-              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-brand-primary/5"
-            >
-              Tomorrow morning
-            </button>
-            <button
-              type="button"
-              onClick={() => onReminderChange(Date.now() + 7 * 86400000)}
-              className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-brand-primary/5"
-            >
-              Next week
-            </button>
+            {reminderPresets().map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => onReminderChange(preset.at)}
+                className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-brand-primary/5"
+              >
+                {preset.label}
+              </button>
+            ))}
           </div>
 
           <input

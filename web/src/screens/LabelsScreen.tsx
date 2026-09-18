@@ -111,7 +111,15 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
                         onBlur={handleUpdate}
-                        onKeyDown={(e) => e.key === 'Enter' && handleUpdate()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleUpdate();
+                          } else if (e.key === 'Escape') {
+                            e.stopPropagation();
+                            setLabelToEdit(null);
+                            setEditName('');
+                          }
+                        }}
                         aria-label="Edit label name"
                         className="flex-1 border-b border-brand-primary/30 bg-transparent text-base outline-none"
                       />

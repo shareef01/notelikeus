@@ -18,17 +18,17 @@ const COPY: Record<
   { title: string; subtitle: string; googleLabel: string; switchPrompt: string; switchMode: AuthMode; switchLabel: string }
 > = {
   signin: {
-    title: 'Welcome back',
-    subtitle: 'Sign in to sync your notes across this browser and your Android device.',
-    googleLabel: 'Sign in with Google',
+    title: 'Sign in to Notelikeus',
+    subtitle: 'Notes are saved locally on this device. Sign in to optionally sync across Android and the cloud.',
+    googleLabel: 'Continue with Google',
     switchPrompt: "Don't have an account?",
     switchMode: 'signup',
     switchLabel: 'Create one',
   },
   signup: {
     title: 'Create your account',
-    subtitle: 'Use Google to back up notes, sync with Android, and keep everything in one place.',
-    googleLabel: 'Sign up with Google',
+    subtitle: 'Notes are saved locally on this device. Connect your Google account to optionally sync across Android and the cloud.',
+    googleLabel: 'Continue with Google',
     switchPrompt: 'Already have an account?',
     switchMode: 'signin',
     switchLabel: 'Sign in',
@@ -154,7 +154,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
             <h1 className="mt-5 text-2xl font-semibold text-brand-primary">{copy.title}</h1>
             <p className="mt-2 text-sm text-brand-muted">
               {mandatory
-                ? 'Sign in with Google to use Notelikeus — your notes live in your account and sync automatically across every device you sign into.'
+                ? 'Notes are saved locally on this device. Sign in with Google to optionally sync across your Android devices and the cloud.'
                 : copy.subtitle}
             </p>
           </div>
