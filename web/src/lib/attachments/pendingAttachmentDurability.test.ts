@@ -65,7 +65,22 @@ describe('pending attachment durability', () => {
 
     useAuthStore.getState().reset();
     useAuthStore.getState().setUser({ uid: 'user-other', email: null, displayName: null });
-
     expect(await getPendingAttachmentBlob('att-4', 'note-1')).toBeUndefined();
+  });
+
+  it('recovers staged bytes for a new note when attachment is staged before note ID allocation and reloaded', async () => {
+    // 1. Create completely new note without note ID
+    const blob = new Blob(['new note image'], { type: 'image/png' });
+    // Attachment staged before note ID exists (noteId is undefined / '')
+    expect(await storePendingAttachment('att-new-1', blob, 'image/png', undefined)).toBe(true);
+
+    // 2. Note receives allocated durable ID (e.g. 'note-allocated-42')
+    // 3. Simulate process/page reload: clear in-memory cache
+    clearPendingAttachmentsForTests();
+
+    // 4. Editor/viewer opens the persisted note using its allocated note ID
+    const recovered = await getPendingAttachmentBlob('att-new-1', 'note-allocated-42');
+    expect(recovered).toBeDefined();
+    expect(recovered?.mimeType).toBe('image/png');
   });
 });

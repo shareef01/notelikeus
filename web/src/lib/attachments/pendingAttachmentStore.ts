@@ -1,7 +1,7 @@
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import {
-  deletePendingAttachment,
-  findPendingAttachmentById,
+  deletePendingAttachmentForOwner,
+  findPendingAttachmentForOwner,
   getPendingAttachment,
   putPendingAttachment,
 } from '@/lib/local/pendingAttachmentRepository';
@@ -55,7 +55,7 @@ export function peekPendingAttachment(
   const entry = pending.get(attachmentId);
   if (!entry) return undefined;
   const owner = expectedOwnerId ?? resolveOwnerId();
-  if (entry.ownerId && owner && entry.ownerId !== owner) {
+  if (!owner || entry.ownerId !== owner) {
     return undefined;
   }
   return entry;
@@ -70,20 +70,24 @@ export async function getPendingAttachmentBlob(
   ownerId?: string,
 ): Promise<{ blob: Blob; mimeType: string } | undefined> {
   const resolvedOwner = ownerId ?? resolveOwnerId();
+  if (!resolvedOwner) return undefined;
+
   const inMemory = pending.get(attachmentId);
   if (inMemory) {
-    if (!inMemory.ownerId || !resolvedOwner || inMemory.ownerId === resolvedOwner) {
+    if (inMemory.ownerId === resolvedOwner) {
       return inMemory;
     }
   }
 
   try {
-    const record =
-      resolvedOwner && noteId
-        ? await getPendingAttachment(resolvedOwner, noteId, attachmentId)
-        : await findPendingAttachmentById(attachmentId);
+    let record = noteId
+      ? await getPendingAttachment(resolvedOwner, noteId, attachmentId)
+      : null;
+    if (!record) {
+      record = await findPendingAttachmentForOwner(resolvedOwner, attachmentId);
+    }
     if (record) {
-      if (record.ownerId && resolvedOwner && record.ownerId !== resolvedOwner) {
+      if (record.ownerId !== resolvedOwner) {
         return undefined;
       }
       const entry: PendingEntry = {
@@ -113,9 +117,9 @@ export async function releasePendingAttachment(
 ): Promise<void> {
   pending.delete(attachmentId);
   const resolvedOwner = ownerId ?? resolveOwnerId();
-  if (resolvedOwner && noteId) {
+  if (resolvedOwner) {
     try {
-      await deletePendingAttachment(resolvedOwner, noteId, attachmentId);
+      await deletePendingAttachmentForOwner(resolvedOwner, attachmentId, noteId);
     } catch {
       // Best-effort IDB delete
     }

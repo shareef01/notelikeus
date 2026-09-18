@@ -180,9 +180,74 @@ export async function deletePendingAttachment(
   noteId: string,
   attachmentId: string,
 ): Promise<void> {
-  await withStore(PENDING_ATTACHMENTS_STORE, 'readwrite', (store) => {
-    store.delete([ownerId, noteId, attachmentId]);
+  await deletePendingAttachmentForOwner(ownerId, attachmentId, noteId);
+}
+
+export async function deletePendingAttachmentForOwner(
+  ownerId: string,
+  attachmentId: string,
+  noteId?: string,
+): Promise<void> {
+  const db = await getNotesDatabase();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(PENDING_ATTACHMENTS_STORE, 'readwrite');
+    const store = tx.objectStore(PENDING_ATTACHMENTS_STORE);
+    if (noteId) {
+      store.delete([ownerId, noteId, attachmentId]);
+    }
+    store.delete([ownerId, '', attachmentId]);
+
+    const index = store.index('ownerId');
+    const request = index.openCursor(IDBKeyRange.only(ownerId));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (cursor) {
+        if (cursor.value.attachmentId === attachmentId) {
+          cursor.delete();
+        }
+        cursor.continue();
+      }
+    };
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('deletePendingAttachmentForOwner failed'));
+    tx.onabort = () => reject(tx.error ?? new Error('deletePendingAttachmentForOwner aborted'));
   });
+}
+
+export async function findPendingAttachmentForOwner(
+  ownerId: string,
+  attachmentId: string,
+): Promise<PendingAttachmentRecord | null> {
+  const preIdRecord = await getPendingAttachment(ownerId, '', attachmentId);
+  if (preIdRecord) return preIdRecord;
+
+  const db = await getNotesDatabase();
+  const stored = await new Promise<StoredPendingAttachment | null>((resolve, reject) => {
+    const tx = db.transaction(PENDING_ATTACHMENTS_STORE, 'readonly');
+    const store = tx.objectStore(PENDING_ATTACHMENTS_STORE);
+    const index = store.index('ownerId');
+    const request = index.openCursor(IDBKeyRange.only(ownerId));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        resolve(null);
+        return;
+      }
+      if (cursor.value.attachmentId === attachmentId) {
+        resolve(cursor.value);
+        return;
+      }
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error ?? new Error('findPendingAttachmentForOwner failed'));
+  });
+
+  if (!stored) return null;
+  const opened = await openStoredBlob(stored);
+  if (!opened) return null;
+  void maybeMigratePlaintext(stored);
+  return toPublic(stored, opened);
 }
 
 export async function findPendingAttachmentById(
