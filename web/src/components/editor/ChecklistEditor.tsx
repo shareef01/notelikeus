@@ -11,6 +11,8 @@ interface ChecklistEditorProps {
   onConvertToText?: () => void;
 }
 
+import { useRef, useEffect } from 'react';
+
 export function ChecklistEditor({
   items,
   contentColor,
@@ -20,10 +22,49 @@ export function ChecklistEditor({
   onConvertToText,
 }: ChecklistEditorProps) {
   const sorted = sortChecklistItems(items);
+  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const pendingFocusId = useRef<string | 'new' | null>(null);
+
+  useEffect(() => {
+    if (pendingFocusId.current === 'new') {
+      const last = sorted[sorted.length - 1];
+      if (last) {
+        inputRefs.current.get(last.id)?.focus();
+      }
+      pendingFocusId.current = null;
+    } else if (pendingFocusId.current) {
+      inputRefs.current.get(pendingFocusId.current)?.focus();
+      pendingFocusId.current = null;
+    }
+  }, [sorted]);
+
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    item: ChecklistItem,
+    index: number,
+  ) => {
+    if (e.key === 'Enter') {
+      if (e.nativeEvent.isComposing) return;
+      e.preventDefault();
+      if (item.text.trim() === '') {
+        return;
+      }
+      pendingFocusId.current = 'new';
+      onAdd();
+    } else if (e.key === 'Backspace' && item.text === '') {
+      e.preventDefault();
+      if (index > 0) {
+        pendingFocusId.current = sorted[index - 1].id;
+      }
+      onRemove(item.id);
+    } else if (e.key === 'Escape') {
+      e.stopPropagation();
+    }
+  };
 
   return (
     <div className="mt-5 space-y-1">
-      {sorted.map((item) => (
+      {sorted.map((item, index) => (
         <div key={item.id} className="flex min-h-12 items-center gap-2">
           <input
             type="checkbox"
@@ -34,9 +75,14 @@ export function ChecklistEditor({
             aria-label={item.text || 'Checklist item'}
           />
           <input
+            ref={(el) => {
+              if (el) inputRefs.current.set(item.id, el);
+              else inputRefs.current.delete(item.id);
+            }}
             type="text"
             value={item.text}
             onChange={(event) => onUpdate(item.id, event.target.value, item.isChecked)}
+            onKeyDown={(event) => handleKeyDown(event, item, index)}
             placeholder="List item"
             className={`min-w-0 flex-1 bg-transparent text-base leading-relaxed outline-none placeholder:opacity-40 ${
               item.isChecked ? 'line-through opacity-60' : ''

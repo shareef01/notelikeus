@@ -86,7 +86,7 @@ function SettingsRow({
           {title}
         </p>
         {subtitle ? (
-          <p className="mt-0.5 truncate text-[13px] leading-snug text-brand-muted">{subtitle}</p>
+          <p className="mt-0.5 text-[13px] leading-snug text-brand-muted">{subtitle}</p>
         ) : null}
       </div>
       {trailing ? <div className="shrink-0">{trailing}</div> : null}
@@ -194,27 +194,65 @@ export function ProfileSheet({
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-safe">
         <div className="mx-auto grid w-full max-w-content gap-5 px-4 py-5 pb-12 sm:px-6 lg:grid-cols-2 lg:gap-6 lg:px-8 xl:grid-cols-[1fr_1.15fr]">
           <div className="flex flex-col gap-5">
-            <SettingsSection title="Layout">
-              <SettingsRow
-                title="Default view"
-                subtitle={VIEW_LABELS[viewColumns]}
-                onClick={onViewColumnsCycle}
-                icon={<GridViewIcon size={18} />}
-              />
-              <SettingsRow
-                title="Sort order"
-                subtitle={SORT_LABELS[sortOrder]}
-                onClick={onSortOrderCycle}
-                icon={<SortIcon size={18} />}
-              />
+            <SettingsSection title="Account & Sync">
+              {isGuest ? (
+                <SettingsRow
+                  title="Browsing as a guest"
+                  subtitle="Notes are stored locally in this browser. Sign in to sync across devices."
+                  icon={<AccountIcon size={18} />}
+                />
+              ) : null}
+              {isGoogleAccount && userEmail ? (
+                <>
+                  <SettingsRow
+                    title={userEmail}
+                    subtitle="Signed in"
+                    icon={<AccountIcon size={18} />}
+                  />
+                  <SettingsRow
+                    title="Sign out"
+                    subtitle="Stop syncing notes on this browser"
+                    onClick={onSignOut}
+                    icon={<LogoutIcon size={18} />}
+                    destructive
+                  />
+                </>
+              ) : (
+                <>
+                  <SettingsRow
+                    title="Sign in"
+                    subtitle="Sync notes across devices"
+                    onClick={onSignIn}
+                    icon={<AccountIcon size={18} />}
+                  />
+                  <SettingsRow
+                    title="Create account"
+                    subtitle="Set up cloud backup"
+                    onClick={onSignUp}
+                    icon={<AccountIcon size={18} />}
+                  />
+                </>
+              )}
             </SettingsSection>
 
-            <SettingsSection title="Appearance">
-              <ThemePicker
-                value={theme}
-                onBaseChange={onThemeBaseChange}
-                onAccentChange={onAccentChange}
-                onAmoledChange={onAmoledChange}
+            <SettingsSection title="Data & Backup">
+              <SettingsRow
+                title="Export backup with images"
+                subtitle="Download notes and images as one .nlkbak file"
+                onClick={onExportCompleteBackup}
+                icon={<BackupIcon size={18} />}
+              />
+              <SettingsRow
+                title="Export notes only"
+                subtitle="Download notes as JSON, without images"
+                onClick={onExportBackup}
+                icon={<BackupIcon size={18} />}
+              />
+              <SettingsRow
+                title="Import backup"
+                subtitle="Merge notes from a .nlkbak or .json file"
+                onClick={onImportBackup}
+                icon={<AddIcon size={18} />}
               />
             </SettingsSection>
 
@@ -255,8 +293,34 @@ export function ProfileSheet({
                 </div>
               </div>
             </SettingsSection>
+          </div>
 
-            <SettingsSection title="About">
+          <div className="flex flex-col gap-5">
+            <SettingsSection title="Appearance">
+              <ThemePicker
+                value={theme}
+                onBaseChange={onThemeBaseChange}
+                onAccentChange={onAccentChange}
+                onAmoledChange={onAmoledChange}
+              />
+            </SettingsSection>
+
+            <SettingsSection title="Layout">
+              <SettingsRow
+                title="Default view"
+                subtitle={VIEW_LABELS[viewColumns]}
+                onClick={onViewColumnsCycle}
+                icon={<GridViewIcon size={18} />}
+              />
+              <SettingsRow
+                title="Sort order"
+                subtitle={SORT_LABELS[sortOrder]}
+                onClick={onSortOrderCycle}
+                icon={<SortIcon size={18} />}
+              />
+            </SettingsSection>
+
+            <SettingsSection title="Diagnostics & About">
               <SettingsRow
                 title="Privacy policy"
                 subtitle="How your data is handled"
@@ -270,72 +334,11 @@ export function ProfileSheet({
                 icon={<InfoIcon size={18} />}
               />
               <SettingsRow title="Version" subtitle={`${version} (web)`} icon={<InfoIcon size={18} />} />
-            </SettingsSection>
-          </div>
-
-          <div className="flex flex-col gap-5">
-            <SettingsSection title="Account">
-              {isGuest ? (
-                <SettingsRow
-                  title="Browsing as a guest"
-                  subtitle="Notes aren't synced or backed up. Sign in to keep them across devices."
-                  icon={<AccountIcon size={18} />}
-                />
-              ) : null}
-              {isGoogleAccount && userEmail ? (
-                <>
-                  <SettingsRow
-                    title={userEmail}
-                    subtitle="Signed in"
-                    icon={<AccountIcon size={18} />}
-                  />
-                  <SettingsRow
-                    title="Sign out"
-                    subtitle="Stop syncing notes on this browser"
-                    onClick={onSignOut}
-                    icon={<LogoutIcon size={18} />}
-                    destructive
-                  />
-                </>
-              ) : (
-                <>
-                  <SettingsRow
-                    title="Sign in"
-                    subtitle="Sync notes across devices"
-                    onClick={onSignIn}
-                    icon={<AccountIcon size={18} />}
-                  />
-                  <SettingsRow
-                    title="Create account"
-                    subtitle="Set up cloud backup"
-                    onClick={onSignUp}
-                    icon={<AccountIcon size={18} />}
-                  />
-                </>
-              )}
-              <SettingsRow
-                title="Export backup with images"
-                subtitle="Download notes and images as one .nlkbak file"
-                onClick={onExportCompleteBackup}
-                icon={<BackupIcon size={18} />}
-              />
-              <SettingsRow
-                title="Export notes only"
-                subtitle="Download notes as JSON, without images"
-                onClick={onExportBackup}
-                icon={<BackupIcon size={18} />}
-              />
-              <SettingsRow
-                title="Import backup"
-                subtitle="Merge notes from a .nlkbak or .json file"
-                onClick={onImportBackup}
-                icon={<AddIcon size={18} />}
-              />
-            </SettingsSection>
-          </div>
+          </SettingsSection>
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 }
 
