@@ -261,6 +261,7 @@ export function MainScreen() {
     restoreNote,
     permanentlyDeleteNote,
     emptyTheTrash,
+    togglePinNote,
     bulkPinToggle,
     bulkArchive,
     bulkTrash,
@@ -293,7 +294,12 @@ export function MainScreen() {
     closeProfile: () => openDialogs({ profile: false }),
   });
 
-  const emptyState = getEmptyState(filters.filter, hasActiveFilters, Boolean(filters.searchQuery));
+  const emptyState = getEmptyState(
+    filters.filter,
+    hasActiveFilters,
+    Boolean(filters.searchQuery),
+    Boolean(user),
+  );
 
   const isTabletUp = useIsTabletUp();
   const editorRoute = useUiStore((s) => s.editorRoute);
@@ -589,6 +595,7 @@ export function MainScreen() {
                           onTrash: (note) => void trashNote(note),
                           onRestore: (note) => void restoreNote(note),
                           onPermanentDelete: (note) => void permanentlyDeleteNote(note),
+                          onPinToggle: (note) => void togglePinNote(note),
                         }}
                         searchQuery={filters.searchQuery ?? ''}
                         allowReorder={allowReorder}
