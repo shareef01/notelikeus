@@ -1,4 +1,4 @@
-﻿import { clearOwner } from '@/lib/local/notesLocalRepository';
+import { clearOwner } from '@/lib/local/notesLocalRepository';
 import { clearPendingAttachmentsForOwner } from '@/lib/local/pendingAttachmentRepository';
 import { isSupabaseBackendEnabled, loadSupabaseAnonKey, loadSupabaseUrl } from '@/lib/supabase/env';
 import { isBrowserSafeSupabaseKey } from '@/lib/supabase/backendFlag';
@@ -12,6 +12,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { useUiStore } from '@/store/uiStore';
 import { clearGuestAdoptionIntent } from '@/lib/local/guestAdoptionIntent';
+import { clearPendingAttachmentStore } from '@/lib/attachments/pendingAttachmentStore';
 
 export type BootFailureCode = 'storage' | 'supabase-config' | 'unknown';
 
@@ -40,12 +41,13 @@ const STORAGE_KEYS = [
 ] as const;
 
 /**
- * User-owned data ÔÇö cleared on sign-out / account switch. Settings/UI/filter prefs stay, since
- * those aren't per-account.
+ * User-owned data — cleared on sign-out. Settings/UI/filter prefs stay, since
+ * those aren't per-account. LAST_MERGED_USER_STORAGE_KEY is intentionally preserved
+ * so that a subsequent sign-in by a different account can detect the switch and trigger
+ * clearLocalUserDataForAccountSwitch.
  */
 const USER_DATA_STORAGE_KEYS = [
   LEGACY_NOTES_STORAGE_KEY,
-  LAST_MERGED_USER_STORAGE_KEY,
   'notelikeus-label-registry',
   'notelikeus-lock-key',
   SESSION_HINT_STORAGE_KEY,
@@ -172,6 +174,7 @@ export function clearLocalUserData(): void {
   // it open across the switch, so the next account arrived at a notes list with a modal drawer
   // still covering it and swallowing taps.
   useUiStore.getState().setDrawerOpen(false);
+  clearPendingAttachmentStore();
   forgetSignedIn();
   for (const key of USER_DATA_STORAGE_KEYS) {
     try {
@@ -192,6 +195,12 @@ export async function clearLocalUserDataForAccountSwitch(previousOwnerId: string
   clearLocalUserData();
   // A different account must not inherit this one's pending deletions.
   clearPendingDeletions();
+  clearPendingAttachmentStore();
+  try {
+    localStorage.removeItem(LAST_MERGED_USER_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
   await clearOwner(previousOwnerId);
   try {
     await clearPendingAttachmentsForOwner(previousOwnerId);

@@ -24,15 +24,26 @@ describe('shouldUploadOverRemote', () => {
     expect(shouldUploadOverRemote(local, remote)).toBe(true);
   });
 
-  it('refuses to overwrite a confirmed-synced remote with an untrusted local timestamp', () => {
-    const importedFromBackup = note({
+  it('refuses to overwrite a confirmed-synced remote when local edit predates remote serverUpdatedAt', () => {
+    const local = note({
       id: '1',
       localId: 1,
-      timestamp: 999_999_999,
+      timestamp: 400,
       serverUpdatedAt: null,
     });
     const confirmedRemote = note({ id: '1', localId: 1, timestamp: 100, serverUpdatedAt: 500 });
-    expect(shouldUploadOverRemote(importedFromBackup, confirmedRemote)).toBe(false);
+    expect(shouldUploadOverRemote(local, confirmedRemote)).toBe(false);
+  });
+
+  it('preserves local modifications made after remote serverUpdatedAt establishment even if unconfirmed', () => {
+    const unconfirmedLocalWithEdits = note({
+      id: '1',
+      localId: 1,
+      timestamp: 600,
+      serverUpdatedAt: null,
+    });
+    const confirmedRemote = note({ id: '1', localId: 1, timestamp: 100, serverUpdatedAt: 500 });
+    expect(shouldUploadOverRemote(unconfirmedLocalWithEdits, confirmedRemote)).toBe(true);
   });
 
   it('uploads when local is confirmed-synced but remote predates the field', () => {
