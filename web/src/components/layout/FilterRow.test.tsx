@@ -48,12 +48,46 @@ describe('FilterRow', () => {
     cleanup();
   });
 
-  it('does not mark the sort-cycle chip as pressed', () => {
-    const { container, cleanup } = render(null);
-    const sort = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('Manual'),
+  it('marks Relevance sort chip as active/selected when sort is disabled during search', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        createElement(FilterRow, {
+          sortOrder: 'manual',
+          onSortOrderCycle: () => {},
+          sortDisabled: true,
+          selectedColor: null,
+          onColorSelect: () => {},
+          labels: [],
+          selectedLabelName: null,
+          onLabelSelect: () => {},
+          hasActiveFilters: false,
+          onClearFilters: () => {},
+        }),
+      );
+    });
+
+    const relevanceChip = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Relevance'),
     );
-    expect(sort?.hasAttribute('aria-pressed')).toBe(false);
+    expect(relevanceChip).toBeTruthy();
+    expect(relevanceChip?.classList.contains('filter-chip-active')).toBe(true);
+
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it('keeps label chips in a single-row scrollable container without md:flex-wrap', () => {
+    const { container, cleanup } = render('Work');
+    const labelContainer = Array.from(container.querySelectorAll('div')).find((d) =>
+      d.classList.contains('overflow-x-auto') && d.textContent?.includes('All labels'),
+    );
+    expect(labelContainer).toBeTruthy();
+    expect(labelContainer?.className).not.toContain('md:flex-wrap');
     cleanup();
   });
 });

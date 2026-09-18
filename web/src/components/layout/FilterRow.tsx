@@ -89,7 +89,7 @@ export function FilterRow({
         <FilterChip
           compact
           label={sortLabel}
-          selected={!sortDisabled}
+          selected={true}
           onClick={onSortOrderCycle}
           disabled={sortDisabled}
           ariaLabel={
@@ -128,7 +128,7 @@ export function FilterRow({
       </div>
 
       {labels.length > 0 ? (
-        <div className="flex gap-1.5 overflow-x-auto px-3 py-0.5 scrollbar-none sm:px-4 md:flex-wrap md:overflow-visible lg:px-6">
+        <div className="flex gap-1.5 overflow-x-auto px-shell py-0.5 scrollbar-none">
           <FilterChip
             compact
             label="All labels"

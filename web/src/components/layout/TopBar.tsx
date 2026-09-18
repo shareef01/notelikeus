@@ -140,7 +140,7 @@ export function TopBar({
 
             <form
               onSubmit={handleSearchSubmit}
-              className="flex h-11 min-w-0 flex-1 items-center rounded-full border border-brand-outline/20 bg-true-surface-variant/60 px-1 shadow-sm transition-colors focus-within:border-brand-outline/50 focus-within:bg-true-surface-variant/80 sm:h-12"
+              className="relative flex h-11 min-w-0 flex-1 items-center rounded-full border border-brand-outline/20 bg-true-surface-variant/60 px-1 shadow-sm transition-colors focus-within:border-brand-outline/50 focus-within:bg-true-surface-variant/80 sm:h-12"
             >
               <input
                 ref={searchInputRef}
@@ -171,6 +171,44 @@ export function TopBar({
                   Ctrl K
                 </kbd>
               )}
+
+              {showRecent ? (
+                <div
+                  className="absolute left-0 right-0 top-full z-50 mt-1.5 rounded-2xl border border-brand-outline/40 bg-true-surface p-3 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-1 duration-150"
+                  role="region"
+                  aria-label="Recent searches"
+                >
+                  <div className="flex items-center justify-between border-b border-brand-outline/20 pb-2">
+                    <span className="text-xs font-semibold text-brand-muted">Recent searches</span>
+                    {onClearRecentSearches ? (
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={onClearRecentSearches}
+                        className="text-xs font-semibold text-brand-primary/80 hover:text-brand-primary transition-colors"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 pt-2.5 max-h-48 overflow-y-auto">
+                    {recentSearches.map((query) => (
+                      <button
+                        key={query}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          onRecentSearchClick?.(query);
+                          searchInputRef.current?.blur();
+                        }}
+                        className="rounded-full border border-brand-outline/50 bg-true-surface-variant/40 px-3 py-1 text-xs font-medium text-brand-secondary transition-colors hover:border-brand-primary/40 hover:bg-brand-primary/10 hover:text-brand-primary"
+                      >
+                        {query}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </form>
 
             <ViewModeToggle value={viewColumns} onChange={onViewColumnsChange} />
@@ -206,33 +244,8 @@ export function TopBar({
         )}
       </div>
 
-      <div className="mx-auto w-full max-w-content overflow-hidden">
-        {showRecent ? (
-          <div className="flex items-center gap-2 px-shell py-2 animate-in slide-in-from-top-2">
-            <span className="text-xs font-medium text-brand-muted">Recent</span>
-            <div className="flex flex-1 gap-2 overflow-x-auto scrollbar-none py-1">
-              {recentSearches.map((query) => (
-                <button
-                  key={query}
-                  type="button"
-                  onClick={() => onRecentSearchClick?.(query)}
-                  className="whitespace-nowrap rounded-full border border-brand-outline/50 px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-brand-primary/5"
-                >
-                  {query}
-                </button>
-              ))}
-            </div>
-            {onClearRecentSearches ? (
-              <button
-                type="button"
-                onClick={onClearRecentSearches}
-                className="px-2 text-xs font-semibold text-brand-primary/80 hover:text-brand-primary"
-              >
-                Clear
-              </button>
-            ) : null}
-          </div>
-        ) : !selectionMode ? (
+      {!selectionMode ? (
+        <div className="mx-auto w-full max-w-content overflow-hidden">
           <FilterRow
             sortOrder={sortOrder}
             onSortOrderCycle={onSortOrderCycle}
@@ -245,8 +258,8 @@ export function TopBar({
             hasActiveFilters={hasActiveFilters}
             onClearFilters={onClearFilters}
           />
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {listScrolled ? <div className="h-px bg-brand-outline/35" /> : null}
     </header>
