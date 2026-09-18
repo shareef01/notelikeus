@@ -60,6 +60,7 @@ describe('saveNote', () => {
     vi.mocked(deleteNote).mockResolvedValue(undefined);
     remoteMocks.upsertNote.mockResolvedValue(undefined);
     remoteMocks.deleteNote.mockResolvedValue(undefined);
+    attachmentMocks.syncNoteAttachments.mockReset();
     attachmentMocks.syncNoteAttachments.mockImplementation(async (note: unknown) => note);
     useNotesStore.getState().reset();
     useAuthStore.getState().reset();
@@ -101,7 +102,21 @@ describe('saveNote', () => {
     attachmentMocks.syncNoteAttachments.mockRejectedValueOnce(
       new Error('R2 Worker temporary 503'),
     );
-    const note = makeNote();
+    const note = {
+      ...makeNote(),
+      attachments: [
+        {
+          id: 'att-1',
+          noteId: 1,
+          storagePath: 'pending:att-1',
+          type: 'image' as const,
+          mimeType: 'image/png',
+          fileName: 'test.png',
+          byteSize: 10,
+          createdAt: 1,
+        },
+      ],
+    };
 
     // The note text MUST save locally without throwing
     await saveNote(note);
@@ -305,5 +320,60 @@ describe('removeNote', () => {
     expect(order).toEqual(['deleteNote', 'gc']);
     expect(useTombstoneStore.getState().isDeleted(note.id)).toBe(true);
     expect(useTombstoneStore.getState().pendingAttachmentGcByNoteId[note.id]).toEqual(['att-1']);
+  });
+
+  it('drops in-flight saveNote attachment upload if account switches before upload completes', async () => {
+    attachmentMocks.isR2AttachmentsEnabled.mockReturnValue(true);
+    useAuthStore.getState().setUser({ uid: 'user-a', email: null, displayName: null });
+
+    let completeUpload: (synced: any) => void = () => {};
+    const uploadPromise = new Promise((resolve) => {
+      completeUpload = resolve;
+    });
+    attachmentMocks.syncNoteAttachments.mockReturnValue(uploadPromise);
+
+    const noteA = {
+      ...makeNote(),
+      id: 'note-a',
+      attachments: [{
+        id: 'att-1',
+        noteId: 1,
+        storagePath: 'pending:att-1',
+        type: 'image',
+      }],
+    };
+
+    const savePromise = saveNote(noteA);
+
+    // Initial push happened for user-a
+    expect(putNote).toHaveBeenCalledWith('user-a', noteA);
+
+    // Account switches to user-b while upload is in flight
+    useAuthStore.getState().setUser({ uid: 'user-b', email: null, displayName: null });
+    useNotesStore.getState().setNotes([]);
+    vi.mocked(putNote).mockClear();
+    remoteMocks.upsertNote.mockClear();
+
+    // Now upload completes
+    const syncedNoteA = {
+      ...noteA,
+      attachments: [{
+        id: 'att-1',
+        noteId: 1,
+        storagePath: 'r2:owners/user-a/notes/1/att-1',
+        type: 'image',
+      }],
+    };
+    completeUpload(syncedNoteA);
+    await savePromise;
+
+    // Must NOT write to user-b's IndexedDB partition
+    expect(putNote).not.toHaveBeenCalledWith('user-b', expect.anything());
+
+    // Must NOT inject into user-b's UI
+    expect(useNotesStore.getState().notes.map((n) => n.id)).not.toContain('note-a');
+
+    // Must NOT upload under user-b's cloud account
+    expect(remoteMocks.upsertNote).not.toHaveBeenCalledWith('user-b', expect.anything());
   });
 });

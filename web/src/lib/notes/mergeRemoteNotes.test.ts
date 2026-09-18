@@ -57,6 +57,17 @@ describe('mergeRemoteNotes', () => {
     expect(merged[0]?.title).toBe('Confirmed remote');
   });
 
+  it('preserves unconfirmed local note when modified after remote serverUpdatedAt (NEW-03)', async () => {
+    const local = [
+      note({ id: '1', localId: 1, timestamp: 600, serverUpdatedAt: null, title: 'Newer local edit' }),
+    ];
+    const remote = [
+      note({ id: '1', localId: 1, timestamp: 100, serverUpdatedAt: 500, title: 'Initial cloud note' }),
+    ];
+    const merged = await mergeRemoteNotes(local, remote);
+    expect(merged[0]?.title).toBe('Newer local edit');
+  });
+
   it('takes remote when both notes are the same confirmed revision', async () => {
     const local = [
       note({ id: '1', localId: 1, timestamp: 10, serverUpdatedAt: 500, title: 'Local same revision' }),

@@ -50,8 +50,15 @@ export async function storePendingAttachment(
 
 export function peekPendingAttachment(
   attachmentId: string,
+  expectedOwnerId?: string,
 ): { blob: Blob; mimeType: string } | undefined {
-  return pending.get(attachmentId);
+  const entry = pending.get(attachmentId);
+  if (!entry) return undefined;
+  const owner = expectedOwnerId ?? resolveOwnerId();
+  if (entry.ownerId && owner && entry.ownerId !== owner) {
+    return undefined;
+  }
+  return entry;
 }
 
 /**
@@ -62,16 +69,23 @@ export async function getPendingAttachmentBlob(
   noteId?: string,
   ownerId?: string,
 ): Promise<{ blob: Blob; mimeType: string } | undefined> {
-  const inMemory = pending.get(attachmentId);
-  if (inMemory) return inMemory;
-
   const resolvedOwner = ownerId ?? resolveOwnerId();
+  const inMemory = pending.get(attachmentId);
+  if (inMemory) {
+    if (!inMemory.ownerId || !resolvedOwner || inMemory.ownerId === resolvedOwner) {
+      return inMemory;
+    }
+  }
+
   try {
     const record =
       resolvedOwner && noteId
         ? await getPendingAttachment(resolvedOwner, noteId, attachmentId)
         : await findPendingAttachmentById(attachmentId);
     if (record) {
+      if (record.ownerId && resolvedOwner && record.ownerId !== resolvedOwner) {
+        return undefined;
+      }
       const entry: PendingEntry = {
         blob: record.blob,
         mimeType: record.mimeType,
@@ -108,7 +122,10 @@ export async function releasePendingAttachment(
   }
 }
 
-/** Test hook — clears the in-memory pending blob store. */
-export function clearPendingAttachmentsForTests(): void {
+/** Clears the in-memory pending blob store across sign-outs and account switches. */
+export function clearPendingAttachmentStore(): void {
   pending.clear();
 }
+
+/** Test hook — clears the in-memory pending blob store. */
+export const clearPendingAttachmentsForTests = clearPendingAttachmentStore;
