@@ -71,14 +71,49 @@ test('a failed local save keeps the editor open with the text intact', async ({ 
   await expect(page.getByText('Note saved', { exact: true })).toHaveCount(0);
 });
 
-test('retrying after the failure clears the error and closes the editor', async ({ page }) => {
+test('retrying after the failure clears the error and keeps the editor open with text intact', async ({
+  page,
+}) => {
+  await failNoteWrites(page);
+  await signUp(page);
+
+  const body = 'retry text that stays in editor';
+  await page.getByRole('button', { name: 'New note' }).first().click();
+  const titleField = page.getByRole('textbox', { name: 'Note title' }).first();
+  await expect(titleField).toBeVisible({ timeout: 15_000 });
+  const title = `Retry note ${Date.now()}`;
+  await titleField.fill(title);
+  const bodyField = page.getByRole('textbox', { name: 'Note body' }).first();
+  await bodyField.fill(body);
+
+  await page.evaluate(() => {
+    (window as unknown as { __failNotes?: boolean }).__failNotes = true;
+  });
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
+
+  // Storage recovers, and the retry is the user's explicit second attempt to persist without leaving.
+  await page.evaluate(() => {
+    (window as unknown as { __failNotes?: boolean }).__failNotes = false;
+  });
+  await page.getByRole('button', { name: 'Retry save' }).click();
+
+  // Retry save succeeds: failure alert clears, editor REMAINS OPEN, content intact
+  await expect(page.getByRole('alert')).toHaveCount(0, { timeout: 15_000 });
+  await expect(titleField).toBeVisible({ timeout: 10_000 });
+  await expect(titleField).toHaveValue(title);
+  await expect(page.getByRole('button', { name: 'Edit note body' })).toContainText(body);
+  await expect(page.getByText('Note saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+});
+
+test('explicit back closes the editor after successful save flush', async ({ page }) => {
   await failNoteWrites(page);
   await signUp(page);
 
   await page.getByRole('button', { name: 'New note' }).first().click();
   const titleField = page.getByRole('textbox', { name: 'Note title' }).first();
   await expect(titleField).toBeVisible({ timeout: 15_000 });
-  const title = `Retry note ${Date.now()}`;
+  const title = `Back note ${Date.now()}`;
   await titleField.fill(title);
 
   await page.evaluate(() => {
@@ -87,11 +122,11 @@ test('retrying after the failure clears the error and closes the editor', async 
   await page.keyboard.press('Escape');
   await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
 
-  // Storage recovers, and the retry is the user's explicit second attempt.
+  // Storage recovers, and clicking Back flushes save and closes editor
   await page.evaluate(() => {
     (window as unknown as { __failNotes?: boolean }).__failNotes = false;
   });
-  await page.getByRole('button', { name: 'Retry save' }).click();
+  await page.getByRole('button', { name: 'Back' }).first().click();
 
   await expect(page.getByRole('textbox', { name: 'Note title' })).toHaveCount(0, {
     timeout: 20_000,
