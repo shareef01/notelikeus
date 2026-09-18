@@ -12,6 +12,7 @@ interface NoteListActions {
   onTrash: (note: Note) => void;
   onRestore: (note: Note) => void;
   onPermanentDelete: (note: Note) => void;
+  onPinToggle?: (note: Note) => void;
 }
 
 interface NoteStaggeredGridProps {
@@ -136,9 +137,26 @@ export function NoteStaggeredGrid({
     density,
     onClick: () => onNoteClick(note),
     onLongPress: () => onNoteLongPress(note),
+    onToggleSelect: () => onNoteLongPress(note),
     onLabelClick,
     searchQuery,
     isSelected: selectedSet.has(note.id),
+    onPinToggle: !selectionMode && listActions?.onPinToggle ? () => listActions.onPinToggle!(note) : undefined,
+    onArchive:
+      !selectionMode && listActions?.onArchive && filter === 'active'
+        ? () => listActions.onArchive(note)
+        : undefined,
+    onRestore:
+      !selectionMode && listActions?.onRestore && (filter === 'archived' || filter === 'trashed')
+        ? () => listActions.onRestore(note)
+        : undefined,
+    onTrash:
+      !selectionMode && listActions?.onTrash && (filter === 'active' || filter === 'archived')
+        ? () => listActions.onTrash(note)
+        : !selectionMode && listActions?.onPermanentDelete && filter === 'trashed'
+          ? () => listActions.onPermanentDelete(note)
+          : undefined,
+    isPermanentDelete: filter === 'trashed',
   });
 
   const renderCard = (note: Note, reorder?: NoteReorderHandleProps) => {
