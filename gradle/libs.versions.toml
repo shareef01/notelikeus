@@ -20,7 +20,7 @@ coroutines = "1.11.0"
 # kotlinx-coroutines-test ships on the same version train as core; bump it together with
 # `coroutines`. Kept as a separate ref so production code never resolves to a test variable.
 coroutinesTest = "1.11.0"
-robolectric = "4.16.1"
+robolectric = "4.17"
 # Kotlin static analysis. Kept non-blocking behind a baseline: see the root build script.
 detekt = "1.23.8"
 datastore = "1.2.1"
