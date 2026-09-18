@@ -87,6 +87,8 @@ function Swatch({ meta, selected }: { meta: SwatchMeta; selected: boolean }) {
   );
 }
 
+import { useRovingRadioGroup } from '@/hooks/useRovingRadioGroup';
+
 function SwatchRow<T extends string>({
   label,
   order,
@@ -100,12 +102,23 @@ function SwatchRow<T extends string>({
   value: T;
   onChange: (next: T) => void;
 }) {
+  const { getContainerProps, getRadioProps } = useRovingRadioGroup({
+    items: order,
+    value,
+    onChange,
+  });
+
   return (
     <div>
       <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-muted">
         {label}
       </p>
-      <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:gap-x-4" role="radiogroup" aria-label={label}>
+      <div
+        className="grid grid-cols-3 gap-x-3 gap-y-4 sm:gap-x-4"
+        role="radiogroup"
+        aria-label={label}
+        {...getContainerProps()}
+      >
         {order.map((option) => {
           const optionMeta = meta[option];
           const selected = value === option;
@@ -117,6 +130,7 @@ function SwatchRow<T extends string>({
               aria-checked={selected}
               aria-label={optionMeta.label}
               onClick={() => onChange(option)}
+              {...getRadioProps(option)}
               className={`flex flex-col items-center gap-2 rounded-xl px-1 py-1.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary/50 ${
                 selected ? 'bg-brand-primary/[0.06]' : 'hover:bg-brand-primary/[0.03]'
               }`}
