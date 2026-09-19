@@ -114,6 +114,9 @@ actual val platformModule = module {
     single { SharedPrefsNoteSyncStateStore(get()) }
     single<NoteSyncStateStore> { get<SharedPrefsNoteSyncStateStore>() }
     single { androidx.work.WorkManager.getInstance(get<android.content.Context>()) }
+    single<com.aus.notelikeus.ui.navigation.ExternalImageIngestor> {
+        com.aus.notelikeus.ui.navigation.DefaultExternalImageIngestor(get<android.content.Context>().contentResolver)
+    }
 
     single { SupabaseSessionStore(AndroidSupabaseSessionPersistence(get())) }
     single { SupabaseAuthApi(BackendConfig.supabaseUrl, BackendConfig.supabaseAnonKey) }

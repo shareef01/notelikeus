@@ -58,9 +58,70 @@ actual fun extractEditorNoteId(intent: Any?): Long? {
 
 actual fun intentRequestsNewNote(intent: Any?): Boolean {
     val i = intent as? Intent ?: return false
-    if (i.action == Intent.ACTION_SEND && i.type == "text/plain") return true
+    if (i.action == Intent.ACTION_SEND) {
+        if (i.type == "text/plain") return true
+        if (i.type?.startsWith("image/") == true) return true
+    }
     if (!InternalNavigationToken.matches(i)) return false
     return i.getBooleanExtra("createNote", false)
+}
+
+sealed interface ExternalShare {
+    data class Text(
+        val subject: String?,
+        val content: String?,
+    ) : ExternalShare
+
+    data class Image(
+        val uri: android.net.Uri,
+        val mimeType: String?,
+        val subject: String?,
+        val content: String?,
+    ) : ExternalShare
+}
+
+fun extractStreamUri(intent: Intent): android.net.Uri? {
+    val fromExtra = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        intent.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+    } else {
+        @Suppress("DEPRECATION")
+        intent.getParcelableExtra(Intent.EXTRA_STREAM) as? android.net.Uri
+    }
+    if (fromExtra != null) return fromExtra
+    val clipData = intent.clipData
+    if (clipData != null && clipData.itemCount > 0) {
+        return clipData.getItemAt(0)?.uri
+    }
+    return null
+}
+
+fun extractExternalShare(intent: Intent?): ExternalShare? {
+    val i = intent ?: return null
+    if (i.action != Intent.ACTION_SEND) return null
+    val type = i.type ?: return null
+    if (type == "text/plain") {
+        val shared = extractSharedText(i) ?: return null
+        return ExternalShare.Text(subject = shared.first, content = shared.second)
+    }
+    if (type.startsWith("image/")) {
+        val uri = extractStreamUri(i) ?: return null
+        if (uri.scheme != "content") return null
+        val subject = (i.getStringExtra(Intent.EXTRA_SUBJECT)
+            ?: i.getCharSequenceExtra(Intent.EXTRA_TITLE)?.toString())
+            ?.take(NoteBackupImporter.MAX_FIELD_CHARS)
+            ?.takeIf { it.isNotBlank() }
+        val text = (i.getStringExtra(Intent.EXTRA_TEXT)
+            ?: i.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString())
+            ?.take(NoteBackupImporter.MAX_CONTENT_CHARS)
+            ?.takeIf { it.isNotBlank() }
+        return ExternalShare.Image(
+            uri = uri,
+            mimeType = type,
+            subject = subject,
+            content = text,
+        )
+    }
+    return null
 }
 
 /**

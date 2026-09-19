@@ -29,6 +29,14 @@ import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.ui.navigation.extractEditorNoteId
 import com.aus.notelikeus.ui.navigation.extractSharedText
 import com.aus.notelikeus.ui.navigation.intentRequestsNewNote
+import com.aus.notelikeus.ui.navigation.ExternalImageIngestor
+import com.aus.notelikeus.ui.navigation.ExternalShare
+import com.aus.notelikeus.ui.navigation.IngestionResult
+import com.aus.notelikeus.ui.navigation.SharedImagePayload
+import com.aus.notelikeus.ui.navigation.extractExternalShare
+import com.aus.notelikeus.data.attachments.GUEST_STAGING_OWNER
+import com.aus.notelikeus.data.remote.CloudSessionManager
+import android.widget.Toast
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -44,10 +52,14 @@ class MainActivity : FragmentActivity() {
 
     private val googleSignInHelper: GoogleSignInHelper by inject()
     private val settingsRepository: SettingsRepository by inject()
+    private val sessionManager: CloudSessionManager by inject()
+    private val imageIngestor: ExternalImageIngestor by inject()
     private var pendingNoteId by mutableStateOf<Long?>(null)
     private var pendingCreateNote by mutableStateOf(false)
     private var pendingSharedTitle by mutableStateOf<String?>(null)
     private var pendingSharedContent by mutableStateOf<String?>(null)
+    private var pendingSharedImage by mutableStateOf<SharedImagePayload?>(null)
+    private var isIntentConsumed = false
     // mutableLongStateOf, not mutableStateOf: this is a counter bumped on every deep link and
     // every widget tap, and the generic version boxes a java.lang.Long on each one.
     private var navigationRequest by mutableLongStateOf(0L)
@@ -60,12 +72,10 @@ class MainActivity : FragmentActivity() {
             !AppStartup.isReady.value
         }
         super.onCreate(savedInstanceState)
-        val shared = extractSharedText(intent)
-        pendingSharedTitle = shared?.first
-        pendingSharedContent = shared?.second
-        pendingNoteId = extractEditorNoteId(intent)
-        pendingCreateNote = intentRequestsNewNote(intent) || shared != null
-        navigationRequest++
+        isIntentConsumed = savedInstanceState?.getBoolean(KEY_INTENT_CONSUMED, false) ?: false
+        if (!isIntentConsumed) {
+            handleIntent(intent)
+        }
         enableEdgeToEdge()
         // Credential Manager needs an Activity to host its sign-in sheet; the helper is a
         // process-scoped singleton, so it looks the Activity up through this tracker.
@@ -233,6 +243,10 @@ class MainActivity : FragmentActivity() {
                         pendingSharedTitle = null
                         pendingSharedContent = null
                     },
+                    pendingSharedImage = pendingSharedImage,
+                    onConsumeSharedImage = {
+                        pendingSharedImage = null
+                    },
                     navigationRequest = navigationRequest
                 )
 
@@ -286,19 +300,67 @@ class MainActivity : FragmentActivity() {
         DatabaseRecoveryNotice.consume(this)
     }
 
-    override fun onNewIntent(intent: Intent) {
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_INTENT_CONSUMED, isIntentConsumed)
+    }
+
+    public override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val shared = extractSharedText(intent)
-        val noteId = extractEditorNoteId(intent)
-        val createNote = intentRequestsNewNote(intent) || shared != null
-        // A LAUNCHER tap while the sign-in gate is up must not wipe a widget / share payload
-        // that is waiting for the user to sign in or continue offline.
-        if (shared == null && noteId == null && !createNote) return
-        if (shared != null) {
-            pendingSharedTitle = shared.first
-            pendingSharedContent = shared.second
+        isIntentConsumed = false
+        handleIntent(intent)
+    }
+
+    internal fun isIntentConsumedForTests(): Boolean = isIntentConsumed
+
+    private fun handleIntent(intent: Intent) {
+        if (isIntentConsumed || intent.getBooleanExtra(EXTRA_INTENT_CONSUMED, false)) return
+        val share = extractExternalShare(intent)
+        if (share != null) {
+            isIntentConsumed = true
+            intent.putExtra(EXTRA_INTENT_CONSUMED, true)
+            when (share) {
+                is ExternalShare.Text -> {
+                    pendingSharedTitle = share.subject
+                    pendingSharedContent = share.content
+                    pendingCreateNote = true
+                    navigationRequest++
+                }
+                is ExternalShare.Image -> {
+                    val originatingOwner = sessionManager.getCurrentAccount().userId ?: GUEST_STAGING_OWNER
+                    lifecycleScope.launch {
+                        when (val result = imageIngestor.ingest(share.uri, share.mimeType)) {
+                            is IngestionResult.Success -> {
+                                pendingSharedImage = SharedImagePayload(
+                                    bytes = result.bytes,
+                                    mimeType = result.mimeType,
+                                    title = share.subject,
+                                    content = share.content,
+                                    originatingOwnerId = originatingOwner,
+                                )
+                                pendingCreateNote = true
+                                navigationRequest++
+                            }
+                            is IngestionResult.Failure -> {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    R.string.error_shared_image_failed,
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        }
+                    }
+                }
+            }
+            return
         }
+
+        val noteId = extractEditorNoteId(intent)
+        val createNote = intentRequestsNewNote(intent)
+        if (noteId == null && !createNote) return
+        isIntentConsumed = true
+        intent.putExtra(EXTRA_INTENT_CONSUMED, true)
         if (noteId != null) pendingNoteId = noteId
         if (createNote) pendingCreateNote = true
         navigationRequest++
@@ -357,5 +419,7 @@ class MainActivity : FragmentActivity() {
             "text/plain",
         )
 
+        const val KEY_INTENT_CONSUMED = "com.aus.notelikeus.KEY_INTENT_CONSUMED"
+        const val EXTRA_INTENT_CONSUMED = "com.aus.notelikeus.EXTRA_INTENT_CONSUMED"
     }
 }
