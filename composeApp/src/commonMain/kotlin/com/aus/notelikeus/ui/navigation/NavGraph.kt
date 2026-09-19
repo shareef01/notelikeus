@@ -72,6 +72,8 @@ fun NavGraph(
     pendingSharedTitle: String? = null,
     pendingSharedContent: String? = null,
     onConsumeSharedContent: () -> Unit = {},
+    pendingSharedImage: SharedImagePayload? = null,
+    onConsumeSharedImage: () -> Unit = {},
     pendingFocusSearch: Boolean = false,
     pendingOpenSettings: Boolean = false
 ) {
@@ -163,9 +165,20 @@ fun NavGraph(
             val viewModel: EditorViewModel = koinViewModel()
             LaunchedEffect(noteId, initialColor) {
                 viewModel.setRouteArgs(noteId, initialColor)
-                if (noteId == null && (pendingSharedTitle != null || pendingSharedContent != null)) {
-                    viewModel.setInitialContent(pendingSharedTitle, pendingSharedContent)
-                    onConsumeSharedContent()
+                if (noteId == null) {
+                    if (pendingSharedImage != null) {
+                        viewModel.setInitialSharedImage(
+                            bytes = pendingSharedImage.bytes,
+                            mimeType = pendingSharedImage.mimeType,
+                            title = pendingSharedImage.title,
+                            content = pendingSharedImage.content,
+                            originatingOwnerId = pendingSharedImage.originatingOwnerId,
+                        )
+                        onConsumeSharedImage()
+                    } else if (pendingSharedTitle != null || pendingSharedContent != null) {
+                        viewModel.setInitialContent(pendingSharedTitle, pendingSharedContent)
+                        onConsumeSharedContent()
+                    }
                 }
             }
             EditorScreen(

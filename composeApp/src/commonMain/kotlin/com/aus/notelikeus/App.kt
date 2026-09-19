@@ -19,6 +19,7 @@ import com.aus.notelikeus.ui.main.CloudSyncEvent
 import com.aus.notelikeus.ui.main.MainViewModel
 import com.aus.notelikeus.ui.navigation.NavGraph
 import com.aus.notelikeus.ui.navigation.Screen
+import com.aus.notelikeus.ui.navigation.SharedImagePayload
 import com.aus.notelikeus.ui.navigation.rememberEditorWindowLauncher
 import com.aus.notelikeus.ui.theme.NotelikeusTheme
 import com.aus.notelikeus.util.AppConfig
@@ -44,6 +45,8 @@ fun App(
     pendingSharedTitle: String? = null,
     pendingSharedContent: String? = null,
     onConsumeSharedContent: () -> Unit = {},
+    pendingSharedImage: SharedImagePayload? = null,
+    onConsumeSharedImage: () -> Unit = {},
     pendingFocusSearch: Boolean = false,
     pendingOpenSettings: Boolean = false,
     navigationRequest: Long = 0L,
@@ -115,6 +118,8 @@ fun App(
                         pendingSharedTitle = pendingSharedTitle,
                         pendingSharedContent = pendingSharedContent,
                         onConsumeSharedContent = onConsumeSharedContent,
+                        pendingSharedImage = pendingSharedImage,
+                        onConsumeSharedImage = onConsumeSharedImage,
                         pendingFocusSearch = pendingFocusSearch,
                         pendingOpenSettings = pendingOpenSettings,
                         navigationRequest = navigationRequest,
@@ -146,6 +151,8 @@ private fun AppContent(
     pendingSharedTitle: String?,
     pendingSharedContent: String?,
     onConsumeSharedContent: () -> Unit,
+    pendingSharedImage: SharedImagePayload? = null,
+    onConsumeSharedImage: () -> Unit = {},
     pendingFocusSearch: Boolean = false,
     pendingOpenSettings: Boolean = false,
     navigationRequest: Long,
@@ -253,6 +260,8 @@ private fun AppContent(
                         pendingSharedTitle = pendingSharedTitle,
                         pendingSharedContent = pendingSharedContent,
                         onConsumeSharedContent = onConsumeSharedContent,
+                        pendingSharedImage = pendingSharedImage,
+                        onConsumeSharedImage = onConsumeSharedImage,
                         pendingFocusSearch = pendingFocusSearch,
                         pendingOpenSettings = pendingOpenSettings
                     )

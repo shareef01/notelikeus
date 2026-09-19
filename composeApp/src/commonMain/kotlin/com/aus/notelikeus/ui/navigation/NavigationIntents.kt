@@ -22,3 +22,35 @@ expect fun extractEditorNoteId(intent: Any?): Long?
 expect fun intentRequestsNewNote(intent: Any?): Boolean
 
 expect fun extractSharedText(intent: Any?): Pair<String?, String?>?
+
+/**
+ * Normalized representation of an image shared into the app from an external source,
+ * bound to the originating owner/session.
+ */
+data class SharedImagePayload(
+    val bytes: ByteArray,
+    val mimeType: String,
+    val title: String? = null,
+    val content: String? = null,
+    val originatingOwnerId: String? = null,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || this::class != other::class) return false
+        other as SharedImagePayload
+        return bytes.contentEquals(other.bytes) &&
+            mimeType == other.mimeType &&
+            title == other.title &&
+            content == other.content &&
+            originatingOwnerId == other.originatingOwnerId
+    }
+
+    override fun hashCode(): Int {
+        var result = bytes.contentHashCode()
+        result = 31 * result + mimeType.hashCode()
+        result = 31 * result + (title?.hashCode() ?: 0)
+        result = 31 * result + (content?.hashCode() ?: 0)
+        result = 31 * result + (originatingOwnerId?.hashCode() ?: 0)
+        return result
+    }
+}

@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.attachments.GUEST_STAGING_OWNER
 import com.aus.notelikeus.data.attachments.MAX_ATTACHMENT_BYTES
 import com.aus.notelikeus.data.attachments.createAttachmentId
 import com.aus.notelikeus.data.attachments.isPendingAttachment
@@ -157,6 +158,34 @@ class EditorViewModel(
             )
         }
         triggerAutosave()
+    }
+
+    /**
+     * Seeds a new note with a shared image and optional title/caption.
+     *
+     * Aborts if [originatingOwnerId] does not match the active session, guarding against an
+     * account switch completing during asynchronous stream ingestion.
+     */
+    fun setInitialSharedImage(
+        bytes: ByteArray,
+        mimeType: String,
+        title: String? = null,
+        content: String? = null,
+        originatingOwnerId: String? = null,
+    ) {
+        if (noteId != null) return
+        val t = title?.trim() ?: ""
+        val c = content?.trim() ?: ""
+        if (t.isNotEmpty()) titleEdited = true
+        if (c.isNotEmpty()) contentEdited = true
+        _state.update { current ->
+            current.copy(
+                title = if (current.title.isEmpty()) t else current.title,
+                content = if (current.content.isEmpty()) c else current.content,
+                contentValue = if (current.content.isEmpty()) TextFieldValue(c) else current.contentValue
+            )
+        }
+        addAttachment(bytes, mimeType, originatingOwnerId)
     }
 
     fun formatForSharing(): String {
@@ -355,7 +384,7 @@ class EditorViewModel(
      * restart as metadata pointing at nothing. Nothing is added to the note unless the bytes are
      * on disk.
      */
-    fun addAttachment(bytes: ByteArray, mimeType: String) {
+    fun addAttachment(bytes: ByteArray, mimeType: String, originatingOwnerId: String? = null) {
         if (!attachmentsEnabled()) return
         if (bytes.size > MAX_ATTACHMENT_BYTES) return
         if (!mimeType.startsWith("image/")) return
@@ -365,7 +394,13 @@ class EditorViewModel(
             // — referencing them anyway is exactly the metadata-without-bytes case this avoids.
             val staged = attachmentSync?.let { sync ->
                 runCatching {
-                    sync.stageAttachment(attachmentId, _state.value.id, bytes, mimeType)
+                    sync.stageAttachment(
+                        attachmentId = attachmentId,
+                        noteId = _state.value.id,
+                        bytes = bytes,
+                        mimeType = mimeType,
+                        expectedOwnerId = originatingOwnerId,
+                    )
                 }.getOrDefault(false)
             } ?: false
             if (!staged) {
@@ -751,7 +786,11 @@ class EditorViewModel(
 
     fun saveNote() {
         val currentState = _state.value
-        if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) return
+        if (currentState.title.isEmpty() &&
+            currentState.content.isEmpty() &&
+            currentState.checklist.isEmpty() &&
+            currentState.attachments.isEmpty()
+        ) return
 
         // Supersede any autosave still counting down, so this save is the only one in flight.
         autosaveJob?.cancel()
@@ -766,7 +805,11 @@ class EditorViewModel(
      */
     suspend fun saveNoteAndAwait() {
         val currentState = _state.value
-        if (currentState.title.isEmpty() && currentState.content.isEmpty() && currentState.checklist.isEmpty()) return
+        if (currentState.title.isEmpty() &&
+            currentState.content.isEmpty() &&
+            currentState.checklist.isEmpty() &&
+            currentState.attachments.isEmpty()
+        ) return
         autosaveJob?.cancel()
         persistNote()
     }
