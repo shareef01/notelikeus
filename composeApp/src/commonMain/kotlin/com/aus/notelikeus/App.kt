@@ -13,10 +13,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.aus.notelikeus.ui.auth.SignInGate
 import com.aus.notelikeus.ui.main.CloudSyncEvent
 import com.aus.notelikeus.ui.main.MainViewModel
+import com.aus.notelikeus.ui.navigation.EditorWindowLauncher
 import com.aus.notelikeus.ui.navigation.NavGraph
 import com.aus.notelikeus.ui.navigation.Screen
 import com.aus.notelikeus.ui.navigation.SharedImagePayload
@@ -200,39 +202,15 @@ private fun AppContent(
                         viewModel.stageEditorUndo(note, action, message)
                     }
                     
-                    var internalPendingCreateNote by remember { mutableStateOf(false) }
-                    var internalPendingNoteId by remember { mutableStateOf<Long?>(null) }
-                    // Sync with external triggers on each composition
-                    if (pendingCreateNote) internalPendingCreateNote = true
-                    pendingNoteId?.let { internalPendingNoteId = it }
-
-                    LaunchedEffect(navigationRequest, isUnlocked, state.isAppLockEnabled) {
-                        if (navigationRequest == 0L) return@LaunchedEffect
-                        if (state.isAppLockEnabled && !isUnlocked) return@LaunchedEffect
-                        
-                        if (internalPendingCreateNote) {
-                            if (AppConfig.isDesktop) {
-                                editorWindowLauncher.launch(null, null)
-                            } else {
-                                navController.navigate(Screen.Editor.createRoute(null)) {
-                                    popUpTo(Screen.Main.route) { saveState = true }
-                                    launchSingleTop = true
-                                }
-                            }
-                            internalPendingCreateNote = false
-                        }
-                        internalPendingNoteId?.let { id ->
-                            if (AppConfig.isDesktop) {
-                                editorWindowLauncher.launch(id, null)
-                            } else {
-                                navController.navigate(Screen.Editor.createRoute(id)) {
-                                    popUpTo(Screen.Main.route) { saveState = true }
-                                    launchSingleTop = true
-                                }
-                            }
-                            internalPendingNoteId = null
-                        }
-                    }
+                    NavigationTriggerHandler(
+                        navigationRequest = navigationRequest,
+                        isUnlocked = isUnlocked,
+                        isAppLockEnabled = state.isAppLockEnabled,
+                        pendingCreateNote = pendingCreateNote,
+                        pendingNoteId = pendingNoteId,
+                        navController = navController,
+                        editorWindowLauncher = editorWindowLauncher,
+                    )
                     
                     NavGraph(
                         navController = navController,
@@ -319,6 +297,50 @@ private fun AppLockOverlay(showLockPrompt: Boolean, onUnlock: () -> Unit) {
                     fontWeight = FontWeight.SemiBold
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun NavigationTriggerHandler(
+    navigationRequest: Long,
+    isUnlocked: Boolean,
+    isAppLockEnabled: Boolean,
+    pendingCreateNote: Boolean,
+    pendingNoteId: Long?,
+    navController: NavHostController,
+    editorWindowLauncher: EditorWindowLauncher,
+) {
+    var internalPendingCreateNote by remember { mutableStateOf(false) }
+    var internalPendingNoteId by remember { mutableStateOf<Long?>(null) }
+    if (pendingCreateNote) internalPendingCreateNote = true
+    pendingNoteId?.let { internalPendingNoteId = it }
+
+    LaunchedEffect(navigationRequest, isUnlocked, isAppLockEnabled) {
+        if (navigationRequest == 0L) return@LaunchedEffect
+        if (isAppLockEnabled && !isUnlocked) return@LaunchedEffect
+
+        if (internalPendingCreateNote) {
+            if (AppConfig.isDesktop) {
+                editorWindowLauncher.launch(null, null)
+            } else {
+                navController.navigate(Screen.Editor.createRoute(null)) {
+                    popUpTo(Screen.Main.route) { saveState = true }
+                    launchSingleTop = true
+                }
+            }
+            internalPendingCreateNote = false
+        }
+        internalPendingNoteId?.let { id ->
+            if (AppConfig.isDesktop) {
+                editorWindowLauncher.launch(id, null)
+            } else {
+                navController.navigate(Screen.Editor.createRoute(id)) {
+                    popUpTo(Screen.Main.route) { saveState = true }
+                    launchSingleTop = true
+                }
+            }
+            internalPendingNoteId = null
         }
     }
 }

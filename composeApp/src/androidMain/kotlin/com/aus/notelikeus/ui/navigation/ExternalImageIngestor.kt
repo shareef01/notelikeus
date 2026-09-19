@@ -49,34 +49,39 @@ class DefaultExternalImageIngestor(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ExternalImageIngestor {
 
+    private fun resolveMimeType(uri: Uri, declaredMimeType: String?): String? {
+        val typeFromResolver = runCatching { contentResolver.getType(uri) }.getOrNull()
+        return when {
+            typeFromResolver != null && typeFromResolver.startsWith("image/") -> typeFromResolver
+            typeFromResolver != null -> null
+            declaredMimeType != null &&
+                declaredMimeType.startsWith("image/") &&
+                declaredMimeType != "image/*" -> declaredMimeType
+            else -> "image/jpeg"
+        }
+    }
+
+    private fun openStream(uri: Uri): Result<InputStream> = runCatching {
+        contentResolver.openInputStream(uri)
+            ?: throw FileNotFoundException("Provider returned null stream")
+    }
+
     override suspend fun ingest(uri: Uri, declaredMimeType: String?): IngestionResult =
         withContext(ioDispatcher) {
             if (uri.scheme != "content") {
                 return@withContext IngestionResult.Failure("Unsupported scheme: ${uri.scheme}")
             }
 
-            val typeFromResolver = runCatching { contentResolver.getType(uri) }.getOrNull()
-            val effectiveMime = when {
-                typeFromResolver != null && typeFromResolver.startsWith("image/") -> typeFromResolver
-                typeFromResolver != null -> {
-                    return@withContext IngestionResult.Failure("Provider type is not an image: $typeFromResolver")
-                }
-                declaredMimeType != null && declaredMimeType.startsWith("image/") && declaredMimeType != "image/*" -> declaredMimeType
-                else -> "image/jpeg"
-            }
+            val effectiveMime = resolveMimeType(uri, declaredMimeType)
+                ?: return@withContext IngestionResult.Failure("Provider type is not an image")
 
-            val stream = try {
-                contentResolver.openInputStream(uri)
-                    ?: return@withContext IngestionResult.Failure("Provider returned null stream")
-            } catch (se: SecurityException) {
-                AppLog.warn(TAG, "SecurityException opening stream for shared image: ${se.javaClass.simpleName}")
-                return@withContext IngestionResult.Failure("SecurityException")
-            } catch (fnf: FileNotFoundException) {
-                AppLog.warn(TAG, "FileNotFoundException opening stream for shared image: ${fnf.javaClass.simpleName}")
-                return@withContext IngestionResult.Failure("FileNotFoundException")
-            } catch (e: Exception) {
-                AppLog.warn(TAG, "Error opening stream for shared image: ${e.javaClass.simpleName}")
-                return@withContext IngestionResult.Failure("OpenStreamError")
+            val stream = openStream(uri).getOrElse { error ->
+                AppLog.warn(TAG, "Error opening stream for shared image: ${error.javaClass.simpleName}")
+                return@withContext when (error) {
+                    is SecurityException -> IngestionResult.Failure("SecurityException")
+                    is FileNotFoundException -> IngestionResult.Failure("FileNotFoundException")
+                    else -> IngestionResult.Failure("OpenStreamError")
+                }
             }
 
             val bytes = try {
@@ -86,11 +91,7 @@ class DefaultExternalImageIngestor(
             } catch (e: Exception) {
                 AppLog.warn(TAG, "Error reading shared image stream: ${e.javaClass.simpleName}")
                 null
-            }
-
-            if (bytes == null) {
-                return@withContext IngestionResult.Failure("Stream empty or exceeded limit")
-            }
+            } ?: return@withContext IngestionResult.Failure("Stream empty or exceeded limit")
 
             IngestionResult.Success(bytes = bytes, mimeType = effectiveMime)
         }
