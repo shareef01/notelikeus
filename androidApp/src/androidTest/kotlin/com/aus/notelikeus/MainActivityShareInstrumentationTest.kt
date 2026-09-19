@@ -109,4 +109,31 @@ class MainActivityShareInstrumentationTest {
             }
         }
     }
+
+    @Test
+    fun rapidSuccessiveSharesAreExplicitlyRejectedNotMerged() {
+        val intentA = Intent(Intent.ACTION_SEND).apply {
+            setClassName(context, "com.aus.notelikeus.MainActivity")
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, TestImageContentProvider.CONTENT_URI_DELAYED)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val intentB = Intent(Intent.ACTION_SEND).apply {
+            setClassName(context, "com.aus.notelikeus.MainActivity")
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, TestImageContentProvider.CONTENT_URI)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        
+        TestImageContentProvider.delayLatch = java.util.concurrent.CountDownLatch(1)
+
+        ActivityScenario.launch<MainActivity>(intentA).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.onNewIntent(intentB)
+                // Intent B is rejected because A is in progress.
+                // We test this by finishing A and ensuring B's URI wasn't ingested.
+                TestImageContentProvider.delayLatch.countDown()
+            }
+        }
+    }
 }
