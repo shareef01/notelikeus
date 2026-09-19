@@ -20,7 +20,9 @@ actual fun rememberAttachmentImagePicker(
         if (uri == null) return@rememberLauncherForActivityResult
         val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
         if (!mimeType.startsWith("image/")) return@rememberLauncherForActivityResult
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@rememberLauncherForActivityResult
+        val bytes = context.contentResolver.openInputStream(uri)?.use {
+            com.aus.notelikeus.ui.navigation.readBoundedStream(it)
+        } ?: return@rememberLauncherForActivityResult
         onPicked(bytes, mimeType)
     }
     return remember(enabled) {
