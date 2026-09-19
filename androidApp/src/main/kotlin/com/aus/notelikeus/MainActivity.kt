@@ -65,6 +65,10 @@ class MainActivity : FragmentActivity() {
     private var navigationRequest by mutableLongStateOf(0L)
     private var showDatabaseRecoveryNotice by mutableStateOf(false)
 
+    private val sharedImageViewModel by lazy {
+        androidx.lifecycle.ViewModelProvider(this)[SharedImageViewModel::class.java]
+    }
+
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
@@ -243,12 +247,34 @@ class MainActivity : FragmentActivity() {
                         pendingSharedTitle = null
                         pendingSharedContent = null
                     },
-                    pendingSharedImage = pendingSharedImage,
+                    pendingSharedImage = sharedImageViewModel.pendingSharedImage,
                     onConsumeSharedImage = {
-                        pendingSharedImage = null
+                        sharedImageViewModel.pendingSharedImage = null
                     },
                     navigationRequest = navigationRequest
                 )
+
+                LaunchedEffect(sharedImageViewModel.pendingSharedImage) {
+                    if (sharedImageViewModel.pendingSharedImage != null && !isIntentConsumed) {
+                        isIntentConsumed = true
+                        intent.putExtra(EXTRA_INTENT_CONSUMED, true)
+                        pendingCreateNote = true
+                        navigationRequest++
+                    }
+                }
+                
+                LaunchedEffect(sharedImageViewModel.ingestFailed) {
+                    if (sharedImageViewModel.ingestFailed) {
+                        isIntentConsumed = true
+                        intent.putExtra(EXTRA_INTENT_CONSUMED, true)
+                        Toast.makeText(
+                            this@MainActivity,
+                            R.string.error_shared_image_failed,
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        sharedImageViewModel.ingestFailed = false
+                    }
+                }
 
                 // Shown once, over the app, when the database had to be moved aside during startup.
                 // Without this the user sees an empty note list and no reason for it.
@@ -302,7 +328,9 @@ class MainActivity : FragmentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putBoolean(KEY_INTENT_CONSUMED, isIntentConsumed)
+        // Process death gap fix: Do not persist consumed=true if the payload is still in transient ViewModel memory.
+        val effectivelyConsumed = isIntentConsumed && sharedImageViewModel.pendingSharedImage == null
+        outState.putBoolean(KEY_INTENT_CONSUMED, effectivelyConsumed)
     }
 
     public override fun onNewIntent(intent: Intent) {
@@ -313,15 +341,16 @@ class MainActivity : FragmentActivity() {
     }
 
     internal fun isIntentConsumedForTests(): Boolean = isIntentConsumed
+    internal fun getPendingSharedImageForTests(): SharedImagePayload? = sharedImageViewModel.pendingSharedImage
 
     private fun handleIntent(intent: Intent) {
         if (isIntentConsumed || intent.getBooleanExtra(EXTRA_INTENT_CONSUMED, false)) return
         val share = extractExternalShare(intent)
         if (share != null) {
-            isIntentConsumed = true
-            intent.putExtra(EXTRA_INTENT_CONSUMED, true)
             when (share) {
                 is ExternalShare.Text -> {
+                    isIntentConsumed = true
+                    intent.putExtra(EXTRA_INTENT_CONSUMED, true)
                     pendingSharedTitle = share.subject
                     pendingSharedContent = share.content
                     pendingCreateNote = true
@@ -329,27 +358,20 @@ class MainActivity : FragmentActivity() {
                 }
                 is ExternalShare.Image -> {
                     val originatingOwner = sessionManager.getCurrentAccount().userId ?: GUEST_STAGING_OWNER
-                    lifecycleScope.launch {
-                        when (val result = imageIngestor.ingest(share.uri, share.mimeType)) {
-                            is IngestionResult.Success -> {
-                                pendingSharedImage = SharedImagePayload(
-                                    bytes = result.bytes,
-                                    mimeType = result.mimeType,
-                                    title = share.subject,
-                                    content = share.content,
-                                    originatingOwnerId = originatingOwner,
-                                )
-                                pendingCreateNote = true
-                                navigationRequest++
-                            }
-                            is IngestionResult.Failure -> {
-                                Toast.makeText(
-                                    this@MainActivity,
-                                    R.string.error_shared_image_failed,
-                                    Toast.LENGTH_LONG,
-                                ).show()
-                            }
-                        }
+                    val accepted = sharedImageViewModel.ingest(
+                        share.uri, 
+                        share.mimeType, 
+                        share.subject, 
+                        share.content, 
+                        originatingOwner, 
+                        imageIngestor
+                    )
+                    if (!accepted) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            R.string.error_shared_image_failed,
+                            Toast.LENGTH_SHORT,
+                        ).show()
                     }
                 }
             }
@@ -421,5 +443,43 @@ class MainActivity : FragmentActivity() {
 
         const val KEY_INTENT_CONSUMED = "com.aus.notelikeus.KEY_INTENT_CONSUMED"
         const val EXTRA_INTENT_CONSUMED = "com.aus.notelikeus.EXTRA_INTENT_CONSUMED"
+    }
+}
+
+class SharedImageViewModel : androidx.lifecycle.ViewModel() {
+    var pendingSharedImage by androidx.compose.runtime.mutableStateOf<SharedImagePayload?>(null)
+    var ingestFailed by androidx.compose.runtime.mutableStateOf(false)
+    var isIngestionInProgress = false
+
+    fun ingest(
+        uri: android.net.Uri,
+        mimeType: String,
+        subject: String?,
+        content: String?,
+        originatingOwnerId: String,
+        imageIngestor: com.aus.notelikeus.ui.navigation.ExternalImageIngestor
+    ): Boolean {
+        // Prevent overlapping imports AND rapid successive shares overriding unconsumed payloads
+        if (isIngestionInProgress || pendingSharedImage != null) return false
+        isIngestionInProgress = true
+        androidx.lifecycle.viewModelScope.launch {
+            when (val result = imageIngestor.ingest(uri, mimeType)) {
+                is com.aus.notelikeus.ui.navigation.IngestionResult.Success -> {
+                    pendingSharedImage = com.aus.notelikeus.ui.navigation.SharedImagePayload(
+                        bytes = result.bytes,
+                        mimeType = result.mimeType,
+                        title = subject,
+                        content = content,
+                        originatingOwnerId = originatingOwnerId
+                    )
+                    isIngestionInProgress = false
+                }
+                is com.aus.notelikeus.ui.navigation.IngestionResult.Failure -> {
+                    isIngestionInProgress = false
+                    ingestFailed = true
+                }
+            }
+        }
+        return true
     }
 }
