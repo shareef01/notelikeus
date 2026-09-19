@@ -52,8 +52,13 @@ class AttachmentSyncService(
         noteId: Long?,
         bytes: ByteArray,
         mimeType: String,
+        expectedOwnerId: String? = null,
     ): Boolean {
         val owner = ownerId()
+        if (expectedOwnerId != null && expectedOwnerId != owner) {
+            AppLog.warn(TAG, "Attachment staging rejected: expected owner $expectedOwnerId but current is $owner")
+            return false
+        }
         val staged = staging.stage(attachmentId, owner, noteId, bytes, mimeType) ?: return false
         cache.put(owner, attachmentId, PendingAttachment(bytes, staged.mimeType))
         return true
