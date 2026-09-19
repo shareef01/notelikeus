@@ -162,4 +162,160 @@ class NavigationIntentsTest {
         assertTrue(intentRequestsNewNote(intent))
         assertNull(extractEditorNoteId(intent))
     }
+
+    @Test
+    fun `extractExternalShare parses text share correctly`() {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Headline")
+            putExtra(Intent.EXTRA_TEXT, "Story body")
+        }
+        val share = extractExternalShare(intent)
+        assertTrue(share is ExternalShare.Text)
+        val textShare = share as ExternalShare.Text
+        assertEquals("Headline", textShare.subject)
+        assertEquals("Story body", textShare.content)
+    }
+
+    @Test
+    fun `extractExternalShare clamps oversized subject and content in text share`() {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "s".repeat(NoteBackupImporter.MAX_FIELD_CHARS + 50))
+            putExtra(Intent.EXTRA_TEXT, "b".repeat(NoteBackupImporter.MAX_CONTENT_CHARS + 100))
+        }
+        val share = extractExternalShare(intent)
+        assertTrue(share is ExternalShare.Text)
+        val textShare = share as ExternalShare.Text
+        assertEquals(NoteBackupImporter.MAX_FIELD_CHARS, textShare.subject?.length)
+        assertEquals(NoteBackupImporter.MAX_CONTENT_CHARS, textShare.content?.length)
+    }
+
+    @Test
+    fun `extractExternalShare rejects empty text share`() {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, "   ")
+        }
+        assertNull(extractExternalShare(intent))
+    }
+
+    @Test
+    fun `extractExternalShare parses image share with EXTRA_STREAM`() {
+        val uri = android.net.Uri.parse("content://com.android.gallery/photos/101")
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "Photo Title")
+            putExtra(Intent.EXTRA_TEXT, "Photo Caption")
+        }
+        val share = extractExternalShare(intent)
+        assertTrue(share is ExternalShare.Image)
+        val imageShare = share as ExternalShare.Image
+        assertEquals(uri, imageShare.uri)
+        assertEquals("image/png", imageShare.mimeType)
+        assertEquals("Photo Title", imageShare.subject)
+        assertEquals("Photo Caption", imageShare.content)
+    }
+
+    @Test
+    fun `extractExternalShare parses image share with ClipData fallback`() {
+        val uri = android.net.Uri.parse("content://com.android.providers.media/image/42")
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/jpeg"
+            clipData = android.content.ClipData.newUri(
+                RuntimeEnvironment.getApplication().contentResolver,
+                "photo",
+                uri,
+            )
+        }
+        val share = extractExternalShare(intent)
+        assertTrue(share is ExternalShare.Image)
+        val imageShare = share as ExternalShare.Image
+        assertEquals(uri, imageShare.uri)
+        assertEquals("image/jpeg", imageShare.mimeType)
+    }
+
+    @Test
+    fun `extractExternalShare clamps oversized subject and text in image share`() {
+        val uri = android.net.Uri.parse("content://com.example.provider/images/1")
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/webp"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "x".repeat(NoteBackupImporter.MAX_FIELD_CHARS * 2))
+            putExtra(Intent.EXTRA_TEXT, "y".repeat(NoteBackupImporter.MAX_CONTENT_CHARS * 2))
+        }
+        val share = extractExternalShare(intent)
+        assertTrue(share is ExternalShare.Image)
+        val imageShare = share as ExternalShare.Image
+        assertEquals(NoteBackupImporter.MAX_FIELD_CHARS, imageShare.subject?.length)
+        assertEquals(NoteBackupImporter.MAX_CONTENT_CHARS, imageShare.content?.length)
+    }
+
+    @Test
+    fun `extractExternalShare rejects image share with missing stream`() {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+        }
+        assertNull(extractExternalShare(intent))
+    }
+
+    @Test
+    fun `extractExternalShare rejects image share with non-content scheme`() {
+        val fileUri = android.net.Uri.parse("file:///sdcard/photo.jpg")
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/jpeg"
+            putExtra(Intent.EXTRA_STREAM, fileUri)
+        }
+        assertNull(extractExternalShare(intent))
+
+        val httpUri = android.net.Uri.parse("https://example.com/photo.jpg")
+        val httpIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/jpeg"
+            putExtra(Intent.EXTRA_STREAM, httpUri)
+        }
+        assertNull(extractExternalShare(httpIntent))
+    }
+
+    @Test
+    fun `extractExternalShare rejects non-image non-text MIME`() {
+        val uri = android.net.Uri.parse("content://com.example.provider/doc/1")
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, uri)
+        }
+        assertNull(extractExternalShare(intent))
+    }
+
+    @Test
+    fun `extractExternalShare rejects unrelated intent action`() {
+        val uri = android.net.Uri.parse("content://com.example.provider/image/1")
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+        }
+        assertNull(extractExternalShare(intent))
+    }
+
+    @Test
+    fun `intentRequestsNewNote returns true for ACTION_SEND with image mime type`() {
+        val pngIntent = Intent(Intent.ACTION_SEND).apply { type = "image/png" }
+        assertTrue(intentRequestsNewNote(pngIntent))
+
+        val wildcardIntent = Intent(Intent.ACTION_SEND).apply { type = "image/*" }
+        assertTrue(intentRequestsNewNote(wildcardIntent))
+    }
+
+    @Test
+    fun `external image intent containing fake noteId cannot target existing note via extractEditorNoteId`() {
+        val uri = android.net.Uri.parse("content://com.example.provider/image/1")
+        val maliciousIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra("noteId", 42L)
+            putExtra("createNote", false)
+        }
+        assertNull(extractEditorNoteId(maliciousIntent))
+        assertTrue(intentRequestsNewNote(maliciousIntent))
+    }
 }
