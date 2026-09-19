@@ -46,7 +46,7 @@ describe('supabaseRemoteNotesDataSource.deleteNote — RPC status contract', () 
   it('clears the stale revision when the server reports an idempotent delete', async () => {
     rpcMock.mockResolvedValue({ data: { status: 'applied', idempotent: true }, error: null });
 
-    await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
+    await supabaseRemoteNotesDataSource.deleteNote(USER, '1', 10_005);
 
     expect((await loadRevisionState(USER)).noteRevisions['1']).toBeUndefined();
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
@@ -58,7 +58,7 @@ describe('supabaseRemoteNotesDataSource.deleteNote — RPC status contract', () 
       error: null,
     });
 
-    await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
+    await supabaseRemoteNotesDataSource.deleteNote(USER, '1', 10_005);
 
     expect((await loadRevisionState(USER)).noteRevisions['1']).toBeUndefined();
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
@@ -70,7 +70,7 @@ describe('supabaseRemoteNotesDataSource.deleteNote — RPC status contract', () 
       error: null,
     });
 
-    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1')).rejects.toThrow(
+    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1', 10_005)).rejects.toThrow(
       /Delete conflict/,
     );
   });
@@ -81,7 +81,7 @@ describe('supabaseRemoteNotesDataSource.deleteNote — RPC status contract', () 
       error: null,
     });
 
-    await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
+    await supabaseRemoteNotesDataSource.deleteNote(USER, '1', 10_005);
 
     const state = await loadRevisionState(USER);
     expect(state.lastRemoteRevision).toBe(10_011);
@@ -89,61 +89,17 @@ describe('supabaseRemoteNotesDataSource.deleteNote — RPC status contract', () 
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
   });
 
-  it('resolves a missing local revision from lookup_note_revision, then deletes', async () => {
-    await forgetNoteRevision(USER, '1');
-    rpcMock.mockImplementation(async (fn: string) => {
-      if (fn === 'lookup_note_revision') {
-        return { data: { exists: true, tombstoned: false, revision: 10_042 }, error: null };
-      }
-      return { data: { status: 'applied', revision: 10_043 }, error: null };
-    });
-
-    await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
-
-    expect(rpcMock).toHaveBeenCalledWith('lookup_note_revision', { p_note_id: '1' });
-    expect(rpcMock).toHaveBeenCalledWith('apply_note_delete', {
-      p_note_id: '1',
-      p_base_revision: 10_042,
-    });
-    expect((await loadRevisionState(USER)).noteRevisions['1']).toBeUndefined();
-    expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
-  });
-
-  it('skips apply_note_delete only after the backend confirms the note is absent', async () => {
-    await forgetNoteRevision(USER, '1');
-    rpcMock.mockImplementation(async (fn: string) => {
-      if (fn === 'lookup_note_revision') {
-        return { data: { exists: false, tombstoned: false, revision: null }, error: null };
-      }
-      return { data: { status: 'applied' }, error: null };
-    });
-
-    await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
-
-    expect(rpcMock).toHaveBeenCalledWith('lookup_note_revision', { p_note_id: '1' });
-    expect(rpcMock).not.toHaveBeenCalledWith(
-      'apply_note_delete',
-      expect.objectContaining({ p_note_id: '1' }),
-    );
-    expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
-  });
-
   it('aborts when the signed-in account changes mid-delete', async () => {
     await forgetNoteRevision(USER, '1');
     rpcMock.mockImplementation(async (fn: string) => {
-      if (fn === 'lookup_note_revision') {
+      if (fn === 'apply_note_delete') {
         beginNotesSyncSession('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
-        return { data: { exists: true, tombstoned: false, revision: 10_042 }, error: null };
       }
       return { data: { status: 'applied', revision: 10_043 }, error: null };
     });
 
-    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1')).rejects.toThrow(
+    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1', 10_005)).rejects.toThrow(
       /Account changed/,
-    );
-    expect(rpcMock).not.toHaveBeenCalledWith(
-      'apply_note_delete',
-      expect.objectContaining({ p_note_id: '1' }),
     );
   });
 });

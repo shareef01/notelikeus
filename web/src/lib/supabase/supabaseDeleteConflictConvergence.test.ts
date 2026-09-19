@@ -1,4 +1,4 @@
-﻿import 'fake-indexeddb/auto';
+import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { rpcMock } = vi.hoisted(() => ({ rpcMock: vi.fn() }));
@@ -35,10 +35,9 @@ describe('F05: Web Delete-Conflict Convergence', () => {
     await rememberNoteRevision(USER, '1', 2);
   });
 
-  // Test 1: deleteConflictRetriesUsingCurrentRemoteRevision
-  it('deleteConflictRetriesUsingCurrentRemoteRevision', async () => {
-    // Call 1: Server reports revision conflict (current is 3)
-    // Call 2: Retry with base revision 3 reports success ('applied')
+  // Test 1: deleteConflictStrictlyFails (formerly retries)
+  it('deleteConflictStrictlyFails', async () => {
+    // Server reports revision conflict (current is 3)
     rpcMock
       .mockResolvedValueOnce({
         data: {
@@ -46,36 +45,24 @@ describe('F05: Web Delete-Conflict Convergence', () => {
           current: { note_id: '1', revision: 3 },
         },
         error: null,
-      })
-      .mockResolvedValueOnce({
-        data: {
-          status: 'applied',
-          revision: 4,
-        },
-        error: null,
       });
 
-    await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
+    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1', 2)).rejects.toThrow();
 
-    // Expected: 2 calls to apply_note_delete
-    expect(rpcMock).toHaveBeenCalledTimes(2);
+    // Expected: 1 call to apply_note_delete
+    expect(rpcMock).toHaveBeenCalledTimes(1);
     expect(rpcMock).toHaveBeenNthCalledWith(1, 'apply_note_delete', {
       p_note_id: '1',
       p_base_revision: 2,
     });
-    expect(rpcMock).toHaveBeenNthCalledWith(2, 'apply_note_delete', {
-      p_note_id: '1',
-      p_base_revision: 3,
-    });
 
-    // Final result converged
-    expect((await loadRevisionState(USER)).noteRevisions['1']).toBeUndefined();
+    // Local tombstone remains
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
   });
 
-  // Test 2: deleteConflictRetryIsBounded
-  it('deleteConflictRetryIsBounded', async () => {
-    // Server repeatedly returns conflict
+  // Test 2: deleteConflictFailsImmediately
+  it('deleteConflictFailsImmediately', async () => {
+    // Server returns conflict
     rpcMock.mockResolvedValue({
       data: {
         status: 'conflict',
@@ -84,10 +71,10 @@ describe('F05: Web Delete-Conflict Convergence', () => {
       error: null,
     });
 
-    // Must fail after bounded retries (e.g. max 1 conflict retry = 2 attempts total)
-    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1')).rejects.toThrow();
+    // Must fail immediately
+    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1', 2)).rejects.toThrow();
 
-    expect(rpcMock.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(rpcMock.mock.calls.length).toBe(1);
     // Local tombstone remains so note does not resurrect locally
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
   });
@@ -100,7 +87,7 @@ describe('F05: Web Delete-Conflict Convergence', () => {
       error: null,
     });
 
-    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1')).rejects.toThrow();
+    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1', 2)).rejects.toThrow();
     // Only 1 call made, no fabricated revision
     expect(rpcMock).toHaveBeenCalledTimes(1);
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
@@ -113,7 +100,7 @@ describe('F05: Web Delete-Conflict Convergence', () => {
       error: null,
     });
 
-    await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
+    await supabaseRemoteNotesDataSource.deleteNote(USER, '1', 2);
 
     expect((await loadRevisionState(USER)).noteRevisions['1']).toBeUndefined();
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
@@ -126,25 +113,17 @@ describe('F05: Web Delete-Conflict Convergence', () => {
       error: null,
     });
 
-    await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
+    await supabaseRemoteNotesDataSource.deleteNote(USER, '1', 2);
 
     expect((await loadRevisionState(USER)).noteRevisions['1']).toBeUndefined();
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
   });
 
-  // Test 6: deleteRetryDoesNotRemoveLocalTombstoneOnNetworkFailure
-  it('deleteRetryDoesNotRemoveLocalTombstoneOnNetworkFailure', async () => {
-    rpcMock
-      .mockResolvedValueOnce({
-        data: {
-          status: 'conflict',
-          current: { note_id: '1', revision: 3 },
-        },
-        error: null,
-      })
-      .mockRejectedValueOnce(new Error('Network offline'));
+  // Test 6: deleteDoesNotRemoveLocalTombstoneOnNetworkFailure
+  it('deleteDoesNotRemoveLocalTombstoneOnNetworkFailure', async () => {
+    rpcMock.mockRejectedValueOnce(new Error('Network offline'));
 
-    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1')).rejects.toThrow(
+    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1', 2)).rejects.toThrow(
       'Network offline',
     );
 
@@ -152,20 +131,15 @@ describe('F05: Web Delete-Conflict Convergence', () => {
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
   });
 
-  // Test 7: freshClientDoesNotSeeNoteAfterSuccessfulConflictRetry
-  it('freshClientDoesNotSeeNoteAfterSuccessfulConflictRetry', async () => {
-    // Client A deletes note with conflict retry
+  // Test 7: freshClientDoesNotSeeNoteAfterStrictDelete
+  it('freshClientDoesNotSeeNoteAfterStrictDelete', async () => {
     rpcMock
       .mockResolvedValueOnce({
-        data: { status: 'conflict', current: { note_id: '1', revision: 3 } },
-        error: null,
-      })
-      .mockResolvedValueOnce({
-        data: { status: 'applied', revision: 4 },
+        data: { status: 'applied', revision: 3 },
         error: null,
       });
 
-    await supabaseRemoteNotesDataSource.deleteNote(USER, '1');
+    await supabaseRemoteNotesDataSource.deleteNote(USER, '1', 2);
 
     // Simulate Client C pulling snapshot from server
     // Server has applied deletion: note '1' is NOT in notes, but in tombstones
@@ -187,7 +161,7 @@ describe('F05: Web Delete-Conflict Convergence', () => {
         error: null,
       });
 
-      await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1')).rejects.toThrow(
+      await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1', 2)).rejects.toThrow(
         'Delete conflict for note 1',
       );
       // Fails closed: no second RPC made with malformed revision
@@ -206,7 +180,7 @@ describe('F05: Web Delete-Conflict Convergence', () => {
         error: null,
       });
 
-      await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1')).rejects.toThrow(
+      await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1', 2)).rejects.toThrow(
         'Delete conflict for note 1',
       );
       expect(rpcMock).toHaveBeenCalledTimes(1);
@@ -223,7 +197,7 @@ describe('F05: Web Delete-Conflict Convergence', () => {
         error: null,
       });
 
-      await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1')).rejects.toThrow(
+      await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1', 2)).rejects.toThrow(
         'Delete conflict for note 1',
       );
       expect(rpcMock).toHaveBeenCalledTimes(1);
@@ -240,7 +214,7 @@ describe('F05: Web Delete-Conflict Convergence', () => {
         error: null,
       });
 
-      await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1')).rejects.toThrow(
+      await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1', 2)).rejects.toThrow(
         'Delete conflict for note 1',
       );
       expect(rpcMock).toHaveBeenCalledTimes(1);

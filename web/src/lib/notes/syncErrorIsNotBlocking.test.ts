@@ -101,7 +101,7 @@ describe('cloud sync failures are non-blocking', () => {
     expect(useNotesStore.getState().syncError).toBe('JWT expired');
 
     handlers.onError({ unexpected: { nested: true } });
-    expect(useNotesStore.getState().syncError).toBe('Could not sync notes. Please try again.');
+    expect(useNotesStore.getState().syncError).toBe('Lost connection to notes server. Retrying...');
     expect(useNotesStore.getState().syncError).not.toContain('[object Object]');
   });
 
