@@ -71,15 +71,23 @@ class MainActivityShareInstrumentationTest {
 
     @Test
     fun warmDeliveryViaOnNewIntentProcessesImageShareSafely() {
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+        val initialIntent = Intent(Intent.ACTION_SEND).apply {
+            setClassName(context, "com.aus.notelikeus.MainActivity")
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, TestImageContentProvider.CONTENT_URI)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        ActivityScenario.launch<MainActivity>(initialIntent).use { scenario ->
             scenario.onActivity { activity ->
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                assertTrue(activity.isIntentConsumedForTests())
+                val newShareIntent = Intent(Intent.ACTION_SEND).apply {
                     setClassName(context, "com.aus.notelikeus.MainActivity")
                     type = "image/png"
                     putExtra(Intent.EXTRA_STREAM, TestImageContentProvider.CONTENT_URI)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                activity.onNewIntent(shareIntent)
+                activity.onNewIntent(newShareIntent)
                 assertTrue(activity.isIntentConsumedForTests())
             }
         }
