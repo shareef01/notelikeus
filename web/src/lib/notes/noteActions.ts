@@ -8,6 +8,8 @@ import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegi
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
+import { loadRevisionState } from '@/lib/supabase/revisionStore';
+import { getNoteBaseRevision } from '@/lib/supabase/revisionStore';
 import type { Note } from '@/types/note';
 
 async function persistLocalNote(note: Note, targetOwnerId?: string): Promise<void> {
@@ -111,20 +113,26 @@ export async function removeNote(noteId: string): Promise<void> {
   const attachments = existing?.attachments ?? [];
   const ownerId = resolveOwnerId();
 
+  let baselineRevision: number | null = null;
+  const userId = useAuthStore.getState().user?.uid;
+  if (userId && ownerId) {
+    const revisionState = await loadRevisionState(ownerId);
+    baselineRevision = getNoteBaseRevision(revisionState, noteId);
+  }
+
   // Persist-first: commit deletion to IndexedDB before mutating in-memory store
   if (ownerId) {
     await deleteLocalIndexedDbNote(ownerId, noteId);
   }
 
   if (!isGuest) {
-    useTombstoneStore.getState().markDeleted(noteId);
+    useTombstoneStore.getState().markDeleted(noteId, baselineRevision);
   }
   useNotesStore.getState().removeLocalNote(noteId);
 
-  const userId = useAuthStore.getState().user?.uid;
   if (userId) {
     // Remote delete: locally committed delete stays deleted/tombstoned even if remote fails
-    await getRemoteNotesDataSource().deleteNote(userId, noteId);
+    await getRemoteNotesDataSource().deleteNote(userId, noteId, baselineRevision ?? undefined);
   }
 
   if (!isR2AttachmentsEnabled() || attachments.length === 0) return;
