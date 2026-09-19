@@ -38,8 +38,8 @@ const lazySupabaseRemoteNotesDataSource: RemoteNotesDataSource = {
   async upsertNote(userId, note) {
     return (await loadSupabaseNotesSource()).upsertNote(userId, note);
   },
-  async deleteNote(userId, noteId) {
-    return (await loadSupabaseNotesSource()).deleteNote(userId, noteId);
+  async deleteNote(userId, noteId, baseRevision) {
+    return (await loadSupabaseNotesSource()).deleteNote(userId, noteId, baseRevision);
   },
   async uploadAllNotes(userId, notes) {
     return (await loadSupabaseNotesSource()).uploadAllNotes(userId, notes);
