@@ -236,7 +236,7 @@ jobs:
       # outlive a deploy -- so this shape is correct on both the first run and every
       # later one.
       - name: Deploy Worker
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        uses: cloudflare/wrangler-action@25853364521e0d392ece9b0c1e97a4b37b638087 # v4.1.2
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -248,7 +248,7 @@ jobs:
       # live Worker running with the secret in place; without it the freshly created
       # Worker would answer every request 500 until the next dispatch.
       - name: Upload Worker secret and redeploy with it
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        uses: cloudflare/wrangler-action@25853364521e0d392ece9b0c1e97a4b37b638087 # v4.1.2
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -284,7 +284,7 @@ jobs:
 
       - name: Enable the orphan sweep
         if: steps.sweep.outputs.configured == 'true'
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        uses: cloudflare/wrangler-action@25853364521e0d392ece9b0c1e97a4b37b638087 # v4.1.2
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
