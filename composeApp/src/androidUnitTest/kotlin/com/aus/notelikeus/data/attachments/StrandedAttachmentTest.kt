@@ -1,10 +1,13 @@
 package com.aus.notelikeus.data.attachments
 
+import com.aus.notelikeus.data.sync.LocalCommitGate
 import com.aus.notelikeus.data.local.dao.NoteDao
 import com.aus.notelikeus.data.remote.AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.AttachmentBlobUploadResult
+import com.aus.notelikeus.data.remote.AttachmentRemoteContext
 import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.domain.repository.LocalCommitResult
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
@@ -29,19 +32,35 @@ class StrandedAttachmentTest {
     val temp = TemporaryFolder()
 
     private object NoopTransport : AttachmentBlobTransport {
+        override suspend fun captureContext() =
+            AttachmentRemoteContext(
+                ownerId = "owner-1",
+                accessToken = "token-owner-1",
+            )
+
         override suspend fun upload(
+            context: AttachmentRemoteContext,
             noteId: String,
             attachmentId: String,
             bytes: ByteArray,
             mimeType: String,
         ) = AttachmentBlobUploadResult(
-            objectKey = "owners/owner-1/notes/$noteId/$attachmentId",
+            objectKey = "owners/${context.ownerId}/notes/$noteId/$attachmentId",
             sizeBytes = bytes.size.toLong(),
             mimeType = mimeType,
         )
 
-        override suspend fun download(noteId: String, attachmentId: String) = ByteArray(0)
-        override suspend fun delete(noteId: String, attachmentId: String) {}
+        override suspend fun download(
+            context: AttachmentRemoteContext,
+            noteId: String,
+            attachmentId: String,
+        ) = ByteArray(0)
+
+        override suspend fun delete(
+            context: AttachmentRemoteContext,
+            noteId: String,
+            attachmentId: String,
+        ) {}
     }
 
     /** Real staging on a temp dir, so "gone" means genuinely absent from the filesystem. */
@@ -88,7 +107,7 @@ class StrandedAttachmentTest {
     fun `an attachment whose staged bytes are gone is dropped from the note`() = runTest {
         val note = noteWith(pendingAttachment("gone-1"))
 
-        val synced = service(realStaging()).syncNoteAttachments(note)
+        val synced = service(realStaging()).uploadUnderLiveToken(note)
 
         assertEquals(
             "a reference nothing can ever satisfy should not stay on the note",
@@ -113,7 +132,7 @@ class StrandedAttachmentTest {
         )
         val note = noteWith(pendingAttachment("held-1"))
 
-        val synced = service(unreadableStaging(staging)).syncNoteAttachments(note)
+        val synced = service(unreadableStaging(staging)).uploadUnderLiveToken(note)
 
         assertEquals(
             "an unreadable store must not delete the user's picture",
@@ -134,8 +153,26 @@ class StrandedAttachmentTest {
         )
         val note = noteWith(pendingAttachment("gone-1"), pendingAttachment("kept-1"))
 
-        val synced = service(staging).syncNoteAttachments(note)
+        val synced = service(staging).uploadUnderLiveToken(note)
 
         assertEquals(listOf("kept-1"), synced.attachments.map { it.id })
     }
+
+    /**
+     * Uploads one note under a **live** generation token that claims no account.
+     *
+     * These lanes are about the local fence, the immutable remote identity and the staged-bytes
+     * bookkeeping rather than about which generation authorizes an upload —
+     * `AttachmentUploadRemoteStartFenceTest` covers that, and `syncNoteAttachments` no longer has an
+     * un-authorized path to drive: every upload takes a grant from the caller's token. The token here
+     * is taken for this call, so its generation is current and the upload proceeds exactly as the lane
+     * expects. Its null initiating uid is the guest/staging shape these fixtures model, so the
+     * owner-coherence check (covered by AURSF-11/12) deliberately does not apply to them.
+     */
+    private suspend fun AttachmentSyncService.uploadUnderLiveToken(note: Note): Note =
+        when (val uploaded = syncNoteAttachments(note, LocalCommitGate.capture(null))) {
+            is LocalCommitResult.Applied -> uploaded.value
+            LocalCommitResult.StaleGeneration ->
+                error("the token was taken for this call, so its generation cannot already be stale")
+        }
 }
