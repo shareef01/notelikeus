@@ -119,6 +119,5 @@
     <ID>NestedBlockDepth:NoteSyncEngine.kt$NoteSyncEngine$private suspend fun mergeCloudTombstones( commitToken: LocalCommitToken, identity: OperationRemoteIdentity, ): LocalCommitResult&lt;Map&lt;Long, Long&gt;&gt;</ID>
     <ID>SpreadOperator:PlatformModule.kt$(*DatabaseMigrations.ALL)</ID>
     <ID>SwallowedException:NoteActionsController.kt$NoteActionsController$stale: StaleActionException</ID>
-    <ID>UnusedPrivateProperty:LocalCommitGateWiringTest.kt$LocalCommitGateWiringTest$val job = launch { engine.reconcileUploads() finished.complete(Unit) }</ID>
   </CurrentIssues>
 </SmellBaseline>
