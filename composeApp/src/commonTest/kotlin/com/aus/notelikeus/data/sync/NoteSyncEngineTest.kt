@@ -591,7 +591,8 @@ class NoteSyncEngineTest {
             uidProvider = { Result.success("uid") },
             deleteNoteAttachments = { _, _, _ ->
                 gcCalls++
-                if (gcCalls == 1) error("r2 unavailable"); LocalCommitResult.Applied(Unit)
+                if (gcCalls == 1) error("r2 unavailable")
+                LocalCommitResult.Applied(Unit)
             },
         )
         stateStore.setLastMergedUserId("uid")
