@@ -58,7 +58,7 @@ class LocalCommitGateWiringTest {
             // below is the engine's own gated commit, not a lock the test got in ahead of.
             val gate = LocalCommitGate.mutex
             val finished = CompletableDeferred<Unit>()
-            val job = launch {
+            launch {
                 engine.reconcileUploads()
                 finished.complete(Unit)
             }
