@@ -60,6 +60,9 @@ class SyncChaosHarness(
 
     private fun buildEngine() = NoteSyncEngine(
         transport = transport,
+        // The same live session the `uidProvider` below reads, so a scenario that signs out or
+        // switches accounts sees the identity capture refuse exactly where the uid read fails.
+        remoteIdentityProvider = testRemoteIdentityProvider { uid },
         noteDao = noteDao,
         labelDao = labelDao,
         syncStateStore = stateStore,
@@ -136,7 +139,7 @@ class SyncChaosHarness(
             reminderTimestamp = null,
             labels = emptyList(),
             checklistItems = emptyList(),
-        )
+            revision = 1L)
         cloud.tombstones.remove(noteId)
     }
 
@@ -212,11 +215,15 @@ class SyncChaosHarness(
  * Faults are consumed as they fire, so `failOnce("writeTombstone")` models one interrupted request
  * followed by a working network — the interleaving a crash or a dropped connection actually
  * produces, rather than a transport that is broken forever.
+ *
+ * Identity-bound through the test-only adapter, and deliberately still keyed on the `uid` members
+ * below: the adapter's forwarding resolves the identity's owner into exactly those calls, so each
+ * account keeps its own rows and the fault names are unchanged.
  */
 class FaultInjectingTransport(
     /** Resolved per call from the uid the engine passes, so each account gets its own rows. */
     private val delegateFor: (String) -> CloudNoteTransport,
-) : CloudNoteTransport {
+) : TestIdentityBoundNoteTransportAdapter() {
 
     private val faults = mutableMapOf<String, MutableList<Throwable>>()
     val calls = mutableListOf<String>()
@@ -247,13 +254,16 @@ class FaultInjectingTransport(
     override suspend fun fetchNote(uid: String, noteId: Long): CloudNoteRecord? =
         gateSuspend("fetchNote") { delegateFor(uid).fetchNote(uid, noteId) }
 
-    override suspend fun putNotes(uid: String, notes: List<Note>): Map<Long, Long?> =
+    override suspend fun putNotes(uid: String, notes: List<Note>): Map<Long, CloudNoteTransport.PutResult> =
         gateSuspend("putNotes") { delegateFor(uid).putNotes(uid, notes) }
+
+    override suspend fun deleteNote(uid: String, noteId: Long, baseRevision: Long): CloudNoteTransport.DeleteResult =
+        gateSuspend("deleteNote") { delegateFor(uid).deleteNote(uid, noteId, baseRevision) }
 
     override suspend fun deleteNotes(uid: String, noteIds: List<Long>) =
         gateSuspend("deleteNotes") { delegateFor(uid).deleteNotes(uid, noteIds) }
 
-    override suspend fun restoreNote(uid: String, note: Note): Map<Long, Long?> =
+    override suspend fun restoreNote(uid: String, note: Note): Map<Long, CloudNoteTransport.PutResult> =
         gateSuspend("restoreNote") { delegateFor(uid).restoreNote(uid, note) }
 
     override suspend fun fetchTombstones(uid: String): Map<Long, Long> =

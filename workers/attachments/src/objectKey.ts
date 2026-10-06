@@ -14,21 +14,37 @@ export function buildAttachmentObjectKey(
   return `owners/${ownerId}/notes/${trimmedNoteId}/${trimmedAttachmentId}`;
 }
 
-export function parseAttachmentPath(pathname: string): { noteId: string; attachmentId: string } | null {
-  const match = pathname.match(/^\/v1\/attachments\/([^/]+)\/([^/]+)$/);
+/**
+ * An upload route, with the commitment protocol it asks for.
+ *
+ * `v1` is the protocol every deployed client and Worker already speak: an upload's metadata row is
+ * committed the moment it is stored. `v2` asks for the deferred protocol, where the row stays
+ * provisional until the note that references it commits.
+ *
+ * The version is part of the path on purpose. A Worker that predates the deferred protocol has no `v2`
+ * route at all, so it answers 404 *before it reads a byte of the body, writes an object, or calls the
+ * database* -- which is what makes it safe for a new client to be deployed ahead of a Worker. A header
+ * would not: an old Worker ignores an unknown header and commits the row anyway, which is exactly the
+ * orphan this protocol exists to prevent.
+ */
+export function parseAttachmentPath(
+  pathname: string,
+): { noteId: string; attachmentId: string; deferred: boolean } | null {
+  const match = pathname.match(/^\/(v1|v2)\/attachments\/([^/]+)\/([^/]+)$/);
   if (!match) return null;
+  const deferred = match[1] === 'v2';
   let noteId: string;
   let attachmentId: string;
   try {
-    noteId = decodeURIComponent(match[1]);
-    attachmentId = decodeURIComponent(match[2]);
+    noteId = decodeURIComponent(match[2]);
+    attachmentId = decodeURIComponent(match[3]);
   } catch {
     return null;
   }
   if (!NOTE_ID_PATTERN.test(noteId) || !ATTACHMENT_ID_PATTERN.test(attachmentId)) {
     return null;
   }
-  return { noteId, attachmentId };
+  return { noteId, attachmentId, deferred };
 }
 
 export function isAttachmentObjectKeyForOwner(objectKey: string, ownerId: string): boolean {

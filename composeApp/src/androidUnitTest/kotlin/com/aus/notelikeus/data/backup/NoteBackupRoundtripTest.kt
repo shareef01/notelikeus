@@ -1,5 +1,7 @@
 package com.aus.notelikeus.data.backup
 
+import com.aus.notelikeus.domain.repository.LocalCommitResult
+import com.aus.notelikeus.data.sync.actionToken
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
@@ -42,7 +44,7 @@ class NoteBackupRoundtripTest {
         coEvery { repository.insertLabel(any()) } returns 99L
 
         val json = exporter.createJson()
-        val result = importer.importFromJson(json) as BackupImportResult.Success
+        val result = importer.importFromJson(json, actionToken()) as BackupImportResult.Success
 
         assertEquals(1, result.notesImported)
         val captured = slot<Note>()
@@ -78,7 +80,7 @@ class NoteBackupRoundtripTest {
         coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
         coEvery { repository.getNextNotePosition() } returns 0
 
-        importer.importFromJson(json)
+        importer.importFromJson(json, actionToken())
 
         val captured = slot<Note>()
         coVerify { repository.insertNoteWithoutSync(capture(captured)) }
@@ -105,7 +107,7 @@ class NoteBackupRoundtripTest {
         coEvery { repository.getNextNotePosition() } returns 0
 
         val json = exporter.createJson()
-        val result = importer.importFromJson(json) as BackupImportResult.Success
+        val result = importer.importFromJson(json, actionToken()) as BackupImportResult.Success
 
         assertEquals(1, result.notesImported)
         val captured = slot<Note>()
@@ -123,7 +125,7 @@ class NoteBackupRoundtripTest {
             put("notes", org.json.JSONArray())
         }.toString()
 
-        val result = importer.importFromJson(json)
+        val result = importer.importFromJson(json, actionToken())
         assertTrue(result is BackupImportResult.InvalidFormat)
         assertTrue((result as BackupImportResult.InvalidFormat).message.contains("Unsupported backup version"))
     }
@@ -134,6 +136,8 @@ class NoteBackupRoundtripTest {
             block()
         }
         coEvery { repository.insertNoteWithoutSync(any()) } returns 42L
-        coEvery { repository.finalizeImportedNotes(any()) } returns Unit
+        // The import finalizes under its own origin token, so that is the overload to stub: a
+        // relaxed mock cannot invent a sealed `LocalCommitResult`.
+        coEvery { repository.finalizeImportedNotes(any(), any()) } returns LocalCommitResult.Applied(Unit)
     }
 }

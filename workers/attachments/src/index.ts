@@ -205,7 +205,7 @@ async function putAttachment(
   request: Request,
   env: WorkerEnv,
   objectKey: string,
-  parsed: { noteId: string; attachmentId: string },
+  parsed: { noteId: string; attachmentId: string; deferred: boolean },
 ): Promise<Response> {
   const mimeType = normalizeMimeType(request.headers.get('Content-Type'));
   const declared = declaredContentLength(request.headers.get('Content-Length'));
@@ -307,14 +307,33 @@ async function putAttachment(
   // Phase 3: metadata finalization in database
   let finalized: AttachmentAuthz | null;
   try {
-    finalized = await authorizeAttachment(request, env, 'finalize_note_attachment_put', {
-      p_note_id: parsed.noteId,
-      p_attachment_id: parsed.attachmentId,
-      p_object_key: objectKey,
-      p_mime_type: mimeType,
-      p_size_bytes: body.byteLength,
-      p_attachment_type: 'image',
-    });
+    // The v2 route asks for the deferred protocol: the row is created provisional and becomes visible
+    // only when the note that references it commits (see `apply_note_change`'s attachment-id argument).
+    // The v1 payload is byte-identical to what every deployed client and Worker already send, so an
+    // older client's upload keeps committing its row at upload time.
+    finalized = await authorizeAttachment(
+      request,
+      env,
+      'finalize_note_attachment_put',
+      parsed.deferred
+        ? {
+            p_note_id: parsed.noteId,
+            p_attachment_id: parsed.attachmentId,
+            p_object_key: objectKey,
+            p_mime_type: mimeType,
+            p_size_bytes: body.byteLength,
+            p_provisional: true,
+            p_attachment_type: 'image',
+          }
+        : {
+            p_note_id: parsed.noteId,
+            p_attachment_id: parsed.attachmentId,
+            p_object_key: objectKey,
+            p_mime_type: mimeType,
+            p_size_bytes: body.byteLength,
+            p_attachment_type: 'image',
+          },
+    );
   } catch (error) {
     await compensate('upstream finalization error');
     throw error;
