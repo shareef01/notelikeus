@@ -1,7 +1,6 @@
 package com.aus.notelikeus.data.sync
 
 import com.aus.notelikeus.domain.model.Note
-import com.aus.notelikeus.domain.platform.SyncCoordinator
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,7 +21,7 @@ class LocalAccountIsolatorTest {
             FakeNoteRepository(),
             FakeNoteSyncStateStore(),
             RecordingSyncCoordinator(),
-            clearStagedAttachmentCache = { cleared++ },
+            clearDatasetScopedInMemoryState = { cleared++ },
         )
 
         isolator.isolate()
@@ -39,7 +38,7 @@ class LocalAccountIsolatorTest {
             FakeNoteRepository(),
             stateStore,
             RecordingSyncCoordinator(),
-            clearStagedAttachmentCache = { cleared++ },
+            clearDatasetScopedInMemoryState = { cleared++ },
         )
 
         isolator.isolateIfAccountChanged("bob")
@@ -176,15 +175,5 @@ class LocalAccountIsolatorTest {
         assertEquals(0, repository.getCloudEligibleNoteCount())
         assertNull(stateStore.lastMergedUserId())
         assertEquals(1, coordinator.clearPendingCount)
-    }
-}
-
-private class RecordingSyncCoordinator : SyncCoordinator {
-    var clearPendingCount = 0
-    override fun scheduleUpload(noteId: Long) {}
-    override fun scheduleDelete(noteId: Long) {}
-    override fun scheduleRestore(noteId: Long) {}
-    override fun clearPending() {
-        clearPendingCount++
     }
 }

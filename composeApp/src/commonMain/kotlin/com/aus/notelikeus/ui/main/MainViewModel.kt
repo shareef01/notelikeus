@@ -15,6 +15,7 @@ import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
+import com.aus.notelikeus.domain.repository.LocalCommitTokenProvider
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.domain.repository.SyncManager
@@ -55,6 +56,12 @@ private const val SEARCH_DEBOUNCE_MS = 250L
  */
 class MainViewModel(
     private val repository: NoteRepository,
+    /**
+     * The dataset generation a user action belongs to, captured at the tap, so a note action cannot
+     * commit into the dataset that replaced the one the user was looking at — see R15 in
+     * docs/AUDIT_DEEPSEEK_2026-09-20.md.
+     */
+    private val localCommitTokenProvider: LocalCommitTokenProvider,
     private val settingsRepository: SettingsRepository,
     backupExporter: NoteBackupExporter,
     backupImporter: NoteBackupImporter,
@@ -75,6 +82,7 @@ class MainViewModel(
         repository = repository,
         state = _state,
         scope = viewModelScope,
+        localCommitTokenProvider = localCommitTokenProvider,
         hideNotes = { ids -> hideNotesTemporarily(ids) },
         revealNotes = { ids -> revealNotes(ids) },
         onListStructureChanged = {
@@ -628,10 +636,13 @@ class MainViewModel(
     }
 
     fun commitNoteOrder() {
+        // Captured on the drop that commits the order, before the coroutine is launched: the drag
+        // was made in the dataset on screen, and the re-upload of every moved note belongs to it.
+        val commitToken = localCommitTokenProvider.capture()
         viewModelScope.launch {
             val notes = _state.value.notes
             try {
-                repository.updateNotePositions(notes)
+                repository.updateNotePositions(notes, commitToken)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -687,8 +698,13 @@ class MainViewModel(
     }
 
     suspend fun importBackup(json: String): BackupImportResult {
+        // The import's own origin: the file the user chose to bring into *this* library. Captured
+        // once and threaded through every insert's upload, so an isolation that lands mid-import
+        // supersedes the import instead of letting its remaining notes be queued as the replacement
+        // dataset's work.
+        val commitToken = localCommitTokenProvider.capture()
         val result = try {
-            backupImporter.importFromJson(json)
+            backupImporter.importFromJson(json, commitToken)
         } catch (e: Exception) {
             BackupImportResult.Error(e)
         }
@@ -697,8 +713,10 @@ class MainViewModel(
     }
 
     suspend fun importBackupBundle(archive: ByteArray): BackupImportResult {
+        // Captured at the same origin as importBackup above, for the same reason.
+        val commitToken = localCommitTokenProvider.capture()
         val result = try {
-            bundleOperations.importBundle(archive)
+            bundleOperations.importBundle(archive, commitToken)
         } catch (e: Exception) {
             BackupImportResult.Error(e)
         }
@@ -718,6 +736,14 @@ class MainViewModel(
                         )
                     is BackupImportResult.InvalidFormat ->
                         BackupTransferEvent.ImportRejected(result.message)
+                    // The session changed under the import. Nothing was kept and nothing was
+                    // queued, so this is a rejection the user can act on — sign in again and import
+                    // the same file — rather than the storage failure `ImportFailed` implies.
+                    is BackupImportResult.Superseded ->
+                        BackupTransferEvent.ImportRejected(
+                            "Your account changed while the import was running, so nothing was " +
+                                "imported. Sign in again and import the file once more."
+                        )
                     else -> BackupTransferEvent.ImportFailed
                 },
             )

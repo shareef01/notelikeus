@@ -1,6 +1,9 @@
 package com.aus.notelikeus.ui.main
 
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.domain.repository.LocalCommitResult
+import com.aus.notelikeus.domain.repository.LocalCommitToken
+import com.aus.notelikeus.domain.repository.LocalCommitTokenProvider
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.util.AppLog
 import com.aus.notelikeus.util.DateUtils
@@ -28,6 +31,15 @@ internal class NoteActionsController(
     private val repository: NoteRepository,
     private val state: MutableStateFlow<MainState>,
     private val scope: CoroutineScope,
+    /**
+     * Supplies the dataset generation each user action belongs to.
+     *
+     * Every write below is account-owned local state keyed by a per-device autoincrement note id, so
+     * an action whose tap happened in one dataset must not commit into the one that replaced it —
+     * `R15` in docs/AUDIT_DEEPSEEK_2026-09-20.md. The token is taken **once per action**, at the tap,
+     * and threaded into every repository call that action makes.
+     */
+    private val localCommitTokenProvider: LocalCommitTokenProvider,
     private val hideNotes: (Collection<Long>) -> Unit,
     private val revealNotes: (Collection<Long>) -> Unit,
     private val onListStructureChanged: () -> Unit
@@ -56,15 +68,26 @@ internal class NoteActionsController(
      */
     private fun launchAction(
         failure: NoteActionFailure,
-        block: suspend (hide: (Collection<Long>) -> Unit) -> Unit
+        block: suspend (token: LocalCommitToken, hide: (Collection<Long>) -> Unit) -> Unit
     ) {
+        // The action boundary: one token, taken at the tap and before the action's coroutine starts,
+        // so an isolation landing anywhere between the tap and the DAO refuses the whole action
+        // instead of committing it into the dataset that replaced the one the user was looking at.
+        val token = localCommitTokenProvider.capture()
         scope.launch {
             val hidden = mutableSetOf<Long>()
             try {
-                block { ids ->
+                block(token) { ids ->
                     hidden.addAll(ids)
                     hideNotes(ids)
                 }
+            } catch (stale: StaleActionException) {
+                // The dataset this action belonged to is gone. That is not a failure to report — the
+                // replacement dataset is a different library — so the optimistic hide is undone and
+                // no user-visible failure is raised.
+                revealNotes(hidden)
+                pendingUndo = null
+                state.update { it.copy(pendingUndoMessage = null) }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -107,9 +130,9 @@ internal class NoteActionsController(
     fun archiveNote(note: Note) {
         val noteId = note.id ?: return
         pendingUndo = PendingUndo(listOf(note), UndoAction.ARCHIVE)
-        launchAction(NoteActionFailure.UPDATE) { hide ->
+        launchAction(NoteActionFailure.UPDATE) { token, hide ->
             hide(listOf(noteId))
-            repository.updateNote(
+            applyUpdate(token,
                 note.copy(
                     isArchived = true,
                     isTrashed = false,
@@ -122,15 +145,15 @@ internal class NoteActionsController(
     fun trashNote(note: Note) {
         val noteId = note.id ?: return
         val isPermanent = state.value.currentFilter == NoteFilter.TRASHED
-        launchAction(if (isPermanent) NoteActionFailure.DELETE else NoteActionFailure.UPDATE) { hide ->
+        launchAction(if (isPermanent) NoteActionFailure.DELETE else NoteActionFailure.UPDATE) { token, hide ->
             if (isPermanent) {
                 pendingUndo = PendingUndo(listOf(note), UndoAction.PERMANENT_DELETE)
                 hide(listOf(noteId))
-                repository.deleteNote(note)
+                applyDelete(token, note)
             } else {
                 pendingUndo = PendingUndo(listOf(note), UndoAction.TRASH)
                 hide(listOf(noteId))
-                repository.updateNote(
+                applyUpdate(token,
                     note.copy(
                         isTrashed = true,
                         isArchived = false,
@@ -143,20 +166,20 @@ internal class NoteActionsController(
 
     fun emptyTrash() {
         if (state.value.currentFilter != NoteFilter.TRASHED) return
-        launchAction(NoteActionFailure.DELETE) { hide ->
+        launchAction(NoteActionFailure.DELETE) { token, hide ->
             val notesToDelete = state.value.notes.toList()
             if (notesToDelete.isEmpty()) return@launchAction
             pendingUndo = PendingUndo(notesToDelete, UndoAction.PERMANENT_DELETE)
             hide(notesToDelete.mapNotNull { it.id })
             notesToDelete.forEach { note ->
-                repository.deleteNote(note.copy(timestamp = DateUtils.currentTimeMillis()))
+                applyDelete(token, note.copy(timestamp = DateUtils.currentTimeMillis()))
             }
             clearSelection()
         }
     }
 
     fun deleteSelectedNotes() {
-        launchAction(NoteActionFailure.DELETE) { hide ->
+        launchAction(NoteActionFailure.DELETE) { token, hide ->
             val notesToDelete = state.value.notes.filter { it.id in state.value.selectedNotes }
             val type = if (state.value.currentFilter == NoteFilter.TRASHED) {
                 UndoAction.PERMANENT_DELETE
@@ -167,9 +190,9 @@ internal class NoteActionsController(
             hide(notesToDelete.mapNotNull { it.id })
             notesToDelete.forEach { note ->
                 if (state.value.currentFilter == NoteFilter.TRASHED) {
-                    repository.deleteNote(note.copy(timestamp = DateUtils.currentTimeMillis()))
+                    applyDelete(token, note.copy(timestamp = DateUtils.currentTimeMillis()))
                 } else {
-                    repository.updateNote(
+                    applyUpdate(token,
                         note.copy(
                             isTrashed = true,
                             isArchived = false,
@@ -183,12 +206,12 @@ internal class NoteActionsController(
     }
 
     fun archiveSelectedNotes() {
-        launchAction(NoteActionFailure.UPDATE) { hide ->
+        launchAction(NoteActionFailure.UPDATE) { token, hide ->
             val notesToArchive = state.value.notes.filter { it.id in state.value.selectedNotes }
             pendingUndo = PendingUndo(notesToArchive, UndoAction.ARCHIVE)
             hide(notesToArchive.mapNotNull { it.id })
             notesToArchive.forEach { note ->
-                repository.updateNote(
+                applyUpdate(token,
                     note.copy(
                         isArchived = true,
                         isTrashed = false,
@@ -206,10 +229,10 @@ internal class NoteActionsController(
     // favour. Leaving it unchanged meant uploadNote skipped the upload *and* the next download
     // overwrote the row, so restoring or pinning a synced note silently undid itself.
     fun restoreSelectedNotes() {
-        launchAction(NoteActionFailure.UPDATE) {
+        launchAction(NoteActionFailure.UPDATE) { token, _ ->
             val notesToRestore = state.value.notes.filter { it.id in state.value.selectedNotes }
             notesToRestore.forEach { note ->
-                repository.updateNote(
+                applyUpdate(token,
                     note.copy(
                         isArchived = false,
                         isTrashed = false,
@@ -222,10 +245,10 @@ internal class NoteActionsController(
     }
 
     fun setSelectedNotesPinned(pin: Boolean) {
-        launchAction(NoteActionFailure.UPDATE) {
+        launchAction(NoteActionFailure.UPDATE) { token, _ ->
             val notesToUpdate = state.value.notes.filter { it.id in state.value.selectedNotes }
             notesToUpdate.forEach { note ->
-                repository.updateNote(
+                applyUpdate(token,
                     note.copy(isPinned = pin, timestamp = DateUtils.currentTimeMillis())
                 )
             }
@@ -235,18 +258,18 @@ internal class NoteActionsController(
 
     fun undoLastAction() {
         val undo = pendingUndo ?: return
-        launchAction(NoteActionFailure.UNDO) {
+        launchAction(NoteActionFailure.UNDO) { token, _ ->
             val restoredIds = undo.notes.mapNotNull { it.id }
             revealNotes(restoredIds)
             when (undo.type) {
                 UndoAction.ARCHIVE, UndoAction.TRASH -> {
                     undo.notes.forEach { note ->
-                        repository.updateNote(note.copy(timestamp = DateUtils.currentTimeMillis()))
+                        applyUpdate(token, note.copy(timestamp = DateUtils.currentTimeMillis()))
                     }
                 }
                 UndoAction.PERMANENT_DELETE -> {
                     undo.notes.forEach { note ->
-                        repository.restoreNote(note.copy(timestamp = DateUtils.currentTimeMillis()))
+                        applyRestore(token, note.copy(timestamp = DateUtils.currentTimeMillis()))
                     }
                     onListStructureChanged()
                 }
@@ -254,6 +277,30 @@ internal class NoteActionsController(
             pendingUndo = null
         }
     }
+
+    /**
+     * Runs one account-bound action call, abandoning the whole action when its dataset is gone.
+     *
+     * [LocalCommitResult.StaleGeneration] is a deliberate account-boundary refusal rather than a
+     * persistence failure, so it must not be reported to the replacement dataset as "that didn't
+     * work" — and it must travel as itself, not folded into a generic success or failure.
+     */
+    private fun <T> fenced(result: LocalCommitResult<T>): T = when (result) {
+        is LocalCommitResult.Applied -> result.value
+        LocalCommitResult.StaleGeneration -> throw StaleActionException()
+    }
+
+    private suspend fun applyUpdate(token: LocalCommitToken, note: Note) =
+        fenced(repository.updateNote(note, token))
+
+    private suspend fun applyDelete(token: LocalCommitToken, note: Note) =
+        fenced(repository.deleteNote(note, token))
+
+    private suspend fun applyRestore(token: LocalCommitToken, note: Note) =
+        fenced(repository.restoreNote(note, token))
+
+    /** Carries a generation refusal out of [launchAction]'s block without logging it as a failure. */
+    private class StaleActionException : RuntimeException()
 
     private companion object {
         const val TAG = "NoteActions"
