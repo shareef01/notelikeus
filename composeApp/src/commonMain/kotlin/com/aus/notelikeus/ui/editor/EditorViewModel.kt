@@ -17,6 +17,9 @@ import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.domain.repository.LocalCommitResult
+import com.aus.notelikeus.domain.repository.LocalCommitToken
+import com.aus.notelikeus.domain.repository.LocalCommitTokenProvider
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.domain.platform.ReminderDelivery
@@ -79,6 +82,14 @@ class EditorViewModel(
      */
     private val attachmentsEnabled: () -> Boolean = ::isR2AttachmentsEnabled,
     private val syncManager: SyncManager? = null,
+    /**
+     * Supplies the account/dataset identity an edit belongs to.
+     *
+     * REQUIRED, with no default: a security-sensitive dependency must not carry a production
+     * fallback that silently bypasses the account gate. The editor does not capture or use a token
+     * yet -- threading it through autosave is the next phase.
+     */
+    private val localCommitTokenProvider: LocalCommitTokenProvider,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(EditorState())
@@ -332,28 +343,61 @@ class EditorViewModel(
     fun toggleArchive(onArchived: ((Note) -> Unit)? = null) {
         val wasArchived = _state.value.isArchived
         _state.update { it.copy(isArchived = !it.isArchived) }
+        // Fenced: the token is captured on the user's own action, before the coroutine is launched,
+        // so a dataset switch during the save cannot archive into the new account's dataset.
+        val commitToken = localCommitTokenProvider.capture()
         viewModelScope.launch {
             autosaveJob?.cancel()
             if (!wasArchived) {
                 val snapshot = buildNoteFromState(_state.value).copy(isArchived = false)
-                // Only offer the undo if the archive actually reached the database.
-                if (persistNoteReportingFailure()) onArchived?.invoke(snapshot)
+                when (persistNoteReturningOutcome(commitToken)) {
+                    // Only offer the undo if the archive actually reached the database.
+                    is PersistNoteOutcome.Saved, PersistNoteOutcome.NothingToSave ->
+                        onArchived?.invoke(snapshot)
+                    PersistNoteOutcome.StaleGeneration -> rollBackArchiveFlip(wasArchived)
+                    // A real write failure: reported into the state, and deliberately no callback.
+                    null -> Unit
+                }
             } else {
-                persistNoteReportingFailure()
+                when (persistNoteReturningOutcome(commitToken)) {
+                    PersistNoteOutcome.StaleGeneration -> rollBackArchiveFlip(wasArchived)
+                    else -> Unit
+                }
             }
         }
     }
 
-    suspend fun trashNoteForDelete(): Note? {
+    /**
+     * Undoes the optimistic archive flip after an account-boundary refusal.
+     *
+     * Only [EditorState.isArchived] is restored: the editor deliberately did not persist an archive
+     * state, so it must stop claiming one — but the user's title/content/checklist edits are not
+     * this method's business and are left exactly as they are.
+     */
+    private fun rollBackArchiveFlip(wasArchived: Boolean) {
+        _state.update { it.copy(isArchived = wasArchived) }
+    }
+
+    suspend fun trashNoteForDelete(): TrashNoteResult {
         autosaveJob?.cancel()
         val state = _state.value
         val snapshot = buildNoteFromState(state).copy(isTrashed = false)
         if (snapshot.title.isEmpty() && snapshot.content.isEmpty() && snapshot.checklist.isEmpty()) {
-            return null
+            return TrashNoteResult.NothingToTrash
         }
+        val wasTrashed = state.isTrashed
         _state.update { it.copy(isTrashed = true) }
-        persistNote()
-        return snapshot
+        // Fenced. Exceptions deliberately propagate to the caller's runCatching, exactly as before.
+        val commitToken = localCommitTokenProvider.capture()
+        return when (persistNote(commitToken)) {
+            is PersistNoteOutcome.Saved, PersistNoteOutcome.NothingToSave ->
+                TrashNoteResult.Trashed(snapshot)
+            PersistNoteOutcome.StaleGeneration -> {
+                // Not a trash: the caller must not stage an undo for a note that was never removed.
+                _state.update { it.copy(isTrashed = wasTrashed) }
+                TrashNoteResult.AccountChanged
+            }
+        }
     }
 
     private fun buildNoteFromState(state: EditorState): Note {
@@ -458,7 +502,22 @@ class EditorViewModel(
      * the note was new, so the next save inserted it a second time, and on the update path the
      * user's text never reached Room at all because the write came after the upload.
      */
-    private suspend fun persistNote(): Long? = saveMutex.withLock {
+    /**
+     * How an existing-note persistence attempt ended.
+     *
+     * [StaleGeneration] is an account-boundary refusal, not a write failure: it must never be
+     * reported to the new account as "save failed", and it is deliberately not `null` or an
+     * exception so the distinction cannot be lost. Private to the editor's persistence.
+     */
+    private sealed interface PersistNoteOutcome {
+        data class Saved(val noteId: Long) : PersistNoteOutcome
+        data object NothingToSave : PersistNoteOutcome
+        data object StaleGeneration : PersistNoteOutcome
+    }
+
+    private suspend fun persistNote(
+        commitToken: LocalCommitToken,
+    ): PersistNoteOutcome = saveMutex.withLock {
         val currentState = clampStateToSyncLimits(_state.value)
         if (currentState.title.isEmpty() &&
             currentState.content.isEmpty() &&
@@ -466,7 +525,7 @@ class EditorViewModel(
             currentState.attachments.isEmpty()
         ) {
             _state.update { it.copy(isSaving = false) }
-            return@withLock null
+            return@withLock PersistNoteOutcome.NothingToSave
         }
 
         _state.update { it.copy(isSaving = true, saveFailed = false) }
@@ -482,10 +541,27 @@ class EditorViewModel(
             timestamp = updatedTimestamp,
         )
         val savedId = if (note.id == null) {
+            // A new note has no durable id yet, so the draft cannot name its owning note in its
+            // attachment metadata. Binding the generated id back in is owned by the fenced insert
+            // itself, inside the same transaction as the row it belongs to.
             val draftForInsert = note.copy(
                 attachments = note.attachments.map { it.copy(noteId = 0L) },
             )
-            val newId = repository.insertNoteWithResult(draftForInsert)
+            val newId =
+                // The fenced insert owns the whole local creation — row, labels, checklist, the
+                // generated-id binding, and its reminder/upload/widget effects — under the account
+                // generation this save was initiated in.
+                when (val inserted = repository.insertNoteWithResult(draftForInsert, commitToken)) {
+                    is LocalCommitResult.Applied -> inserted.value
+                    LocalCommitResult.StaleGeneration -> {
+                        // The dataset this note belonged to is gone. The insert created nothing,
+                        // bound nothing and scheduled nothing, so there is no id to adopt either:
+                        // refuse quietly and stop the chain before any attachment continuation,
+                        // cleanup or save flag runs.
+                        _state.update { it.copy(isSaving = false, saveFailed = false) }
+                        return@withLock PersistNoteOutcome.StaleGeneration
+                    }
+                }
             note = note.copy(
                 id = newId,
                 attachments = note.attachments.map { it.copy(noteId = newId) },
@@ -500,13 +576,19 @@ class EditorViewModel(
                     attachments = note.attachments,
                 )
             }
-            // Bind the generated id to the staged bytes and re-write the note with the bound
-            // attachments, so the local record is coherent without waiting on R2.
-            repository.updateNote(note)
             newId
         } else {
             note = note.copy(attachments = note.attachments.map { it.copy(noteId = note.id!!) })
-            repository.updateNote(note)
+            when (repository.updateNote(note, commitToken)) {
+                is LocalCommitResult.Applied -> Unit
+                LocalCommitResult.StaleGeneration -> {
+                    // The dataset this edit belonged to is gone. Refuse quietly and stop the
+                    // chain: no timestamp adoption, no saved flag, no attachment upload, no
+                    // reference binding, no cleanup, no reminder write.
+                    _state.update { it.copy(isSaving = false, saveFailed = false) }
+                    return@withLock PersistNoteOutcome.StaleGeneration
+                }
+            }
             _state.update { it.copy(timestamp = updatedTimestamp, attachments = note.attachments) }
             note.id
         }
@@ -515,19 +597,63 @@ class EditorViewModel(
         // not be able to turn this into a failed save.
         _state.update { it.copy(isSaving = false, isSavedLocally = true, saveFailed = false) }
         if (savedId != null) {
-            runCatching { attachmentSync?.bindStagedAttachmentsToNote(savedId, note.attachments) }
-            syncRemoteAttachments(note)
+            // The attachment continuation carries `commitToken` — the token captured when THIS save
+            // was initiated — and never a fresh one. Every step below mutates account-owned local
+            // state (staged metadata, the note row) after the primary save has already returned, so
+            // a dataset change in between has to refuse it rather than let it be absorbed into
+            // whatever account is current by then.
+            val bound = bindStagedAttachmentsToNote(savedId, note.attachments, commitToken)
+            // A refused binding means this dataset is gone: uploading those bytes and rewriting the
+            // note would either be wasted work or land on the new account's record, so stop here.
+            if (bound) syncRemoteAttachments(note, commitToken)
         }
 
         val noteIdForCleanup = savedId ?: note.id
         if (noteIdForCleanup != null && removedAttachments.isNotEmpty()) {
-            runCatching {
-                attachmentSync?.deleteAttachmentsForNote(noteIdForCleanup, removedAttachments.toList())
-            }
+            deleteRemovedAttachments(noteIdForCleanup, removedAttachments.toList(), commitToken)
             removedAttachments.clear()
         }
-        syncReminder(savedId ?: return@withLock null, _state.value)
-        return savedId
+        // No reminder write here: the repository performs reminder synchronisation inside its own
+        // gate-owned logical update, and a write out here could land after isolation released the
+        // gate and mutate OS reminder state for the new account's colliding note id.
+        if (savedId == null) return@withLock PersistNoteOutcome.NothingToSave
+        return@withLock PersistNoteOutcome.Saved(savedId)
+    }
+
+    /**
+     * Records the id this save produced on the bytes staged for it.
+     *
+     * Returns false only when the account boundary refused the binding. A real failure here keeps
+     * the pre-existing behaviour of never failing the save — the bytes stay staged and restart
+     * reconciliation rebinds them — so it reports "continue" instead.
+     */
+    private suspend fun bindStagedAttachmentsToNote(
+        noteId: Long,
+        attachments: List<Attachment>,
+        commitToken: LocalCommitToken,
+    ): Boolean = runCatching {
+        val sync = attachmentSync ?: return@runCatching true
+        when (sync.bindStagedAttachmentsToNote(noteId, attachments, commitToken)) {
+            is LocalCommitResult.Applied -> true
+            LocalCommitResult.StaleGeneration -> false
+        }
+    }.getOrDefault(true)
+
+    /**
+     * Drops the attachments the user removed, together with the local and remote state behind them.
+     *
+     * Best effort by contract, exactly as before: an unreachable server must not fail the save. The
+     * staged bytes of a removal are released when the user removes the attachment, not here.
+     */
+    private suspend fun deleteRemovedAttachments(
+        noteId: Long,
+        removed: List<Attachment>,
+        commitToken: LocalCommitToken,
+    ) {
+        runCatching {
+            val sync = attachmentSync ?: return@runCatching
+            sync.deleteAttachmentsForNote(noteId, removed, commitToken)
+        }
     }
 
     /**
@@ -536,17 +662,29 @@ class EditorViewModel(
      * Runs only after the note is durably local. A failure here means the image has not reached
      * the cloud yet — the note, and the staged bytes behind the attachment, are both still on the
      * device — so it sets the pending-sync flag rather than reporting a failed save.
+     *
+     * The upload is remote work and stays outside any account gate: isolation must never wait on a
+     * round trip. Only the local record write that follows it is fenced, and it uses the token the
+     * originating save was initiated under — never a freshly captured one.
+     *
+     * That token reaches the upload too, so each blob the upload issues takes its own one-shot
+     * authorization from the generation this save belongs to. A refused upload means the dataset is
+     * gone, leaving nothing to record and no row of the replacement dataset to rewrite, so the
+     * continuation stops rather than adopting anything.
      */
-    private suspend fun syncRemoteAttachments(note: Note) {
+    private suspend fun syncRemoteAttachments(note: Note, commitToken: LocalCommitToken) {
         val sync = attachmentSync ?: return
         if (note.attachments.none { isPendingAttachment(it.storagePath) }) return
         try {
-            val synced = sync.syncNoteAttachments(note)
+            val synced = when (val uploaded = sync.syncNoteAttachments(note, commitToken)) {
+                is LocalCommitResult.Applied -> uploaded.value
+                LocalCommitResult.StaleGeneration -> return
+            }
             if (synced.attachments == note.attachments) {
                 _state.update { it.copy(attachmentSyncPending = false) }
                 return
             }
-            repository.updateNote(synced)
+            if (!storeUploadedAttachmentPaths(synced, commitToken)) return
             _state.update { current ->
                 // Only adopt the uploaded paths if the editor is still on this note and the user
                 // has not since changed the attachment set.
@@ -562,22 +700,56 @@ class EditorViewModel(
     }
 
     /**
+     * Writes the uploaded attachment paths onto the note row.
+     *
+     * Returns false when the dataset this upload belonged to is gone. That is not a save failure:
+     * the note itself was saved successfully in that dataset and the upload result belongs to it,
+     * so the editor neither rewrites a local row nor reports an error for it.
+     */
+    private suspend fun storeUploadedAttachmentPaths(
+        synced: Note,
+        commitToken: LocalCommitToken,
+    ): Boolean {
+        return when (repository.updateNote(synced, commitToken)) {
+            is LocalCommitResult.Applied -> true
+            LocalCommitResult.StaleGeneration -> false
+        }
+    }
+
+    /**
      * [persistNote] for the fire-and-forget call sites, which have no caller to propagate to: the
      * exception used to escape into [viewModelScope] with the editor still showing the unsaved
      * text as if it were stored. Reports the failure into the state instead, and returns whether
      * the save landed.
      */
-    private suspend fun persistNoteReportingFailure(): Boolean {
+    private suspend fun persistNoteReportingFailure(
+        commitToken: LocalCommitToken,
+    ): Boolean {
+        val outcome = persistNoteReturningOutcome(commitToken) ?: return false
+        // An account-boundary refusal is not a write failure, so it is not reported as one.
+        return outcome != PersistNoteOutcome.StaleGeneration
+    }
+
+    /**
+     * [persistNote] for the call sites that must tell an account-boundary refusal apart from a real
+     * write without losing the fire-and-forget failure reporting.
+     *
+     * Returns the outcome, or `null` when the write genuinely failed — in which case the failure has
+     * already been reported into the state, exactly as [persistNoteReportingFailure] does.
+     * Cancellation is still rethrown rather than reported.
+     */
+    private suspend fun persistNoteReturningOutcome(
+        commitToken: LocalCommitToken,
+    ): PersistNoteOutcome? {
         return try {
-            persistNote()
-            true
+            persistNote(commitToken)
         } catch (cancellation: CancellationException) {
             _state.update { it.copy(isSaving = false) }
             throw cancellation
         } catch (error: Exception) {
             AppLog.warn(TAG, "Saving the note failed", error)
             _state.update { it.copy(isSaving = false, saveFailed = true) }
-            false
+            null
         }
     }
 
@@ -776,11 +948,16 @@ class EditorViewModel(
 
     private fun triggerAutosave() {
         autosaveJob?.cancel()
+        // Captured HERE, synchronously, before the coroutine is even launched: the token has to
+        // describe the dataset the edit originated in, which is unknowable once the debounce has
+        // elapsed and the account may have moved on. Reading it inside the coroutine (or worse,
+        // when it wakes) would stamp a stale edit with the new account's generation.
+        val commitToken = localCommitTokenProvider.capture()
         autosaveJob = viewModelScope.launch {
             delay(1000)
             // persistNote, not saveNote: saveNote cancels autosaveJob, which from in here would
             // mean cancelling the very coroutine about to do the work.
-            persistNoteReportingFailure()
+            persistNoteReportingFailure(commitToken)
         }
     }
 
@@ -794,8 +971,12 @@ class EditorViewModel(
 
         // Supersede any autosave still counting down, so this save is the only one in flight.
         autosaveJob?.cancel()
+        // Captured synchronously on the user's own action, before the coroutine is launched: the
+        // token has to describe the dataset this save originated in, and a queued write can start
+        // after an account boundary has already moved on.
+        val commitToken = localCommitTokenProvider.capture()
         viewModelScope.launch {
-            persistNoteReportingFailure()
+            persistNoteReportingFailure(commitToken)
         }
     }
 
@@ -811,7 +992,9 @@ class EditorViewModel(
             currentState.attachments.isEmpty()
         ) return
         autosaveJob?.cancel()
-        persistNote()
+        // Captured before the suspending persistence call, on the caller's own action.
+        val commitToken = localCommitTokenProvider.capture()
+        persistNote(commitToken)
     }
 
     /**
@@ -829,14 +1012,26 @@ class EditorViewModel(
             return LocalSaveResult.Unchanged
         }
         autosaveJob?.cancel()
+        // Captured synchronously, before the first suspension. This is a fenced save now, so the
+        // stale outcome below is reachable rather than theoretical.
+        val commitToken = localCommitTokenProvider.capture()
         return try {
-            val id = persistNote()
-            if (id == null) {
-                _state.update { it.copy(isSaving = false) }
-                LocalSaveResult.Unchanged
-            } else {
-                _state.update { it.copy(isSaving = false, saveFailed = false, isSavedLocally = true) }
-                LocalSaveResult.Saved(id)
+            when (val outcome = persistNote(commitToken)) {
+                is PersistNoteOutcome.Saved -> {
+                    _state.update { it.copy(isSaving = false, saveFailed = false, isSavedLocally = true) }
+                    LocalSaveResult.Saved(outcome.noteId)
+                }
+                PersistNoteOutcome.NothingToSave -> {
+                    _state.update { it.copy(isSaving = false) }
+                    LocalSaveResult.Unchanged
+                }
+                PersistNoteOutcome.StaleGeneration -> {
+                    // The account-owned dataset changed after this save began. The edit is refused
+                    // rather than written into the new dataset's row, which is not a write failure:
+                    // nothing was rejected, so saveFailed stays false.
+                    _state.update { it.copy(isSaving = false) }
+                    LocalSaveResult.AccountChanged
+                }
             }
         } catch (cancellation: CancellationException) {
             _state.update { it.copy(isSaving = false) }
@@ -871,17 +1066,6 @@ class EditorViewModel(
      * would confirm the wrong thing.
      */
     fun reminderDelivery(): ReminderDelivery = reminderManager.reminderDelivery()
-
-    private fun syncReminder(noteId: Long, state: EditorState) {
-        if (state.isTrashed || state.isArchived || state.reminderTimestamp == null) {
-            reminderManager.cancelReminder(noteId)
-        } else {
-            reminderManager.scheduleReminder(
-                noteId = noteId,
-                timestamp = state.reminderTimestamp!!
-            )
-        }
-    }
 
     private companion object {
         const val TAG = "EditorViewModel"

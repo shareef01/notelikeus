@@ -3,7 +3,10 @@ package com.aus.notelikeus.data.attachments
 import com.aus.notelikeus.data.local.dao.NoteDao
 import com.aus.notelikeus.data.remote.AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.AttachmentBlobUploadResult
+import com.aus.notelikeus.data.remote.AttachmentRemoteContext
+import com.aus.notelikeus.data.sync.LocalCommitGate
 import com.aus.notelikeus.domain.model.Attachment
+import com.aus.notelikeus.domain.repository.LocalCommitResult
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
@@ -31,20 +34,32 @@ class AttachmentDeletionMatrixTest {
     private val deleted = mutableListOf<Pair<String, String>>()
 
     private open inner class RecordingTransport : AttachmentBlobTransport {
+        override suspend fun captureContext(): AttachmentRemoteContext =
+            AttachmentRemoteContext(ownerId = "owner-1", accessToken = "token-owner-1")
+
         override suspend fun upload(
+            context: AttachmentRemoteContext,
             noteId: String,
             attachmentId: String,
             bytes: ByteArray,
             mimeType: String,
         ) = AttachmentBlobUploadResult(
-            objectKey = "owners/owner-1/notes/$noteId/$attachmentId",
+            objectKey = "owners/${context.ownerId}/notes/$noteId/$attachmentId",
             sizeBytes = bytes.size.toLong(),
             mimeType = mimeType,
         )
 
-        override suspend fun download(noteId: String, attachmentId: String): ByteArray = ByteArray(0)
+        override suspend fun download(
+            context: AttachmentRemoteContext,
+            noteId: String,
+            attachmentId: String,
+        ): ByteArray = ByteArray(0)
 
-        override suspend fun delete(noteId: String, attachmentId: String) {
+        override suspend fun delete(
+            context: AttachmentRemoteContext,
+            noteId: String,
+            attachmentId: String,
+        ) {
             deleted += noteId to attachmentId
         }
     }
@@ -106,7 +121,11 @@ class AttachmentDeletionMatrixTest {
         val staging = staging()
         staging.stage("att-3", "owner-1", 1L, byteArrayOf(1, 2, 3), "image/png")
         val failing = object : RecordingTransport() {
-            override suspend fun delete(noteId: String, attachmentId: String) {
+            override suspend fun delete(
+                context: AttachmentRemoteContext,
+                noteId: String,
+                attachmentId: String,
+            ) {
                 throw java.io.IOException("offline")
             }
         }
@@ -138,7 +157,10 @@ class AttachmentDeletionMatrixTest {
         staging.stage("orphan", "owner-1", 1L, byteArrayOf(1, 2, 3), "image/png")
         assertEquals(1, staging.list("owner-1").size)
 
-        service(staging).reconcileStagedAttachments()
+        // An empty-initiating-uid token is enough: this lane has no upload to authorize, and the
+        // release path is fenced exactly as the token-aware one is.
+        val reconciled = service(staging).reconcileStagedAttachments(LocalCommitGate.capture(null))
+        assertEquals(LocalCommitResult.Applied(0), reconciled)
 
         assertTrue(staging.list("owner-1").isEmpty())
         assertNull(staging.readBytes("orphan", "owner-1"))

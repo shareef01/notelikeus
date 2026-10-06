@@ -1,18 +1,28 @@
 package com.aus.notelikeus.platform
 
+import com.aus.notelikeus.data.sync.awaitStableEpoch
+import com.aus.notelikeus.domain.platform.PendingSyncKind
 import com.aus.notelikeus.data.mapper.toNoteEntity
 import com.aus.notelikeus.data.sync.CloudNoteTransport
+import com.aus.notelikeus.data.sync.DatasetEpoch
+import com.aus.notelikeus.data.sync.DatasetEpochAuthority
+import com.aus.notelikeus.data.sync.DatasetPending
 import com.aus.notelikeus.data.sync.FakeCloudNoteTransport
 import com.aus.notelikeus.data.sync.FakeLabelDao
 import com.aus.notelikeus.data.sync.FakeNoteDao
 import com.aus.notelikeus.data.sync.FakeNoteSyncStateStore
+import com.aus.notelikeus.data.sync.IdentityBoundNoteTransport
+import com.aus.notelikeus.data.sync.InMemoryDatasetEpochStore
 import com.aus.notelikeus.data.sync.NoteSyncEngine
-import com.aus.notelikeus.di.DesktopPendingSyncStore
-import com.aus.notelikeus.di.PendingSyncStore
+import com.aus.notelikeus.data.sync.PendingSyncCommand
+import com.aus.notelikeus.data.sync.TestIdentityBoundNoteTransportAdapter
+import com.aus.notelikeus.data.sync.testRemoteIdentityProvider
 import com.aus.notelikeus.domain.model.Note
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -25,6 +35,10 @@ import kotlin.test.assertTrue
  * Note the use of [advanceTimeBy] rather than `advanceUntilIdle()`: the coordinator's work lives
  * on `backgroundScope`, and `advanceUntilIdle()` does not push its *delayed* tasks — the debounce
  * and the backoff both silently never fire.
+ *
+ * The queue itself now lives in [DatasetEpochAuthority], so what these assert about persistence is
+ * the store's durable state rather than an in-memory set: "the queue survived the flush" and "the
+ * queue is on disk" are the same question, and the epoch-aware store is where the answer lives.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopSyncCoordinatorTest {
@@ -32,134 +46,124 @@ class DesktopSyncCoordinatorTest {
     /** Comfortably past the 2s debounce. */
     private val pastDebounce = 5_000L
 
-    private class FakePendingSyncStore(
-        var initial: DesktopPendingSyncStore.Pending = DesktopPendingSyncStore.Pending(
-            emptySet(), emptySet(), emptySet()
-        )
-    ) : PendingSyncStore {
-        var saved: DesktopPendingSyncStore.Pending = initial
-        var clearCount = 0
-
-        override suspend fun load() = initial
-
-        override suspend fun save(uploads: Set<Long>, deletes: Set<Long>, restores: Set<Long>) {
-            saved = DesktopPendingSyncStore.Pending(uploads, deletes, restores)
-        }
-
-        override suspend fun clear() {
-            clearCount++
-            saved = DesktopPendingSyncStore.Pending(emptySet(), emptySet(), emptySet())
-        }
-    }
-
-    /**
-     * A store whose `load()` blocks until [releaseLoad] — modelling the slow disk read the
-     * coordinator must not race: a mutation landing while the restore is in flight must not
-     * persist a snapshot that drops the pending work the restore was about to bring back.
-     */
-    private class GatedPendingSyncStore(
-        val initial: DesktopPendingSyncStore.Pending
-    ) : PendingSyncStore {
-        private val loadGate = CompletableDeferred<Unit>()
-        var saved: DesktopPendingSyncStore.Pending =
-            DesktopPendingSyncStore.Pending(emptySet(), emptySet(), emptySet())
-
-        override suspend fun load(): DesktopPendingSyncStore.Pending {
-            loadGate.await()
-            return initial
-        }
-
-        override suspend fun save(uploads: Set<Long>, deletes: Set<Long>, restores: Set<Long>) {
-            saved = DesktopPendingSyncStore.Pending(uploads, deletes, restores)
-        }
-
-        override suspend fun clear() {
-            saved = DesktopPendingSyncStore.Pending(emptySet(), emptySet(), emptySet())
-        }
-
-        fun releaseLoad() {
-            loadGate.complete(Unit)
-        }
-    }
-
     private lateinit var transport: FakeCloudNoteTransport
     private lateinit var noteDao: FakeNoteDao
-    private lateinit var pendingStore: FakePendingSyncStore
+    private lateinit var stateStore: FakeNoteSyncStateStore
+    private lateinit var store: InMemoryDatasetEpochStore
+    private lateinit var epochAuthority: DatasetEpochAuthority
 
     /** Flipping this to false makes every engine call fail, the way a signed-out session would. */
     private var signedIn = true
 
-    private fun engine(): NoteSyncEngine {
-        transport = FakeCloudNoteTransport()
+    /**
+     * Wires the store, the epoch authority, the engine and the coordinator the way production does.
+     *
+     * The engine and the coordinator deliberately share **one** authority: two would be two
+     * datasets, and a command queued through one could never be authorized by the other.
+     */
+    private fun wire(
+        scope: CoroutineScope,
+        store: InMemoryDatasetEpochStore = InMemoryDatasetEpochStore(),
+        transport: (FakeCloudNoteTransport) -> IdentityBoundNoteTransport = { it },
+    ): DesktopSyncCoordinator {
+        this.store = store
+        epochAuthority = store.authority()
+        val backing = FakeCloudNoteTransport()
+        this.transport = backing
         noteDao = FakeNoteDao()
-        return NoteSyncEngine(
-            transport = transport,
+        stateStore = FakeNoteSyncStateStore()
+
+        val syncEngine = NoteSyncEngine(
+            transport = transport(backing),
+            // The coordinator's own session: signed out is a failure above and a refused capture here.
+            remoteIdentityProvider = testRemoteIdentityProvider { if (signedIn) "uid" else null },
             noteDao = noteDao,
             labelDao = FakeLabelDao(),
-            syncStateStore = FakeNoteSyncStateStore(),
+            syncStateStore = stateStore,
             uidProvider = {
                 if (signedIn) Result.success("uid") else Result.failure(IllegalStateException("Not signed in"))
             },
-            platform = "desktop"
+            platform = "desktop",
+            datasetEpochAuthority = epochAuthority,
+        )
+        return DesktopSyncCoordinator(
+            syncEngine = syncEngine,
+            epochAuthority = epochAuthority,
+            ownerUidProvider = { if (signedIn) "uid" else null },
+            scope = scope,
         )
     }
+
+    private fun DatasetPending.uploadIds(): Set<Long> =
+        commandsOf(PendingSyncKind.UPLOAD).map { it.noteId }.toSet()
+
+    /** What a previous run left on disk: one dataset, one command queued under it. */
+    private fun queued(
+        epoch: DatasetEpoch,
+        kind: PendingSyncKind,
+        vararg noteIds: Long,
+        uid: String? = "uid",
+    ) = DatasetPending(
+        epoch = epoch,
+        ownerUid = uid,
+        commands = noteIds.map { PendingSyncCommand(kind, it, epoch, uid) },
+    )
 
     private suspend fun seedNote(id: Long) {
         noteDao.insertNote(
             Note(id = id, title = "N$id", content = "", timestamp = 1L, color = 0).toNoteEntity()
         )
+        stateStore.setKnownCloudIds(stateStore.knownCloudIds() + id)
+        stateStore.updateKnownServerRevision(id, 1L)
     }
 
     @Test
     fun `coalesces a burst of edits into one flush after the debounce`() = runTest {
         signedIn = true
-        val syncEngine = engine()
-        pendingStore = FakePendingSyncStore()
-        val coordinator = DesktopSyncCoordinator(syncEngine, pendingStore, backgroundScope)
+        val coordinator = wire(backgroundScope)
         seedNote(1L)
 
-        repeat(5) { coordinator.scheduleUpload(1L) }
+        repeat(5) { coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 1L) }
         // Nothing should have gone out yet — the debounce is still running.
         advanceTimeBy(1_000)
         assertTrue(transport.notes.isEmpty(), "upload fired before the debounce elapsed")
 
         advanceTimeBy(pastDebounce)
         assertTrue(1L in transport.notes)
-        assertTrue(pendingStore.saved.uploads.isEmpty(), "queue should drain on success")
+        assertTrue(store.durable.uploadIds().isEmpty(), "queue should drain on success")
     }
 
     @Test
     fun `a failed upload stays queued and is retried after the backoff`() = runTest {
         signedIn = false
-        val syncEngine = engine()
-        pendingStore = FakePendingSyncStore()
-        val coordinator = DesktopSyncCoordinator(syncEngine, pendingStore, backgroundScope)
+        val coordinator = wire(backgroundScope)
         seedNote(1L)
 
-        coordinator.scheduleUpload(1L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 1L)
         advanceTimeBy(pastDebounce)
 
         assertTrue(transport.notes.isEmpty(), "nothing should reach the cloud while signed out")
-        assertEquals(setOf(1L), pendingStore.saved.uploads, "a lost write is the bug being fixed")
+        assertEquals(setOf(1L), store.durable.uploadIds(), "a lost write is the bug being fixed")
 
         // The session comes back; the scheduled retry picks the note up with no new user action.
         signedIn = true
         advanceTimeBy(31_000)
 
         assertTrue(1L in transport.notes, "backoff retry should have flushed the queue")
-        assertTrue(pendingStore.saved.uploads.isEmpty())
+        assertTrue(store.durable.uploadIds().isEmpty())
     }
 
     @Test
     fun `pending work from a previous run is retried on startup`() = runTest {
         signedIn = true
-        val syncEngine = engine()
-        pendingStore = FakePendingSyncStore(
-            DesktopPendingSyncStore.Pending(uploads = setOf(2L), deletes = emptySet(), restores = emptySet())
+        val epoch = DatasetEpoch("epoch-from-previous-run")
+        wire(
+            backgroundScope,
+            store = InMemoryDatasetEpochStore(queued(epoch, PendingSyncKind.UPLOAD, 2L)),
         )
         seedNote(2L)
 
-        DesktopSyncCoordinator(syncEngine, pendingStore, backgroundScope)
+        assertEquals(epoch, epochAuthority.awaitStableEpoch(), "the durable epoch was not restored")
         advanceTimeBy(pastDebounce)
 
         assertTrue(2L in transport.notes, "a queue restored from disk should flush itself")
@@ -168,29 +172,29 @@ class DesktopSyncCoordinatorTest {
     @Test
     fun `a mutation during startup does not persist before the restore completes`() = runTest {
         signedIn = true
-        val syncEngine = engine()
-        val gatedStore = GatedPendingSyncStore(
-            DesktopPendingSyncStore.Pending(uploads = setOf(2L), deletes = emptySet(), restores = emptySet())
+        val gated = InMemoryDatasetEpochStore(
+            queued(DatasetEpoch("epoch-1"), PendingSyncKind.UPLOAD, 2L)
         )
-        val coordinator = DesktopSyncCoordinator(syncEngine, gatedStore, backgroundScope)
+        gated.gatedLoad = CompletableDeferred()
+        val coordinator = wire(backgroundScope, store = gated)
         seedNote(1L)
         seedNote(2L)
 
         // The user edits note 1 while the disk restore (note 2, from a previous run) is still
-        // in flight. The persist triggered by the edit must wait for the restore to finish —
+        // in flight. The write triggered by the edit must wait for the restore to finish —
         // otherwise it snapshots an empty queue and the restored upload is lost forever.
-        coordinator.scheduleUpload(1L)
+        backgroundScope.launch { coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 1L) }
         advanceTimeBy(1_000)
         assertEquals(
-            emptySet(), gatedStore.saved.uploads,
-            "persist must wait for the restored snapshot before writing"
+            setOf(2L), gated.durable.uploadIds(),
+            "the enqueue must wait for the restored snapshot before writing"
         )
 
-        gatedStore.releaseLoad()
+        gated.gatedLoad!!.complete(Unit)
         advanceTimeBy(1)
 
         assertEquals(
-            setOf(2L, 1L), gatedStore.saved.uploads,
+            setOf(1L, 2L), gated.durable.uploadIds(),
             "the restored note must survive alongside the new mutation"
         )
 
@@ -198,20 +202,18 @@ class DesktopSyncCoordinatorTest {
         advanceTimeBy(pastDebounce)
         assertTrue(1L in transport.notes)
         assertTrue(2L in transport.notes)
-        assertTrue(gatedStore.saved.uploads.isEmpty(), "queue should drain on success")
+        assertTrue(gated.durable.uploadIds().isEmpty(), "queue should drain on success")
     }
 
     @Test
     fun `the newest intent for a note wins`() = runTest {
         signedIn = true
-        val syncEngine = engine()
-        pendingStore = FakePendingSyncStore()
-        val coordinator = DesktopSyncCoordinator(syncEngine, pendingStore, backgroundScope)
+        val coordinator = wire(backgroundScope)
         seedNote(3L)
 
         // Edited, then deleted before the debounce elapsed: the delete is what should happen.
-        coordinator.scheduleUpload(3L)
-        coordinator.scheduleDelete(3L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 3L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.DELETE, 3L)
         advanceTimeBy(pastDebounce)
 
         assertTrue(3L in transport.deletedNoteIds)
@@ -222,20 +224,17 @@ class DesktopSyncCoordinatorTest {
     @Test
     fun `clearPending drops the queue and wipes the store on sign-out`() = runTest {
         signedIn = false
-        val syncEngine = engine()
-        pendingStore = FakePendingSyncStore()
-        val coordinator = DesktopSyncCoordinator(syncEngine, pendingStore, backgroundScope)
+        val coordinator = wire(backgroundScope)
         seedNote(4L)
 
-        coordinator.scheduleUpload(4L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 4L)
         advanceTimeBy(pastDebounce)
-        assertEquals(setOf(4L), pendingStore.saved.uploads)
+        assertEquals(setOf(4L), store.durable.uploadIds())
 
         coordinator.clearPending()
         advanceTimeBy(pastDebounce)
 
-        assertTrue(pendingStore.clearCount > 0, "clearPending used to be a no-op")
-        assertTrue(pendingStore.saved.uploads.isEmpty())
+        assertTrue(store.durable.uploadIds().isEmpty())
 
         // Even signed back in, the cleared work must not resurrect.
         signedIn = true
@@ -246,57 +245,46 @@ class DesktopSyncCoordinatorTest {
     @Test
     fun `clearPending during an in-flight flush does not leave the queue on disk`() = runTest {
         signedIn = true
-        val backing = FakeCloudNoteTransport()
-        noteDao = FakeNoteDao()
-        val syncEngine = NoteSyncEngine(
-            transport = SlowTransport(backing, delayMs = 1_000),
-            noteDao = noteDao,
-            labelDao = FakeLabelDao(),
-            syncStateStore = FakeNoteSyncStateStore(),
-            uidProvider = { Result.success("uid") },
-            platform = "desktop"
-        )
-        pendingStore = FakePendingSyncStore()
-        val coordinator = DesktopSyncCoordinator(syncEngine, pendingStore, backgroundScope)
+        val coordinator = wire(backgroundScope) { backing ->
+            SlowTransport(backing, delayMs = 1_000)
+        }
         for (id in 1L..4L) seedNote(id)
 
-        for (id in 1L..4L) coordinator.scheduleUpload(id)
+        for (id in 1L..4L) coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, id)
         // Into the flush but not through it: some ids are drained and still unattempted.
         advanceTimeBy(3_500)
 
         coordinator.clearPending()
         advanceTimeBy(120_000)
 
-        // Cancelling the flush runs runQueue's `finally`, which puts the drained ids back, and
-        // flush's `finally`, which persists them. Both happen *after* clearPending emptied the
-        // queue, and the two writes race on an unordered scope — so the sign-out could be
-        // overwritten and the departed account's queue left on disk to retry at next launch.
+        // Cancelling the flush runs runQueue's `finally`, which puts the drained ids back. That
+        // happens *after* clearPending emptied the queue, and a plain re-add would leave the
+        // departed account's queue on disk to be retried at next launch.
         assertTrue(
-            pendingStore.saved.uploads.isEmpty(),
+            store.durable.uploadIds().isEmpty(),
             "a cancelled flush must not persist the queue back over a sign-out"
         )
-        assertTrue(
-            pendingStore.saved.deletes.isEmpty() && pendingStore.saved.restores.isEmpty()
-        )
+        assertTrue(store.durable.commands.isEmpty())
     }
 
     @Test
     fun `clearPending during startup is not undone by the restore`() = runTest {
         signedIn = true
-        val syncEngine = engine()
-        val gatedStore = GatedPendingSyncStore(
-            DesktopPendingSyncStore.Pending(uploads = setOf(2L), deletes = emptySet(), restores = emptySet())
+        val gated = InMemoryDatasetEpochStore(
+            queued(DatasetEpoch("epoch-1"), PendingSyncKind.UPLOAD, 2L)
         )
-        val coordinator = DesktopSyncCoordinator(syncEngine, gatedStore, backgroundScope)
+        gated.gatedLoad = CompletableDeferred()
+        val coordinator = wire(backgroundScope, store = gated)
         seedNote(2L)
 
         // Signing out while the disk restore is still in flight: the ids it is about to bring back
         // belong to the account that just left, so the restore must not resurrect them.
-        coordinator.clearPending()
-        gatedStore.releaseLoad()
+        backgroundScope.launch { coordinator.clearPending() }
+        advanceTimeBy(1_000)
+        gated.gatedLoad!!.complete(Unit)
         advanceTimeBy(120_000)
 
-        assertTrue(gatedStore.saved.uploads.isEmpty(), "the restore repopulated a cleared queue")
+        assertTrue(gated.durable.commands.isEmpty(), "the restore repopulated a cleared queue")
         assertTrue(transport.notes.isEmpty(), "a signed-out account's queue must not flush")
     }
 
@@ -310,7 +298,7 @@ class DesktopSyncCoordinatorTest {
     private class SlowTransport(
         private val delegate: FakeCloudNoteTransport,
         private val delayMs: Long
-    ) : CloudNoteTransport by delegate {
+    ) : TestIdentityBoundNoteTransportAdapter(), CloudNoteTransport by delegate {
         override suspend fun fetchTombstones(uid: String): Map<Long, Long> {
             delay(delayMs)
             return delegate.fetchTombstones(uid)
@@ -329,21 +317,11 @@ class DesktopSyncCoordinatorTest {
     @Test
     fun `an edit cancelling a flush is not treated as a cloud failure`() = runTest {
         signedIn = true
-        val backing = FakeCloudNoteTransport()
-        noteDao = FakeNoteDao()
-        val syncEngine = NoteSyncEngine(
-            transport = SlowTransport(backing, delayMs = 1_000),
-            noteDao = noteDao,
-            labelDao = FakeLabelDao(),
-            syncStateStore = FakeNoteSyncStateStore(),
-            uidProvider = { Result.success("uid") },
-            platform = "desktop"
-        )
-        pendingStore = FakePendingSyncStore()
-        val coordinator = DesktopSyncCoordinator(syncEngine, pendingStore, backgroundScope)
+        val coordinator = wire(backgroundScope) { SlowTransport(it, delayMs = 1_000) }
+        val backing = transport
         for (id in 1L..4L) seedNote(id)
 
-        for (id in 1L..4L) coordinator.scheduleUpload(id)
+        for (id in 1L..4L) coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, id)
         // Past the debounce and into the flush, but only far enough to finish the first note.
         advanceTimeBy(3_500)
 
@@ -353,7 +331,7 @@ class DesktopSyncCoordinatorTest {
         // delaying the sync of what they just typed. The remaining notes should go out on the
         // ordinary debounce instead.
         seedNote(5L)
-        coordinator.scheduleUpload(5L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 5L)
         advanceTimeBy(15_000)
 
         for (id in 1L..5L) {
@@ -364,21 +342,19 @@ class DesktopSyncCoordinatorTest {
     @Test
     fun `an edit during backoff does not pull the retry forward`() = runTest {
         signedIn = false
-        val syncEngine = engine()
-        pendingStore = FakePendingSyncStore()
-        val coordinator = DesktopSyncCoordinator(syncEngine, pendingStore, backgroundScope)
+        val coordinator = wire(backgroundScope)
         seedNote(1L)
         seedNote(2L)
 
-        coordinator.scheduleUpload(1L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 1L)
         advanceTimeBy(pastDebounce)
-        assertEquals(setOf(1L), pendingStore.saved.uploads)
+        assertEquals(setOf(1L), store.durable.uploadIds())
 
         // The session is back, but the coordinator is inside its 30s backoff. A save landing now
         // used to reset the failure count and reschedule at the 2s debounce, so a user editing
         // while the cloud was unreachable retried every two seconds indefinitely.
         signedIn = true
-        coordinator.scheduleUpload(2L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 2L)
         advanceTimeBy(10_000)
         assertTrue(transport.notes.isEmpty(), "the retry must not be pulled forward to the debounce")
 

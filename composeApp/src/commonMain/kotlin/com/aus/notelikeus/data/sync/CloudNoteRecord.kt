@@ -29,7 +29,8 @@ data class CloudNoteRecord(
     val position: Int,
     val reminderTimestamp: Long?,
     val labels: List<String>,
-    val checklistItems: List<ChecklistItemData>
+    val checklistItems: List<ChecklistItemData>,
+    val revision: Long
 )
 
 /**
