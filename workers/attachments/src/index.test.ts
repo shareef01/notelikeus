@@ -936,6 +936,7 @@ describe('PUT retry against a committed attachment', () => {
       deleted: false,
       deleteClaimed: false,
       objectDeleted: false,
+      committed: true,
     });
 
     const response = await upload('1', 'att1', USER_A, 'repair-bytes');
@@ -1096,6 +1097,7 @@ describe('attachment DELETE protocol', () => {
       deleted: true,
       deleteClaimed: true,
       objectDeleted: false,
+      committed: true,
     });
   });
 
@@ -1206,6 +1208,7 @@ describe('attachment DELETE protocol', () => {
       deleted: false,
       deleteClaimed: false,
       objectDeleted: false,
+      committed: true,
     });
     const bKey = `owners/${USER_B}/notes/1/att1`;
     bucket.objects.set(bKey, { body: new Uint8Array([9, 9, 9]), contentType: 'image/png' });
