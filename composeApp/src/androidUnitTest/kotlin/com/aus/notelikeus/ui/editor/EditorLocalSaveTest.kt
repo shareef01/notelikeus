@@ -6,6 +6,7 @@ import com.aus.notelikeus.data.attachments.AttachmentSyncService
 import com.aus.notelikeus.data.attachments.StagedAttachment
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.platform.ReminderManager
+import com.aus.notelikeus.domain.repository.LocalCommitResult
 import com.aus.notelikeus.domain.repository.NoteRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -76,20 +77,25 @@ class EditorLocalSaveTest {
         SavedStateHandle(),
         sync,
         attachmentsEnabled = { true },
+        localCommitTokenProvider = FakeLocalCommitTokenProvider(),
     )
 
     /** A sync service whose uploads always fail, standing in for being offline. */
     private fun failingSync(): AttachmentSyncService {
         val sync = mockk<AttachmentSyncService>(relaxed = true)
-        coEvery { sync.syncNoteAttachments(any()) } throws java.io.IOException("offline")
+        coEvery { sync.syncNoteAttachments(any(), any()) } throws java.io.IOException("offline")
         coEvery { sync.stageAttachment(any(), any(), any(), any()) } returns true
+        // Phase 3C.2: the continuation binds staged bytes through the token-aware overload.
+        coEvery { sync.bindStagedAttachmentsToNote(any(), any(), any()) } returns
+            LocalCommitResult.Applied(Unit)
         return sync
     }
 
     @Test
     fun `a failed attachment upload does not insert the note twice`() = runTest {
         coEvery { repository.getNextNotePosition() } returns 0
-        coEvery { repository.insertNoteWithResult(any()) } returns 7L
+        // Phase 3C.1: the new-note branch commits through the token-aware insert now.
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(7L)
         val subject = viewModel(failingSync())
         advanceUntilIdle()
 
@@ -102,14 +108,14 @@ class EditorLocalSaveTest {
         // The retry must update the row that already exists, not mint another note.
         assertEquals(LocalSaveResult.Saved(7L), subject.saveLocallyAndAwait())
 
-        coVerify(exactly = 1) { repository.insertNoteWithResult(any()) }
+        coVerify(exactly = 1) { repository.insertNoteWithResult(any(), any()) }
         assertEquals(7L, subject.state.value.id)
     }
 
     @Test
     fun `the editor adopts the generated id even though the upload fails`() = runTest {
         coEvery { repository.getNextNotePosition() } returns 0
-        coEvery { repository.insertNoteWithResult(any()) } returns 11L
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(11L)
         val subject = viewModel(failingSync())
         advanceUntilIdle()
 
@@ -140,6 +146,7 @@ class EditorLocalSaveTest {
             SavedStateHandle(mapOf("noteId" to 3L)),
             failingSync(),
             attachmentsEnabled = { true },
+            localCommitTokenProvider = FakeLocalCommitTokenProvider(),
         )
         advanceUntilIdle()
 
@@ -150,15 +157,20 @@ class EditorLocalSaveTest {
         assertEquals(LocalSaveResult.Saved(3L), subject.saveLocallyAndAwait())
 
         // The regression this pins: the upload used to run first, so this write never happened.
+        // Fenced as of Phase 3B.1: an existing-note manual save commits through the token-aware
+        // overload, so asserting the unfenced one would no longer describe the production path.
         coVerify(atLeast = 1) {
-            repository.updateNote(match { it.id == 3L && it.title == "Edited while offline" })
+            repository.updateNote(
+                match { it.id == 3L && it.title == "Edited while offline" },
+                any(),
+            )
         }
     }
 
     @Test
     fun `a failed local write is reported as failed and keeps the text in the editor`() = runTest {
         coEvery { repository.getNextNotePosition() } returns 0
-        coEvery { repository.insertNoteWithResult(any()) } throws IllegalStateException("disk full")
+        coEvery { repository.insertNoteWithResult(any(), any()) } throws IllegalStateException("disk full")
         val subject = viewModel()
         advanceUntilIdle()
 
@@ -178,7 +190,7 @@ class EditorLocalSaveTest {
         advanceUntilIdle()
 
         assertEquals(LocalSaveResult.Unchanged, subject.saveLocallyAndAwait())
-        coVerify(exactly = 0) { repository.insertNoteWithResult(any()) }
+        coVerify(exactly = 0) { repository.insertNoteWithResult(any(), any()) }
     }
 
     @Test
@@ -201,10 +213,12 @@ class EditorLocalSaveTest {
     @Test
     fun `staged bytes are bound to the note id the insert issued`() = runTest {
         coEvery { repository.getNextNotePosition() } returns 0
-        coEvery { repository.insertNoteWithResult(any()) } returns 21L
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(21L)
         val sync = mockk<AttachmentSyncService>(relaxed = true)
         coEvery { sync.stageAttachment(any(), any(), any(), any()) } returns true
-        coEvery { sync.syncNoteAttachments(any()) } answers { firstArg() }
+        coEvery { sync.syncNoteAttachments(any(), any()) } answers { LocalCommitResult.Applied(firstArg()) }
+        coEvery { sync.bindStagedAttachmentsToNote(any(), any(), any()) } returns
+            LocalCommitResult.Applied(Unit)
         val subject = viewModel(sync)
         advanceUntilIdle()
 
@@ -213,7 +227,8 @@ class EditorLocalSaveTest {
         advanceUntilIdle()
         subject.saveLocallyAndAwait()
 
-        coVerify { sync.bindStagedAttachmentsToNote(21L, any()) }
+        // Token-aware as of Phase 3C.2: the binding carries the save's originating token.
+        coVerify { sync.bindStagedAttachmentsToNote(21L, any(), any()) }
         assertNotNull(subject.state.value.id)
     }
 }
