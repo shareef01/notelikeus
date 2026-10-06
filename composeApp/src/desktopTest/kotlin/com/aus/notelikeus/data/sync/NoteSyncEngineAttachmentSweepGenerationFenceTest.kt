@@ -595,7 +595,7 @@ class NoteSyncEngineAttachmentSweepGenerationFenceTest {
                     parkOnPurge?.park()
                 }
                 if (attachmentId == purgeFailure) {
-                    throw IllegalStateException("purge_deleted_note_attachment failed")
+                    error("purge_deleted_note_attachment failed")
                 }
             }
             purges += (attachmentId ?: "") to (body["p_note_id"]?.toString()?.trim('"') ?: "")
@@ -674,7 +674,7 @@ class NoteSyncEngineAttachmentSweepGenerationFenceTest {
                 parkedDelete = true
                 parkOnDelete.park()
             }
-            if (noteId == failDeleteFor) throw IllegalStateException("blob delete failed")
+            if (noteId == failDeleteFor) error("blob delete failed")
         }
     }
 
