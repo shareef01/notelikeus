@@ -1,10 +1,17 @@
 package com.aus.notelikeus.platform
 
+import com.aus.notelikeus.data.sync.DatasetAuthority
+import com.aus.notelikeus.domain.platform.PendingSyncKind
+import com.aus.notelikeus.data.sync.DatasetEpochAuthority
+import com.aus.notelikeus.data.sync.LocalCommitGate
 import com.aus.notelikeus.data.sync.NoteSyncEngine
-import com.aus.notelikeus.di.PendingSyncStore
+import com.aus.notelikeus.data.sync.PendingDispatch
+import com.aus.notelikeus.data.sync.PendingSyncCommand
+import com.aus.notelikeus.data.sync.ScheduledWorkOrigin
+import com.aus.notelikeus.data.sync.ScheduledWorkOutcome
+import com.aus.notelikeus.domain.platform.ScheduleOutcome
 import com.aus.notelikeus.domain.platform.SyncCoordinator
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
+import com.aus.notelikeus.domain.repository.LocalCommitToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -13,91 +20,103 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
 
 /**
  * Desktop [SyncCoordinator]: a debounced, persisted, retrying queue of per-note cloud writes.
  *
- * The previous implementation launched an immediate upload per mutation and kept no record of it,
- * so a write that failed — offline, expired token, server error — was lost with nothing to retry
- * from, and `clearPending()` did nothing on sign-out. This mirrors what Android gets from
- * `CloudNoteSyncCoordinator` plus WorkManager: coalesce a burst of edits, survive restart, and
- * back off rather than hammer a cloud that is not answering.
+ * The queue state itself lives in [DatasetEpochAuthority] — the epoch the device is on, the commands
+ * queued under it, and the serialization that makes an enqueue and a dataset rotation mutually
+ * exclusive. What is left here is policy: when to flush, in what order, how long to back off, and
+ * which commands still have the authority to run.
+ *
+ * That split is R15.1. Desktop has no WorkManager, so a queued command here is executed in-process
+ * by [syncEngine]'s *scheduled* entry points, which resolve the command's own dataset epoch into the
+ * token it executes under. Calling the ordinary `deleteNote`/`uploadNote`/`restoreNote` — as this
+ * class used to — would capture a fresh token for whatever dataset is current when the queue drains,
+ * which is how a delete queued before a sign-out ran against a replacement dataset's colliding ids.
+ *
+ * This mirrors what Android gets from `CloudNoteSyncCoordinator` plus WorkManager: coalesce a burst
+ * of edits, survive restart, and back off rather than hammer a cloud that is not answering.
  */
 class DesktopSyncCoordinator(
     private val syncEngine: NoteSyncEngine,
-    private val pendingStore: PendingSyncStore,
+    private val epochAuthority: DatasetEpochAuthority,
+    /**
+     * The account a queued command is stamped for.
+     *
+     * Read when a command is queued, never when it runs: reading it at execution time would name
+     * whichever account is live then, which is precisely the substitution the stamped origin exists
+     * to prevent. It is defense in depth beside the epoch, which is the actual authority.
+     */
+    private val ownerUidProvider: suspend () -> String? = { null },
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) : SyncCoordinator {
 
-    private val pendingUploads = ConcurrentHashMap.newKeySet<Long>()
-    private val pendingDeletes = ConcurrentHashMap.newKeySet<Long>()
-    private val pendingRestores = ConcurrentHashMap.newKeySet<Long>()
-
-    private val flushMutex = Mutex()
-
-    // Both are written from the flush coroutine and read/written from whatever thread calls
-    // scheduleUpload/Delete/Restore, so neither read is safe without @Volatile: a stale flushJob
-    // leaks a coroutine instead of replacing it, and a stale failure count picks the wrong backoff.
+    /**
+     * Both are written from the flush coroutine and read/written from whatever thread calls
+     * scheduleUpload/Delete/Restore, so neither read is safe without @Volatile: a stale flushJob
+     * leaks a coroutine instead of replacing it, and a stale failure count picks the wrong backoff.
+     */
     @Volatile private var flushJob: Job? = null
     @Volatile private var consecutiveFailures = 0
 
-    /** Completed once [init] has restored the pending-state snapshot from disk. */
-    private val initLatch = CompletableDeferred<Unit>()
-
-    /** Guards the cross-queue move in [enqueue] so a note cannot end up in two queues at once. */
-    private val enqueueLock = Any()
-
-    /**
-     * Bumped by [clearPending]; every deferred write carries the generation it was queued under and
-     * drops itself if that no longer matches.
-     *
-     * Sign-out has to beat work that is already in flight, and both directions of that race were
-     * live. A cancelled [flush] still runs its `finally` blocks — [runQueue] puts the drained ids
-     * back and [flush] calls [persist] — so the queues repopulated *after* [clearPending] emptied
-     * them, and since `persist()` and `pendingStore.clear()` are independent `scope.launch`es with
-     * no ordering between them, the save could land last and leave the signed-out user's queue on
-     * disk to be retried at next launch. The restore in `init` could do the same to a sign-out that
-     * arrived while it was still reading. Comparing generations makes both stale writes no-ops.
-     */
-    @Volatile private var generation = 0
+    /** Serializes flushes with each other, so a retry cannot overlap the flush that scheduled it. */
+    private val flushMutex = Mutex()
 
     init {
-        val startedAt = generation
         scope.launch {
-            try {
-                val restored = pendingStore.load()
-                // A sign-out landed while this read was in flight: those ids belong to the account
-                // that just left, so restoring them would resurrect its queue.
-                if (generation != startedAt) return@launch
-                pendingUploads.addAll(restored.uploads)
-                pendingDeletes.addAll(restored.deletes)
-                pendingRestores.addAll(restored.restores)
-                // Anything left over from a previous run is retried on the next launch.
-                if (!restored.isEmpty) scheduleFlush()
-            } finally {
-                initLatch.complete(Unit)
+            // Anything left over from a previous run is retried on the next launch, in the dataset
+            // the durable store says this device is on. Commands that name a different dataset are
+            // dropped by the authority as it reads them, and a device that is *between* datasets
+            // schedules nothing at all.
+            if (epochAuthority.awaitAuthority() is DatasetAuthority.Stable &&
+                !epochAuthority.currentPending().isEmpty
+            ) {
+                scheduleFlush()
             }
         }
     }
 
-    override fun scheduleUpload(noteId: Long) = enqueue(noteId, pendingUploads)
+    override suspend fun scheduleUploadFromAction(
+        noteId: Long,
+        origin: LocalCommitToken,
+    ): ScheduleOutcome = scheduleForOrigin(origin, PendingSyncKind.UPLOAD, noteId)
 
-    override fun scheduleDelete(noteId: Long) = enqueue(noteId, pendingDeletes)
+    override suspend fun scheduleDeleteFromAction(
+        noteId: Long,
+        origin: LocalCommitToken,
+    ): ScheduleOutcome = scheduleForOrigin(origin, PendingSyncKind.DELETE, noteId)
 
-    override fun scheduleRestore(noteId: Long) = enqueue(noteId, pendingRestores)
+    override suspend fun scheduleRestoreFromAction(
+        noteId: Long,
+        origin: LocalCommitToken,
+    ): ScheduleOutcome = scheduleForOrigin(origin, PendingSyncKind.RESTORE, noteId)
 
-    /** A note is only ever in one queue; the newest intent for it wins.
-     * Synchronized so concurrent enqueues for the same noteId cannot leave it in two queues. */
-    private fun enqueue(noteId: Long, target: MutableSet<Long>) {
-        synchronized(enqueueLock) {
-            for (queue in listOf(pendingUploads, pendingDeletes, pendingRestores)) {
-                if (queue !== target) queue.remove(noteId)
-            }
-            target.add(noteId)
+    override suspend fun clearPending() {
+        flushJob?.cancel()
+        consecutiveFailures = 0
+        // The epoch is deliberately kept: this drops retries, it does not claim a new dataset.
+        epochAuthority.clearPending()
+    }
+
+    override suspend fun beginDatasetIsolation() {
+        epochAuthority.beginIsolation()
+    }
+
+    override suspend fun completeDatasetIsolation() {
+        flushJob?.cancel()
+        consecutiveFailures = 0
+        epochAuthority.completeIsolation()
+    }
+
+    override fun isDatasetIsolationIncomplete(): Boolean = epochAuthority.isIsolationIncomplete()
+
+    override suspend fun scheduleCurrentDatasetSync(kind: PendingSyncKind, noteId: Long) {
+        // Refused outright while the device is between datasets — see the Android coordinator.
+        if (!epochAuthority.enqueueCurrent(kind, noteId, ownerUidProvider())) {
+            return
         }
-        persist()
         // While backing off, leave the pending retry where it is. Resetting the counter and
         // rescheduling at the 2s debounce here meant that a user editing notes offline — every
         // save lands in this method — retried every two seconds forever, which is precisely the
@@ -106,42 +125,38 @@ class DesktopSyncCoordinator(
         if (consecutiveFailures == 0) scheduleFlush()
     }
 
-    override fun clearPending() {
-        generation++
-        val clearedAt = generation
-        flushJob?.cancel()
-        synchronized(enqueueLock) {
-            pendingUploads.clear()
-            pendingDeletes.clear()
-            pendingRestores.clear()
+    /**
+     * Queues work on behalf of an operation that captured [originatingToken].
+     *
+     * The token and the epoch are resolved in one critical section — see
+     * [LocalCommitGate.resolveSchedulingEpoch] — and the enqueue is conditional on that epoch under
+     * the queue authority's own serialization, so neither an isolation that lands first nor one that
+     * lands last can turn an old dataset's intent into the new dataset's work.
+     */
+    private suspend fun scheduleForOrigin(
+        originatingToken: LocalCommitToken,
+        kind: PendingSyncKind,
+        noteId: Long,
+    ): ScheduleOutcome {
+        // The durable read, outside the gate: the gate must never wait on file I/O. A device between
+        // datasets has no epoch anything may be authorized against, so this is a refusal — not a
+        // reason to stamp the command with either the old or the new epoch.
+        if (epochAuthority.awaitAuthority() !is DatasetAuthority.Stable) {
+            return ScheduleOutcome.RefusedStaleOrigin
         }
-        consecutiveFailures = 0
-        scope.launch {
-            initLatch.await()
-            // Another sign-in/sign-out overtook this one; leave its state alone.
-            if (generation != clearedAt) return@launch
-            // Clear again before writing: the cancelled flush's `finally` blocks run after the
-            // cancel above and re-add whatever they had drained, so the in-memory sets can be
-            // non-empty by the time this runs.
-            pendingUploads.clear()
-            pendingDeletes.clear()
-            pendingRestores.clear()
-            pendingStore.clear()
-        }
-    }
+        val epoch = LocalCommitGate.resolveSchedulingEpoch(originatingToken) {
+            epochAuthority.currentEpochOrNull()
+        } ?: return ScheduleOutcome.RefusedStaleOrigin
 
-    private fun persist() {
-        val queuedAt = generation
-        scope.launch {
-            initLatch.await()
-            // Queued before a sign-out; writing now would put that account's ids back on disk.
-            if (generation != queuedAt) return@launch
-            pendingStore.save(
-                pendingUploads.toSet(),
-                pendingDeletes.toSet(),
-                pendingRestores.toSet()
-            )
-        }
+        val queued = epochAuthority.enqueueIfCurrent(
+            expectedEpoch = epoch,
+            kind = kind,
+            noteId = noteId,
+            ownerUid = ownerUidProvider(),
+        )
+        if (!queued) return ScheduleOutcome.RefusedStaleOrigin
+        if (consecutiveFailures == 0) scheduleFlush()
+        return ScheduleOutcome.Enqueued
     }
 
     private fun scheduleFlush(delayMs: Long = DEBOUNCE_MS) {
@@ -156,25 +171,36 @@ class DesktopSyncCoordinator(
      * Drains each queue and runs its operations, returning failures to the queue so the next
      * attempt picks them up. Serialized so a retry cannot overlap the flush that scheduled it.
      *
-     * Draining takes a note out of every queue, so [enqueue]'s "newest intent wins" rule cannot
-     * see it while the operation is running. Each loop therefore re-checks the other queues
-     * before acting: without that, draining an upload and then deleting the note mid-flush would
-     * upload it *after* the delete had already been processed, resurrecting it in the cloud.
+     * Draining takes a note out of every queue, so the "newest intent wins" rule cannot see it while
+     * the operation is running. Each loop therefore re-checks the other queues before acting:
+     * without that, draining an upload and then deleting the note mid-flush would upload it *after*
+     * the delete had already been processed, resurrecting it in the cloud.
      */
     private suspend fun flush() = flushMutex.withLock {
         var anyFailed = false
-        try {
-            // Each queue is drained inside runQueue, immediately before its own work, rather than
-            // all three up front — so there is never a window where restores and uploads sit
-            // drained but unattempted while the deletes are still running.
-            if (runQueue(pendingDeletes) { syncEngine.deleteNote(it) }) anyFailed = true
-            if (runQueue(pendingRestores) { syncEngine.restoreNote(it) }) anyFailed = true
-            if (runQueue(pendingUploads) { syncEngine.uploadNote(it) }) anyFailed = true
-        } finally {
-            // Reached on cancellation too. persist() hands the write to `scope`, which outlives
-            // this job — and drops itself if a sign-out bumped the generation meanwhile, so a
-            // cancelled flush's re-queued ids cannot reach disk for a signed-out account.
-            persist()
+        // Each queue is drained inside runQueue, immediately before its own work, rather than all
+        // three up front — so there is never a window where restores and uploads sit drained but
+        // unattempted while the deletes are still running.
+        if (
+            runQueue(PendingSyncKind.DELETE) { command, origin ->
+                syncEngine.deleteNoteFromScheduledWork(command.noteId, origin)
+            }
+        ) {
+            anyFailed = true
+        }
+        if (
+            runQueue(PendingSyncKind.RESTORE) { command, origin ->
+                syncEngine.restoreNoteFromScheduledWork(command.noteId, origin)
+            }
+        ) {
+            anyFailed = true
+        }
+        if (
+            runQueue(PendingSyncKind.UPLOAD) { command, origin ->
+                syncEngine.uploadNoteFromScheduledWork(command.noteId, origin)
+            }
+        ) {
+            anyFailed = true
         }
 
         if (anyFailed) {
@@ -186,7 +212,7 @@ class DesktopSyncCoordinator(
     }
 
     /**
-     * Drains [queue] and runs [operation] over it, putting anything that did not succeed back.
+     * Drains [kind] and runs [operation] over it, putting anything that did not succeed back.
      * Returns true if at least one operation failed *for a reason worth backing off over*.
      *
      * That distinction is the point. [scheduleFlush] cancels the running flush job, so an edit
@@ -199,35 +225,71 @@ class DesktopSyncCoordinator(
      *
      * The `finally` covers the other direction — a cancellation that propagates out rather than
      * being absorbed — so the drained-but-unattempted tail goes back on the queue instead of being
-     * lost.
+     * lost. Putting it back goes through the authority, which refuses once the queue has been
+     * cleared or rotated: a cancelled flush must not resurrect a signed-out account's queue.
+     *
+     * A command the engine *refuses* is dropped rather than re-queued. Its dataset is gone, so
+     * re-queueing it would retry the one operation that must not run; and it is deliberately not
+     * counted as a failure either, since a replaced dataset is not a cloud that is not answering.
      */
     private suspend fun runQueue(
-        queue: MutableSet<Long>,
-        operation: suspend (Long) -> Result<Unit>
+        kind: PendingSyncKind,
+        operation: suspend (PendingSyncCommand, ScheduledWorkOrigin) -> ScheduledWorkOutcome
     ): Boolean {
-        val ids = drain(queue)
+        val dispatch: PendingDispatch = epochAuthority.takeForDispatch(kind) ?: return false
         var failed = false
         var index = 0
         try {
-            while (index < ids.size) {
-                val error = operation(ids[index]).exceptionOrNull()
-                if (error != null) {
-                    queue.add(ids[index])
-                    if (error !is CancellationException) failed = true
-                }
+            while (index < dispatch.commands.size) {
+                failed = runQueuedCommand(dispatch, dispatch.commands[index], operation) || failed
                 index++
             }
         } finally {
-            if (index < ids.size) queue.addAll(ids.subList(index, ids.size))
+            requeueFrom(dispatch, index)
         }
         return failed
     }
 
-    private fun drain(queue: MutableSet<Long>): List<Long> {
-        val snapshot = queue.toList()
-        queue.removeAll(snapshot.toSet())
-        return snapshot
+    /**
+     * Runs one drained command, putting it back when it failed for a reason worth retrying.
+     *
+     * Returns whether the failure is one the coordinator should back off on. A cancellation is
+     * re-queued but not counted: [scheduleFlush] cancels the running flush, so an edit landing
+     * mid-sync cancels whatever is in flight — counting those as cloud failures meant a user who
+     * simply kept typing was pushed into the 30-second backoff, delaying the sync of the very edit
+     * they had just made. A *refused* command is neither re-queued nor counted: its dataset is gone,
+     * so retrying would retry the one operation that must not run.
+     */
+    private suspend fun runQueuedCommand(
+        dispatch: PendingDispatch,
+        command: PendingSyncCommand,
+        operation: suspend (PendingSyncCommand, ScheduledWorkOrigin) -> ScheduledWorkOutcome,
+    ): Boolean {
+        val outcome = operation(command, command.toScheduledOrigin())
+        if (outcome != ScheduledWorkOutcome.Retryable && outcome != ScheduledWorkOutcome.Cancelled) {
+            return false
+        }
+        epochAuthority.restoreAfterFailure(dispatch, command)
+        return outcome == ScheduledWorkOutcome.Retryable
     }
+
+    /** Puts the drained-but-unattempted tail back, refusing once the queue was cleared or rotated. */
+    private suspend fun requeueFrom(dispatch: PendingDispatch, fromIndex: Int) {
+        for (command in dispatch.commands.drop(fromIndex)) {
+            epochAuthority.restoreAfterFailure(dispatch, command)
+        }
+    }
+
+    /**
+     * The origin authority this command executes under.
+     *
+     * The epoch is the authority and the uid is defense in depth, so a command queued with no
+     * session at all still resolves — the epoch decides, and the engine's own credential capture
+     * binds the request to whichever account is live. What must never happen is *re-deriving* either
+     * from the current state: both come from the command.
+     */
+    private fun PendingSyncCommand.toScheduledOrigin(): ScheduledWorkOrigin =
+        ScheduledWorkOrigin(expectedUid = ownerUid, datasetEpoch = datasetEpoch)
 
     /** Exponential backoff from 30s, capped at 15 minutes. */
     private fun retryDelayMs(): Long {
