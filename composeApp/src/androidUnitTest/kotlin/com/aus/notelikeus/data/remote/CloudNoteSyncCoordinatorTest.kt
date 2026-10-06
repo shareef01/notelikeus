@@ -1,8 +1,13 @@
 package com.aus.notelikeus.data.remote
 
+import com.aus.notelikeus.data.sync.isolateToNewDataset
+import com.aus.notelikeus.data.sync.awaitStableEpoch
+import com.aus.notelikeus.domain.platform.PendingSyncKind
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
+import com.aus.notelikeus.data.sync.DatasetEpochAuthority
+import com.aus.notelikeus.data.sync.InMemoryDatasetEpochStore
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import io.mockk.every
 import io.mockk.mockk
@@ -19,6 +24,8 @@ class CloudNoteSyncCoordinatorTest {
     private lateinit var sessionManager: CloudSessionManager
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var workManager: WorkManager
+    private lateinit var store: InMemoryDatasetEpochStore
+    private lateinit var epochAuthority: DatasetEpochAuthority
     private lateinit var coordinator: CloudNoteSyncCoordinator
 
     @Before
@@ -26,11 +33,15 @@ class CloudNoteSyncCoordinatorTest {
         sessionManager = mockk()
         settingsRepository = mockk()
         workManager = mockk(relaxed = true)
+        // The real epoch authority over a fake durable store: the queue and the epoch it stamps are
+        // what these cases are about, so a relaxed mock here would assert nothing.
+        store = InMemoryDatasetEpochStore()
+        epochAuthority = store.authority()
         coordinator = CloudNoteSyncCoordinator(
             sessionManager,
             settingsRepository,
             workManager,
-            mockk(relaxed = true)
+            epochAuthority
         )
     }
 
@@ -44,7 +55,7 @@ class CloudNoteSyncCoordinatorTest {
             isAnonymous = false
         )
 
-        coordinator.scheduleUpload(42L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 42L)
         coordinator.flushNowForTest()
 
         verify {
@@ -62,7 +73,7 @@ class CloudNoteSyncCoordinatorTest {
             isAnonymous = false
         )
 
-        coordinator.scheduleUpload(42L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 42L)
         coordinator.flushNowForTest()
 
         verify(exactly = 0) {
@@ -80,7 +91,7 @@ class CloudNoteSyncCoordinatorTest {
             isAnonymous = true
         )
 
-        coordinator.scheduleUpload(42L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 42L)
         coordinator.flushNowForTest()
 
         verify(exactly = 0) {
@@ -98,7 +109,7 @@ class CloudNoteSyncCoordinatorTest {
             isAnonymous = false
         )
 
-        coordinator.scheduleDelete(7L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.DELETE, 7L)
         coordinator.flushNowForTest()
 
         verify {
@@ -117,7 +128,7 @@ class CloudNoteSyncCoordinatorTest {
         )
         val request = slot<OneTimeWorkRequest>()
 
-        coordinator.scheduleRestore(3L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.RESTORE, 3L)
         coordinator.flushNowForTest()
 
         verify {
@@ -139,8 +150,8 @@ class CloudNoteSyncCoordinatorTest {
         )
         val requests = mutableListOf<OneTimeWorkRequest>()
 
-        coordinator.scheduleDelete(4L)
-        coordinator.scheduleRestore(4L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.DELETE, 4L)
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.RESTORE, 4L)
         coordinator.flushNowForTest()
 
         verify(exactly = 1) {
@@ -150,8 +161,37 @@ class CloudNoteSyncCoordinatorTest {
     }
 
     @Test
-    fun `clearPending cancels WorkManager sync jobs`() {
-        coordinator.scheduleUpload(5L)
+    fun `a dispatched job carries the dataset epoch it was queued under`() = runTest {
+        every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(true)
+        every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
+            userId = "uid",
+            email = "user@example.com",
+            isGoogleAccount = true,
+            isAnonymous = false
+        )
+        val request = slot<OneTimeWorkRequest>()
+
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 42L)
+        val epoch = epochAuthority.awaitStableEpoch()
+        coordinator.flushNowForTest()
+
+        verify {
+            workManager.enqueueUniqueWork("sync_42", ExistingWorkPolicy.REPLACE, capture(request))
+        }
+        val data = request.captured.workSpec.input
+        org.junit.Assert.assertEquals("uid", data.getString(SyncWorker.KEY_EXPECTED_UID))
+        org.junit.Assert.assertEquals(epoch.value, data.getString(SyncWorker.KEY_DATASET_EPOCH))
+    }
+
+    @Test
+    fun `clearPending cancels WorkManager sync jobs`() = runTest {
+        every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
+            userId = "uid",
+            email = "user@example.com",
+            isGoogleAccount = true,
+            isAnonymous = false
+        )
+        coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 5L)
         coordinator.clearPending()
 
         verify { workManager.cancelAllWorkByTag(SyncWorker.WORK_TAG) }

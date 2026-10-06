@@ -25,6 +25,8 @@ class DesktopNoteSyncStateStore(
     private val restoredSet: MutableSet<Long>
     private val pendingAttachmentGcMap: MutableMap<Long, MutableSet<String>>
     private val knownCloudSet: MutableSet<Long>
+    private val knownServerRevisionsMap: MutableMap<Long, Long>
+    private val baselineDeleteRevisionsMap: MutableMap<Long, Long>
     private var reconciledAt: Long
     private var mergedUserId: String?
 
@@ -34,14 +36,31 @@ class DesktopNoteSyncStateStore(
         restoredSet = parseIdSet(prefs, KEY_RESTORED_IDS).toMutableSet()
         pendingAttachmentGcMap = parsePendingGc(prefs).mapValues { it.value.toMutableSet() }.toMutableMap()
         knownCloudSet = parseIdSet(prefs, KEY_KNOWN_CLOUD_IDS).toMutableSet()
+        knownServerRevisionsMap = parseLongMap(prefs, KEY_KNOWN_SERVER_REVISIONS).toMutableMap()
+        baselineDeleteRevisionsMap = parseLongMap(prefs, KEY_BASELINE_DELETE_REVISIONS).toMutableMap()
         reconciledAt = prefs?.get(KEY_LAST_RECONCILED) ?: 0L
         mergedUserId = prefs?.get(KEY_LAST_MERGED_USER_ID)
     }
 
-    override fun markDeleted(noteId: Long, deletedAt: Long) {
+    override fun markDeleted(noteId: Long, deletedAt: Long, baselineRevision: Long?) {
+        var changed = false
         if (noteId !in deletedMap) {
             deletedMap[noteId] = deletedAt
-            persistDeleted()
+            changed = true
+        }
+        if (baselineRevision != null) {
+            baselineDeleteRevisionsMap[noteId] = baselineRevision
+            changed = true
+        }
+        if (changed) persistDeletedAndBaseline()
+    }
+
+    private fun persistDeletedAndBaseline() = runBlocking {
+        val deletedEncoded = json.encodeToString(MapSerializer(String.serializer(), Long.serializer()), deletedMap.mapKeys { it.key.toString() })
+        val baselineEncoded = json.encodeToString(MapSerializer(String.serializer(), Long.serializer()), baselineDeleteRevisionsMap.mapKeys { it.key.toString() })
+        dataStore.edit { prefs ->
+            prefs[KEY_DELETED_JSON] = deletedEncoded
+            prefs[KEY_BASELINE_DELETE_REVISIONS] = baselineEncoded
         }
     }
 
@@ -122,6 +141,38 @@ class DesktopNoteSyncStateStore(
         persistKnownCloud()
     }
 
+    override fun knownServerRevisionById(): Map<Long, Long> = knownServerRevisionsMap.toMap()
+
+    override fun updateKnownServerRevision(noteId: Long, revision: Long) {
+        knownServerRevisionsMap[noteId] = revision
+        persistKnownServerRevisions()
+    }
+
+    override fun updateKnownServerRevisions(revisions: Map<Long, Long>) {
+        knownServerRevisionsMap.putAll(revisions)
+        persistKnownServerRevisions()
+    }
+
+    override fun clearKnownServerRevisions(noteIds: Collection<Long>) {
+        if (noteIds.isEmpty()) return
+        var changed = false
+        for (id in noteIds) {
+            if (knownServerRevisionsMap.remove(id) != null) changed = true
+        }
+        if (changed) persistKnownServerRevisions()
+    }
+
+    override fun baselineDeleteRevisionById(): Map<Long, Long> = baselineDeleteRevisionsMap.toMap()
+
+    override fun setBaselineDeleteRevision(noteId: Long, revision: Long) {
+        baselineDeleteRevisionsMap[noteId] = revision
+        persistBaselineDeleteRevisions()
+    }
+
+    override fun clearBaselineDeleteRevision(noteId: Long) {
+        if (baselineDeleteRevisionsMap.remove(noteId) != null) persistBaselineDeleteRevisions()
+    }
+
     override fun lastMergedUserId(): String? = mergedUserId
 
     override fun setLastMergedUserId(userId: String) {
@@ -134,6 +185,8 @@ class DesktopNoteSyncStateStore(
         restoredSet.clear()
         pendingAttachmentGcMap.clear()
         knownCloudSet.clear()
+        knownServerRevisionsMap.clear()
+        baselineDeleteRevisionsMap.clear()
         reconciledAt = 0L
         mergedUserId = null
         runBlocking { dataStore.edit { it.clear() } }
@@ -178,6 +231,18 @@ class DesktopNoteSyncStateStore(
         runBlocking { dataStore.edit { it[KEY_KNOWN_CLOUD_IDS] = encoded } }
     }
 
+    private fun persistKnownServerRevisions() {
+        val encoded = json.encodeToString(MapSerializer(String.serializer(), Long.serializer()),
+            knownServerRevisionsMap.mapKeys { it.key.toString() })
+        runBlocking { dataStore.edit { it[KEY_KNOWN_SERVER_REVISIONS] = encoded } }
+    }
+
+    private fun persistBaselineDeleteRevisions() {
+        val encoded = json.encodeToString(MapSerializer(String.serializer(), Long.serializer()),
+            baselineDeleteRevisionsMap.mapKeys { it.key.toString() })
+        runBlocking { dataStore.edit { it[KEY_BASELINE_DELETE_REVISIONS] = encoded } }
+    }
+
     // Starting from empty is the only way to keep the app usable, but it is not harmless: losing
     // the tombstone map lets an already-deleted note come back from the cloud, and losing the
     // known-cloud set makes the next sync treat every remote note as new. Log it so a corrupt
@@ -202,12 +267,24 @@ class DesktopNoteSyncStateStore(
         }
     }
 
+    private fun parseLongMap(prefs: Preferences?, key: Preferences.Key<String>): Map<Long, Long> {
+        val raw = prefs?.get(key) ?: return emptyMap()
+        return try {
+            json.decodeFromString<Map<String, Long>>(raw).mapKeys { it.key.toLong() }
+        } catch (error: Exception) {
+            AppLog.warn(TAG, "Sync long map '${key.name}' unreadable; starting with none", error)
+            emptyMap()
+        }
+    }
+
     companion object {
         private const val TAG = "NoteSyncStateStore"
         private val KEY_DELETED_JSON = stringPreferencesKey("sync_deleted_json")
         private val KEY_RESTORED_IDS = stringPreferencesKey("sync_restored_ids")
         private val KEY_PENDING_ATTACHMENT_GC = stringPreferencesKey("sync_pending_attachment_gc")
         private val KEY_KNOWN_CLOUD_IDS = stringPreferencesKey("sync_known_cloud_ids")
+        private val KEY_KNOWN_SERVER_REVISIONS = stringPreferencesKey("sync_known_server_revisions")
+        private val KEY_BASELINE_DELETE_REVISIONS = stringPreferencesKey("sync_baseline_delete_revisions")
         private val KEY_LAST_RECONCILED = longPreferencesKey("sync_last_reconciled")
         private val KEY_LAST_MERGED_USER_ID = stringPreferencesKey("sync_last_merged_user_id")
     }

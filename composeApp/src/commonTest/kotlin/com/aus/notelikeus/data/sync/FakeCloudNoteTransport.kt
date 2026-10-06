@@ -8,7 +8,11 @@ import com.aus.notelikeus.domain.model.Note
  * Every operation is synchronous (no real IO); record the calls so tests
  * can assert what the engine asked the transport to do.
  */
-class FakeCloudNoteTransport : CloudNoteTransport {
+// Identity-bound as well, through the test-only adapter: its forwarding reaches the uid-keyed
+// members below, so a double keeps its behaviour while answering the identity API the engine uses
+// for every protected call. The adapter lives in commonTest precisely so that no production type can
+// inherit that forwarding — the interface itself has no defaults (see IdentityBoundNoteTransport).
+open class FakeCloudNoteTransport : TestIdentityBoundNoteTransportAdapter() {
 
     val notes = mutableMapOf<Long, CloudNoteRecord>()
     val tombstones = mutableMapOf<Long, Long>() // noteId -> deletedAt
@@ -17,8 +21,13 @@ class FakeCloudNoteTransport : CloudNoteTransport {
     val syncMetaCalls = mutableListOf<Triple<String, Int, String>>() // uid, count, platform
     var deleteSyncMetaCalled = false
 
+    data class DeleteAttempt(val noteId: Long, val baseRevision: Long)
+    val deleteAttempts = mutableListOf<DeleteAttempt>()
+    var deleteNoteResult: CloudNoteTransport.DeleteResult = CloudNoteTransport.DeleteResult.Success
+
     // Configurable: the server timestamp to assign to every write
     var nextServerTimestamp: Long = 100_000L
+    var nextServerRevision: Long = 1L
 
     /**
      * When set, [deleteTombstones] throws instead of deleting. Models the offline / expired-token
@@ -42,10 +51,13 @@ class FakeCloudNoteTransport : CloudNoteTransport {
      */
     var reportsAuthoritativeCount: Boolean = true
 
+    var fetchNotesSnapshotCalls = 0
+
     override suspend fun fetchNotes(uid: String): List<CloudNoteRecord> =
         notes.values.toList()
 
     override suspend fun fetchNotesSnapshot(uid: String): CloudNoteSnapshot {
+        fetchNotesSnapshotCalls++
         val all = notes.values.toList()
         val delivered = all.dropLast(truncateSnapshotBy.coerceIn(0, all.size))
         return CloudNoteSnapshot(
@@ -57,7 +69,7 @@ class FakeCloudNoteTransport : CloudNoteTransport {
     override suspend fun fetchNote(uid: String, noteId: Long): CloudNoteRecord? =
         notes[noteId]
 
-    override suspend fun putNotes(uid: String, notes: List<Note>): Map<Long, Long?> {
+    override suspend fun putNotes(uid: String, notes: List<Note>): Map<Long, CloudNoteTransport.PutResult> {
         return notes.mapNotNull { note ->
             val noteId = note.id ?: return@mapNotNull null
             this.notes[noteId] = CloudNoteRecord(
@@ -81,9 +93,19 @@ class FakeCloudNoteTransport : CloudNoteTransport {
                         position = item.position
                     )
                 }
-            )
-            noteId to nextServerTimestamp
+            , revision = nextServerRevision)
+            noteId to CloudNoteTransport.PutResult(nextServerRevision, nextServerTimestamp)
         }.toMap()
+    }
+
+    override suspend fun deleteNote(uid: String, noteId: Long, baseRevision: Long): CloudNoteTransport.DeleteResult {
+        deleteNotesFailure?.let { throw it }
+        deleteAttempts.add(DeleteAttempt(noteId, baseRevision))
+        if (deleteNoteResult == CloudNoteTransport.DeleteResult.Success) {
+            notes.remove(noteId)
+            deletedNoteIds.add(noteId)
+        }
+        return deleteNoteResult
     }
 
     override suspend fun deleteNotes(uid: String, noteIds: List<Long>) {
@@ -92,7 +114,7 @@ class FakeCloudNoteTransport : CloudNoteTransport {
         noteIds.forEach { notes.remove(it) }
     }
 
-    override suspend fun restoreNote(uid: String, note: Note): Map<Long, Long?> {
+    override suspend fun restoreNote(uid: String, note: Note): Map<Long, CloudNoteTransport.PutResult> {
         restoreNoteCalls++
         restoreNoteFailure?.let { throw it }
         deleteTombstonesFailure?.let { throw it }

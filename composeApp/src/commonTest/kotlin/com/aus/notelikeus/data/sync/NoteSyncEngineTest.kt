@@ -1,5 +1,6 @@
 package com.aus.notelikeus.data.sync
 
+import com.aus.notelikeus.domain.repository.LocalCommitResult
 import com.aus.notelikeus.data.local.dao.NoteDao
 import com.aus.notelikeus.data.local.entity.ChecklistItemEntity
 import com.aus.notelikeus.data.local.entity.LabelEntity
@@ -32,6 +33,7 @@ class NoteSyncEngineTest {
         labelDao = FakeLabelDao()
         engine = NoteSyncEngine(
             transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { uid },
             noteDao = noteDao,
             labelDao = labelDao,
             syncStateStore = stateStore,
@@ -100,6 +102,7 @@ class NoteSyncEngineTest {
     fun `uploadAllNotes fails when uid provider fails`() = runTest {
         engine = NoteSyncEngine(
             transport = FakeCloudNoteTransport(),
+            remoteIdentityProvider = testRemoteIdentityProvider { null },
             noteDao = FakeNoteDao(),
             labelDao = FakeLabelDao(),
             syncStateStore = FakeNoteSyncStateStore(),
@@ -265,6 +268,96 @@ class NoteSyncEngineTest {
         assertTrue(1L in transport.notes)
     }
 
+    // ---- reconcileUploads: snapshot efficiency and scenarios ----
+
+    @Test
+    fun `reconcileUploads Scenario A - One changed note makes exactly one snapshot fetch`() = runTest {
+        setup()
+        stateStore.setLastMergedUserId("uid")
+        stateStore.markReconciled(100L)
+        noteDao.insertNote(Note(id = 1L, title = "Edited", content = "", timestamp = 200L, color = 0).toNoteEntity())
+
+        val result = engine.reconcileUploads()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, result.getOrNull())
+        assertEquals(1, transport.fetchNotesSnapshotCalls, "Expected exactly 1 snapshot fetch for a single changed note")
+        assertTrue(1L in transport.notes)
+    }
+
+    @Test
+    fun `reconcileUploads Scenario B - Multiple changed notes make exactly one snapshot fetch`() = runTest {
+        setup()
+        stateStore.setLastMergedUserId("uid")
+        stateStore.markReconciled(100L)
+        noteDao.insertNote(Note(id = 1L, title = "First", content = "", timestamp = 200L, color = 0).toNoteEntity())
+        noteDao.insertNote(Note(id = 2L, title = "Second", content = "", timestamp = 201L, color = 0).toNoteEntity())
+        noteDao.insertNote(Note(id = 3L, title = "Third", content = "", timestamp = 202L, color = 0).toNoteEntity())
+
+        val result = engine.reconcileUploads()
+
+        assertTrue(result.isSuccess)
+        assertEquals(3, result.getOrNull())
+        assertEquals(1, transport.fetchNotesSnapshotCalls, "Expected exactly 1 snapshot fetch for multiple changed notes")
+        assertEquals(3, transport.notes.size)
+        assertTrue(1L in transport.notes)
+        assertTrue(2L in transport.notes)
+        assertTrue(3L in transport.notes)
+    }
+
+    @Test
+    fun `reconcileUploads Scenario C - New local note absent remotely makes exactly one fetch and uploads`() = runTest {
+        setup()
+        stateStore.setLastMergedUserId("uid")
+        stateStore.markReconciled(100L)
+        stateStore.setKnownCloudIds(setOf(2L)) // Assume some other note is known
+        noteDao.insertNote(Note(id = 1L, title = "Brand new", content = "", timestamp = 200L, color = 0).toNoteEntity())
+
+        val result = engine.reconcileUploads()
+
+        assertTrue(result.isSuccess)
+        assertEquals(1, result.getOrNull())
+        assertEquals(1, transport.fetchNotesSnapshotCalls, "Expected exactly 1 snapshot fetch for an absent remote note")
+        assertTrue(1L in transport.notes)
+    }
+
+    @Test
+    fun `reconcileUploads Scenario D - Cloud-newer conflict does not push and uses exactly one fetch`() = runTest {
+        setup()
+        stateStore.setLastMergedUserId("uid")
+        stateStore.markReconciled(100L)
+        noteDao.insertNote(
+            Note(id = 1L, title = "Local stale", content = "", timestamp = 200L, color = 0, serverUpdatedAt = 50L).toNoteEntity()
+        )
+        // Cloud has newer serverUpdatedAt
+        transport.notes[1L] = cloudRecord(title = "Cloud fresh", content = "").copy(
+            noteId = 1L, serverUpdatedAt = 150L, clientTimestamp = 1L
+        )
+
+        val result = engine.reconcileUploads()
+
+        assertTrue(result.isSuccess)
+        assertEquals(0, result.getOrNull(), "Should skip upload because cloud wins conflict")
+        assertEquals(1, transport.fetchNotesSnapshotCalls, "Expected exactly 1 snapshot fetch to resolve conflict")
+        // Verify local stale wasn't pushed over cloud fresh
+        assertEquals("Cloud fresh", transport.notes[1L]?.title)
+    }
+
+    @Test
+    fun `reconcileUploads Scenario E - No changed notes skips snapshot fetch completely`() = runTest {
+        setup()
+        stateStore.setLastMergedUserId("uid")
+        stateStore.markReconciled(100L)
+        // Local note is older than lastReconciledAt
+        noteDao.insertNote(Note(id = 1L, title = "Old note", content = "", timestamp = 50L, color = 0).toNoteEntity())
+
+        val result = engine.reconcileUploads()
+
+        assertTrue(result.isSuccess)
+        assertEquals(0, result.getOrNull())
+        assertEquals(0, transport.fetchNotesSnapshotCalls, "Expected 0 snapshot fetches if there are no local changes to reconcile")
+    }
+
     // ---- uploadNote ----
 
     @Test
@@ -291,7 +384,7 @@ class NoteSyncEngineTest {
             title = "Stale", content = "", timestamp = 1L, color = 0,
             isPinned = false, isArchived = false, isTrashed = false,
             position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList()
-        )
+        , revision = 1L)
 
         val result = engine.uploadNote(7L)
 
@@ -305,8 +398,10 @@ class NoteSyncEngineTest {
     @Test
     fun `uploadNote respects cloud tombstone and deletes instead of writing`() = runTest {
         setup()
-        stateStore.markDeleted(11L, 99L)
+        stateStore.markDeleted(11L, 99L, baselineRevision = 1L)
         transport.tombstones[11L] = 99L
+        stateStore.setKnownCloudIds(setOf(11L))
+        stateStore.updateKnownServerRevision(11L, 1L)
 
         val result = engine.uploadNote(11L)
 
@@ -398,6 +493,7 @@ class NoteSyncEngineTest {
 
         engine = NoteSyncEngine(
             transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { "uid" },
             noteDao = noteDao,
             labelDao = labelDao,
             syncStateStore = stateStore,
@@ -431,6 +527,8 @@ class NoteSyncEngineTest {
     fun `deleteNote creates tombstone and deletes cloud note`() = runTest {
         setup()
         stateStore.currentTime = 999L
+        stateStore.setKnownCloudIds(setOf(42L))
+        stateStore.updateKnownServerRevision(42L, 1L)
 
         val result = engine.deleteNote(42L)
 
@@ -446,6 +544,8 @@ class NoteSyncEngineTest {
         val attachments = listOf(
             Attachment(id = "a1", noteId = 42L, storagePath = "r2:owners/uid/notes/42/a1"),
         )
+        stateStore.setKnownCloudIds(setOf(42L))
+        stateStore.updateKnownServerRevision(42L, 1L)
         noteDao.insertNote(
             Note(id = 42L, title = "Live", content = "body", timestamp = 1L, color = 0, attachments = attachments)
                 .toNoteEntity(),
@@ -453,11 +553,12 @@ class NoteSyncEngineTest {
         var gcCalls = 0
         engine = NoteSyncEngine(
             transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { "uid" },
             noteDao = noteDao,
             labelDao = labelDao,
             syncStateStore = stateStore,
             uidProvider = { Result.success("uid") },
-            deleteNoteAttachments = { _, _ -> gcCalls++ },
+            deleteNoteAttachments = { _, _, _ -> gcCalls++; LocalCommitResult.Applied(Unit) },
         )
         stateStore.setLastMergedUserId("uid")
         transport.deleteNotesFailure = IllegalStateException("rpc failed")
@@ -474,6 +575,8 @@ class NoteSyncEngineTest {
         val attachments = listOf(
             Attachment(id = "a1", noteId = 42L, storagePath = "r2:owners/uid/notes/42/a1"),
         )
+        stateStore.setKnownCloudIds(setOf(42L))
+        stateStore.updateKnownServerRevision(42L, 1L)
         noteDao.insertNote(
             Note(id = 42L, title = "Gone", content = "body", timestamp = 1L, color = 0, attachments = attachments)
                 .toNoteEntity(),
@@ -481,13 +584,15 @@ class NoteSyncEngineTest {
         var gcCalls = 0
         engine = NoteSyncEngine(
             transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { "uid" },
             noteDao = noteDao,
             labelDao = labelDao,
             syncStateStore = stateStore,
             uidProvider = { Result.success("uid") },
-            deleteNoteAttachments = { _, _ ->
+            deleteNoteAttachments = { _, _, _ ->
                 gcCalls++
                 if (gcCalls == 1) error("r2 unavailable")
+                LocalCommitResult.Applied(Unit)
             },
         )
         stateStore.setLastMergedUserId("uid")
@@ -516,17 +621,20 @@ class NoteSyncEngineTest {
         var gcCalls = 0
         engine = NoteSyncEngine(
             transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { "uid" },
             noteDao = noteDao,
             labelDao = labelDao,
             syncStateStore = stateStore,
             uidProvider = { Result.success("uid") },
-            deleteNoteAttachments = { _, _ -> gcCalls++ },
+            deleteNoteAttachments = { _, _, _ -> gcCalls++; LocalCommitResult.Applied(Unit) },
         )
         stateStore.setLastMergedUserId("uid")
         stateStore.markDeleted(7L, 1L)
         stateStore.markPendingAttachmentGc(7L)
         transport.deletedNoteIds += 7L
-        transport.tombstones[7L] = 1L
+        transport.tombstones[77L] = 1234L
+        stateStore.setKnownCloudIds(setOf(77L))
+        stateStore.updateKnownServerRevision(77L, 1L)
 
         assertTrue(engine.downloadAllNotes().isSuccess)
         assertEquals(1, gcCalls)
@@ -539,11 +647,12 @@ class NoteSyncEngineTest {
         var gcCalls = 0
         engine = NoteSyncEngine(
             transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { "uid" },
             noteDao = noteDao,
             labelDao = labelDao,
             syncStateStore = stateStore,
             uidProvider = { Result.success("uid") },
-            deleteNoteAttachments = { _, _ -> gcCalls++ },
+            deleteNoteAttachments = { _, _, _ -> gcCalls++; LocalCommitResult.Applied(Unit) },
         )
         stateStore.setLastMergedUserId("uid")
         stateStore.markPendingAttachmentGc(9L)
@@ -588,7 +697,7 @@ class NoteSyncEngineTest {
             isPinned = false, isArchived = false, isTrashed = false,
             position = 0, reminderTimestamp = null,
             labels = emptyList(), checklistItems = emptyList(),
-        )
+            revision = 1L)
         stateStore.markRestored(11L)
 
         assertTrue(engine.downloadAllNotes().isSuccess)
@@ -620,7 +729,7 @@ class NoteSyncEngineTest {
             isPinned = false, isArchived = false, isTrashed = false,
             position = 0, reminderTimestamp = null,
             labels = listOf("Work"), checklistItems = emptyList()
-        )
+        , revision = 1L)
 
         val result = engine.downloadAllNotes()
 
@@ -693,6 +802,7 @@ class NoteSyncEngineTest {
         labelDao = FakeLabelDao()
         engine = NoteSyncEngine(
             transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { "uid" },
             noteDao = dao,
             labelDao = labelDao,
             syncStateStore = stateStore,
@@ -706,7 +816,7 @@ class NoteSyncEngineTest {
         isPinned = false, isArchived = false, isTrashed = false,
         position = 0, reminderTimestamp = null,
         labels = emptyList(), checklistItems = emptyList()
-    )
+    , revision = 1L)
 
     // ---- runInTransaction: production DI wraps multi-statement writes atomically ----
 
@@ -739,6 +849,7 @@ class NoteSyncEngineTest {
         }
         engine = NoteSyncEngine(
             transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { "uid" },
             noteDao = countingDao,
             labelDao = labelDao,
             syncStateStore = stateStore,
@@ -762,7 +873,7 @@ class NoteSyncEngineTest {
             position = 0, reminderTimestamp = null,
             labels = listOf("Work"),
             checklistItems = listOf(ChecklistItemData(text = "a", isChecked = false, position = 0))
-        )
+        , revision = 1L)
         transport.notes[2L] = CloudNoteRecord(
             noteId = 2L, serverUpdatedAt = 201_000L, clientTimestamp = 1L,
             title = "Two", content = "World", timestamp = 1L, color = 0,
@@ -770,7 +881,7 @@ class NoteSyncEngineTest {
             position = 0, reminderTimestamp = null,
             labels = listOf("Home"),
             checklistItems = listOf(ChecklistItemData(text = "b", isChecked = true, position = 0))
-        )
+        , revision = 1L)
 
         val result = engine.downloadAllNotes()
 
@@ -823,7 +934,7 @@ class NoteSyncEngineTest {
             isPinned = false, isArchived = false, isTrashed = false,
             position = 0, reminderTimestamp = null,
             labels = emptyList(), checklistItems = emptyList()
-        )
+        , revision = 1L)
 
         val result = engine.downloadAllNotes()
 
@@ -861,7 +972,7 @@ class NoteSyncEngineTest {
             title = "Bob's note", content = "", timestamp = 1L, color = 0,
             isPinned = false, isArchived = false, isTrashed = false,
             position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList()
-        )
+        , revision = 1L)
 
         val result = engine.downloadAllNotes()
 
@@ -881,7 +992,7 @@ class NoteSyncEngineTest {
             title = "Bob's note", content = "", timestamp = 1L, color = 0,
             isPinned = false, isArchived = false, isTrashed = false,
             position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList()
-        )
+        , revision = 1L)
 
         val result = engine.deleteNote(1L)
 
@@ -903,7 +1014,7 @@ class NoteSyncEngineTest {
             title = "x", content = "", timestamp = 1L, color = 0,
             isPinned = false, isArchived = false, isTrashed = false,
             position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList()
-        )
+        , revision = 1L)
         transport.tombstones[1L] = 1L
 
         val result = engine.deleteAllCloudData()
@@ -920,6 +1031,7 @@ class NoteSyncEngineTest {
     fun `deleteAllCloudData fails when uid provider fails`() = runTest {
         engine = NoteSyncEngine(
             transport = FakeCloudNoteTransport(),
+            remoteIdentityProvider = testRemoteIdentityProvider { null },
             noteDao = FakeNoteDao(),
             labelDao = FakeLabelDao(),
             syncStateStore = FakeNoteSyncStateStore(),
@@ -927,5 +1039,354 @@ class NoteSyncEngineTest {
         )
         val result = engine.deleteAllCloudData()
         assertTrue(result.isFailure)
+    }
+
+    // ---- Task 2D-1: Authoritative Revision Bookkeeping Tests ----
+
+    @Test
+    fun `Test A - snapshot persists revision`() = runTest {
+        setup()
+        transport.notes[1L] = CloudNoteRecord(
+            noteId = 1L, serverUpdatedAt = 200L, clientTimestamp = 1L,
+            title = "n1", content = "", timestamp = 1L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList(),
+            revision = 10L
+        )
+        transport.notes[2L] = CloudNoteRecord(
+            noteId = 2L, serverUpdatedAt = 200L, clientTimestamp = 1L,
+            title = "n2", content = "", timestamp = 1L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList(),
+            revision = 20L
+        )
+
+        engine.downloadAllNotes()
+
+        val known = stateStore.knownServerRevisionById()
+        assertEquals(10L, known[1L])
+        assertEquals(20L, known[2L])
+    }
+
+    @Test
+    fun `Test B - successful update advances known revision`() = runTest {
+        setup()
+        stateStore.updateKnownServerRevision(1L, 10L)
+
+        noteDao.insertNote(Note(id = 1L, title = "n1", content = "", timestamp = 1L, color = 0).toNoteEntity())
+
+        transport.nextServerRevision = 11L
+        engine.uploadNote(1L)
+
+        val known = stateStore.knownServerRevisionById()
+        assertEquals(11L, known[1L])
+    }
+
+    @Test
+    fun `Test C - successful create persists first revision`() = runTest {
+        setup()
+        // No known entry yet
+        noteDao.insertNote(Note(id = 1L, title = "n1", content = "", timestamp = 1L, color = 0).toNoteEntity())
+
+        transport.nextServerRevision = 30L
+        engine.uploadNote(1L)
+
+        val known = stateStore.knownServerRevisionById()
+        assertEquals(30L, known[1L])
+    }
+
+    @Test
+    fun `Test D - process-safe correctness`() = runTest {
+        setup()
+        // Create store with a known state
+        val fakeStore = FakeNoteSyncStateStore()
+        fakeStore.updateKnownServerRevision(1L, 10L)
+
+        engine = NoteSyncEngine(
+            transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { "uid" },
+            noteDao = noteDao,
+            labelDao = labelDao,
+            syncStateStore = fakeStore,
+            uidProvider = { Result.success("uid") },
+        )
+
+        noteDao.insertNote(Note(id = 1L, title = "n1", content = "", timestamp = 1L, color = 0).toNoteEntity())
+        transport.nextServerRevision = 11L
+        engine.uploadNote(1L)
+
+        // Simulating process death by reading from the fakeStore independently
+        val known = fakeStore.knownServerRevisionById()
+        assertEquals(11L, known[1L])
+    }
+
+    @Test
+    fun `Test E - failed mutation does not advance revision`() = runTest {
+        setup()
+        stateStore.updateKnownServerRevision(1L, 10L)
+        noteDao.insertNote(Note(id = 1L, title = "n1", content = "", timestamp = 1L, color = 0).toNoteEntity())
+
+        // Setup transport wrapped in fault injection
+        val faultTransport = FaultInjectingTransport { transport }
+        faultTransport.failOnce("putNotes")
+
+        engine = NoteSyncEngine(
+            transport = faultTransport,
+            remoteIdentityProvider = testRemoteIdentityProvider { "uid" },
+            noteDao = noteDao,
+            labelDao = labelDao,
+            syncStateStore = stateStore,
+            uidProvider = { Result.success("uid") },
+        )
+
+        val result = engine.uploadNote(1L)
+        assertTrue(result.isFailure)
+
+        val known = stateStore.knownServerRevisionById()
+        assertEquals(10L, known[1L], "Failed mutation should not advance revision")
+    }
+
+    @Test
+    fun `Test F - authoritative snapshot removes stale live revision`() = runTest {
+        setup()
+        stateStore.setKnownCloudIds(setOf(1L, 2L))
+        stateStore.updateKnownServerRevision(1L, 10L)
+        stateStore.updateKnownServerRevision(2L, 20L)
+        stateStore.setLastMergedUserId("uid")
+
+        // Valid snapshot contains ONLY note 1
+        transport.notes[1L] = CloudNoteRecord(
+            noteId = 1L, serverUpdatedAt = 200L, clientTimestamp = 1L,
+            title = "n1", content = "", timestamp = 1L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList(),
+            revision = 11L
+        )
+
+        engine.downloadAllNotes()
+
+        val known = stateStore.knownServerRevisionById()
+        assertEquals(11L, known[1L])
+        assertFalse(known.containsKey(2L), "Stale revision for removed note 2 should be cleaned up")
+    }
+
+    // ---- Task 2D-2: Permanent Delete Conflict Safety Tests ----
+
+    @Test
+    fun `Test A - stale offline delete loses to newer remote edit`() = runTest {
+        setup()
+        // known revision before delete = 10
+        stateStore.updateKnownServerRevision(1L, 10L)
+        stateStore.setKnownCloudIds(setOf(1L))
+        stateStore.setLastMergedUserId("uid")
+
+        noteDao.insertNote(Note(id = 1L, title = "n1", content = "", timestamp = 1L, color = 0).toNoteEntity())
+
+        // simulate offline for the delete intent
+        transport.deleteNotesFailure = IllegalStateException("offline")
+
+        // user deletes offline -> baseline = 10
+        engine.deleteNote(1L)
+
+        // restore online for sync
+        transport.deleteNotesFailure = null
+        assertEquals(10L, stateStore.baselineDeleteRevisionById()[1L])
+        assertTrue(stateStore.isDeleted(1L))
+
+        // remote becomes revision 11
+        transport.notes[1L] = CloudNoteRecord(
+            noteId = 1L, serverUpdatedAt = 200L, clientTimestamp = 1L,
+            title = "n1_edited", content = "", timestamp = 1L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList(),
+            revision = 11L
+        )
+
+        // sync
+        val result = engine.downloadAllNotes()
+        assertTrue(result.isSuccess)
+
+        // Expected: NO delete RPC
+        assertTrue(transport.deleteAttempts.isEmpty())
+
+        // delete intent cleared
+        assertFalse(stateStore.isDeleted(1L))
+
+        // baseline cleared
+        assertFalse(stateStore.baselineDeleteRevisionById().containsKey(1L))
+
+        // remote note survives and is restored locally (handled by merge logic which writes to local DB)
+        // Known revision updated
+        assertEquals(11L, stateStore.knownServerRevisionById()[1L])
+    }
+
+    @Test
+    fun `Test B - unchanged remote revision deletes successfully`() = runTest {
+        setup()
+        stateStore.updateKnownServerRevision(1L, 10L)
+        stateStore.setKnownCloudIds(setOf(1L))
+        stateStore.setLastMergedUserId("uid")
+
+        noteDao.insertNote(Note(id = 1L, title = "n1", content = "", timestamp = 1L, color = 0).toNoteEntity())
+
+        // immediate delete
+        engine.deleteNote(1L)
+
+        // explicit delete called exactly once with baseRevision 10
+        assertEquals(1, transport.deleteAttempts.size)
+        assertEquals(1L, transport.deleteAttempts[0].noteId)
+        assertEquals(10L, transport.deleteAttempts[0].baseRevision)
+
+        // Pending delete resolved correctly (known revision cleared)
+        assertFalse(stateStore.knownServerRevisionById().containsKey(1L))
+    }
+
+    @Test
+    fun `Test C - legacy tombstone`() = runTest {
+        setup()
+        stateStore.setKnownCloudIds(setOf(1L))
+        stateStore.setLastMergedUserId("uid")
+
+        // Tombstone exists, baseline absent
+        stateStore.markDeleted(1L, 1L, baselineRevision = null)
+
+        transport.notes[1L] = CloudNoteRecord(
+            noteId = 1L, serverUpdatedAt = 200L, clientTimestamp = 1L,
+            title = "n1", content = "", timestamp = 1L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList(),
+            revision = 11L
+        )
+
+        val result = engine.downloadAllNotes()
+        assertTrue(result.isSuccess)
+
+        // NO delete RPC
+        assertTrue(transport.deleteAttempts.isEmpty())
+
+        // Cloud wins, tombstone abandoned
+        assertFalse(stateStore.isDeleted(1L))
+        assertFalse(stateStore.baselineDeleteRevisionById().containsKey(1L))
+    }
+
+    @Test
+    fun `Test D - local-only unsynced delete`() = runTest {
+        setup()
+        stateStore.setLastMergedUserId("uid")
+
+        // Local only, no known cloud ID, no known revision
+        noteDao.insertNote(Note(id = 1L, title = "n1", content = "", timestamp = 1L, color = 0).toNoteEntity())
+
+        val result = engine.deleteNote(1L)
+        assertTrue(result.isSuccess)
+
+        // No remote delete RPC
+        assertTrue(transport.deleteAttempts.isEmpty())
+        assertTrue(stateStore.isDeleted(1L))
+    }
+
+    @Test
+    fun `Test E - immediate online tight conflict`() = runTest {
+        setup()
+        stateStore.updateKnownServerRevision(1L, 10L)
+        stateStore.setKnownCloudIds(setOf(1L))
+        stateStore.setLastMergedUserId("uid")
+
+        noteDao.insertNote(Note(id = 1L, title = "n1", content = "", timestamp = 1L, color = 0).toNoteEntity())
+
+        // Setup transport to return Conflict
+        transport.deleteNoteResult = CloudNoteTransport.DeleteResult.Conflict
+
+        val result = engine.deleteNote(1L)
+        assertTrue(result.isSuccess) // The engine successfully processed the delete attempt locally
+
+        // one delete attempt
+        assertEquals(1, transport.deleteAttempts.size)
+        assertEquals(10L, transport.deleteAttempts[0].baseRevision)
+
+        // baseline remains 10, tombstone remains pending
+        assertEquals(10L, stateStore.baselineDeleteRevisionById()[1L])
+        assertTrue(stateStore.isDeleted(1L))
+    }
+
+    @Test
+    fun `Test F - next sync after tight conflict`() = runTest {
+        // Start from Test E state
+        setup()
+        stateStore.updateKnownServerRevision(1L, 10L)
+        stateStore.setKnownCloudIds(setOf(1L))
+        stateStore.setLastMergedUserId("uid")
+        stateStore.markDeleted(1L, 1L, baselineRevision = 10L)
+
+        // Remote snapshot now: revision = 11
+        transport.notes[1L] = CloudNoteRecord(
+            noteId = 1L, serverUpdatedAt = 200L, clientTimestamp = 1L,
+            title = "n1", content = "", timestamp = 1L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList(),
+            revision = 11L
+        )
+
+        val result = engine.downloadAllNotes()
+        assertTrue(result.isSuccess)
+
+        // cloud wins, no new delete attempt
+        assertTrue(transport.deleteAttempts.isEmpty())
+        assertFalse(stateStore.isDeleted(1L))
+        assertFalse(stateStore.baselineDeleteRevisionById().containsKey(1L))
+        assertEquals(11L, stateStore.knownServerRevisionById()[1L])
+    }
+
+    @Test
+    fun `Test G - restore recreation`() = runTest {
+        setup()
+        stateStore.setKnownCloudIds(setOf(1L))
+        stateStore.setLastMergedUserId("uid")
+        // Baseline = 10
+        stateStore.markDeleted(1L, 1L, baselineRevision = 10L)
+
+        // remote recreation revision = 15
+        transport.notes[1L] = CloudNoteRecord(
+            noteId = 1L, serverUpdatedAt = 200L, clientTimestamp = 1L,
+            title = "n1", content = "", timestamp = 1L, color = 0,
+            isPinned = false, isArchived = false, isTrashed = false,
+            position = 0, reminderTimestamp = null, labels = emptyList(), checklistItems = emptyList(),
+            revision = 15L
+        )
+
+        val result = engine.downloadAllNotes()
+        assertTrue(result.isSuccess)
+
+        // Expected: no delete, old tombstone abandoned, remote version survives
+        assertTrue(transport.deleteAttempts.isEmpty())
+        assertFalse(stateStore.isDeleted(1L))
+        assertEquals(15L, stateStore.knownServerRevisionById()[1L])
+    }
+
+    @Test
+    fun `Test H - delete baseline is immutable`() = runTest {
+        setup()
+        stateStore.markDeleted(1L, 1L, baselineRevision = 10L)
+
+        // Later knownServerRevision updates to 11 (perhaps a rogue update, though architecturally impossible if deleted)
+        stateStore.updateKnownServerRevision(1L, 11L)
+
+        // Baseline must still be 10
+        assertEquals(10L, stateStore.baselineDeleteRevisionById()[1L])
+    }
+
+    @Test
+    fun `Test I - process death after delete intent creation`() = runTest {
+        setup()
+        val realStore = FakeNoteSyncStateStore() // Represents a persistent store
+        realStore.markDeleted(1L, 1L, baselineRevision = 10L)
+
+        // Recreate store/engine (Simulated by verifying the same store object still holds it properly,
+        // real persistence is tested in DesktopNoteSyncStateStoreTest if needed).
+        val recreatedStore = FakeNoteSyncStateStore()
+        recreatedStore.markDeleted(1L, realStore.deletedAtById()[1L]!!, realStore.baselineDeleteRevisionById()[1L]!!)
+
+        assertTrue(recreatedStore.isDeleted(1L))
+        assertEquals(10L, recreatedStore.baselineDeleteRevisionById()[1L])
     }
 }

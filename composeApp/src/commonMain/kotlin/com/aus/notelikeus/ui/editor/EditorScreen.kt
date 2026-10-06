@@ -125,6 +125,11 @@ fun EditorScreen(
         scope.launch {
             when (viewModel.saveLocallyAndAwait()) {
                 is LocalSaveResult.Saved, LocalSaveResult.Unchanged -> onBack()
+                // The dataset this edit belonged to is no longer current, so there is nothing here
+                // to keep: staying would hold the editor open on a note that belongs to an account
+                // that is gone. The refusal is deliberate, not a write failure, so it is not
+                // reported as one — and it is not a claim that the edit was persisted.
+                LocalSaveResult.AccountChanged -> onBack()
                 is LocalSaveResult.Failed -> Unit // The snackbar below offers retry or discard.
             }
         }
@@ -190,6 +195,9 @@ fun EditorScreen(
                         }
                     )
                     LocalSaveResult.Unchanged -> Unit
+                    // Refused at the account boundary: nothing was written into any dataset, so
+                    // confirming the reminder here would announce one that is not set.
+                    LocalSaveResult.AccountChanged -> Unit
                     is LocalSaveResult.Failed -> Unit // Reported by the save-failure snackbar below.
                 }
             }
@@ -513,17 +521,24 @@ fun EditorScreen(
                     scope.launch {
                         // Staging the undo and leaving on a failed write would report a delete
                         // that never happened, and offer to undo it.
-                        val snapshot = runCatching { viewModel.trashNoteForDelete() }
+                        val result = runCatching { viewModel.trashNoteForDelete() }
                             .getOrElse { error ->
                                 if (error is CancellationException) throw error
                                 AppLog.warn("EditorScreen", "Trashing the note failed", error)
                                 snackbarHostState.showSnackbar(noteDeleteFailedMsg)
                                 return@launch
                             }
-                        if (snapshot != null) {
-                            onStageUndo(snapshot, UndoAction.TRASH, noteTrashedMsg)
+                        when (result) {
+                            is TrashNoteResult.Trashed -> {
+                                onStageUndo(result.snapshot, UndoAction.TRASH, noteTrashedMsg)
+                                onBack()
+                            }
+                            TrashNoteResult.NothingToTrash -> onBack()
+                            // Refused at the account boundary: nothing was trashed, so staging an
+                            // undo would offer to restore a note that was never removed. Stay put
+                            // and let the account transition settle navigation.
+                            TrashNoteResult.AccountChanged -> Unit
                         }
-                        onBack()
                     }
                 },
                 onShareNote = {

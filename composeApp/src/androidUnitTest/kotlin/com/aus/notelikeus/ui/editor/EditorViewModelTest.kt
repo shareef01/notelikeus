@@ -5,6 +5,7 @@ import app.cash.turbine.test
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.data.backup.NoteBackupImporter
+import com.aus.notelikeus.domain.repository.LocalCommitResult
 import com.aus.notelikeus.domain.repository.NoteRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -41,7 +42,8 @@ class EditorViewModelTest {
         return EditorViewModel(
             repository,
             reminderManager,
-            savedStateHandle
+            savedStateHandle,
+            localCommitTokenProvider = FakeLocalCommitTokenProvider(),
         )
     }
 
@@ -87,7 +89,9 @@ class EditorViewModelTest {
     fun `saveNoteAndAwait persists before it returns`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         coEvery { repository.getNextNotePosition() } returns 0
-        coEvery { repository.insertNoteWithResult(any()) } returns 7L
+        // New-note insertion is account-generation fenced as of Phase 3C.1, so the token-aware
+        // overload is the one this path reaches.
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(7L)
 
         viewModel = createViewModel(SavedStateHandle())
         testScheduler.advanceUntilIdle()
@@ -97,14 +101,14 @@ class EditorViewModelTest {
 
         // No advanceUntilIdle() in between: the row must already be committed when the call
         // returns, because the caller disposes the ViewModel on the very next line.
-        coVerify(exactly = 1) { repository.insertNoteWithResult(any()) }
+        coVerify(exactly = 1) { repository.insertNoteWithResult(any(), any()) }
     }
 
     @Test
     fun `saveNote alone has not written by the time it returns`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         coEvery { repository.getNextNotePosition() } returns 0
-        coEvery { repository.insertNoteWithResult(any()) } returns 7L
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(7L)
 
         viewModel = createViewModel(SavedStateHandle())
         testScheduler.advanceUntilIdle()
@@ -114,7 +118,7 @@ class EditorViewModelTest {
 
         // Documents why the exit paths must not use this variant: the write is still queued, so
         // anything that cancels viewModelScope now loses it.
-        coVerify(exactly = 0) { repository.insertNoteWithResult(any()) }
+        coVerify(exactly = 0) { repository.insertNoteWithResult(any(), any()) }
     }
 
     /**
@@ -130,7 +134,7 @@ class EditorViewModelTest {
     fun `text typed before the initial load completes is not wiped`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         coEvery { repository.getNextNotePosition() } returns 0
-        coEvery { repository.insertNoteWithResult(any()) } returns 1L
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(1L)
 
         // Created but not yet run: the load is queued behind the dispatcher, exactly as it is
         // queued behind a DataStore read in the real app.
@@ -229,15 +233,16 @@ class EditorViewModelTest {
             color = 0
         )
         coEvery { repository.getNoteById(1L) } returns note
-        coEvery { repository.updateNote(any()) } returns Unit
+        // trashNoteForDelete is fenced now, so the token-aware overload is the one it reaches.
+        coEvery { repository.updateNote(any(), any()) } returns LocalCommitResult.Applied(Unit)
 
         val savedStateHandle = SavedStateHandle(mapOf("noteId" to 1L))
         viewModel = createViewModel(savedStateHandle)
 
         viewModel.state.test {
             awaitItem()
-            val snapshot = viewModel.trashNoteForDelete()
-            assertEquals("Title", snapshot?.title)
+            val result = viewModel.trashNoteForDelete()
+            assertEquals("Title", (result as TrashNoteResult.Trashed).snapshot.title)
             assertEquals(true, awaitItem().isTrashed)
             // trashNoteForDelete also persists the note, which bumps the timestamp
             // in a follow-up emission — drain it instead of asserting on it.

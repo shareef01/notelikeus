@@ -18,12 +18,24 @@ describe('attachment object keys', () => {
     expect(() => buildAttachmentObjectKey(ownerId, '../note', 'att')).toThrow();
   });
 
-  it('parses worker attachment routes', () => {
+  it('parses worker attachment routes, with the commitment protocol they ask for', () => {
+    // R19.2: the version is part of the route. `v1` is the committed-at-upload protocol every
+    // deployed client speaks; `v2` asks for the deferred one. A Worker that only knows `v1` -- i.e.
+    // one deployed before the deferred protocol -- answers 404 for a `v2` path before it touches
+    // storage or the database, which is what makes the rollout order safe.
     expect(parseAttachmentPath('/v1/attachments/note-1/att-1')).toEqual({
       noteId: 'note-1',
       attachmentId: 'att-1',
+      deferred: false,
+    });
+    expect(parseAttachmentPath('/v2/attachments/note-1/att-1')).toEqual({
+      noteId: 'note-1',
+      attachmentId: 'att-1',
+      deferred: true,
     });
     expect(parseAttachmentPath('/v1/attachments')).toBeNull();
+    expect(parseAttachmentPath('/v3/attachments/note-1/att-1')).toBeNull();
+    expect(parseAttachmentPath('/attachments/note-1/att-1')).toBeNull();
   });
 
   it('validates object keys for an owner', () => {

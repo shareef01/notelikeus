@@ -20,6 +20,7 @@ import com.aus.notelikeus.util.readLocalProperty
 import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.remote.DesktopSupabaseRpcClient
 import com.aus.notelikeus.data.remote.DesktopSupabaseSessionPersistence
+import com.aus.notelikeus.data.remote.RemoteIdentityProvider
 import com.aus.notelikeus.data.remote.SupabaseAccessTokenProvider
 import com.aus.notelikeus.data.remote.SupabaseAuthApi
 import com.aus.notelikeus.data.remote.SupabaseNoteTransport
@@ -39,7 +40,11 @@ import com.aus.notelikeus.data.remote.AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.NoopAttachmentBlobTransport
 import com.aus.notelikeus.data.remote.R2AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.SupabaseAttachmentMetadata
-import com.aus.notelikeus.data.sync.CloudNoteTransport
+import com.aus.notelikeus.data.sync.DatasetEpochAuthority
+import com.aus.notelikeus.data.sync.LocalCommitGate
+import com.aus.notelikeus.data.sync.DatasetEpochStore
+import com.aus.notelikeus.data.remote.DatasetScopedCloudRevisionState
+import com.aus.notelikeus.data.sync.IdentityBoundNoteTransport
 import com.aus.notelikeus.data.migration.AccountUidBridge
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
@@ -64,6 +69,15 @@ import java.io.File
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 
+
+/** F-8: the file that remembers an accepted destructive cloud-wipe request. Deliberately outside
+ *  the settings DataStore, which local account isolation clears. */
+
+import com.aus.notelikeus.data.remote.DesktopPendingCloudWipeIntentStore
+import com.aus.notelikeus.data.sync.CloudWipeCoordinator
+// F-8: the file that remembers an accepted destructive cloud-wipe request. Deliberately outside
+// the settings DataStore, which local account isolation clears.
+private const val PENDING_WIPE_FILENAME = "pending_cloud_wipe.txt"
 
 actual val platformModule = module {
     single {
@@ -110,10 +124,23 @@ actual val platformModule = module {
     single { DesktopReminderManager(get()) }
     single<ReminderManager> { get<DesktopReminderManager>() }
     single<PlatformWidgetManager> { DesktopWidgetManager() }
-    // Bound to the interface, not the concrete class: DesktopSyncCoordinator asks for
-    // PendingSyncStore, and registering only the implementation type leaves that unresolvable.
-    single<PendingSyncStore> { DesktopPendingSyncStore(get()) }
-    single<SyncCoordinator> { DesktopSyncCoordinator(get(), get()) }
+    // Bound by contract as well as by type: DatasetEpochAuthority takes the store, and two
+    // registrations of it would be two datasets.
+    single { DesktopPendingSyncStore(get()) }
+    single<DatasetEpochStore> { get<DesktopPendingSyncStore>() }
+    single { DatasetEpochAuthority(get()).also { authority ->
+        // The incomplete-isolation quarantine: while the device is between datasets, no
+        // account-owned local commit may proceed either — see LocalCommitGate's invariant note.
+        LocalCommitGate.installDatasetAuthorityQuarantine { authority.isIsolationIncomplete() }
+    } }
+    single<SyncCoordinator> {
+        DesktopSyncCoordinator(
+            syncEngine = get(),
+            epochAuthority = get(),
+            // Stamped onto each queued command when it is queued, never read when it runs.
+            ownerUidProvider = { get<CloudSessionManager>().getCurrentAccount().userId },
+        )
+    }
 
     single { NoteBackupExporter(get<NoteRepository>(), "Notelikeus", AppConfig.versionName) }
     single { NoteBackupImporter(get<NoteRepository>()) }
@@ -188,7 +215,13 @@ actual val platformModule = module {
         )
     }
 
-    single<CloudNoteTransport> {
+    // The engine's transport is registered under the *identity-bound* contract, not
+    // `CloudNoteTransport`: the two are separate types so that no wiring can hand the engine a
+    // transport whose protected calls would resolve their bearer from the live session.
+    // The transport is registered by its own type so that the two interfaces it implements resolve to
+    // this one instance: clearing dataset-scoped revision state on a second instance would leave the
+    // engine's map untouched, which is the whole defect this registration avoids.
+    single {
         SupabaseNoteTransport(
             DesktopSupabaseRpcClient(
                 supabaseUrl = BackendConfig.supabaseUrl,
@@ -197,10 +230,42 @@ actual val platformModule = module {
             ),
         )
     }
+    single<IdentityBoundNoteTransport> { get<SupabaseNoteTransport>() }
+    single<DatasetScopedCloudRevisionState> { get<SupabaseNoteTransport>() }
+
+    /**
+     * Supplies the immutable `OperationRemoteIdentity` every protected note operation executes under.
+     *
+     * Reuses the same live session the rest of the graph uses — one credential source, read once per
+     * logical operation and then never again — and reads the owner either side of the credential
+     * acquisition so a refresh that lands after a sign-in cannot produce `Identity(A, tokenB)`.
+     */
+    single<RemoteIdentityProvider> {
+        RemoteIdentityProvider(
+            accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+            sessionOwnerId = { get<SupabaseSessionManager>().getCurrentAccount().userId },
+            // Read inside the identity capture's held gate section: the operation's dataset
+            // binding is decided by the same token validation that authorises it.
+            revisionEpochProvider = { get<DatasetScopedCloudRevisionState>().currentRevisionEpoch() },
+        )
+    }
 
     single<NoteSyncStateStore> {
         DesktopNoteSyncStateStore(get())
     }
+
+    // persists it before any destructive call and clears it only on authoritative completion. The
+    // store is platform-backed on purpose: it has to survive sign-out, process death and the local
+    // account isolation that clears everything else.
+
+    // F-8: the durable record of an accepted destructive wipe request, plus the coordinator that
+    // persists it before any destructive call and clears it only on authoritative completion. The
+    // store is platform-backed on purpose: it has to survive sign-out, process death and the local
+    // account isolation that clears everything else.
+    single<com.aus.notelikeus.data.sync.PendingCloudWipeIntentStore> {
+        DesktopPendingCloudWipeIntentStore(File(DesktopPathProvider.getDataDirectory(), PENDING_WIPE_FILENAME))
+    }
+    single { CloudWipeCoordinator(get()) }
 
     single { AccountUidBridge(get()) }
 
@@ -208,7 +273,11 @@ actual val platformModule = module {
         val sessionManager = get<CloudSessionManager>()
         val database = get<NotelikeusDatabase>()
         NoteSyncEngine(
-            transport = get<CloudNoteTransport>(),
+            transport = get<IdentityBoundNoteTransport>(),
+            // Mandatory, non-nullable, and the same provider the rest of the graph captures identity
+            // with: the engine cannot be constructed without a way to bind protected calls to the
+            // account their operation started as.
+            remoteIdentityProvider = get(),
             noteDao = get(),
             labelDao = get(),
             syncStateStore = get<NoteSyncStateStore>(),
@@ -220,6 +289,13 @@ actual val platformModule = module {
                 }
             },
             attachmentSync = get(),
+            // The session-backed, generation-coherent provider: the engine captures its operation
+            // token once at the start and every local commit carries it.
+            localCommitTokenProvider = get(),
+            // The scheduled-work authority: the same instance the coordinator stamps queued
+            // commands from, so a command's epoch and the epoch an engine entry validates cannot
+            // be two different values.
+            datasetEpochAuthority = get(),
         )
     }
 
@@ -233,7 +309,12 @@ actual val platformModule = module {
             adoptGuestStagedAttachments = { uid ->
                 get<AttachmentSyncService>().adoptGuestStagedAttachments(uid)
             },
-            clearStagedAttachmentCache = { get<AttachmentSyncService>().clearStagingCache() },
+            // One hook, both halves of the dataset's in-memory state: staged bytes and learned cloud
+            // revisions. They have to be cleared together and at the boundary, not at sign-out.
+            clearDatasetScopedInMemoryState = {
+                get<AttachmentSyncService>().clearStagingCache()
+                get<DatasetScopedCloudRevisionState>().clearDatasetScopedState()
+            },
         )
     }
     /**
@@ -259,6 +340,7 @@ actual val platformModule = module {
             get<NoteSyncEngine>(),
             get<CloudSessionManager>(),
             get<LocalAccountIsolator>(),
+            get<CloudWipeCoordinator>(),
         )
     }
 

@@ -64,6 +64,7 @@ class NoteSyncEngineTransactionTest {
         stateStore = FakeNoteSyncStateStore()
         engine = NoteSyncEngine(
             transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { UID },
             noteDao = database.noteDao,
             labelDao = database.labelDao,
             syncStateStore = stateStore,
@@ -209,7 +210,7 @@ class NoteSyncEngineTransactionTest {
         checklistItems = checklist.mapIndexed { index, (text, checked) ->
             ChecklistItemData(text = text, isChecked = checked, position = index)
         }
-    )
+    , revision = 1L)
 
     private companion object {
         const val UID = "uid"
