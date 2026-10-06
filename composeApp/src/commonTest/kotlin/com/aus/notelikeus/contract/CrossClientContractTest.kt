@@ -1,5 +1,6 @@
 package com.aus.notelikeus.contract
 
+import com.aus.notelikeus.data.sync.actionToken
 import com.aus.notelikeus.data.backup.BackupBundleManifest
 import com.aus.notelikeus.data.backup.BackupImportResult
 import com.aus.notelikeus.data.backup.NoteBackupExporter
@@ -95,7 +96,7 @@ class CrossClientContractTest {
 
     private suspend fun importFixture(name: String): Pair<FakeNoteRepository, BackupImportResult> {
         val repository = FakeNoteRepository()
-        val result = NoteBackupImporter(repository).importFromJson(ContractFixtures.read(name))
+        val result = NoteBackupImporter(repository).importFromJson(ContractFixtures.read(name), actionToken())
         return repository to result
     }
 
@@ -179,7 +180,7 @@ class CrossClientContractTest {
         val repository = FakeNoteRepository()
 
         val result = NoteBackupImporter(repository)
-            .importFromJson(manifest.toString()) as BackupImportResult.Success
+            .importFromJson(manifest.toString(), actionToken()) as BackupImportResult.Success
 
         assertEquals(1, result.notesImported, "the wrapped v3 document must import")
         assertEquals(1, result.labelsCreated)
@@ -203,7 +204,7 @@ class CrossClientContractTest {
             }
         )
 
-        val result = NoteBackupImporter(FakeNoteRepository()).importFromJson(newer.toString())
+        val result = NoteBackupImporter(FakeNoteRepository()).importFromJson(newer.toString(), actionToken())
 
         assertTrue(
             result is BackupImportResult.InvalidFormat &&
@@ -249,7 +250,7 @@ class CrossClientContractTest {
         checklistItems = this["checklist"]?.jsonArray.orEmpty().mapIndexed { index, element ->
             element.jsonObject.checklistItem(index)
         },
-    )
+        revision = 1L)
 
     private fun assertCloudRow(name: String) {
         val row = fixture(name)

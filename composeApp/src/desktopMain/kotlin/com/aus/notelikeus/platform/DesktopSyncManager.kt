@@ -1,6 +1,8 @@
 package com.aus.notelikeus.platform
 
 import com.aus.notelikeus.data.remote.CloudSessionManager
+import com.aus.notelikeus.data.sync.CloudWipeCoordinator
+import com.aus.notelikeus.data.sync.CloudWipeOutcome
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.runTimedSync
@@ -17,6 +19,10 @@ class DesktopSyncManager(
     private val syncEngine: NoteSyncEngine,
     private val sessionManager: CloudSessionManager,
     private val isolator: LocalAccountIsolator,
+    /** F-8: owns the durable record of an accepted destructive wipe request. */
+    private val cloudWipeCoordinator: CloudWipeCoordinator,
+    /** Timestamps the accepted request; injected so tests stay deterministic. */
+    private val now: () -> Long = { System.currentTimeMillis() },
 ) : SyncManager {
 
     private val _syncStatus = MutableStateFlow(CloudSyncStatus.Offline)
@@ -50,6 +56,9 @@ class DesktopSyncManager(
         refreshAccount()
         val uid = sessionManager.getCurrentAccount().userId ?: return
         isolator.isolateIfAccountChanged(uid)
+        // F-8: resume an accepted destructive request for *this* uid only, through a freshly captured
+        // identity. A failure leaves it pending rather than lost.
+        cloudWipeCoordinator.resumeIfPending(uid) { syncEngine.deleteAllCloudData().getOrThrow() }
     }
 
     override suspend fun signInWithGoogle(idToken: String): Result<Unit> {
@@ -66,7 +75,19 @@ class DesktopSyncManager(
 
     override suspend fun signOut(deleteCloudData: Boolean): Result<Unit> {
         if (deleteCloudData) {
-            syncEngine.deleteAllCloudData().onFailure { return Result.failure(it) }
+            // Persist the accepted request before any destructive work (F-8) — same ordering as Android,
+            // on a durable store that local account isolation does not touch.
+            val owner = sessionManager.getCurrentAccount().userId
+                ?: return Result.failure(IllegalStateException("not signed in"))
+            when (
+                val outcome = cloudWipeCoordinator.requestWipe(owner, now()) {
+                    syncEngine.deleteAllCloudData().getOrThrow()
+                }
+            ) {
+                is CloudWipeOutcome.NotStarted -> return Result.failure(outcome.failure)
+                is CloudWipeOutcome.Failed -> return Result.failure(outcome.failure)
+                CloudWipeOutcome.Completed, is CloudWipeOutcome.CompletedButStillPending -> Unit
+            }
         }
         return sessionManager.signOut().onSuccess {
             isolator.isolate()
