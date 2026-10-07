@@ -3,6 +3,7 @@ package com.aus.notelikeus.ui.labels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aus.notelikeus.domain.model.Label
+import com.aus.notelikeus.domain.repository.LocalCommitTokenProvider
 import com.aus.notelikeus.domain.repository.NoteRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -14,7 +15,14 @@ data class LabelsState(
 )
 
 class LabelsViewModel(
-    private val repository: NoteRepository
+    private val repository: NoteRepository,
+    /**
+     * Supplied by the composition, never by the caller: a rename's uploads belong to the dataset the
+     * user made it in, and capturing here — on the action, before the coroutine is launched — is
+     * what makes a boundary during the write refuse them instead of queueing the replacement
+     * dataset's notes under the replacement dataset's epoch.
+     */
+    private val localCommitTokenProvider: LocalCommitTokenProvider,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LabelsState())
@@ -46,14 +54,18 @@ class LabelsViewModel(
     fun updateLabel(label: Label, newName: String) {
         val trimmed = newName.trim()
         if (trimmed.isEmpty() || trimmed == label.name) return
+        // Captured synchronously on the user's own action, before the coroutine is launched.
+        val commitToken = localCommitTokenProvider.capture()
         viewModelScope.launch {
-            repository.updateLabel(label.copy(name = trimmed))
+            repository.updateLabel(label.copy(name = trimmed), commitToken)
         }
     }
 
     fun deleteLabel(label: Label) {
+        // Captured synchronously on the user's own action, before the coroutine is launched.
+        val commitToken = localCommitTokenProvider.capture()
         viewModelScope.launch {
-            repository.deleteLabel(label)
+            repository.deleteLabel(label, commitToken)
         }
     }
 }

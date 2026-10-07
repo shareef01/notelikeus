@@ -57,7 +57,7 @@ class DefaultExternalImageIngestor(
             declaredMimeType != null &&
                 declaredMimeType.startsWith("image/") &&
                 declaredMimeType != "image/*" -> declaredMimeType
-            else -> "image/jpeg"
+            else -> null
         }
     }
 

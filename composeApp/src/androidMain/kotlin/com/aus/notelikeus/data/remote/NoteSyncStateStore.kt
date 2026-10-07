@@ -16,12 +16,30 @@ class SharedPrefsNoteSyncStateStore(
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    override fun markDeleted(noteId: Long, deletedAt: Long) {
+    override fun markDeleted(noteId: Long, deletedAt: Long, baselineRevision: Long?) {
+        val editor = prefs.edit()
+
         val map = deletedAtById().toMutableMap()
         if (noteId !in map) {
             map[noteId] = deletedAt
-            writeDeletedMap(map)
+            val obj = JSONObject()
+            for ((id, dAt) in map) {
+                obj.put(id.toString(), dAt)
+            }
+            editor.putString(KEY_DELETED_JSON, obj.toString())
         }
+
+        if (baselineRevision != null) {
+            val revMap = baselineDeleteRevisionById().toMutableMap()
+            revMap[noteId] = baselineRevision
+            val revObj = JSONObject()
+            for ((id, rev) in revMap) {
+                revObj.put(id.toString(), rev)
+            }
+            editor.putString(KEY_BASELINE_DELETE_REVISIONS, revObj.toString())
+        }
+
+        editor.apply()
     }
 
     override fun mergeDeleted(entries: Map<Long, Long>) {
@@ -182,6 +200,45 @@ class SharedPrefsNoteSyncStateStore(
         prefs.edit().putStringSet(KEY_KNOWN_CLOUD, ids.map { it.toString() }.toSet()).apply()
     }
 
+    override fun knownServerRevisionById(): Map<Long, Long> = readLongMap(KEY_KNOWN_SERVER_REVISIONS)
+
+    override fun updateKnownServerRevision(noteId: Long, revision: Long) {
+        val map = knownServerRevisionById().toMutableMap()
+        map[noteId] = revision
+        writeLongMap(KEY_KNOWN_SERVER_REVISIONS, map)
+    }
+
+    override fun updateKnownServerRevisions(revisions: Map<Long, Long>) {
+        val map = knownServerRevisionById().toMutableMap()
+        map.putAll(revisions)
+        writeLongMap(KEY_KNOWN_SERVER_REVISIONS, map)
+    }
+
+    override fun clearKnownServerRevisions(noteIds: Collection<Long>) {
+        if (noteIds.isEmpty()) return
+        val map = knownServerRevisionById().toMutableMap()
+        var changed = false
+        for (id in noteIds) {
+            if (map.remove(id) != null) changed = true
+        }
+        if (changed) writeLongMap(KEY_KNOWN_SERVER_REVISIONS, map)
+    }
+
+    override fun baselineDeleteRevisionById(): Map<Long, Long> = readLongMap(KEY_BASELINE_DELETE_REVISIONS)
+
+    override fun setBaselineDeleteRevision(noteId: Long, revision: Long) {
+        val map = baselineDeleteRevisionById().toMutableMap()
+        map[noteId] = revision
+        writeLongMap(KEY_BASELINE_DELETE_REVISIONS, map)
+    }
+
+    override fun clearBaselineDeleteRevision(noteId: Long) {
+        val map = baselineDeleteRevisionById().toMutableMap()
+        if (map.remove(noteId) != null) {
+            writeLongMap(KEY_BASELINE_DELETE_REVISIONS, map)
+        }
+    }
+
     override fun lastMergedUserId(): String? =
         prefs.getString(KEY_LAST_MERGED_USER_ID, null)?.takeIf { it.isNotBlank() }
 
@@ -203,6 +260,41 @@ class SharedPrefsNoteSyncStateStore(
         prefs.edit().putString(KEY_DELETED_JSON, obj.toString()).apply()
     }
 
+    /**
+     * Reads a `{noteId: long}` map.
+     *
+     * A stored value that is not a number is skipped rather than defaulted. [deletedAtById] reads
+     * a missing tombstone timestamp as "now", which is safe for a deletion that has already been
+     * decided, but the same trick is not safe here: a revision invented on read would be handed
+     * back to the engine as a confirmed server revision and would authorise a delete or skip a
+     * conflict against it. Absent has to stay absent.
+     */
+    private fun readLongMap(key: String): Map<Long, Long> {
+        val json = prefs.getString(key, null)
+        if (json.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val obj = JSONObject(json)
+            buildMap {
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val name = keys.next()
+                    val id = name.toLongOrNull() ?: continue
+                    val value = obj.opt(name)
+                    if (value !is Number) continue
+                    put(id, value.toLong())
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun writeLongMap(key: String, map: Map<Long, Long>) {
+        val obj = JSONObject()
+        for ((id, value) in map) {
+            obj.put(id.toString(), value)
+        }
+        prefs.edit().putString(key, obj.toString()).apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "note_sync_state"
         private const val KEY_DELETED = "deleted_ids"
@@ -210,6 +302,8 @@ class SharedPrefsNoteSyncStateStore(
         private const val KEY_KNOWN_CLOUD = "known_cloud_ids"
         private const val KEY_RESTORED = "restored_ids"
         private const val KEY_PENDING_ATTACHMENT_GC = "pending_attachment_gc_ids"
+        private const val KEY_KNOWN_SERVER_REVISIONS = "known_server_revisions"
+        private const val KEY_BASELINE_DELETE_REVISIONS = "baseline_delete_revisions"
         private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
         private const val KEY_LAST_RECONCILED = "last_reconciled_at"
     }

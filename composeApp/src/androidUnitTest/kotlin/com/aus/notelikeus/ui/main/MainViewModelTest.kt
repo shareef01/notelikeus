@@ -9,7 +9,9 @@ import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
+import com.aus.notelikeus.domain.repository.LocalCommitResult
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.ui.editor.FakeLocalCommitTokenProvider
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.domain.repository.SyncManager
 import io.mockk.coEvery
@@ -54,6 +56,11 @@ class MainViewModelTest {
         every { Log.e(any(), any<String>()) } returns 0
         every { Log.e(any(), any<String>(), any()) } returns 0
         repository = mockk(relaxed = true)
+        // Note actions now drive the token-aware overloads (R15). A relaxed mock cannot invent
+        // a sealed `LocalCommitResult`, so the applied case is stubbed for the whole suite.
+        coEvery { repository.updateNote(any(), any()) } returns LocalCommitResult.Applied(Unit)
+        coEvery { repository.deleteNote(any(), any()) } returns LocalCommitResult.Applied(Unit)
+        coEvery { repository.restoreNote(any(), any()) } returns LocalCommitResult.Applied(1L)
         settingsRepository = mockk(relaxed = true)
         syncManager = mockk(relaxed = true)
         
@@ -85,6 +92,7 @@ class MainViewModelTest {
     ): MainViewModel {
         return MainViewModel(
             repository,
+            FakeLocalCommitTokenProvider(),
             settingsRepository,
             mockk<NoteBackupExporter>(relaxed = true),
             mockk<NoteBackupImporter>(relaxed = true),
@@ -291,7 +299,7 @@ class MainViewModelTest {
         viewModel.stageEditorUndo(note.copy(isTrashed = false), UndoAction.TRASH, "trashed")
         viewModel.undoLastAction()
 
-        coVerify { repository.updateNote(match { it.id == 1L && !it.isTrashed }) }
+        coVerify { repository.updateNote(match { it.id == 1L && !it.isTrashed }, any()) }
     }
 
     @Test
@@ -329,7 +337,8 @@ class MainViewModelTest {
             Note(id = 2L, title = "B", content = "", timestamp = 0L, color = 0, position = 1)
         )
         every { repository.getActiveNotes() } returns flowOf(notes)
-        coEvery { repository.updateNotePositions(any()) } returns Unit
+        // The reorder is queued under the token the drop captured, so that is the overload to stub.
+        coEvery { repository.updateNotePositions(any(), any()) } returns LocalCommitResult.Applied(Unit)
         viewModel = createViewModel()
 
         viewModel.previewMoveNote(0, 1)
@@ -339,7 +348,7 @@ class MainViewModelTest {
 
         coVerify { repository.updateNotePositions(match { ordered ->
             ordered.size == 2 && ordered[0].id == 2L && ordered[1].id == 1L
-        }) }
+        }, any()) }
     }
 
     @Test
@@ -433,7 +442,6 @@ class MainViewModelTest {
             Note(id = 2L, title = "B", content = "", timestamp = 0L, color = 0, isPinned = true)
         )
         every { repository.getActiveNotes() } returns flowOf(notes)
-        coEvery { repository.updateNote(any()) } returns Unit
         viewModel = createViewModel()
 
         viewModel.toggleNoteSelection(1L)
@@ -442,8 +450,8 @@ class MainViewModelTest {
         advanceUntilIdle()
 
         coVerify {
-            repository.updateNote(match { it.id == 1L && it.isPinned })
-            repository.updateNote(match { it.id == 2L && it.isPinned })
+            repository.updateNote(match { it.id == 1L && it.isPinned }, any())
+            repository.updateNote(match { it.id == 2L && it.isPinned }, any())
         }
         assertEquals(emptySet<Long>(), viewModel.state.value.selectedNotes)
     }
