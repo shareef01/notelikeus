@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -108,5 +109,64 @@ class MainActivityShareInstrumentationTest {
                 assertNotNull(activity)
             }
         }
+    }
+
+    @Test
+    fun rapidSuccessiveSharesAreExplicitlyRejectedNotMerged() {
+        // Each intent carries a distinct subject so the surviving payload can be identified: if the
+        // second share were merged or allowed to overwrite the first, the payload's title would be
+        // intent B's. The delayed provider holds A's copy open while B arrives.
+        val intentA = Intent(Intent.ACTION_SEND).apply {
+            setClassName(context, "com.aus.notelikeus.MainActivity")
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, TestImageContentProvider.CONTENT_URI_DELAYED)
+            putExtra(Intent.EXTRA_SUBJECT, SUBJECT_FIRST_SHARE)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val intentB = Intent(Intent.ACTION_SEND).apply {
+            setClassName(context, "com.aus.notelikeus.MainActivity")
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, TestImageContentProvider.CONTENT_URI)
+            putExtra(Intent.EXTRA_SUBJECT, SUBJECT_SECOND_SHARE)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        TestImageContentProvider.delayLatch = java.util.concurrent.CountDownLatch(1)
+
+        try {
+            ActivityScenario.launch<MainActivity>(intentA).use { scenario ->
+                // B arrives while A is still being copied; it must be refused, not queued or merged.
+                scenario.onActivity { activity -> activity.onNewIntent(intentB) }
+
+                TestImageContentProvider.delayLatch.countDown()
+
+                val payload = awaitPayload(scenario)
+                assertNotNull("The first share must still complete after the second is refused", payload)
+                assertEquals(SUBJECT_FIRST_SHARE, payload?.title)
+            }
+        } finally {
+            TestImageContentProvider.delayLatch = null
+        }
+    }
+
+    private fun awaitPayload(
+        scenario: ActivityScenario<MainActivity>,
+        timeoutMs: Long = ASYNC_SETTLE_TIMEOUT_MS,
+    ): com.aus.notelikeus.ui.navigation.SharedImagePayload? {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            var payload: com.aus.notelikeus.ui.navigation.SharedImagePayload? = null
+            scenario.onActivity { activity -> payload = activity.getPendingSharedImageForTests() }
+            if (payload != null) return payload
+            Thread.sleep(POLL_INTERVAL_MS)
+        }
+        return null
+    }
+
+    private companion object {
+        const val SUBJECT_FIRST_SHARE = "latch-share"
+        const val SUBJECT_SECOND_SHARE = "second-share"
+        const val POLL_INTERVAL_MS = 25L
+        const val ASYNC_SETTLE_TIMEOUT_MS = 10_000L
     }
 }
