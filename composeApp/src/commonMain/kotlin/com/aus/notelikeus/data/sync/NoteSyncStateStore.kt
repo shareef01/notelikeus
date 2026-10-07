@@ -9,8 +9,11 @@ package com.aus.notelikeus.data.sync
  */
 interface NoteSyncStateStore {
 
-    /** Marks [noteId] as deleted with the given [deletedAt] epoch-millis. */
-    fun markDeleted(noteId: Long, deletedAt: Long = currentTimeMillis())
+    /**
+     * Marks [noteId] as deleted with the given [deletedAt] epoch-millis.
+     * Optionally atomically records the server revision known at intent time.
+     */
+    fun markDeleted(noteId: Long, deletedAt: Long = currentTimeMillis(), baselineRevision: Long? = null)
 
     /**
      * Merges cloud tombstones into the local store. When a note already has
@@ -78,6 +81,24 @@ interface NoteSyncStateStore {
     fun knownCloudIds(): Set<Long>
 
     fun setKnownCloudIds(ids: Set<Long>)
+
+    // ---- known server revisions ----
+
+    fun knownServerRevisionById(): Map<Long, Long>
+
+    fun updateKnownServerRevision(noteId: Long, revision: Long)
+
+    fun updateKnownServerRevisions(revisions: Map<Long, Long>)
+
+    fun clearKnownServerRevisions(noteIds: Collection<Long>)
+
+    // ---- delete baselines ----
+
+    fun baselineDeleteRevisionById(): Map<Long, Long>
+
+    fun setBaselineDeleteRevision(noteId: Long, revision: Long)
+
+    fun clearBaselineDeleteRevision(noteId: Long)
 
     // ---- account guard ----
 

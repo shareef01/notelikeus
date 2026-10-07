@@ -1,5 +1,6 @@
 package com.aus.notelikeus.data.backup.bundle
 
+import com.aus.notelikeus.data.sync.actionToken
 import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentStagingStore
 import com.aus.notelikeus.data.attachments.GUEST_STAGING_OWNER
@@ -169,7 +170,7 @@ class BackupBundleTransferTest {
         val destRepo = FakeNoteRepository()
         val destStaging = MemoryStaging()
         val destLocal = MemoryLocalStorage()
-        val result = transfer(destRepo, destStaging, destLocal).importBundle(archive)
+        val result = transfer(destRepo, destStaging, destLocal).importBundle(archive, actionToken())
         assertIs<BackupImportResult.Success>(result)
         assertEquals(1, result.notesImported)
         assertEquals(1, result.attachmentsImported)
@@ -184,7 +185,7 @@ class BackupBundleTransferTest {
         assertTrue(stagedBytes!!.contentEquals(image))
 
         // Second import produces another independent copy, not a collision.
-        val second = transfer(destRepo, destStaging, destLocal).importBundle(archive)
+        val second = transfer(destRepo, destStaging, destLocal).importBundle(archive, actionToken())
         assertIs<BackupImportResult.Success>(second)
         assertEquals(2, destRepo.getAllNotesForBackup().size)
         val ids = destRepo.getAllNotesForBackup().flatMap { it.attachments }.map { it.id }
