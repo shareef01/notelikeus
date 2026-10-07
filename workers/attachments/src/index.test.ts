@@ -51,7 +51,19 @@ interface AttachmentRow {
   deleted: boolean;
   deleteClaimed: boolean;
   objectDeleted: boolean;
+  /**
+   * R19.2: whether this row's metadata is committed (visible to hydration) or provisional.
+   *
+   * The real column is `note_attachments.committed_at`; an upload that asks for the deferred protocol
+   * creates the row without it, and only a successful note commit referencing the exact attachment id
+   * sets it. Modelling it here is what lets the tests assert the protocol rather than the request
+   * headers that asked for it.
+   */
+  committed: boolean;
 }
+
+/** Every RPC the Worker issued, with its payload, so the protocol is observable not assumed. */
+const rpcCalls: Array<{ name: string; body: Record<string, unknown> }> = [];
 
 const attachmentRows = new Map<string, AttachmentRow>();
 
@@ -166,6 +178,8 @@ function mockSupabaseAuth(
           { status: 200 },
         );
       }
+      const rpcName = url.split('/rest/v1/rpc/')[1];
+      if (rpcName) rpcCalls.push({ name: rpcName, body: body as Record<string, unknown> });
       if (url.includes('/rest/v1/rpc/finalize_note_attachment_put')) {
         if (terminal) {
           return new Response(
@@ -183,6 +197,7 @@ function mockSupabaseAuth(
           deleted: false,
           deleteClaimed: false,
           objectDeleted: false,
+          committed: body.p_provisional !== true,
         });
         return new Response(
           JSON.stringify({ attachment_id: attachmentId, object_key: expectedKey, status: 'registered' }),
@@ -248,9 +263,26 @@ async function upload(
   );
 }
 
+/** The deferred-protocol upload: the same request on the versioned route. */
+async function deferredUpload(
+  noteId: string,
+  attachmentId: string,
+  token: string,
+  body: BodyInit = new Uint8Array([1, 2, 3]),
+) {
+  return handleAttachmentRequest(
+    request('PUT', `/v2/attachments/${noteId}/${attachmentId}`, token, {
+      body,
+      headers: { 'Content-Type': 'image/png' },
+    }),
+    env,
+  );
+}
+
 beforeEach(() => {
   bucket = fakeBucket();
   attachmentRows.clear();
+  rpcCalls.length = 0;
   env = {
     ATTACHMENTS_BUCKET: bucket as unknown as R2Bucket,
     SUPABASE_URL: 'https://project.supabase.co',
@@ -261,6 +293,100 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('R19.2 upload commitment protocol', () => {
+  it('WATT-1 the legacy route commits the row at upload, exactly as before', async () => {
+    const response = await upload('1', 'att1', USER_A);
+
+    expect(response.status).toBe(200);
+    expect(attachmentRows.get(rowKey(USER_A, '1', 'att1'))?.committed).toBe(true);
+    const finalize = rpcCalls.find((call) => call.name === 'finalize_note_attachment_put');
+    expect(finalize).toBeDefined();
+    expect(Object.keys(finalize!.body)).not.toContain('p_provisional');
+  });
+
+  it('WATT-2 the deferred route creates a provisional row', async () => {
+    const response = await deferredUpload('1', 'att1', USER_A);
+
+    expect(response.status).toBe(200);
+    expect(attachmentRows.get(rowKey(USER_A, '1', 'att1'))?.committed).toBe(false);
+    const finalize = rpcCalls.find((call) => call.name === 'finalize_note_attachment_put');
+    expect(finalize?.body.p_provisional).toBe(true);
+  });
+
+  it('WATT-3 the deferred route forwards the same owner-scoped identity and key', async () => {
+    await deferredUpload('1', 'att1', USER_A);
+
+    const finalize = rpcCalls.find((call) => call.name === 'finalize_note_attachment_put');
+    expect(finalize?.body.p_note_id).toBe('1');
+    expect(finalize?.body.p_attachment_id).toBe('att1');
+    expect(finalize?.body.p_object_key).toBe(`owners/${USER_A}/notes/1/att1`);
+    expect(finalize?.body.p_mime_type).toBe('image/png');
+    expect(finalize?.body.p_provisional).toBe(true);
+  });
+
+  it('WATT-4 a provisional finalize failure keeps the existing compensation', async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('finalize_note_attachment_put')) {
+        return new Response('boom', { status: 500 });
+      }
+      return originalFetch(input as RequestInfo, init as RequestInit);
+    });
+
+    const response = await deferredUpload('1', 'att1', USER_A);
+
+    expect(response.status).toBeGreaterThanOrEqual(500);
+    expect(bucket.objects.size).toBe(0);
+    expect(attachmentRows.size).toBe(0);
+  });
+
+  it('WATT-5 the deferred route rejects an unauthenticated request with no side effects', async () => {
+    // A well-formed upload with no bearer: the refusal must come from authentication, and it must leave
+    // no object, no row and no RPC behind.
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v2/attachments/1/att1', undefined, {
+        body: new Uint8Array([1, 2, 3]),
+        headers: { 'Content-Type': 'image/png' },
+      }),
+      env,
+    );
+
+    expect(response.status).toBe(401);
+    expect(bucket.objects.size).toBe(0);
+    expect(rpcCalls.length).toBe(0);
+    expect(attachmentRows.size).toBe(0);
+  });
+
+  it('WATT-6 the deferred route refuses a note this account does not own', async () => {
+    const response = await deferredUpload('1', 'att1', USER_B);
+
+    expect(response.status).toBe(403);
+    expect(bucket.objects.size).toBe(0);
+    expect(rpcCalls.filter((call) => call.name === 'finalize_note_attachment_put').length).toBe(0);
+    expect(attachmentRows.size).toBe(0);
+  });
+
+  it('WATT-7 an unknown protocol version fails before any side effect', async () => {
+    // The pre-R19.1 Worker parsed exactly one route shape. This is that parser, verbatim.
+    const legacyParser = (pathname: string) =>
+      pathname.match(/^\/v1\/attachments\/([^/]+)\/([^/]+)$/);
+    expect(legacyParser('/v2/attachments/1/att1')).toBeNull();
+
+    // ...and a route no version recognises is refused before the body is read, an object is written,
+    // or the database is called -- which is the property a new client deployed ahead of a Worker needs.
+    const response = await handleAttachmentRequest(
+      request('PUT', '/v3/attachments/1/att1', USER_A, { body: new Uint8Array([1, 2, 3]) }),
+      env,
+    );
+
+    expect(response.status).toBe(404);
+    expect(bucket.objects.size).toBe(0);
+    expect(rpcCalls.length).toBe(0);
+    expect(attachmentRows.size).toBe(0);
+  });
 });
 
 describe('attachment worker authentication', () => {
@@ -810,6 +936,7 @@ describe('PUT retry against a committed attachment', () => {
       deleted: false,
       deleteClaimed: false,
       objectDeleted: false,
+      committed: true,
     });
 
     const response = await upload('1', 'att1', USER_A, 'repair-bytes');
@@ -970,6 +1097,7 @@ describe('attachment DELETE protocol', () => {
       deleted: true,
       deleteClaimed: true,
       objectDeleted: false,
+      committed: true,
     });
   });
 
@@ -1080,6 +1208,7 @@ describe('attachment DELETE protocol', () => {
       deleted: false,
       deleteClaimed: false,
       objectDeleted: false,
+      committed: true,
     });
     const bKey = `owners/${USER_B}/notes/1/att1`;
     bucket.objects.set(bKey, { body: new Uint8Array([9, 9, 9]), contentType: 'image/png' });
