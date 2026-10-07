@@ -82,10 +82,14 @@ sealed interface ExternalShare {
 
 fun extractStreamUri(intent: Intent): android.net.Uri? {
     val fromExtra = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        // The typed getter is the modern path, but it yields null when the sending app stored the
+        // stream through the untyped putExtra(String, Parcelable) overload — which third-party share
+        // sheets still do. Falling back costs nothing and is what lets those shares import at all;
+        // without it the intent matched no share branch and was treated as a plain "new note".
         intent.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+            ?: untypedStreamExtra(intent)
     } else {
-        @Suppress("DEPRECATION")
-        intent.getParcelableExtra(Intent.EXTRA_STREAM) as? android.net.Uri
+        untypedStreamExtra(intent)
     }
     if (fromExtra != null) return fromExtra
     val clipData = intent.clipData
@@ -94,6 +98,10 @@ fun extractStreamUri(intent: Intent): android.net.Uri? {
     }
     return null
 }
+
+@Suppress("DEPRECATION")
+private fun untypedStreamExtra(intent: Intent): android.net.Uri? =
+    intent.getParcelableExtra(Intent.EXTRA_STREAM) as? android.net.Uri
 
 fun extractExternalShare(intent: Intent?): ExternalShare? {
     val i = intent ?: return null
