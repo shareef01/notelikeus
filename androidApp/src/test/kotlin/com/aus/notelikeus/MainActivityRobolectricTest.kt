@@ -119,17 +119,21 @@ class MainActivityRobolectricTest {
     }
 
     @Test
-    fun `a second share is refused while the first payload is still pending`() {
+    fun `a second share is refused and the intent is settled`() {
         ActivityScenario.launch<MainActivity>(shareIntent(SEGMENT_VALID)).use { scenario ->
             val first = awaitPayload(scenario)
             assertNotNull(first)
 
             // Rapid successive shares are explicitly rejected, not merged or queued: the second share
-            // must not overwrite a payload the editor has not consumed yet.
+            // must not overwrite a payload the editor has not consumed yet. It is also settled rather
+            // than left dangling, so a later recreation cannot import a share the user never saw.
             scenario.onActivity { activity -> activity.onNewIntent(shareIntent(SEGMENT_VALID)) }
 
             val after = payloadNow(scenario)
             assertSame("A second share must not replace an unconsumed payload", first, after)
+            scenario.onActivity { activity ->
+                assertTrue("A refused share must still leave the intent settled", activity.isIntentConsumedForTests())
+            }
         }
     }
 

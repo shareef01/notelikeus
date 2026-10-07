@@ -368,21 +368,18 @@ class MainActivity : FragmentActivity() {
                 }
                 is ExternalShare.Image -> {
                     val originatingOwner = sessionManager.getCurrentAccount().userId ?: GUEST_STAGING_OWNER
-                    // Accepted means this Activity handed the payload to the ViewModel, which now owns
-                    // it for the rest of the Activity's life. Marking the Intent consumed here — rather
-                    // than waiting for the LaunchedEffect below — is what keeps a configuration change
-                    // from re-running handleIntent() and re-importing the same share: on recreation the
-                    // ViewModel still holds the payload, so the retry is refused as a duplicate instead
-                    // of surfacing a spurious failure toast.
-                    when (sharedImageViewModel.ingest(share, originatingOwner, imageIngestor)) {
-                        ShareIngestAcceptance.Accepted -> {
-                            isIntentConsumed = true
-                            intent.putExtra(EXTRA_INTENT_CONSUMED, true)
-                        }
-                        // The same share is already in flight or already pending: nothing was lost and
-                        // nothing should be reported to the user.
-                        ShareIngestAcceptance.Duplicate -> Unit
+                    // Accepted means this Activity handed the payload to the ViewModel, which owns it
+                    // for the rest of the Activity's life. Duplicate means an earlier payload is still
+                    // pending and this share is refused. Either way the Intent is settled here and
+                    // marked consumed: doing it up front — rather than waiting for the LaunchedEffect
+                    // below — is what stops a configuration change from re-running handleIntent() and
+                    // re-importing, or from importing a refused share the user was never told about.
+                    val acceptance = sharedImageViewModel.ingest(share, originatingOwner, imageIngestor)
+                    if (acceptance == ShareIngestAcceptance.Duplicate) {
+                        Log.w(TAG, "Dropped a share delivered while an earlier image was pending")
                     }
+                    isIntentConsumed = true
+                    intent.putExtra(EXTRA_INTENT_CONSUMED, true)
                 }
             }
             return
