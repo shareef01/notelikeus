@@ -77,7 +77,7 @@ class ExternalImageIngestorTest {
     }
 
     @Test
-    fun `ingest falls back to image jpeg when getType is null and declared is image wildcard`() = runTest {
+    fun `ingest rejects when getType is null and declared is image wildcard`() = runTest {
         val uri = Uri.parse("content://photos/1")
         val testBytes = byteArrayOf(1, 2, 3)
         every { contentResolver.getType(uri) } returns null
@@ -85,10 +85,9 @@ class ExternalImageIngestorTest {
 
         val result = ingestor.ingest(uri, "image/*")
 
-        assertTrue(result is IngestionResult.Success)
-        val success = result as IngestionResult.Success
-        assertArrayEquals(testBytes, success.bytes)
-        assertEquals("image/jpeg", success.mimeType)
+        assertTrue(result is IngestionResult.Failure)
+        val failure = result as IngestionResult.Failure
+        assertTrue(failure.reason.contains("not an image"))
     }
 
     @Test
