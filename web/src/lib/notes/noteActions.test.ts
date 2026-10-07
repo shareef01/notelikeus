@@ -567,3 +567,31 @@ describe("emptyTrash", () => {
     );
   });
 });
+
+describe("removeNote authority", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(putNote).mockResolvedValue(undefined);
+    vi.mocked(deleteNote).mockResolvedValue(undefined);
+    remoteMocks.upsertNote.mockResolvedValue(undefined);
+    remoteMocks.deleteNote.mockResolvedValue(undefined);
+    useNotesStore.getState().reset();
+    useAuthStore.getState().reset();
+    useTombstoneStore.getState().reset();
+  });
+
+  // DEL-4 / WEB-DEL-8: a repeated invocation must reuse the revision the user's original decision
+  // was made against. Re-capturing here would send a newer revision and widen what the delete may
+  // destroy; against the pre-fix code this assertion sees undefined instead of 10.
+  it("reuses the recorded baseline when the note is deleted again", async () => {
+    useAuthStore
+      .getState()
+      .setUser({ uid: "user-1", email: null, displayName: null });
+    useTombstoneStore.getState().markDeleted("1", 10);
+
+    await removeNote("1");
+
+    expect(remoteMocks.deleteNote).toHaveBeenCalledWith("user-1", "1", 10);
+    expect(useTombstoneStore.getState().baselineRevisionById["1"]).toBe(10);
+  });
+});
