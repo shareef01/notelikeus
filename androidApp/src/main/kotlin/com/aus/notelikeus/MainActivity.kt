@@ -40,6 +40,7 @@ import android.widget.Toast
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
@@ -64,6 +65,10 @@ class MainActivity : FragmentActivity() {
     // every widget tap, and the generic version boxes a java.lang.Long on each one.
     private var navigationRequest by mutableLongStateOf(0L)
     private var showDatabaseRecoveryNotice by mutableStateOf(false)
+
+    private val sharedImageViewModel by lazy {
+        androidx.lifecycle.ViewModelProvider(this)[SharedImageViewModel::class.java]
+    }
 
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -243,12 +248,34 @@ class MainActivity : FragmentActivity() {
                         pendingSharedTitle = null
                         pendingSharedContent = null
                     },
-                    pendingSharedImage = pendingSharedImage,
+                    pendingSharedImage = sharedImageViewModel.pendingSharedImage,
                     onConsumeSharedImage = {
-                        pendingSharedImage = null
+                        sharedImageViewModel.pendingSharedImage = null
                     },
                     navigationRequest = navigationRequest
                 )
+
+                LaunchedEffect(sharedImageViewModel.pendingSharedImage) {
+                    if (sharedImageViewModel.pendingSharedImage != null && !isIntentConsumed) {
+                        isIntentConsumed = true
+                        intent.putExtra(EXTRA_INTENT_CONSUMED, true)
+                        pendingCreateNote = true
+                        navigationRequest++
+                    }
+                }
+                
+                LaunchedEffect(sharedImageViewModel.ingestFailed) {
+                    if (sharedImageViewModel.ingestFailed) {
+                        isIntentConsumed = true
+                        intent.putExtra(EXTRA_INTENT_CONSUMED, true)
+                        Toast.makeText(
+                            this@MainActivity,
+                            R.string.error_shared_image_failed,
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        sharedImageViewModel.ingestFailed = false
+                    }
+                }
 
                 // Shown once, over the app, when the database had to be moved aside during startup.
                 // Without this the user sees an empty note list and no reason for it.
@@ -302,7 +329,9 @@ class MainActivity : FragmentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putBoolean(KEY_INTENT_CONSUMED, isIntentConsumed)
+        // Process death gap fix: Do not persist consumed=true if the payload is still in transient ViewModel memory.
+        val effectivelyConsumed = isIntentConsumed && sharedImageViewModel.pendingSharedImage == null
+        outState.putBoolean(KEY_INTENT_CONSUMED, effectivelyConsumed)
     }
 
     public override fun onNewIntent(intent: Intent) {
@@ -313,15 +342,25 @@ class MainActivity : FragmentActivity() {
     }
 
     internal fun isIntentConsumedForTests(): Boolean = isIntentConsumed
+    internal fun getPendingSharedImageForTests(): SharedImagePayload? = sharedImageViewModel.pendingSharedImage
+    internal fun isIngestionInProgressForTests(): Boolean = sharedImageViewModel.isIngestionInProgress
+
+    /**
+     * Lets a unit test observe what would be persisted across process death.
+     *
+     * `onSaveInstanceState` inherits `Activity`'s protected visibility, so a test in the same module
+     * cannot call it directly; this forwards to it rather than duplicating its logic.
+     */
+    internal fun saveInstanceStateForTests(outState: android.os.Bundle) = onSaveInstanceState(outState)
 
     private fun handleIntent(intent: Intent) {
         if (isIntentConsumed || intent.getBooleanExtra(EXTRA_INTENT_CONSUMED, false)) return
         val share = extractExternalShare(intent)
         if (share != null) {
-            isIntentConsumed = true
-            intent.putExtra(EXTRA_INTENT_CONSUMED, true)
             when (share) {
                 is ExternalShare.Text -> {
+                    isIntentConsumed = true
+                    intent.putExtra(EXTRA_INTENT_CONSUMED, true)
                     pendingSharedTitle = share.subject
                     pendingSharedContent = share.content
                     pendingCreateNote = true
@@ -329,28 +368,18 @@ class MainActivity : FragmentActivity() {
                 }
                 is ExternalShare.Image -> {
                     val originatingOwner = sessionManager.getCurrentAccount().userId ?: GUEST_STAGING_OWNER
-                    lifecycleScope.launch {
-                        when (val result = imageIngestor.ingest(share.uri, share.mimeType)) {
-                            is IngestionResult.Success -> {
-                                pendingSharedImage = SharedImagePayload(
-                                    bytes = result.bytes,
-                                    mimeType = result.mimeType,
-                                    title = share.subject,
-                                    content = share.content,
-                                    originatingOwnerId = originatingOwner,
-                                )
-                                pendingCreateNote = true
-                                navigationRequest++
-                            }
-                            is IngestionResult.Failure -> {
-                                Toast.makeText(
-                                    this@MainActivity,
-                                    R.string.error_shared_image_failed,
-                                    Toast.LENGTH_LONG,
-                                ).show()
-                            }
-                        }
+                    // Accepted means this Activity handed the payload to the ViewModel, which owns it
+                    // for the rest of the Activity's life. Duplicate means an earlier payload is still
+                    // pending and this share is refused. Either way the Intent is settled here and
+                    // marked consumed: doing it up front — rather than waiting for the LaunchedEffect
+                    // below — is what stops a configuration change from re-running handleIntent() and
+                    // re-importing, or from importing a refused share the user was never told about.
+                    val acceptance = sharedImageViewModel.ingest(share, originatingOwner, imageIngestor)
+                    if (acceptance == ShareIngestAcceptance.Duplicate) {
+                        Log.w(TAG, "Dropped a share delivered while an earlier image was pending")
                     }
+                    isIntentConsumed = true
+                    intent.putExtra(EXTRA_INTENT_CONSUMED, true)
                 }
             }
             return
@@ -422,4 +451,57 @@ class MainActivity : FragmentActivity() {
         const val KEY_INTENT_CONSUMED = "com.aus.notelikeus.KEY_INTENT_CONSUMED"
         const val EXTRA_INTENT_CONSUMED = "com.aus.notelikeus.EXTRA_INTENT_CONSUMED"
     }
+}
+
+class SharedImageViewModel : androidx.lifecycle.ViewModel() {
+    var pendingSharedImage by androidx.compose.runtime.mutableStateOf<SharedImagePayload?>(null)
+    var ingestFailed by androidx.compose.runtime.mutableStateOf(false)
+    var isIngestionInProgress = false
+
+    fun ingest(
+        share: com.aus.notelikeus.ui.navigation.ExternalShare.Image,
+        originatingOwnerId: String,
+        imageIngestor: com.aus.notelikeus.ui.navigation.ExternalImageIngestor
+    ): ShareIngestAcceptance {
+        // Prevent overlapping imports AND rapid successive shares overriding unconsumed payloads.
+        // Reported as Duplicate rather than a failure: the caller's share is either already being
+        // imported or already waiting to be consumed, so telling the user it failed would be a lie.
+        if (isIngestionInProgress || pendingSharedImage != null) {
+            return ShareIngestAcceptance.Duplicate
+        }
+        isIngestionInProgress = true
+        viewModelScope.launch {
+            when (val result = imageIngestor.ingest(share.uri, share.mimeType)) {
+                is com.aus.notelikeus.ui.navigation.IngestionResult.Success -> {
+                    pendingSharedImage = com.aus.notelikeus.ui.navigation.SharedImagePayload(
+                        bytes = result.bytes,
+                        mimeType = result.mimeType,
+                        title = share.subject,
+                        content = share.content,
+                        originatingOwnerId = originatingOwnerId
+                    )
+                    isIngestionInProgress = false
+                }
+                is com.aus.notelikeus.ui.navigation.IngestionResult.Failure -> {
+                    isIngestionInProgress = false
+                    ingestFailed = true
+                }
+            }
+        }
+        return ShareIngestAcceptance.Accepted
+    }
+}
+
+/**
+ * Synchronous outcome of handing an incoming share to [SharedImageViewModel].
+ *
+ * The asynchronous half — whether the provider actually produced bytes — is reported separately
+ * through [SharedImageViewModel.pendingSharedImage] and [SharedImageViewModel.ingestFailed].
+ */
+enum class ShareIngestAcceptance {
+    /** The payload is now owned by the ViewModel and the Intent must be treated as consumed. */
+    Accepted,
+
+    /** The same share is already in flight or already pending; nothing was lost, nothing to report. */
+    Duplicate,
 }

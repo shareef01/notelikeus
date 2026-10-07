@@ -8,7 +8,15 @@ package com.aus.notelikeus.data.backup
  */
 interface BackupBundleOperations {
     suspend fun exportBundle(): BundleExportOutcome
-    suspend fun importBundle(archive: ByteArray): BackupImportResult
+    /**
+     * Imports [archive] into the dataset [commitToken] was captured in — see
+     * [NoteBackupImporter.importFromJson], whose rules this follows for the bundle's own notes and
+     * for the attachment re-attachment that follows them.
+     */
+    suspend fun importBundle(
+        archive: ByteArray,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): BackupImportResult
 
     fun looksLikeBundle(fileName: String?, head: ByteArray): Boolean
     fun bundleFileName(): String
@@ -25,7 +33,10 @@ object NoopBackupBundleOperations : BackupBundleOperations {
     override suspend fun exportBundle(): BundleExportOutcome =
         error("Bundle export is not available on this platform")
 
-    override suspend fun importBundle(archive: ByteArray): BackupImportResult =
+    override suspend fun importBundle(
+        archive: ByteArray,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): BackupImportResult =
         BackupImportResult.InvalidFormat("Bundle import is not available on this platform")
 
     override fun looksLikeBundle(fileName: String?, head: ByteArray): Boolean = false

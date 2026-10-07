@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import com.aus.notelikeus.data.sync.CloudNoteTransport
 
 private const val UID = "11111111-1111-4111-8111-111111111111"
 
@@ -136,8 +137,11 @@ class SupabaseNoteTransportTest {
     }
 
     /** A concurrent edit bumps the revision; the delete should follow it rather than give up. */
+    /**
+     * Test F — compatibility bulk path no longer blind-retries
+     */
     @Test
-    fun aRevisionConflictIsRetriedAgainstTheServerRevision() = runTest {
+    fun aConflictIsNotRetried() = runTest {
         val rpc = RecordingRpcClient()
             .on("fetch_full_snapshot", snapshotWith(noteId = 7L, revision = 10_042L))
             .on(
@@ -146,17 +150,12 @@ class SupabaseNoteTransportTest {
                     put("status", JsonPrimitive("conflict"))
                     put("current", buildJsonObject { put("revision", JsonPrimitive(10_099L)) })
                 },
-                buildJsonObject {
-                    put("status", JsonPrimitive("applied"))
-                    put("revision", JsonPrimitive(10_100L))
-                },
             )
 
         SupabaseNoteTransport(rpc).deleteNotes(UID, listOf(7L))
 
         val deletes = rpc.deleteCalls()
-        assertEquals(2, deletes.size)
-        assertEquals("10099", deletes[1].second["p_base_revision"]?.jsonPrimitive?.content)
+        assertEquals(1, deletes.size, "Must not retry on conflict")
     }
 
     /** A cached revision from a prior download is used directly, with no extra snapshot. */
@@ -280,5 +279,70 @@ class SupabaseNoteTransportTest {
 
         assertEquals(1, snapshot.records.size)
         assertEquals(1, snapshot.authoritativeNoteCount)
+        assertEquals(10_042L, snapshot.records[0].revision, "The snapshot record must expose the authoritative revision")
+    }
+
+    /** Test A — explicit revision is sent unchanged */
+    @Test
+    fun explicitDeleteSendsProvidedRevisionUnchanged() = runTest {
+        val rpc = RecordingRpcClient()
+            .on("fetch_full_snapshot", snapshotWith(noteId = 7L, revision = 10_042L)) // Populates map with 10042
+            .on("apply_note_delete", buildJsonObject { put("status", JsonPrimitive("applied")) })
+
+        val transport = SupabaseNoteTransport(rpc)
+        transport.fetchNotes(UID)
+        transport.deleteNote(UID, noteId = 7L, baseRevision = 999L)
+
+        val deletes = rpc.deleteCalls()
+        assertEquals(1, deletes.size)
+        assertEquals("999", deletes.single().second["p_base_revision"]?.jsonPrimitive?.content)
+    }
+
+    /** Test B — conflict causes exactly one RPC */
+    @Test
+    fun explicitDeleteConflictDoesNotRetry() = runTest {
+        val rpc = RecordingRpcClient()
+            .on(
+                "apply_note_delete",
+                buildJsonObject {
+                    put("status", JsonPrimitive("conflict"))
+                    put("current", buildJsonObject { put("revision", JsonPrimitive(10_099L)) })
+                },
+                buildJsonObject { put("status", JsonPrimitive("applied")) }, // Should never be reached
+            )
+
+        SupabaseNoteTransport(rpc).deleteNote(UID, 7L, 10_042L)
+        assertEquals(1, rpc.deleteCalls().size)
+    }
+
+    /** Test C — conflict returns non-success */
+    @Test
+    fun explicitDeleteConflictReturnsConflictResult() = runTest {
+        val rpc = RecordingRpcClient()
+            .on("apply_note_delete", buildJsonObject { put("status", JsonPrimitive("conflict")) })
+
+        val result = SupabaseNoteTransport(rpc).deleteNote(UID, 7L, 10L)
+        assertEquals(CloudNoteTransport.DeleteResult.Conflict, result)
+    }
+
+    /** Test D — success remains success */
+    @Test
+    fun explicitDeleteSuccessReturnsSuccessResult() = runTest {
+        val rpc = RecordingRpcClient()
+            .on("apply_note_delete", buildJsonObject { put("status", JsonPrimitive("applied")) })
+
+        val result = SupabaseNoteTransport(rpc).deleteNote(UID, 7L, 10L)
+        assertEquals(CloudNoteTransport.DeleteResult.Success, result)
+    }
+
+    /** Test E — note already absent remains idempotent */
+    @Test
+    fun explicitDeleteIdempotentReturnsSuccessResult() = runTest {
+        // apply_note_delete returns applied even if the note was already tombstoned
+        val rpc = RecordingRpcClient()
+            .on("apply_note_delete", buildJsonObject { put("status", JsonPrimitive("applied")) })
+
+        val result = SupabaseNoteTransport(rpc).deleteNote(UID, 7L, 10L)
+        assertEquals(CloudNoteTransport.DeleteResult.Success, result)
     }
 }
