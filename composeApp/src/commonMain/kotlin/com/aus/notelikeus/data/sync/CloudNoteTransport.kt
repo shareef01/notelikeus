@@ -51,14 +51,29 @@ interface CloudNoteTransport {
     /** Returns the single note document, or null if absent. */
     suspend fun fetchNote(uid: String, noteId: Long): CloudNoteRecord?
 
+    data class PutResult(
+        val revision: Long,
+        val serverUpdatedAt: Long?
+    )
+
     /**
-     * Writes every [Note] in the list and returns the server-resolved
-     * [Note.serverUpdatedAt] for each successfully written id. A null value
-     * means the server timestamp could not be read back for that note (the
-     * note was still written; this is a readback failure, not a write
-     * failure).
+     * Writes every [Note] in the list and returns a [PutResult] for each successfully written id.
+     * If the server timestamp could not be read back, [PutResult.serverUpdatedAt] is null.
      */
-    suspend fun putNotes(uid: String, notes: List<Note>): Map<Long, Long?>
+    suspend fun putNotes(uid: String, notes: List<Note>): Map<Long, PutResult>
+
+    /**
+     * Explicit result of a revision-aware delete operation.
+     */
+    sealed interface DeleteResult {
+        data object Success : DeleteResult
+        data object Conflict : DeleteResult
+    }
+
+    /**
+     * Deletes a single note ONLY if the server's current revision exactly matches [baseRevision].
+     */
+    suspend fun deleteNote(uid: String, noteId: Long, baseRevision: Long): DeleteResult
 
     /** Deletes note documents in batches (transport handles chunking). */
     suspend fun deleteNotes(uid: String, noteIds: List<Long>)
@@ -67,7 +82,7 @@ interface CloudNoteTransport {
      * Atomically removes the owner's tombstone (if any) and writes the live note.
      * Default walks [deleteTombstones] then [putNotes]; Supabase overrides with `restore_note`.
      */
-    suspend fun restoreNote(uid: String, note: Note): Map<Long, Long?> {
+    suspend fun restoreNote(uid: String, note: Note): Map<Long, PutResult> {
         val noteId = note.id ?: return emptyMap()
         deleteTombstones(uid, listOf(noteId))
         return putNotes(uid, listOf(note))

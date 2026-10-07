@@ -1,5 +1,6 @@
 ﻿package com.aus.notelikeus.data.backup.bundle
 
+import com.aus.notelikeus.data.backup.bundle.ParsedBackupBundle
 import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentStagingStore
 import com.aus.notelikeus.data.attachments.GUEST_STAGING_OWNER
@@ -41,6 +42,95 @@ class BackupBundleTransfer(
     private val json = Json { ignoreUnknownKeys = true }
 
     private fun ownerId(): String = ownerIdProvider() ?: GUEST_STAGING_OWNER
+
+    /** What [stageBundleAttachments] produced: the staged rows, and the counts it moved. */
+    private class StagedBundleAttachments(
+        val byNoteId: Map<Long, List<Attachment>>,
+        val imported: Int,
+        val skipped: Int,
+    )
+
+    /**
+     * Stages every image the archive carries, keyed by the note id it was reminted onto.
+     *
+     * Split out of [importBundle]: it is a self-contained pass over the manifest with its own
+     * counters and warnings, and keeping it inline pushed that method past the project's length and
+     * complexity limits.
+     */
+    private suspend fun stageBundleAttachments(
+        parsed: ParsedBackupBundle,
+        newIdByOldId: Map<Long, Long>,
+        owner: String,
+        warnings: MutableList<String>,
+        alreadySkipped: Int,
+    ): StagedBundleAttachments {
+        val byNoteId = LinkedHashMap<Long, MutableList<Attachment>>()
+        var skipped = alreadySkipped
+        var imported = 0
+
+        for (entry in parsed.manifest.attachments) {
+            val oldNoteId = entry.noteId ?: continue
+            val newNoteId = newIdByOldId[oldNoteId]
+            val blob = parsed.media[entry.attachmentId]
+            if (newNoteId == null || blob == null) {
+                skipped++
+                continue
+            }
+
+            val freshId = createAttachmentId()
+            val mime = blob.mimeType ?: entry.mimeType ?: "image/jpeg"
+            val staged = staging.stage(
+                attachmentId = freshId,
+                ownerId = owner,
+                noteId = newNoteId,
+                bytes = blob.bytes,
+                mimeType = mime,
+            )
+            if (staged == null) {
+                skipped++
+                warnings.add("Could not save an image for an imported note")
+                continue
+            }
+
+            byNoteId.getOrPut(newNoteId) { ArrayList() }.add(
+                Attachment(
+                    id = freshId,
+                    noteId = newNoteId,
+                    storagePath = pendingStoragePath(freshId),
+                    type = blob.type.ifBlank { "image" },
+                    mimeType = mime,
+                    sizeBytes = blob.bytes.size.toLong(),
+                ),
+            )
+            imported++
+        }
+
+        return StagedBundleAttachments(byNoteId = byNoteId, imported = imported, skipped = skipped)
+    }
+
+    /**
+     * Writes the staged attachment rows onto their notes, under the import's own origin token.
+     *
+     * Returns false when the dataset that asked for the import is gone — account-owned local state
+     * plus an upload, so a boundary that landed while the archive was being unpacked refuses it
+     * rather than rewriting whatever the replacement dataset holds at that id.
+     */
+    private suspend fun attachStagedAttachments(
+        byNoteId: Map<Long, List<Attachment>>,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): Boolean {
+        for ((newNoteId, attachments) in byNoteId) {
+            val note = repository.getNoteById(newNoteId) ?: continue
+            val attached = repository.updateNote(
+                note.copy(attachments = note.attachments + attachments),
+                commitToken,
+            )
+            if (attached is com.aus.notelikeus.domain.repository.LocalCommitResult.StaleGeneration) {
+                return false
+            }
+        }
+        return true
+    }
 
     override fun looksLikeBundle(fileName: String?, head: ByteArray): Boolean =
         BackupBundleCodec.looksLikeBundle(fileName, head)
@@ -100,7 +190,10 @@ class BackupBundleTransfer(
         )
     }
 
-    override suspend fun importBundle(archive: ByteArray): BackupImportResult {
+    override suspend fun importBundle(
+        archive: ByteArray,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): BackupImportResult {
         val parsed = try {
             BackupBundleCodec.parseBackupBundle(archive)
         } catch (error: BundleFormatException) {
@@ -116,7 +209,7 @@ class BackupBundleTransfer(
         }
 
         val backupJson = json.encodeToString(JsonObject.serializer(), parsed.manifest.backup)
-        val importResult = importer.importFromJson(backupJson)
+        val importResult = importer.importFromJson(backupJson, commitToken)
         if (importResult !is BackupImportResult.Success) return importResult
 
         val newIdByOldId = importResult.newNoteIdByOldId
@@ -125,48 +218,22 @@ class BackupBundleTransfer(
         var attachmentsSkipped = parsed.droppedAttachments
         val owner = ownerId()
 
-        val attachmentsByNewNoteId = LinkedHashMap<Long, MutableList<Attachment>>()
+        val staged = stageBundleAttachments(
+            parsed = parsed,
+            newIdByOldId = newIdByOldId,
+            owner = owner,
+            warnings = warnings,
+            alreadySkipped = attachmentsSkipped,
+        )
+        attachmentsSkipped = staged.skipped
+        attachmentsImported = staged.imported
 
-        for (entry in parsed.manifest.attachments) {
-            val oldNoteId = entry.noteId ?: continue
-            val newNoteId = newIdByOldId[oldNoteId]
-            val blob = parsed.media[entry.attachmentId]
-            if (newNoteId == null || blob == null) {
-                attachmentsSkipped++
-                continue
-            }
-
-            val freshId = createAttachmentId()
-            val mime = blob.mimeType ?: entry.mimeType ?: "image/jpeg"
-            val staged = staging.stage(
-                attachmentId = freshId,
-                ownerId = owner,
-                noteId = newNoteId,
-                bytes = blob.bytes,
-                mimeType = mime,
-            )
-            if (staged == null) {
-                attachmentsSkipped++
-                warnings.add("Could not save an image for an imported note")
-                continue
-            }
-
-            attachmentsByNewNoteId.getOrPut(newNoteId) { ArrayList() }.add(
-                Attachment(
-                    id = freshId,
-                    noteId = newNoteId,
-                    storagePath = pendingStoragePath(freshId),
-                    type = blob.type.ifBlank { "image" },
-                    mimeType = mime,
-                    sizeBytes = blob.bytes.size.toLong(),
-                ),
-            )
-            attachmentsImported++
-        }
-
-        for ((newNoteId, attachments) in attachmentsByNewNoteId) {
-            val note = repository.getNoteById(newNoteId) ?: continue
-            repository.updateNote(note.copy(attachments = note.attachments + attachments))
+        if (
+            !attachStagedAttachments(byNoteId = staged.byNoteId, commitToken = commitToken)
+        ) {
+            // The dataset this import belonged to is gone: its bytes are staged but unreferenced,
+            // and its rows were wiped with it. Reported as superseded, never as Success.
+            return BackupImportResult.Superseded(notesImported = importResult.notesImported)
         }
 
         if (attachmentsSkipped > 0) {

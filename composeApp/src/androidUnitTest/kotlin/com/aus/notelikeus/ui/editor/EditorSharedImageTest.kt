@@ -6,6 +6,7 @@ import com.aus.notelikeus.data.attachments.AttachmentSyncService
 import com.aus.notelikeus.data.attachments.StagedAttachment
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.platform.ReminderManager
+import com.aus.notelikeus.domain.repository.LocalCommitResult
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.ui.main.CloudAccount
@@ -78,7 +79,7 @@ class EditorSharedImageTest {
         }
         val attachmentSyncMock = sync ?: mockk<AttachmentSyncService>(relaxed = true).also {
             coEvery { it.stageAttachment(any(), any(), any(), any(), any()) } returns true
-            coEvery { it.syncNoteAttachments(any()) } answers { firstArg() }
+            coEvery { it.syncNoteAttachments(any(), any()) } answers { LocalCommitResult.Applied(firstArg()) }
         }
         return EditorViewModel(
             repository = repository,
@@ -87,6 +88,7 @@ class EditorSharedImageTest {
             attachmentSync = attachmentSyncMock,
             attachmentsEnabled = { true },
             syncManager = syncManager,
+            localCommitTokenProvider = FakeLocalCommitTokenProvider(),
         )
     }
 
@@ -94,7 +96,7 @@ class EditorSharedImageTest {
     fun `setInitialSharedImage stages attachment and populates title and content`() = runTest {
         val sync = mockk<AttachmentSyncService>(relaxed = true)
         coEvery { sync.stageAttachment(any(), any(), any(), any(), any()) } returns true
-        coEvery { sync.syncNoteAttachments(any()) } answers { firstArg() }
+        coEvery { sync.syncNoteAttachments(any(), any()) } answers { LocalCommitResult.Applied(firstArg()) }
         val vm = viewModel(sync = sync)
         advanceUntilIdle()
 
@@ -120,7 +122,7 @@ class EditorSharedImageTest {
     fun `setInitialSharedImage rejects attachment if account changed during async ingestion`() = runTest {
         val sync = mockk<AttachmentSyncService>(relaxed = true)
         coEvery { sync.stageAttachment(any(), any(), any(), any(), "user_b") } returns false
-        coEvery { sync.syncNoteAttachments(any()) } answers { firstArg() }
+        coEvery { sync.syncNoteAttachments(any(), any()) } answers { LocalCommitResult.Applied(firstArg()) }
         val vm = viewModel(sync = sync)
         advanceUntilIdle()
 
@@ -143,7 +145,7 @@ class EditorSharedImageTest {
     @Test
     fun `setInitialSharedImage is ignored if editor is on an existing note`() = runTest {
         val sync = mockk<AttachmentSyncService>(relaxed = true)
-        coEvery { sync.syncNoteAttachments(any()) } answers { firstArg() }
+        coEvery { sync.syncNoteAttachments(any(), any()) } answers { LocalCommitResult.Applied(firstArg()) }
         coEvery { repository.getNoteById(42L) } returns Note(
             id = 42L,
             title = "Existing",
@@ -174,10 +176,11 @@ class EditorSharedImageTest {
     @Test
     fun `saveLocallyAndAwait persists note with only shared image and no text`() = runTest {
         coEvery { repository.getNextNotePosition() } returns 1
-        coEvery { repository.insertNoteWithResult(any()) } returns 88L
+        // Phase 3C.1: a new-note save commits through the token-aware insert.
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(88L)
         val sync = mockk<AttachmentSyncService>(relaxed = true)
         coEvery { sync.stageAttachment(any(), any(), any(), any(), any()) } returns true
-        coEvery { sync.syncNoteAttachments(any()) } answers { firstArg() }
+        coEvery { sync.syncNoteAttachments(any(), any()) } answers { LocalCommitResult.Applied(firstArg()) }
         val vm = viewModel(sync = sync)
         advanceUntilIdle()
 
@@ -191,14 +194,14 @@ class EditorSharedImageTest {
         val result = vm.saveLocallyAndAwait()
         assertTrue(result is LocalSaveResult.Saved)
         assertEquals(88L, (result as LocalSaveResult.Saved).noteId)
-        coVerify(exactly = 1) { repository.insertNoteWithResult(match { it.attachments.size == 1 }) }
+        coVerify(exactly = 1) { repository.insertNoteWithResult(match { it.attachments.size == 1 }, any()) }
     }
 
     @Test
     fun `discardUnsavedChanges on shared image note releases staged attachment`() = runTest {
         val sync = mockk<AttachmentSyncService>(relaxed = true)
         coEvery { sync.stageAttachment(any(), any(), any(), any(), any()) } returns true
-        coEvery { sync.syncNoteAttachments(any()) } answers { firstArg() }
+        coEvery { sync.syncNoteAttachments(any(), any()) } answers { LocalCommitResult.Applied(firstArg()) }
         val vm = viewModel(sync = sync)
         testScheduler.runCurrent()
 

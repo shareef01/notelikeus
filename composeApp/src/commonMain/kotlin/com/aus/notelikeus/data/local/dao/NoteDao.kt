@@ -76,6 +76,23 @@ interface NoteDao {
     @Query("UPDATE notes SET serverUpdatedAt = :serverUpdatedAt WHERE id = :noteId")
     suspend fun updateServerTimestamp(noteId: Long, serverUpdatedAt: Long)
 
+    @Query(
+        """
+        UPDATE notes
+        SET attachmentsJson = :attachmentsJson
+        WHERE id = :noteId
+          AND (
+            (attachmentsJson IS NULL AND :expectedAttachmentsJson IS NULL)
+            OR attachmentsJson = :expectedAttachmentsJson
+          )
+        """
+    )
+    suspend fun replaceAttachmentsJsonIfUnchanged(
+        noteId: Long,
+        expectedAttachmentsJson: String?,
+        attachmentsJson: String?,
+    ): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNote(note: NoteEntity): Long
 
