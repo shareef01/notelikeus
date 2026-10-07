@@ -1,5 +1,7 @@
 package com.aus.notelikeus.di
 
+import com.aus.notelikeus.data.sync.SessionLocalCommitTokenProvider
+import com.aus.notelikeus.domain.repository.LocalCommitTokenProvider
 import androidx.lifecycle.SavedStateHandle
 import com.aus.notelikeus.data.repository.NoteRepositoryImpl
 import com.aus.notelikeus.data.repository.SettingsRepositoryImpl
@@ -18,6 +20,7 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.core.qualifier.named
 
 val sharedModule = module {
+    single<LocalCommitTokenProvider> { SessionLocalCommitTokenProvider(get()) }
     single<NoteRepository> { NoteRepositoryImpl(get(), get(), get(), get(), get(), get(), get()) }
     single<SettingsRepository> { SettingsRepositoryImpl(get(), get()) }
     
@@ -25,12 +28,12 @@ val sharedModule = module {
     
     viewModel { MainViewModel(get(), get(), get(), get(), get(), get(), get(), get()) }
     viewModel { params -> 
-        EditorViewModel(get(), get(), params.get(), get(), syncManager = getOrNull()) 
+        EditorViewModel(get(), get(), params.get(), get(), syncManager = getOrNull(), localCommitTokenProvider = get())
     }
     factory(named("windowEditor")) {
-        EditorViewModel(get(), get(), SavedStateHandle(), get(), syncManager = getOrNull())
+        EditorViewModel(get(), get(), SavedStateHandle(), get(), syncManager = getOrNull(), localCommitTokenProvider = get())
     }
-    viewModel { LabelsViewModel(get()) }
+    viewModel { LabelsViewModel(get(), get()) }
 }
 
 expect val platformModule: Module

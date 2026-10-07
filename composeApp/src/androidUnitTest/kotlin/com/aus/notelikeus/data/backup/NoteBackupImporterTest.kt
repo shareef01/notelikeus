@@ -1,5 +1,6 @@
 package com.aus.notelikeus.data.backup
 
+import com.aus.notelikeus.data.sync.actionToken
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.NoteRepository
@@ -37,7 +38,7 @@ class NoteBackupImporterTest {
             }
         """.trimIndent()
 
-        val result = importer.importFromJson(json) as BackupImportResult.Success
+        val result = importer.importFromJson(json, actionToken()) as BackupImportResult.Success
 
         assertEquals(1, result.notesImported)
         assertEquals(1, result.labelsCreated)
@@ -69,7 +70,7 @@ class NoteBackupImporterTest {
             }
         """.trimIndent()
 
-        val result = importer.importFromJson(json) as BackupImportResult.Success
+        val result = importer.importFromJson(json, actionToken()) as BackupImportResult.Success
 
         assertEquals(1, result.notesImported)
         assertEquals(0, result.labelsCreated)
@@ -95,7 +96,7 @@ class NoteBackupImporterTest {
             }
         """.trimIndent()
 
-        val result = importer.importFromJson(json)
+        val result = importer.importFromJson(json, actionToken())
 
         assertTrue("expected InvalidFormat, got $result", result is BackupImportResult.InvalidFormat)
         assertTrue(repository.insertedWithoutSync.isEmpty())
@@ -110,7 +111,7 @@ class NoteBackupImporterTest {
         val importer = NoteBackupImporter(repository)
         val json = """{"version":0,"notes":[{"title":"Legacy","content":"ok","timestamp":1,"color":0}]}"""
 
-        val result = importer.importFromJson(json) as BackupImportResult.Success
+        val result = importer.importFromJson(json, actionToken()) as BackupImportResult.Success
         assertEquals(1, result.notesImported)
     }
 
@@ -120,7 +121,7 @@ class NoteBackupImporterTest {
         val importer = NoteBackupImporter(repository)
         val json = """{"version":3,"labels":{"name":"not-an-array"},"notes":[{"title":"n","content":"","timestamp":1,"color":0}]}"""
 
-        val result = importer.importFromJson(json)
+        val result = importer.importFromJson(json, actionToken())
         assertTrue(result is BackupImportResult.Error || result is BackupImportResult.InvalidFormat)
         assertTrue(repository.insertedWithoutSync.isEmpty())
     }
@@ -134,7 +135,7 @@ class NoteBackupImporterTest {
             .joinToString(",") { """{"id":$it,"name":"l$it"}""" }
         val json = """{"version": 1, "labels": [$labels], "notes": []}"""
 
-        val result = importer.importFromJson(json)
+        val result = importer.importFromJson(json, actionToken())
 
         assertTrue("expected InvalidFormat, got $result", result is BackupImportResult.InvalidFormat)
         assertTrue(repository.insertedLabels.isEmpty())
@@ -149,7 +150,7 @@ class NoteBackupImporterTest {
         val json = "[".repeat(NoteBackupImporter.MAX_JSON_DEPTH + 8) +
             "]".repeat(NoteBackupImporter.MAX_JSON_DEPTH + 8)
 
-        val result = importer.importFromJson(json)
+        val result = importer.importFromJson(json, actionToken())
 
         assertTrue("expected InvalidFormat, got $result", result is BackupImportResult.InvalidFormat)
         assertTrue(repository.insertedWithoutSync.isEmpty())
@@ -176,7 +177,7 @@ class NoteBackupImporterTest {
             }
         """.trimIndent()
 
-        val result = importer.importFromJson(json)
+        val result = importer.importFromJson(json, actionToken())
 
         assertTrue("expected Success, got $result", result is BackupImportResult.Success)
     }
@@ -202,7 +203,7 @@ class NoteBackupImporterTest {
             }
         """.trimIndent()
 
-        val result = importer.importFromJson(json)
+        val result = importer.importFromJson(json, actionToken())
 
         assertTrue("expected Success, got $result", result is BackupImportResult.Success)
     }
@@ -222,7 +223,7 @@ class NoteBackupImporterTest {
             }
         """.trimIndent()
 
-        val result = importer.importFromJson(json)
+        val result = importer.importFromJson(json, actionToken())
 
         assertTrue("expected Error, got $result", result is BackupImportResult.Error)
         assertTrue(repository.finalizedIds.isEmpty())
@@ -238,6 +239,30 @@ private class RecordingNoteRepository(
     private val nextPosition: Int = 0,
     private val failAfterNotes: Int = Int.MAX_VALUE,
 ) : NoteRepository {
+    override suspend fun updateNote(
+        note: Note,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Unit> =
+        com.aus.notelikeus.data.sync.LocalCommitGate.commit(commitToken) {
+            updateNote(note)
+            Unit
+        }
+
+    override suspend fun deleteNote(
+        note: Note,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Unit> =
+        com.aus.notelikeus.data.sync.LocalCommitGate.commit(commitToken) {
+            deleteNote(note)
+            Unit
+        }
+
+    override suspend fun restoreNote(
+        note: Note,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Long> =
+        com.aus.notelikeus.data.sync.LocalCommitGate.commit(commitToken) { restoreNote(note) }
+
 
     val insertedWithoutSync = mutableListOf<Note>()
     val insertedLabels = mutableListOf<Label>()
@@ -277,6 +302,14 @@ private class RecordingNoteRepository(
         finalizedIds += ids
     }
 
+    override suspend fun finalizeImportedNotes(
+        ids: List<Long>,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Unit> =
+        // Fenced as production is: a stale token refuses the import instead of finalizing it, which
+        // is the branch the superseded-import case asserts.
+        com.aus.notelikeus.data.sync.LocalCommitGate.commit(commitToken) { finalizedIds += ids }
+
     override suspend fun getAllLabelsSnapshot(): List<Label> = labels.toList()
 
     override suspend fun getNextNotePosition(): Int = nextPosition
@@ -291,9 +324,17 @@ private class RecordingNoteRepository(
 
     override suspend fun insertNote(note: Note) { unsupported<Unit>() }
     override suspend fun insertNoteWithResult(note: Note): Long = unsupported()
+    override suspend fun insertNoteWithResult(
+        note: Note,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Long> = unsupported()
     override suspend fun restoreNote(note: Note): Long = unsupported()
     override suspend fun updateNote(note: Note) { unsupported<Unit>() }
     override suspend fun updateNotePositions(notes: List<Note>) { unsupported<Unit>() }
+    override suspend fun updateNotePositions(
+        notes: List<Note>,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Unit> = unsupported()
     override suspend fun deleteNote(note: Note) { unsupported<Unit>() }
     override suspend fun clearAllUserData() { unsupported<Unit>() }
     override suspend fun getNoteById(id: Long): Note? = unsupported()
@@ -304,7 +345,15 @@ private class RecordingNoteRepository(
     override suspend fun clearReminderTimestamp(noteId: Long) { unsupported<Unit>() }
     override suspend fun updateServerTimestamp(noteId: Long, serverUpdatedAt: Long) { unsupported<Unit>() }
     override suspend fun updateLabel(label: Label) { unsupported<Unit>() }
+    override suspend fun updateLabel(
+        label: Label,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Unit> = unsupported()
     override suspend fun deleteLabel(label: Label) { unsupported<Unit>() }
+    override suspend fun deleteLabel(
+        label: Label,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Unit> = unsupported()
     override fun getActiveNotes(): Flow<List<Note>> = emptyFlow()
     override fun getArchivedNotes(): Flow<List<Note>> = emptyFlow()
     override fun getTrashedNotes(): Flow<List<Note>> = emptyFlow()

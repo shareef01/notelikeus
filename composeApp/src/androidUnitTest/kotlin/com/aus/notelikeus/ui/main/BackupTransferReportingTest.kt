@@ -4,6 +4,7 @@ import com.aus.notelikeus.data.backup.BackupImportResult
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.domain.repository.NoteRepository
+import com.aus.notelikeus.ui.editor.FakeLocalCommitTokenProvider
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.domain.repository.SyncManager
 import io.mockk.coEvery
@@ -53,6 +54,7 @@ class BackupTransferReportingTest {
 
     private fun viewModel() = MainViewModel(
         repository,
+        FakeLocalCommitTokenProvider(),
         settingsRepository,
         mockk<NoteBackupExporter>(relaxed = true),
         importer,
@@ -62,7 +64,7 @@ class BackupTransferReportingTest {
 
     @Test
     fun `a successful import reports how many notes arrived`() = runTest {
-        coEvery { importer.importFromJson(any()) } returns
+        coEvery { importer.importFromJson(any(), any()) } returns
             BackupImportResult.Success(notesImported = 7, labelsCreated = 2)
         val subject = viewModel()
 
@@ -76,7 +78,7 @@ class BackupTransferReportingTest {
 
     @Test
     fun `a rejected backup reports the parser's own reason`() = runTest {
-        coEvery { importer.importFromJson(any()) } returns
+        coEvery { importer.importFromJson(any(), any()) } returns
             BackupImportResult.InvalidFormat("Backup file is too deeply nested")
         val subject = viewModel()
 
@@ -92,7 +94,7 @@ class BackupTransferReportingTest {
 
     @Test
     fun `an import that throws is still reported rather than swallowed`() = runTest {
-        coEvery { importer.importFromJson(any()) } throws IllegalStateException("boom")
+        coEvery { importer.importFromJson(any(), any()) } throws IllegalStateException("boom")
         val subject = viewModel()
 
         subject.importBackup("{}")

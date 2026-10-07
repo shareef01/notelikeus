@@ -13,6 +13,30 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * calls are implemented; the rest throw [UnsupportedOperationException].
  */
 class FakeNoteRepository : NoteRepository {
+    override suspend fun updateNote(
+        note: Note,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Unit> =
+        com.aus.notelikeus.data.sync.LocalCommitGate.commit(commitToken) {
+            updateNote(note)
+            Unit
+        }
+
+    override suspend fun deleteNote(
+        note: Note,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Unit> =
+        com.aus.notelikeus.data.sync.LocalCommitGate.commit(commitToken) {
+            deleteNote(note)
+            Unit
+        }
+
+    override suspend fun restoreNote(
+        note: Note,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Long> =
+        com.aus.notelikeus.data.sync.LocalCommitGate.commit(commitToken) { restoreNote(note) }
+
 
     private val notes = mutableMapOf<Long, Note>()
     private val labels = mutableListOf<Label>()
@@ -48,6 +72,14 @@ class FakeNoteRepository : NoteRepository {
         return id
     }
 
+    override suspend fun insertNoteWithResult(
+        note: Note,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Long> =
+        com.aus.notelikeus.data.sync.LocalCommitGate.commit(commitToken) {
+            insertNoteWithResult(note)
+        }
+
     override suspend fun insertNoteWithoutSync(note: Note): Long = insertNoteWithResult(note)
 
     override suspend fun <R> withWriteTransaction(block: suspend () -> R): R = block()
@@ -55,6 +87,14 @@ class FakeNoteRepository : NoteRepository {
     override suspend fun finalizeImportedNotes(ids: List<Long>) {
         finalizedIds.addAll(ids)
     }
+
+    override suspend fun finalizeImportedNotes(
+        ids: List<Long>,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Unit> =
+        // Fenced like the real repository: a stale token refuses the import rather than finalizing
+        // it, which is the branch the import's own tests exercise.
+        com.aus.notelikeus.data.sync.LocalCommitGate.commit(commitToken) { finalizedIds.addAll(ids) }
 
     override suspend fun updateNote(note: Note) {
         if (failWrites) error("update failed")
@@ -104,6 +144,11 @@ class FakeNoteRepository : NoteRepository {
     override suspend fun insertNote(note: Note) { insertedNotes.add(note) }
     override suspend fun restoreNote(note: Note): Long = insertNoteWithResult(note)
     override suspend fun updateNotePositions(notes: List<Note>) { unsupported<Unit>() }
+
+    override suspend fun updateNotePositions(
+        notes: List<Note>,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Unit> = unsupported()
     override suspend fun getNextNotePosition(): Int = 0
     override suspend fun getNotesWithActiveReminders(now: Long): List<Note> = emptyList()
     override suspend fun getNotesWithMissedReminders(now: Long): List<Note> = emptyList()
@@ -111,7 +156,18 @@ class FakeNoteRepository : NoteRepository {
     override fun getActiveNoteCount(): Flow<Int> = _activeNoteCount
     override fun getLabels(): Flow<List<Label>> = unsupported()
     override suspend fun updateLabel(label: Label) {}
+
+    override suspend fun updateLabel(
+        label: Label,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Unit> = unsupported()
+
     override suspend fun deleteLabel(label: Label) {}
+
+    override suspend fun deleteLabel(
+        label: Label,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): com.aus.notelikeus.domain.repository.LocalCommitResult<Unit> = unsupported()
 
     private fun <T> unsupported(): T =
         throw UnsupportedOperationException("not needed for engine tests")

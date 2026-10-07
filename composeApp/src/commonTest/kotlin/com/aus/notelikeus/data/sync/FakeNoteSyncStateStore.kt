@@ -9,13 +9,18 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
     private val restored = mutableSetOf<Long>()
     private val pendingAttachmentGc = mutableMapOf<Long, MutableSet<String>>()
     private val knownCloud = mutableSetOf<Long>()
+    private val knownServerRevisions = mutableMapOf<Long, Long>()
+    private val baselineDeleteRevisions = mutableMapOf<Long, Long>()
     private var reconciledAt: Long = 0L
     private var mergedUserId: String? = null
     var currentTime: Long = 1_000_000L
 
-    override fun markDeleted(noteId: Long, deletedAt: Long) {
+    override fun markDeleted(noteId: Long, deletedAt: Long, baselineRevision: Long?) {
         if (noteId !in deleted) {
             deleted[noteId] = deletedAt
+        }
+        if (baselineRevision != null) {
+            baselineDeleteRevisions[noteId] = baselineRevision
         }
     }
 
@@ -80,6 +85,30 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
         knownCloud.addAll(ids)
     }
 
+    override fun knownServerRevisionById(): Map<Long, Long> = knownServerRevisions.toMap()
+
+    override fun updateKnownServerRevision(noteId: Long, revision: Long) {
+        knownServerRevisions[noteId] = revision
+    }
+
+    override fun updateKnownServerRevisions(revisions: Map<Long, Long>) {
+        knownServerRevisions.putAll(revisions)
+    }
+
+    override fun clearKnownServerRevisions(noteIds: Collection<Long>) {
+        knownServerRevisions.keys.removeAll(noteIds.toSet())
+    }
+
+    override fun baselineDeleteRevisionById(): Map<Long, Long> = baselineDeleteRevisions.toMap()
+
+    override fun setBaselineDeleteRevision(noteId: Long, revision: Long) {
+        baselineDeleteRevisions[noteId] = revision
+    }
+
+    override fun clearBaselineDeleteRevision(noteId: Long) {
+        baselineDeleteRevisions.remove(noteId)
+    }
+
     override fun lastMergedUserId(): String? = mergedUserId
 
     override fun setLastMergedUserId(userId: String) {
@@ -91,6 +120,8 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
         restored.clear()
         pendingAttachmentGc.clear()
         knownCloud.clear()
+        knownServerRevisions.clear()
+        baselineDeleteRevisions.clear()
         reconciledAt = 0L
         mergedUserId = null
     }
