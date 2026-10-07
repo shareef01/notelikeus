@@ -41,6 +41,16 @@ android {
         }
     }
 
+    // MainActivity's share-lifecycle tests are Robolectric tests, and Robolectric needs the merged
+    // Android resources (theme, strings, R class) to launch the Activity. :composeApp sets this for
+    // its own Robolectric suites; the app module never did, which is why a Robolectric test placed
+    // here could not compile or run at all.
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+
     signingConfigs {
         if (signingProps != null) {
             create("release") {
@@ -111,6 +121,11 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
+
+    // MainActivity's share-lifecycle suite runs under Robolectric, the same way :composeApp's
+    // androidUnitTest suites do. Kept test-only: nothing here ships in the APK.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.ext.junit)
 
     // On-device only. The predictive-back opt-in in AndroidManifest.xml is an API 33+ runtime
     // behaviour: nothing about it is visible to a unit test, and it is declared here rather than
