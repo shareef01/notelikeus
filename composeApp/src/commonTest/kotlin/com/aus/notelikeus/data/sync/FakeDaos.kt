@@ -65,6 +65,21 @@ class FakeNoteDao : NoteDao {
         notes[noteId] = notes[noteId]?.copy(serverUpdatedAt = serverUpdatedAt) ?: return
     }
 
+    /**
+     * Compare-and-set, matching the SQL in [NoteDao.replaceAttachmentsJsonIfUnchanged]: it applies
+     * only while the row still holds [expectedAttachmentsJson]. Returns rows updated, as Room does.
+     */
+    override suspend fun replaceAttachmentsJsonIfUnchanged(
+        noteId: Long,
+        expectedAttachmentsJson: String?,
+        attachmentsJson: String?,
+    ): Int {
+        val current = notes[noteId] ?: return 0
+        if (current.attachmentsJson != expectedAttachmentsJson) return 0
+        notes[noteId] = current.copy(attachmentsJson = attachmentsJson)
+        return 1
+    }
+
     override suspend fun getCloudEligibleNoteCount(): Int = notes.size
 
     override suspend fun insertChecklistItem(item: ChecklistItemEntity) {
