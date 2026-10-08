@@ -427,6 +427,37 @@ rules out.
 Guarded by `web/e2e/attach-touch.spec.ts`: the control must be visible on a coarse pointer, and
 attaching a real PNG through the picker must be represented in the editor. Two browser projects.
 
+### F18 — The web sort control offers "Manual order", but the web client cannot reorder notes — CONFIRMED, decision needed
+
+**Measured:** zero reorder handles in the DOM at 390px touch and at 1440px desktop, in the default state
+where the sort chip reads `Manual` and the view is `Grid`.
+
+**Confirmed by construction, not just by the absence of a control.** `MainScreen` renders
+`<NoteStaggeredGrid …>` without a `reorder` prop — a search for `reorder={` finds nothing — and the grid
+derives `showReorderHandle: Boolean(reorder)`. So no handler ever reaches a card, and the handle is
+false by construction rather than hidden by a condition.
+
+**Why this is a finding rather than a platform difference.** `D12` is a Compose-side decision — its own
+text says the distinction is encoded "on the model rather than in the composable" — so web having no
+drag handle is not a violation of it. The problem is what the web UI *offers*: the sort sheet lists
+**"Manual order"** alongside "Newest first" and "Oldest first", and `notesStore`'s default is
+`sortOrder: 'manual'`. A user can select an order they have no way to achieve, and the default state is
+that unachievable one.
+
+**Root cause is not a bug in any one file** — it is that a choice designed for a client with dragging was
+carried into a client without it. The fix is a product decision, so none was made:
+
+- **Remove "Manual order" from web**, keeping the two automatic orders. Smallest change; but notes carry
+  stored manual positions, and D14's pinned-heading rules are written in terms of the list's order, so
+  the option cannot simply vanish from the model.
+- **Implement reordering on web.** The handle, the props and the plumbing already exist in
+  `NoteStaggeredGrid`; only the handler is missing. Larger, and it is new feature work rather than a
+  correction.
+
+**Related but separate:** this is the same family as F15 — an option in the UI that does not do what it
+says. F15's was fixed because the behaviour was clearly intended and simply not wired; this one cannot be
+resolved without knowing which client should own manual order.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
