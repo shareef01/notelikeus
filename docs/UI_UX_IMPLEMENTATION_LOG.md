@@ -20,7 +20,9 @@ touch, and how was it checked".
 | `c0cc4f5` | F2 | keyboard-reachable filter rows + a "Scroll filters right" cue keyed on `scrollLeft + clientWidth < scrollWidth` | visible at 390, absent at 1440, gone at the row's end, `ArrowRight` scrolls it |
 | `171016a` | F5 | the toolbar's sort chip opens a chooser built on `ResponsiveSheet` instead of cycling | chooser lists all three, applies, closes; notes reorder between Oldest and Newest |
 | `df05230` | F6 | shared `.tap-target` interaction state; applied to 6 controls | 44×44 computed hit areas; a click 8px above a 20px control activates it |
-| _(this commit)_ | F5 counterpart | the settings sort row becomes an inline three-way choice; the cycle and its dead code removed | settings and toolbar agree on one state; 24/24 |
+| `67508fa` | F5 counterpart | the settings sort row becomes an inline three-way choice; the cycle and its dead code removed | settings and toolbar agree on one state; 24/24 |
+| `ba18d1f` | F7 | `.tap-target-y` for dense rows; the checklist tick box becomes 24×24 visual with a 24×44 target | nothing under 24px in any editor mode, checklist included |
+| `48afd71` | F8 | palette check across dark, AMOLED and note colours | outlines 15.6:1 / 21.0:1 / 18.9:1; fills recorded, not asserted |
 
 **F7 — the checklist tick box, found by auditing journey C. Fixed.** A sweep of the editor at 390px —
 empty, with text, in checklist mode, and with two items — turned up a 20×20 tick box beside an
@@ -83,9 +85,6 @@ fine" is never the answer.
 
 ## Open, in the order I would take them
 
-1. A `DECISIONS.md` entry for `.tap-target` — the design-system record for it currently lives in the
-   audit and in the stylesheet comment, which is enough to justify the change but not enough to be
-   the design system's own documentation of it.
-2. The colour-swatch spacing question F6 raises.
+1. The colour-swatch spacing question F6 raises.
 3. Journeys B–O, measured the same way as A.
 4. Android, on a machine with an AVD or from CI's instrumented lanes.
