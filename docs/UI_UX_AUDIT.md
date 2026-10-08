@@ -336,6 +336,36 @@ delete is a sync-visible mutation: those notes will surface at the top of "Newes
 uploaded. It may well be intentional — a label change *is* a content change and ought to sync — but
 the mission's rules put sync contracts out of scope, so it is recorded here rather than changed.
 
+### F15 — A created label does not become a filter chip — REPRODUCIBLE OBSERVATION, intent unresolved
+
+Measured at 390px in guest mode, twice, with the same result both times:
+
+| Step | Result |
+|---|---|
+| Open Edit labels, type `groceries`, press the explicit **Create** submit button | the label is listed in the manager |
+| Close the manager | the notes screen's label filter row is **empty** |
+| Reload, re-enter guest mode | **still empty** |
+
+So the label is created and persisted, and it does not reach the filter row either immediately or
+after a fresh read.
+
+**What is not established is whether that is a defect.** `FilterRow` receives `labels={labels}`, and
+`useLabelManagement` returns the registry's labels, which should include the new one — so the plumbing
+*looks* like it should work. But the row may deliberately list only labels **in use on a note**, which
+would make the empty row correct and the whole observation a non-issue. I ran out of budget before
+tracing the hook that feeds `MainScreen`'s `labels` to its source, and I am not going to guess: five
+times in this audit a confident assumption of mine was disproved by a single measurement, and writing
+this up as a defect would risk a sixth.
+
+**Next step, one call:** trace `labels` in `MainScreen` (line ~127) to the hook that supplies it. If it
+reads the registry, this is a real bug — a label you cannot filter by. If it derives from the notes'
+own label arrays, it is intended behaviour and this entry closes as no-defect.
+
+**Also useful from the same session, and unrelated:** the editor's labels affordance is behind a
+control named **"More options"**, and label creation goes through an explicit `Create` submit button
+rather than Enter alone — worth knowing for any test that touches this flow, since a spec I wrote
+pressed Enter and concluded the table was empty when the label had not been created at all.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
