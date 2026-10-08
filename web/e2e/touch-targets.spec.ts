@@ -70,6 +70,23 @@ test('nothing in the editor falls below the 24px minimum', async ({ page }) => {
   expect(await controlsSmallerThan(page, 24)).toEqual([]);
 });
 
+test('checklist mode in the editor has no undersized targets either', async ({ page }) => {
+  await enterNotes(page);
+  await page.getByRole('button', { name: 'Add note' }).first().click();
+  await expect(page.getByRole('textbox', { name: 'Note title' }).first()).toBeVisible({ timeout: 15_000 });
+
+  // Journey C. The checkboxes here were 20x20, and this suite did not look at this mode at all —
+  // the gap that let a sub-minimum target survive the first pass.
+  await page.getByRole('button', { name: '+ Add checklist' }).click();
+  await page.waitForTimeout(800);
+  await page.keyboard.type('milk');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('eggs');
+  await page.waitForTimeout(800);
+
+  expect(await controlsSmallerThan(page, 24)).toEqual([]);
+});
+
 test('the controls that need it carry a 44px hit area', async ({ page }) => {
   await enterNotes(page);
   const sizes = await page.evaluate(() =>

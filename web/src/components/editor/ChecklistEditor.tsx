@@ -70,7 +70,7 @@ export function ChecklistEditor({
             type="checkbox"
             checked={item.isChecked}
             onChange={(event) => onUpdate(item.id, item.text, event.target.checked)}
-            className="size-5 shrink-0 rounded border-current accent-current"
+            className="tap-target tap-target-y size-6 shrink-0 rounded border-current accent-current"
             style={{ color: contentColor }}
             aria-label={item.text || 'Checklist item'}
           />
