@@ -240,28 +240,37 @@ is a context option rather than something `emulateMedia` can fake. Discovery ver
 4 passed. The touch test also asserts that tapping the checkbox actually surfaces Move to trash,
 Archive and Pin, so the affordance is checked for what it leads to, not just for being visible.
 
-### F12 — Journey F's data actions: the trash round trip is verified, archive and pin are not — PARTLY CLOSED
+### F12 — Journey F's data actions: pin, archive and trash all verified — CLOSED
 
-**Verified.** Trashing is soft and reversible, and the intended note is the one affected. With two
-notes on screen, trashing ALPHA removes ALPHA from the notes list, leaves BETA untouched, and puts
-ALPHA in the trash view where it stays restorable. Nothing in the test empties the trash, so no
-permanent path is exercised.
+**Closed.** With two notes on screen throughout, so "the wrong note was affected" would fail loudly:
 
-**Root cause of the earlier failures, found.** Nothing was wrong with the product: the selection bar
-is not inside `<header>`, and every attempt scoped its actions there. Unscoped, with `exact` names to
-disambiguate from the card's "Pin note" and "Archive note", the round trip passes.
+| Action | Verified behaviour |
+|---|---|
+| Trash | soft; the note leaves the notes list, the unselected note is untouched, and it stays restorable in the trash view |
+| Archive | the note leaves the notes view, the unselected note is untouched, and it appears in the archive |
+| Pin | survives a reload, and the pinned marker is still shown afterwards |
 
-**The testability fix that made it possible** was worth doing on its own merits: the card's selection
-checkbox is now labelled by its note's title (`aria-labelledby` pointing at the title's `id`), so a
-screen reader hears *which* note a checkbox selects and a test can address it by name instead of by
-DOM position. Untitled notes keep the generic label, since there is no title line to point at (D15).
+Nothing here empties the trash, so no permanent path is exercised.
 
-**Still open:** archive/unarchive and pin/unpin. The drawer's own "Archive" navigation item satisfies
-the same locator before the selection bar's does, so those two tests are marked `test.fixme` — skipped
-and counted, never reported as passing. One more locator scope resolves them.
+**Everything that went wrong on the way was instrumentation, not the product:**
 
-**Claims from inspection, still unchecked:** deletion is permanent only through `EmptyTrashDialog` and
-`BulkDeleteDialog`; there is no undo on the trash transition itself.
+- `getByRole('button', { name: 'Pin' })` matched `aria-label="Pink"` — Playwright's `name` is
+  substring by default — so an early probe clicked a colour swatch and opened the editor.
+- `page.locator('header').first()` always matched the **nav drawer's** header, because the drawer
+  renders first in the DOM; scoping the bar's actions to it found nothing. The selection bar's own
+  actions are unscoped now, with `.last()` only for `Archive`, which the drawer also has.
+- The pin assertion named **"Unpin note"** — which exists in the DOM but belongs to the desktop
+  quick-actions block and is `md:`-only, hence invisible at 390px. It read as a pin failure when the
+  pin had persisted all along. The test now asserts the marker a phone user actually sees.
+
+**The one product change this journey needed** was worth having regardless: the card's selection
+checkbox is labelled by its note's title (`aria-labelledby` → the title's `id`), so a screen reader
+hears which note a checkbox selects, and it is addressable by name rather than by DOM position.
+
+**Still claims from inspection rather than test:** permanent deletion goes only through
+`EmptyTrashDialog` and `BulkDeleteDialog`, and there is no undo on the trash transition itself.
+
+Guarded by `web/e2e/journey-f-actions.spec.ts` — four tests, both browser projects, 8/8.
 
 
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION

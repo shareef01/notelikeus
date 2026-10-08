@@ -90,8 +90,4 @@ fine" is never the answer.
 
 ## Open, in the order I would take them
 
-1. **Journey F's data actions (F12, open).** The pin/archive/trash round trips are unverified: every
-   probe mis-targeted the card's controls. Recommend a stable hook on the card first
-   (`data-note-id`, or `aria-labelledby` to the card title) — the selection checkbox is joined to its
-   card only by DOM ancestry, which is why addressing "the checkbox for this note" is a heuristic.
 4. Android, on a machine with an AVD or from CI's instrumented lanes.

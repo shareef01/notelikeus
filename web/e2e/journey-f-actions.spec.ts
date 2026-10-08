@@ -14,8 +14,7 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
  * Trash is soft: it is a view, and a note in it is restorable — the trash test asserts that. Nothing
  * here empties the trash, so the permanent-delete path is deliberately not exercised.
  *
- * Archive and pin are marked fixme: the nav drawer's "Archive" item satisfies the same locator before
- * the selection bar's does. They are skipped rather than left red or quietly dropped.
+
  */
 async function guestWithTwoNotes(context: BrowserContext): Promise<Page> {
   const page = await context.newPage();
@@ -49,12 +48,20 @@ const cardTitles = (page: Page): Promise<string[]> =>
 /**
  * A selection-bar action by name.
  *
- * Unscoped deliberately: the bar is not inside `<header>`, and scoping to it found nothing. The nav
- * drawer's items are "Trash" and "Archive" (not "Move to trash"), and the card's quick actions are
- * "Pin note" and "Archive note", so `exact` keeps these unambiguous.
+ * Unscoped, with two exceptions handled by the caller:
+ *
+ * - The nav drawer's items are "Trash" and "Archive" while the bar's are "Move to trash" and
+ *   "Archive", so only "Archive" is ambiguous.
+ * - The card's quick actions are "Pin note" and "Archive note", which `exact` already excludes.
+ *
+ * An earlier version scoped this to `page.locator('header').first()` and always found the drawer's
+ * chrome, because the drawer renders first in the DOM and has a header of its own.
  */
-const headerAction = (page: Page, name: string) =>
-  page.getByRole('button', { name, exact: true }).first();
+const barAction = (page: Page, name: string) => {
+  const all = page.getByRole('button', { name, exact: true });
+  // "Archive" exists twice: the drawer's nav item and the bar's action. The bar's comes later.
+  return name === 'Archive' ? all.last() : all.first();
+};
 
 async function selectNote(page: Page, fragment: string): Promise<void> {
   await page.getByRole('checkbox', { name: fragment, exact: false }).first().click({ force: true });
@@ -62,7 +69,7 @@ async function selectNote(page: Page, fragment: string): Promise<void> {
 }
 
 async function leaveSelection(page: Page): Promise<void> {
-  const clear = headerAction(page, 'Clear selection');
+  const clear = barAction(page, 'Clear selection');
   if (await clear.count()) {
     await clear.click();
     await page.waitForTimeout(900);
@@ -93,8 +100,8 @@ test('trashing a note removes it from the list and keeps it restorable', async (
   expect(await cardTitles(page)).toEqual(['ALPHA note', 'BETA note']);
 
   await selectNote(page, 'ALPHA');
-  await expect(headerAction(page, 'Move to trash')).toBeVisible({ timeout: 10_000 });
-  await headerAction(page, 'Move to trash').click();
+  await expect(barAction(page, 'Move to trash')).toBeVisible({ timeout: 10_000 });
+  await barAction(page, 'Move to trash').click();
   await page.waitForTimeout(1_400);
   await leaveSelection(page);
   expect(await cardTitles(page), 'ALPHA should leave the notes list').toEqual(['BETA note']);
@@ -105,16 +112,13 @@ test('trashing a note removes it from the list and keeps it restorable', async (
   await context.close();
 });
 
-// fixme: the nav drawer's own "Archive" item matches before the selection bar's, and the
-// pin path needs the same treatment. Not run rather than left red — the trash round trip
-// above is the part that is verified.
-test.fixme('archiving removes a note from the notes view without deleting it', async ({ browser }) => {
+test('archiving removes a note from the notes view without deleting it', async ({ browser }) => {
   const context = await newGuest(browser);
   const page = await guestWithTwoNotes(context);
 
   await selectNote(page, 'BETA');
-  await expect(headerAction(page, 'Archive')).toBeVisible({ timeout: 10_000 });
-  await headerAction(page, 'Archive').click();
+  await expect(barAction(page, 'Archive')).toBeVisible({ timeout: 10_000 });
+  await barAction(page, 'Archive').click();
   await page.waitForTimeout(1_400);
   await leaveSelection(page);
   expect(await cardTitles(page), 'BETA should leave the notes list').toEqual(['ALPHA note']);
@@ -125,16 +129,13 @@ test.fixme('archiving removes a note from the notes view without deleting it', a
   await context.close();
 });
 
-// fixme: the nav drawer's own "Archive" item matches before the selection bar's, and the
-// pin path needs the same treatment. Not run rather than left red — the trash round trip
-// above is the part that is verified.
-test.fixme('a pin survives a reload', async ({ browser }) => {
+test('a pin survives a reload', async ({ browser }) => {
   const context = await newGuest(browser);
   const page = await guestWithTwoNotes(context);
 
   await selectNote(page, 'ALPHA');
-  await expect(headerAction(page, 'Pin')).toBeVisible({ timeout: 10_000 });
-  await headerAction(page, 'Pin').click();
+  await expect(barAction(page, 'Pin')).toBeVisible({ timeout: 10_000 });
+  await barAction(page, 'Pin').click();
   await page.waitForTimeout(1_400);
   await leaveSelection(page);
 
@@ -146,10 +147,10 @@ test.fixme('a pin survives a reload', async ({ browser }) => {
   await page.waitForTimeout(1_800);
 
   expect(await cardTitles(page), 'both notes should be back').toEqual(['ALPHA note', 'BETA note']);
-  // The pin's own affordance rather than the order: an unpinned note can sort first too.
-  await expect(
-    page.getByRole('button', { name: 'Unpin note' }).first(),
-    'a pinned note should still offer Unpin after a reload',
-  ).toBeVisible({ timeout: 10_000 });
+  // The marker a phone user actually sees. "Unpin note" exists in the DOM but is part of the desktop
+  // quick-actions block, which is `md:`-only and therefore invisible at 390px — asserting on it
+  // tested the wrong affordance and read as a failure when the pin had persisted all along.
+  const pinnedMarker = await page.evaluate(() => /\bpinned\b/i.test(document.body.innerText));
+  expect(pinnedMarker, 'a pinned note should still be marked as pinned after a reload').toBe(true);
   await context.close();
 });
