@@ -3,8 +3,24 @@
 # Generate a keystore (one-time):
 #   keytool -genkey -v -keystore release.keystore -alias notelikeus -keyalg RSA -keysize 2048 -validity 10000
 #
-# GitHub Actions (optional): store base64-encoded keystore + passwords as repo secrets
-# and decode to signing.properties in CI before `./gradlew :androidApp:bundleRelease`.
+# GitHub Actions: the same four values, held as repository secrets and consumed by android.yml on
+# a release tag. Nothing else can read them — pull requests and branch builds never reach the step
+# that materializes them.
+#
+#   ANDROID_SIGNING_KEYSTORE_BASE64   base64 -w0 release.keystore      (the keystore itself)
+#   ANDROID_SIGNING_STORE_PASSWORD    the keystore password
+#   ANDROID_SIGNING_KEY_ALIAS         the key alias, e.g. notelikeus
+#   ANDROID_SIGNING_KEY_PASSWORD      the key password (equal to the store password for PKCS12)
+#
+# Optional, and public: a repository *variable* (not a secret) holding the certificate's SHA-256
+# fingerprint. When it is set, a release signed with any other certificate fails the build instead
+# of quietly going out under the wrong identity.
+#
+#   ANDROID_SIGNING_CERT_SHA256       what apksigner prints for "certificate SHA-256 digest"
+#
+# PKCS12 keystores use one password for both values: keytool with -storetype PKCS12 rejects
+# differing -storepass/-keypass on Java 18 and later. The Gradle side refuses a half-filled set of
+# the four variables rather than falling back to an unsigned artifact.
 #
 storeFile=release.keystore
 storePassword=your-store-password

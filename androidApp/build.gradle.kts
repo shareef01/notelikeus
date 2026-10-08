@@ -11,13 +11,40 @@ plugins {
 }
 
 /**
- * Release signing credentials from a gitignored `signing.properties` at the repo root
- * (see signing.properties.example). Absent, release builds stay unsigned, which is fine
- * locally and in CI but cannot be uploaded to Play.
+ * Release signing credentials, from either of two places:
+ *
+ *  - a gitignored `signing.properties` at the repo root (see signing.properties.example), which is
+ *    how a local release build gets signed, or
+ *  - environment variables, which is how CI supplies the same four values out of GitHub secrets:
+ *    ANDROID_SIGNING_KEYSTORE_PATH, ANDROID_SIGNING_STORE_PASSWORD, ANDROID_SIGNING_KEY_ALIAS,
+ *    ANDROID_SIGNING_KEY_PASSWORD.
+ *
+ * Absent entirely, release builds stay unsigned — the historical behaviour, and what every pull
+ * request and local build without credentials gets. Supplying some but not all of them is a hard
+ * failure rather than a silent fall back to unsigned: a half-configured release that quietly ships
+ * an unsigned artifact is the failure mode this exists to prevent.
  */
 val signingProps: Properties? = rootProject.file("signing.properties")
     .takeIf { it.exists() }
     ?.let { file -> Properties().apply { file.inputStream().use { load(it) } } }
+
+val signingValues: List<Pair<String, String?>> = listOf(
+    "storeFile" to (signingProps?.getProperty("storeFile") ?: System.getenv("ANDROID_SIGNING_KEYSTORE_PATH")),
+    "storePassword" to (signingProps?.getProperty("storePassword") ?: System.getenv("ANDROID_SIGNING_STORE_PASSWORD")),
+    "keyAlias" to (signingProps?.getProperty("keyAlias") ?: System.getenv("ANDROID_SIGNING_KEY_ALIAS")),
+    "keyPassword" to (signingProps?.getProperty("keyPassword") ?: System.getenv("ANDROID_SIGNING_KEY_PASSWORD")),
+)
+val signingSupplied = signingValues.filter { !it.second.isNullOrBlank() }
+val signingConfigured = signingSupplied.size == signingValues.size
+
+require(signingSupplied.isEmpty() || signingConfigured) {
+    "Incomplete release signing configuration: " +
+        signingSupplied.joinToString { it.first } +
+        " set, but " +
+        signingValues.filter { it.second.isNullOrBlank() }.joinToString { it.first } +
+        " missing. Provide all four (signing.properties or the ANDROID_SIGNING_* environment " +
+        "variables) or none at all."
+}
 
 android {
     namespace = "com.aus.notelikeus"
@@ -52,12 +79,12 @@ android {
     }
 
     signingConfigs {
-        if (signingProps != null) {
+        if (signingConfigured) {
             create("release") {
-                storeFile = rootProject.file(signingProps.getProperty("storeFile"))
-                storePassword = signingProps.getProperty("storePassword")
-                keyAlias = signingProps.getProperty("keyAlias")
-                keyPassword = signingProps.getProperty("keyPassword")
+                storeFile = rootProject.file(signingValues.first { it.first == "storeFile" }.second!!)
+                storePassword = signingValues.first { it.first == "storePassword" }.second
+                keyAlias = signingValues.first { it.first == "keyAlias" }.second
+                keyPassword = signingValues.first { it.first == "keyPassword" }.second
             }
         }
     }
