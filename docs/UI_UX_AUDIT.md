@@ -193,6 +193,31 @@ standard way for this to break.
 
 Guarded by `web/e2e/search-journey.spec.ts`, four tests on two browser projects.
 
+### F10 — Journey D (the editor's formatting and the note's survival): audited, no defect — GUARDED
+
+Journey D is the next item after B (creation) and C (checklists) in the objective's own enumeration.
+The journey definitions themselves are not in this repository — they came from the mission brief and
+the pre-existing `AUDIT_UI_UX_2026.md` holds only its eleven findings — so the mapping is stated
+here rather than assumed silently.
+
+Two claims I got wrong before measuring, both worth recording because the first pass produced each:
+
+1. **"The web editor has no rich text."** Its body is a plain `<textarea aria-label="Note body">`
+   with no `contenteditable` and no ProseMirror/TipTap — and then tabbing from the title landed on a
+   **Bold** button. `components/editor/RichTextToolbar.tsx` exists and writes **markdown into the
+   plain text**: Bold wraps the selection in `**…**`, and Italic nests to `**_…_**`. The absence of a
+   rich-text engine is not the absence of the feature.
+2. **"Guest notes do not survive a reload."** They do. After a reload the *sign-in screen* is shown
+   again — the guest session does not persist — so a check that looks only at the notes list reads it
+   as data loss. Re-entering guest mode shows the note intact, which matches the sign-in copy: "Notes
+   are saved locally on this device."
+
+Recorded as an observation, not a defect: a guest who reloads lands on the sign-in screen rather than
+back in their notes. The copy is accurate about the data, and re-entering is one tap, but the
+behaviour is worth a deliberate decision rather than an accident.
+
+Guarded by `web/e2e/rich-text.spec.ts`, two tests on two browser projects, discovery verified.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
