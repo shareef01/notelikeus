@@ -32,8 +32,10 @@ export function SelectionBar({
 }: SelectionBarProps) {
   const label = selectedCount === 1 ? '1 selected' : `${selectedCount} selected`;
 
+  // min-w-0 flex-1 for the same reason as TopBar: as a flex item of the header's flex container
+  // this row cannot shrink below its content without it, which pushed the page sideways on a phone.
   return (
-    <div className="flex h-14 items-center gap-2 sm:h-16 sm:gap-3">
+    <div className="flex h-14 min-w-0 flex-1 items-center gap-2 sm:h-16 sm:gap-3">
       <button
         type="button"
         onClick={onClearSelection}
