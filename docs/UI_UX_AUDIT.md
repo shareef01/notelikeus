@@ -366,6 +366,36 @@ sign-out path — so a *guest* who reloads loses created labels while their note
 same session-versus-data asymmetry F10 records, not a separate defect, and it is unchanged.
 
 
+### F16 — Backup: the bundle round trip restores notes intact — PARTLY VERIFIED
+
+There are two export paths, and they are not the same format:
+
+| Control | What it says | Format |
+|---|---|---|
+| "Export backup with images" | "Download notes and images as one .nlkbak file" | zip bundle |
+| "Export notes only" | "Download notes as JSON, without images" | JSON |
+
+**Verified, end to end.** Exported a note (title, two-line body, pinned) from one guest session,
+imported that file into a fresh guest, and confirmed the note came back with its **title** and its
+**pinned marker** intact. The import confirmation is worth recording because it is unusually good
+copy: *"Import 1 note as new notes? They're added alongside what's already here, so importing this
+file again will create another copy of each note."* — count, consequence, and the duplicate warning,
+all before anything happens.
+
+**What was actually round-tripped was the bundle** (`.nlkbak`), not the JSON-only path: my probe's
+attempt to select "Export notes only" broke on a quoting error, and the file it imported was the
+bundle the earlier run had saved. The JSON path is unverified, and so is whether a JSON export
+round-trips with the same fidelity.
+
+**A minor observation.** Both export controls have accessible names that concatenate the label with
+its description — "Export notes onlyDownload notes as JSON, without images" — because the subtitle is
+inside the button. A screen reader reads the whole thing, which is wordy but not wrong; it does mean a
+test cannot address them by an exact name, which is how my first attempts failed to click anything.
+
+**Not tested, and not to be changed without a product decision:** the bundle's internal structure, its
+`.nlkbak` versioning, and whether an older bundle imports into a newer build. Backup formats are
+explicitly out of scope for this mission.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,

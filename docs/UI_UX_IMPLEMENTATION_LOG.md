@@ -32,6 +32,7 @@ touch, and how was it checked".
 | `4a278c3` | F13 | permanent-delete confirmation audited and guarded | no defect: count matches, irreversibility stated, focus starts on Cancel, cancelling destroys nothing |
 | _source only_ | F14 | journey G (labels): the delete guard and its copy read from source | no defect; a runtime spec failed at label creation and was not committed |
 | `a123cb9` | F15 | `useNotes` merges the label registry with the notes' labels, so a created label is filterable | chip appears immediately; regression test passing on two projects |
+| _measured_ | F16 | backup bundle round trip: export → fresh guest → import | title and pinned marker both restored; JSON-only path NOT verified |
 
 **F7 — the checklist tick box, found by auditing journey C. Fixed.** A sweep of the editor at 390px —
 empty, with text, in checklist mode, and with two items — turned up a 20×20 tick box beside an
