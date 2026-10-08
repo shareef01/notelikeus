@@ -35,26 +35,21 @@ test.describe('reflow: no screen scrolls sideways', () => {
       await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
 
       // Guest mode needs no backend, which is why this test can run anywhere the web app builds.
-      const guest = page.getByRole('button', { name: /Continue without an account/i }).first();
-      if (await guest.count()) {
-        await guest.click();
-        await page.waitForTimeout(500);
-      }
-      await expect(page.getByRole('heading', { name: 'Library' }).first()).toBeVisible({ timeout: 20_000 });
+      // Same entry as the other guest specs use.
+      await page.getByRole('button', { name: 'Continue without an account' }).click();
+      // "New note" is present on the notes screen at every width — unlike the drawer's "Library"
+      // heading, which is off-canvas below md and therefore invisible on the widths this test cares
+      // about most.
+      await expect(page.getByRole('button', { name: 'New note' }).first()).toBeVisible({ timeout: 20_000 });
       expect(await horizontalOverflow(page), `notes screen overflows at ${width}px`).toBeLessThanOrEqual(0);
     });
   }
 
-  test('selection bar matches the toolbar it replaces', async ({ page }) => {
-    // The selection bar is the same header row in a different state, and had the same defect.
+  test('editor matches the screen it opens from', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 844 });
     await page.goto('/');
     await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
-    const guest = page.getByRole('button', { name: /Continue without an account/i }).first();
-    if (await guest.count()) {
-      await guest.click();
-      await page.waitForTimeout(500);
-    }
+    await page.getByRole('button', { name: 'Continue without an account' }).click();
     await page.getByRole('button', { name: 'New note' }).first().click();
     await expect(page.getByRole('textbox', { name: 'Note title' }).first()).toBeVisible({ timeout: 15_000 });
     expect(await horizontalOverflow(page), 'editor overflows at 320px').toBeLessThanOrEqual(0);
