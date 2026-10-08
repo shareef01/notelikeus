@@ -218,6 +218,28 @@ behaviour is worth a deliberate decision rather than an accident.
 
 Guarded by `web/e2e/rich-text.spec.ts`, two tests on two browser projects, discovery verified.
 
+### F11 — On a touch device, pin/archive/trash were unreachable: the way into selection mode was hover-only — FIXED
+
+**Severity: high.** The entry point to selection mode is a checkbox on each note card — the code
+calls it "UX-B" — and it was revealed by `group-hover` alone, starting from `opacity-0`. A touch
+device has no hover, so on a phone it stayed at **opacity 0 forever**. Everything behind it — Pin,
+Archive, Move to trash — was therefore unreachable at every touch width, while looking correct on a
+desktop.
+
+Found by asking how a phone user reaches those actions and then reading the code rather than guessing
+at gestures: a long press also enters selection mode, but nothing tells a user that, and the visible
+affordance that should have was hidden by a media query that never matches on touch.
+
+Treatment, one class: `pointer-coarse:opacity-100`, so the checkbox shows wherever the pointer is
+coarse and desktop keeps its hover-reveal. Verified by measurement: at 390px with a coarse pointer the
+checkbox is `opacity 1` at `24x24` (clear of WCAG 2.5.8's 24px minimum); at 1440px on a fine pointer it
+is `opacity 0` at rest and `opacity 1` on hover, unchanged.
+
+Guarded by `web/e2e/card-actions.spec.ts` — two tests, each with its own context because `hasTouch`
+is a context option rather than something `emulateMedia` can fake. Discovery verified: 4 discovered,
+4 passed. The touch test also asserts that tapping the checkbox actually surfaces Move to trash,
+Archive and Pin, so the affordance is checked for what it leads to, not just for being visible.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
