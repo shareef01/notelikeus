@@ -273,6 +273,36 @@ hears which note a checkbox selects, and it is addressable by name rather than b
 Guarded by `web/e2e/journey-f-actions.spec.ts` — four tests, both browser projects, 8/8.
 
 
+### F13 — The permanent-delete confirmation: audited, no defect — GUARDED
+
+The only irreversible path in the product, and the one that most deserved checking. Trash is a view
+(F12); `EmptyTrashDialog` and `BulkDeleteDialog` are where a note is actually destroyed.
+
+Measured at runtime, with two notes trashed, so the count could be compared against reality:
+
+| Property | Result |
+|---|---|
+| Count matches reality | "2 notes will be deleted permanently" for two trashed notes |
+| Irreversibility stated | "This cannot be undone." |
+| Focus starts on the safe option | **Cancel**, so a stray Enter destroys nothing |
+| Destructive action is distinct | red fill against Cancel's muted grey |
+| Dialog is named | via `aria-labelledby` → the `<h2>` title |
+| Confirm when nothing to delete | disabled |
+
+**A false alarm, recorded because the same mistake has now happened four times in this audit.** My
+probe read `dialog.getAttribute('aria-label')`, got `null`, and I was one step from writing up a
+missing accessible name. `ConfirmDialog` passes `ariaLabelledBy={titleId}` with `useId()`, and
+`ModalDialog` deliberately sets `aria-label` to `undefined` when `aria-labelledby` is present — so
+`null` was the correct value and the dialog was named all along. **The instrument was wrong, not the
+code**, exactly as with the clipped swatch rect, the "0 placeholders" grep, and the `Pin`/`Pink`
+substring match.
+
+No change was made: the copy, the count, the focus placement and the styling were already right.
+
+Guarded by `web/e2e/permanent-delete.spec.ts`. The test that matters most is the cancellation one —
+cancelling must destroy nothing, and it is asserted rather than assumed. Both tests pass on both
+browser projects.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
