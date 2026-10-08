@@ -4,6 +4,7 @@ import { EmptyTrashDialog } from '@/components/notes/EmptyTrashDialog';
 import { PrivacyPolicyDialog } from '@/components/settings/PrivacyPolicyDialog';
 import { ProfileSheet } from '@/components/settings/ProfileSheet';
 import { SignOutDialog } from '@/components/settings/SignOutDialog';
+import { SortSheet } from '@/components/layout/SortSheet';
 
 /** Which of the mutually-exclusive overlays is open. */
 export interface MainDialogState {
@@ -12,6 +13,7 @@ export interface MainDialogState {
   privacyPolicy: boolean;
   emptyTrashConfirm: boolean;
   bulkDeleteConfirm: boolean;
+  sortSheet: boolean;
 }
 
 export const NO_DIALOGS_OPEN: MainDialogState = {
@@ -20,6 +22,7 @@ export const NO_DIALOGS_OPEN: MainDialogState = {
   privacyPolicy: false,
   emptyTrashConfirm: false,
   bulkDeleteConfirm: false,
+  sortSheet: false,
 };
 
 interface MainDialogsProps {
@@ -34,6 +37,8 @@ interface MainDialogsProps {
   onViewColumnsCycle: () => void;
   sortOrder: React.ComponentProps<typeof ProfileSheet>['sortOrder'];
   onSortOrderCycle: () => void;
+  /** Choosing from the toolbar's sort sheet, as opposed to the settings row's cycle. */
+  onSortSelect: (order: 'manual' | 'newest' | 'oldest') => void;
 
   theme: React.ComponentProps<typeof ProfileSheet>['theme'];
   onThemeBaseChange: React.ComponentProps<typeof ProfileSheet>['onThemeBaseChange'];
@@ -77,6 +82,7 @@ export function MainDialogs({
   onViewColumnsCycle,
   sortOrder,
   onSortOrderCycle,
+  onSortSelect,
   theme,
   onThemeBaseChange,
   onAccentChange,
@@ -121,6 +127,13 @@ export function MainDialogs({
         onSignIn={onSignIn}
         onSignUp={onSignUp}
         onSignOut={() => onOpenChange({ signOutConfirm: true })}
+      />
+
+      <SortSheet
+        open={open.sortSheet}
+        onClose={() => onOpenChange({ sortSheet: false })}
+        sortOrder={sortOrder}
+        onSelect={onSortSelect}
       />
 
       <SignOutDialog

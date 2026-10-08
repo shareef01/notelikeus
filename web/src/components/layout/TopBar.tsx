@@ -20,7 +20,7 @@ interface TopBarProps {
   currentFilter: NoteFilter;
   listScrolled: boolean;
   sortOrder: 'manual' | 'newest' | 'oldest';
-  onSortOrderCycle: () => void;
+  onSortOrderClick: () => void;
   selectedColor: number | null;
   onColorSelect: (color: number | null) => void;
   labels: Label[];
@@ -60,7 +60,7 @@ export function TopBar({
   currentFilter,
   listScrolled,
   sortOrder,
-  onSortOrderCycle,
+  onSortOrderClick,
   selectedColor,
   onColorSelect,
   labels,
@@ -253,7 +253,7 @@ export function TopBar({
         <div className="mx-auto w-full max-w-content overflow-hidden">
           <FilterRow
             sortOrder={sortOrder}
-            onSortOrderCycle={onSortOrderCycle}
+            onSortOrderClick={onSortOrderClick}
             sortDisabled={searchQuery.trim().length > 0}
             selectedColor={selectedColor}
             onColorSelect={onColorSelect}

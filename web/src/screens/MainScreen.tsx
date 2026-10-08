@@ -241,6 +241,8 @@ export function MainScreen() {
 
 
 
+  const openSortSheet = () => openDialogs({ sortSheet: true });
+
   const cycleSortOrder = () => {
 
     const index = SORT_ORDERS.indexOf(filters.sortOrder ?? 'manual');
@@ -395,7 +397,7 @@ export function MainScreen() {
 
           sortOrder={filters.sortOrder ?? 'manual'}
 
-          onSortOrderCycle={cycleSortOrder}
+          onSortOrderClick={openSortSheet}
 
           selectedColor={filters.colorArgb ?? null}
 
@@ -683,6 +685,7 @@ export function MainScreen() {
         onViewColumnsCycle={cycleViewColumns}
         sortOrder={filters.sortOrder ?? 'manual'}
         onSortOrderCycle={cycleSortOrder}
+        onSortSelect={setSortOrder}
         theme={theme}
         onThemeBaseChange={setThemeBase}
         onAccentChange={setAccentColor}

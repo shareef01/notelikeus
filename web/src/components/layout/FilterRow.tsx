@@ -91,7 +91,7 @@ const SORT_LABELS = {
 
 interface FilterRowProps {
   sortOrder: 'manual' | 'newest' | 'oldest';
-  onSortOrderCycle: () => void;
+  onSortOrderClick: () => void;
   /** When true, search overrides sort order (D14 relevance) — sort chip is disabled. */
   sortDisabled?: boolean;
   selectedColor: number | null;
@@ -105,7 +105,7 @@ interface FilterRowProps {
 
 export function FilterRow({
   sortOrder,
-  onSortOrderCycle,
+  onSortOrderClick,
   sortDisabled = false,
   selectedColor,
   onColorSelect,
@@ -137,14 +137,14 @@ export function FilterRow({
             compact
             label={sortLabel}
             selected={true}
-            onClick={onSortOrderCycle}
+            onClick={onSortOrderClick}
             disabled={sortDisabled}
             ariaLabel={
               sortDisabled
                 ? 'Sort locked to relevance while searching'
-                : `Sort by ${SORT_LABELS[sortOrder]}. Tap to change`
+                : `Sort: ${SORT_LABELS[sortOrder]}. Choose sort order`
             }
-            title={sortDisabled ? 'Relevance while searching' : 'Tap to change sort'}
+            title={sortDisabled ? 'Relevance while searching' : 'Choose sort order'}
             leading={<SortIcon size={14} />}
             trailing={
               sortDisabled ? null : (

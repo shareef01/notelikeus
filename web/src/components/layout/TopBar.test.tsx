@@ -16,7 +16,7 @@ describe('TopBar - UX-E Search Header Stability', () => {
       currentFilter: 'active',
       listScrolled: false,
       sortOrder: 'manual',
-      onSortOrderCycle: vi.fn(),
+      onSortOrderClick: vi.fn(),
       selectedColor: null,
       onColorSelect: vi.fn(),
       labels: [labelFromName('Work'), labelFromName('Personal')],
