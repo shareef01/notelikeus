@@ -219,7 +219,10 @@ function NoteCardImpl({
           className={`absolute left-2.5 top-2.5 z-10 flex size-6 items-center justify-center rounded-full pointer-events-auto transition-all ${CHROME_FOCUS} ${
             isSelected
               ? 'bg-brand-primary text-true-surface opacity-100 shadow-sm'
-              : 'opacity-0 group-hover:opacity-100 focus:opacity-100 group-focus-within:opacity-100 bg-true-surface/85 text-brand-muted hover:text-brand-primary hover:bg-true-surface shadow-sm border border-brand-outline/40'
+              : // pointer-coarse: a touch device has no hover, and this checkbox is the only way into
+                // selection mode — pin, archive and trash all sit behind it. Hover-reveal alone
+                // left it invisible for every phone user, with the actions unreachable.
+                'pointer-coarse:opacity-100 opacity-0 group-hover:opacity-100 focus:opacity-100 group-focus-within:opacity-100 bg-true-surface/85 text-brand-muted hover:text-brand-primary hover:bg-true-surface shadow-sm border border-brand-outline/40'
           }`}
         >
           {isSelected ? (
