@@ -240,6 +240,34 @@ is a context option rather than something `emulateMedia` can fake. Discovery ver
 4 passed. The touch test also asserts that tapping the checkbox actually surfaces Move to trash,
 Archive and Pin, so the affordance is checked for what it leads to, not just for being visible.
 
+### F12 — Journey F's data actions are NOT verified end to end — OPEN, with the obstacle recorded
+
+F11 (below) fixed the entry point to selection mode and is verified. What is **not** verified is what
+the actions then do to the data: the pin/unpin round trip, archive and unarchive, and the
+trash/restore round trip, including whether the intended note is the one affected.
+
+Two things were established by inspection rather than testing, and should be treated as claims to
+check rather than facts: deletion is **soft** — trash is a view and a trashed note is restorable, with
+`EmptyTrashDialog` and `BulkDeleteDialog` as the only permanent paths — and there is no undo
+affordance on the trash transition itself.
+
+**The obstacle, recorded so the next attempt does not repeat it.** Every probe this round
+mis-targeted: `getByRole('button', { name: 'Pin' })` matched `aria-label="Pink"` (Playwright's `name`
+is substring by default, so it clicked a colour swatch and opened the editor); the header-scoped
+`Archive` matched nothing once selection mode had not actually engaged; and indexing the selection
+checkbox by card order did not reach the checkbox that belongs to the card. Nine probe variants and
+one spec attempt, none of which produced a trustworthy result.
+
+**The likely root cause is testability, not the product.** The card's checkbox is joined to its card
+only by DOM ancestry — it has no title of its own — so every attempt to address "the checkbox for
+ALPHA note" is a heuristic. A stable hook on the card (a `data-note-id`, or `aria-labelledby`
+pointing at the card title) would make this journey testable in one line and would be a small,
+justified change on its own merits.
+
+Until then this stays open rather than being claimed. The one part that *was* verified end to end is
+F11's: on a coarse pointer the checkbox is visible, and tapping it surfaces Move to trash, Archive and
+Pin — that is `web/e2e/card-actions.spec.ts`, passing on two browser projects.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
