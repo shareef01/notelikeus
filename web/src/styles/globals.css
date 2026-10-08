@@ -271,6 +271,37 @@
     @apply border-brand-outline/35 bg-true-surface-variant/20 text-brand-muted shadow-sm hover:border-brand-outline/60 hover:bg-true-surface-variant/35 hover:text-brand-primary;
   }
 
+  /*
+   * A control that has to stay visually small but still be reachable by touch.
+   *
+   * `.filter-chip` sets `min-h-11` because 44px is the size this system treats as a comfortable
+   * target. Some controls cannot simply grow: the chrome's icon buttons are already 40px in a 56px
+   * bar, and the editor's "Add checklist" is a 20px text button that would break the reading rhythm
+   * if it were given a 44px box. What a touch guideline actually asks for is the *target*, not the
+   * box, so this expands the hit area with a pseudo-element and leaves the visual size alone.
+   *
+   * Measured before this existed, at 390px: 15 controls on the notes screen and 23 in the editor
+   * were under 44px, including "Add checklist" at 103x20 — below even the 24px AA minimum. Nothing
+   * was under 24px anywhere else.
+   *
+   * Use it only where a 44px square cannot overlap a neighbour: the colour swatches are 28px with an
+   * 8px gap, so a square expansion would make adjacent targets fight over the same pixels. They
+   * keep their 28px box, which clears AA's 24px, and the row around them scrolls.
+   */
+  .tap-target {
+    @apply relative;
+  }
+
+  .tap-target::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+
   .text-chrome-label {
     @apply text-overline uppercase text-brand-muted;
   }

@@ -137,7 +137,7 @@ export function TopBar({
             <button
               type="button"
               onClick={onMenuClick}
-              className={`flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 md:hidden ${CHROME_FOCUS}`}
+              className={`tap-target flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 md:hidden ${CHROME_FOCUS}`}
               aria-label="Open menu"
             >
               <MenuIcon size={22} />
@@ -163,7 +163,7 @@ export function TopBar({
                 <button
                   type="button"
                   onClick={() => onSearchQueryChange('')}
-                  className={`mr-0.5 flex size-10 sm:size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
+                  className={`tap-target mr-0.5 flex size-10 sm:size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
                   aria-label="Clear search"
                 >
                   <CloseIcon size={18} />
@@ -221,7 +221,7 @@ export function TopBar({
             <button
               type="button"
               onClick={onProfileClick}
-              className={`flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-brand-primary transition-colors hover:bg-brand-primary/18 ${CHROME_FOCUS}`}
+              className={`tap-target flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-brand-primary transition-colors hover:bg-brand-primary/18 ${CHROME_FOCUS}`}
               aria-label="Open settings"
               title={userEmail ? userEmail : 'Settings'}
             >
@@ -238,7 +238,7 @@ export function TopBar({
               <button
                 type="button"
                 onClick={onNewNote}
-                className={`hidden size-10 shrink-0 items-center justify-center rounded-full bg-brand-primary text-true-surface shadow-sm transition-all duration-150 hover:opacity-90 active:scale-[0.97] md:inline-flex ${CHROME_FOCUS}`}
+                className={`tap-target hidden size-10 shrink-0 items-center justify-center rounded-full bg-brand-primary text-true-surface shadow-sm transition-all duration-150 hover:opacity-90 active:scale-[0.97] md:inline-flex ${CHROME_FOCUS}`}
                 aria-label="New note"
                 title="New note"
               >
