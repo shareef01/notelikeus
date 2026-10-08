@@ -3,7 +3,8 @@ name: Desktop CI
 on:
   push:
     branches: [main, master]
-    # A tag build of a commit that already contains this workflow packages and attaches the MSI.
+    # Tag pushes keep the app-image checks honest on the released source. Packaging the installer
+    # is manual by design - dispatch this workflow from main with the release tag as input.
     tags: ['v*']
   pull_request:
     branches: [main, master]
