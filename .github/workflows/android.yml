@@ -36,11 +36,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up JDK 17
+      # The daemon JVM is pinned to 21 by gradle/gradle-daemon-jvm.properties; without a local 21
+      # Gradle downloads one from Foojay, and an outage there fails every Gradle call in the job.
+      - name: Set up JDK 21 for the Gradle daemon
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up JDK 17 for the build
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: 17
+
+      - name: Point Gradle at the provisioned JDK 21
+        shell: bash
+        run: echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
 
       - name: Cache Gradle
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -158,11 +170,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up JDK 17
+      # The daemon JVM is pinned to 21 by gradle/gradle-daemon-jvm.properties; without a local 21
+      # Gradle downloads one from Foojay, and an outage there fails every Gradle call in the job.
+      - name: Set up JDK 21 for the Gradle daemon
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up JDK 17 for the build
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: 17
+
+      - name: Point Gradle at the provisioned JDK 21
+        shell: bash
+        run: echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
 
       - name: Cache Gradle
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

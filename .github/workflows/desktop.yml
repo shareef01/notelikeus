@@ -3,8 +3,11 @@ name: Desktop CI
 on:
   push:
     branches: [main, master]
+    # A tag build produces the Windows MSI and attaches it to the release that this same tag creates.
+    tags: ['v*']
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -24,11 +27,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up JDK 17
+      # The daemon JVM is pinned to 21 by gradle/gradle-daemon-jvm.properties. With no local 21,
+      # Gradle downloads one from Foojay, and an outage there (HTTP 400 on the pinned URL) fails
+      # every Gradle invocation in the job before a single task runs. Provisioning it here removes
+      # that dependency; the build itself still runs on 17.
+      - name: Set up JDK 21 for the Gradle daemon
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up JDK 17 for the build
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: 17
+
+      - name: Point Gradle at the provisioned JDK 21
+        shell: bash
+        run: echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
 
       - name: Cache Gradle
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -58,11 +75,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up JDK 17
+      # See the `build` job: provision the daemon JVM instead of relying on Foojay being up.
+      - name: Set up JDK 21 for the Gradle daemon
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up JDK 17 for the build
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: 17
+
+      - name: Point Gradle at the provisioned JDK 21
+        shell: bash
+        run: echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
 
       - name: Cache Gradle
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -84,16 +112,30 @@ jobs:
   package:
     runs-on: windows-latest
     timeout-minutes: 45
+    # Attaching the MSI to the release needs write access; the default here is read.
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up JDK 17
+      # See the `build` job: provision the daemon JVM instead of relying on Foojay being up.
+      - name: Set up JDK 21 for the Gradle daemon
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up JDK 17 for the build
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: 17
+
+      - name: Point Gradle at the provisioned JDK 21
+        shell: bash
+        run: echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
 
       - name: Cache Gradle
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -142,3 +184,73 @@ jobs:
           }
           Stop-Process -Id $p.Id -Force
           Write-Host "Packaged app started and stayed up."
+
+      # --- Windows MSI -----------------------------------------------------------------------
+      # Tag or manual runs only: choco + jpackage + msiexec add several minutes, and the point of
+      # this is the published installer, not per-push coverage. The app-image checks above still
+      # run on every push.
+      - name: Install WiX (jpackage needs it to build an MSI)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: choco install wixtoolset --no-progress -y
+
+      - name: Build the Windows MSI
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        run: ./gradlew.bat :composeApp:packageMsi --stacktrace
+
+      - name: Upload the MSI as a build artifact
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-msi
+          path: composeApp/build/compose/binaries/main/msi/*.msi
+
+      # Installing is a different code path from running the app image: msiexec lays the program
+      # down under %ProgramFiles%, and that copy is what a user actually launches.
+      - name: Install the MSI and confirm the installed app launches
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem composeApp/build/compose/binaries/main/msi/*.msi -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $msi) { throw "jpackage produced no MSI" }
+          Write-Host "Installing $($msi.Name)"
+          $log = Join-Path $env:RUNNER_TEMP "msi-install.log"
+          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @("/i", "`"$($msi.FullName)`"", "/qn", "/norestart", "/l*v", "`"$log`"")
+          if ($p.ExitCode -ne 0) {
+            Get-Content $log -Tail 80 -ErrorAction SilentlyContinue
+            throw "msiexec failed with exit code $($p.ExitCode)"
+          }
+          $dir = Get-ChildItem "C:\Program Files" -Directory -Filter "Notelikeus*" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $dir) { throw "No install directory under C:\Program Files" }
+          $exe = Get-ChildItem $dir.FullName -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { throw "No executable under $($dir.FullName)" }
+          $out = Join-Path $env:RUNNER_TEMP "installed-stdout.log"
+          $err = Join-Path $env:RUNNER_TEMP "installed-stderr.log"
+          $q = Start-Process -FilePath $exe.FullName -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          Start-Sleep -Seconds 30
+          if ($q.HasExited) {
+            Write-Host "--- stdout ---"; Get-Content $out -ErrorAction SilentlyContinue
+            Write-Host "--- stderr ---"; Get-Content $err -ErrorAction SilentlyContinue
+            throw "The installed app exited with code $($q.ExitCode) instead of staying up."
+          }
+          Stop-Process -Id $q.Id -Force
+          Write-Host "Installed app at $($exe.FullName) started and stayed up."
+
+      # The release is created by Android CI for the same tag. Wait for it rather than racing it;
+      # `upload` adds an asset to that release and never moves or recreates the tag.
+      - name: Attach the MSI to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $msi = (Get-ChildItem composeApp/build/compose/binaries/main/msi/*.msi | Select-Object -First 1).FullName
+          for ($i = 1; $i -le 20; $i++) {
+            gh release view "$env:GITHUB_REF_NAME" *> $null
+            if ($LASTEXITCODE -eq 0) { break }
+            Write-Host "release $env:GITHUB_REF_NAME not created yet (attempt $i); waiting 30s"
+            Start-Sleep -Seconds 30
+          }
+          gh release upload "$env:GITHUB_REF_NAME" $msi --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Uploading the MSI to $env:GITHUB_REF_NAME failed" }
+          Write-Host "Attached $([System.IO.Path]::GetFileName($msi)) to $env:GITHUB_REF_NAME"
