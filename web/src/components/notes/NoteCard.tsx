@@ -19,7 +19,7 @@ import type { Note } from '@/types/note';
 import { noteSurfaceStyle } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { argbToCssAlpha } from '@/theme/colors';
-import { memo, type PointerEventHandler, type ReactNode } from 'react';
+import { useId, memo, type PointerEventHandler, type ReactNode } from 'react';
 
 export interface NoteReorderHandleProps {
   onPointerDown: PointerEventHandler<HTMLButtonElement>;
@@ -96,6 +96,11 @@ function NoteCardImpl({
   const showLabels = labels.length > 0;
   const labelLimit = isDense ? 1 : isList ? 3 : 2;
   const timeLabel = formatListTimestamp(note.timestamp);
+
+  // Names the card's selection checkbox after the note it belongs to: a screen reader hears which
+  // note a checkbox selects, and a test can address it by name instead of by DOM position.
+  // Untitled notes keep the generic label — there is no title line to point at (D15).
+  const titleId = useId();
 
   const { longPressProps, shouldSuppressClick } = useLongPress({
     onLongPress: () => onLongPress?.(),
@@ -211,7 +216,8 @@ function NoteCardImpl({
           type="button"
           role="checkbox"
           aria-checked={isSelected}
-          aria-label={isSelected ? 'Deselect note' : 'Select note'}
+          aria-labelledby={title ? titleId : undefined}
+          aria-label={title ? undefined : isSelected ? 'Deselect note' : 'Select note'}
           onClick={(event) => {
             event.stopPropagation();
             onToggleSelect();
@@ -253,7 +259,7 @@ function NoteCardImpl({
         <div className="flex min-w-0 flex-1 items-start gap-3 px-3.5 py-3.5 sm:gap-4 sm:px-4 sm:py-4">
           <div className="min-w-0 flex-1">
             {title ? (
-              <h2 className="line-clamp-2 break-words text-note-title tracking-[-0.02em] sm:line-clamp-2">
+              <h2 id={titleId} className="line-clamp-2 break-words text-note-title tracking-[-0.02em] sm:line-clamp-2">
                 {highlight(title)}
               </h2>
             ) : null}
@@ -285,6 +291,7 @@ function NoteCardImpl({
           <div className="flex items-start gap-2">
             {title ? (
               <h2
+                id={titleId}
                 className={`min-w-0 flex-1 break-words font-semibold tracking-[-0.02em] ${
                   isDense
                     ? 'line-clamp-2 text-[15px] leading-snug'
