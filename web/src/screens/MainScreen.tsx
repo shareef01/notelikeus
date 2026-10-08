@@ -30,7 +30,6 @@ import { useNotes } from '@/hooks/useNotes';
 
 import { useSettingsStore } from '@/store/settingsStore';
 
-import { useToastStore } from '@/store/toastStore';
 
 import { useUiStore } from '@/store/uiStore';
 
@@ -54,13 +53,7 @@ const EditorScreen = lazy(() =>
 
 
 
-const SORT_ORDERS = ['manual', 'newest', 'oldest'] as const;
 
-const SORT_ORDER_LABELS: Record<(typeof SORT_ORDERS)[number], string> = {
-  manual: 'Manual order',
-  newest: 'Newest first',
-  oldest: 'Oldest first',
-};
 
 
 
@@ -242,18 +235,6 @@ export function MainScreen() {
 
 
   const openSortSheet = () => openDialogs({ sortSheet: true });
-
-  const cycleSortOrder = () => {
-
-    const index = SORT_ORDERS.indexOf(filters.sortOrder ?? 'manual');
-
-    const next = SORT_ORDERS[(index + 1) % SORT_ORDERS.length];
-
-    setSortOrder(next);
-
-    useToastStore.getState().show(`Sorted: ${SORT_ORDER_LABELS[next]}`);
-
-  };
 
 
 
@@ -684,7 +665,6 @@ export function MainScreen() {
         viewColumns={viewColumns}
         onViewColumnsCycle={cycleViewColumns}
         sortOrder={filters.sortOrder ?? 'manual'}
-        onSortOrderCycle={cycleSortOrder}
         onSortSelect={setSortOrder}
         theme={theme}
         onThemeBaseChange={setThemeBase}
