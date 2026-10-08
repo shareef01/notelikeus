@@ -116,7 +116,7 @@ interface ProfileSheetProps {
   viewColumns: ViewColumns;
   sortOrder: 'manual' | 'newest' | 'oldest';
   onViewColumnsCycle: () => void;
-  onSortOrderCycle: () => void;
+  onSortOrderSelect: (order: 'manual' | 'newest' | 'oldest') => void;
   theme: ThemePreference;
   onThemeBaseChange: (base: ThemeBase) => void;
   onAccentChange: (accent: AccentColor) => void;
@@ -142,7 +142,7 @@ export function ProfileSheet({
   viewColumns,
   sortOrder,
   onViewColumnsCycle,
-  onSortOrderCycle,
+  onSortOrderSelect,
   theme,
   onThemeBaseChange,
   onAccentChange,
@@ -312,12 +312,37 @@ export function ProfileSheet({
                 onClick={onViewColumnsCycle}
                 icon={<GridViewIcon size={18} />}
               />
-              <SettingsRow
-                title="Sort order"
-                subtitle={SORT_LABELS[sortOrder]}
-                onClick={onSortOrderCycle}
-                icon={<SortIcon size={18} />}
-              />
+                {/*
+                  A visible three-way choice rather than a row that cycles on tap. The toolbar's chip opens a
+                  chooser, and this was the last surface where the destination stayed hidden until after the tap.
+                  Stacking a second ResponsiveSheet over this one would have put two focus traps and two
+                  backdrops on screen at once, so the choice is inline — the same chip classes the filter row
+                  uses, and the same labels the toolbar's labels use.
+                */}
+                <div className="flex flex-col gap-2 px-4 py-3 sm:px-5">
+                  <span className="flex items-center gap-2 text-sm font-medium text-brand-primary">
+                    <SortIcon size={18} />
+                    Sort order
+                  </span>
+                  <div className="flex flex-wrap gap-1.5" role="group" aria-label="Sort order">
+                    {(['manual', 'newest', 'oldest'] as const).map((option) => {
+                      const active = option === sortOrder;
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => onSortOrderSelect(option)}
+                          className={`filter-chip px-3 text-xs sm:px-3.5 ${CHROME_FOCUS} ${
+                            active ? 'filter-chip-active' : 'filter-chip-inactive'
+                          }`}
+                        >
+                          <span className="whitespace-nowrap">{SORT_LABELS[option]}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
             </SettingsSection>
 
             <SettingsSection title="Diagnostics & About">

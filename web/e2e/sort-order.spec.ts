@@ -96,3 +96,20 @@ test('the order of the notes themselves follows the choice', async ({ page }) =>
   const newestBetaY = await topOf('Beta second');
   expect(newestBetaY, 'newest first puts Beta first').toBeLessThan(newestAlphaY);
 });
+
+test('the settings group and the toolbar chip are one state, not two', async ({ page }) => {
+  await enterNotes(page);
+
+  // The settings row used to cycle on tap while the toolbar opened a chooser. Both choose now, from
+  // the same store, so a change made in one has to be visible in the other.
+  await page.getByRole('button', { name: 'Open settings' }).first().click();
+  await expect(page.getByRole('group', { name: 'Sort order' })).toBeVisible({ timeout: 15_000 });
+
+  await expect(page.getByRole('button', { name: 'Manual order', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Oldest first', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Oldest first', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Manual order', exact: true })).toHaveAttribute('aria-pressed', 'false');
+
+  await page.keyboard.press('Escape');
+  await expect(sortChip(page)).toHaveAttribute('aria-label', /Sort: Oldest/);
+});

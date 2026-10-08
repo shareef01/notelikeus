@@ -36,8 +36,7 @@ interface MainDialogsProps {
   viewColumns: ViewColumns;
   onViewColumnsCycle: () => void;
   sortOrder: React.ComponentProps<typeof ProfileSheet>['sortOrder'];
-  onSortOrderCycle: () => void;
-  /** Choosing from the toolbar's sort sheet, as opposed to the settings row's cycle. */
+  /** Every surface chooses rather than cycles now: the toolbar's sheet and the settings group. */
   onSortSelect: (order: 'manual' | 'newest' | 'oldest') => void;
 
   theme: React.ComponentProps<typeof ProfileSheet>['theme'];
@@ -81,7 +80,6 @@ export function MainDialogs({
   viewColumns,
   onViewColumnsCycle,
   sortOrder,
-  onSortOrderCycle,
   onSortSelect,
   theme,
   onThemeBaseChange,
@@ -110,7 +108,7 @@ export function MainDialogs({
         viewColumns={viewColumns}
         sortOrder={sortOrder}
         onViewColumnsCycle={onViewColumnsCycle}
-        onSortOrderCycle={onSortOrderCycle}
+        onSortOrderSelect={onSortSelect}
         theme={theme}
         onThemeBaseChange={onThemeBaseChange}
         onAccentChange={onAccentChange}
