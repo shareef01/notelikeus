@@ -28,6 +28,8 @@ touch, and how was it checked".
 | `7ae2b0c` | F9 | journey E swept and guarded | no defect; 8/8 across two browser projects |
 | `8af203e` | F10 | journey D audited: markdown-as-text formatting and guest-note persistence | no defect; 4/4 with discovery verified |
 | `cb0da5a` | F11 | `pointer-coarse:opacity-100` on the card's selection checkbox | opacity 1 at 390px coarse, 0 at rest on desktop; 4/4 discovery-verified |
+| `5b2b4ad` | F12 | journey F closed: pin, archive and the trash round trip verified; the card's checkbox is named by its note's title | 8/8 on two browser projects; affecting the wrong note would fail loudly |
+| `4a278c3` | F13 | permanent-delete confirmation audited and guarded | no defect: count matches, irreversibility stated, focus starts on Cancel, cancelling destroys nothing |
 
 **F7 — the checklist tick box, found by auditing journey C. Fixed.** A sweep of the editor at 390px —
 empty, with text, in checklist mode, and with two items — turned up a 20×20 tick box beside an
