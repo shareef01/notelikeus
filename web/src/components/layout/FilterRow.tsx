@@ -31,7 +31,7 @@ function ScrollCue({ target, visible }: { target: React.RefObject<HTMLElement | 
           globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
         el.scrollBy({ left: Math.max(120, el.clientWidth * 0.6), behavior: reduced ? 'auto' : 'smooth' });
       }}
-      className={`absolute inset-y-0 right-0 z-10 my-auto flex size-7 items-center justify-center rounded-full border border-brand-outline/30 bg-true-surface-variant text-brand-muted shadow-sm hover:text-brand-primary ${CHROME_FOCUS}`}
+      className={`ml-1 flex size-7 shrink-0 items-center justify-center rounded-full border border-brand-outline/30 bg-true-surface-variant text-brand-muted shadow-sm hover:text-brand-primary ${CHROME_FOCUS}`}
     >
       <ChevronRightIcon size={16} />
     </button>
@@ -125,13 +125,13 @@ export function FilterRow({
           unreachable without a pointer (WCAG 2.1.1). Without it, everything off-screen in these
           rows — several colours, and every label past the first few on a phone — could only be got
           at by swiping. */}
-      <div className="relative">
+      <div className="relative flex items-center">
         <div
           ref={colorRow.ref}
           tabIndex={0}
           role="group"
           aria-label="Filters"
-          className={`flex items-center gap-2.5 overflow-x-auto px-shell py-1.5 scrollbar-none ${CHROME_FOCUS}`}
+          className={`flex min-w-0 flex-1 items-center gap-2.5 overflow-x-auto px-shell py-1.5 scrollbar-none ${CHROME_FOCUS}`}
         >
           <FilterChip
             compact
@@ -177,13 +177,13 @@ export function FilterRow({
       </div>
 
       {labels.length > 0 ? (
-        <div className="relative">
+        <div className="relative flex items-center">
           <div
             ref={labelRow.ref}
             tabIndex={0}
             role="group"
             aria-label="Label filter"
-            className={`flex gap-1.5 overflow-x-auto px-shell py-0.5 scrollbar-none ${CHROME_FOCUS}`}
+            className={`flex min-w-0 flex-1 gap-1.5 overflow-x-auto px-shell py-0.5 scrollbar-none ${CHROME_FOCUS}`}
           >
             <FilterChip
               compact

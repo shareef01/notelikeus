@@ -23,7 +23,7 @@ touch, and how was it checked".
 | `67508fa` | F5 counterpart | the settings sort row becomes an inline three-way choice; the cycle and its dead code removed | settings and toolbar agree on one state; 24/24 |
 | `ba18d1f` | F7 | `.tap-target-y` for dense rows; the checklist tick box becomes 24×24 visual with a 24×44 target | nothing under 24px in any editor mode, checklist included |
 | `48afd71` | F8 | palette check across dark, AMOLED and note colours | outlines 15.6:1 / 21.0:1 / 18.9:1; fills recorded, not asserted |
-| _(pending)_ | F6 (swatches) | 32px swatches with a 12px gap so a 44px target cannot overlap its neighbour | centres 44.0px apart, zero overlapping pairs, 9 swatches at 44x44 |
+| `f585116` | F6 (swatches) | 32px swatches with a 12px gap so a 44px target cannot overlap its neighbour | centres 44.0px apart, zero overlapping pairs, 9 swatches at 44x44 |
 
 **F7 — the checklist tick box, found by auditing journey C. Fixed.** A sweep of the editor at 390px —
 empty, with text, in checklist mode, and with two items — turned up a 20×20 tick box beside an
