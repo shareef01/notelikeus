@@ -4,6 +4,8 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-10-08
+
 ### Fixed
 - **Attachment delete could leave a note pointing at a file that no longer exists.** The Worker deleted the R2 object first and then asked the database to record the deletion without checking the answer, so a refused, failing, or timed-out record still reported success. Deletion is now claimed in the database before any byte is touched, every phase is idempotent, and a delete abandoned half-way is finished by the cron sweep instead of being stranded.
 - **Restoring a note brought back attachments the user had already deleted**, whose files were gone — they now stay deleted, while attachments removed only as a side effect of deleting the note still come back.
