@@ -22,6 +22,19 @@ touch, and how was it checked".
 | `df05230` | F6 | shared `.tap-target` interaction state; applied to 6 controls | 44×44 computed hit areas; a click 8px above a 20px control activates it |
 | _(this commit)_ | F5 counterpart | the settings sort row becomes an inline three-way choice; the cycle and its dead code removed | settings and toolbar agree on one state; 24/24 |
 
+**F7 — the checklist tick box, found by auditing journey C. Fixed.** A sweep of the editor at 390px —
+empty, with text, in checklist mode, and with two items — turned up a 20×20 tick box beside an
+editable text field. Two things came out of it: the box was below the 24px minimum, and the
+touch-target suite written in the previous round **did not look at checklist mode at all**, which is
+how a sub-minimum target survived that pass. Both are fixed: the box is 24px visually, and the test
+now measures this mode.
+
+A square hit area was the wrong answer here — it would have covered the text field and stopped it
+being edited, turning a target-size fix into a usability regression. `.tap-target-y` grows the target
+vertically to 44px and leaves the width to the control, which is what the row can give. The sweep
+reported `20x20` for this box before the change, and the checker compares against 24, so the new test
+fails on the old code rather than merely passing on the new.
+
 ## Findings, and what is true about each
 
 **F1 — sideways scroll on phones. Fixed.** Traced to `min-width: auto` on a flex item, not guessed:
