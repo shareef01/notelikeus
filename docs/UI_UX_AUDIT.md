@@ -1,6 +1,7 @@
 # UI/UX Audit — Web and Compose (2026-10)
 
 Baseline: `main` at `42bae9bd668178d6f359c647c54e80b5123d2d28`, working tree clean.
+Change-by-change record and regression checklist: [`UI_UX_IMPLEMENTATION_LOG.md`](UI_UX_IMPLEMENTATION_LOG.md).
 Method: source reading **and** a real browser — Playwright driving the app in guest mode at the
 widths the brief names, with measurements taken from the live DOM rather than inferred from classes.
 
@@ -136,6 +137,36 @@ Recorded rather than fixed: the colour swatches stay 28px. They clear AA's 24px,
 expansion would make adjacent 28px swatches eight pixels apart fight over the same pixels, so the
 hit areas would overlap and the winner would be paint order. Fixing that properly means spacing the
 swatches differently or giving them a taller row — a layout decision, not a token one.
+
+**Closed as a gap:** the seeding method this entry described as missing now exists —
+`notelikeus-settings` in `localStorage` before load — and the palette check below uses it to render
+all three themes.
+
+### F7 — The checklist tick box was 20×20, and the first touch-target pass never looked there — FIXED
+
+A sweep of the editor in four states (empty, with text, in checklist mode, with two items) found a
+20×20 tick box beside an editable text field: below WCAG 2.5.8's 24px minimum. More useful than the
+defect was what it said about the check — the touch-target spec added the round before measured the
+notes screen and an empty editor only, which is how a sub-minimum target survived that pass. Both are
+fixed; the box is 24px visually with a 24×44 target via `.tap-target-y`, and the spec measures
+checklist mode. A square target would have covered the text field and stopped it being edited.
+
+### F8 — Palette check: dark, AMOLED and note colours — MEASURED, NO DEFECT
+
+Rendered at 1440px in all three themes, with the theme seeded rather than guessed:
+
+| Theme | Page surface | Active swatch outline vs page |
+|---|---|---|
+| dark | `rgb(28,28,28)` | 15.6:1 |
+| AMOLED | `rgb(0,0,0)` | 21.0:1 |
+| light | `rgb(255,255,255)` | 18.9:1 |
+
+The fills measure 1.12:1 to 1.23:1 against the page — deliberately faint, because D1 makes a note
+colour a tonal surface rather than a stripe. The outline is what identifies the swatch, and it clears
+WCAG 1.4.11's 3:1 by a wide margin. An earlier version of the check asserted "every fill is under
+3:1" and failed on the AMOLED and light themes: a test asserting the wrong thing about an intentional
+design decision. There is no assertion on the fills; the measurement is recorded instead, and
+`web/e2e/palette-contrast.spec.ts` guards the outlines.
 
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
