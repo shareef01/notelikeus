@@ -27,7 +27,7 @@ async function guestWithTrashedNotes(context: BrowserContext, titles: string[]):
     else await page.getByRole('button', { name: 'Add note', exact: true }).first().click();
     await page.getByRole('textbox', { name: 'Note title' }).first().fill(title);
     await page.waitForTimeout(1_200);
-    const back = page.getByRole('button', { name: /back/i }).first();
+    const back = page.getByRole('button', { name: /\bback\b/i }).first();
     if (await back.count()) await back.click();
     else await page.keyboard.press('Escape');
     await page.waitForTimeout(1_200);
