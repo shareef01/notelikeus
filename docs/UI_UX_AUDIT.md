@@ -240,33 +240,29 @@ is a context option rather than something `emulateMedia` can fake. Discovery ver
 4 passed. The touch test also asserts that tapping the checkbox actually surfaces Move to trash,
 Archive and Pin, so the affordance is checked for what it leads to, not just for being visible.
 
-### F12 — Journey F's data actions are NOT verified end to end — OPEN, with the obstacle recorded
+### F12 — Journey F's data actions: the trash round trip is verified, archive and pin are not — PARTLY CLOSED
 
-F11 (below) fixed the entry point to selection mode and is verified. What is **not** verified is what
-the actions then do to the data: the pin/unpin round trip, archive and unarchive, and the
-trash/restore round trip, including whether the intended note is the one affected.
+**Verified.** Trashing is soft and reversible, and the intended note is the one affected. With two
+notes on screen, trashing ALPHA removes ALPHA from the notes list, leaves BETA untouched, and puts
+ALPHA in the trash view where it stays restorable. Nothing in the test empties the trash, so no
+permanent path is exercised.
 
-Two things were established by inspection rather than testing, and should be treated as claims to
-check rather than facts: deletion is **soft** — trash is a view and a trashed note is restorable, with
-`EmptyTrashDialog` and `BulkDeleteDialog` as the only permanent paths — and there is no undo
-affordance on the trash transition itself.
+**Root cause of the earlier failures, found.** Nothing was wrong with the product: the selection bar
+is not inside `<header>`, and every attempt scoped its actions there. Unscoped, with `exact` names to
+disambiguate from the card's "Pin note" and "Archive note", the round trip passes.
 
-**The obstacle, recorded so the next attempt does not repeat it.** Every probe this round
-mis-targeted: `getByRole('button', { name: 'Pin' })` matched `aria-label="Pink"` (Playwright's `name`
-is substring by default, so it clicked a colour swatch and opened the editor); the header-scoped
-`Archive` matched nothing once selection mode had not actually engaged; and indexing the selection
-checkbox by card order did not reach the checkbox that belongs to the card. Nine probe variants and
-one spec attempt, none of which produced a trustworthy result.
+**The testability fix that made it possible** was worth doing on its own merits: the card's selection
+checkbox is now labelled by its note's title (`aria-labelledby` pointing at the title's `id`), so a
+screen reader hears *which* note a checkbox selects and a test can address it by name instead of by
+DOM position. Untitled notes keep the generic label, since there is no title line to point at (D15).
 
-**The likely root cause is testability, not the product.** The card's checkbox is joined to its card
-only by DOM ancestry — it has no title of its own — so every attempt to address "the checkbox for
-ALPHA note" is a heuristic. A stable hook on the card (a `data-note-id`, or `aria-labelledby`
-pointing at the card title) would make this journey testable in one line and would be a small,
-justified change on its own merits.
+**Still open:** archive/unarchive and pin/unpin. The drawer's own "Archive" navigation item satisfies
+the same locator before the selection bar's does, so those two tests are marked `test.fixme` — skipped
+and counted, never reported as passing. One more locator scope resolves them.
 
-Until then this stays open rather than being claimed. The one part that *was* verified end to end is
-F11's: on a coarse pointer the checkbox is visible, and tapping it surfaces Move to trash, Archive and
-Pin — that is `web/e2e/card-actions.spec.ts`, passing on two browser projects.
+**Claims from inspection, still unchecked:** deletion is permanent only through `EmptyTrashDialog` and
+`BulkDeleteDialog`; there is no undo on the trash transition itself.
+
 
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
