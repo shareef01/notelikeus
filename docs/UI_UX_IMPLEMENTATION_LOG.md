@@ -26,6 +26,7 @@ touch, and how was it checked".
 | `f585116` | F6 (swatches) | 32px swatches with a 12px gap so a 44px target cannot overlap its neighbour | centres 44.0px apart, zero overlapping pairs, 9 swatches at 44x44 |
 | `074c755` | cue gutter | the scroll cue is a flex sibling of the scroller, not an overlay | cue at x=362 with the scroller ending at x=358; zero swatches covered |
 | `7ae2b0c` | F9 | journey E swept and guarded | no defect; 8/8 across two browser projects |
+| _(pending)_ | F10 | journey D audited: markdown-as-text formatting and guest-note persistence | no defect; 4/4 with discovery verified |
 
 **F7 — the checklist tick box, found by auditing journey C. Fixed.** A sweep of the editor at 390px —
 empty, with text, in checklist mode, and with two items — turned up a 20×20 tick box beside an
