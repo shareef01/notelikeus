@@ -20,7 +20,7 @@ export interface RemoteNotesDataSource {
 
   upsertNote(userId: string, note: Note): Promise<void>;
 
-  deleteNote(userId: string, noteId: string): Promise<void>;
+  deleteNote(userId: string, noteId: string, baseRevision?: number): Promise<void>;
 
   /** Backup import / bulk recovery. Returns how many notes were sent to the cloud. */
   uploadAllNotes(userId: string, notes: Note[]): Promise<number>;

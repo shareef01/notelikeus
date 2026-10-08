@@ -1,39 +1,45 @@
 import {
   mergeRemoteNotes,
   shouldUploadOverRemote,
-} from '@/lib/notes/remoteMerge';
-import { subscribeSupabaseNoteRealtime } from '@/lib/supabase/supabaseRealtimeSync';
+} from "@/lib/notes/remoteMerge";
+import { subscribeSupabaseNoteRealtime } from "@/lib/supabase/supabaseRealtimeSync";
 import {
   loadRevisionState,
   forgetNoteRevision,
   rememberNoteRevision,
   saveRevisionState,
   getNoteBaseRevision,
-} from '@/lib/supabase/revisionStore';
+} from "@/lib/supabase/revisionStore";
 import {
   applyNoteChange,
   ensureSupabaseAuthenticated,
   fetchSnapshotNotes,
   pullIncrementalChanges,
-} from '@/lib/supabase/supabaseSyncEngine';
-import { beginNotesSyncSession, getActiveNotesSyncSession } from '@/lib/supabase/syncSession';
-import { toError } from '@/lib/errors/formatUnknownError';
-import { applyRemoteSnapshotAtomically, listNotes } from '@/lib/local/notesLocalRepository';
+} from "@/lib/supabase/supabaseSyncEngine";
+import {
+  beginNotesSyncSession,
+  getActiveNotesSyncSession,
+} from "@/lib/supabase/syncSession";
+import { toError } from "@/lib/errors/formatUnknownError";
+import {
+  applyRemoteSnapshotAtomically,
+  listNotes,
+} from "@/lib/local/notesLocalRepository";
 import {
   collectPreservedRestoredNotes,
   retryPendingCloudRestores,
   withoutRestoredDeletes,
-} from '@/lib/notes/restoreRetry';
-import type { RemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSource';
-import { useNotesStore } from '@/store/notesStore';
-import { unexplainedMissingCloudIds } from '@/lib/notes/unexplainedMissingCloudIds';
-import { useTombstoneStore } from '@/store/tombstoneStore';
-import type { Note } from '@/types/note';
-import { isCloudSyncEligible } from '@/types/note';
+} from "@/lib/notes/restoreRetry";
+import type { RemoteNotesDataSource } from "@/lib/remote/remoteNotesDataSource";
+import { useNotesStore } from "@/store/notesStore";
+import { unexplainedMissingCloudIds } from "@/lib/notes/unexplainedMissingCloudIds";
+import { useTombstoneStore } from "@/store/tombstoneStore";
+import type { Note } from "@/types/note";
+import { isCloudSyncEligible } from "@/types/note";
 import {
   hydrateNotesWithAttachments,
   retryPendingAttachmentGc,
-} from '@/lib/attachments/attachmentSyncService';
+} from "@/lib/attachments/attachmentSyncService";
 
 interface ApplyNoteResult {
   status?: string;
@@ -50,18 +56,6 @@ function accountStillOwnsDelete(userId: string): boolean {
   const session = getActiveNotesSyncSession();
   return !session || (session.isActive() && session.ownerId === userId);
 }
-
-function isValidRevision(rev: unknown): rev is number {
-  return (
-    typeof rev === 'number' &&
-    Number.isInteger(rev) &&
-    rev > 0 &&
-    Number.isSafeInteger(rev)
-  );
-}
-
-const MAX_DELETE_CONFLICT_RETRIES = 1;
-
 
 export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
   subscribeToNotes(userId, onData, onError) {
@@ -102,10 +96,15 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       const snapshotIds = new Set(snapshot.notes.map((note) => note.id));
       const tombstoneIds = new Set(Object.keys(snapshot.tombstones));
       const knownIds = [
-        ...new Set([...Object.keys(prior.noteRevisions), ...prior.knownCloudIds]),
+        ...new Set([
+          ...Object.keys(prior.noteRevisions),
+          ...prior.knownCloudIds,
+        ]),
       ];
-      const unexplained = unexplainedMissingCloudIds(knownIds, snapshotIds, (id) =>
-        tombstoneIds.has(id),
+      const unexplained = unexplainedMissingCloudIds(
+        knownIds,
+        snapshotIds,
+        (id) => tombstoneIds.has(id),
       );
       if (snapshot.notes.length === 0 && unexplained.length > 0) {
         throw new Error(
@@ -142,17 +141,22 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
         noteRevisions:
           snapshot.notes.length === 0
             ? Object.fromEntries(
-                Object.entries(prior.noteRevisions).filter(([id]) => !tombstoneIds.has(id)),
+                Object.entries(prior.noteRevisions).filter(
+                  ([id]) => !tombstoneIds.has(id),
+                ),
               )
             : snapshot.noteRevisions,
-        lastRemoteRevision: Math.max(prior.lastRemoteRevision, snapshot.maxRevision),
+        lastRemoteRevision: Math.max(
+          prior.lastRemoteRevision,
+          snapshot.maxRevision,
+        ),
         knownCloudIds: snapshot.notes.map((note) => note.id),
       });
       if (!session.isActive()) return;
       useTombstoneStore.getState().mergeFromCloud(snapshot.tombstones);
-      useTombstoneStore.getState().acknowledgeRestoredLiveNotes(
-        snapshot.notes.map((note) => note.id),
-      );
+      useTombstoneStore
+        .getState()
+        .acknowledgeRestoredLiveNotes(snapshot.notes.map((note) => note.id));
       await retryPendingCloudRestores(userId, [
         ...snapshot.notes,
         ...preserved,
@@ -163,11 +167,16 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       await retryPendingAttachmentGc();
       if (!session.isActive()) return;
       notesById = new Map(
-        [...snapshot.notes, ...preserved, ...keepUnsynced].map((note) => [note.id, note]),
+        [...snapshot.notes, ...preserved, ...keepUnsynced].map((note) => [
+          note.id,
+          note,
+        ]),
       );
       hasBaseline = true;
       try {
-        const hydrated = await hydrateNotesWithAttachments(Array.from(notesById.values()));
+        const hydrated = await hydrateNotesWithAttachments(
+          Array.from(notesById.values()),
+        );
         if (session.isActive()) {
           notesById = new Map(hydrated.map((note) => [note.id, note]));
         }
@@ -193,7 +202,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       try {
         await loadBaseline();
       } catch (error: unknown) {
-        onError?.(toError(error, 'Notes sync failed'));
+        onError?.(toError(error, "Notes sync failed"));
       }
       if (!session.isActive()) return;
       unsubscribeRealtime = subscribeSupabaseNoteRealtime(
@@ -214,9 +223,9 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     await ensureSupabaseAuthenticated();
     const snapshot = await fetchSnapshotNotes();
     useTombstoneStore.getState().mergeFromCloud(snapshot.tombstones);
-    useTombstoneStore.getState().acknowledgeRestoredLiveNotes(
-      snapshot.notes.map((note) => note.id),
-    );
+    useTombstoneStore
+      .getState()
+      .acknowledgeRestoredLiveNotes(snapshot.notes.map((note) => note.id));
     await retryPendingCloudRestores(userId, [
       ...snapshot.notes,
       ...useNotesStore.getState().notes,
@@ -242,99 +251,72 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     void updated;
   },
 
-  async deleteNote(userId, noteId) {
+  async deleteNote(userId, noteId, baseRevision) {
     await ensureSupabaseAuthenticated();
-    let state = await loadRevisionState(userId);
-    let baseRevision = getNoteBaseRevision(state, noteId);
+
     if (baseRevision == null) {
-      const { getSupabaseClient } = await import('@/lib/supabase/client');
-      const { data, error } = await getSupabaseClient().rpc('lookup_note_revision', {
-        p_note_id: noteId,
-      });
-      if (error) throw error;
-      if (!accountStillOwnsDelete(userId)) {
-        throw new Error('Account changed during delete');
-      }
-      const lookup = (data ?? {}) as {
-        exists?: boolean;
-        tombstoned?: boolean;
-        revision?: number | null;
-      };
-      if (lookup.tombstoned) {
-        useTombstoneStore.getState().markDeleted(noteId);
-        return;
-      }
-      if (lookup.exists && lookup.revision != null) {
-        baseRevision = lookup.revision;
-      } else {
-        useTombstoneStore.getState().markDeleted(noteId);
-        return;
-      }
+      // Path 2 remediation: strict delete intent bound to immutable revision.
+      // Leave local suppression, but fail the remote live note delete.
+      useTombstoneStore.getState().markDeleted(noteId);
+      return;
     }
+
     if (!accountStillOwnsDelete(userId)) {
-      throw new Error('Account changed during delete');
+      throw new Error("Account changed during delete");
     }
-    const { getSupabaseClient } = await import('@/lib/supabase/client');
-    let currentBaseRevision: number = baseRevision;
+    const { getSupabaseClient } = await import("@/lib/supabase/client");
 
     try {
-      for (let attempt = 0; attempt <= MAX_DELETE_CONFLICT_RETRIES; attempt++) {
-        const { data, error } = await getSupabaseClient().rpc('apply_note_delete', {
+      const { data, error } = await getSupabaseClient().rpc(
+        "apply_note_delete",
+        {
           p_note_id: noteId,
-          p_base_revision: currentBaseRevision,
-        });
-        if (error) {
-          throw error;
-        }
-        if (!accountStillOwnsDelete(userId)) {
-          throw new Error('Account changed during delete');
-        }
-        const result = (data ?? {}) as ApplyNoteResult;
-        // apply_note_delete answers an already-tombstoned note with
-        // {status: 'applied', idempotent: true} and no revision ÔÇö not 'conflict'. Reading `idempotent`
-        // off the conflict branch made that cleanup unreachable and left a stale revision behind.
-        if (result.idempotent) {
-          await forgetNoteRevision(userId, noteId);
-          useTombstoneStore.getState().markDeleted(noteId);
-          return;
-        }
-        if (result.status === 'conflict') {
-          // The server has neither the note nor a tombstone (e.g. after an account wipe): there is
-          // nothing left to delete, so drop the stale local revision instead of failing forever.
-          if (result.error === 'note_not_found') {
-            await forgetNoteRevision(userId, noteId);
-            useTombstoneStore.getState().markDeleted(noteId);
-            return;
-          }
-          const rawServerRevision = (result.current as Record<string, unknown> | undefined)?.revision;
-          if (
-            attempt < MAX_DELETE_CONFLICT_RETRIES &&
-            isValidRevision(rawServerRevision) &&
-            rawServerRevision !== currentBaseRevision
-          ) {
-            // Bounded retry with the validated authoritative revision reported by server
-            currentBaseRevision = rawServerRevision;
-            continue;
-          }
-          throw new Error(`Delete conflict for note ${noteId}`);
-        }
-        if (result.revision != null) {
-          await rememberNoteRevision(userId, noteId, result.revision);
-          await forgetNoteRevision(userId, noteId);
-          await saveRevisionState(userId, {
-            lastRemoteRevision: Math.max(state.lastRemoteRevision, result.revision),
-          });
-        }
-        useTombstoneStore.getState().markDeleted(noteId);
+          p_base_revision: baseRevision,
+        },
+      );
+      if (error) {
+        throw error;
+      }
+      if (!accountStillOwnsDelete(userId)) {
+        throw new Error("Account changed during delete");
+      }
+      const result = (data ?? {}) as ApplyNoteResult;
+
+      if (result.idempotent) {
+        await forgetNoteRevision(userId, noteId);
+        useTombstoneStore.getState().markDeleted(noteId, baseRevision);
         return;
       }
+
+      if (result.status === "conflict") {
+        if (result.error === "note_not_found") {
+          await forgetNoteRevision(userId, noteId);
+          useTombstoneStore.getState().markDeleted(noteId, baseRevision);
+          return;
+        }
+        throw new Error(`Delete conflict for note ${noteId}`);
+      }
+
+      if (result.revision != null) {
+        let state = await loadRevisionState(userId);
+        await rememberNoteRevision(userId, noteId, result.revision);
+        await forgetNoteRevision(userId, noteId);
+        await saveRevisionState(userId, {
+          lastRemoteRevision: Math.max(
+            state.lastRemoteRevision,
+            result.revision,
+          ),
+        });
+      } else {
+        await forgetNoteRevision(userId, noteId);
+      }
+      useTombstoneStore.getState().markDeleted(noteId, baseRevision);
+      return;
     } catch (error) {
-      useTombstoneStore.getState().markDeleted(noteId);
+      useTombstoneStore.getState().markDeleted(noteId, baseRevision);
       throw error;
     }
   },
-
-
 
   async uploadAllNotes(userId, notes) {
     await ensureSupabaseAuthenticated();
@@ -345,8 +327,10 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     const knownIds = [
       ...new Set([...Object.keys(prior.noteRevisions), ...prior.knownCloudIds]),
     ];
-    const unexplained = unexplainedMissingCloudIds(knownIds, snapshotIds, (id) =>
-      tombstoneIds.has(id),
+    const unexplained = unexplainedMissingCloudIds(
+      knownIds,
+      snapshotIds,
+      (id) => tombstoneIds.has(id),
     );
     // Same fail-open hazard Kotlin already closed: an empty snapshot must not look like
     // "local wins every id". upsertNote would then push the whole library over whatever the
@@ -358,9 +342,9 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       );
     }
     useTombstoneStore.getState().mergeFromCloud(snapshot.tombstones);
-    useTombstoneStore.getState().acknowledgeRestoredLiveNotes(
-      snapshot.notes.map((note) => note.id),
-    );
+    useTombstoneStore
+      .getState()
+      .acknowledgeRestoredLiveNotes(snapshot.notes.map((note) => note.id));
     await retryPendingCloudRestores(userId, [...snapshot.notes, ...notes]);
     await saveRevisionState(userId, {
       noteRevisions: snapshot.noteRevisions,
@@ -374,7 +358,12 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       if (!isCloudSyncEligible(note)) continue;
       if (useTombstoneStore.getState().isDeleted(note.id)) continue;
       const remote = remoteById.get(note.id);
-      if (remote && remote.serverUpdatedAt != null && note.serverUpdatedAt == null) continue;
+      if (
+        remote &&
+        remote.serverUpdatedAt != null &&
+        note.serverUpdatedAt == null
+      )
+        continue;
       if (!shouldUploadOverRemote(note, remote)) continue;
       await this.upsertNote(userId, note);
       uploaded += 1;
@@ -384,17 +373,22 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
 
   async syncNotesWithCloud(userId, localNotes, previouslyKnownCloudIds) {
     await ensureSupabaseAuthenticated();
-    const { notes: remoteNotes, tombstones, noteRevisions, maxRevision } =
-      await fetchSnapshotNotes();
+    const {
+      notes: remoteNotes,
+      tombstones,
+      noteRevisions,
+      maxRevision,
+    } = await fetchSnapshotNotes();
     useTombstoneStore.getState().mergeFromCloud(tombstones);
-    useTombstoneStore.getState().acknowledgeRestoredLiveNotes(
-      remoteNotes.map((note) => note.id),
-    );
+    useTombstoneStore
+      .getState()
+      .acknowledgeRestoredLiveNotes(remoteNotes.map((note) => note.id));
     await retryPendingCloudRestores(userId, [...remoteNotes, ...localNotes]);
 
     const remoteById = new Map(remoteNotes.map((note) => [note.id, note]));
     const cloudIds = new Set(remoteById.keys());
-    const isDeleted = (id: string) => useTombstoneStore.getState().isDeleted(id);
+    const isDeleted = (id: string) =>
+      useTombstoneStore.getState().isDeleted(id);
 
     // The same rule loadBaseline() applies, and for the same reason: refusing on the raw size of
     // the known-id set turned a user who deleted their last note on another device into a
@@ -429,8 +423,14 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
           const state = await loadRevisionState(userId);
           const baseRevision = getNoteBaseRevision(state, localNote.id);
           try {
-            const updated = await applyNoteChange(userId, localNote, baseRevision);
-            merged = merged.map((note) => (note.id === localNote.id ? updated : note));
+            const updated = await applyNoteChange(
+              userId,
+              localNote,
+              baseRevision,
+            );
+            merged = merged.map((note) =>
+              note.id === localNote.id ? updated : note,
+            );
             changes++;
           } catch {
             // Conflict ÔÇö keep merged remote winner from mergeRemoteNotes.
@@ -448,7 +448,9 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
 
       if (isCloudSyncEligible(localNote)) {
         const updated = await applyNoteChange(userId, localNote, null);
-        merged = merged.map((note) => (note.id === localNote.id ? updated : note));
+        merged = merged.map((note) =>
+          note.id === localNote.id ? updated : note,
+        );
         if (!merged.some((note) => note.id === localNote.id)) {
           merged.push(updated);
         }

@@ -9,27 +9,27 @@ describe('tombstoneStore', () => {
   });
 
   it('markDeleted and isDeleted', () => {
-    useTombstoneStore.getState().markDeleted('a', 1_000);
+    useTombstoneStore.getState().markDeleted('a', null, 1_000);
     expect(useTombstoneStore.getState().isDeleted('a')).toBe(true);
     expect(useTombstoneStore.getState().deletedAtById.a).toBe(1_000);
     expect(useTombstoneStore.getState().isDeleted('b')).toBe(false);
   });
 
   it('markDeleted keeps the first deletedAt', () => {
-    useTombstoneStore.getState().markDeleted('a', 100);
-    useTombstoneStore.getState().markDeleted('a', 999);
+    useTombstoneStore.getState().markDeleted('a', null, 100);
+    useTombstoneStore.getState().markDeleted('a', null, 999);
     expect(useTombstoneStore.getState().deletedAtById.a).toBe(100);
   });
 
   it('mergeFromCloud keeps the earlier deletedAt', () => {
-    useTombstoneStore.getState().markDeleted('a', 500);
+    useTombstoneStore.getState().markDeleted('a', null, 500);
     useTombstoneStore.getState().mergeFromCloud({ a: 100, b: 200 });
     expect(useTombstoneStore.getState().deletedAtById).toEqual({ a: 100, b: 200 });
   });
 
   it('pruneExpired removes old tombstones', () => {
-    useTombstoneStore.getState().markDeleted('old', 1_000);
-    useTombstoneStore.getState().markDeleted('fresh', Date.now());
+    useTombstoneStore.getState().markDeleted('old', null, 1_000);
+    useTombstoneStore.getState().markDeleted('fresh', null, Date.now());
     const pruned = useTombstoneStore.getState().pruneExpired(1_000 + TOMBSTONE_TTL_MS);
     expect(pruned).toEqual(['old']);
     expect(useTombstoneStore.getState().isDeleted('old')).toBe(false);
@@ -55,7 +55,7 @@ describe('tombstoneStore', () => {
   });
 
   it('acknowledgeRestoredLiveNotes clears leftover local suppression', () => {
-    useTombstoneStore.getState().markDeleted('a', 50);
+    useTombstoneStore.getState().markDeleted('a', null, 50);
     useTombstoneStore.getState().markRestored('a');
     useTombstoneStore.getState().acknowledgeRestoredLiveNotes(['a', 'other']);
     expect(useTombstoneStore.getState().isDeleted('a')).toBe(false);
@@ -64,7 +64,7 @@ describe('tombstoneStore', () => {
 
   it('a later delete cancels an in-flight restore marker', () => {
     useTombstoneStore.getState().markRestored('a');
-    useTombstoneStore.getState().markDeleted('a', 10);
+    useTombstoneStore.getState().markDeleted('a', null, 10);
     expect(useTombstoneStore.getState().isRestored('a')).toBe(false);
     expect(useTombstoneStore.getState().isDeleted('a')).toBe(true);
   });

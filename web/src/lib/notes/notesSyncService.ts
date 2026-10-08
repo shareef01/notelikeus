@@ -9,26 +9,46 @@ import { loadRevisionState, saveRevisionState } from '@/lib/supabase/revisionSto
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
+import type { OwnerRevisionState } from '@/lib/supabase/revisionStore';
 
 /** Notes deleted on this device must never come back from a stale/racy cloud copy.
  * Splits remote notes into what's safe to show and what to purge from the cloud. */
-function partitionTombstoned(remoteNotes: Note[]): { live: Note[]; staleIds: string[] } {
+export function partitionTombstoned(remoteNotes: Note[], state: OwnerRevisionState): { live: Note[]; staleIds: string[] } {
   const isDeleted = useTombstoneStore.getState().isDeleted;
+  const baselineRevisionById = useTombstoneStore.getState().baselineRevisionById;
   const live: Note[] = [];
   const staleIds: string[] = [];
+  const restoredIds: string[] = [];
+  const cloudWonIds: string[] = [];
   for (const note of remoteNotes) {
-    if (isDeleted(note.id)) staleIds.push(note.id);
-    else live.push(note);
+    if (isDeleted(note.id)) {
+      const baseline = baselineRevisionById[note.id];
+      const remoteRevision = state.noteRevisions[note.id];
+      // Path 1 missing baseline policy: cloud wins if missing baseline or remote is newer
+      if (baseline == null || (remoteRevision != null && remoteRevision !== baseline)) {
+        live.push(note);
+        restoredIds.push(note.id);
+        cloudWonIds.push(note.id);
+      } else {
+        staleIds.push(note.id);
+      }
+    } else {
+      live.push(note);
+    }
+  }
+  if (restoredIds.length > 0) {
+    useTombstoneStore.getState().acknowledgeRestoredLiveNotes(restoredIds);
+  }
+  if (cloudWonIds.length > 0) {
+    useTombstoneStore.getState().clearIds(cloudWonIds);
   }
   return { live, staleIds };
 }
 
 function purgeStaleCloudDocs(userId: string, staleIds: string[]): void {
   if (staleIds.length === 0) return;
-  // Fire-and-forget on purpose: the tombstone already keeps these notes out of the UI, and the
-  // next snapshot retries the purge. Logging is all that stops a permanently failing delete
-  // (rules change, revoked access) from being invisible.
-  void Promise.all(staleIds.map((id) => getRemoteNotesDataSource().deleteNote(userId, id))).catch((error: unknown) => {
+  const baselines = useTombstoneStore.getState().baselineRevisionById;
+  void Promise.all(staleIds.map((id) => getRemoteNotesDataSource().deleteNote(userId, id, baselines[id]))).catch((error: unknown) => {
     console.warn('[Notelikeus] Purging tombstoned cloud notes failed:', error);
   });
 }
@@ -234,21 +254,21 @@ export function startNotesRealtimeSync(userId: string): void {
       knownRemoteIds = new Set(state.knownCloudIds);
     }
   });
-
   const remote = getRemoteNotesDataSource();
   unsubscribeRealtime = remote.subscribeToNotes(
     userId,
     (remoteNotes) => {
       if (realtimeApplyPaused) return;
-      const { live, staleIds } = partitionTombstoned(remoteNotes);
-      purgeStaleCloudDocs(userId, staleIds);
+      const applyPromise = loadRevisionState(userId).then((state) => {
+        if (realtimeUserId !== userId) return;
+        const { live, staleIds } = partitionTombstoned(remoteNotes, state);
+        purgeStaleCloudDocs(userId, staleIds);
 
-      if (staleIds.length > 0) {
-        for (const staleId of staleIds) {
-          void deleteNote(userId, staleId).catch(() => {});
+        if (staleIds.length > 0) {
+          for (const staleId of staleIds) {
+            void deleteNote(userId, staleId).catch(() => {});
+          }
         }
-      }
-
       // Detect notes deleted on another device: any ID we previously knew about that is absent
       // from the current snapshot (and not already tombstoned) was deleted elsewhere.
       // Guard against an empty snapshot from a transient condition — a legitimate empty set
@@ -286,12 +306,16 @@ export function startNotesRealtimeSync(userId: string): void {
       if (live.length === 0 && storeHoldsLiveNotes()) return;
 
       applyNotes(userId, live);
+      });
+      lastMirrorWrite = applyPromise;
+      return applyPromise;
     },
     (error) => {
+      if (realtimeUserId !== userId) return;
       recordSyncFailure(categorizeSyncError(error));
-      useNotesStore
-        .getState()
-        .setSyncError(formatUnknownError(error, 'Could not sync notes. Please try again.'));
+      useNotesStore.getState().setSyncError(
+        formatUnknownError(error, 'Lost connection to notes server. Retrying...'),
+      );
     },
   );
 }
