@@ -303,6 +303,39 @@ Guarded by `web/e2e/permanent-delete.spec.ts`. The test that matters most is the
 cancelling must destroy nothing, and it is asserted rather than assumed. Both tests pass on both
 browser projects.
 
+### F14 — Journey G (labels): the delete guard is sound — audited from source, runtime not verified — OPEN
+
+The destructive question here was worth asking: `deleteLabel` in `useLabelManagement` removes a label
+from **every** note carrying it and rewrites each note with a fresh `timestamp`. That is a bulk,
+irreversible mutation, so it needs a guard.
+
+**There is one, and its copy is the reason no change is needed.** `DeleteLabelDialog` says:
+
+> "X" will be removed from all notes. This cannot be undone.
+
+It names the label, states the consequence for the notes rather than the label alone, and states
+irreversibility — via the shared `ConfirmDialog`, so it inherits the measured properties from F13
+(count where relevant, focus on Cancel, distinct destructive styling).
+
+**What was verified how:**
+
+| Claim | Evidence |
+|---|---|
+| Deleting a label is confirmed | read from `LabelsScreen.tsx` — `setLabelToDelete` → `DeleteLabelDialog` |
+| The consequence is stated | read from `DeleteLabelDialog.tsx` |
+| Notes are not deleted, only unlabelled | read from `useLabelManagement.ts` — the note object survives, its label array is filtered |
+
+**Not verified, and not claimed:** the runtime journey. A spec covering create → assign → filter →
+delete was written and failed at the creation step — the label row came back empty — and I could not
+establish why within this round's budget. The input is inside a `<form onSubmit={handleCreate}>` with a
+`Create` submit button, so Enter should submit implicitly; whether it does, and whether the following
+`Close` returns to a re-rendered list, is unresolved. The spec was deleted rather than committed red.
+
+**One observation, deliberately not a fix.** Rewriting each affected note's `timestamp` on a label
+delete is a sync-visible mutation: those notes will surface at the top of "Newest first" and will be
+uploaded. It may well be intentional — a label change *is* a content change and ought to sync — but
+the mission's rules put sync contracts out of scope, so it is recorded here rather than changed.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
