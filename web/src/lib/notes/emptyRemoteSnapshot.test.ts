@@ -115,7 +115,7 @@ describe('empty remote snapshot vs populated local library', () => {
     expect(useNotesStore.getState().status).toBe('ready');
   });
 
-  it('applies a non-empty snapshot normally', () => {
+  it('applies a non-empty snapshot normally', async () => {
     useNotesStore.getState().setNotes([note('1')]);
     let emit: ((notes: Note[]) => void) | undefined;
     remoteMocks.subscribeToNotes.mockImplementation((_uid: string, onData: (n: Note[]) => void) => {
@@ -125,6 +125,7 @@ describe('empty remote snapshot vs populated local library', () => {
 
     startNotesRealtimeSync(USER);
     emit?.([note('1'), note('5')]);
+    await waitForRealtimeMirrorWriteForTests();
 
     expect(useNotesStore.getState().notes.map((n) => n.id).sort()).toEqual(['1', '5']);
   });
@@ -158,7 +159,7 @@ describe('empty remote snapshot vs populated local library', () => {
     });
   });
 
-  it('still applies a newer remote copy over a stale local one', () => {
+  it('still applies a newer remote copy over a stale local one', async () => {
     const local = createEmptyNote({
       id: '1',
       localId: 1,
@@ -182,6 +183,7 @@ describe('empty remote snapshot vs populated local library', () => {
 
     startNotesRealtimeSync(USER);
     emit?.([remote]);
+    await waitForRealtimeMirrorWriteForTests();
 
     expect(useNotesStore.getState().notes[0]?.title).toBe('newer remote');
   });
@@ -203,7 +205,7 @@ describe('empty remote snapshot vs populated local library', () => {
     });
   });
 
-  it('lets a snapshot empty by deletion through once every note is tombstoned', () => {
+  it('lets a snapshot empty by deletion through once every note is tombstoned', async () => {
     useNotesStore.getState().setNotes([note('1')]);
     useTombstoneStore.getState().markDeleted('1');
     let emit: ((notes: Note[]) => void) | undefined;
@@ -214,6 +216,7 @@ describe('empty remote snapshot vs populated local library', () => {
 
     startNotesRealtimeSync(USER);
     emit?.([]);
+    await waitForRealtimeMirrorWriteForTests();
 
     expect(useNotesStore.getState().notes).toEqual([]);
   });
