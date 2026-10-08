@@ -5,7 +5,10 @@ import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 
 const SWATCH_BASE =
-  'relative flex size-7 shrink-0 items-center justify-center rounded-full border transition-[box-shadow,transform,border-color]';
+  // 32px with a 12px gap in the row: centres land exactly 44px apart, which is what lets a 44px
+  // hit area touch its neighbour without ever overlapping it. The arithmetic is the point — at the
+  // previous 28px/8px every swatch target would have fought the next one for the same pixels.
+  'tap-target relative flex size-8 shrink-0 items-center justify-center rounded-full border transition-[box-shadow,transform,border-color]';
 const SWATCH_SELECTED =
   'scale-105 border-brand-primary shadow-[0_0_0_2px_rgb(var(--surface-rgb)),0_0_0_4px_rgb(var(--primary-rgb))]';
 const SWATCH_IDLE = 'border-black/15 hover:scale-105 dark:border-white/15';
@@ -30,7 +33,7 @@ export function ColorSwatch({ argb, selected, onClick, label }: ColorSwatchProps
       className={`${SWATCH_BASE} ${CHROME_FOCUS} ${selected ? SWATCH_SELECTED : SWATCH_IDLE}`}
       style={{ backgroundColor: isDefault ? 'rgb(var(--surface-variant-rgb))' : argbToCss(argb) }}
     >
-      {isDefault && !selected ? <BlockIcon size={11} className="text-brand-muted/55" /> : null}
+      {isDefault && !selected ? <BlockIcon size={13} className="text-brand-muted/55" /> : null}
       {selected ? (
         <span
           className={isDefault ? 'text-brand-primary' : undefined}
@@ -64,7 +67,7 @@ export function ColorSwatchRow({
   const colors = noteColorsForTheme(isDark).filter((argb) => !(onSelectAll && argb === 0));
 
   return (
-    <div className={`flex items-center gap-2 ${wrap ? 'flex-wrap' : ''}`}>
+    <div className={`flex items-center gap-3 ${wrap ? 'flex-wrap' : ''}`}>
       {onSelectAll ? (
         <button
           type="button"
