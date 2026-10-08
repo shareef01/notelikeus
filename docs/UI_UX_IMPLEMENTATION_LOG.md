@@ -24,6 +24,8 @@ touch, and how was it checked".
 | `ba18d1f` | F7 | `.tap-target-y` for dense rows; the checklist tick box becomes 24×24 visual with a 24×44 target | nothing under 24px in any editor mode, checklist included |
 | `48afd71` | F8 | palette check across dark, AMOLED and note colours | outlines 15.6:1 / 21.0:1 / 18.9:1; fills recorded, not asserted |
 | `f585116` | F6 (swatches) | 32px swatches with a 12px gap so a 44px target cannot overlap its neighbour | centres 44.0px apart, zero overlapping pairs, 9 swatches at 44x44 |
+| `074c755` | cue gutter | the scroll cue is a flex sibling of the scroller, not an overlay | cue at x=362 with the scroller ending at x=358; zero swatches covered |
+| `7ae2b0c` | F9 | journey E swept and guarded | no defect; 8/8 across two browser projects |
 
 **F7 — the checklist tick box, found by auditing journey C. Fixed.** A sweep of the editor at 390px —
 empty, with text, in checklist mode, and with two items — turned up a 20×20 tick box beside an

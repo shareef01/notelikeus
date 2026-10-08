@@ -172,6 +172,27 @@ WCAG 1.4.11's 3:1 by a wide margin. An earlier version of the check asserted "ev
 design decision. There is no assertion on the fills; the measurement is recorded instead, and
 `web/e2e/palette-contrast.spec.ts` guards the outlines.
 
+### F9 — Journey E (search and smart views): audited, no defect found — GUARDED
+
+The toolbar is where this branch made its first change, and every spec so far exercised it at rest.
+Search puts different content in the same row, so it was swept at 320px and 390px, step by step:
+typing a match, typing a miss, clearing, focusing with history present, and `Ctrl+K`.
+
+| State | Result |
+|---|---|
+| Sort chip, no query | enabled, labelled "Sort: Manual. Choose sort order" |
+| Sort chip, query present | disabled, labelled "Sort locked to relevance while searching" |
+| Page overflow | 0px at every step, at both widths |
+| Recent-searches panel | 124px wide inside a 142px field at 320px; 194px inside 212px at 390px |
+| `Ctrl+K` | focuses the field, as the hint claims |
+
+That last row is worth calling out: the footer hint was *verified* rather than assumed, and it is
+true. The history panel being narrower than the field it belongs to is what keeps it from escaping a
+320px viewport, and it is now asserted — an absolutely positioned list sized to its contents is a
+standard way for this to break.
+
+Guarded by `web/e2e/search-journey.spec.ts`, four tests on two browser projects.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
