@@ -215,7 +215,7 @@ export function SideDrawer({
             <button
               type="button"
               onClick={onClose}
-              className={`flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary md:hidden ${CHROME_FOCUS}`}
+              className={`tap-target flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary md:hidden ${CHROME_FOCUS}`}
               aria-label="Close menu"
             >
               <CloseIcon size={20} />
