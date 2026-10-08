@@ -4,7 +4,13 @@ Use this list before submitting Notelikeus to Google Play.
 
 ## Build
 
-- [ ] Create release keystore and `signing.properties` (see README and `signing.properties.example`)
+- [ ] Create the release keystore and `signing.properties` (see `signing.properties.example`).
+      That key is the app's long-lived signing identity — back it up offline and never commit it.
+      `.gitignore` already excludes `*.jks`, `*.keystore`, `*.p12` and `signing.properties`.
+- [ ] For CI-signed releases, add the four `ANDROID_SIGNING_*` repository secrets and, optionally,
+      the public `ANDROID_SIGNING_CERT_SHA256` repository variable (same file). A run for a release
+      tag then signs, verifies and attaches the artifacts; without the secrets it still builds and
+      attaches them unsigned, as every release so far has.
 - [ ] Run `./gradlew :androidApp:bundleRelease` and test the AAB on a physical device
 - [ ] Run `./gradlew :composeApp:testDebugUnitTest` and `./gradlew :androidApp:assembleRelease`
 - [ ] Verify app lock, reminders, backup export/import, cloud sync, and widget on a real device
@@ -38,4 +44,5 @@ Use this list before submitting Notelikeus to Google Play.
 
 - [ ] Tag release in git: `v1.0.0`
 - [ ] Update `CHANGELOG.md` for next version
-- [ ] Increment `versionCode` / `versionName` in `app/build.gradle.kts` (currently `2` / `1.0.0`)
+- [ ] Increment `versionCode` in `androidApp/build.gradle.kts` and `notelikeus.versionName` in
+      `gradle.properties` (currently `6` / `2.0.0`)
