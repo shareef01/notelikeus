@@ -107,6 +107,36 @@ markup, after a first version silently matched the "LIBRARY" heading instead of 
 
 The settings sheet's sort row still cycles; see next steps.
 
+### F6 — Touch targets: one control below the AA minimum, and a long tail under the design system's own — FIXED (foundation)
+
+Measured at 390px across the three main screens, before any change:
+
+| Screen | Controls | under 44px | under 24px (WCAG 2.5.8 AA failure) |
+|---|---|---|---|
+| Entry | 4 | 3 (the 42px primary buttons) | 0 |
+| Notes | 23 | 15 (28px swatches, 40px chrome, 36px drawer close) | 0 |
+| Editor | 35 | 23 | **1** — "+ Add checklist", 103x20 |
+
+The design system already knew the number it wanted: `.filter-chip` sets `min-h-11`. Nothing
+enforced it anywhere else.
+
+Treatment, as Phase 1 foundation work rather than one-off patches: a shared `.tap-target`
+interaction state in `globals.css` beside the existing component classes, which expands a control's
+**hit area** to 44px via a pseudo-element and leaves the visual box alone — that is what a target
+size guideline asks for, and it is the only way a 20px text button or a 40px icon button can comply
+without changing how either reads. Applied to `+ Add checklist`, the four chrome icon buttons
+(40px, 36px at `sm`) and the drawer's 36px close button.
+
+Verified: every `.tap-target` control reports a 44x44 computed hit area; a real click 8px above the
+20px button's box activates it; a click 40px above does not; a click on the visual box still works;
+and clicking the title field beside it is not intercepted. `globals.css` already turned off
+animations and transitions under `prefers-reduced-motion`, so nothing new was needed there.
+
+Recorded rather than fixed: the colour swatches stay 28px. They clear AA's 24px, but a square
+expansion would make adjacent 28px swatches eight pixels apart fight over the same pixels, so the
+hit areas would overlap and the winner would be paint order. Fixing that properly means spacing the
+swatches differently or giving them a taller row — a layout decision, not a token one.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
@@ -135,8 +165,7 @@ was touched. No dependency was added. No analytics, tracking or remote asset was
 1. The settings sheet's sort row still cycles on tap (F5's counterpart). That sheet is itself a
    `ResponsiveSheet`, so stacking a second one over it would put two focus traps and two backdrops on
    screen at once; the right fix is an inline three-way choice in that row, and it is its own change.
-2. Phase 1 token work: nothing has been added to the design tokens yet. Both fixes so far reuse
-   existing ones (`true-surface-variant`, `brand-outline`, `CHROME_FOCUS`, `rounded-note`).
+2. Phase 1 foundation: `.tap-target` is in place (F6). The remaining token work is spacing and\n   radius scale review, and the swatch spacing question F6 records.
 3. The remaining web journeys (B–O) — note creation, checklists, rich text, pin/archive/delete,
    search and smart views, labels, attachments, reminders, bulk actions, drag-reorder, backup,
    offline and sync-failure states — each measured the same way, since only journeys A and parts of
