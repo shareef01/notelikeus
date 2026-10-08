@@ -3,11 +3,21 @@ name: Desktop CI
 on:
   push:
     branches: [main, master]
-    # A tag build produces the Windows MSI and attaches it to the release that this same tag creates.
+    # A tag build of a commit that already contains this workflow packages and attaches the MSI.
     tags: ['v*']
   pull_request:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to build the MSI from and attach it to (e.g. v2.0.0)'
+        required: true
+        type: string
+      replace_existing_asset:
+        description: 'Replace an MSI asset that already exists on that release'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -112,9 +122,6 @@ jobs:
   package:
     runs-on: windows-latest
     timeout-minutes: 45
-    # Attaching the MSI to the release needs write access; the default here is read.
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout
@@ -185,30 +192,85 @@ jobs:
           Stop-Process -Id $p.Id -Force
           Write-Host "Packaged app started and stayed up."
 
-      # --- Windows MSI -----------------------------------------------------------------------
-      # Tag or manual runs only: choco + jpackage + msiexec add several minutes, and the point of
-      # this is the published installer, not per-push coverage. The app-image checks above still
-      # run on every push.
+  # Packages the Windows installer for an EXISTING release and attaches it to that release.
+  #
+  # Manual runs from main only. A release tag points at a commit cut before this workflow existed,
+  # so nothing can be dispatched on that tag - the run has to come from main (this file) with the
+  # tag named as an input, and that tag is then checked out so the installer is built from the
+  # released source rather than from main's tip. The tag is only ever read: `gh release upload`
+  # adds an asset to a release and cannot move or recreate a ref.
+  msi-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    # The only job in this workflow with write access, and the only one that publishes anything.
+    permissions:
+      contents: write
+
+    steps:
+      - name: Validate the requested release tag
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.release_tag }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) { throw "release_tag is required" }
+          if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+') { throw "release_tag '$tag' does not look like a release tag" }
+
+      # The released source, not main's tip: the installer must correspond to the release commit.
+      - name: Check out the released commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.release_tag }}
+
+      - name: Prove the checkout is the tag's commit
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.release_tag }}"
+          $head = (git rev-parse HEAD).Trim()
+          $tagSha = (git rev-parse "$tag^{commit}").Trim()
+          Write-Host "release $tag = $tagSha · building from $head"
+          if ($head -ne $tagSha) { throw "checked out $head but $tag points at $tagSha" }
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_TAG=$tag"
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_SHA=$head"
+
+      # See the `build` job: provision the daemon JVM instead of relying on Foojay being up.
+      - name: Set up JDK 21 for the Gradle daemon
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up JDK 17 for the build
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Point Gradle at the provisioned JDK 21
+        shell: bash
+        run: echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
+
       - name: Install WiX (jpackage needs it to build an MSI)
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         shell: pwsh
         run: choco install wixtoolset --no-progress -y
 
-      - name: Build the Windows MSI
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-        run: ./gradlew.bat :composeApp:packageMsi --stacktrace
+      - name: Build the app image and the MSI
+        run: |
+          ./gradlew.bat :composeApp:createDistributable --stacktrace
+          ./gradlew.bat :composeApp:packageMsi --stacktrace
 
-      - name: Upload the MSI as a build artifact
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: windows-msi
-          path: composeApp/build/compose/binaries/main/msi/*.msi
+      - name: Verify the jlink runtime carries the modules cloud sync needs
+        shell: pwsh
+        run: |
+          $release = "composeApp/build/compose/binaries/main/app/Notelikeus/runtime/release"
+          if (-not (Test-Path $release)) { throw "No runtime image at $release" }
+          $modules = (Get-Content $release | Select-String '^MODULES=').ToString()
+          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec', 'java.management', 'jdk.httpserver') |
+            Where-Object { $modules -notmatch [regex]::Escape($_) }
+          if ($missing) { throw "jlink runtime is missing: $($missing -join ', ')" }
+          Write-Host "All required modules present."
 
-      # Installing is a different code path from running the app image: msiexec lays the program
-      # down under %ProgramFiles%, and that copy is what a user actually launches.
+      # Before anything is published: install the MSI and confirm the installed copy stays up.
       - name: Install the MSI and confirm the installed app launches
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         shell: pwsh
         run: |
           $msi = Get-ChildItem composeApp/build/compose/binaries/main/msi/*.msi -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -236,21 +298,33 @@ jobs:
           Stop-Process -Id $q.Id -Force
           Write-Host "Installed app at $($exe.FullName) started and stayed up."
 
-      # The release is created by Android CI for the same tag. Wait for it rather than racing it;
-      # `upload` adds an asset to that release and never moves or recreates the tag.
-      - name: Attach the MSI to the release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Upload the MSI as a build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-msi-${{ env.RELEASE_TAG }}
+          path: composeApp/build/compose/binaries/main/msi/*.msi
+
+      # Only after the installer has been built AND smoke-tested. The release must already exist;
+      # an asset of the same name is a hard stop unless replace_existing_asset was set explicitly.
+      - name: Attach the MSI to the named release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $tag = $env:RELEASE_TAG
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) { throw "Release $tag does not exist; nothing was attached." }
           $msi = (Get-ChildItem composeApp/build/compose/binaries/main/msi/*.msi | Select-Object -First 1).FullName
-          for ($i = 1; $i -le 20; $i++) {
-            gh release view "$env:GITHUB_REF_NAME" *> $null
-            if ($LASTEXITCODE -eq 0) { break }
-            Write-Host "release $env:GITHUB_REF_NAME not created yet (attempt $i); waiting 30s"
-            Start-Sleep -Seconds 30
+          $name = [System.IO.Path]::GetFileName($msi)
+          $existing = gh release view $tag --json assets --jq '.assets[].name'
+          if ($existing -contains $name) {
+            if ("${{ inputs.replace_existing_asset }}" -ne "true") {
+              throw "Asset $name already exists on $tag. Re-run with replace_existing_asset=true if replacing it is intended."
+            }
+            Write-Host "Replacing $name on $tag (replace_existing_asset=true)"
+            gh release upload $tag $msi --clobber
+          } else {
+            gh release upload $tag $msi
           }
-          gh release upload "$env:GITHUB_REF_NAME" $msi --clobber
-          if ($LASTEXITCODE -ne 0) { throw "Uploading the MSI to $env:GITHUB_REF_NAME failed" }
-          Write-Host "Attached $([System.IO.Path]::GetFileName($msi)) to $env:GITHUB_REF_NAME"
+          if ($LASTEXITCODE -ne 0) { throw "Uploading $name to $tag failed" }
+          Write-Host "Attached $name to $tag (release $env:RELEASE_SHA) - the tag itself was not touched."
