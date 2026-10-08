@@ -4,6 +4,7 @@ import { useNotesStore } from '@/store/notesStore';
 import type { NoteQueryFilters } from '@/types/note';
 import { searchNotes } from '@/types/note';
 import { collectUniqueLabels } from '@/types/label';
+import { useLabelRegistryStore } from '@/store/labelRegistryStore';
 import { useAuthListener } from '@/hooks/useAuth';
 
 /** Read notes state and actions. Does not subscribe to remote sync — use `useNotesSync` once in App. */
@@ -21,7 +22,22 @@ export function useNotes() {
     return { filteredNotes: result.notes, isFuzzyResult: result.isFuzzy };
   }, [notes, filters]);
 
-  const labels = useMemo(() => collectUniqueLabels(notes), [notes]);
+  const registeredLabels = useLabelRegistryStore((state) => state.labels);
+
+  /**
+   * Labels on notes, plus labels created but not yet used on any note.
+   *
+   * The registry exists for exactly that second case — its own comment says so — but nothing read it
+   * here, so a label created in the manager appeared there and nowhere else: no chip in the filter
+   * row, immediately or after a reload, and therefore no way to filter by it. Merged by name so a
+   * label both a note and the registry know about still appears once.
+   */
+  const labels = useMemo(() => {
+    const fromNotes = collectUniqueLabels(notes);
+    const known = new Set(fromNotes.map((label) => label.name));
+    const unused = Object.values(registeredLabels).filter((label) => !known.has(label.name));
+    return unused.length ? [...fromNotes, ...unused] : fromNotes;
+  }, [notes, registeredLabels]);
 
   const actions = useMemo(
     () => ({
