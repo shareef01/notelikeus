@@ -398,6 +398,35 @@ probes silently clicked nothing.
 Guarded by `web/e2e/backup-roundtrip.spec.ts`, two tests on two browser projects.
 
 
+### F17 — Attaching an image on touch: reachable, and now guarded — NO DEFECT
+
+`image-ingestion.spec.ts` covers paste, drag-and-drop and text-paste — all desktop gestures. A phone
+has none of them, so this is the same question F11 raised for the card's actions: is there a visible way
+in? Measured at 390px with a coarse pointer, and the answer is yes.
+
+| Finding | Measurement |
+|---|---|
+| "Add image" in the editor | visible at **both** 390px touch and 1440px, 36x36 |
+| What it drives | `<input type="file" accept="image/*">`, so a touch user gets the camera or gallery picker |
+| WCAG 2.5.8 | 36x36 clears the 24px minimum on its own |
+
+**No change made.** 36x36 does not reach the 44px this system uses for chips, but it clears the
+requirement and the system-wide check in `touch-targets.spec.ts` already asserts nothing here falls
+below 24px — adding a `.tap-target` would be a change without a confirmed problem, which the mission
+rules out.
+
+**Two minor observations, neither a defect:**
+
+1. The `<input type="file">` has **no accessible name** (`aria-label` is absent). It is hidden and
+   driven programmatically by the button, and the repo's axe pass does not flag it, so it is recorded
+   rather than changed — but an unnamed file control does reach the accessibility tree.
+2. Two hidden file inputs exist in the editor: one `image/*` and one accepting
+   `application/json,.json,.nlkbak,application/zip` — the latter being the **backup import** input,
+   mounted on the editor screen. Harmless, but worth knowing when counting file inputs.
+
+Guarded by `web/e2e/attach-touch.spec.ts`: the control must be visible on a coarse pointer, and
+attaching a real PNG through the picker must be represented in the editor. Two browser projects.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
