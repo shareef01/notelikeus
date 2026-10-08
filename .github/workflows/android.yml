@@ -112,15 +112,80 @@ jobs:
       - name: Build debug APK
         run: ./gradlew :androidApp:assembleDebug --stacktrace
 
+      # Release signing material, materialized from GitHub secrets. Gated the same way as the
+      # release artifacts: a pull request or branch build never reaches this step, so production
+      # signing material is unavailable to them by construction. Absent secrets, the step reports
+      # that and everything downstream stays unsigned — the behaviour every release so far had.
+      - name: Materialize release signing credentials
+        id: signing
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "No Android signing secrets are configured; release artifacts stay unsigned."
+            exit 0
+          fi
+          umask 077
+          dir="$RUNNER_TEMP/android-signing"
+          mkdir -p "$dir"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$dir/release.keystore"
+          chmod 600 "$dir/release.keystore"
+          {
+            echo "ANDROID_SIGNING_KEYSTORE_PATH=$dir/release.keystore"
+            echo "ANDROID_SIGNING_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "ANDROID_SIGNING_KEY_ALIAS=$KEY_ALIAS"
+            echo "ANDROID_SIGNING_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "Signing credentials materialized into a temporary file (values are never echoed)."
+
       # PACK-01: a keep-rule or resource-shrink break is invisible until a v* tag if we only
-      # minify then. Unsigned is fine (CI has no signing.properties); Play upload still waits
-      # for a signed local build. The AAB and artifact upload stay tag-only.
+      # minify then. The minified APK is built on every run; it is signed only when the tag's
+      # signing secrets exist, so a branch build still just checks that minification works.
       - name: Build minified release APK
         run: ./gradlew :androidApp:assembleRelease --stacktrace
 
       - name: Build release AAB
         if: startsWith(github.ref, 'refs/tags/v')
         run: ./gradlew :androidApp:bundleRelease --stacktrace
+
+      # An unsigned or wrong-identity artifact must never reach the release. With credentials
+      # present the APK has to verify and match the fingerprint the repository expects
+      # (vars.ANDROID_SIGNING_CERT_SHA256 — public metadata, never a secret); with none present the
+      # artifacts are asserted to be unsigned, so "configured but silently unsigned" cannot pass.
+      - name: Verify release signatures
+        id: verify-signing
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          EXPECTED_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          apk=$(ls androidApp/build/outputs/apk/release/*.apk)
+          aab=$(ls androidApp/build/outputs/bundle/release/*.aab)
+          apksigner=$(ls "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/*/apksigner | sort -V | tail -1)
+          if [ "${{ steps.signing.outputs.enabled }}" != "true" ]; then
+            if "$apksigner" verify "$apk" >/dev/null 2>&1; then
+              echo "::error::$apk verifies as signed although no signing secrets are configured"
+              exit 1
+            fi
+            echo "No signing identity configured: $apk is unsigned, as documented."
+            exit 0
+          fi
+          "$apksigner" verify --print-certs "$apk" | tee /tmp/apk-certs.txt
+          grep -q "Verifies" /tmp/apk-certs.txt || { echo "::error::$apk does not verify"; exit 1; }
+          fingerprint=$(awk '/SHA-256 digest/ {print $NF; exit}' /tmp/apk-certs.txt)
+          echo "::notice::APK certificate SHA-256: $fingerprint"
+          if [ -n "$EXPECTED_SHA256" ] && [ "$fingerprint" != "$EXPECTED_SHA256" ]; then
+            echo "::error::APK is signed by $fingerprint but this repository expects $EXPECTED_SHA256"
+            exit 1
+          fi
+          unzip -l "$aab" | grep -qE 'META-INF/.*\.(RSA|DSA|EC|SF)' \
+            || { echo "::error::$aab carries no signing metadata"; exit 1; }
+          echo "AAB signing metadata present."
 
       # Consumed by the `release` job below — same run, so it downloads by run id
       # rather than needing another third-party action.
@@ -137,6 +202,13 @@ jobs:
         with:
           name: release-aab
           path: androidApp/build/outputs/bundle/release/*.aab
+
+      # The keystore is a temporary file; remove it even when an earlier step failed.
+      - name: Remove materialized signing credentials
+        if: always() && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          rm -rf "$RUNNER_TEMP/android-signing"
+          echo "Temporary signing material removed."
 
   # The instrumented suite needs a real Android runtime: PlaintextDatabaseMigrator opens SQLCipher
   # databases, whose native libraries are packaged per-ABI and have no JVM build, so Robolectric
@@ -232,9 +304,10 @@ jobs:
             androidApp/build/reports/androidTests/
 
   # Publishes the tag's artifacts as a GitHub Release. Runs only after every gate has
-  # passed — a release tag on a red build must not ship. CI has no signing config
-  # (see signing.properties.example), so the attached APK/AAB are unsigned; this repo's
-  # distribution model is build-from-source plus the Cloudflare Pages web app.
+  # passed — a release tag on a red build must not ship. The artifacts are signed when the tag's
+  # signing secrets are configured (see signing.properties.example, and the signing steps in
+  # `build`), and unsigned when they are not — which is what v2.0.0 shipped. This repo's
+  # distribution model remains build-from-source plus the Cloudflare Pages web app.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build, instrumented]
