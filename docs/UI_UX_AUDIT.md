@@ -87,6 +87,26 @@ defect — recording it here so a later reviewer does not mistake it for one. Ve
 dark and AMOLED palettes therefore needs the preference seeded, not the media query; the harness
 that does so is `/tmp/ui-shots2.mjs` in the working notes of this pass.
 
+### F5 — Sort control made the destination visible before the action — FIXED
+
+The sort chip cycled Manual → Newest → Oldest on every tap. A user who wanted "Oldest first" had to
+press, read the toast, and press again if they had guessed wrong, and from the far side of the list
+the control looked identical either way. It now opens a chooser listing all three destinations with
+the active one marked.
+
+Built on `ResponsiveSheet`, the codebase's existing pattern for a short list of choices — bottom
+sheet on a phone, centred modal above `md` — so focus trapping and Escape come from that component
+rather than a new menu primitive (`role="menu"` exists nowhere in this codebase, and inventing one
+for a three-item list would have been the wrong trade).
+
+Verified in a browser and in e2e: the chooser lists every destination with `aria-pressed` on the
+active one; choosing applies it, closes the sheet and updates the chip; and the **order of the notes
+themselves follows the choice** — two notes written in a known order swap positions between
+"Oldest first" and "Newest first". That last assertion compares on-screen positions rather than card
+markup, after a first version silently matched the "LIBRARY" heading instead of a note.
+
+The settings sheet's sort row still cycles; see next steps.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
@@ -112,10 +132,14 @@ was touched. No dependency was added. No analytics, tracking or remote asset was
 
 ## Next steps, in the order the brief sets out
 
-1. F2's filter/sort surface redesign on web, with screenshots.
-2. The remaining web journeys (B–O) — note creation, checklists, rich text, pin/archive/delete,
+1. The settings sheet's sort row still cycles on tap (F5's counterpart). That sheet is itself a
+   `ResponsiveSheet`, so stacking a second one over it would put two focus traps and two backdrops on
+   screen at once; the right fix is an inline three-way choice in that row, and it is its own change.
+2. Phase 1 token work: nothing has been added to the design tokens yet. Both fixes so far reuse
+   existing ones (`true-surface-variant`, `brand-outline`, `CHROME_FOCUS`, `rounded-note`).
+3. The remaining web journeys (B–O) — note creation, checklists, rich text, pin/archive/delete,
    search and smart views, labels, attachments, reminders, bulk actions, drag-reorder, backup,
    offline and sync-failure states — each measured the same way, since only journeys A and parts of
    B/P have been walked here.
-3. Android, on a machine with an AVD — or by extending CI to publish screenshots from its
+4. Android, on a machine with an AVD — or by extending CI to publish screenshots from its
    instrumented lanes, which is the only route that exists today.

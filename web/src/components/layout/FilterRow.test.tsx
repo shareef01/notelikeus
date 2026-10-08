@@ -12,7 +12,7 @@ function render(selectedLabelName: string | null) {
     root.render(
       createElement(FilterRow, {
         sortOrder: 'manual',
-        onSortOrderCycle: () => {},
+        onSortOrderClick: () => {},
         selectedColor: null,
         onColorSelect: () => {},
         labels: [labelFromName('Work')],
@@ -56,7 +56,7 @@ describe('FilterRow', () => {
       root.render(
         createElement(FilterRow, {
           sortOrder: 'manual',
-          onSortOrderCycle: () => {},
+          onSortOrderClick: () => {},
           sortDisabled: true,
           selectedColor: null,
           onColorSelect: () => {},
