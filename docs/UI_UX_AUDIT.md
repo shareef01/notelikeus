@@ -48,15 +48,35 @@ Treatment: `min-w-0 flex-1` on the toolbar row (`TopBar.tsx`) and on its selecti
 Guarded by `web/e2e/reflow.spec.ts`, which asserts the measurement at each width on both the entry
 and notes screens — a class-name assertion would pass while the defect returned.
 
-### F2 — Note colour filters are clipped on a phone, with no affordance — USABILITY ISSUE — recorded, not changed
+### F2 — Note colour filters were clipped on a phone with no cue, and unreachable by keyboard — FIXED
 
-At 390px the filter row shows roughly six chips and cuts the rest mid-chip
-(`FilterRow.tsx`: a horizontally scrolling row inside `min-h-9 min-w-0`). The row does scroll once
-reached, and F1's fix stops it dragging the *page* with it, so this is scoped as discoverability
-rather than a defect: a user cannot tell that more colours exist. Suggested treatment, consistent
-with the brief's own note about that file — an explicit sort/filter control with a scroll cue on the
-row. Not implemented this pass; it is a redesign of the filter surface rather than a correction, and
-it deserves its own change with before/after evidence.
+At 390px the filter row showed roughly six chips and cut the rest mid-chip. Two things were wrong,
+and the second was worse than the clipping:
+
+1. **No affordance.** The rows scroll with their scrollbar hidden (`overflow-x-auto scrollbar-none`
+   in `FilterRow.tsx`), so nothing said more colours existed.
+2. **Not keyboard-reachable.** An overflow container is not focusable by default, so every colour
+   past the visible edge — and every label past the first few on a phone — could only be reached by
+   swiping (WCAG 2.1.1).
+
+Treatment: both rows get `tabIndex={0}` and an accessible name (`Filters`, `Label filter`), so they
+can be focused and scrolled with the arrow keys, and a **"Scroll filters right"** button appears
+over the right edge while there is genuinely more to the right.
+
+The cue took two attempts, and the first one is worth recording because the mistake was instructive:
+a gradient fade is the usual idiom, but on the dark and AMOLED themes it is a black fade over a black
+surface — the affordance added to make hidden colours discoverable was itself undiscoverable
+(screenshot: `filters-cue-390.png`). A button reads on every theme *and* does what the user wanted:
+pressing it scrolls the row. It respects `prefers-reduced-motion`.
+
+The second attempt had its own bug, caught by verifying rather than assuming: keyed on "content is
+wider than the box", the cue stayed visible after the row had been scrolled to its end, offering more
+when there was none. It is now keyed on `scrollLeft + clientWidth < scrollWidth`, and the hook
+measures on scroll, resize, element resize, child mutation and re-render.
+
+Verified in a real browser: cue visible at 390px, hidden at 1440px where the row fits, hidden at the
+end of the row, back when scrolled to the start, and `ArrowRight` on the focused row scrolls it
+(0 → 40). Guarded by `web/e2e/filter-row.spec.ts` — four tests on two browser projects.
 
 ### F3 — Theme is not driven by `prefers-color-scheme` — OBSERVATION — expected, documented
 
