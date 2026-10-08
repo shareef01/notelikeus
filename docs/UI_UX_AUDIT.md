@@ -133,10 +133,14 @@ Verified: every `.tap-target` control reports a 44x44 computed hit area; a real 
 and clicking the title field beside it is not intercepted. `globals.css` already turned off
 animations and transitions under `prefers-reduced-motion`, so nothing new was needed there.
 
-Recorded rather than fixed: the colour swatches stay 28px. They clear AA's 24px, but a square
-expansion would make adjacent 28px swatches eight pixels apart fight over the same pixels, so the
-hit areas would overlap and the winner would be paint order. Fixing that properly means spacing the
-swatches differently or giving them a taller row — a layout decision, not a token one.
+**The swatches were the exception, and no longer are.** They were left at 28px because a square
+expansion would have made adjacent swatches eight pixels apart fight over the same pixels. Resolved
+by changing the geometry rather than the target: swatches are now **32px with a 12px gap**, which puts
+their centres exactly **44px apart** — so a 44px target touches its neighbour at a point and never
+overlaps it. Measured at 390px: nine swatches, `44x44` targets, centre spacing `44.0px`, zero
+overlapping pairs. The row overflows further as a result, which is what the scroll cue (F2) is for,
+and the cue is still present.
+
 
 **Closed as a gap:** the seeding method this entry described as missing now exists —
 `notelikeus-settings` in `localStorage` before load — and the palette check below uses it to render
