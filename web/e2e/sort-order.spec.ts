@@ -65,7 +65,7 @@ test('the order of the notes themselves follows the choice', async ({ page }) =>
     await expect(titleField).toBeVisible({ timeout: 15_000 });
     await titleField.fill(title);
     await page.waitForTimeout(900); // autosave
-    const back = page.getByRole('button', { name: /back/i }).first();
+    const back = page.getByRole('button', { name: /\bback\b/i }).first();
     if (await back.count()) {
       await back.click();
     } else {
