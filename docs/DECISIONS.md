@@ -868,3 +868,34 @@ cloud copy *until* the user exports — which is already the recovery story.
 **Cost to reverse:** high once encrypted files ship; the key manager alone (slice 1) is cheap to
 drop. Reversing the guest policy after encryption would require a decrypt-and-rewrite path.
 
+---
+
+## D26 — Small controls grow a hit area, not a box. The swatches are the exception, and why.
+
+**Decided:** A control that has to stay visually small gets a **44px hit area** through the shared
+`.tap-target` interaction state (a pseudo-element), and **keeps its visual size**. The mechanism
+lives in `globals.css` beside `.filter-chip`, which is where this system already sets `min-h-11`
+for the same reason. The colour swatches are deliberately exempt: they stay 28px with an 8px gap,
+clearing WCAG 2.5.8's 24px minimum but not 44px.
+
+**Why:** A target-size guideline is about what a finger can hit, not about how large the ink is.
+Growing the box is the wrong fix wherever the box's size is load-bearing — the chrome's icon buttons
+sit in a 56px bar, and the editor's `+ Add checklist` is a 20px text button that would break the
+reading rhythm at 44px. Measured at 390px before the change: one control below the 24px minimum
+(`+ Add checklist`, 103×20), 15 controls under 44px on the notes screen and 23 in the editor. After:
+every `.tap-target` reports a 44×44 hit area, and a click 8px above the 20px button's box activates
+it.
+
+**The swatch exception, stated rather than hidden:** a square expansion would make adjacent 28px
+swatches eight pixels apart fight over the same pixels, so the winner would be paint order and taps
+would land on whichever swatch happened to paint last. Leaving them at 28px keeps taps predictable
+and clears AA. Reaching 44px there is a layout decision — more space between swatches, or a colour
+sheet — not a token one, and it is recorded in `UI_UX_AUDIT.md` as open.
+
+**Cost to reverse:** low on web — it is one component class and six call sites. The Android client
+has the same class of problem (Compose's `minimumInteractiveComponentSize` covers material
+components but not custom ones) and the same treatment has **not** been applied there; this decision
+does not claim it has.
+
+**Consequence to remember:** `.tap-target` must not be used where a 44px square would overlap a
+neighbour's. Measure the gap first — that is exactly why the swatches were left alone.

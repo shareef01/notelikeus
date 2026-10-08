@@ -302,6 +302,19 @@
     transform: translate(-50%, -50%);
   }
 
+  /*
+   * The same idea where a 44px square would swallow a neighbour.
+   *
+   * The checklist's tick box sits beside an editable text field, so a square hit area would cover
+   * the field and stop it being edited — turning a target-size fix into a usability regression. This
+   * grows the target vertically to 44px and leaves the width at the control's own, which is what the
+   * row can give: the item text is not interactive in the same way, so there is nothing to overlap.
+   */
+  .tap-target-y::after {
+    width: 100%;
+    height: max(100%, 44px);
+  }
+
   .text-chrome-label {
     @apply text-overline uppercase text-brand-muted;
   }
