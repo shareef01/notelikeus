@@ -106,6 +106,11 @@ export function TopBar({
     }
   };
 
+  // The rows below carry min-w-0 flex-1. Without it each is a flex item with min-width:auto, so it
+  // refuses to shrink below its content: on a 320–390px viewport the search field, the view toggle
+  // and the shortcut hint add up to more than the shell and the whole page scrolled sideways
+  // (WCAG 1.4.10 reflow). The form and its input already carried min-w-0; these rows were the
+  // missing links in that chain.
   return (
     <header
       className={`sticky top-0 z-30 bg-true-surface pt-safe transition-shadow ${
@@ -128,7 +133,7 @@ export function TopBar({
             onPermanentDelete={onBulkPermanentDelete}
           />
         ) : (
-          <div className="flex h-14 items-center gap-2 sm:h-16 sm:gap-3">
+          <div className="flex h-14 min-w-0 flex-1 items-center gap-2 sm:h-16 sm:gap-3">
             <button
               type="button"
               onClick={onMenuClick}
