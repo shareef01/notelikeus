@@ -716,8 +716,17 @@ TalkBack on and using it needs a human, or at least far more device-driving than
 **The navigation drawer, reached and measured.** A tap on the 42dp control at the top-left opens it; my
 earlier attempts simply did not get there. It contains Notes, Archive and Trash; a **VIEWS** group with
 Reminders, Unfinished and Unlabelled; and a Manage group with Edit labels and Settings — plus a "Close
-navigation menu" control, and every entry named. Its clickable controls measure at or above the 48dp token.
+navigation menu" control, and every entry named.
+
+**Its controls measure 42dp tall** — 7 of 8, the drawer's own rows — which extends F25's pattern rather than
+contradicting it, and shows the app is inconsistent with itself: the settings sheet's rows are 53.3dp, the
+drawer's are 42.0dp, and both sit inside the same token that says nothing tappable may be under 48.
 Evidence: `docs/evidence/android-navigation.png`.
+
+The sentence this replaced said the drawer's controls "measure at or above the 48dp token". That was written
+in the same commit as the measurement that refutes it — three statements in this round were shipped stale,
+after two rounds in which edits silently deleted a finding. The common cause is that I have been writing
+conclusions before reading the data those conclusions are about.
 
 Its contents also answer something the web side raised: **"Manual (drag to reorder)" and the smart views
 exist on Android**, so the two clients differ by design rather than by omission.
