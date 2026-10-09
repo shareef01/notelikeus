@@ -181,3 +181,19 @@ audit entry, with the console steps.
 
 The device was locked before the failing attempt could be made, so the failure itself is still
 unreproduced.
+
+### Phase 3 rendered audit — the first two screens measured
+
+The device was found unlocked with the app in the foreground, so the audit continued past the first screen.
+
+`uiautomator` bounds at 3x density, clickable nodes only: the notes screen has 7 clickables (3 at
+42x42dp, three row controls 42dp tall), the editor has 14 (12 at 42x42dp). Eighteen of twenty-one report
+42.0dp in at least one dimension; one measured 49.0dp.
+
+Interpretation unresolved and recorded as such: 42dp clears WCAG's 24dp floor, but it is below Material's
+48dp and below `Size.touchTarget`, whose comment says nothing tappable may be smaller. Material 3's
+`IconButton` draws at 40dp and should pad its hit area to 48dp, so the measurement may be the drawn size
+rather than the target. No literal `42.dp` exists and `LocalMinimumInteractiveComponentSize` is never
+overridden — both checked. Settling it needs a Compose version check or a build-and-install loop.
+
+Still to walk on this device: sheets, navigation and TalkBack. Evidence committed for both screens.
