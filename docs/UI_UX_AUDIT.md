@@ -640,6 +640,28 @@ Google, enable it, and supply the Google client id and secret. Both come from th
 client whose fingerprints F24's earlier text listed — the fingerprints are still worth registering, but
 they are not what this failure is.
 
+**Update — the provider was enabled, and the flow now advances further.** Re-tested on the Pixel 7 after
+the Supabase Google provider was turned on. The screen stays on "Sign in to continue" for the full 30 seconds
+with **no error of any kind**, where it previously showed Supabase's "Requires Email/Password enabled…" at
+about 20 seconds. That message is gone, so the rejection this entry diagnosed is fixed.
+
+The failure point has moved. Logcat now shows Credential Manager beginning its work and then losing its
+client:
+
+```
+CredentialManager: Client binder died - clearing session
+BoundBrokerSvc: onUnbind: Intent { … gis_internal.START … }
+```
+
+So the app now reaches **Google's own credential exchange**, and no account picker appears because that
+session dies first. **The documented next suspect is the signing-certificate registration** — the original
+hypothesis in this entry, which did not fit the first failure but fits this one: Credential Manager matches
+an Android OAuth client by package name plus signing SHA-1, and the build on the device is the debug one
+whose fingerprint (`8E:C9:8D:E8:…`) has almost certainly never been registered.
+
+Labelled as a suspect, not a cause: the log shows the binder dying, not why. Evidence:
+`docs/evidence/android-google-signin-after-provider.png`.
+
 **Three of my own claims from this thread, corrected:**
 
 1. "A stale signing-certificate SHA-1 is the likely cause" — withdrawn. Logcat shows the app reaching the
