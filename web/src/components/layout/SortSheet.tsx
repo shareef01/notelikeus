@@ -16,7 +16,15 @@ const SORT_OPTION_HINTS: Record<SortOrder, string> = {
   oldest: 'Oldest first',
 };
 
-const SORT_OPTIONS: SortOrder[] = ['manual', 'newest', 'oldest'];
+/**
+ * The orders this client can actually produce.
+ *
+ * `manual` is deliberately absent: the web client renders no reorder handle — `MainScreen` passes no
+ * `reorder` prop into the grid, so `showReorderHandle` is false by construction — and offering an
+ * order the user has no way to reach is worse than not offering it. A note's stored position is still
+ * honoured when the list is in `manual`; it simply cannot be chosen or changed here. (F18)
+ */
+const SORT_OPTIONS: SortOrder[] = ['newest', 'oldest'];
 
 interface SortSheetProps {
   open: boolean;

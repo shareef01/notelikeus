@@ -325,7 +325,8 @@ export function ProfileSheet({
                     Sort order
                   </span>
                   <div className="flex flex-wrap gap-1.5" role="group" aria-label="Sort order">
-                    {(['manual', 'newest', 'oldest'] as const).map((option) => {
+                    {/* 'manual' is omitted for the same reason as the toolbar's chooser (F18). */}
+                    {(['newest', 'oldest'] as const).map((option) => {
                       const active = option === sortOrder;
                       return (
                         <button

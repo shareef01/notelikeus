@@ -54,7 +54,9 @@ const defaultFilters: NoteQueryFilters = {
   searchQuery: '',
   colorArgb: null,
   labelName: null,
-  sortOrder: 'manual',
+  // 'manual' is not offered by the web sort chooser (F18): nothing here can reorder notes, so a
+  // fresh session starting in it would open on an order the user cannot change.
+  sortOrder: 'newest',
 };
 
 /**
