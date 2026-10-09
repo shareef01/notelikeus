@@ -212,3 +212,17 @@ seconds.
 
 Next step is one read of `signInWithGoogleIdToken` on Android to tell a Supabase provider-configuration
 problem from the app calling the wrong auth method. Evidence committed.
+
+### Google sign-in: diagnosed to a Supabase configuration gap
+
+The app is correct. `signInWithGoogleIdToken` posts to `/auth/v1/token?grant_type=id_token` with
+`{"provider":"google","id_token":…}` — the right endpoint for the ID-token flow. Supabase refuses the
+grant, and its message is what the user sees. `supabase/config.toml` has an `[auth.external.google]` block
+with `enabled = true` and credentials from environment variables, and `BACKEND_ARCHITECTURE.md` lists
+enabling the provider as step 2 of provisioning a project. The app points at the hosted project
+`ddxmubeaeeomureolvbu`, so that project's provider is what has to be enabled, with the Google client id and
+secret.
+
+Three claims of mine corrected in the process: the stale-SHA-1 hypothesis (wrong layer), "the failure is
+silent" (an 8-second wait missed a message that takes ~20), and "web works" (only the redirect is verified;
+no sign-in has been completed on either platform, and web shares the same Supabase project).
