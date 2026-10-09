@@ -655,42 +655,6 @@ possible once the provider works — the text shown is Supabase's, relayed verba
 behaviour even where the wording ("Email/Password") is confusing for a Google attempt.
 
 
-### F25 — Compose on a real device: the 42dp cluster is toolbar icon buttons, not the app — MEASURED
-
-Phase 3's rendered audit measured every `clickable="true"` node with `uiautomator` bounds at 3x density,
-across four surfaces. Evidence: `docs/evidence/android-notes-screen.png`,
-`docs/evidence/android-editor.png`, `docs/evidence/android-settings-sheet.png`.
-
-| Surface | Clickable controls | Under 48dp |
-|---|---|---|
-| Notes screen | 7 | 6 |
-| Editor | 14 | 12 |
-| **Settings sheet** | **5** | **0** |
-
-Every control under 48dp is a **toolbar icon button** (42.0 x 42.0 dp) or a row control in the same toolbars
-(42.0dp tall). The settings sheet — rows 53.3dp, theme swatches 76.0dp — honours the token completely. One
-notes-screen control measured 49.0dp.
-
-**So this is not an app-wide pattern.** The token is applied properly where controls own their space, and
-the shortfall is confined to icon toolbars, which is consistent with Material 3's `IconButton`: it draws at
-40dp and is *supposed* to pad its hit area to 48dp, which is why drawn size and touch target can differ. Two
-candidate causes for the drawn-size reading are ruled out — no literal `42.dp` anywhere in the Compose
-source, and `LocalMinimumInteractiveComponentSize` is never overridden.
-
-**What is measured and what is not.** Both measured facts stand: the controls draw at 42dp, and in the
-editor toolbar their centres are only 45.7dp apart, so their hit areas *cannot* all be 48dp horizontally
-however Compose pads them. Whether the remaining gap costs a real user anything is not established — 42dp
-clears WCAG 2.5.8's 24dp floor comfortably, sits just under Apple's 44pt and Material's 48dp, and no mis-tap
-has been demonstrated.
-
-**Three on-device attempts to settle drawn-versus-target produced no usable observable:** an out-of-bounds
-tap changed pixels but opened nothing; a second changed nothing discernible; and the theme chips expose no
-`selected` state to the accessibility layer, so the cleanest experiment had no readout. Recorded rather than
-papered over. The question needs a Compose version check or a build with instrumentation, not more blind
-tapping.
-
-**Still to walk on this device:** the navigation drawer (a swipe failed to open it) and TalkBack.
-
 ### F26 — Android accessibility naming: no defect, and a measurement trap worth recording — MEASURED
 
 Phase 3's TalkBack-relevant question, answered by sweeping the app's own accessibility tree on the Pixel 7:
@@ -730,6 +694,46 @@ conclusions before reading the data those conclusions are about.
 
 Its contents also answer something the web side raised: **"Manual (drag to reorder)" and the smart views
 exist on Android**, so the two clients differ by design rather than by omission.
+
+### F25 — Compose controls measure 42dp because their rows are 42dp: measured, and now explained
+
+Phase 3's rendered audit measured every `clickable="true"` node with `uiautomator` bounds at 3x density.
+Evidence: `docs/evidence/android-notes-screen.png`, `docs/evidence/android-editor.png`,
+`docs/evidence/android-settings-sheet.png`, `docs/evidence/android-navigation.png`.
+
+| Surface | Clickable controls | Under 48dp |
+|---|---|---|
+| Notes screen | 7 | 6 |
+| Editor | 14 | 12 |
+| Settings sheet | 5 | 0 |
+| Navigation drawer | 8 | 7 |
+
+Every control under the token is 42.0dp in one dimension. The settings sheet is the exception, and it
+explains the rest: **its rows are 53.3dp** and its theme swatches 76.0dp, while the drawer's rows are
+**42.0dp** and the toolbars' icon buttons 42.0 x 42.0dp.
+
+**The mechanism, established from geometry rather than from tapping.** In the navigation drawer the rows are
+126px (42.0dp) tall and sit **1px (0.3dp) apart** — four adjacent pairs measured. A 48dp target centred in a
+126px row extends 9px beyond each edge, which would put it inside its neighbour. So the rows' hit areas
+cannot be 48dp: **the row height constrains them**, and Material's `minimumInteractiveComponentSize` cannot
+enlarge a control whose parent has already fixed its height. The editor toolbar shows the same thing from the
+other direction — its button centres are 45.7dp apart, so those targets cannot all be 48dp either however
+Compose pads them.
+
+**What this is not.** It is not a WCAG failure: 42dp clears 2.5.8's 24dp floor with room to spare. Nor is it
+app-wide: the settings sheet honours the token completely, so the codebase applies it wherever a control owns
+its space. What it is, is an **internal inconsistency** — two row heights (42.0dp and 53.3dp) inside one
+system whose token says nothing tappable may be under 48dp.
+
+**Three on-device attempts to settle this by tapping produced no usable observable** before the geometry
+did: an out-of-bounds tap changed pixels but opened nothing; a second changed nothing discernible; and the
+theme chips expose no `selected` state to the accessibility layer. The answer came from reading the measured
+bounds against each other, which would have been the cheapest first move.
+
+**What is still not established:** whether the 6–7dp shortfall costs a user anything in practice. No mis-tap
+has been demonstrated, and the environments where 48dp is mandatory — the settings sheet, dialogs — are
+compliant. Deciding whether to raise the two 42dp row heights or lower the token is a design call, not an
+audit finding.
 
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
