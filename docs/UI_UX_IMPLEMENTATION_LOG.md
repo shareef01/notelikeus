@@ -240,3 +240,13 @@ own — the duplication was my aggregation. Recorded so the next attempt does no
 
 Not a TalkBack run: nobody has driven the app with TalkBack enabled, so focus order and announcement quality
 remain unverified.
+
+### Kotlin suites re-run on a connected device session
+
+Run because the objective's baseline step asks for it and it had not been done in this session:
+`:composeApp:testDebugUnitTest :androidApp:testDebugUnitTest --rerun-tasks`. **74 actionable tasks, 74
+executed** — a genuine run, not cached.
+
+Worth recording how it first went wrong: an earlier invocation without `--rerun-tasks` reported
+"BUILD SUCCESSFUL ... 74 up-to-date", which is **not** a test run. Gradle's success line is not evidence
+that anything executed, and treating it as such would have been a false claim.
