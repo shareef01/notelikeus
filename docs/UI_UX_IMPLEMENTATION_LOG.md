@@ -250,3 +250,19 @@ executed** — a genuine run, not cached.
 Worth recording how it first went wrong: an earlier invocation without `--rerun-tasks` reported
 "BUILD SUCCESSFUL ... 74 up-to-date", which is **not** a test run. Gradle's success line is not evidence
 that anything executed, and treating it as such would have been a false claim.
+
+### TalkBack: enabled, measured, and the phone restored
+
+TalkBack was enabled for one command's worth of measurement, then the phone's accessibility settings were
+returned to their original null/0 — verified by reading them back.
+
+With the screen reader running the app renders normally, and the accessibility tree exposes merged labels on
+the nodes themselves: Menu, Search your notes, Open settings, Filters, Manual (drag to reorder), Change view
+mode, Add note. Eight focusable nodes against seven clickables, so nothing interactive is unreachable.
+
+It also settles F26's hunt for a menu control: the label is "Menu", on a child node, which is precisely the
+flat-dump trap that made it look absent.
+
+Not a full TalkBack run, and recorded as such: focus order through the editor, sheets and dialogs,
+announcement quality, and gesture navigation are unmeasured. TalkBack activates on double-tap, so tap
+driving does not test it faithfully.
