@@ -279,3 +279,37 @@ session` and `BoundBrokerSvc: onUnbind … gis_internal.START`, so Credential Ma
 dies before any account picker appears. The next suspect is the signing-certificate registration — the
 original hypothesis, which did not fit the first failure but fits this one. Recorded as a suspect rather
 than a cause, since the log shows the binder dying and not why.
+
+## Change-to-coverage map
+
+Every web source file this branch changed, and what actually exercises it. **Written by hand deliberately:**
+a first attempt matched file names against test text and reported fourteen files as uncovered, which was
+wrong — these specs exercise components behaviourally rather than by name. A name-matching check cannot see
+that, and acting on it would have produced seventeen pointless unit tests.
+
+This is the closest thing to a diff review that a single agent can produce. It is not a substitute for one.
+
+| Changed file | Covered by | How |
+|---|---|---|
+| `layout/TopBar.tsx` | `reflow`, `search-journey`, `sort-order` | the header row is measured at six widths and its chip asserted before/after searching |
+| `layout/SelectionBar.tsx` | `journey-f-actions`, `bulk-actions` | selection mode's actions and the count are asserted in both |
+| `layout/FilterRow.tsx` | `filter-row`, `touch-targets` | cue visibility, keyboard scrolling, and the 44px targets |
+| `layout/SortSheet.tsx` | `sort-order` | offered orders, the applied order, and that `Manual` is absent |
+| `layout/ColorSwatch.tsx` | `palette-contrast`, `touch-targets` | outline contrast per theme, and 44x44 targets with zero overlap |
+| `layout/SideDrawer.tsx` | `touch-targets` | its close button's 44px target |
+| `notes/NoteCard.tsx` | `card-actions`, `journey-f-actions`, `touch-targets` | checkbox visibility on coarse pointers, trash round trip, target sizes; F11 and F12 respectively |
+| `settings/ProfileSheet.tsx` | `sort-order` | the settings group and the toolbar chip asserted as one state |
+| `editor/ChecklistEditor.tsx` | `touch-targets` | the tick box's 24x44 target in checklist mode |
+| `editor/EditorOptionsSheet.tsx` | `touch-targets` | the sheet is measured and the reminder controls asserted at 44px |
+| `screens/EditorScreen.tsx` | `touch-targets`, `rich-text` | the checklist button's target; markdown formatting and persistence |
+| `screens/MainScreen.tsx` | `reflow`, `filter-row`, `sort-order` | list and chrome layout, filters, sort |
+| `screens/main/MainDialogs.tsx` | `sort-order`, `permanent-delete` | the sort sheet as an overlay; the destructive confirm |
+| `hooks/useNotes.ts` | `labels-journey` | F15's regression: a created label is filterable |
+| `hooks/useOverflowHint.ts` | `filter-row` | the cue appears and disappears as the row scrolls |
+| `store/notesStore.ts` | `sort-order` | the default order and the persisted preference |
+| `styles/globals.css` | `touch-targets`, `reflow` | `.tap-target` behaviour and the reflow contract |
+
+**One file has no behavioural coverage, and it should be stated rather than buried:** `hooks/useOverflowHint.ts`
+is exercised indirectly through `FilterRow`, but its own unit behaviour — the 1px slack, the
+resize/mutation/re-render re-measurement — has no direct test. It runs only in a real browser, which is why
+it has an e2e spec at all, and a happy-dom unit test would assert nothing (scrollWidth is 0 there).
