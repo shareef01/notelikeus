@@ -759,6 +759,11 @@ So the 42dp interactive box is **Material 3's own rendering** in this version, a
 platform components as intended. That also explains the rejected fix precisely: editing `SideDrawerNavItem`
 changed nothing because the wrapper that measures 42dp is not built by that composable.
 
+**Related to D8, but not the same question.** D8 defers snapping ~60 off-grid `.dp` literals (6, 10, 13 …)
+to a later phase on the grounds that grid tidiness is invisible to users. The 42dp here is nothing of the
+kind: it is not a literal, it is what Material 3 renders, produced by components the app calls correctly.
+D8's deferral does not cover it and should not be read as covering it.
+
 **What this means for the token.** `Size.touchTarget = 48.dp` is *aspirational relative to the components the
 app actually uses*. Two readings, and it is a design decision rather than an audit finding:
 

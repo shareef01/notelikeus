@@ -95,8 +95,10 @@ fine" is never the answer.
    final verification run. (132 at the close-out, 140 once the reminders journey landed.) This branch added eleven spec files; the pre-existing accessibility, dialog-a11y,
    note-lifecycle, image-ingestion, backup-import, account-switch and save-failure specs all exercise
    chrome these changes altered, which is why the full run matters more than the new files.
-7. **Kotlin** — untouched this pass; 1322 tests across `composeApp` unit/desktop and `androidApp`
-   unit were green at baseline and nothing in this branch reaches them.
+7. **Kotlin** — **1322 tests, 0 failures, 0 errors, 4 skipped** on a genuine re-run (`--rerun-tasks`, 74
+   tasks executed). This branch contains one Compose edit, attempted and reverted, so the source is
+   unchanged; the suites were re-run anyway because the objective's baseline step asks for it and "up to
+   date" is not a run.
 
 ## Open, in the order I would take them
 
@@ -113,7 +115,7 @@ Every journey the mission named has been walked, and the branch is at its verifi
 | Journeys A–I | entry, creation, checklists, formatting, search, selection-mode actions, labels, attachments, bulk actions — each with its own spec, all passing on desktop and a Pixel-5 emulation |
 | Defects found and fixed | **eight** user-facing: F1, F2, F5, F6, F7, F11, F15, F18, F19 — six of them invisible on a desktop browser |
 | Phase 1 foundation | `.tap-target` and `.tap-target-y` as shared interaction states, recorded as `DECISIONS.md` D26 |
-| Phase 4 | full e2e **132 passed, 1 skipped**; palettes verified in dark, AMOLED and light (F8); offline and failed-save covered by the pre-existing `save-failure` spec, which passes |
+| Phase 4 | full e2e **140 passed, 1 skipped, 0 failed**; palettes verified in dark, AMOLED and light (F8); offline and failed-save covered by the pre-existing `save-failure` spec, which passes; Kotlin re-run at 1322 tests, 0 failures |
 | Deliverables | `UI_UX_AUDIT.md` (F1–F20), this log, `DECISIONS.md` D26, regression checklist, before/after screenshots |
 
 ### Partial, with the reason
