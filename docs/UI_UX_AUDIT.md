@@ -703,7 +703,26 @@ This corroborates the geometry from the other direction too: the drawer rows are
 1px apart, so a 48dp target centred in one would land inside its neighbour. Two independent measurements now
 agree that the hit areas are 42dp.
 
-**A fix attempt was measured and reverted.** Replacing the drawer row's `.height(Size.chipHeight)` with
+**The 42dp comes from Material's own components, not from app code.** With the fix point identified — a
+clickable wrapper, not the drawn button — the next question was who creates it. The buttons on the sign-in
+screen are Material's own (`Button`, `OutlinedButton`, `TextButton`), and a search across the whole Compose
+source finds **no override** of `LocalMinimumInteractiveComponentSize`, `minimumInteractiveComponentSize` or
+the enforcement local, on any platform. The stack is Compose Multiplatform 1.8.2.
+
+So the 42dp interactive box is **Material 3's own rendering** in this version, and the app is using the
+platform components as intended. That also explains the rejected fix precisely: editing `SideDrawerNavItem`
+changed nothing because the wrapper that measures 42dp is not built by that composable.
+
+**What this means for the token.** `Size.touchTarget = 48.dp` is *aspirational relative to the components the
+app actually uses*. Two readings, and it is a design decision rather than an audit finding:
+
+- **Lower the token** toward what Material renders (40–48), so the codebase's documented rule and its actual
+  rendering agree. Cheap, and makes the rule honest.
+- **Or impose the floor explicitly** on app-owned interactive surfaces that do not go through Material's
+  minimum — the drawer rows, toolbars and list rows. Broader, and the earlier attempt shows it needs care
+  about *which* layer is measured.
+
+A fix attempt was measured and reverted.** Replacing the drawer row's `.height(Size.chipHeight)` with
 `.heightIn(min = Size.touchTarget)` — the pattern `ChecklistUI` uses — built, installed, and **changed
 nothing**: the rows still measured 42.0dp. Reverted rather than shipped, because an ineffective edit whose
 comment claims to fix the measurement is worse than no edit. The real fix point is wherever those 42dp
