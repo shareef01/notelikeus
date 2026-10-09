@@ -138,3 +138,17 @@ Schemas, sync contracts, encryption, backup formats and stored data. The eleven 
 implemented in `AUDIT_UI_UX_2026.md` were read and not redone. D1 (tonal surfaces, no accent strip),
 D14 (headings describe real orders) and the AMOLED and legacy-preference behaviours are preserved rather
 than altered.
+
+### Final verification round — the two remaining web gaps
+
+| Gap | Outcome |
+|---|---|
+| Reminders journey | **closed.** 8 passed, 0 failed, 0 skipped on both browser projects: preset set, preset change, clear, custom date, reopen the sheet, reopen the note, reload persistence, and the unstubbed permission refusal |
+| F21 note positions | **measured.** A read-only IndexedDB probe found no position data for web notes anywhere, so nothing can be lost; the sorts themselves behave and the stored preference tracks |
+
+The authenticated-session half of F21 remains source-audited rather than measured: it needs a signed-in
+backend and no local Supabase instance is running here. `bootstrap.ts` calls `reset()` on the sign-out
+path, and the store is the same either way, so the expectation is that a signed-in session keeps its stored
+value — an expectation, not a measurement.
+
+Still unverified, unchanged: Android rendering, and reminder scheduling and delivery.
