@@ -34,7 +34,7 @@ touch, and how was it checked".
 | `a123cb9` | F15 | `useNotes` merges the label registry with the notes' labels, so a created label is filterable | chip appears immediately; regression test passing on two projects |
 | `7f8934b` | F16 | both backup formats round-tripped; the back-locator fixed in five specs | JSON parses and carries notes; bundle is PK; title and pin survive import into a fresh session |
 | `4dc21ee` | F17 | touch attach path measured and guarded | no defect: a visible 36x36 "Add image" drives an image/* picker; PNG attachment asserted |
-| `pending` | F18 | "Manual order" removed from the web sort chooser and settings group; default is now Newest | offered orders asserted, and that Manual is not offered at all |
+| `4dcd783` | F18 | "Manual order" removed from the web sort chooser and settings group; default is now Newest | offered orders asserted, and that Manual is not offered at all |
 
 **F7 — the checklist tick box, found by auditing journey C. Fixed.** A sweep of the editor at 390px —
 empty, with text, in checklist mode, and with two items — turned up a 20×20 tick box beside an
