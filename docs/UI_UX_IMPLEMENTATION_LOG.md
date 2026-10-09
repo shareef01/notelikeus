@@ -266,3 +266,14 @@ flat-dump trap that made it look absent.
 Not a full TalkBack run, and recorded as such: focus order through the editor, sheets and dialogs,
 announcement quality, and gesture navigation are unmeasured. TalkBack activates on double-tap, so tap
 driving does not test it faithfully.
+
+### Google sign-in re-tested after the provider was enabled
+
+The Supabase rejection is gone. Where the app previously showed "Requires Email/Password enabled in
+Supabase Authentication" at about 20 seconds, it now sits on the sign-in screen for a full 30 with no error.
+
+The failure point moved to Google's side: logcat shows `CredentialManager: Client binder died - clearing
+session` and `BoundBrokerSvc: onUnbind … gis_internal.START`, so Credential Manager starts and its session
+dies before any account picker appears. The next suspect is the signing-certificate registration — the
+original hypothesis, which did not fit the first failure but fits this one. Recorded as a suspect rather
+than a cause, since the log shows the binder dying and not why.
