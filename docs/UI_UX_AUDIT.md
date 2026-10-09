@@ -730,6 +730,18 @@ did: an out-of-bounds tap changed pixels but opened nothing; a second changed no
 theme chips expose no `selected` state to the accessibility layer. The answer came from reading the measured
 bounds against each other, which would have been the cheapest first move.
 
+**A fix was attempted, measured, and reverted.** The obvious change — replacing the drawer row's
+`.height(Size.chipHeight)` with `.heightIn(min = Size.touchTarget)`, the pattern `ChecklistUI` already uses —
+was applied, built, installed, and **did not change the measurement**: the rows still report 42.0dp. The
+change was reverted rather than shipped, because an ineffective edit carrying a comment that claims to fix
+this is worse than no edit.
+
+That is a result, not a failure. It rules out the simplest hypothesis: **a fixed row height is not what caps
+these targets**, since replacing it with a minimum changed nothing. The constraint is therefore elsewhere —
+a parent layout, a later modifier in the chain, or the measurement itself reading a node other than the one
+believed. Finding it needs a build-and-measure loop per hypothesis, which is affordable but slow, and it is
+the right next step rather than more speculation.
+
 **What is still not established:** whether the 6–7dp shortfall costs a user anything in practice. No mis-tap
 has been demonstrated, and the environments where 48dp is mandatory — the settings sheet, dialogs — are
 compliant. Deciding whether to raise the two 42dp row heights or lower the token is a design call, not an
