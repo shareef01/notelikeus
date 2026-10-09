@@ -102,11 +102,11 @@ test('the editor options sheet is measured too — it holds the reminder flow', 
   expect(await controlsSmallerThan(page, 24)).toEqual([]);
 
   const targets = await page.evaluate(() => {
-    const want = ['In 1 hour', 'Tomorrow 9:00', 'Next week'];
+    const want = new Set(['In 1 hour', 'Tomorrow 9:00', 'Next week']);
     const out: { name: string; target: number }[] = [];
     for (const el of document.querySelectorAll('button, input')) {
       const name = (el.textContent || el.getAttribute('aria-label') || '').trim();
-      if (!want.includes(name) && el.getAttribute('aria-label') !== 'Reminder date and time') continue;
+      if (!want.has(name) && el.getAttribute('aria-label') !== 'Reminder date and time') continue;
       const after = getComputedStyle(el, '::after');
       out.push({ name, target: Number.parseFloat(after.height) || 0 });
     }
