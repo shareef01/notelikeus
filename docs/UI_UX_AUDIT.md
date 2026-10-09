@@ -569,6 +569,31 @@ are best-effort. They can be delayed or missed if the browser is fully closed or
 **Result of the run:** 2 passed, 4 skipped, 0 failed. The adjacent sort, filter-row and touch-target
 specs: 28 passed.
 
+### F23 — Compose: the two defect classes the web audit proved real are already handled — SOURCE-AUDITED, NO DEFECT
+
+Phase 3's source level, checked against the two classes of defect this audit actually found on web rather
+than against a general checklist.
+
+**Class 1 — controls below the minimum touch target (F6, F7, F19).** Not present. `Size.touchTarget =
+48.dp` lives in `theme/Spacing.kt` with a comment citing WCAG 2.5.8 and describing this decision's own
+pattern: *"A control may look smaller — the colour swatches paint 26dp inside a 48dp target — but nothing
+tappable may be smaller than this."* It is applied in eight places: `NoteColorSwatch` (the hit area around
+the 26dp circle), `NoteCard`, `ChecklistUI`, `EditorBottomSheet`, `ThemePicker`, `MainDrawerContent`.
+
+**Class 2 — affordances reachable only by hover (F11).** Not present. The Compose note card does read
+`isHovered`, but only to drive elevation and a 1.01 scale — decorative feedback, never the sole path to an
+action. Actions come from selection and long-press, which a touch device has.
+
+**What this is and is not.** This is a **source audit**: the tokens and modifiers were read, not rendered.
+The one thing that cannot be claimed from it is that any particular control *looks* right on a device —
+that needs an AVD and is blocked as recorded. The claim here is narrower and supportable: neither defect
+class exists in the Compose source, and the token that prevents the first is genuinely applied rather
+than merely defined.
+
+**A correction this produced.** `DECISIONS.md` D26 claimed the Android client had the same gap and that
+its treatment "has **not** been applied there". That was written from a web-side assumption and is
+untrue; D26 now carries the amendment and the evidence.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
