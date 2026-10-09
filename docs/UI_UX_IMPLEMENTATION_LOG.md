@@ -197,3 +197,18 @@ rather than the target. No literal `42.dp` exists and `LocalMinimumInteractiveCo
 overridden — both checked. Settling it needs a Compose version check or a build-and-install loop.
 
 Still to walk on this device: sheets, navigation and TalkBack. Evidence committed for both screens.
+
+### Google sign-in reproduced on Android — server-side, and not silent
+
+Cleared the debug build's data (guest notes only) to reach the sign-in screen, then tapped "Sign in with
+Google" on the Pixel 7. The screen is unchanged for about 20 seconds, after which the app displays:
+
+> Requires Email/Password enabled in Supabase Authentication.
+
+Two earlier claims are withdrawn by this. The stale-SHA-1 hypothesis does not fit — logcat shows the app
+reaching the network, and Supabase is answering, so the credential was obtained and sent. And the failure
+is **not silent**: my first attempt said so because an 8-second wait missed a message that appears at ~20
+seconds.
+
+Next step is one read of `signInWithGoogleIdToken` on Android to tell a Supabase provider-configuration
+problem from the app calling the wrong auth method. Evidence committed.
