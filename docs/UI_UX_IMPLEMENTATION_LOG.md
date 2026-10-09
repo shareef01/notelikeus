@@ -319,3 +319,31 @@ This is the closest thing to a diff review that a single agent can produce. It i
 is exercised indirectly through `FilterRow`, but its own unit behaviour — the 1px slack, the
 resize/mutation/re-render re-measurement — has no direct test. It runs only in a real browser, which is why
 it has an e2e spec at all, and a happy-dom unit test would assert nothing (scrollWidth is 0 there).
+
+## Web redesign → Compose parity map
+
+Each web finding mapped to the Compose equivalent, with the evidence for the status. Written for the
+release mission so that "Android redesign" is a fact to verify rather than an assumption to implement.
+
+| Web finding | Compose equivalent | Status |
+|---|---|---|
+| F1 — sideways scroll at <=768px | N/A. Compose lays out by constraint, not CSS flex; the reflow defect is web-engine-specific | no transfer needed |
+| F2 — clipped filter rows, no cue, keyboard | `FiltersSheet` is a modal sheet, not an inline scroller; every option is reachable without scrolling a hidden strip | no transfer needed |
+| F5 — sort control hid its destination | `ProfileSheet` offers the sort choice; D12 gives manual reorder an explicit offer rather than a hidden cycle | already native |
+| F6 — swatches under the target token | `Size.touchTarget` (48dp) applied in `NoteColorSwatch` and seven other sites; F23 measured it | already handled |
+| F7 — checklist tick box 20px | `ChecklistUI` uses `heightIn(min = Size.touchTarget)` on each item row | already handled |
+| F11 — hover-only control unreachable on touch | `NoteCard` selects via long-press; hover only drives elevation/scale | already native |
+| F15 — a created label could not be filtered | **No equivalent defect exists.** Compose has no label registry at all: `allLabels` is note-derived, so a label is always on a note and therefore always filterable | defect class cannot occur |
+| F18 — an offered sort order the client could not produce | Compose has manual reorder (D12), so it can produce every order it offers | web-only removal stays web-only |
+| F19 — reminder presets under the target | Compose's reminder picker uses Material components; the web's 26px chips have no Compose counterpart | no transfer needed |
+| F21 — legacy `manual` sort reset for guests | Compose persists its query separately; the guest-reset path is F10's web storage behaviour | source-audited, not re-measured |
+| F24 — Google sign-in | config, not code; the diagnosis is platform-independent (Supabase provider + SHA-1) | shared, pending dashboard change |
+| F25 — 42dp vs 48dp token | Compose renders Material 3's own 42dp wrappers; the token is aspirational relative to the components | your design decision |
+
+**One caveat to keep honest:** the "already native / already handled" rows are F23, F25 and F27's
+source-and-device evidence, not a fresh re-verification this mission. Re-verifying them on the release build
+is Phase Three, and this table does not pre-empt it.
+
+The decisive new result this round is F15's row: the web fix merged a registry the web invented; Compose
+never had the split, so the defect class cannot occur there. Parity is therefore not "the web fix should be
+ported" but "the web fix repaired a web-only architecture".
