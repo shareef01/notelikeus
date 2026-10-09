@@ -540,6 +540,35 @@ rejected the whole object. The reading looked like a defect and was my seed. It 
 this audit that the measurement was wrong rather than the code, which is why every claim here names how
 it was checked.
 
+### F22 — Reminders: the permission boundary is verified; configuration under a granted permission is not
+
+Chasing what looked like a defect — an "In 1 hour" preset that did nothing when clicked — produced the
+clearest negative result of this audit.
+
+**It is not a defect.** `setReminderTimestamp` refuses to save a reminder without notification
+permission, with a comment saying why: *"a reminder saved without notification permission would
+silently never fire."* A Playwright context denies notifications by default, so the app was correctly
+refusing and my first probe never looked for the reason. The refusal is explained to the user rather
+than silent.
+
+**Verified in the browser, on both projects: the refusal path.** With notifications denied, clicking a
+preset saves nothing, the state line still reads "No reminder set", and the user is told notifications
+are needed. That is a boundary worth having a test for, and it is now `web/e2e/reminders.spec.ts`.
+
+**Unverified, and marked rather than claimed:** reminder *configuration* with permission granted. Headless
+Chromium cannot grant notifications at all, so `requestNotificationPermission()` returns false however the
+context is configured and nothing is ever saved. Those two tests are `test.fixme` — skipped and counted,
+never reported as passing. Running them needs a headed browser or a Chromium build with the permission
+grantable.
+
+**Still unverified, unchanged from the close-out:** reminder *scheduling*, and reminder *delivery*. A UI
+test cannot show that a service worker fires later or that an operating-system notification appears; the
+second needs a browser that is closed or asleep. The app is honest with users about this — "Web reminders
+are best-effort. They can be delayed or missed if the browser is fully closed or inactive."
+
+**Result of the run:** 2 passed, 4 skipped, 0 failed. The adjacent sort, filter-row and touch-target
+specs: 28 passed.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
