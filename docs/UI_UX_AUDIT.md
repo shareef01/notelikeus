@@ -735,6 +735,33 @@ has been demonstrated, and the environments where 48dp is mandatory — the sett
 compliant. Deciding whether to raise the two 42dp row heights or lower the token is a design call, not an
 audit finding.
 
+### F27 — TalkBack: the app runs, and every interactive control is named and focusable — MEASURED
+
+TalkBack (`com.google.android.marvin.talkback`) was enabled on the Pixel 7 for the length of one command and
+the phone's settings were restored to their original `null` / `0` immediately afterwards, verified.
+
+**With the screen reader running the app still renders** — `MainActivity` stays focused and the notes screen
+is intact. The accessibility tree then exposes the merged labels **on the nodes themselves**, which the
+off-TalkBack dump did not:
+
+> Notes you add appear here · **Menu** · Search your notes · Open settings · Filters · Manual (drag to
+> reorder) · Change view mode · Add note
+
+**8 focusable nodes against 7 clickable ones.** Every clickable control is focusable, and there is one extra
+focusable node (the search field). Nothing interactive is unreachable by keyboard-style traversal.
+
+**This also resolves the earlier search for a navigation control.** F26 recorded three attempts to find a
+labelled menu control before a blind tap opened the drawer. With TalkBack on, the label is plainly **"Menu"**
+— it sits on a *child* node while the clickable parent carries merged semantics, which is exactly the
+`uiautomator` flat-dump trap F26 describes. The label was always there.
+
+**Scope, stated plainly, because the brief asked for a TalkBack run and this is not fully one.** What is
+measured: the app runs under TalkBack, and every interactive control on the notes screen has a name and is
+focusable. What is **not** measured: driving the app *with* TalkBack — focus order through the editor, sheets
+and dialogs, announcement quality, and gesture navigation. TalkBack activates on double-tap, so the tap
+driving used elsewhere in this audit would not test it faithfully; that needs a human, or a much longer
+session of device automation than a tree dump.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
