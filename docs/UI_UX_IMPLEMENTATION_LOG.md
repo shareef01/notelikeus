@@ -152,3 +152,18 @@ path, and the store is the same either way, so the expectation is that a signed-
 value — an expectation, not a measurement.
 
 Still unverified, unchanged: Android rendering, and reminder scheduling and delivery.
+
+### Android rendering — unblocked
+
+A physical Pixel 7 was connected over USB, so Compose can be rendered, screenshotted and measured rather
+than read. The debug APK was installed with `adb install -r` — debug deliberately, so nothing clashes with
+any real install on the device — and the app runs: sign-in, offline mode, notes screen.
+
+First measurement, `uiautomator dump` at 3x density: of seven clickable controls on the notes screen, six
+are 42dp in at least one dimension, under `Size.touchTarget` (48dp), whose own comment says nothing
+tappable may be smaller. Not a WCAG failure — the floor is 24dp — but a gap between the token and the code.
+
+Also visible on that screen: **"Manual (drag to reorder)"**. Android has manual reordering, which is what
+makes F18's web-side removal correct rather than a compromise.
+
+Remaining for Phase 3: the editor, sheets, navigation and TalkBack on this device.
