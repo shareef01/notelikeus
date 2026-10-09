@@ -25,6 +25,8 @@ that the existing suites cannot see, not regressions.
 ## Findings
 
 ### F1 — Web notes screen scrolled sideways on phones and tablets — CONFIRMED DEFECT — fixed
+**Severity:** High — Blocked use of the notes screen on any viewport under 768px (WCAG 1.4.10). Fixed and guarded.
+
 
 **Severity: high** (WCAG 1.4.10 Reflow; every 320–768px user). **Platform: web.**
 
@@ -50,6 +52,8 @@ Guarded by `web/e2e/reflow.spec.ts`, which asserts the measurement at each width
 and notes screens — a class-name assertion would pass while the defect returned.
 
 ### F2 — Note colour filters were clipped on a phone with no cue, and unreachable by keyboard — FIXED
+**Severity:** Medium — Hidden content with no cue and no keyboard route; passes WCAG only because the row scrolls. Fixed and guarded.
+
 
 At 390px the filter row showed roughly six chips and cut the rest mid-chip. Two things were wrong,
 and the second was worse than the clipping:
@@ -80,6 +84,8 @@ end of the row, back when scrolled to the start, and `ArrowRight` on the focused
 (0 → 40). Guarded by `web/e2e/filter-row.spec.ts` — four tests on two browser projects.
 
 ### F3 — Theme is not driven by `prefers-color-scheme` — OBSERVATION — expected, documented
+**Severity:** None — no defect — Deliberate read-time theme migration, recorded so it is not mistaken for one.
+
 
 Light and dark screenshots taken with `colorScheme: light`/`dark` are byte-identical: the app takes
 its theme from the stored preference (`settingsStore`, with the legacy-shape migration described in
@@ -89,6 +95,8 @@ dark and AMOLED palettes therefore needs the preference seeded, not the media qu
 that does so is `/tmp/ui-shots2.mjs` in the working notes of this pass.
 
 ### F5 — Sort control made the destination visible before the action — FIXED
+**Severity:** Medium — A control that hid its own outcome. Fixed and guarded.
+
 
 The sort chip cycled Manual → Newest → Oldest on every tap. A user who wanted "Oldest first" had to
 press, read the toast, and press again if they had guessed wrong, and from the far side of the list
@@ -109,6 +117,8 @@ markup, after a first version silently matched the "LIBRARY" heading instead of 
 The settings sheet's sort row still cycles; see next steps.
 
 ### F6 — Touch targets: one control below the AA minimum, and a long tail under the design system's own — FIXED (foundation)
+**Severity:** Medium — Swatch targets below the system token; above the WCAG floor. Fixed and guarded.
+
 
 Measured at 390px across the three main screens, before any change:
 
@@ -147,6 +157,8 @@ and the cue is still present.
 all three themes.
 
 ### F7 — The checklist tick box was 20×20, and the first touch-target pass never looked there — FIXED
+**Severity:** High — A control below the 24px minimum (WCAG 2.5.8). Fixed and guarded.
+
 
 A sweep of the editor in four states (empty, with text, in checklist mode, with two items) found a
 20×20 tick box beside an editable text field: below WCAG 2.5.8's 24px minimum. More useful than the
@@ -156,6 +168,8 @@ fixed; the box is 24px visually with a 24×44 target via `.tap-target-y`, and th
 checklist mode. A square target would have covered the text field and stopped it being edited.
 
 ### F8 — Palette check: dark, AMOLED and note colours — MEASURED, NO DEFECT
+**Severity:** None — no defect — Palettes measured in all three themes; outlines well above WCAG 1.4.11.
+
 
 Rendered at 1440px in all three themes, with the theme seeded rather than guessed:
 
@@ -173,6 +187,8 @@ design decision. There is no assertion on the fills; the measurement is recorded
 `web/e2e/palette-contrast.spec.ts` guards the outlines.
 
 ### F9 — Journey E (search and smart views): audited, no defect found — GUARDED
+**Severity:** None — no defect — Search journey swept and guarded.
+
 
 The toolbar is where this branch made its first change, and every spec so far exercised it at rest.
 Search puts different content in the same row, so it was swept at 320px and 390px, step by step:
@@ -194,6 +210,8 @@ standard way for this to break.
 Guarded by `web/e2e/search-journey.spec.ts`, four tests on two browser projects.
 
 ### F10 — Journey D (the editor's formatting and the note's survival): audited, no defect — GUARDED
+**Severity:** None — no defect — Formatting and persistence verified; the guest-session nuance is recorded separately.
+
 
 Journey D is the next item after B (creation) and C (checklists) in the objective's own enumeration.
 The journey definitions themselves are not in this repository — they came from the mission brief and
@@ -219,6 +237,8 @@ behaviour is worth a deliberate decision rather than an accident.
 Guarded by `web/e2e/rich-text.spec.ts`, two tests on two browser projects, discovery verified.
 
 ### F11 — On a touch device, pin/archive/trash were unreachable: the way into selection mode was hover-only — FIXED
+**Severity:** High — Three note actions were unreachable on every touch device. Fixed and guarded.
+
 
 **Severity: high.** The entry point to selection mode is a checkbox on each note card — the code
 calls it "UX-B" — and it was revealed by `group-hover` alone, starting from `opacity-0`. A touch
@@ -241,6 +261,8 @@ is a context option rather than something `emulateMedia` can fake. Discovery ver
 Archive and Pin, so the affordance is checked for what it leads to, not just for being visible.
 
 ### F12 — Journey F's data actions: pin, archive and trash all verified — CLOSED
+**Severity:** None — no defect — Pin, archive and trash round trips verified.
+
 
 **Closed.** With two notes on screen throughout, so "the wrong note was affected" would fail loudly:
 
@@ -274,6 +296,8 @@ Guarded by `web/e2e/journey-f-actions.spec.ts` — four tests, both browser proj
 
 
 ### F13 — The permanent-delete confirmation: audited, no defect — GUARDED
+**Severity:** None — no defect — Permanent-delete confirmation audited; cancelling destroys nothing.
+
 
 The only irreversible path in the product, and the one that most deserved checking. Trash is a view
 (F12); `EmptyTrashDialog` and `BulkDeleteDialog` are where a note is actually destroyed.
@@ -304,6 +328,8 @@ cancelling must destroy nothing, and it is asserted rather than assumed. Both te
 browser projects.
 
 ### F14 — Journey G (labels): the delete guard is sound — audited from source, runtime not verified — OPEN
+**Severity:** None — no defect — Label deletion guard read from source; superseded by F15's browser coverage.
+
 
 The destructive question here was worth asking: `deleteLabel` in `useLabelManagement` removes a label
 from **every** note carrying it and rewrites each note with a fresh `timestamp`. That is a bulk,
@@ -337,6 +363,8 @@ uploaded. It may well be intentional — a label change *is* a content change an
 the mission's rules put sync contracts out of scope, so it is recorded here rather than changed.
 
 ### F15 — A created label never reached the filter row — CONFIRMED DEFECT, FIXED
+**Severity:** Medium — A label the user created could not be used for filtering. Fixed and guarded.
+
 
 A label created in the manager was listed there and nowhere else: no chip in the notes screen's filter
 row, immediately or after a reload. Reproduced twice before being written up.
@@ -367,6 +395,8 @@ same session-versus-data asymmetry F10 records, not a separate defect, and it is
 
 
 ### F16 — Backup: both formats round-trip with notes intact — VERIFIED
+**Severity:** None — no defect — Both backup formats round-trip with fields intact.
+
 
 Two export paths, and they are different formats:
 
@@ -399,6 +429,8 @@ Guarded by `web/e2e/backup-roundtrip.spec.ts`, two tests on two browser projects
 
 
 ### F17 — Attaching an image on touch: reachable, and now guarded — NO DEFECT
+**Severity:** None — no defect — Touch attach path reachable and guarded.
+
 
 `image-ingestion.spec.ts` covers paste, drag-and-drop and text-paste — all desktop gestures. A phone
 has none of them, so this is the same question F11 raised for the card's actions: is there a visible way
@@ -428,6 +460,8 @@ Guarded by `web/e2e/attach-touch.spec.ts`: the control must be visible on a coar
 attaching a real PNG through the picker must be represented in the editor. Two browser projects.
 
 ### F18 — The web sort control offered "Manual order" the web client cannot produce — FIXED
+**Severity:** Medium — An offered sort order the client could not produce. Fixed by decision.
+
 
 **Measured:** zero reorder handles in the DOM at 390px touch and at 1440px desktop, in the default state
 where the sort chip read `Manual` and the view was `Grid`.
@@ -454,6 +488,8 @@ about existing data or positions changed.
 
 
 ### F19 — Every control in the reminder flow was under 44px tall — FIXED
+**Severity:** Medium — The most-tapped controls in the reminder flow under the system token. Fixed and guarded.
+
 
 Reminders are fully implemented on web — picker, scheduler, service worker, sync — and the flow reads
 well: the options sheet offers **"Set reminder"** with three presets ("In 1 hour", "Tomorrow 9:00",
@@ -483,6 +519,8 @@ of a platform limitation, and it is the sort of thing most products leave the us
 look change than this finding justifies on its own.
 
 ### F20 — Bulk actions: audited, no defect — GUARDED, and an earlier suspicion resolved
+**Severity:** None — no defect — Bulk actions verified with a fixture that can fail.
+
 
 Measured with **three** notes and only two selected, which is the fixture a bulk-operation audit needs:
 a two-note list cannot show a bulk action touching the wrong notes.
@@ -508,6 +546,8 @@ Guarded by `web/e2e/bulk-actions.spec.ts` — three tests on two browser project
 unselected and asserting it survives.
 
 ### F21 — A legacy stored `manual` sort preference is reset for guests — measured, mechanism identified
+**Severity:** Low — A guest loses a stored sort preference on session reset; signed-in sessions keep it. Recorded, not changed.
+
 
 Follow-up to F18, prompted by the question "what happens to a user who already has a persisted manual
 sort?".
@@ -549,6 +589,8 @@ this audit that the measurement was wrong rather than the code, which is why eve
 it was checked.
 
 ### F22 — Reminders: the full journey is verified, the refusal path included — CLOSED
+**Severity:** None — no defect — The full reminders journey is verified.
+
 
 The journey spec that failed 6/6 at the preset click now passes **8/8 on both browser projects**, and the
 cause of the original failure was two things, neither of them the product:
@@ -577,6 +619,8 @@ asleep).
 
 
 ### F23 — Compose: source audit, then the same question on a real device — PARTLY CORRECTED
+**Severity:** Blocked — Compose rendering was blocked when written; partly superseded by F25–F27.
+
 
 **Source level, against the two defect classes this audit actually proved on web.**
 
@@ -618,6 +662,8 @@ web dropped an option it could not honour, Android keeps the feature it can.
 screen only.
 
 ### F24 — Google sign-in on Android: the app is correct, the Supabase project is not configured — DIAGNOSED, fix is a dashboard change
+**Severity:** Medium — Google sign-in fails on Android. Diagnosed to configuration, not code; still unresolved pending a dashboard change.
+
 
 Reproduced on the Pixel 7 with the debug build. Tapping "Sign in with Google" leaves the screen unchanged
 for about 20 seconds, then displays Supabase's own message:
@@ -729,6 +775,8 @@ comment claims to fix the measurement is worse than no edit. The real fix point 
 interactive wrappers are created, which is the next thing to find.
 
 ### F26 — Android accessibility naming: no defect, and a measurement trap worth recording — MEASURED
+**Severity:** Low — A measurement trap in `uiautomator` flat dumps, not an app defect. Recorded to prevent a repeat.
+
 
 Phase 3's TalkBack-relevant question, answered by sweeping the app's own accessibility tree on the Pixel 7:
 **do interactive controls have accessible names?**
@@ -769,6 +817,8 @@ Its contents also answer something the web side raised: **"Manual (drag to reord
 exist on Android**, so the two clients differ by design rather than by omission.
 
 ### F25 — Compose controls measure 42dp because their rows are 42dp: measured, and now explained
+**Severity:** Low — Interactive targets render at 42dp against a 48dp token. Traced to Material 3 itself; a token decision, not a defect.
+
 
 Phase 3's rendered audit measured every `clickable="true"` node with `uiautomator` bounds at 3x density.
 Evidence: `docs/evidence/android-notes-screen.png`, `docs/evidence/android-editor.png`,
@@ -821,6 +871,8 @@ compliant. Deciding whether to raise the two 42dp row heights or lower the token
 audit finding.
 
 ### F27 — TalkBack: the app runs, and every interactive control is named and focusable — MEASURED
+**Severity:** None — no defect — Every interactive control is named and focusable under TalkBack.
+
 
 TalkBack (`com.google.android.marvin.talkback`) was enabled on the Pixel 7 for the length of one command and
 the phone's settings were restored to their original `null` / `0` immediately afterwards, verified.
@@ -848,6 +900,8 @@ driving used elsewhere in this audit would not test it faithfully; that needs a 
 session of device automation than a tree dump.
 
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
+**Severity:** Blocked — Android was not renderable when written; superseded by F23–F27 once a device was connected.
+
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
 editor typography, IME and inset handling, TalkBack, font scaling) were **not** produced, because
