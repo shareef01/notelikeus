@@ -87,6 +87,37 @@ test('checklist mode in the editor has no undersized targets either', async ({ p
   expect(await controlsSmallerThan(page, 24)).toEqual([]);
 });
 
+test('the editor options sheet is measured too — it holds the reminder flow', async ({ page }) => {
+  await enterNotes(page);
+  await page.getByRole('button', { name: 'Add note' }).first().click();
+  await expect(page.getByRole('textbox', { name: 'Note title' }).first()).toBeVisible({ timeout: 15_000 });
+
+  // The sheet is where reminders, labels, colour and note actions live, and none of it was covered
+  // until F19 found 26px preset buttons in here.
+  await page.getByRole('button', { name: /more options/i }).first().click();
+  await page.waitForTimeout(1_200);
+
+  // Measured against the effective target, as everywhere in this file: the reminders carry
+  // .tap-target-y, so their boxes stay small while their targets are 44px.
+  expect(await controlsSmallerThan(page, 24)).toEqual([]);
+
+  const targets = await page.evaluate(() => {
+    const want = ['In 1 hour', 'Tomorrow 9:00', 'Next week'];
+    const out: { name: string; target: number }[] = [];
+    for (const el of document.querySelectorAll('button, input')) {
+      const name = (el.textContent || el.getAttribute('aria-label') || '').trim();
+      if (!want.includes(name) && el.getAttribute('aria-label') !== 'Reminder date and time') continue;
+      const after = getComputedStyle(el, '::after');
+      out.push({ name, target: Number.parseFloat(after.height) || 0 });
+    }
+    return out;
+  });
+  expect(targets.length, 'the reminder controls should be present').toBeGreaterThan(0);
+  for (const t of targets) {
+    expect(t.target, `"${t.name}" should have a 44px target`).toBeGreaterThanOrEqual(44);
+  }
+});
+
 test('the controls that need it carry a 44px hit area', async ({ page }) => {
   await enterNotes(page);
   const sizes = await page.evaluate(() =>
