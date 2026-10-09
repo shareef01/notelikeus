@@ -617,41 +617,42 @@ web dropped an option it could not honour, Android keeps the feature it can.
 **Still to do on this device:** the editor, sheets, navigation and TalkBack. This pass reached the first
 screen only.
 
-### F24 — Google sign-in on Android: reproduced, and the cause is server-side — DIAGNOSED
+### F24 — Google sign-in on Android: the app is correct, the Supabase project is not configured — DIAGNOSED, fix is a dashboard change
 
-Reported as "google sign-in isn't working". Reproduced on the Pixel 7 with the debug build, and the app
-says exactly what is wrong.
+Reproduced on the Pixel 7 with the debug build. Tapping "Sign in with Google" leaves the screen unchanged
+for about 20 seconds, then displays Supabase's own message:
 
-**The reproduction.** After clearing the debug build's data (guest notes only; nothing else on the device
-is touched), the sign-in screen appears. Tapping "Sign in with Google" leaves the screen unchanged at 5, 10
-and 15 seconds — and then at 20 seconds the app displays:
+> Requires Email/Password enabled in Supabase Authentication.
 
-> **Requires Email/Password enabled in Supabase Authentication.**
+**The app does the right thing.** `SupabaseAuthApi.signInWithGoogleIdToken` posts to
+`/auth/v1/token?grant_type=id_token` with `{"provider":"google","id_token":…}` — the correct Supabase
+ID-token flow, not the email/password endpoint. So the token is obtained, sent to the right place, and
+Supabase refuses the grant.
 
-Screenshot and hierarchy committed as `docs/evidence/android-google-signin-error.xml`.
+**What Supabase needs, and where the requirement is written down.** `supabase/config.toml` carries an
+`[auth.external.google]` block with `enabled = true` and `client_id`/`secret` taken from
+`SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID`/`_SECRET`. `docs/BACKEND_ARCHITECTURE.md` lists "Enable Google
+provider" as step 2 of provisioning a project. The app points at `https://ddxmubeaeeomureolvbu.supabase.co`,
+so what matters is that **hosted** project's provider — and the error says it is not accepting the grant.
 
-**What that rules out, and what it corrects.** Logcat shows the app making network requests and the sync
-worker retrying, so the device *reaches* the network and the attempt reaches Supabase. The earlier
-hypothesis in this entry — a stale signing-certificate SHA-1 registration in the Google Cloud project —
-**does not fit this evidence and is withdrawn as the leading explanation.** Credential Manager returned
-something, the app sent it on, and Supabase refused. The fingerprints are still worth registering, but they
-are not what this failure is.
+**The fix is in the Supabase dashboard**, and it is the user's to make: Authentication → Providers →
+Google, enable it, and supply the Google client id and secret. Both come from the same Google Cloud OAuth
+client whose fingerprints F24's earlier text listed — the fingerprints are still worth registering, but
+they are not what this failure is.
 
-**Two candidate causes, both needing the Supabase dashboard or one code read:**
+**Three of my own claims from this thread, corrected:**
 
-1. **The Google provider is not enabled for the Supabase project.** Authentication → Providers → Google.
-   The message names Email/Password rather than Google, which may be a provider-agnostic wording — or may
-   be the app calling the wrong method.
-2. **The app exchanges the Google token through the wrong call** — if it posts to the email/password
-   endpoint instead of the ID-token flow, Supabase answers exactly this way. That would be a code defect,
-   not a configuration one.
+1. "A stale signing-certificate SHA-1 is the likely cause" — withdrawn. Logcat shows the app reaching the
+   network and Supabase answering, so the credential was obtained and sent. Wrong layer entirely.
+2. "The failure is silent" — withdrawn. An 8-second wait missed a message that appears at about 20.
+3. "**Web works**" — too strong, and it was the same over-reach in the other direction. What is verified is
+   that the web *redirect* reaches Google's consent page. Nobody has completed a web sign-in, because that
+   needs a real Google account. Given that web and Android use the same Supabase project, web very probably
+   fails at this same step, and the earlier wording implied otherwise.
 
-Distinguishing them is one read of `signInWithGoogleIdToken`'s Android implementation, which is the next
-step.
-
-**Also worth recording, and it is good news:** the failure is **not silent**. My first attempt concluded it
-was, because an 8-second wait missed a message that appears at roughly 20 seconds. The app does surface the
-error; the user is told what Supabase said. That earlier claim is withdrawn too.
+**What I could not do:** complete the flow. Judging whether the user-facing message is adequate is only
+possible once the provider works — the text shown is Supabase's, relayed verbatim, which is correct
+behaviour even where the wording ("Email/Password") is confusing for a Google attempt.
 
 
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
