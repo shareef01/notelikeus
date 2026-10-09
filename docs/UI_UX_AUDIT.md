@@ -655,6 +655,42 @@ possible once the provider works — the text shown is Supabase's, relayed verba
 behaviour even where the wording ("Email/Password") is confusing for a Google attempt.
 
 
+### F25 — Compose on a real device: the 42dp cluster is toolbar icon buttons, not the app — MEASURED
+
+Phase 3's rendered audit measured every `clickable="true"` node with `uiautomator` bounds at 3x density,
+across four surfaces. Evidence: `docs/evidence/android-notes-screen.png`,
+`docs/evidence/android-editor.png`, `docs/evidence/android-settings-sheet.png`.
+
+| Surface | Clickable controls | Under 48dp |
+|---|---|---|
+| Notes screen | 7 | 6 |
+| Editor | 14 | 12 |
+| **Settings sheet** | **5** | **0** |
+
+Every control under 48dp is a **toolbar icon button** (42.0 x 42.0 dp) or a row control in the same toolbars
+(42.0dp tall). The settings sheet — rows 53.3dp, theme swatches 76.0dp — honours the token completely. One
+notes-screen control measured 49.0dp.
+
+**So this is not an app-wide pattern.** The token is applied properly where controls own their space, and
+the shortfall is confined to icon toolbars, which is consistent with Material 3's `IconButton`: it draws at
+40dp and is *supposed* to pad its hit area to 48dp, which is why drawn size and touch target can differ. Two
+candidate causes for the drawn-size reading are ruled out — no literal `42.dp` anywhere in the Compose
+source, and `LocalMinimumInteractiveComponentSize` is never overridden.
+
+**What is measured and what is not.** Both measured facts stand: the controls draw at 42dp, and in the
+editor toolbar their centres are only 45.7dp apart, so their hit areas *cannot* all be 48dp horizontally
+however Compose pads them. Whether the remaining gap costs a real user anything is not established — 42dp
+clears WCAG 2.5.8's 24dp floor comfortably, sits just under Apple's 44pt and Material's 48dp, and no mis-tap
+has been demonstrated.
+
+**Three on-device attempts to settle drawn-versus-target produced no usable observable:** an out-of-bounds
+tap changed pixels but opened nothing; a second changed nothing discernible; and the theme chips expose no
+`selected` state to the accessibility layer, so the cleanest experiment had no readout. Recorded rather than
+papered over. The question needs a Compose version check or a build with instrumentation, not more blind
+tapping.
+
+**Still to walk on this device:** the navigation drawer (a swipe failed to open it) and TalkBack.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
