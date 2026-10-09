@@ -617,80 +617,42 @@ web dropped an option it could not honour, Android keeps the feature it can.
 **Still to do on this device:** the editor, sheets, navigation and TalkBack. This pass reached the first
 screen only.
 
-### F24 — Google sign-in fails on Android while it works on web — DIAGNOSED, needs a Google Cloud change
+### F24 — Google sign-in on Android: reproduced, and the cause is server-side — DIAGNOSED
 
-Reported: "google sign-in isn't working". Reproduced and narrowed to one platform.
+Reported as "google sign-in isn't working". Reproduced on the Pixel 7 with the debug build, and the app
+says exactly what is wrong.
 
-**Web works.** Clicking "Continue with Google" navigates to
-`accounts.google.com/v3/signin/identifier…` and the real consent page for the Supabase project
-(`ddxmubeaeeomureolvbu.supabase.co`). The redirect is fine; whatever is failing is not the web client.
-Evidence: `docs/evidence/web-google-oauth-redirect.png`.
+**The reproduction.** After clearing the debug build's data (guest notes only; nothing else on the device
+is touched), the sign-in screen appears. Tapping "Sign in with Google" leaves the screen unchanged at 5, 10
+and 15 seconds — and then at 20 seconds the app displays:
 
-**Android cannot be reproduced yet, and here is why the device matters.** The app now runs on the Pixel 7,
-but the phone was locked by the time the sign-in attempt could be made, and unlocking it needs the user's
-own PIN or fingerprint. That step is theirs to take, not something to work around.
+> **Requires Email/Password enabled in Supabase Authentication.**
 
-**What the configuration shows, and the most likely cause.**
+Screenshot and hierarchy committed as `docs/evidence/android-google-signin-error.xml`.
 
-| Fact | Value |
-|---|---|
-| How Android signs in | Credential Manager (`GetGoogleIdOption` + `setServerClientId`) — the modern API, not the deprecated `GoogleSignIn` |
-| The server client id | hand-maintained in `androidApp/src/main/res/values/strings.xml` as `default_web_client_id`; **no `google-services.json` and no google-services plugin** |
-| Debug signing SHA-1 | `8E:C9:8D:E8:73:4A:9E:61:41:A8:76:10:A7:92:B9:E1:B5:CF:B2:03` |
-| Release signing SHA-1 | `19:EF:3A:C4:36:FE:82:F6:0B:BB:E2:09:C8:B8:21:FF:70:BD:6F:8E` |
+**What that rules out, and what it corrects.** Logcat shows the app making network requests and the sync
+worker retrying, so the device *reaches* the network and the attempt reaches Supabase. The earlier
+hypothesis in this entry — a stale signing-certificate SHA-1 registration in the Google Cloud project —
+**does not fit this evidence and is withdrawn as the leading explanation.** Credential Manager returned
+something, the app sent it on, and Supabase refused. The fingerprints are still worth registering, but they
+are not what this failure is.
 
-Credential Manager matches the app to an **Android OAuth client by package name plus signing-certificate
-SHA-1**. Because nothing in the repository records which fingerprints are registered, that can only be
-checked in the Google Cloud console. Two things make a mismatch the leading explanation: this project's
-**release signing identity changed recently** — the keystore above was generated during the v2.0.0 signing
-work — and the build now on the device is the **debug** one, whose SHA-1 is entirely different and is
-unlikely to have been registered at all.
+**Two candidate causes, both needing the Supabase dashboard or one code read:**
 
-That fits the report exactly: web succeeds because the web client id is valid, while any build on this
-device fails because its fingerprint is not on the Android client.
+1. **The Google provider is not enabled for the Supabase project.** Authentication → Providers → Google.
+   The message names Email/Password rather than Google, which may be a provider-agnostic wording — or may
+   be the app calling the wrong method.
+2. **The app exchanges the Google token through the wrong call** — if it posts to the email/password
+   endpoint instead of the ID-token flow, Supabase answers exactly this way. That would be a code defect,
+   not a configuration one.
 
-**The fix is a console change, not a code change**, and it is the user's to make:
+Distinguishing them is one read of `signInWithGoogleIdToken`'s Android implementation, which is the next
+step.
 
-1. Google Cloud console → APIs & Services → Credentials → the Android OAuth client for
-   `com.aus.notelikeus`.
-2. Add both SHA-1s above — the debug one for local testing, the release one for Play.
-3. If Play App Signing is used, also add the **app signing key** certificate from Play Console, since that
-   is what end users' builds carry.
+**Also worth recording, and it is good news:** the failure is **not silent**. My first attempt concluded it
+was, because an 8-second wait missed a message that appears at roughly 20 seconds. The app does surface the
+error; the user is told what Supabase said. That earlier claim is withdrawn too.
 
-**Not yet verified:** the failure itself on the device, and whether the app reports the failure clearly
-when it happens. A silent failure here would be its own finding, and can only be judged with the phone
-unlocked.
-
-### F25 — Compose controls measure 42dp on a real device — measured, cause unresolved
-
-Phase 3's rendered audit reached the notes screen and the editor on the Pixel 7, measuring every
-`clickable="true"` node with `uiautomator`'s bounds at 3x density. Evidence:
-`docs/evidence/android-notes-screen.png`, `docs/evidence/android-editor.png`.
-
-| Screen | Clickable controls | At 42.0 x 42.0 dp |
-|---|---|---|
-| Notes | 7 | 3, plus three row controls 42.0dp tall |
-| Editor | 14 | 12 |
-
-**18 of 21 clickable controls report 42.0dp in at least one dimension.** One control measured 49.0dp.
-
-**What is and is not established.** 42dp is comfortably above WCAG 2.5.8's 24dp floor, so this is not a
-conformance failure. It is also below Material's 48dp minimum and Apple's 44pt, and below
-`Size.touchTarget` — whose own comment reads *"nothing tappable may be smaller than this"*. But the
-measurement may not be the touch target at all: Material 3's `IconButton`, which these controls use, draws
-at 40dp and is supposed to *pad* its hit area to 48dp, and `uiautomator` reports the semantics node's
-bounds. **Two candidate causes were checked and ruled out** — there is no literal `42.dp` anywhere in the
-Compose source, and `LocalMinimumInteractiveComponentSize` is never overridden. So whether the targets are
-genuinely 42dp or merely *drawn* at 42dp is unresolved, and that is the next thing to establish.
-
-**Why this is recorded rather than fixed.** If the hit areas are 48dp, there is no defect and a change
-would be churn. If they are 42dp, the fix is real but needs a Compose build-and-install loop to verify, and
-guessing between "change the token" and "change the controls" without knowing which is wrong is exactly the
-mistake F23 recorded. The measurement stands either way; the interpretation does not yet.
-
-**A process note.** This is what the earlier claim about Compose being clean was missing. Reading that the
-token is applied in eight places, and measuring 21 controls on two screens, are different kinds of
-evidence, and only the second can find a control the token never reached.
 
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
