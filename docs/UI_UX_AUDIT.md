@@ -662,6 +662,13 @@ whose fingerprint (`8E:C9:8D:E8:…`) has almost certainly never been registered
 Labelled as a suspect, not a cause: the log shows the binder dying, not why. Evidence:
 `docs/evidence/android-google-signin-after-provider.png`.
 
+**Re-tested again and the error is back.** A later run on the same device, after the provider was reported
+turned on, shows Supabase's "Requires Email/Password enabled in Supabase Authentication." message present in
+the screen's accessibility tree, with **zero** credential-related lines in logcat — so the app never reached
+Credential Manager this time. The earlier run in which the message was absent therefore does not represent a
+stable state, and this entry should be read as: the configuration has been changed at least once, and the
+failure has been observed in both forms.
+
 **Three of my own claims from this thread, corrected:**
 
 1. "A stale signing-certificate SHA-1 is the likely cause" — withdrawn. Logcat shows the app reaching the
@@ -676,6 +683,31 @@ Labelled as a suspect, not a cause: the log shows the binder dying, not why. Evi
 possible once the provider works — the text shown is Supabase's, relayed verbatim, which is correct
 behaviour even where the wording ("Email/Password") is confusing for a Google attempt.
 
+
+
+**F25's question is answered: the targets are 42dp, not 48.** The sign-in screen's tree shows the structure
+plainly:
+
+```
+View    clickable=True   185.7 x 42.0 dp     ← the interactive node
+Button  clickable=False  185.7 x 35.0 dp     ← the drawn button inside it
+```
+
+The **clickable node** is a 42.0dp-tall `View`, and a 35.0dp `Button` sits inside it. Since the clickable
+node *is* the hit area, its bounds are the answer: **42dp, not the 48dp the token specifies.** That is why
+replacing the drawer row's `.height()` with `.heightIn(min = …)` changed nothing — the 42dp comes from this
+wrapper, not from the composable that was edited, and the sign-in screen and the drawer evidently build their
+interactive wrapper the same way.
+
+This corroborates the geometry from the other direction too: the drawer rows are 126px (42.0dp) tall and sit
+1px apart, so a 48dp target centred in one would land inside its neighbour. Two independent measurements now
+agree that the hit areas are 42dp.
+
+**A fix attempt was measured and reverted.** Replacing the drawer row's `.height(Size.chipHeight)` with
+`.heightIn(min = Size.touchTarget)` — the pattern `ChecklistUI` uses — built, installed, and **changed
+nothing**: the rows still measured 42.0dp. Reverted rather than shipped, because an ineffective edit whose
+comment claims to fix the measurement is worse than no edit. The real fix point is wherever those 42dp
+interactive wrappers are created, which is the next thing to find.
 
 ### F26 — Android accessibility naming: no defect, and a measurement trap worth recording — MEASURED
 
