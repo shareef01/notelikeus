@@ -366,3 +366,42 @@ message.
 **Runtime smoke: blocked.** The device is at its lock screen; the app is the focused window, but the screen
 cannot be driven without the user's own PIN or fingerprint. This is the same blocker that has interrupted
 device work before, and it is the user's action to take, not one to work around.
+
+## Release go/no-go checkpoint
+
+**Commit:** `628095059f7b0e6ae3c3ebe96e575a8507d61f98` (branch `ui-ux-audit-and-reflow`, 71 commits ahead of `main` at `42bae9b`).
+
+**Web — version and artifact.** `npm run build` produces `web/dist`, passing the repo's own
+`verifyPagesArtifacts.mjs` gate; no dev-only configuration leaks. Production deploy is `cloudflare-pages.yml`
+on push to `main`, which republishes the production alias.
+
+**Android — version and artifact.** `com.aus.notelikeus`, versionCode 6, versionName 2.0.0. Signed release
+APK (13,767,840 bytes) and AAB (14,477,156 bytes) built by `assembleRelease` / `bundleRelease`, and the
+release APK confirmed installed (`DEBUGGABLE` = 0). Distribution is a manual Google Play upload; no Play
+automation exists in CI.
+
+**Test results on the release candidate:** web full Playwright 140 passed / 1 skipped / 0 failed; unit
+785/785; typecheck 0 errors; lint 76 warnings / 0 errors; Kotlin 1322 / 0 failures. One Playwright test is
+skipped by design (notified in earlier rounds).
+
+**Outstanding blockers, each with an owner:**
+1. Device runtime smoke — the Pixel 7 is at its lock screen; the user's PIN unlocks it.
+2. Web staging deploy — `npm run deploy:staging-pages` needs a wrangler-authenticated environment or a
+   `CLOUDFLARE_API_TOKEN`; a `gh` workflow_dispatch would build main's code, not this branch's, so it is the
+   wrong path and was not used.
+3. Web production — gated on merging to `main`, which the no-push rule keeps off-limits until authorization.
+4. Android production — gated on the user's manual Play upload.
+
+**Deployment destinations:** staging = Cloudflare Pages project `notelikeus-dev`; production = `notelikeus`
+production alias; Android = Google Play.
+
+**Rollback:** web production is a Pages deployment, so rollback is re-deploying the previous commit via the
+same workflow (or the Cloudflare dashboard's rollback); Android is a Play upload, so rollback is re-uploading
+the previous AAB to the same track or halting the staged rollout.
+
+**Expected user impact:** the web redesign reaches production (nine fixed defects, six invisible on desktop);
+the Android artifact is functionally v2.0.0 re-signed, so no Android visual change ships unless the 48dp
+token decision is made first.
+
+**Authorization required:** merge to `main` for web production; the local staging deploy (wrangler
+credentials); the Play upload. None of these has been executed.
