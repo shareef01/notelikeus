@@ -507,6 +507,39 @@ all-selected state. There was never a redundant pair, and the guard now pins the
 Guarded by `web/e2e/bulk-actions.spec.ts` — three tests on two browser projects, each leaving one note
 unselected and asserting it survives.
 
+### F21 — A legacy stored `manual` sort preference is reset for guests — measured, mechanism identified
+
+Follow-up to F18, prompted by the question "what happens to a user who already has a persisted manual
+sort?".
+
+**Measured, twice, with a valid persisted shape:** seeding `notelikeus-note-filters` with
+`sortOrder: 'manual'` (and a real `filter: 'active'`) and loading the app leaves the chip reading
+**"Sort: Newest"** and the stored value rewritten to `newest`.
+
+**Mechanism identified, not guessed:** `bootstrap.ts` calls `useNotesStore.getState().reset()` on the
+guest path, and `reset()` sets `filters: defaultFilters` and persists it. So this is F10's session-reset
+behaviour rather than a new defect — the same reset that drops a guest's label registry on reload. F18
+changed *what* the reset restores (`newest` rather than `manual`), not *whether* it happens. A
+signed-in session does not take that path, so its stored `manual` is honoured.
+
+**Verified against the rest of the follow-up question:**
+
+| Question | Answer |
+|---|---|
+| Does the hidden option reappear? | No — the chooser offers Newest first and Oldest first only |
+| Is either available order selectable? | Yes, and the choice is written to storage |
+| Are stored preferences destructively rewritten? | For a **guest**, yes — by the same reset F10 records. For a signed-in session, no |
+
+**Not verified:** whether stored *note positions* are touched. Positions live in IndexedDB, which this
+probe did not read; the reset affects `filters` only, and `partialize` excludes notes, so the code says
+they are untouched — that is a source claim, not a measurement.
+
+**One instrument error worth recording.** The first version of this probe seeded `filter: 'notes'`, a
+value that does not exist in `NoteFilter` (`'active' | 'archived' | 'trashed'`), and the store correctly
+rejected the whole object. The reading looked like a defect and was my seed. It is the fifth time in
+this audit that the measurement was wrong rather than the code, which is why every claim here names how
+it was checked.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
