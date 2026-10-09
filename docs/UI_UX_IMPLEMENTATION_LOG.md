@@ -35,7 +35,7 @@ touch, and how was it checked".
 | `7f8934b` | F16 | both backup formats round-tripped; the back-locator fixed in five specs | JSON parses and carries notes; bundle is PK; title and pin survive import into a fresh session |
 | `4dc21ee` | F17 | touch attach path measured and guarded | no defect: a visible 36x36 "Add image" drives an image/* picker; PNG attachment asserted |
 | `4dcd783` | F18 | "Manual order" removed from the web sort chooser and settings group; default is now Newest | offered orders asserted, and that Manual is not offered at all |
-| `pending` | F19 | `.tap-target-y` on the reminder presets and date input | 26px and 38px visuals keep their size; every target is 44px |
+| `915ad18` | F19 | `.tap-target-y` on the reminder presets and date input | 26px and 38px visuals keep their size; every target is 44px |
 
 **F7 — the checklist tick box, found by auditing journey C. Fixed.** A sweep of the editor at 390px —
 empty, with text, in checklist mode, and with two items — turned up a 20×20 tick box beside an
