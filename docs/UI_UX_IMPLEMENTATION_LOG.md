@@ -91,8 +91,8 @@ fine" is never the answer.
    effective target rather than the box, since `getBoundingClientRect` cannot see a pseudo-element.
 5. **Unit and static suites** — `npm run typecheck`, `npm run lint` (0 errors; the 76 warnings are
    pre-existing), `npm run test` (785).
-6. **The whole e2e suite**, not just the new specs — **132 passed, 1 skipped** as of the close-out
-   run. This branch added eleven spec files; the pre-existing accessibility, dialog-a11y,
+6. **The whole e2e suite**, not just the new specs — **140 passed, 1 skipped, 0 failed** as of the
+   final verification run. (132 at the close-out, 140 once the reminders journey landed.) This branch added eleven spec files; the pre-existing accessibility, dialog-a11y,
    note-lifecycle, image-ingestion, backup-import, account-switch and save-failure specs all exercise
    chrome these changes altered, which is why the full run matters more than the new files.
 7. **Kotlin** — untouched this pass; 1322 tests across `composeApp` unit/desktop and `androidApp`
