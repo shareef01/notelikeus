@@ -892,10 +892,15 @@ would land on whichever swatch happened to paint last. Leaving them at 28px keep
 and clears AA. Reaching 44px there is a layout decision — more space between swatches, or a colour
 sheet — not a token one, and it is recorded in `UI_UX_AUDIT.md` as open.
 
-**Cost to reverse:** low on web — it is one component class and six call sites. The Android client
-has the same class of problem (Compose's `minimumInteractiveComponentSize` covers material
-components but not custom ones) and the same treatment has **not** been applied there; this decision
-does not claim it has.
+**Cost to reverse:** low on web — it is one component class and six call sites.
+
+**Amended — the Android claim in the original text was wrong. This decision was written from a
+web-side assumption and never checked against the Compose source; it is now checked.** The Android
+client does **not** have the same gap: `Size.touchTarget = 48.dp` exists in `theme/Spacing.kt`, cites
+WCAG 2.5.8 in its own comment, and is **applied in eight places** — `NoteColorSwatch` (as the hit area
+around a 26dp painted circle, which is this decision's own pattern), `NoteCard`, `ChecklistUI`,
+`EditorBottomSheet`, `ThemePicker` and `MainDrawerContent`. Nothing in the Compose UI sets a target
+below it. The original text said "the same treatment has not been applied there"; that was untrue.
 
 **Consequence to remember:** `.tap-target` must not be used where a 44px square would overlap a
 neighbour's. Measure the gap first — that is exactly why the swatches were left alone.
