@@ -167,3 +167,17 @@ Also visible on that screen: **"Manual (drag to reorder)"**. Android has manual 
 makes F18's web-side removal correct rather than a compromise.
 
 Remaining for Phase 3: the editor, sheets, navigation and TalkBack on this device.
+
+### Google sign-in: web verified working, Android diagnosed
+
+Reported failing. Web is **not** the problem: clicking "Continue with Google" reaches the real Google
+consent page for `ddxmubeaeeomureolvbu.supabase.co`. Evidence committed.
+
+Android uses Credential Manager with a hand-maintained `default_web_client_id` and no
+`google-services.json`. That API matches the app by package name plus signing-certificate SHA-1, and this
+project's release identity changed recently, so a stale registration is the leading explanation. The debug
+build now on the device has its own SHA-1, almost certainly unregistered. Both fingerprints are in the
+audit entry, with the console steps.
+
+The device was locked before the failing attempt could be made, so the failure itself is still
+unreproduced.
