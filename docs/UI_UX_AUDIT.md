@@ -482,6 +482,31 @@ of a platform limitation, and it is the sort of thing most products leave the us
 `.filter-chip` outright, which would give them the system's 44px height *visually*. That is a larger
 look change than this finding justifies on its own.
 
+### F20 — Bulk actions: audited, no defect — GUARDED, and an earlier suspicion resolved
+
+Measured with **three** notes and only two selected, which is the fixture a bulk-operation audit needs:
+a two-note list cannot show a bulk action touching the wrong notes.
+
+| Property | Result |
+|---|---|
+| Selection count | "2 selected" for two selected |
+| Bulk archive | both selected notes leave the notes view |
+| The unselected note | untouched — the assertion that matters |
+| Bulk trash | soft, the unselected note survives, and the trash view holds the selected ones |
+| The bar's toggle | reads "Select all" with 2 of 3 selected, "Deselect all" with 3 of 3 |
+
+**A question from an earlier round, resolved.** I had recorded that the bar showed both "Clear
+selection" and "Deselect all" and wondered whether they did the same thing. They do not: "Deselect all"
+is the *same control* as "Select all" with a state-dependent label —
+`allFilteredSelected ? 'Deselect all' : 'Select all'` — and the earlier reading came from a bar in the
+all-selected state. There was never a redundant pair, and the guard now pins the relabelling.
+
+**Also confirmed in passing:** the list came back as `KEEP three, BULK two, BULK one`, which is F18's
+`newest` default doing its job outside a test fixture.
+
+Guarded by `web/e2e/bulk-actions.spec.ts` — three tests on two browser projects, each leaving one note
+unselected and asserting it survives.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
