@@ -617,6 +617,50 @@ web dropped an option it could not honour, Android keeps the feature it can.
 **Still to do on this device:** the editor, sheets, navigation and TalkBack. This pass reached the first
 screen only.
 
+### F24 — Google sign-in fails on Android while it works on web — DIAGNOSED, needs a Google Cloud change
+
+Reported: "google sign-in isn't working". Reproduced and narrowed to one platform.
+
+**Web works.** Clicking "Continue with Google" navigates to
+`accounts.google.com/v3/signin/identifier…` and the real consent page for the Supabase project
+(`ddxmubeaeeomureolvbu.supabase.co`). The redirect is fine; whatever is failing is not the web client.
+Evidence: `docs/evidence/web-google-oauth-redirect.png`.
+
+**Android cannot be reproduced yet, and here is why the device matters.** The app now runs on the Pixel 7,
+but the phone was locked by the time the sign-in attempt could be made, and unlocking it needs the user's
+own PIN or fingerprint. That step is theirs to take, not something to work around.
+
+**What the configuration shows, and the most likely cause.**
+
+| Fact | Value |
+|---|---|
+| How Android signs in | Credential Manager (`GetGoogleIdOption` + `setServerClientId`) — the modern API, not the deprecated `GoogleSignIn` |
+| The server client id | hand-maintained in `androidApp/src/main/res/values/strings.xml` as `default_web_client_id`; **no `google-services.json` and no google-services plugin** |
+| Debug signing SHA-1 | `8E:C9:8D:E8:73:4A:9E:61:41:A8:76:10:A7:92:B9:E1:B5:CF:B2:03` |
+| Release signing SHA-1 | `19:EF:3A:C4:36:FE:82:F6:0B:BB:E2:09:C8:B8:21:FF:70:BD:6F:8E` |
+
+Credential Manager matches the app to an **Android OAuth client by package name plus signing-certificate
+SHA-1**. Because nothing in the repository records which fingerprints are registered, that can only be
+checked in the Google Cloud console. Two things make a mismatch the leading explanation: this project's
+**release signing identity changed recently** — the keystore above was generated during the v2.0.0 signing
+work — and the build now on the device is the **debug** one, whose SHA-1 is entirely different and is
+unlikely to have been registered at all.
+
+That fits the report exactly: web succeeds because the web client id is valid, while any build on this
+device fails because its fingerprint is not on the Android client.
+
+**The fix is a console change, not a code change**, and it is the user's to make:
+
+1. Google Cloud console → APIs & Services → Credentials → the Android OAuth client for
+   `com.aus.notelikeus`.
+2. Add both SHA-1s above — the debug one for local testing, the release one for Play.
+3. If Play App Signing is used, also add the **app signing key** certificate from Play Console, since that
+   is what end users' builds carry.
+
+**Not yet verified:** the failure itself on the device, and whether the app reports the failure clearly
+when it happens. A silent failure here would be its own finding, and can only be judged with the phone
+unlocked.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
