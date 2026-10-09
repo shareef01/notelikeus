@@ -530,9 +530,17 @@ signed-in session does not take that path, so its stored `manual` is honoured.
 | Is either available order selectable? | Yes, and the choice is written to storage |
 | Are stored preferences destructively rewritten? | For a **guest**, yes — by the same reset F10 records. For a signed-in session, no |
 
-**Not verified:** whether stored *note positions* are touched. Positions live in IndexedDB, which this
-probe did not read; the reset affects `filters` only, and `partialize` excludes notes, so the code says
-they are untouched — that is a source claim, not a measurement.
+**Now measured, closing the source-only gap.** A read-only IndexedDB probe across every database and
+object store found **no stored position data for web notes at all** — no `position`, no `sortKey`. So
+"positions survive a sort transition" is true for the plain reason that web notes have no positions to
+lose, which is also why F18's removal of `Manual order` costs a web user nothing but the label. The sorts
+themselves were exercised concurrently and behave: newest gives `three, two, one`, oldest gives
+`one, two, three`, and the stored preference tracks each change.
+
+**Still source-audited, not measured:** the **authenticated** session case. It needs a signed-in backend,
+and no local Supabase instance is running here, so the guest path is what was exercised. The code is the
+same store either way — `bootstrap.ts` calls `reset()` on the sign-out path — so the expectation is that a
+signed-in session keeps its stored value; that expectation is not a measurement and is labelled as such.
 
 **One instrument error worth recording.** The first version of this probe seeded `filter: 'notes'`, a
 value that does not exist in `NoteFilter` (`'active' | 'archived' | 'trashed'`), and the store correctly
@@ -540,59 +548,33 @@ rejected the whole object. The reading looked like a defect and was my seed. It 
 this audit that the measurement was wrong rather than the code, which is why every claim here names how
 it was checked.
 
-### F22 — Reminders: the permission boundary is verified; configuration under a granted permission is not
+### F22 — Reminders: the full journey is verified, the refusal path included — CLOSED
 
-Chasing what looked like a defect — an "In 1 hour" preset that did nothing when clicked — produced the
-clearest negative result of this audit.
+The journey spec that failed 6/6 at the preset click now passes **8/8 on both browser projects**, and the
+cause of the original failure was two things, neither of them the product:
 
-**It is not a defect.** `setReminderTimestamp` refuses to save a reminder without notification
-permission, with a comment saying why: *"a reminder saved without notification permission would
-silently never fire."* A Playwright context denies notifications by default, so the app was correctly
-refusing and my first probe never looked for the reason. The refusal is explained to the user rather
-than silent.
+1. `setReminderTimestamp` refuses to save a reminder without notification permission, with a comment
+   saying why. Correct behaviour; my probe never looked for the reason.
+2. **Headless Chromium cannot report a granted notification permission**, and my earlier note got this
+   wrong. Measured directly: `grantPermissions(['notifications'])` **succeeds** and
+   `navigator.permissions.query` reports `granted`, but `Notification.permission` still reads `denied` —
+   there is no notification backend — and no service worker is registered. The app reads
+   `Notification.permission`, so it refuses. The earlier claim that the permission "cannot be granted" was
+   imprecise: it can be granted, and the app cannot see that it was.
 
-**Verified in the browser, on both projects: the refusal path.** With notifications denied, clicking a
-preset saves nothing, the state line still reads "No reminder set", and the user is told notifications
-are needed. That is a boundary worth having a test for, and it is now `web/e2e/reminders.spec.ts`.
+**What is verified:** a preset sets a reminder; a different preset changes it; clearing removes it and its
+control; a custom date and time is accepted and round-trips; the value survives closing and reopening the
+sheet, reopening the note, and a full reload; and unstubbed, the app refuses without permission and says
+so. Both browser projects.
 
-**Unverified, and marked rather than claimed:** reminder *configuration* with permission granted. Headless
-Chromium cannot grant notifications at all, so `requestNotificationPermission()` returns false however the
-context is configured and nothing is ever saved. Those two tests are `test.fixme` — skipped and counted,
-never reported as passing. Running them needs a headed browser or a Chromium build with the permission
-grantable.
+**The stub, stated plainly:** the spec replaces `Notification.permission` and `requestPermission` with
+granted values, because the browser cannot supply them. Nothing else is simulated, and the unstubbed
+refusal path is asserted in the same file so the stub cannot hide a regression in the permission check.
 
-**Still unverified, unchanged from the close-out:** reminder *scheduling*, and reminder *delivery*. A UI
-test cannot show that a service worker fires later or that an operating-system notification appears; the
-second needs a browser that is closed or asleep. The app is honest with users about this — "Web reminders
-are best-effort. They can be delayed or missed if the browser is fully closed or inactive."
+**Not claimed:** scheduling (no test can show a service worker firing later — and the worker is not even
+registered in this build) and delivery (needs an OS notification surface and a browser that is closed or
+asleep).
 
-**Result of the run:** 2 passed, 4 skipped, 0 failed. The adjacent sort, filter-row and touch-target
-specs: 28 passed.
-
-### F23 — Compose: the two defect classes the web audit proved real are already handled — SOURCE-AUDITED, NO DEFECT
-
-Phase 3's source level, checked against the two classes of defect this audit actually found on web rather
-than against a general checklist.
-
-**Class 1 — controls below the minimum touch target (F6, F7, F19).** Not present. `Size.touchTarget =
-48.dp` lives in `theme/Spacing.kt` with a comment citing WCAG 2.5.8 and describing this decision's own
-pattern: *"A control may look smaller — the colour swatches paint 26dp inside a 48dp target — but nothing
-tappable may be smaller than this."* It is applied in eight places: `NoteColorSwatch` (the hit area around
-the 26dp circle), `NoteCard`, `ChecklistUI`, `EditorBottomSheet`, `ThemePicker`, `MainDrawerContent`.
-
-**Class 2 — affordances reachable only by hover (F11).** Not present. The Compose note card does read
-`isHovered`, but only to drive elevation and a 1.01 scale — decorative feedback, never the sole path to an
-action. Actions come from selection and long-press, which a touch device has.
-
-**What this is and is not.** This is a **source audit**: the tokens and modifiers were read, not rendered.
-The one thing that cannot be claimed from it is that any particular control *looks* right on a device —
-that needs an AVD and is blocked as recorded. The claim here is narrower and supportable: neither defect
-class exists in the Compose source, and the token that prevents the first is genuinely applied rather
-than merely defined.
-
-**A correction this produced.** `DECISIONS.md` D26 claimed the Android client had the same gap and that
-its treatment "has **not** been applied there". That was written from a web-side assumption and is
-untrue; D26 now carries the amendment and the evidence.
 
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
