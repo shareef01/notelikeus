@@ -661,6 +661,37 @@ device fails because its fingerprint is not on the Android client.
 when it happens. A silent failure here would be its own finding, and can only be judged with the phone
 unlocked.
 
+### F25 — Compose controls measure 42dp on a real device — measured, cause unresolved
+
+Phase 3's rendered audit reached the notes screen and the editor on the Pixel 7, measuring every
+`clickable="true"` node with `uiautomator`'s bounds at 3x density. Evidence:
+`docs/evidence/android-notes-screen.png`, `docs/evidence/android-editor.png`.
+
+| Screen | Clickable controls | At 42.0 x 42.0 dp |
+|---|---|---|
+| Notes | 7 | 3, plus three row controls 42.0dp tall |
+| Editor | 14 | 12 |
+
+**18 of 21 clickable controls report 42.0dp in at least one dimension.** One control measured 49.0dp.
+
+**What is and is not established.** 42dp is comfortably above WCAG 2.5.8's 24dp floor, so this is not a
+conformance failure. It is also below Material's 48dp minimum and Apple's 44pt, and below
+`Size.touchTarget` — whose own comment reads *"nothing tappable may be smaller than this"*. But the
+measurement may not be the touch target at all: Material 3's `IconButton`, which these controls use, draws
+at 40dp and is supposed to *pad* its hit area to 48dp, and `uiautomator` reports the semantics node's
+bounds. **Two candidate causes were checked and ruled out** — there is no literal `42.dp` anywhere in the
+Compose source, and `LocalMinimumInteractiveComponentSize` is never overridden. So whether the targets are
+genuinely 42dp or merely *drawn* at 42dp is unresolved, and that is the next thing to establish.
+
+**Why this is recorded rather than fixed.** If the hit areas are 48dp, there is no defect and a change
+would be churn. If they are 42dp, the fix is real but needs a Compose build-and-install loop to verify, and
+guessing between "change the token" and "change the controls" without knowing which is wrong is exactly the
+mistake F23 recorded. The measurement stands either way; the interpretation does not yet.
+
+**A process note.** This is what the earlier claim about Compose being clean was missing. Reading that the
+token is applied in eight places, and measuring 21 controls on two screens, are different kinds of
+evidence, and only the second can find a control the token never reached.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
