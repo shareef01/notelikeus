@@ -91,10 +91,16 @@ fine" is never the answer.
    effective target rather than the box, since `getBoundingClientRect` cannot see a pseudo-element.
 5. **Unit and static suites** — `npm run typecheck`, `npm run lint` (0 errors; the 76 warnings are
    pre-existing), `npm run test` (785).
-6. **The whole e2e suite**, not just the new specs — **140 passed, 1 skipped, 0 failed** as of the
-   final verification run. (132 at the close-out, 140 once the reminders journey landed.) This branch added eleven spec files; the pre-existing accessibility, dialog-a11y,
-   note-lifecycle, image-ingestion, backup-import, account-switch and save-failure specs all exercise
-   chrome these changes altered, which is why the full run matters more than the new files.
+6. **The whole e2e suite**, not just the new specs — **140 passed, 1 skipped, 0 failed**, re-run on
+   `d6460ac` so the figure describes the branch as it stands rather than an earlier tree. (132 at the
+   close-out, 140 once the reminders journey landed.) This branch added eleven spec files; the pre-existing
+   accessibility, dialog-a11y, note-lifecycle, image-ingestion, backup-import, account-switch and
+   save-failure specs all exercise chrome these changes altered, which is why the full run matters more than
+   the new files.
+
+   Alongside it on the same head: typecheck EXIT 0 with 0 errors, lint EXIT 0 with 76 warnings (the
+   pre-existing baseline) and 0 errors, unit 785/785, Kotlin 1322 with 0 failures. Every figure in this
+   checklist now comes from a run against the current tree.
 7. **Kotlin** — **1322 tests, 0 failures, 0 errors, 4 skipped** on a genuine re-run (`--rerun-tasks`, 74
    tasks executed). This branch contains one Compose edit, attempted and reverted, so the source is
    unchanged; the suites were re-run anyway because the objective's baseline step asks for it and "up to
