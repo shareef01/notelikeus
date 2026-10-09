@@ -453,6 +453,35 @@ that the default arrives as `Newest`. `SortOrder` still carries `'manual'` for s
 about existing data or positions changed.
 
 
+### F19 — Every control in the reminder flow was under 44px tall — FIXED
+
+Reminders are fully implemented on web — picker, scheduler, service worker, sync — and the flow reads
+well: the options sheet offers **"Set reminder"** with three presets ("In 1 hour", "Tomorrow 9:00",
+"Next week") plus an exact date/time input. Measured at 390px, the controls themselves were a problem:
+
+| Control | Before | After |
+|---|---|---|
+| "In 1 hour" | 71x**26** | 71x26 visual, **44px target** |
+| "Tomorrow 9:00" | 114x**26** | 114x26 visual, **44px target** |
+| "Next week" | 85x**26** | 85x26 visual, **44px target** |
+| Reminder date and time | 358x**38** | 358x38 visual, **44px target** |
+
+They cleared WCAG 2.5.8's 24px floor, so this was never a conformance failure — but these are the
+*most-tapped* controls in the flow, and presets exist precisely so a user can tap one and move on. 26px
+is also short of the 44px this system already sets on `.filter-chip`; they were written as
+`px-3 py-1 text-xs` rather than using the shared chip classes, which is where the drift came from.
+
+**Fix:** the shared `.tap-target-y` variant — a 44px target, the chip's own size unchanged. That
+variant exists for exactly this case (dense rows where a square target would swallow a neighbour).
+
+**Worth crediting rather than changing:** the section says *"Web reminders are best-effort. They can be
+delayed or missed if the browser is fully closed or inactive."* That is an unusually honest statement
+of a platform limitation, and it is the sort of thing most products leave the user to discover.
+
+**Not changed, and a design decision rather than a defect:** the presets could instead adopt
+`.filter-chip` outright, which would give them the system's 44px height *visually*. That is a larger
+look change than this finding justifies on its own.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
