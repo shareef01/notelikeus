@@ -576,6 +576,47 @@ registered in this build) and delivery (needs an OS notification surface and a b
 asleep).
 
 
+### F23 — Compose: source audit, then the same question on a real device — PARTLY CORRECTED
+
+**Source level, against the two defect classes this audit actually proved on web.**
+
+*Controls below the minimum target (F6, F7, F19).* `Size.touchTarget = 48.dp` exists in `theme/Spacing.kt`,
+cites WCAG 2.5.8, and its comment describes this decision's own pattern: *"A control may look smaller — the
+colour swatches paint 26dp inside a 48dp target — but nothing tappable may be smaller than this."* It is
+applied in eight places: `NoteColorSwatch`, `NoteCard`, `ChecklistUI`, `EditorBottomSheet`, `ThemePicker`,
+`MainDrawerContent`.
+
+*Affordances reachable only by hover (F11).* Not present. The card reads `isHovered`, but only for elevation
+and a 1.01 scale — decorative. Actions come from selection and long-press, which touch has.
+
+**Then a real device changed the picture.** A physical Pixel 7 (`panther`) was connected over USB, so
+Compose can now be rendered and *measured* rather than read. Evidence:
+`docs/evidence/android-notes-screen.png`.
+
+`uiautomator dump` gives real bounds, at 3x density. Of seven clickable controls on the notes screen:
+
+| Clickable control | Measured | Token |
+|---|---|---|
+| Search field and the two wide row buttons | 42.0dp tall | 48dp |
+| Three square controls | 42.0 x 42.0 dp | 48dp |
+| One control | 49.0 x 49.0 dp | 48dp |
+
+**Six of seven are 42dp in at least one dimension**, under `Size.touchTarget` — whose own comment says
+nothing tappable may be smaller. This is not a WCAG failure: 42dp clears 2.5.8's 24dp floor comfortably. It
+is a gap between the token and the code.
+
+**The earlier version of this entry claimed Compose was clean, and that claim is withdrawn.** It rested on
+the token being applied in eight places, which proves the token is *used* — not that nothing falls below it.
+Checking the first is not checking the second, and this entry conflated them until a device could be
+measured.
+
+**A confirmation from the same screen.** It offers **"Manual (drag to reorder)"**, so the Android client
+does have manual reordering. That is what makes F18's web-side removal correct rather than a compromise:
+web dropped an option it could not honour, Android keeps the feature it can.
+
+**Still to do on this device:** the editor, sheets, navigation and TalkBack. This pass reached the first
+screen only.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
