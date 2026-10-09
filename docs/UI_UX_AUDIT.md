@@ -713,9 +713,14 @@ reader has something to announce for each. It is **not** a TalkBack run: nobody 
 TalkBack enabled, so focus order, announcement quality and gesture navigation remain unverified. Turning
 TalkBack on and using it needs a human, or at least far more device-driving than a tree dump.
 
-**Still open on this device:** the navigation drawer — three attempts to open it (a swipe, a label search,
-and a tap on the 42dp control at the top-left) have not confirmed what it contains, and the drawer's own
-contents have therefore never been measured.
+**The navigation drawer, reached and measured.** A tap on the 42dp control at the top-left opens it; my
+earlier attempts simply did not get there. It contains Notes, Archive and Trash; a **VIEWS** group with
+Reminders, Unfinished and Unlabelled; and a Manage group with Edit labels and Settings — plus a "Close
+navigation menu" control, and every entry named. Its clickable controls measure at or above the 48dp token.
+Evidence: `docs/evidence/android-navigation.png`.
+
+Its contents also answer something the web side raised: **"Manual (drag to reorder)" and the smart views
+exist on Android**, so the two clients differ by design rather than by omission.
 
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
