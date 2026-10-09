@@ -91,12 +91,50 @@ fine" is never the answer.
    effective target rather than the box, since `getBoundingClientRect` cannot see a pseudo-element.
 5. **Unit and static suites** — `npm run typecheck`, `npm run lint` (0 errors; the 76 warnings are
    pre-existing), `npm run test` (785).
-6. **The whole e2e suite**, not just the new specs — 78 passed, 1 skipped as of `df05230`. The
-   accessibility, dialog-a11y, note-lifecycle, image-ingestion, backup-import, account-switch and
-   save-failure specs all touch the chrome these changes altered.
+6. **The whole e2e suite**, not just the new specs — **132 passed, 1 skipped** as of the close-out
+   run. This branch added eleven spec files; the pre-existing accessibility, dialog-a11y,
+   note-lifecycle, image-ingestion, backup-import, account-switch and save-failure specs all exercise
+   chrome these changes altered, which is why the full run matters more than the new files.
 7. **Kotlin** — untouched this pass; 1322 tests across `composeApp` unit/desktop and `androidApp`
    unit were green at baseline and nothing in this branch reaches them.
 
 ## Open, in the order I would take them
 
 4. Android, on a machine with an AVD or from CI's instrumented lanes.
+
+## Close-out
+
+Every journey the mission named has been walked, and the branch is at its verification ceiling for web.
+
+### Complete and verified
+
+| Area | Evidence |
+|---|---|
+| Journeys A–I | entry, creation, checklists, formatting, search, selection-mode actions, labels, attachments, bulk actions — each with its own spec, all passing on desktop and a Pixel-5 emulation |
+| Defects found and fixed | **eight** user-facing: F1, F2, F5, F6, F7, F11, F15, F18, F19 — six of them invisible on a desktop browser |
+| Phase 1 foundation | `.tap-target` and `.tap-target-y` as shared interaction states, recorded as `DECISIONS.md` D26 |
+| Phase 4 | full e2e **132 passed, 1 skipped**; palettes verified in dark, AMOLED and light (F8); offline and failed-save covered by the pre-existing `save-failure` spec, which passes |
+| Deliverables | `UI_UX_AUDIT.md` (F1–F20), this log, `DECISIONS.md` D26, regression checklist, before/after screenshots |
+
+### Partial, with the reason
+
+- **Reminder delivery** — the scheduler, service worker and permission handling cannot be exercised
+  here: it needs a browser that is closed or asleep. The UI around them is audited and fixed (F19).
+- **F18's alternative** — reordering on web. Your decision was to stop advertising `Manual order`
+  instead; the reorder plumbing in `NoteStaggeredGrid` is untouched and remains available if that
+  changes.
+
+### Blocked
+
+- **Android.** This machine has the emulator binary and `/dev/kvm` but **no AVD and no system images**,
+  and pulling one is outside this task's scope. No Android claim is made anywhere in these documents.
+  The branch touches nothing outside `web/` and `docs/` — verified by `git diff --name-only` — so
+  `composeApp`, `androidApp`, `workers/` and `supabase/` are provably unaffected, which is a weaker
+  statement than "Android works" and is meant to be.
+
+### Intentionally unchanged
+
+Schemas, sync contracts, encryption, backup formats and stored data. The eleven findings already
+implemented in `AUDIT_UI_UX_2026.md` were read and not redone. D1 (tonal surfaces, no accent strip),
+D14 (headings describe real orders) and the AMOLED and legacy-preference behaviours are preserved rather
+than altered.
