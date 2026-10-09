@@ -144,7 +144,10 @@ export function EditorOptionsSheet({
                 key={preset.id}
                 type="button"
                 onClick={() => onReminderChange(preset.at)}
-                className="rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-brand-primary/5"
+                // tap-target-y: these sit at 26px because the row is dense, but they are the fastest
+                  // thing in the reminder flow to reach for, so the target is 44px tall while the
+                  // chip keeps its size.
+                  className="tap-target tap-target-y rounded-full border border-brand-outline px-3 py-1 text-xs font-medium text-brand-secondary hover:bg-brand-primary/5"
               >
                 {preset.label}
               </button>
@@ -156,7 +159,7 @@ export function EditorOptionsSheet({
             value={formatReminderInputValue(reminderTimestamp)}
             onChange={(event) => handleReminderInput(event.target.value)}
             aria-label="Reminder date and time"
-            className="mt-4 w-full rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
+            className="tap-target tap-target-y mt-4 w-full rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
           />
           {reminderTimestamp != null ? (
             <button
