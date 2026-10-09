@@ -226,3 +226,17 @@ secret.
 Three claims of mine corrected in the process: the stale-SHA-1 hypothesis (wrong layer), "the failure is
 silent" (an 8-second wait missed a message that takes ~20), and "web works" (only the redirect is verified;
 no sign-in has been completed on either platform, and web shares the same Supabase project).
+
+### Android accessibility naming — measured clean, with the trap recorded
+
+Swept the app's accessibility tree on the device: all six clickables on the notes screen resolve to a name,
+via their own semantics or a descendant's. `uiautomator`'s flat dump shows empty `content-desc` on each
+clickable, which reads as six unnamed controls; Compose merges semantics into children, so only a
+tree-aware check sees the labels.
+
+An intermediate version of the sweep reported three controls all named "Change view mode", which would be a
+real defect. Checking each node's own `content-desc` showed one node with that name and the rest with their
+own — the duplication was my aggregation. Recorded so the next attempt does not repeat it.
+
+Not a TalkBack run: nobody has driven the app with TalkBack enabled, so focus order and announcement quality
+remain unverified.

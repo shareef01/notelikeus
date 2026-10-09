@@ -691,6 +691,32 @@ tapping.
 
 **Still to walk on this device:** the navigation drawer (a swipe failed to open it) and TalkBack.
 
+### F26 — Android accessibility naming: no defect, and a measurement trap worth recording — MEASURED
+
+Phase 3's TalkBack-relevant question, answered by sweeping the app's own accessibility tree on the Pixel 7:
+**do interactive controls have accessible names?**
+
+**Answer: yes.** On the notes screen, all six clickables resolve to a name — either their own or, in every
+case here, a descendant's. `uiautomator`'s flat dump shows each clickable with an *empty* `content-desc` and
+`text`, which would read as six unnamed controls; Compose merges semantics, so the label lives on a child
+node and only a tree-aware check sees it.
+
+**A false alarm this produced, recorded because the trap is easy to fall into.** An intermediate version of
+the sweep inherited the first descendant label it encountered, and reported **three different controls all
+named "Change view mode"** — which would have been a genuine screen-reader defect. Checking each node's own
+`content-desc` showed exactly **one** node claiming that name, non-clickable, with the others carrying their
+own labels. The duplication was my aggregation, not the app. Had I written it up before checking, the audit
+would now contain a defect that does not exist.
+
+**What this does and does not establish.** It establishes that the controls are named, and that a screen
+reader has something to announce for each. It is **not** a TalkBack run: nobody has driven the app with
+TalkBack enabled, so focus order, announcement quality and gesture navigation remain unverified. Turning
+TalkBack on and using it needs a human, or at least far more device-driving than a tree dump.
+
+**Still open on this device:** the navigation drawer — three attempts to open it (a swipe, a label search,
+and a tap on the 42dp control at the top-left) have not confirmed what it contains, and the drawer's own
+contents have therefore never been measured.
+
 ### F4 — Android: not rendered, by tooling limits — REQUIRES VALIDATION
 
 The Compose findings the brief anticipates (notes home spacing, long-press selection, filter sheets,
