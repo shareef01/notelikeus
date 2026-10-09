@@ -347,3 +347,22 @@ is Phase Three, and this table does not pre-empt it.
 The decisive new result this round is F15's row: the web fix merged a registry the web invented; Compose
 never had the split, so the defect class cannot occur there. Parity is therefore not "the web fix should be
 ported" but "the web fix repaired a web-only architecture".
+
+### Release artifacts — Android, round 1
+
+Signed release build succeeded: `:androidApp:assembleRelease :androidApp:bundleRelease`, BUILD SUCCESSFUL in
+4m 5s.
+
+| Artifact | Path | Size |
+|---|---|---|
+| Signed APK | `androidApp/build/outputs/apk/release/androidApp-release.apk` | 13,767,840 bytes |
+| Signed AAB | `androidApp/build/outputs/bundle/release/androidApp-release.aab` | 14,477,156 bytes |
+
+Installed on the Pixel 7 and confirmed as the release build: `versionCode=6`, `versionName=2.0.0`, and
+`DEBUGGABLE` flags = 0. The uninstall of the previous build reported `DELETE_FAILED_INTERNAL_ERROR`, yet the
+install succeeded, which is why the confirmation came from the package dump rather than from the install
+message.
+
+**Runtime smoke: blocked.** The device is at its lock screen; the app is the focused window, but the screen
+cannot be driven without the user's own PIN or fingerprint. This is the same blocker that has interrupted
+device work before, and it is the user's action to take, not one to work around.
