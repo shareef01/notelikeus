@@ -1,6 +1,6 @@
 [versions]
 agp = "9.4.1"
-coreKtx = "1.19.0"
+coreKtx = "1.19.1"
 coreSplashScreen = "1.2.0"
 junit = "4.13.2"
 # Instrumented tests only (composeApp androidInstrumentedTest). The quarantine path in
@@ -44,7 +44,7 @@ sqlite = "2.7.0"
 okio = "3.18.2"
 jna = "5.19.1"
 appcompat = "1.8.0"
-fragment = "1.9.0"
+fragment = "1.9.1"
 credentials = "1.5.0"
 googleid = "1.2.0"
 playServicesBase = "18.7.2"
