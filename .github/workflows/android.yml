@@ -52,7 +52,10 @@ jobs:
 
       - name: Point Gradle at the provisioned JDK 21
         shell: bash
-        run: echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
+        # Appended, not assigned: this writes the variable for every later step, and assigning it threw
+        # away the workflow-level -Xmx4g, so the jobs ran on gradle.properties' 2 GB heap and
+        # PackageAndroidArtifact could run out of memory despite the override above.
+        run: echo "GRADLE_OPTS=${GRADLE_OPTS} -Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
 
       - name: Cache Gradle
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -258,7 +261,10 @@ jobs:
 
       - name: Point Gradle at the provisioned JDK 21
         shell: bash
-        run: echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
+        # Appended, not assigned: this writes the variable for every later step, and assigning it threw
+        # away the workflow-level -Xmx4g, so the jobs ran on gradle.properties' 2 GB heap and
+        # PackageAndroidArtifact could run out of memory despite the override above.
+        run: echo "GRADLE_OPTS=${GRADLE_OPTS} -Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
 
       - name: Cache Gradle
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
