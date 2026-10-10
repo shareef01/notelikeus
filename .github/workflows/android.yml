@@ -75,11 +75,30 @@ jobs:
       - name: Check for Kotlin declarations nothing calls
         run: node scripts/ops/unreferenced-kotlin.mjs
 
-      # Kotlin static analysis, matching the oxlint pass the web and Worker packages run.
-      # Existing findings live in config/detekt/baseline-*.xml, so a failure here is always
-      # something the change under test introduced.
-      - name: Run detekt
-        run: ./gradlew detekt --stacktrace
+      # One Gradle invocation for everything that needs the compiled project, instead of five. Each
+      # separate call re-configures the build and re-resolves its inputs; one call does that once and
+      # lets Gradle schedule the independent tasks together. `--continue` keeps going after a failure,
+      # so one red task does not hide the others — a failed run reports every problem at once.
+      #
+      #  - detekt: Kotlin static analysis, matching the oxlint pass the web and Worker packages run.
+      #    Existing findings live in config/detekt/baseline-*.xml, so a failure here is always
+      #    something the change under test introduced.
+      #  - :composeApp / :androidApp unit tests. :androidApp has its own; leaving them out of CI let
+      #    them drift until they stopped compiling entirely.
+      #  - compile*AndroidTestSources: no other task compiles androidTest, so the instrumented suite
+      #    silently drifted out of sync with the composables it tests and stopped compiling. Compiling
+      #    it here catches that without needing an emulator.
+      #  - lintDebug and assembleDebug.
+      - name: Detekt, unit tests, instrumented-test compile, lint and debug APK
+        run: >
+          ./gradlew --continue --stacktrace
+          detekt
+          :composeApp:testDebugUnitTest
+          :androidApp:testDebugUnitTest
+          :composeApp:compileDebugAndroidTestSources
+          :androidApp:compileDebugAndroidTestSources
+          :androidApp:lintDebug
+          :androidApp:assembleDebug
 
       - name: Upload detekt reports
         if: always()
@@ -89,28 +108,6 @@ jobs:
           path: '**/build/reports/detekt/*.html'
           if-no-files-found: ignore
           retention-days: 7
-
-      - name: Run unit tests
-        run: ./gradlew :composeApp:testDebugUnitTest --stacktrace
-
-      # :androidApp has its own unit tests. Leaving them out of CI let them drift until they
-      # stopped compiling entirely — the same failure mode as the instrumented suite below.
-      - name: Run androidApp unit tests
-        run: ./gradlew :androidApp:testDebugUnitTest --stacktrace
-
-      # No task below compiles androidTest, so the instrumented suite silently
-      # drifted out of sync with the composables it tests and stopped compiling.
-      # Compiling it here catches that without needing an emulator.
-      - name: Compile instrumented tests
-        run: >
-          ./gradlew :composeApp:compileDebugAndroidTestSources
-          :androidApp:compileDebugAndroidTestSources --stacktrace
-
-      - name: Run Android lint
-        run: ./gradlew :androidApp:lintDebug --stacktrace
-
-      - name: Build debug APK
-        run: ./gradlew :androidApp:assembleDebug --stacktrace
 
       # Release signing material, materialized from GitHub secrets. Gated the same way as the
       # release artifacts: a pull request or branch build never reaches this step, so production
@@ -219,7 +216,10 @@ jobs:
   # the rest of CI, and keeping it separate means a boot failure does not mask a compile failure.
   instrumented:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # A healthy leg finishes in about 7 minutes. The ceiling is well above that but far below the old
+    # 45: an emulator that hangs at boot or mid-suite otherwise holds the whole workflow for most of an
+    # hour before it is reported as failed.
+    timeout-minutes: 20
 
     # Two API levels, because the suite's whole subject is version-sensitive. The one test here,
     # PlaintextDatabaseMigratorTest, drives SQLCipher and Room against a real filesystem -- and
