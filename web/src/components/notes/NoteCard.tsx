@@ -20,6 +20,7 @@ import { noteSurfaceStyle } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { argbToCssAlpha } from '@/theme/colors';
 import { useId, memo, type PointerEventHandler, type ReactNode } from 'react';
+import { NoteCardThumbnail } from '@/components/notes/NoteCardThumbnail';
 
 export interface NoteReorderHandleProps {
   onPointerDown: PointerEventHandler<HTMLButtonElement>;
@@ -88,6 +89,10 @@ function NoteCardImpl({
   const hasReminder = Boolean(note.reminderTimestamp);
   const attachments = note.attachments ?? [];
   const showAttachments = attachments.length > 0;
+  // The first picture stands for the note on its card; the status cluster still carries the count.
+  const thumbnailAttachment = attachments.find(
+    (attachment) => !attachment.mimeType || attachment.mimeType.startsWith('image/'),
+  );
   const showStatusCluster = !isSelected && (note.isPinned || hasReminder || showAttachments);
   const checklist = note.checklist ?? [];
   const labels = note.labels ?? [];
@@ -257,6 +262,9 @@ function NoteCardImpl({
       }`}>
       {isList ? (
         <div className="flex min-w-0 flex-1 items-start gap-3 px-3.5 py-3.5 sm:gap-4 sm:px-4 sm:py-4">
+          {thumbnailAttachment ? (
+            <NoteCardThumbnail noteId={note.id} attachment={thumbnailAttachment} layout="square" />
+          ) : null}
           <div className="min-w-0 flex-1">
             {title ? (
               <h2 id={titleId} className="line-clamp-2 break-words text-note-title tracking-[-0.02em] sm:line-clamp-2">
@@ -288,6 +296,14 @@ function NoteCardImpl({
         </div>
       ) : (
         <>
+          {thumbnailAttachment ? (
+            <NoteCardThumbnail
+              noteId={note.id}
+              attachment={thumbnailAttachment}
+              layout="banner"
+              bleedClassName={isDense ? '-mx-4 -mt-4 mb-2.5' : '-mx-5 -mt-5 mb-3'}
+            />
+          ) : null}
           <div className="flex items-start gap-2">
             {title ? (
               <h2
