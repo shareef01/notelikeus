@@ -12,6 +12,7 @@ import com.aus.notelikeus.data.sync.DatasetEpochAuthority
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.ScheduledWorkOrigin
 import com.aus.notelikeus.data.sync.ScheduledWorkOutcome
+import com.aus.notelikeus.util.AppLog
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -53,6 +54,10 @@ class SyncWorker(
             epochAuthority = epochAuthority,
             currentUid = { sessionManager.getCurrentAccount().userId },
         ).dispatch(payload)
+
+        // `success()` below covers a refused stale origin as well as an applied write, and nothing else
+        // records which one this was.
+        AppLog.warn("SyncWorker", "outcome=$outcome attempt=$runAttemptCount")
 
         return when (outcome) {
             // A refusal reports success on purpose: the command's dataset is gone, and asking
