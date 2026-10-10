@@ -113,7 +113,7 @@ class FakeNoteDao : NoteDao {
     override fun getActiveNoteCount(): Flow<Int> = MutableStateFlow(notes.size)
     override suspend fun getNotesWithActiveReminders(now: Long): List<NoteWithLabels> = emptyList()
     override suspend fun getNotesWithMissedReminders(now: Long): List<NoteWithLabels> = emptyList()
-    override suspend fun clearReminderTimestamp(noteId: Long) {}
+    override suspend fun clearReminderTimestamp(noteId: Long, timestamp: Long) {}
 }
 
 class FakeLabelDao : LabelDao {
