@@ -9,6 +9,7 @@ import com.aus.notelikeus.data.remote.AttachmentRemoteContext
 import com.aus.notelikeus.data.remote.AttachmentRemoteMetadata
 import com.aus.notelikeus.data.remote.NoopAttachmentBlobTransport
 import com.aus.notelikeus.data.remote.OperationRemoteIdentity
+import com.aus.notelikeus.data.remote.SupabaseTransportException
 import com.aus.notelikeus.data.sync.LocalCommitGate
 import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.Note
@@ -329,15 +330,30 @@ class AttachmentSyncService(
         attachment: Attachment,
         bytes: ByteArray,
         mimeType: String,
-    ): AttachmentOutcome = when (val uploaded = uploadAttachment(scope, attachment.id, bytes, mimeType)) {
-        is LocalCommitResult.Applied -> AttachmentOutcome.Kept(
-            attachment.copy(
-                storagePath = "$ATTACHMENT_R2_PREFIX${uploaded.value.objectKey}",
-                mimeType = uploaded.value.mimeType,
-                sizeBytes = uploaded.value.sizeBytes,
-            ),
-        )
-        LocalCommitResult.StaleGeneration -> AttachmentOutcome.Stale
+    ): AttachmentOutcome {
+        val uploaded = try {
+            uploadAttachment(scope, attachment.id, bytes, mimeType)
+        } catch (refused: SupabaseTransportException) {
+            // The Worker answers 403 until the server holds the note, and this pass runs *before* the
+            // note is pushed — so for a note the server has never seen, every upload is refused and,
+            // were the refusal to end the batch, the note itself would never be pushed. Keeping the
+            // reference as it is (still `pending:`/`file:`, bytes still local) lets the note go up
+            // without it; once the server has the note, [reconcileStagedAttachments] resumes the
+            // upload. Anything other than a refusal — a 5xx, a timeout — still fails the batch.
+            if (refused.statusCode != HTTP_FORBIDDEN) throw refused
+            AppLog.warn(TAG, "Upload of attachment ${attachment.id} deferred until its note is on the server")
+            return AttachmentOutcome.Kept(attachment)
+        }
+        return when (uploaded) {
+            is LocalCommitResult.Applied -> AttachmentOutcome.Kept(
+                attachment.copy(
+                    storagePath = "$ATTACHMENT_R2_PREFIX${uploaded.value.objectKey}",
+                    mimeType = uploaded.value.mimeType,
+                    sizeBytes = uploaded.value.sizeBytes,
+                ),
+            )
+            LocalCommitResult.StaleGeneration -> AttachmentOutcome.Stale
+        }
     }
 
     /**
@@ -974,5 +990,6 @@ class AttachmentSyncService(
 
     private companion object {
         const val TAG = "AttachmentSync"
+        const val HTTP_FORBIDDEN = 403
     }
 }
