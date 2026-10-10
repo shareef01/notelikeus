@@ -159,6 +159,23 @@ class NoteCardThumbnailUiTest {
     }
 
     @Test
+    fun `after the cache is cleared the same picture is loaded again`() = runComposeUiTest {
+        var loads = 0
+        val loader = AttachmentThumbnailLoader { loads += 1; redPicture }
+
+        render(note(picture()), loader = loader, listStyle = false)
+        waitUntil(timeoutMillis = 5_000) { thumbnails().isNotEmpty() }
+        assertTrue(thumbnailShowsPicture())
+        assertEquals(1, loads)
+
+        clearAttachmentThumbnailCache() // sign-out, or another account signing in
+
+        render(note(picture()), loader = loader, listStyle = false)
+        waitUntil(timeoutMillis = 5_000) { loads == 2 }
+        assertEquals(2, loads, "a picture kept past a clear would be served to the next account")
+    }
+
+    @Test
     fun `a second card for the same picture does not load it again`() = runComposeUiTest {
         var loads = 0
         val loader = AttachmentThumbnailLoader { loads += 1; redPicture }
