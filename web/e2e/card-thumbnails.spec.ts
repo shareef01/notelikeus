@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { leaveEditor, typeNewNoteTitle } from './helpers/newNote';
 
 /**
  * A note's first picture shows on its card.
@@ -33,12 +34,6 @@ async function makeTallPng(page: Page): Promise<Buffer> {
   return Buffer.from(base64, 'base64');
 }
 
-async function goBackToList(page: Page): Promise<void> {
-  const back = page.getByRole('button', { name: /\bback\b/i }).first();
-  if (await back.count()) await back.click();
-  else await page.keyboard.press('Escape');
-}
-
 test('an image note shows its picture on the card, downscaled', async ({ browser }) => {
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -47,7 +42,7 @@ test('an image note shows its picture on the card, downscaled', async ({ browser
   await page.getByRole('button', { name: 'Continue without an account' }).click();
   await expect(page.getByRole('button', { name: 'New note' }).first()).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: 'New note', exact: true }).first().click();
-  await page.getByRole('textbox', { name: 'Note title' }).first().fill('Receipt photo');
+  await typeNewNoteTitle(page, 'Receipt photo');
 
   const png = await makeTallPng(page);
   await page
@@ -56,7 +51,7 @@ test('an image note shows its picture on the card, downscaled', async ({ browser
     .setInputFiles({ name: 'tall.png', mimeType: 'image/png', buffer: png });
   await page.waitForTimeout(2_000);
 
-  await goBackToList(page);
+  await leaveEditor(page);
 
   const thumbnail = page.locator('[data-testid="note-card-thumbnail"] img').first();
   await expect(thumbnail, 'the image note should show a thumbnail on its card').toBeVisible({ timeout: 15_000 });
@@ -86,9 +81,8 @@ test('a note without an image has no thumbnail', async ({ browser }) => {
   await page.getByRole('button', { name: 'Continue without an account' }).click();
   await expect(page.getByRole('button', { name: 'New note' }).first()).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: 'New note', exact: true }).first().click();
-  await page.getByRole('textbox', { name: 'Note title' }).first().fill('Just text');
-  await page.waitForTimeout(1_200);
-  await goBackToList(page);
+  await typeNewNoteTitle(page, 'Just text');
+  await leaveEditor(page);
 
   await expect(page.getByRole('button', { name: /Just text/ })).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('[data-testid="note-card-thumbnail"]')).toHaveCount(0);

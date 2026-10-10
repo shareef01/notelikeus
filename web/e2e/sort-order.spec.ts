@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { createNoteWithTitle } from './helpers/newNote';
 
 /**
  * The sort control used to cycle through its orders on every tap, so the destination was not
@@ -52,28 +53,9 @@ test('the order of the notes themselves follows the choice', async ({ page }) =>
   await enterNotes(page);
 
   // Two notes, written in a known order, so newest-first and oldest-first must disagree.
-  for (const title of ['Alpha first', 'Beta second']) {
-    // The empty state offers "New note"; once notes exist that button is gone and the action moves to
-    // the floating "Add note" button. Both are real user paths, and the test has to follow the same
-    // one a user would.
-    const emptyState = page.getByRole('button', { name: 'New note' }).first();
-    if (await emptyState.isVisible().catch(() => false)) {
-      await emptyState.click();
-    } else {
-      await page.getByRole('button', { name: 'Add note' }).first().click();
-    }
-    const titleField = page.getByRole('textbox', { name: 'Note title' }).first();
-    await expect(titleField).toBeVisible({ timeout: 15_000 });
-    await titleField.fill(title);
-    await page.waitForTimeout(900); // autosave
-    const back = page.getByRole('button', { name: /\bback\b/i }).first();
-    if (await back.count()) {
-      await back.click();
-    } else {
-      await page.keyboard.press('Escape');
-    }
-    await page.waitForTimeout(700);
-  }
+  // The helper follows the same path a user would: the empty state's "New note" first, then the
+  // floating "Add note" once notes exist.
+  for (const title of ['Alpha first', 'Beta second']) await createNoteWithTitle(page, title);
 
   // Which note sits higher on screen is the order, without depending on the card's markup — an
   // earlier version of this assertion matched the "LIBRARY" section heading instead of a note.
