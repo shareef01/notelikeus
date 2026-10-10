@@ -66,6 +66,7 @@ import androidx.room.useWriterConnection
 
 import com.aus.notelikeus.data.remote.AndroidPendingCloudWipeIntentStore
 import com.aus.notelikeus.data.sync.CloudWipeCoordinator
+import com.aus.notelikeus.ui.components.clearAttachmentThumbnailCache
 actual val platformModule = module {
     // Same singleton Glance uses (`Context.settingsDataStore`). A second
     // PreferenceDataStoreFactory on that file crashes App Functions / the widget with
@@ -276,6 +277,8 @@ actual val platformModule = module {
             clearDatasetScopedInMemoryState = {
                 get<AttachmentSyncService>().clearStagingCache()
                 get<DatasetScopedCloudRevisionState>().clearDatasetScopedState()
+                // Decoded copies of the departing library's pictures, for the same reason as the staged bytes.
+                clearAttachmentThumbnailCache()
             },
         )
     }

@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlin.concurrent.Volatile
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
@@ -60,46 +61,80 @@ expect fun decodeAttachmentThumbnail(bytes: ByteArray, maxWidthPx: Int, maxHeigh
 /**
  * Decoded thumbnails, newest-used last, bounded so scrolling a long library cannot grow without limit.
  *
- * Only the main thread touches this: the composable reads and writes it from its effect, and the
- * decode itself runs elsewhere and hands its result back.
+ * The map is only touched from the main thread — the composable reads and writes it from its effect,
+ * and the decode itself runs elsewhere and hands its result back. [clear] is the exception: it is
+ * called when the signed-in account changes, from wherever that happens, so it must not touch the map.
+ * It advances a generation instead. Every entry and every failure carries the generation it was made
+ * in, anything older reads as absent, and the main thread drops it on the next access. A load that
+ * began before a clear presents the generation it started under and is refused when it finishes, so
+ * one account's pictures can neither be served to the next nor slip back in after the clear.
  */
 internal class AttachmentThumbnailCache(private val maxEntries: Int = DefaultMaxEntries) {
-    private val entries = LinkedHashMap<String, ImageBitmap>()
-    private val failures = HashMap<String, TimeMark>()
+    private class Entry(val bitmap: ImageBitmap, val generation: Int)
+    private class Failure(val at: TimeMark, val generation: Int)
+
+    private val entries = LinkedHashMap<String, Entry>()
+    private val failures = HashMap<String, Failure>()
+
+    @Volatile
+    private var generation = 0
+
+    /** The generation to hand back to [put] and [markFailed] for a load that starts now. */
+    val currentGeneration: Int get() = generation
 
     fun get(key: String): ImageBitmap? {
-        val bitmap = entries.remove(key) ?: return null
-        entries[key] = bitmap // re-insert: now the most recently used
-        return bitmap
+        val entry = entries.remove(key) ?: return null
+        if (entry.generation != generation) return null
+        entries[key] = entry // re-insert: now the most recently used
+        return entry.bitmap
     }
 
-    fun put(key: String, bitmap: ImageBitmap) {
+    /**
+     * Stores [bitmap] unless the cache was cleared since the load that produced it began ([startedIn]).
+     * Returns whether it was kept.
+     */
+    fun put(key: String, bitmap: ImageBitmap, startedIn: Int = generation): Boolean {
+        if (startedIn != generation) return false
+        dropStale()
         entries.remove(key)
-        entries[key] = bitmap
+        entries[key] = Entry(bitmap, startedIn)
         failures.remove(key)
         while (entries.size > maxEntries) {
             entries.remove(entries.keys.first())
         }
+        return true
     }
 
     /** Remembers that [key] could not be loaded, so scrolling it in and out of view does not retry it each time. */
-    fun markFailed(key: String) {
-        failures[key] = TimeSource.Monotonic.markNow()
+    fun markFailed(key: String, startedIn: Int = generation) {
+        if (startedIn != generation) return
+        failures[key] = Failure(TimeSource.Monotonic.markNow(), startedIn)
     }
 
     fun recentlyFailed(key: String): Boolean {
-        val mark = failures[key] ?: return false
-        if (mark.elapsedNow() < FailureMemory) return true
-        failures.remove(key)
-        return false
+        val failure = failures[key] ?: return false
+        if (failure.generation != generation || failure.at.elapsedNow() >= FailureMemory) {
+            failures.remove(key)
+            return false
+        }
+        return true
     }
 
+    /** Safe from any thread. Everything stored so far stops being served, and is released on the next access. */
     fun clear() {
-        entries.clear()
-        failures.clear()
+        generation += 1
     }
 
-    val size: Int get() = entries.size
+    val size: Int get() = entries.values.count { it.generation == generation }
+
+    private fun dropStale() {
+        if (entries.values.any { it.generation != generation }) {
+            entries.entries.removeAll { it.value.generation != generation }
+        }
+        if (failures.values.any { it.generation != generation }) {
+            failures.entries.removeAll { it.value.generation != generation }
+        }
+    }
 
     companion object {
         /** 48 x 480 x 360 x 4 bytes is roughly 33 MB at the very most; typical cards are a fraction of that. */
@@ -109,6 +144,13 @@ internal class AttachmentThumbnailCache(private val maxEntries: Int = DefaultMax
 }
 
 internal val SharedThumbnailCache = AttachmentThumbnailCache()
+
+/**
+ * Forgets every decoded thumbnail. Called when the signed-in account changes: thumbnails are decoded
+ * copies of a library's pictures, and one account's must not stay reachable for the next. Safe to call
+ * from any thread.
+ */
+fun clearAttachmentThumbnailCache() = SharedThumbnailCache.clear()
 
 /** Loads at most this many pictures at once, so a screen of image notes does not open dozens of downloads. */
 private val LoadSlots = Semaphore(permits = 3)
@@ -131,6 +173,7 @@ fun NoteCardThumbnail(attachment: Attachment, modifier: Modifier = Modifier) {
 
     LaunchedEffect(key, loader) {
         if (bitmap != null || failed) return@LaunchedEffect
+        val startedIn = SharedThumbnailCache.currentGeneration
         val decoded = LoadSlots.withPermit {
             val bytes = loader.load(attachment)
             bytes?.let {
@@ -140,12 +183,13 @@ fun NoteCardThumbnail(attachment: Attachment, modifier: Modifier = Modifier) {
             }
         }
         if (decoded == null) {
-            SharedThumbnailCache.markFailed(key)
+            SharedThumbnailCache.markFailed(key, startedIn)
             failed = true
-        } else {
-            SharedThumbnailCache.put(key, decoded)
+        } else if (SharedThumbnailCache.put(key, decoded, startedIn)) {
             bitmap = decoded
         }
+        // Otherwise the account's data was cleared while this loaded: the picture is neither shown nor
+        // kept, because it belongs to a library that is no longer the one signed in.
     }
 
     if (failed) return
