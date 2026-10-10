@@ -961,3 +961,31 @@ corrected the same day, before Dependabot proposed it.)
 **Cost to reverse:** low to remove, high to satisfy. Deleting the two entries is a one-line change each; the
 real cost is the toolchain move they wait for. Both come out when Kotlin and Compose Multiplatform move off
 2.1/1.8.x, which is the same trigger as D18's lifecycle entry and the Koin one.
+
+---
+
+## D28 — `navigation-compose` stays on 2.9.x, because 2.10 moves the whole desktop Compose stack, skiko included.
+
+**Decided:** Dependabot's #298 (`navigation-compose` 2.9.0-beta03 to 2.10.0-rc01) is not taken, and
+`org.jetbrains.androidx.navigation:*` **>= 2.10** is an `ignore` entry in `.github/dependabot.yml`. Patches
+on the 2.9.x line still come through.
+
+**Why:** `libs.versions.toml` already says the Compose-related versions "must stay on the same Compose
+Multiplatform line… bump together or not at all", and `dependabot.yml` already holds `lifecycle` >= 2.10
+for the same reason. Navigation 2.10 depends on that lifecycle line. Resolving `desktopRuntimeClasspath`
+side by side on 2026-10-10, as D18 prescribes:
+
+| desktop classpath | navigation 2.9.0-beta03 (`main`) | navigation 2.10.0-rc01 |
+|---|---|---|
+| `lifecycle-*-compose` | 2.9.6 | **2.11.0** |
+| Compose `ui`, `foundation`, `animation`, `runtime` | 1.8.2 (runtime 1.9.3) | **1.11.0** |
+| `skiko-awt` | 0.9.4.2 | **0.144.6** |
+| `material3` | 1.8.2 | 1.8.2 |
+
+The skiko row is the one that matters. The catalog records that a skiko which does not match the CMP plugin's
+native binary kills the packaged desktop app at startup with `UnsatisfiedLinkError(RenderNodeContext_nMake)`.
+It is also a release candidate, not a stable release. This was verified by resolving the classpath; I did not
+run the packaged desktop app.
+
+**Cost to reverse:** low to remove, high to satisfy: the same toolchain move as D18, D27 and the Koin hold.
+It comes out with them when Compose Multiplatform moves off 1.8.x.
