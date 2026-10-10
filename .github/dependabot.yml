@@ -91,3 +91,18 @@ updates:
       # REMOVE THIS ENTRY with the lifecycle and Koin ones, when Compose Multiplatform moves off 1.8.x.
       - dependency-name: "org.jetbrains.compose.material3.adaptive:*"
         versions: [">= 1.2"]
+
+      # See docs/DECISIONS.md, D28. navigation-compose 2.10 depends on the lifecycle 2.10+ line held
+      # above, and through it moves the whole desktop Compose stack. Resolving desktopRuntimeClasspath
+      # on 2026-10-10 with 2.10.0-rc01 against 2.9.0-beta03:
+      #   lifecycle  2.9.6   -> 2.11.0
+      #   compose ui / foundation / animation / runtime  1.8.2 -> 1.11.0
+      #   skiko      0.9.4.2 -> 0.144.6
+      # libs.versions.toml records what a skiko that does not match the CMP plugin does: the packaged
+      # desktop app dies at startup with UnsatisfiedLinkError(RenderNodeContext_nMake). Patches on the
+      # 2.9.x line still come through; only 2.10+ is held.
+      #
+      # REMOVE THIS ENTRY with the lifecycle, Koin and adaptive ones, when Compose Multiplatform moves
+      # off 1.8.x.
+      - dependency-name: "org.jetbrains.androidx.navigation:*"
+        versions: [">= 2.10"]
