@@ -13,6 +13,7 @@ import { useTombstoneStore } from '@/store/tombstoneStore';
 import { useUiStore } from '@/store/uiStore';
 import { clearGuestAdoptionIntent } from '@/lib/local/guestAdoptionIntent';
 import { clearPendingAttachmentStore } from '@/lib/attachments/pendingAttachmentStore';
+import { clearAttachmentThumbnailCache } from '@/lib/attachments/attachmentThumbnailCache';
 
 export type BootFailureCode = 'storage' | 'supabase-config' | 'unknown';
 
@@ -175,6 +176,8 @@ export function clearLocalUserData(): void {
   // still covering it and swallowing taps.
   useUiStore.getState().setDrawerOpen(false);
   clearPendingAttachmentStore();
+  // Card thumbnails are decoded copies of the account's pictures; they go with the rest of its data.
+  clearAttachmentThumbnailCache();
   forgetSignedIn();
   for (const key of USER_DATA_STORAGE_KEYS) {
     try {
