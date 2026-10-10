@@ -141,6 +141,7 @@
     <string name="pinned_short">Pinned</string>
     <string name="filters_active">Filters on</string>
     <string name="cd_reminder_set">Reminder set</string>
+    <string name="cd_has_image">Has image</string>
     <string name="sort_newest">Newest first</string>
     <string name="sort_oldest">Oldest first</string>
     <string name="sorted_by">Sorted by %1$s</string>
