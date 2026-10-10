@@ -95,15 +95,15 @@ private fun Note.toNoteWithLabels(): NoteWithLabels =
     }
 
     /**
-     * Without the upload the clear was local-only: the cloud still held the reminder, a note with
-     * no pending change loses to the cloud on the next pull, and the caught-up reminder came back
-     * and fired again at every later launch.
+     * The clear has to be a newer revision than the cloud's, or the sync engine's tie-break (cloud
+     * wins) puts the reminder straight back, and it has to be uploaded or the cloud never hears of
+     * it. Both were missing at different times: first the upload, then the stamp.
      */
     @Test
-    fun `clearReminderTimestamp clears locally and queues an upload so the cloud copy cannot restore it`() = runTest {
+    fun `clearReminderTimestamp stamps the note as edited and queues an upload so the clear survives sync`() = runTest {
         repository.clearReminderTimestamp(7L)
 
-        coVerify(exactly = 1) { noteDao.clearReminderTimestamp(7L) }
+        coVerify(exactly = 1) { noteDao.clearReminderTimestamp(7L, more(0L)) }
         coVerify(exactly = 1) { syncCoordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 7L) }
     }
 
