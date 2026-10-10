@@ -296,6 +296,7 @@ fun NoteCard(
     val selectedLabel = stringResource(Res.string.cd_selected)
     val pinnedLabel = stringResource(Res.string.pinned_short)
     val reminderLabel = stringResource(Res.string.cd_reminder_set)
+    val hasImageLabel = stringResource(Res.string.cd_has_image)
     val untitledLabel = stringResource(Res.string.untitled)
     val noteDescription = when {
         note.title.isNotBlank() -> note.title
@@ -311,6 +312,12 @@ fun NoteCard(
         if (note.reminderTimestamp != null) {
             append(", ")
             append(reminderLabel)
+        }
+        // The picture on the card is decorative, so this is how a screen reader learns the note has one
+        // (the web card says the same).
+        if (note.attachments.isNotEmpty()) {
+            append(", ")
+            append(hasImageLabel)
         }
         if (isSelected) {
             append(", ")
