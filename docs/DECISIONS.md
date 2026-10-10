@@ -912,7 +912,7 @@ neighbour's. Measure the gap first — that is exactly why the swatches were lef
 **Decided:** Two Dependabot proposals are held, each for a reason that was reproduced, not assumed:
 
 - **`googleid` >= 1.2.1** (Dependabot's #274).
-- **`org.jetbrains.compose.material3.adaptive:*` >= 1.3** (Dependabot's #282). **1.2.0 is not held.**
+- **`org.jetbrains.compose.material3.adaptive:*` >= 1.2** (Dependabot's #282, which asked for 1.3.0).
 
 Both are `ignore` entries in `.github/dependabot.yml` with the reason beside them, so the proposals stop
 returning every week to be re-diagnosed from a red check.
@@ -943,8 +943,20 @@ which is the same signature recorded for the Koin 4.2 hold: the newer library de
 than the Compose Multiplatform 1.8.x this app is built on, and the two disagree at runtime. Verified on
 2026-10-10 by bumping it and running `:composeApp:desktopTest`.
 
-*`composeAdaptive` 1.2.0 is fine.* Same experiment: it builds, and all 742 desktop tests pass. The hold
-starts at 1.3 so that 1.2.0 can still arrive as an ordinary bump.
+*`composeAdaptive` 1.2.0 is held too, and this record first said it was not.* That was wrong. The first check
+was that 1.2.0 builds and all 742 desktop tests pass, and it does. But those are the checks D18 says cannot
+catch this hazard. D18's own check is to resolve `desktopRuntimeClasspath` and confirm the Compose libraries
+agree. Resolved side by side:
+
+| desktop classpath | adaptive 1.1.2 (`main`) | adaptive 1.2.0 |
+|---|---|---|
+| `ui`, `foundation`, `animation` | 1.8.2 | **1.9.0** |
+| `material3`, `material`, `ripple` | 1.8.2 | 1.8.2 |
+
+So 1.2.0 splits the desktop UI stack across two Compose minor versions, with the core at 1.9.0 and Material
+still on 1.8.2. It also pulls `lifecycle` 2.9.4 and `window` 1.4.0. Nothing in CI would catch that, so it is
+held with the rest. (The first version of this entry and its `dependabot.yml` comment let 1.2.0 through;
+corrected the same day, before Dependabot proposed it.)
 
 **Cost to reverse:** low to remove, high to satisfy. Deleting the two entries is a one-line change each; the
 real cost is the toolchain move they wait for. Both come out when Kotlin and Compose Multiplatform move off
