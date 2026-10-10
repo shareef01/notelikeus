@@ -70,8 +70,15 @@ interface NoteDao {
     )
     suspend fun getNotesWithMissedReminders(now: Long): List<NoteWithLabels>
 
-    @Query("UPDATE notes SET reminderTimestamp = NULL WHERE id = :noteId")
-    suspend fun clearReminderTimestamp(noteId: Long)
+    /**
+     * Clears the reminder and stamps the note as edited at [timestamp].
+     *
+     * The stamp is what makes the clear survive sync. `NoteSyncEngine.cloudWinsConflict` breaks a
+     * tie in the cloud's favour, and a clear that left `timestamp` alone was a tie: the cloud copy,
+     * still carrying the reminder, won on the next pull and put it back.
+     */
+    @Query("UPDATE notes SET reminderTimestamp = NULL, timestamp = :timestamp WHERE id = :noteId")
+    suspend fun clearReminderTimestamp(noteId: Long, timestamp: Long)
 
     @Query("UPDATE notes SET serverUpdatedAt = :serverUpdatedAt WHERE id = :noteId")
     suspend fun updateServerTimestamp(noteId: Long, serverUpdatedAt: Long)

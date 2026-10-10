@@ -69,7 +69,7 @@ class DesktopReminderManager(
      * Call once at startup. Runs off the caller's thread.
      */
     fun restoreScheduledReminders(
-        clearReminder: suspend (Long) -> Unit = { noteDao.clearReminderTimestamp(it) },
+        clearReminder: suspend (Long) -> Unit = { noteDao.clearReminderTimestamp(it, System.currentTimeMillis()) },
     ) {
         scope.launch {
             val now = System.currentTimeMillis()
