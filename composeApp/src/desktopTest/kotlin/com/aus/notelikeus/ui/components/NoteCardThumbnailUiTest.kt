@@ -17,6 +17,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The real [NoteCard] with a real picture, rendered and read back as pixels.
@@ -29,6 +30,9 @@ class NoteCardThumbnailUiTest {
 
     @BeforeTest
     fun freshCache() = SharedThumbnailCache.clear()
+
+    /** Three retries, milliseconds apart, so a card gives up in well under a second of real time. */
+    private val fastRetries = List(3) { 20.milliseconds }
 
     private val redPicture: ByteArray = run {
         val image = BufferedImage(900, 1800, BufferedImage.TYPE_INT_RGB)
@@ -54,7 +58,10 @@ class NoteCardThumbnailUiTest {
         listStyle: Boolean,
     ) = setContent {
         MaterialTheme {
-            CompositionLocalProvider(LocalAttachmentThumbnailLoader provides loader) {
+            CompositionLocalProvider(
+                LocalAttachmentThumbnailLoader provides loader,
+                LocalThumbnailRetryDelays provides fastRetries,
+            ) {
                 NoteCard(
                     note = note,
                     isSelected = false,
@@ -173,6 +180,55 @@ class NoteCardThumbnailUiTest {
         render(note(picture()), loader = loader, listStyle = false)
         waitUntil(timeoutMillis = 5_000) { loads == 2 }
         assertEquals(2, loads, "a picture kept past a clear would be served to the next account")
+    }
+
+    @Test
+    fun `a fetch that fails a few times is retried and the picture then shows`() = runComposeUiTest {
+        var loads = 0
+        val loader = AttachmentThumbnailLoader { loads += 1; if (loads <= 2) null else redPicture }
+
+        render(note(picture()), loader = loader, listStyle = false)
+
+        waitUntil(timeoutMillis = 5_000) { loads >= 3 }
+        assertTrue(thumbnailShowsPicture(), "after two failures the third fetch should show the picture")
+        assertEquals(3, loads)
+    }
+
+    @Test
+    fun `a fetch that never succeeds is retried a bounded number of times and then given up`() = runComposeUiTest {
+        var loads = 0
+        render(note(picture()), loader = { loads += 1; null }, listStyle = false)
+
+        waitUntil(timeoutMillis = 5_000) { thumbnails().isEmpty() }
+        assertEquals(1 + fastRetries.size, loads, "one attempt, then one per retry delay, then it stops")
+    }
+
+    @Test
+    fun `bytes that are not an image are not fetched again`() = runComposeUiTest {
+        var loads = 0
+        render(note(picture()), loader = { loads += 1; byteArrayOf(1, 2, 3) }, listStyle = false)
+
+        waitUntil(timeoutMillis = 5_000) { thumbnails().isEmpty() }
+        // Time for any retry to have happened, were there going to be one.
+        Thread.sleep(300)
+        waitForIdle()
+        assertEquals(1, loads, "downloading the same non-image again cannot change the answer")
+    }
+
+    @Test
+    fun `clearing the cache while a card waits to retry stops the retries`() = runComposeUiTest {
+        var loads = 0
+        val loader = AttachmentThumbnailLoader {
+            loads += 1
+            clearAttachmentThumbnailCache() // the account changed while this was loading
+            null
+        }
+        render(note(picture()), loader = loader, listStyle = false)
+
+        waitUntil(timeoutMillis = 5_000) { loads >= 1 }
+        Thread.sleep(300)
+        waitForIdle()
+        assertEquals(1, loads, "a picture of a signed-out account must not be fetched again")
     }
 
     @Test

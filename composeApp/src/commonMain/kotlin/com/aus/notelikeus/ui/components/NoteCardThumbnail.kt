@@ -16,6 +16,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import com.aus.notelikeus.domain.model.Attachment
+import com.aus.notelikeus.util.AppLog
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -34,6 +36,16 @@ import kotlin.time.TimeSource
 fun interface AttachmentThumbnailLoader {
     suspend fun load(attachment: Attachment): ByteArray?
 }
+
+/**
+ * How long to wait before each retry of a picture that could not be fetched. A picture that fails once
+ * is usually a transient problem (a slow first start after an update, a network blip, a token that was
+ * still refreshing), and without a retry the card stayed blank for the rest of the session. The list is
+ * the retry count: after the last delay one final attempt is made, and then the card gives up.
+ *
+ * A composition local so tests can use milliseconds; production reads the default.
+ */
+val LocalThumbnailRetryDelays = staticCompositionLocalOf { listOf(2.seconds, 5.seconds, 10.seconds) }
 
 /** Test tag on a card's thumbnail, so tests can find it without giving the picture an accessibility label. */
 const val NoteCardThumbnailTag = "note-card-thumbnail"
@@ -162,7 +174,9 @@ private fun thumbnailKey(attachment: Attachment) = "${attachment.id}|${attachmen
  *
  * Decorative: the card's own description already covers the note, and announcing every picture
  * would only repeat it. Until the bitmap arrives it reserves its space (the caller sizes it), so a
- * grid does not jump as pictures land; and a picture that cannot be loaded draws nothing.
+ * grid does not jump as pictures land. A fetch that fails is retried a few times, after a delay (see
+ * [LocalThumbnailRetryDelays]); a picture that still cannot be loaded, or that is not an image, draws
+ * nothing, and says why in the log.
  */
 @Composable
 fun NoteCardThumbnail(attachment: Attachment, modifier: Modifier = Modifier) {
@@ -171,25 +185,47 @@ fun NoteCardThumbnail(attachment: Attachment, modifier: Modifier = Modifier) {
     var bitmap by remember(key) { mutableStateOf(SharedThumbnailCache.get(key)) }
     var failed by remember(key) { mutableStateOf(SharedThumbnailCache.recentlyFailed(key)) }
 
+    val retryDelays = LocalThumbnailRetryDelays.current
+
     LaunchedEffect(key, loader) {
         if (bitmap != null || failed) return@LaunchedEffect
         val startedIn = SharedThumbnailCache.currentGeneration
-        val decoded = LoadSlots.withPermit {
-            val bytes = loader.load(attachment)
-            bytes?.let {
-                withContext(Dispatchers.Default) {
-                    decodeAttachmentThumbnail(it, NoteThumbnailWidthPx, NoteThumbnailHeightPx)
-                }
-            }
-        }
-        if (decoded == null) {
+
+        fun giveUp(reason: String) {
+            // Ids and counts only, never content: this is how a silent blank card gets diagnosed.
+            AppLog.warn("NoteCardThumbnail", "Thumbnail for attachment ${attachment.id} $reason")
             SharedThumbnailCache.markFailed(key, startedIn)
             failed = true
-        } else if (SharedThumbnailCache.put(key, decoded, startedIn)) {
-            bitmap = decoded
         }
-        // Otherwise the account's data was cleared while this loaded: the picture is neither shown nor
-        // kept, because it belongs to a library that is no longer the one signed in.
+
+        var attempt = 0
+        while (true) {
+            val (bytes, decoded) = LoadSlots.withPermit {
+                val loaded = loader.load(attachment)
+                loaded to loaded?.let {
+                    withContext(Dispatchers.Default) {
+                        decodeAttachmentThumbnail(it, NoteThumbnailWidthPx, NoteThumbnailHeightPx)
+                    }
+                }
+            }
+            when {
+                decoded != null -> {
+                    // Refused only if the account's data was cleared while this loaded: the picture then
+                    // belongs to a library that is no longer the one signed in, so it is neither shown nor kept.
+                    if (SharedThumbnailCache.put(key, decoded, startedIn)) bitmap = decoded
+                    return@LaunchedEffect
+                }
+                // The bytes arrived but are not an image. Fetching them again cannot change that.
+                bytes != null -> return@LaunchedEffect giveUp("downloaded but is not a decodable image")
+                attempt >= retryDelays.size ->
+                    return@LaunchedEffect giveUp("could not be loaded after ${attempt + 1} attempts")
+            }
+            // The card keeps its placeholder while it waits, so the grid does not jump.
+            delay(retryDelays[attempt])
+            attempt += 1
+            // The account's data was cleared while waiting: this is no longer anyone's picture to fetch.
+            if (SharedThumbnailCache.currentGeneration != startedIn) return@LaunchedEffect
+        }
     }
 
     if (failed) return
