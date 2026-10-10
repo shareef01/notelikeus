@@ -904,3 +904,48 @@ below it. The original text said "the same treatment has not been applied there"
 
 **Consequence to remember:** `.tap-target` must not be used where a 44px square would overlap a
 neighbour's. Measure the gap first — that is exactly why the swatches were left alone.
+
+---
+
+## D27 — `googleid` stays at 1.2.0 and `composeAdaptive` below 1.3, because each needs a newer toolchain than this repo has.
+
+**Decided:** Two Dependabot proposals are held, each for a reason that was reproduced, not assumed:
+
+- **`googleid` >= 1.2.1** (Dependabot's #274).
+- **`org.jetbrains.compose.material3.adaptive:*` >= 1.3** (Dependabot's #282). **1.2.0 is not held.**
+
+Both are `ignore` entries in `.github/dependabot.yml` with the reason beside them, so the proposals stop
+returning every week to be re-diagnosed from a red check.
+
+**Why:**
+
+*`googleid` 1.2.1.* It is compiled with Kotlin **2.4.0** metadata; this build's compiler reports 2.2.0, and a
+Kotlin compiler reads metadata at most one minor version ahead of itself (up to 2.3). With the checksums added (so Gradle's dependency verification is
+satisfied) it fails at compile time:
+
+```
+GoogleSignInHelper.kt:47: Class 'GetGoogleIdOption' was compiled with an incompatible version of Kotlin.
+The actual metadata version is 2.4.0, but the compiler version 2.2.0 can read ...
+```
+
+The compiler suggests `-Xskip-metadata-version-check`. That was not taken: it silences the check without
+making the classes readable, and this is the Google sign-in path, where a miscompile would show up at
+runtime, not in CI.
+
+*`composeAdaptive` 1.3.0.* The Android compile succeeds, but **59 of 742** desktop tests fail, every Compose
+UI test in the project, with
+
+```
+NoSuchFieldError: androidx.compose.ui.platform.PlatformContext does not have member field 'Companion'
+```
+
+which is the same signature recorded for the Koin 4.2 hold: the newer library depends on a Compose UI newer
+than the Compose Multiplatform 1.8.x this app is built on, and the two disagree at runtime. Verified on
+2026-10-10 by bumping it and running `:composeApp:desktopTest`.
+
+*`composeAdaptive` 1.2.0 is fine.* Same experiment: it builds, and all 742 desktop tests pass. The hold
+starts at 1.3 so that 1.2.0 can still arrive as an ordinary bump.
+
+**Cost to reverse:** low to remove, high to satisfy. Deleting the two entries is a one-line change each; the
+real cost is the toolchain move they wait for. Both come out when Kotlin and Compose Multiplatform move off
+2.1/1.8.x, which is the same trigger as D18's lifecycle entry and the Koin one.
