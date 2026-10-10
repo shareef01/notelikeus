@@ -7,6 +7,7 @@ import com.aus.notelikeus.data.sync.CloudNoteSnapshot
 import com.aus.notelikeus.data.sync.CloudNoteTransport
 import com.aus.notelikeus.data.sync.IdentityBoundNoteTransport
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.util.AppLog
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -204,11 +205,19 @@ class SupabaseNoteTransport internal constructor(
         val result = mutableMapOf<Long, CloudNoteTransport.PutResult>()
         for (note in notes) {
             val noteId = note.id ?: continue
-            val response = rpc.callRpc(
-                "apply_note_change",
-                note.toRpcArgs(revisionState.read(epoch, uid, noteId)),
-            )
-            when (response.stringField("status")) {
+            val baseRevision = revisionState.read(epoch, uid, noteId)
+            val response = try {
+                rpc.callRpc("apply_note_change", note.toRpcArgs(baseRevision))
+            } catch (failure: SupabaseTransportException) {
+                // Note id, HTTP status and the server's reply only — never note content.
+                AppLog.warn(
+                    "NoteTransport",
+                    "apply_note_change failed for note $noteId (baseRevision=$baseRevision, " +
+                        "attachments=${note.attachments.size}): ${failure.message}",
+                )
+                throw failure
+            }
+            when (val status = response.stringField("status")) {
                 "applied" -> {
                     val revision = response.longId("revision") ?: error("Missing required revision in successful apply_note_change")
                     val serverUpdatedAt = response.longId("server_updated_at")
@@ -218,8 +227,18 @@ class SupabaseNoteTransport internal constructor(
                 "conflict" -> {
                     val current = response["current"]?.jsonObject
                     val revision = current?.longId("revision")
+                    // A conflict leaves the note pending without any other trace, so say so.
+                    AppLog.warn(
+                        "NoteTransport",
+                        "apply_note_change conflict for note $noteId (baseRevision=$baseRevision, " +
+                            "error=${response.stringField("error")}, serverRevision=$revision)",
+                    )
                     if (revision != null) revisionState.write(epoch, uid, noteId, revision)
                 }
+                else -> AppLog.warn(
+                    "NoteTransport",
+                    "apply_note_change returned unexpected status '$status' for note $noteId",
+                )
             }
         }
         return result
