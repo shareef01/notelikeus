@@ -137,7 +137,8 @@ private fun launchApp(
         reminderManager.notify = { title, message ->
             trayState.sendNotification(Notification(title, message, Notification.Type.Info))
         }
-        reminderManager.restoreScheduledReminders()
+        val noteRepository = GlobalContext.get().get<com.aus.notelikeus.domain.repository.NoteRepository>()
+        reminderManager.restoreScheduledReminders(clearReminder = noteRepository::clearReminderTimestamp)
     }
 
     if (showAboutDialog) {

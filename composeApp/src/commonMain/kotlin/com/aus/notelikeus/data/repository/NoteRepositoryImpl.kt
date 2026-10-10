@@ -433,9 +433,18 @@ class NoteRepositoryImpl(
         return noteDao.getNotesWithMissedReminders(now).map { it.toNote() }
     }
 
+    /**
+     * Clears a reminder that has been dealt with, and tells the cloud.
+     *
+     * The upload is the point. The cloud document still carries the old timestamp, and a note with
+     * no pending change loses to the cloud on the next pull, so a purely local clear was undone
+     * within seconds: the bell came back and the catch-up fired the same reminder again on every
+     * later launch. Queuing an upload makes the cleared state the newer revision.
+     */
     override suspend fun clearReminderTimestamp(noteId: Long) {
         noteDao.clearReminderTimestamp(noteId)
         refreshWidget()
+        syncCoordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, noteId)
     }
 
     override suspend fun updateServerTimestamp(noteId: Long, serverUpdatedAt: Long) {

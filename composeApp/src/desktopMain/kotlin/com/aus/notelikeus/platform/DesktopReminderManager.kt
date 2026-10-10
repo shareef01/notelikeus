@@ -62,9 +62,15 @@ class DesktopReminderManager(
      * reminder that came due while the app was closed (clearing it afterwards so the note's
      * reminder state reflects reality). Mirrors Android's `ReminderBootReceiver`.
      *
+     * [clearReminder] is how a caught-up reminder is cleared. It defaults to a local-only clear, but
+     * the app passes the repository's, which also uploads: a local-only clear is overwritten by the
+     * cloud copy on the next pull and the reminder fires again at every launch.
+     *
      * Call once at startup. Runs off the caller's thread.
      */
-    fun restoreScheduledReminders() {
+    fun restoreScheduledReminders(
+        clearReminder: suspend (Long) -> Unit = { noteDao.clearReminderTimestamp(it) },
+    ) {
         scope.launch {
             val now = System.currentTimeMillis()
 
@@ -78,7 +84,7 @@ class DesktopReminderManager(
             noteDao.getNotesWithMissedReminders(now).forEach { entity ->
                 val noteId = entity.toNote().id ?: return@forEach
                 fireReminder(noteId)
-                noteDao.clearReminderTimestamp(noteId)
+                clearReminder(noteId)
             }
         }
     }
