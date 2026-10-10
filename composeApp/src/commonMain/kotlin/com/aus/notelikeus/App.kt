@@ -28,6 +28,10 @@ import com.aus.notelikeus.util.AppConfig
 import org.jetbrains.compose.resources.stringResource
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
+import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.ui.components.AttachmentThumbnailLoader
+import com.aus.notelikeus.ui.components.LocalAttachmentThumbnailLoader
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.annotation.KoinExperimentalAPI
 
@@ -97,38 +101,46 @@ fun App(
         }
     }
 
+    // Cards read attachment bytes through this rather than each holding a service of their own.
+    val attachmentSync: AttachmentSyncService = koinInject()
+    val thumbnailLoader = remember(attachmentSync) {
+        AttachmentThumbnailLoader { attachment -> attachmentSync.readAttachmentBytes(attachment) }
+    }
+
     NotelikeusTheme(
         preference = state.themePreference
     ) {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                titleBar()
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    AppContent(
-                        viewModel = viewModel,
-                        state = state,
-                        windowSizeClass = windowSizeClass,
-                        onShowBiometricPrompt = onShowBiometricPrompt,
-                        onGoogleSignInClick = onGoogleSignInClick,
-                        onExportBackup = onExportBackup,
-                        onExportNotesOnly = onExportNotesOnly,
-                        onImportBackup = onImportBackup,
-                        initialSidebarCollapsed = initialSidebarCollapsed,
-                        onSidebarCollapsedChange = onSidebarCollapsedChange,
-                        pendingNoteId = pendingNoteId,
-                        pendingCreateNote = pendingCreateNote,
-                        pendingSharedTitle = pendingSharedTitle,
-                        pendingSharedContent = pendingSharedContent,
-                        onConsumeSharedContent = onConsumeSharedContent,
-                        pendingSharedImage = pendingSharedImage,
-                        onConsumeSharedImage = onConsumeSharedImage,
-                        pendingFocusSearch = pendingFocusSearch,
-                        pendingOpenSettings = pendingOpenSettings,
-                        navigationRequest = navigationRequest,
-                        isUnlocked = isUnlocked,
-                        onUnlocked = { isUnlocked = true },
-                        unlockAppLabel = unlockAppLabel
-                    )
+        CompositionLocalProvider(LocalAttachmentThumbnailLoader provides thumbnailLoader) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    titleBar()
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        AppContent(
+                            viewModel = viewModel,
+                            state = state,
+                            windowSizeClass = windowSizeClass,
+                            onShowBiometricPrompt = onShowBiometricPrompt,
+                            onGoogleSignInClick = onGoogleSignInClick,
+                            onExportBackup = onExportBackup,
+                            onExportNotesOnly = onExportNotesOnly,
+                            onImportBackup = onImportBackup,
+                            initialSidebarCollapsed = initialSidebarCollapsed,
+                            onSidebarCollapsedChange = onSidebarCollapsedChange,
+                            pendingNoteId = pendingNoteId,
+                            pendingCreateNote = pendingCreateNote,
+                            pendingSharedTitle = pendingSharedTitle,
+                            pendingSharedContent = pendingSharedContent,
+                            onConsumeSharedContent = onConsumeSharedContent,
+                            pendingSharedImage = pendingSharedImage,
+                            onConsumeSharedImage = onConsumeSharedImage,
+                            pendingFocusSearch = pendingFocusSearch,
+                            pendingOpenSettings = pendingOpenSettings,
+                            navigationRequest = navigationRequest,
+                            isUnlocked = isUnlocked,
+                            onUnlocked = { isUnlocked = true },
+                            unlockAppLabel = unlockAppLabel
+                        )
+                    }
                 }
             }
         }
