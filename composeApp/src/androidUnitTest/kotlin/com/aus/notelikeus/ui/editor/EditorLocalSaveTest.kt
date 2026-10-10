@@ -231,4 +231,85 @@ class EditorLocalSaveTest {
         coVerify { sync.bindStagedAttachmentsToNote(21L, any(), any()) }
         assertNotNull(subject.state.value.id)
     }
+
+    private fun editorOn(note: Note, sync: AttachmentSyncService? = null): EditorViewModel {
+        coEvery { repository.getNoteById(note.id!!) } returns note
+        return EditorViewModel(
+            repository,
+            reminderManager,
+            SavedStateHandle(mapOf("noteId" to note.id!!)),
+            sync,
+            attachmentsEnabled = { true },
+            localCommitTokenProvider = FakeLocalCommitTokenProvider(),
+        )
+    }
+
+    private val storedNote = Note(
+        id = 5L,
+        title = "Shopping",
+        content = "milk",
+        timestamp = 1_000L,
+        color = 0,
+    )
+
+    /**
+     * Looking at a note is not editing it. Leaving the editor used to save regardless, which
+     * stamped the note with the current time and queued an upload: a note opened and closed jumped
+     * to the top of a date-sorted list with a "last edited" time that was never an edit.
+     */
+    @Test
+    fun `opening an existing note and leaving it without a change does not save it`() = runTest {
+        val subject = editorOn(storedNote)
+        advanceUntilIdle()
+
+        assertEquals(LocalSaveResult.Unchanged, subject.saveLocallyAndAwait())
+
+        coVerify(exactly = 0) { repository.updateNote(any(), any()) }
+        coVerify(exactly = 0) { repository.updateNote(any()) }
+        assertEquals(1_000L, subject.state.value.timestamp)
+    }
+
+    @Test
+    fun `an existing note that was edited is saved, and a second save with no further change is not`() = runTest {
+        val subject = editorOn(storedNote)
+        advanceUntilIdle()
+
+        subject.onTitleChange("Shopping list")
+        assertEquals(LocalSaveResult.Saved(5L), subject.saveLocallyAndAwait())
+        assertEquals(LocalSaveResult.Unchanged, subject.saveLocallyAndAwait())
+
+        coVerify(exactly = 1) {
+            repository.updateNote(match { it.id == 5L && it.title == "Shopping list" }, any())
+        }
+    }
+
+    @Test
+    fun `a change made back to the stored value is not saved either`() = runTest {
+        val subject = editorOn(storedNote)
+        advanceUntilIdle()
+
+        subject.onTitleChange("Shopping list")
+        subject.onTitleChange("Shopping")
+
+        assertEquals(LocalSaveResult.Unchanged, subject.saveLocallyAndAwait())
+        coVerify(exactly = 0) { repository.updateNote(any(), any()) }
+    }
+
+    /**
+     * A save is also how a failed attachment upload is retried, so an unchanged note that still has
+     * bytes waiting must go through the save, not be skipped as "nothing changed".
+     */
+    @Test
+    fun `an unchanged note with an attachment still waiting to upload is saved so the upload retries`() = runTest {
+        val pending = com.aus.notelikeus.domain.model.Attachment(
+            id = "a1",
+            noteId = 5L,
+            storagePath = "pending:a1",
+            mimeType = "image/png",
+        )
+        val subject = editorOn(storedNote.copy(attachments = listOf(pending)), failingSync())
+        advanceUntilIdle()
+
+        assertEquals(LocalSaveResult.Saved(5L), subject.saveLocallyAndAwait())
+    }
 }

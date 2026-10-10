@@ -97,6 +97,16 @@ class EditorViewModel(
 
     private var autosaveJob: Job? = null
     private val saveMutex = Mutex()
+
+    /**
+     * What the stored row holds, in the editor's own terms, ignoring the two fields a save always
+     * rewrites (`timestamp`, `position`). Set when a note loads and after every save, so
+     * [persistNote] can tell "the user changed something" from "the user only looked".
+     *
+     * Null until a note has loaded or been saved, which makes the comparison fail and the save
+     * proceed: unknown is treated as changed, never as unchanged.
+     */
+    private var persistedSnapshot: Note? = null
     private var noteId: Long? = savedStateHandle.get<Long>("noteId")?.takeIf { it != -1L }
     private var routedInitialColor: Int? =
         savedStateHandle.get<Int>("initialColor")?.takeIf { it != Int.MIN_VALUE }
@@ -267,6 +277,9 @@ class EditorViewModel(
                             cloudSyncStatus = current.cloudSyncStatus,
                             isGuest = current.isGuest,
                         )
+                        // The snapshot is the stored note, before any merge with what the user has
+                        // already typed, so an edit made while loading still counts as a change.
+                        persistedSnapshot = loaded.asPersistedContent()
                         // The stored note still supplies every field the user has not touched, so
                         // the editor is fully populated either way; it simply cannot overwrite
                         // what they have already authored.
@@ -400,6 +413,33 @@ class EditorViewModel(
         }
     }
 
+    /**
+     * True when saving [state] would write back exactly what is already stored.
+     *
+     * Two things still count as work even when the content matches: an attachment waiting to
+     * upload, because a save is how a failed upload is retried, and a removal not yet cleaned up.
+     * Both are checked explicitly rather than inferred from the snapshot.
+     */
+    private fun isUnchangedSinceLastPersist(state: EditorState): Boolean {
+        if (state.id == null || state.asPersistedContent() != persistedSnapshot) return false
+        return removedAttachments.isEmpty() &&
+            state.attachments.none { isPendingAttachment(it.storagePath) }
+    }
+
+    /** The fields a save leaves alone when nothing was edited; see [persistedSnapshot]. */
+    private fun Note.persistedContent(): Note = copy(timestamp = 0L, position = 0)
+
+    /**
+     * [buildNoteFromState] as a snapshot, with attachments bound to the note's id the same way a
+     * save binds them, so a loaded note and a saved one compare equal when nothing changed.
+     */
+    private fun EditorState.asPersistedContent(): Note {
+        val built = buildNoteFromState(this)
+        return built.copy(
+            attachments = built.attachments.map { it.copy(noteId = built.id ?: it.noteId) },
+        ).persistedContent()
+    }
+
     private fun buildNoteFromState(state: EditorState): Note {
         return Note(
             id = state.id,
@@ -528,6 +568,14 @@ class EditorViewModel(
             return@withLock PersistNoteOutcome.NothingToSave
         }
 
+        // Opening a note and leaving it is not an edit. Saving anyway stamped the note with the
+        // current time and queued an upload, so merely looking at a note moved it to the top of a
+        // date-sorted list, showed a "last edited" time that was never an edit, and re-uploaded it.
+        if (isUnchangedSinceLastPersist(currentState)) {
+            _state.update { it.copy(isSaving = false) }
+            return@withLock PersistNoteOutcome.NothingToSave
+        }
+
         _state.update { it.copy(isSaving = true, saveFailed = false) }
 
         val position = if (currentState.id == null) {
@@ -595,6 +643,7 @@ class EditorViewModel(
 
         // Local save has succeeded. Everything below is remote or best-effort cleanup, and must
         // not be able to turn this into a failed save.
+        persistedSnapshot = note.persistedContent()
         _state.update { it.copy(isSaving = false, isSavedLocally = true, saveFailed = false) }
         if (savedId != null) {
             // The attachment continuation carries `commitToken` — the token captured when THIS save
@@ -685,6 +734,7 @@ class EditorViewModel(
                 return
             }
             if (!storeUploadedAttachmentPaths(synced, commitToken)) return
+            persistedSnapshot = synced.persistedContent()
             _state.update { current ->
                 // Only adopt the uploaded paths if the editor is still on this note and the user
                 // has not since changed the attachment set.
