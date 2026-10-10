@@ -317,6 +317,8 @@ fun NoteCard(
             append(selectedLabel)
         }
     }
+    // The first picture stands for the note on its card; the status column still carries the count.
+    val thumbnailAttachment = note.attachments.firstImageAttachment()
     val reorderLabel = stringResource(Res.string.cd_reorder)
     val contentStartPadding = if (showReorderHandle) {
         48.dp
@@ -405,6 +407,15 @@ fun NoteCard(
                     // rendered the colour it appeared to stand for, and Grid and List disagreed
                     // about what it meant. The tinted container carries the colour in every
                     // layout now; see docs/DECISIONS.md D1.
+                    if (thumbnailAttachment != null) {
+                        NoteCardThumbnail(
+                            attachment = thumbnailAttachment,
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(Radius.md)),
+                        )
+                        Spacer(modifier = Modifier.width(Spacing.md))
+                    }
                     Column(modifier = Modifier.weight(1f)) {
                         if (note.title.isNotEmpty()) {
                             Text(
@@ -460,6 +471,17 @@ fun NoteCard(
                     )
                 }
             } else {
+            Column {
+            if (thumbnailAttachment != null) {
+                // Full-bleed across the top, before the card's padding begins; 4:3, cropped from the
+                // top so a screenshot's header shows.
+                NoteCardThumbnail(
+                    attachment = thumbnailAttachment,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(NoteThumbnailWidthPx.toFloat() / NoteThumbnailHeightPx),
+                )
+            }
             Column(
                 modifier = Modifier
                     .semantics(mergeDescendants = true) {
@@ -602,6 +624,7 @@ fun NoteCard(
                         onLabelClick = onLabelClick
                     )
                 }
+            }
             }
             }
         }
