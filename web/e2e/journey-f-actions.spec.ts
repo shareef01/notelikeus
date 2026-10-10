@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { createNoteWithTitle } from './helpers/newNote';
 
 /**
  * Journey F, part two: what pin, archive and trash do to the data.
@@ -23,17 +24,7 @@ async function guestWithTwoNotes(context: BrowserContext): Promise<Page> {
   await page.getByRole('button', { name: 'Continue without an account' }).click();
   await expect(page.getByRole('button', { name: 'New note' }).first()).toBeVisible({ timeout: 20_000 });
 
-  for (const title of ['ALPHA note', 'BETA note']) {
-    const empty = page.getByRole('button', { name: 'New note', exact: true }).first();
-    if (await empty.isVisible().catch(() => false)) await empty.click();
-    else await page.getByRole('button', { name: 'Add note', exact: true }).first().click();
-    await page.getByRole('textbox', { name: 'Note title' }).first().fill(title);
-    await page.waitForTimeout(1_200);
-    const back = page.getByRole('button', { name: /\bback\b/i }).first();
-    if (await back.count()) await back.click();
-    else await page.keyboard.press('Escape');
-    await page.waitForTimeout(1_200);
-  }
+  for (const title of ['ALPHA note', 'BETA note']) await createNoteWithTitle(page, title);
   return page;
 }
 
