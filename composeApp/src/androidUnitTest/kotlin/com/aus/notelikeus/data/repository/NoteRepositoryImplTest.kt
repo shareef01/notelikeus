@@ -94,6 +94,19 @@ private fun Note.toNoteWithLabels(): NoteWithLabels =
         coVerify(exactly = 0) { noteDao.getNoteById(any()) }
     }
 
+    /**
+     * Without the upload the clear was local-only: the cloud still held the reminder, a note with
+     * no pending change loses to the cloud on the next pull, and the caught-up reminder came back
+     * and fired again at every later launch.
+     */
+    @Test
+    fun `clearReminderTimestamp clears locally and queues an upload so the cloud copy cannot restore it`() = runTest {
+        repository.clearReminderTimestamp(7L)
+
+        coVerify(exactly = 1) { noteDao.clearReminderTimestamp(7L) }
+        coVerify(exactly = 1) { syncCoordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 7L) }
+    }
+
     @Test
     fun `insertNoteWithoutSync does not schedule an upload`() = runTest {
         val note = Note(title = "Imported", content = "", timestamp = 0L, color = 0)
