@@ -75,6 +75,7 @@ import androidx.room.useWriterConnection
 
 import com.aus.notelikeus.data.remote.DesktopPendingCloudWipeIntentStore
 import com.aus.notelikeus.data.sync.CloudWipeCoordinator
+import com.aus.notelikeus.ui.components.clearAttachmentThumbnailCache
 // F-8: the file that remembers an accepted destructive cloud-wipe request. Deliberately outside
 // the settings DataStore, which local account isolation clears.
 private const val PENDING_WIPE_FILENAME = "pending_cloud_wipe.txt"
@@ -314,6 +315,8 @@ actual val platformModule = module {
             clearDatasetScopedInMemoryState = {
                 get<AttachmentSyncService>().clearStagingCache()
                 get<DatasetScopedCloudRevisionState>().clearDatasetScopedState()
+                // Decoded copies of the departing library's pictures, for the same reason as the staged bytes.
+                clearAttachmentThumbnailCache()
             },
         )
     }

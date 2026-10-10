@@ -161,6 +161,68 @@ class NoteCardThumbnailTest {
         assertFalse(cache.recentlyFailed("b"))
     }
 
+    @Test
+    fun `after a clear nothing stored before it is served`() {
+        val cache = AttachmentThumbnailCache()
+        cache.put("a", ImageBitmap(1, 1))
+
+        cache.clear()
+
+        assertNull(cache.get("a"))
+        assertEquals(0, cache.size)
+    }
+
+    @Test
+    fun `a load that began before a clear is refused when it finishes`() {
+        val cache = AttachmentThumbnailCache()
+        val startedIn = cache.currentGeneration
+
+        cache.clear() // the account changed while the picture was loading
+        val kept = cache.put("a", ImageBitmap(1, 1), startedIn)
+
+        assertFalse(kept, "a picture from before the clear must not be cached")
+        assertNull(cache.get("a"))
+    }
+
+    @Test
+    fun `a failure recorded before a clear is not remembered after it`() {
+        val cache = AttachmentThumbnailCache()
+        val startedIn = cache.currentGeneration
+        cache.markFailed("a", startedIn)
+        assertTrue(cache.recentlyFailed("a"))
+
+        cache.clear()
+
+        assertFalse(cache.recentlyFailed("a"))
+        cache.markFailed("b", startedIn) // a late failure from before the clear
+        assertFalse(cache.recentlyFailed("b"))
+    }
+
+    @Test
+    fun `pictures stored before a clear do not use up room after it`() {
+        val cache = AttachmentThumbnailCache(maxEntries = 2)
+        cache.put("old1", ImageBitmap(1, 1))
+        cache.put("old2", ImageBitmap(1, 1))
+
+        cache.clear()
+        cache.put("new1", ImageBitmap(1, 1))
+        cache.put("new2", ImageBitmap(1, 1))
+
+        assertNotNull(cache.get("new1"))
+        assertNotNull(cache.get("new2"))
+        assertEquals(2, cache.size)
+    }
+
+    @Test
+    fun `the public clear empties the shared cache`() {
+        SharedThumbnailCache.put("shared", ImageBitmap(1, 1))
+        assertNotNull(SharedThumbnailCache.get("shared"))
+
+        clearAttachmentThumbnailCache()
+
+        assertNull(SharedThumbnailCache.get("shared"))
+    }
+
     // ---- fixtures ----
 
     private fun attachment(id: String, mimeType: String?) =
