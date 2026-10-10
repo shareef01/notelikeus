@@ -79,12 +79,15 @@ updates:
       - dependency-name: "com.google.android.libraries.identity.googleid:googleid"
         versions: [">= 1.2.1"]
 
-      # See docs/DECISIONS.md, D27. composeAdaptive 1.3.0 pulls Compose UI newer than the CMP 1.8.x
-      # this app builds on, and 59 of 742 desktop tests die with
+      # See docs/DECISIONS.md, D27. composeAdaptive >= 1.2 raises Compose UI, foundation and animation
+      # on the desktop classpath from 1.8.2 to 1.9.0 while material3, material and ripple stay on the
+      # 1.8.2 the CMP plugin targets -- the mixed-stack hazard of D18, which compiles and unit-tests
+      # green and dies only when the packaged app composes its first frame. Verified on 2026-10-10 by
+      # resolving desktopRuntimeClasspath with adaptive 1.2.0 and with 1.1.2 side by side. 1.3.0 is
+      # worse and is caught: 59 of 742 desktop tests die with
       #   NoSuchFieldError: PlatformContext does not have member field 'Companion'
-      # -- the same signature as the Koin 4.2 entry above. Verified on 2026-10-10 by bumping it and
-      # running :composeApp:desktopTest. 1.2.0 is NOT held: it builds and passes all 742.
+      # -- the same signature as the Koin 4.2 entry above.
       #
       # REMOVE THIS ENTRY with the lifecycle and Koin ones, when Compose Multiplatform moves off 1.8.x.
       - dependency-name: "org.jetbrains.compose.material3.adaptive:*"
-        versions: [">= 1.3"]
+        versions: [">= 1.2"]
