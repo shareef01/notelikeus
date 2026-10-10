@@ -2,6 +2,7 @@ package com.aus.notelikeus.ui.main
 
 import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.util.DateUtils
+import com.aus.notelikeus.ui.components.clearAttachmentThumbnailCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.launchIn
@@ -161,6 +162,8 @@ internal class CloudSyncController(
     fun signOutFromCloud(deleteCloudData: Boolean = false) {
         scope.launch {
             val result = syncManager.signOut(deleteCloudData)
+            // Card thumbnails are decoded copies of the account's pictures; they do not outlive its session.
+            if (result.isSuccess) clearAttachmentThumbnailCache()
             state.update { currentState ->
                 currentState.copy(
                     pendingCloudSyncEvent = result.fold(

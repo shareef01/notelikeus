@@ -14,6 +14,7 @@ import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.ui.editor.FakeLocalCommitTokenProvider
 import com.aus.notelikeus.domain.repository.SettingsRepository
 import com.aus.notelikeus.domain.repository.SyncManager
+import com.aus.notelikeus.ui.components.SharedThumbnailCache
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -474,6 +475,31 @@ class MainViewModelTest {
         advanceUntilIdle()
 
         coVerify { syncManager.signOut(true) }
+    }
+
+    @Test
+    fun `a successful sign-out clears the card thumbnails`() = runTest {
+        coEvery { syncManager.signOut(any()) } returns Result.success(Unit)
+        val before = SharedThumbnailCache.currentGeneration
+
+        viewModel.signOutFromCloud(false)
+        advanceUntilIdle()
+
+        assertTrue(
+            "thumbnails are decoded copies of the account's pictures and must not outlive its session",
+            SharedThumbnailCache.currentGeneration > before,
+        )
+    }
+
+    @Test
+    fun `a sign-out that fails keeps the card thumbnails, because the session is still alive`() = runTest {
+        coEvery { syncManager.signOut(any()) } returns Result.failure(IllegalStateException("cloud delete failed"))
+        val before = SharedThumbnailCache.currentGeneration
+
+        viewModel.signOutFromCloud(true)
+        advanceUntilIdle()
+
+        assertEquals(before, SharedThumbnailCache.currentGeneration)
     }
 
     @Test
