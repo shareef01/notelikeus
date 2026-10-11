@@ -59,3 +59,8 @@ skills-lock.json
 # local smoke artifacts
 web/smoke-production.png
 
+
+# Local scratch and one-off report output
+/scratch/
+/tmp-report-*/
+/pr_body.txt

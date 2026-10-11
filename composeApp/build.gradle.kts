@@ -324,6 +324,12 @@ compose.desktop {
                 // "Sign in with Google" -- NoClassDefFoundError, then "Failed to launch JVM", the
                 // whole process. `./gradlew run` cannot see it: the full JDK has the class.
                 "jdk.httpserver",
+                // JdbcSQLiteDriver opens the SQLCipher database through java.sql, and it is the
+                // default driver on Windows (DesktopSqliteFlags). Without this the packaged app
+                // shows its window but every database read dies with
+                // NoClassDefFoundError(java/sql/Driver), so no note can be loaded or saved.
+                // `./gradlew run` cannot see it: the full JDK has the module.
+                "java.sql",
                 // Present by default on the current JDK, named anyway so a JDK change cannot
                 // silently drop EC and break the handshake with accounts.google.com.
                 "jdk.crypto.ec"

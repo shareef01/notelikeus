@@ -16,11 +16,11 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 
 **Web**
 
-<img src="screenshots/web-notes.png" width="395" alt="Web note grid with pinned notes, filters and layout toggles" /> <img src="screenshots/web-editor.png" width="395" alt="Web note editor with the rich-text toolbar" />
+<img src="screenshots/web-notes.png" width="395" alt="Web note grid: a pinned image note shows its picture on the card, with colour and label filters" /> <img src="screenshots/web-editor.png" width="395" alt="Web note editor with an image attachment and the rich-text toolbar" />
 
 **Android**
 
-<img src="screenshots/android-settings.png" width="190" alt="Android settings: theme, accent, pure black, app lock" /> <img src="screenshots/android-drawer.png" width="190" alt="Android navigation drawer with Notes, Archive, Trash and smart views" /> <img src="screenshots/android-notes.png" width="190" alt="Android notes list with a pinned card and filter chips" /> <img src="screenshots/android-editor.png" width="190" alt="Android note editor with the rich-text toolbar" />
+<img src="screenshots/android-notes.png" width="190" alt="Android notes grid with an image card, rich text, labels and a checklist" /> <img src="screenshots/android-editor.png" width="190" alt="Android note editor with an image attachment and the rich-text toolbar" /> <img src="screenshots/android-drawer.png" width="190" alt="Android navigation drawer with Notes, Archive, Trash and smart views" /> <img src="screenshots/android-settings.png" width="190" alt="Android settings: theme, accent, pure black, app lock" />
 
 ## Features
 
@@ -33,7 +33,7 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 | Multi-select and bulk actions | ✓ | ✓ | ✓ |
 | Swipe actions with undo | ✓ | ✓ | ✓ |
 | Manual reorder in list view | ✓ | ✓ | ✓ |
-| Image attachments | ✓ | ✓ | ✓ |
+| Image attachments, with the first picture on the card | ✓ | ✓ | ✓ |
 | Theme, accent, pure black | ✓ | ✓ | ✓ |
 | Reminders, with presets and an exact date & time | Notifications | Tray, while the app runs | Service worker |
 | Encrypted local database | SQLCipher | SQLCipher (DPAPI key) | WebCrypto (note bodies) |
@@ -79,7 +79,7 @@ Something not syncing has a settings screen for it. Sync diagnostics shows count
 ## Getting started
 
 Android 8.0 (API 26) is the minimum supported release, and the desktop build ships as a
-Windows MSI. Building needs JDK 17 for the Kotlin targets and Node.js 24 for the web app;
+Windows MSI. Building needs JDK 21 for the Gradle daemon and JDK 17 for the build, plus Node.js 24 for the web app;
 the database suite needs Docker for the Supabase CLI.
 
 ```bash

@@ -1,32 +1,37 @@
 version: 2
+# Version-update PRs are switched off (open-pull-requests-limit: 0) so dependency bumps land as
+# commits from the maintainer. Security updates are separate from this file and still open PRs.
+# The `ignore` holds below stay in place for when version updates are turned back on.
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
 
   - package-ecosystem: "npm"
     directory: "/web"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
 
   - package-ecosystem: "npm"
     directory: "/workers/attachments"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
 
   - package-ecosystem: "gradle"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
     ignore:
       # See docs/DECISIONS.md, D18. lifecycle 2.10+ depends on compose-runtime 1.11 directly, and a
       # direct dependency wins conflict resolution -- so the runtime jumps while compose-ui and
