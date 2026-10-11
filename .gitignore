@@ -53,6 +53,7 @@ database-debug.log
 .reasonix/
 .artifacts/
 .claude/
+.kilo/
 reasonix.toml
 skills-lock.json
 
