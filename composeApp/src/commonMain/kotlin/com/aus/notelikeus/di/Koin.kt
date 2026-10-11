@@ -26,7 +26,22 @@ val sharedModule = module {
     
     single { Dispatchers.IO }
     
-    viewModel { MainViewModel(get(), get(), get(), get(), get(), get(), get(), get()) }
+    // Named, not positional: `diagnostics` and `bundleOperations` have defaults, so a parameter
+    // added ahead of them shifts every positional get() along and the last one silently falls
+    // back to its default instead of failing. That is how .nlkbak import/export became a no-op.
+    viewModel {
+        MainViewModel(
+            repository = get(),
+            localCommitTokenProvider = get(),
+            settingsRepository = get(),
+            backupExporter = get(),
+            backupImporter = get(),
+            syncManager = get(),
+            defaultDispatcher = get(),
+            diagnostics = get(),
+            bundleOperations = get(),
+        )
+    }
     viewModel { params -> 
         EditorViewModel(get(), get(), params.get(), get(), syncManager = getOrNull(), localCommitTokenProvider = get())
     }

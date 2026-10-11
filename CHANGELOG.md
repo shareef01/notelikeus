@@ -4,6 +4,17 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Added
+- **An image note shows its first picture on its card**, on Android and the web, with a screen-reader hint that the card has an image.
+
+### Fixed
+- **Backup with images (`.nlkbak`) did nothing on Android and Windows.** The note list's view model was wired with positional arguments; when a parameter was added ahead of the bundle support, the bundle support quietly fell back to a do-nothing default, so picking a `.nlkbak` file failed as unreadable JSON and exporting one was unavailable. The wiring is now by name and covered by a test that builds the view model through the real module.
+- **The installed Windows app could not open its notes.** The packaged runtime left out `java.sql`, which the encrypted database driver needs, so every read failed with `NoClassDefFoundError: java/sql/Driver` while `./gradlew run` — with the whole JDK on hand — worked. The module is now bundled.
+- **Reminders:** clearing a reminder now syncs, so the cloud can no longer bring a cleared reminder back.
+- **Editor:** opening a note and leaving it unchanged no longer saves, re-stamps or re-uploads it.
+- **Sync:** a refused attachment upload no longer blocks the note itself from syncing, and only an HTTP 401 is treated as an expired session.
+- **Web on phones:** the notes screen no longer scrolls sideways, pin/archive/trash are reachable by touch, and small controls (checklist ticks, colour swatches, reminder buttons) have 44px tap targets.
+
 ## [2.0.0] — 2026-10-08
 
 ### Fixed
