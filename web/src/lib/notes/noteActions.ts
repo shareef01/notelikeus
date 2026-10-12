@@ -1,7 +1,11 @@
 import { restoreCloudNote } from '@/lib/notes/tombstones';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
-import { deleteNote as deleteLocalIndexedDbNote, putNote } from '@/lib/local/notesLocalRepository';
+import {
+  deleteNote as deleteLocalIndexedDbNote,
+  putLocalEdit,
+  putNote,
+} from '@/lib/local/notesLocalRepository';
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import { notesEqual } from '@/lib/notes/noteEquality';
 import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegistry';
@@ -12,10 +16,20 @@ import { loadRevisionState } from '@/lib/supabase/revisionStore';
 import { getNoteBaseRevision } from '@/lib/supabase/revisionStore';
 import type { Note } from '@/types/note';
 
-async function persistLocalNote(note: Note, targetOwnerId?: string): Promise<void> {
+async function persistLocalNote(
+  note: Note,
+  targetOwnerId?: string,
+  { asEdit = true }: { asEdit?: boolean } = {},
+): Promise<void> {
   const ownerId = targetOwnerId ?? resolveOwnerId();
   if (!ownerId) return;
-  await putNote(ownerId, note);
+  // A signed-in edit is recorded as waiting for the cloud in the same transaction, so no snapshot
+  // or pull can overwrite it before it has been pushed (F-06). Guest notes never sync.
+  if (asEdit && useAuthStore.getState().user?.uid === ownerId) {
+    await putLocalEdit(ownerId, note);
+  } else {
+    await putNote(ownerId, note);
+  }
 }
 
 async function pushNote(note: Note): Promise<void> {
@@ -191,9 +205,10 @@ export async function restorePermanentlyDeletedNote(note: Note): Promise<void> {
   const userId = useAuthStore.getState().user?.uid;
   useTombstoneStore.getState().markRestored(note.id);
 
-  // Persist-first: commit to IndexedDB before clearing tombstone protection
+  // Persist-first: commit to IndexedDB before clearing tombstone protection. Not recorded as a
+  // pending edit: restore_note publishes it, and its restore marker already survives a failure.
   try {
-    await persistLocalNote(note);
+    await persistLocalNote(note, undefined, { asEdit: false });
   } catch (error) {
     useTombstoneStore.getState().clearRestored([note.id]);
     throw error;

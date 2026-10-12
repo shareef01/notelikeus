@@ -1,7 +1,7 @@
 import { recordSyncFailure, recordSyncSuccess } from '@/lib/diagnostics/collectDiagnostics';
 import { categorizeSyncError } from '@/lib/diagnostics/diagnosticsReport';
 import { formatUnknownError } from '@/lib/errors/formatUnknownError';
-import { deleteNote, putNotes } from '@/lib/local/notesLocalRepository';
+import { deleteNote, hasPendingPush, putNotes } from '@/lib/local/notesLocalRepository';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
 import { shouldUploadOverRemote } from '@/lib/notes/remoteMerge';
 import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegistry';
@@ -75,7 +75,7 @@ export function resumeRealtimeSnapshots(): void {
  * UI store, not that map, so a later incremental emit can carry stale copies. Keep the live
  * local winner (and local-only notes the map never saw) unless a tombstone already removed them.
  */
-function mergeIncomingWithLocal(incoming: Note[]): Note[] {
+function mergeIncomingWithLocal(userId: string, incoming: Note[]): Note[] {
   const isDeleted = useTombstoneStore.getState().isDeleted;
   const byId = new Map<string, Note>();
   for (const local of useNotesStore.getState().notes) {
@@ -84,6 +84,8 @@ function mergeIncomingWithLocal(incoming: Note[]): Note[] {
   for (const remote of incoming) {
     if (isDeleted(remote.id)) continue;
     const local = byId.get(remote.id);
+    // A local edit the cloud has not confirmed always stays; its push settles the conflict (F-06).
+    if (local && hasPendingPush(userId, local.id)) continue;
     if (!local || !shouldUploadOverRemote(local, remote)) {
       byId.set(remote.id, remote);
     }
@@ -102,7 +104,7 @@ export function waitForRealtimeMirrorWriteForTests(): Promise<void> {
  * IndexedDB persistence fails.
  */
 function applyNotes(userId: string, incoming: Note[]): void {
-  const merged = mergeIncomingWithLocal(incoming);
+  const merged = mergeIncomingWithLocal(userId, incoming);
   const isDeleted = useTombstoneStore.getState().isDeleted;
   const live = merged.filter((note) => !isDeleted(note.id));
 

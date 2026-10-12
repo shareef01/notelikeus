@@ -120,7 +120,8 @@ Severity: P0 Critical / P1 High / P2 Medium / P3 Low. Confidence: **Confirmed** 
 - **Complexity:** S
 
 ### F-06 — Web offline edit is discarded when the note changed elsewhere (no outbox, last-writer-wins on server time)
-- **Severity:** P1 · **Confidence:** Confirmed at source level (end-to-end UI confirmation recommended) · **Platform:** Web
+- **Status (branch `fix/audit-sync-findings`):** Fixed, with reproduction tests in `web/src/lib/notes/offlineEditDurability.test.ts`. Reproducing it showed the defect is **wider than first written**: no second device is needed. `loadBaseline` replaces every IndexedDB row the snapshot contains, and `applyRemotePageAtomically` overwrites rows on every pull. So an offline edit was reverted on the next page load whenever the cloud still had the older version.
+- **Severity:** P1 · **Confidence:** Confirmed by a failing test against the pre-fix code · **Platform:** Web
 - **Location:**
   - `web/src/lib/notes/noteActions.ts:90-95`: a failed push is swallowed with the comment "retry on reconciliation".
   - `web/src/lib/notes/remoteMerge.ts:8-24`: `shouldUploadOverRemote` compares `serverUpdatedAt` values.
