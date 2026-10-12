@@ -6,6 +6,7 @@ import com.aus.notelikeus.domain.repository.NoteRepository
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
+import com.aus.notelikeus.data.local.DatabaseEncryptionOutcome
 import com.aus.notelikeus.data.local.DesktopDatabaseKeyManager
 import com.aus.notelikeus.data.local.DesktopPlaintextDatabaseMigrator
 import com.aus.notelikeus.data.local.DesktopSqliteFlags
@@ -106,8 +107,12 @@ actual val platformModule = module {
                 DesktopPathProvider.getDataDirectory(),
                 NotelikeusDatabase.DATABASE_NAME,
             )
-            DesktopPlaintextDatabaseMigrator.migrateToEncryptedIfNeeded(dbFile, passphrase)
-            JdbcSQLiteDriver(passphrase)
+            val outcome = DesktopPlaintextDatabaseMigrator.migrateToEncryptedIfNeeded(dbFile, passphrase)
+            // A readable plaintext database that could not be encrypted this launch is opened as
+            // what it is, rather than failing an encrypted open or starting empty (F-10).
+            JdbcSQLiteDriver(
+                passphrase.takeUnless { outcome == DatabaseEncryptionOutcome.PLAINTEXT_RETAINED },
+            )
         } else {
             BundledSQLiteDriver()
         }

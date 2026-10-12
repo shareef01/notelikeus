@@ -18,31 +18,46 @@ import java.sql.Connection
 object DesktopPlaintextDatabaseMigrator {
     private const val TAG = "DesktopDbMigrate"
 
-    fun migrateToEncryptedIfNeeded(databaseFile: File, passphrase: ByteArray) {
-        val parent = databaseFile.parentFile ?: return
+    /**
+     * Test seam: runs just before the copy is rekeyed, so a test can make encryption fail at the
+     * point a real I/O or SQLCipher error would. Never set in production.
+     */
+    internal var beforeRekeyForTests: (() -> Unit)? = null
+
+    /**
+     * Encrypts a plaintext database in place, and reports how the database must be opened now.
+     *
+     * Only a file that opens neither with the passphrase nor as plaintext is quarantined. A readable
+     * plaintext database that cannot be encrypted this time is left exactly where it is
+     * ([DatabaseEncryptionOutcome.PLAINTEXT_RETAINED]); the next launch tries again (F-10).
+     */
+    fun migrateToEncryptedIfNeeded(databaseFile: File, passphrase: ByteArray): DatabaseEncryptionOutcome {
+        val parent = databaseFile.parentFile ?: return DatabaseEncryptionOutcome.ENCRYPTED
         val encryptedTemp = File(parent, "${databaseFile.name}-encrypted-temp")
         val backup = File(parent, "${databaseFile.name}.pre-encrypt")
 
         if (!databaseFile.exists()) {
+            // A previous run was interrupted mid-swap. Prefer the encrypted copy when it opens;
+            // otherwise put the original back and migrate it like any plaintext database below —
+            // returning here would hand a plaintext file to an encrypted open.
             if (encryptedTemp.exists() && canOpenEncrypted(encryptedTemp, passphrase)) {
                 if (encryptedTemp.renameTo(databaseFile)) {
                     backup.delete()
-                    return
+                    return DatabaseEncryptionOutcome.ENCRYPTED
                 }
             }
-            if (backup.exists() && backup.renameTo(databaseFile)) {
-                return
+            if (!(backup.exists() && backup.renameTo(databaseFile))) {
+                return DatabaseEncryptionOutcome.ENCRYPTED
             }
-            return
         }
 
         if (encryptedTemp.exists()) encryptedTemp.delete()
 
-        if (canOpenEncrypted(databaseFile, passphrase)) return
+        if (canOpenEncrypted(databaseFile, passphrase)) return DatabaseEncryptionOutcome.ENCRYPTED
 
         if (!canOpenPlaintext(databaseFile)) {
             quarantineDatabaseFiles(databaseFile)
-            return
+            return DatabaseEncryptionOutcome.QUARANTINED
         }
 
         try {
@@ -55,6 +70,7 @@ object DesktopPlaintextDatabaseMigrator {
             JdbcSQLiteDriver.openJdbcConnection(encryptedTemp.absolutePath, passphrase = null)
                 .use { connection ->
                     applySqlCipherV4(connection)
+                    beforeRekeyForTests?.invoke()
                     val key = JdbcSQLiteDriver.passphraseAsHexKey(passphrase).replace("'", "''")
                     connection.createStatement().use { stmt ->
                         stmt.execute("PRAGMA rekey = '$key'")
@@ -62,25 +78,26 @@ object DesktopPlaintextDatabaseMigrator {
                 }
         } catch (error: Exception) {
             encryptedTemp.delete()
-            AppLog.warn(TAG, "Failed to migrate desktop database to encrypted", error)
-            quarantineDatabaseFiles(databaseFile)
-            return
+            AppLog.warn(TAG, "Could not encrypt the desktop database; keeping it as plaintext for now", error)
+            return DatabaseEncryptionOutcome.PLAINTEXT_RETAINED
         }
 
         if (!canOpenEncrypted(encryptedTemp, passphrase)) {
             encryptedTemp.delete()
-            AppLog.warn(TAG, "Rekeyed temp database did not open with passphrase")
-            quarantineDatabaseFiles(databaseFile)
-            return
+            AppLog.warn(TAG, "Rekeyed copy did not open; keeping the plaintext database for now")
+            return DatabaseEncryptionOutcome.PLAINTEXT_RETAINED
         }
 
         if (!swapEncryptedIntoPlace(databaseFile, encryptedTemp)) {
-            quarantineDatabaseFiles(databaseFile)
-            return
+            // The swap restores the original when it cannot finish, so the plaintext file is back.
+            encryptedTemp.delete()
+            AppLog.warn(TAG, "Could not swap the encrypted copy in; keeping the plaintext database for now")
+            return DatabaseEncryptionOutcome.PLAINTEXT_RETAINED
         }
         for (suffix in listOf("-journal", "-shm", "-wal")) {
             File(parent, databaseFile.name + suffix).delete()
         }
+        return DatabaseEncryptionOutcome.ENCRYPTED
     }
 
     internal fun swapEncryptedIntoPlace(databaseFile: File, encryptedTemp: File): Boolean {
