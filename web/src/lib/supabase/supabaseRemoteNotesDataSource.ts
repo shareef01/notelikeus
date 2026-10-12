@@ -23,8 +23,11 @@ import {
 import { toError } from "@/lib/errors/formatUnknownError";
 import {
   applyRemoteSnapshotAtomically,
+  hasPendingPush,
   listNotes,
+  listPendingPushes,
 } from "@/lib/local/notesLocalRepository";
+import { flushPendingPushes, type PendingFlushResult } from "@/lib/supabase/pendingPushes";
 import {
   collectPreservedRestoredNotes,
   retryPendingCloudRestores,
@@ -50,6 +53,14 @@ interface ApplyNoteResult {
     note_id?: string;
     revision?: number;
   };
+}
+
+/** [notes] with a flush's local rewrites applied, so a caller's copy matches what is on disk. */
+function withFlushApplied(notes: Note[], flushed: PendingFlushResult): Note[] {
+  const removed = new Set(flushed.removedIds);
+  const byId = new Map(notes.filter((note) => !removed.has(note.id)).map((note) => [note.id, note]));
+  for (const note of flushed.upserted) byId.set(note.id, note);
+  return Array.from(byId.values());
 }
 
 function accountStillOwnsDelete(userId: string): boolean {
@@ -79,7 +90,8 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       for (const note of useNotesStore.getState().notes) {
         if (useTombstoneStore.getState().isDeleted(note.id)) continue;
         const existing = notesById.get(note.id);
-        if (!existing || shouldUploadOverRemote(note, existing)) {
+        // An unconfirmed local edit is newer than anything the cloud has for this device to show.
+        if (!existing || hasPendingPush(userId, note.id) || shouldUploadOverRemote(note, existing)) {
           notesById.set(note.id, note);
         }
       }
@@ -88,6 +100,10 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
 
     const loadBaseline = async () => {
       await ensureSupabaseAuthenticated();
+      if (!session.isActive()) return;
+      // Edits made while offline go up first, against the revisions they were made on, so the
+      // snapshot below already contains them — or, on a conflict, both versions.
+      await flushPendingPushes(userId, { isActive: () => session.isActive() });
       if (!session.isActive()) return;
       const snapshot = await fetchSnapshotNotes({ hydrateAttachments: false });
       if (!session.isActive()) return;
@@ -245,6 +261,11 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       await this.deleteNote(userId, note.id);
       return;
     }
+    if (note.id in (await listPendingPushes(userId))) {
+      // A local edit: push it against the revision it was made on, not whatever is known now.
+      await flushPendingPushes(userId);
+      return;
+    }
     const state = await loadRevisionState(userId);
     const baseRevision = getNoteBaseRevision(state, note.id);
     const updated = await applyNoteChange(userId, note, baseRevision);
@@ -371,8 +392,12 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     return uploaded;
   },
 
-  async syncNotesWithCloud(userId, localNotes, previouslyKnownCloudIds) {
+  async syncNotesWithCloud(userId, callerNotes, previouslyKnownCloudIds) {
     await ensureSupabaseAuthenticated();
+    // Unconfirmed local edits first, so the snapshot reflects them and the merge below never
+    // decides between a local edit and the cloud by timestamps alone.
+    const localNotes = withFlushApplied(callerNotes, await flushPendingPushes(userId));
+    const isPending = (id: string) => hasPendingPush(userId, id);
     const {
       notes: remoteNotes,
       tombstones,
@@ -408,6 +433,9 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     }
 
     let merged = await mergeRemoteNotes(localNotes, remoteNotes);
+    // An edit still pending (the push failed again) stays as the user left it.
+    const localById = new Map(localNotes.map((note) => [note.id, note]));
+    merged = merged.map((note) => (isPending(note.id) ? (localById.get(note.id) ?? note) : note));
     merged = merged.filter((note) => !isDeleted(note.id));
 
     let changes = 0;
@@ -415,6 +443,8 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
 
     for (const localNote of localNotes) {
       if (isDeleted(localNote.id)) continue;
+      // Pushed by the flush above, against its own base revision; never re-pushed here.
+      if (isPending(localNote.id)) continue;
 
       if (cloudIds.has(localNote.id)) {
         if (!isCloudSyncEligible(localNote)) continue;

@@ -13,6 +13,8 @@ vi.mock("@/lib/remote/remoteNotesDataSourceRegistry", () => ({
 
 vi.mock("@/lib/local/notesLocalRepository", () => ({
   putNote: vi.fn().mockResolvedValue(undefined),
+  // Signed-in edits are written together with their pending-push marker (F-06).
+  putLocalEdit: vi.fn().mockResolvedValue(undefined),
   deleteNote: vi.fn().mockResolvedValue(undefined),
   getOwnerMeta: vi.fn().mockResolvedValue({ lastRemoteRevision: 0 }),
 }));
@@ -44,7 +46,7 @@ vi.mock("@/lib/attachments/attachmentSyncService", () => ({
 }));
 
 import { restoreCloudNote } from "@/lib/notes/tombstones";
-import { deleteNote, putNote } from "@/lib/local/notesLocalRepository";
+import { deleteNote, putLocalEdit, putNote } from "@/lib/local/notesLocalRepository";
 import {
   removeNote,
   restorePermanentlyDeletedNote,
@@ -92,7 +94,7 @@ describe("saveNote", () => {
       "user-1",
       expect.objectContaining({ id: "1" }),
     );
-    expect(putNote).toHaveBeenCalled();
+    expect(putLocalEdit).toHaveBeenCalled();
     expect(useNotesStore.getState().notes.some((note) => note.id === "1")).toBe(
       true,
     );
@@ -145,17 +147,17 @@ describe("saveNote", () => {
     // The note text MUST save locally without throwing
     await saveNote(note);
 
-    expect(putNote).toHaveBeenCalled();
+    expect(putLocalEdit).toHaveBeenCalled();
     expect(useNotesStore.getState().notes.some((n) => n.id === note.id)).toBe(
       true,
     );
   });
 
-  it("does not mutate in-memory store when IndexedDB putNote fails", async () => {
+  it("does not mutate in-memory store when the IndexedDB write fails", async () => {
     useAuthStore
       .getState()
       .setUser({ uid: "user-1", email: null, displayName: null });
-    vi.mocked(putNote).mockRejectedValueOnce(new Error("IndexedDB disk full"));
+    vi.mocked(putLocalEdit).mockRejectedValueOnce(new Error("IndexedDB disk full"));
     const note = makeNote();
 
     await expect(saveNote(note)).rejects.toThrow(/IndexedDB disk full/);
@@ -179,7 +181,7 @@ describe("saveNote", () => {
     await saveNote(note);
 
     // Locally committed note remains durable in store and IndexedDB
-    expect(putNote).toHaveBeenCalled();
+    expect(putLocalEdit).toHaveBeenCalled();
     expect(useNotesStore.getState().notes.some((n) => n.id === note.id)).toBe(
       true,
     );
@@ -449,13 +451,14 @@ describe("removeNote", () => {
     const savePromise = saveNote(noteA);
 
     // Initial push happened for user-a
-    expect(putNote).toHaveBeenCalledWith("user-a", noteA);
+    expect(putLocalEdit).toHaveBeenCalledWith("user-a", noteA);
 
     // Account switches to user-b while upload is in flight
     useAuthStore
       .getState()
       .setUser({ uid: "user-b", email: null, displayName: null });
     useNotesStore.getState().setNotes([]);
+    vi.mocked(putLocalEdit).mockClear();
     vi.mocked(putNote).mockClear();
     remoteMocks.upsertNote.mockClear();
 
@@ -476,6 +479,7 @@ describe("removeNote", () => {
 
     // Must NOT write to user-b's IndexedDB partition
     expect(putNote).not.toHaveBeenCalledWith("user-b", expect.anything());
+    expect(putLocalEdit).not.toHaveBeenCalledWith("user-b", expect.anything());
 
     // Must NOT inject into user-b's UI
     expect(useNotesStore.getState().notes.map((n) => n.id)).not.toContain(
