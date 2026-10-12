@@ -309,6 +309,11 @@ export async function listPendingPushes(ownerId: string): Promise<Record<string,
   return { ...meta?.pendingPushes };
 }
 
+/** How many of [ownerId]'s notes hold an edit the cloud has not confirmed. */
+export async function countPendingPushes(ownerId: string): Promise<number> {
+  return Object.keys(await listPendingPushes(ownerId)).length;
+}
+
 /** A pending edit as one consistent pair: the marker and the row version it covers. */
 export interface PendingEdit {
   marker: PendingPush;
