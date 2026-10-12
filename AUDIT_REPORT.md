@@ -177,12 +177,14 @@ Severity: P0 Critical / P1 High / P2 Medium / P3 Low. Confidence: **Confirmed** 
 - **Complexity:** S
 
 ### F-11 — A transient key-store failure on web disables all saves for the session
+- **Status (branch `fix/audit-sync-findings`):** Fixed for both the notes key and the attachments key. A failed load is no longer remembered; concurrent callers still share a single load. `web/src/lib/crypto/cryptoKeyRetry.test.ts` failed for both keys against the pre-fix code.
 - **Severity:** P3 · **Confidence:** Confirmed at source level · **Platform:** Web
 - **Location:** `web/src/lib/crypto/notesCryptoKey.ts:107-130` memoizes the promise, including a `null` result from `openKeyDb` `onerror`/`onblocked` or from an aborted claim transaction. Every later `sealNoteForStorage` then throws `missing_key` until the page reloads.
 - **Fix:** Do not cache a `null` result; cache only a resolved `CryptoKey`.
 - **Complexity:** XS
 
 ### F-12 — Cross-client RPC contract coverage gap
+- **Status (branch `fix/audit-sync-findings`):** Fixed. Both clients now check the argument sets they send against the signatures the migrations leave behind: `RpcSignatureContractTest.kt` (added with F-01) and `web/src/lib/contract/rpcSignatureContract.test.ts`, which was confirmed to fail when a bogus argument is injected. The stale fixture description and the contracts README are corrected.
 - **Severity:** P3 · **Confidence:** Confirmed · **Area:** Tests
 - **Detail:** `contracts/cloud/note-rpc-args.json` describes 14 keys that "both clients send". Kotlin now sends 15. The Kotlin restore tests (`NoteSyncEngineRemoteIdentityF1Test.kt:123`) use a fake that answers `restore_note` for any body, so F-01 is invisible to every suite that runs.
 - **Fix:** See F-01's regression test.
