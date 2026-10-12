@@ -2,6 +2,7 @@ import { resolveAuthenticatedUserId, UpstreamServiceError, type WorkerEnv } from
 import { ATTACHMENT_ALLOWED_METHODS, withAttachmentCors } from './cors';
 import {
   claimOrphanedProvisionalAttachments,
+  reportUnreferencedAttachmentObjects,
   sweepOrphanedDeletedAttachments,
   sweepUnconfirmedAttachmentDeletes,
 } from './sweep';
@@ -468,16 +469,18 @@ export default {
     env: WorkerEnv,
     ctx: ExecutionContext,
   ): Promise<void> {
-    // Three independent passes: one reclaims blobs whose notes are long gone, one finishes deletes
-    // a client abandoned, and one claims provisional uploads nothing will ever commit (their bytes
-    // go through the unconfirmed-delete pass on a later run). None may hide another's failure, so
-    // all always run and the first rejection is rethrown for the runtime to log.
+    // Independent passes: one reclaims blobs whose notes are long gone, one finishes deletes a
+    // client abandoned, one claims provisional uploads nothing will ever commit (their bytes go
+    // through the unconfirmed-delete pass on a later run), and one only reports objects no row
+    // references. None may hide another's failure, so all always run and the first rejection is
+    // rethrown for the runtime to log.
     ctx.waitUntil(
       (async () => {
         const results = await Promise.allSettled([
           sweepOrphanedDeletedAttachments(env),
           sweepUnconfirmedAttachmentDeletes(env),
           claimOrphanedProvisionalAttachments(env),
+          reportUnreferencedAttachmentObjects(env),
         ]);
         const failed = results.find((result) => result.status === 'rejected');
         if (failed) throw (failed as PromiseRejectedResult).reason;

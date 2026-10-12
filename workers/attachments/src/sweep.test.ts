@@ -3,6 +3,7 @@ import type { WorkerEnv } from './auth';
 import worker from './index';
 import {
   claimOrphanedProvisionalAttachments,
+  reportUnreferencedAttachmentObjects,
   sweepOrphanedDeletedAttachments,
   sweepUnconfirmedAttachmentDeletes,
 } from './sweep';
@@ -12,8 +13,28 @@ const OBJECT_KEY = `owners/${OWNER}/notes/1/att1`;
 
 function fakeBucket() {
   const objects = new Map<string, Uint8Array>();
+  /** When each object was written; unset means long ago. */
+  const uploadedAt = new Map<string, Date>();
   return {
     objects,
+    uploadedAt,
+    /** The subset of R2's list() these sweeps use: prefix, cursor and limit, keys in order. */
+    async list(options: { prefix?: string; cursor?: string; limit?: number }) {
+      const keys = [...objects.keys()].filter((key) => key.startsWith(options.prefix ?? '')).sort();
+      const start = options.cursor ? Number(options.cursor) : 0;
+      const limit = options.limit ?? 1000;
+      const page = keys.slice(start, start + limit);
+      const truncated = start + limit < keys.length;
+      return {
+        objects: page.map((key) => ({
+          key,
+          size: objects.get(key)!.byteLength,
+          uploaded: uploadedAt.get(key) ?? new Date(0),
+        })),
+        truncated,
+        cursor: truncated ? String(start + limit) : undefined,
+      };
+    },
     async put(key: string, body: Uint8Array) {
       objects.set(key, body);
     },
@@ -43,6 +64,8 @@ function mockRpcs(handlers: {
   purgeStatus?: number;
   provisional?: unknown;
   provisionalStatus?: number;
+  /** Which of the given object keys the database has no row for. Defaults to none. */
+  unreferenced?: (keys: string[]) => string[];
 }) {
   rpcCalls = [];
   vi.stubGlobal(
@@ -55,6 +78,10 @@ function mockRpcs(handlers: {
         return new Response(JSON.stringify(handlers.list ?? []), {
           status: handlers.listStatus ?? 200,
         });
+      }
+      if (url.includes('find_unreferenced_attachment_objects')) {
+        const keys = (body.p_object_keys ?? []) as string[];
+        return new Response(JSON.stringify(handlers.unreferenced?.(keys) ?? []), { status: 200 });
       }
       if (url.includes('claim_orphaned_provisional_attachments')) {
         return new Response(JSON.stringify(handlers.provisional ?? []), {
@@ -439,7 +466,8 @@ describe('provisional upload claim (F-09)', () => {
     );
   });
 
-  it('runs on the cron trigger alongside the other two passes', async () => {
+  it('runs on the cron trigger alongside the other passes', async () => {
+    bucket.objects.set(OBJECT_KEY, new Uint8Array([1]));
     mockRpcs({});
     const pending: Promise<unknown>[] = [];
 
@@ -454,5 +482,62 @@ describe('provisional upload claim (F-09)', () => {
     expect(called).toContain('list_orphaned_deleted_attachments');
     expect(called).toContain('list_unconfirmed_attachment_deletes');
     expect(called).toContain('claim_orphaned_provisional_attachments');
+    expect(called).toContain('find_unreferenced_attachment_objects');
+  });
+});
+
+describe('unreferenced object report', () => {
+  const NOW = Date.UTC(2026, 9, 12);
+  const DAY = 24 * 60 * 60 * 1000;
+  const key = (name: string) => `owners/${OWNER}/notes/1/${name}`;
+
+  it('does nothing without a service-role key', async () => {
+    mockRpcs({});
+    env.SUPABASE_SERVICE_ROLE_KEY = undefined;
+
+    expect(await reportUnreferencedAttachmentObjects(env, NOW)).toEqual({
+      scanned: 0,
+      unreferenced: 0,
+      unreferencedBytes: 0,
+      truncated: false,
+    });
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it('counts old objects with no row, asks only about old ones, and deletes nothing', async () => {
+    bucket.objects.set(key('orphan'), new Uint8Array(5));
+    bucket.objects.set(key('live'), new Uint8Array(3));
+    bucket.objects.set(key('fresh'), new Uint8Array(7));
+    bucket.uploadedAt.set(key('fresh'), new Date(NOW - DAY));
+    mockRpcs({ unreferenced: (keys) => keys.filter((k) => !k.endsWith('/live')) });
+
+    const report = await reportUnreferencedAttachmentObjects(env, NOW);
+
+    expect(report).toEqual({ scanned: 3, unreferenced: 1, unreferencedBytes: 5, truncated: false });
+    expect(rpcCalls).toHaveLength(1);
+    expect(rpcCalls[0]!.body).toEqual({ p_object_keys: [key('live'), key('orphan')] });
+    expect(bucket.objects.size).toBe(3);
+  });
+
+  it('reads at most five pages and says when it stopped short', async () => {
+    for (let index = 0; index < 5_001; index++) {
+      bucket.objects.set(key(`k${String(index).padStart(5, '0')}`), new Uint8Array(1));
+    }
+    mockRpcs({ unreferenced: (keys) => keys });
+
+    const report = await reportUnreferencedAttachmentObjects(env, NOW);
+
+    expect(report).toEqual({ scanned: 5_000, unreferenced: 5_000, unreferencedBytes: 5_000, truncated: true });
+    expect(rpcCalls).toHaveLength(5);
+  });
+
+  it('throws when the report RPC fails', async () => {
+    bucket.objects.set(key('orphan'), new Uint8Array(1));
+    mockRpcs({});
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 503 })));
+
+    await expect(reportUnreferencedAttachmentObjects(env, NOW)).rejects.toThrow(
+      /find_unreferenced_attachment_objects/,
+    );
   });
 });

@@ -133,6 +133,62 @@ export async function sweepOrphanedDeletedAttachments(env: WorkerEnv): Promise<S
   return { scanned: rows.length, deleted, skipped };
 }
 
+/** Objects younger than this may belong to an upload still finalizing or still being retried. */
+const UNREFERENCED_MIN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+/** Pages of 1000 keys per run: bounds the run's cost, and the report says when it stopped short. */
+const UNREFERENCED_MAX_PAGES = 5;
+
+export interface UnreferencedReport {
+  scanned: number;
+  unreferenced: number;
+  unreferencedBytes: number;
+  /** True when the listing had more pages than one run reads, so the counts are a lower bound. */
+  truncated: boolean;
+}
+
+/**
+ * Counts R2 objects at least a week old that no attachment row references, and logs the total.
+ *
+ * These are bytes an upload left behind when finalization failed ambiguously and the client never
+ * retried: since F-08 the Worker keeps them rather than risk deleting a committed attachment's
+ * bytes. Report only — nothing is deleted. A deleting sweep would also have to keep a late retry of
+ * the same upload working, which the clients' lack of 409 handling makes non-trivial; this measures
+ * whether that is worth building.
+ */
+export async function reportUnreferencedAttachmentObjects(
+  env: WorkerEnv,
+  now: number = Date.now(),
+): Promise<UnreferencedReport> {
+  const report: UnreferencedReport = { scanned: 0, unreferenced: 0, unreferencedBytes: 0, truncated: false };
+  if (!serviceRoleHeaders(env)) return report;
+
+  let cursor: string | undefined;
+  for (let page = 0; page < UNREFERENCED_MAX_PAGES; page++) {
+    const listing = await env.ATTACHMENTS_BUCKET.list({ prefix: 'owners/', cursor, limit: 1000 });
+    report.scanned += listing.objects.length;
+    const old = listing.objects.filter(
+      (object) => now - object.uploaded.getTime() >= UNREFERENCED_MIN_AGE_MS,
+    );
+    if (old.length > 0) {
+      const missing = await rpc<string[]>(env, 'find_unreferenced_attachment_objects', {
+        p_object_keys: old.map((object) => object.key),
+      });
+      const unreferenced = new Set(Array.isArray(missing) ? missing : []);
+      for (const object of old) {
+        if (!unreferenced.has(object.key)) continue;
+        report.unreferenced += 1;
+        report.unreferencedBytes += object.size;
+      }
+    }
+    report.truncated = listing.truncated;
+    if (!listing.truncated) break;
+    cursor = listing.cursor;
+  }
+
+  console.log('[Sweep] Unreferenced attachment objects', report);
+  return report;
+}
+
 /**
  * Claims provisional uploads that no note commit will ever promote (F-09).
  *
