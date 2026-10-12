@@ -4,6 +4,7 @@ import com.aus.notelikeus.data.local.NOTELIKEUS_DATABASE_VERSION
 import com.aus.notelikeus.domain.diagnostics.DiagnosticsCollector
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.data.ReminderScheduler
+import com.aus.notelikeus.data.local.DatabaseEncryptionOutcome
 import com.aus.notelikeus.data.local.DatabaseKeyManager
 import com.aus.notelikeus.data.local.DatabaseMigrations
 import com.aus.notelikeus.data.local.NotelikeusDatabase
@@ -78,14 +79,20 @@ actual val platformModule = module {
         val keyManager = get<DatabaseKeyManager>()
         val passphrase = keyManager.getPassphrase()
         
-        PlaintextDatabaseMigrator.migrateToEncryptedIfNeeded(
+        val outcome = PlaintextDatabaseMigrator.migrateToEncryptedIfNeeded(
             context,
             NotelikeusDatabase.DATABASE_NAME,
             passphrase
         )
 
-        getDatabaseBuilder()
-            .openHelperFactory(SupportOpenHelperFactory(passphrase))
+        val builder = getDatabaseBuilder()
+        // A readable plaintext database that could not be encrypted this launch is opened as what
+        // it is — with the platform SQLite — rather than failing an encrypted open or starting
+        // empty. The next launch tries the migration again (F-10).
+        if (outcome != DatabaseEncryptionOutcome.PLAINTEXT_RETAINED) {
+            builder.openHelperFactory(SupportOpenHelperFactory(passphrase))
+        }
+        builder
             .addMigrations(*DatabaseMigrations.ALL)
             .build()
     }

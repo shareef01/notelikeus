@@ -169,6 +169,7 @@ Severity: P0 Critical / P1 High / P2 Medium / P3 Low. Confidence: **Confirmed** 
 - **Complexity:** M
 
 ### F-10 — Android plaintext→SQLCipher migration quarantines a healthy database on a transient export failure
+- **Status (branch `fix/audit-sync-findings`):** Fixed on Android and desktop. Desktop had the same flaw in three places. A readable plaintext database that cannot be encrypted is kept and opened as plaintext for that launch; the migration retries on the next launch. Only a file that opens neither way is quarantined. Android now proves the encrypted copy opens *before* the swap deletes the original. Interrupted-swap recovery now re-migrates the restored backup instead of handing a plaintext file to an encrypted open. Desktop tests: `DesktopEncryptionFailureRetentionTest` (run, passing). Android: `PlaintextDatabaseMigratorTest.aFailedExportKeepsThePlaintextDatabaseInPlace` (compiles; needs a device).
 - **Severity:** P2 · **Confidence:** Probable · **Platform:** Android
 - **Location:** `composeApp/src/androidMain/.../PlaintextDatabaseMigrator.kt`. Any exception from `sqlcipher_export`, such as low disk space, results in `quarantineDatabaseFiles` and Room then creates an empty database.
 - **Effect:** The user's notes vanish from the app. The bytes still exist under a quarantined name, but nothing in the UI recovers them. For signed-in users the cloud re-hydrates, but guest/offline users effectively lose everything.
