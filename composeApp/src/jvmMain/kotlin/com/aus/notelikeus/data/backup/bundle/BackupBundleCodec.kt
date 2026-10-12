@@ -2,12 +2,13 @@ package com.aus.notelikeus.data.backup.bundle
 
 import com.aus.notelikeus.data.backup.BackupBundleManifest
 import com.aus.notelikeus.data.backup.BundleAttachmentDto
-import java.io.ByteArrayInputStream
+import java.io.File
 import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
+import java.util.zip.ZipException
+import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -138,22 +139,96 @@ object BackupBundleCodec {
         )
     }
 
+    /**
+     * Reads a whole bundle held in memory. Kept for callers that already have the bytes (tests,
+     * small archives); imports go through [openBackupBundle], which never holds more than one image.
+     */
     fun parseBackupBundle(archive: ByteArray): ParsedBackupBundle {
         if (archive.size.toLong() > BackupBundleLimits.MAX_BUNDLE_FILE_BYTES) {
             throw BundleFormatException("Backup bundle is too large")
         }
+        val file = File.createTempFile("nlkbak-parse", BackupBundleLimits.BUNDLE_FILE_EXTENSION)
+        try {
+            file.writeBytes(archive)
+            openBackupBundle(file).use { bundle ->
+                val media = LinkedHashMap<String, ParsedMediaAttachment>()
+                val attachments = ArrayList<BundleAttachmentDto>()
+                val warnings = bundle.warnings.toMutableList()
+                var dropped = bundle.droppedAttachments
+                for (entry in bundle.manifest.attachments) {
+                    when (val read = bundle.readMedia(entry)) {
+                        is MediaRead.Dropped -> {
+                            dropped++
+                            warnings.add(read.warning)
+                        }
+                        is MediaRead.Loaded -> {
+                            media[entry.attachmentId] = read.media
+                            attachments.add(entry.copy(sizeBytes = read.media.bytes.size.toLong()))
+                        }
+                    }
+                }
+                return ParsedBackupBundle(
+                    manifest = bundle.manifest.copy(attachments = attachments),
+                    media = media,
+                    droppedAttachments = dropped,
+                    warnings = warnings,
+                )
+            }
+        } finally {
+            file.delete()
+        }
+    }
 
-        val entries = readAllStoredOrDeflatedEntries(archive)
-        val byName = entries.associateBy { it.first }
-        if (byName.size > BackupBundleLimits.MAX_ZIP_ENTRIES) {
-            throw BundleFormatException("Backup bundle has too many entries")
+    /**
+     * Opens the bundle at [file] for a streaming import.
+     *
+     * Everything that decides whether the bundle is usable at all is checked here, before a single
+     * note is imported: the file size, every entry name, the entry count, the declared uncompressed
+     * total, and the manifest. Images are only *indexed*; [OpenedBackupBundle.readMedia] reads one at
+     * a time, so heap use is bounded by the manifest plus one image, whatever the bundle's size.
+     */
+    fun openBackupBundle(file: File): OpenedBackupBundle {
+        if (file.length() > BackupBundleLimits.MAX_BUNDLE_FILE_BYTES) {
+            throw BundleFormatException("Backup bundle is too large")
+        }
+        val zip = try {
+            ZipFile(file)
+        } catch (_: ZipException) {
+            throw BundleFormatException("Backup bundle is not a valid archive")
+        }
+        try {
+            return indexBundle(zip)
+        } catch (error: Throwable) {
+            zip.close()
+            throw error
+        }
+    }
+
+    private fun indexBundle(zip: ZipFile): OpenedBackupBundle {
+        val byName = LinkedHashMap<String, ZipEntry>()
+        var declaredTotal = 0L
+        for (entry in zip.entries()) {
+            if (entry.isDirectory) continue
+            if (!isSafeZipEntryName(entry.name)) {
+                throw BundleFormatException("Backup bundle contains an unsafe entry name")
+            }
+            if (byName.size >= BackupBundleLimits.MAX_ZIP_ENTRIES) {
+                throw BundleFormatException("Backup bundle has too many entries")
+            }
+            if (entry.size > BackupBundleLimits.MAX_ZIP_ENTRY_BYTES) {
+                throw BundleFormatException("Backup bundle entry is too large")
+            }
+            declaredTotal += entry.size.coerceAtLeast(0L)
+            if (declaredTotal > BackupBundleLimits.MAX_ZIP_TOTAL_BYTES) {
+                throw BundleFormatException("Backup bundle expands beyond the allowed size")
+            }
+            byName[entry.name] = entry
         }
 
-        val manifestBytes = byName[BackupBundleLimits.BUNDLE_MANIFEST_ENTRY]?.second
+        val manifestEntry = byName[BackupBundleLimits.BUNDLE_MANIFEST_ENTRY]
             ?: throw BundleFormatException("Backup bundle has no manifest.json")
-        if (manifestBytes.size.toLong() > BackupBundleLimits.MAX_BUNDLE_MANIFEST_BYTES) {
-            throw BundleFormatException("Backup bundle manifest is too large")
-        }
+        val manifestBytes = readEntryBytes(zip, manifestEntry, BackupBundleLimits.MAX_BUNDLE_MANIFEST_BYTES)
+            ?: throw BundleFormatException("Backup bundle manifest is too large")
 
         val manifestText = manifestBytes.toString(Charsets.UTF_8)
         if (maxJsonNestingDepth(manifestText) > MAX_JSON_DEPTH) {
@@ -175,7 +250,7 @@ object BackupBundleCodec {
 
         val warnings = ArrayList<String>()
         var droppedAttachments = 0
-        val media = LinkedHashMap<String, ParsedMediaAttachment>()
+        val seen = HashSet<String>()
         val attachments = ArrayList<BundleAttachmentDto>()
         val referencedNames = hashSetOf(BackupBundleLimits.BUNDLE_MANIFEST_ENTRY)
 
@@ -194,57 +269,32 @@ object BackupBundleCodec {
                 warnings.add("Skipped an attachment with an unusable id")
                 continue
             }
-            if (media.containsKey(attachmentId)) continue
+            if (!seen.add(attachmentId)) continue
 
             val mediaName = mediaEntryName(attachmentId)
             referencedNames.add(mediaName)
-            val mediaBytes = byName[mediaName]?.second
-            if (mediaBytes == null) {
+            val zipEntry = byName[mediaName]
+            if (zipEntry == null) {
                 droppedAttachments++
                 warnings.add("Attachment $attachmentId is listed but its file is missing")
                 continue
             }
-            if (mediaBytes.size.toLong() > BackupBundleLimits.MAX_BUNDLE_ATTACHMENT_BYTES) {
+            if (zipEntry.size > BackupBundleLimits.MAX_BUNDLE_ATTACHMENT_BYTES) {
                 droppedAttachments++
                 warnings.add("Attachment $attachmentId is too large to import")
                 continue
             }
 
-            val declaredSize = entry["sizeBytes"]?.jsonPrimitive?.longOrNull ?: mediaBytes.size.toLong()
-            if (declaredSize != mediaBytes.size.toLong()) {
-                droppedAttachments++
-                warnings.add("Attachment $attachmentId does not match its recorded size")
-                continue
-            }
-
-            val declaredHash = entry["sha256"]?.jsonPrimitive?.contentOrNull.orEmpty().lowercase()
-            if (declaredHash.isNotEmpty()) {
-                val actual = sha256Hex(mediaBytes)
-                if (actual != declaredHash) {
-                    droppedAttachments++
-                    warnings.add("Attachment $attachmentId failed its checksum and was skipped")
-                    continue
-                }
-            }
-
-            val type = entry["type"]?.jsonPrimitive?.contentOrNull?.ifBlank { null } ?: "image"
-            val mimeType = entry["mimeType"]?.jsonPrimitive?.contentOrNull
-            val noteId = entry["noteId"]?.jsonPrimitive?.longOrNull ?: 0L
-            media[attachmentId] = ParsedMediaAttachment(
-                bytes = mediaBytes,
-                mimeType = mimeType,
-                type = type,
-                noteId = noteId,
-            )
             attachments.add(
                 BundleAttachmentDto(
-                    noteId = noteId,
+                    noteId = entry["noteId"]?.jsonPrimitive?.longOrNull ?: 0L,
                     attachmentId = attachmentId,
                     path = mediaName,
-                    type = type,
-                    mimeType = mimeType,
-                    sizeBytes = mediaBytes.size.toLong(),
-                    sha256 = declaredHash.ifEmpty { null },
+                    type = entry["type"]?.jsonPrimitive?.contentOrNull?.ifBlank { null } ?: "image",
+                    mimeType = entry["mimeType"]?.jsonPrimitive?.contentOrNull,
+                    sizeBytes = entry["sizeBytes"]?.jsonPrimitive?.longOrNull,
+                    sha256 = entry["sha256"]?.jsonPrimitive?.contentOrNull.orEmpty().lowercase()
+                        .ifEmpty { null },
                 ),
             )
         }
@@ -256,7 +306,9 @@ object BackupBundleCodec {
             warnings.add("$strayMedia file(s) in the bundle are not listed in its manifest")
         }
 
-        return ParsedBackupBundle(
+        return OpenedBackupBundle(
+            zip = zip,
+            entries = byName,
             manifest = BackupBundleManifest(
                 formatVersion = formatVersion.takeIf { it > 0 }
                     ?: BackupBundleManifest.BUNDLE_FORMAT_VERSION,
@@ -266,10 +318,32 @@ object BackupBundleCodec {
                 backup = backup,
                 attachments = attachments,
             ),
-            media = media,
             droppedAttachments = droppedAttachments,
             warnings = warnings,
+            initialBytesRead = manifestBytes.size.toLong(),
         )
+    }
+
+    /**
+     * The bytes of [entry], or null when more than [limit] arrive. The limit is enforced on what is
+     * actually read, never on the size the archive declares.
+     */
+    internal fun readEntryBytes(zip: ZipFile, entry: ZipEntry, limit: Long): ByteArray? {
+        zip.getInputStream(entry).use { input ->
+            val buffer = ByteArrayOutputStream(
+                entry.size.takeIf { it in 0..limit }?.toInt() ?: DEFAULT_BUFFER_SIZE,
+            )
+            val chunk = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0L
+            while (true) {
+                val read = input.read(chunk)
+                if (read < 0) break
+                total += read
+                if (total > limit) return null
+                buffer.write(chunk, 0, read)
+            }
+            return buffer.toByteArray()
+        }
     }
 
     private fun writeStoredZip(entries: List<Pair<String, ByteArray>>): ByteArray {
@@ -291,50 +365,6 @@ object BackupBundleCodec {
             }
         }
         return out.toByteArray()
-    }
-
-    private fun readAllStoredOrDeflatedEntries(archive: ByteArray): List<Pair<String, ByteArray>> {
-        val result = ArrayList<Pair<String, ByteArray>>()
-        var totalUncompressed = 0L
-        ZipInputStream(ByteArrayInputStream(archive)).use { zis ->
-            while (true) {
-                val entry = zis.nextEntry ?: break
-                if (entry.isDirectory) continue
-                if (!isSafeZipEntryName(entry.name)) {
-                    throw BundleFormatException("Backup bundle contains an unsafe entry name")
-                }
-                if (result.size >= BackupBundleLimits.MAX_ZIP_ENTRIES) {
-                    throw BundleFormatException("Backup bundle has too many entries")
-                }
-                val bytes = readEntryBytes(zis, entry)
-                totalUncompressed += bytes.size.toLong()
-                if (totalUncompressed > BackupBundleLimits.MAX_ZIP_TOTAL_BYTES) {
-                    throw BundleFormatException("Backup bundle expands beyond the allowed size")
-                }
-                result.add(entry.name to bytes)
-            }
-        }
-        return result
-    }
-
-    private fun readEntryBytes(zis: ZipInputStream, entry: ZipEntry): ByteArray {
-        val declared = entry.size
-        if (declared >= 0 && declared > BackupBundleLimits.MAX_ZIP_ENTRY_BYTES) {
-            throw BundleFormatException("Backup bundle entry is too large")
-        }
-        val buffer = ByteArrayOutputStream()
-        val chunk = ByteArray(8 * 1024)
-        var total = 0L
-        while (true) {
-            val read = zis.read(chunk)
-            if (read < 0) break
-            total += read
-            if (total > BackupBundleLimits.MAX_ZIP_ENTRY_BYTES) {
-                throw BundleFormatException("Backup bundle entry is too large")
-            }
-            buffer.write(chunk, 0, read)
-        }
-        return buffer.toByteArray()
     }
 
     fun isSafeZipEntryName(name: String): Boolean {

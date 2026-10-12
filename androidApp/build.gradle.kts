@@ -126,6 +126,9 @@ dependencies {
     // NotelikeusApp touches the database type directly, and composeApp carries Room as
     // implementation, not api.
     implementation(libs.room.runtime)
+    // MainActivity hands the picked backup bundle to MainViewModel as an okio Path; composeApp
+    // carries okio as implementation, not api.
+    implementation(libs.okio)
 
     implementation(libs.androidx.appfunctions)
     implementation(libs.androidx.appfunctions.service)

@@ -3,7 +3,8 @@ package com.aus.notelikeus
 import android.content.ContentResolver
 import android.net.Uri
 import android.util.Log
-import java.io.ByteArrayOutputStream
+import com.aus.notelikeus.data.backup.bundle.BackupFileReads
+import java.io.File
 
 /**
  * Reading and writing the backup document the user picked through the Storage Access Framework.
@@ -43,39 +44,29 @@ object BackupDocumentIo {
     fun read(resolver: ContentResolver, uri: Uri): String? =
         runCatching {
             resolver.openInputStream(uri)?.use { input ->
-                val reader = input.reader()
-                val buffer = CharArray(DEFAULT_BUFFER_SIZE)
-                val text = StringBuilder()
-                while (true) {
-                    val read = reader.read(buffer)
-                    if (read <= 0) break
-                    if (text.length + read > MAX_BACKUP_DOCUMENT_CHARS) {
+                BackupFileReads.readTextWithin(input, MAX_BACKUP_DOCUMENT_CHARS)
+                    ?: run {
                         Log.w(TAG, "Backup document exceeds the import limit; refusing it")
-                        return null
+                        null
                     }
-                    text.appendRange(buffer, 0, read)
-                }
-                text.toString()
             }
         }.onFailure { Log.w(TAG, "Reading the backup document failed", it) }.getOrNull()
 
-    fun readBytes(resolver: ContentResolver, uri: Uri): ByteArray? =
+    /** The first bytes of the picked document, enough to tell a bundle from a JSON backup. */
+    fun readHead(resolver: ContentResolver, uri: Uri): ByteArray? =
+        runCatching { resolver.openInputStream(uri)?.use { BackupFileReads.readHead(it) } }
+            .onFailure { Log.w(TAG, "Reading the backup header failed", it) }.getOrNull()
+
+    /**
+     * Streams the picked bundle into [target] so it can be imported from disk, never from a buffer
+     * the size of the bundle (F-07). False — with no [target] left behind — when it is larger than
+     * the import limit or cannot be read.
+     */
+    fun copyToFile(resolver: ContentResolver, uri: Uri, target: File): Boolean =
         runCatching {
             resolver.openInputStream(uri)?.use { input ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                val out = ByteArrayOutputStream()
-                var total = 0L
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read <= 0) break
-                    total += read
-                    if (total > MAX_BUNDLE_DOCUMENT_BYTES) {
-                        Log.w(TAG, "Backup bundle exceeds the import limit; refusing it")
-                        return null
-                    }
-                    out.write(buffer, 0, read)
-                }
-                out.toByteArray()
-            }
-        }.onFailure { Log.w(TAG, "Reading the backup bytes failed", it) }.getOrNull()
+                BackupFileReads.copyWithin(input, target, MAX_BUNDLE_DOCUMENT_BYTES)
+            } ?: false
+        }.onFailure { Log.w(TAG, "Copying the backup bundle failed", it) }.getOrDefault(false)
+            .also { copied -> if (!copied) Log.w(TAG, "Backup bundle was refused or unreadable") }
 }

@@ -712,7 +712,7 @@ class MainViewModel(
         return result
     }
 
-    suspend fun importBackupBundle(archive: ByteArray): BackupImportResult {
+    suspend fun importBackupBundle(archive: okio.Path): BackupImportResult {
         // Captured at the same origin as importBackup above, for the same reason.
         val commitToken = localCommitTokenProvider.capture()
         val result = try {
