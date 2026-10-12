@@ -25,6 +25,19 @@ class DesktopDatabaseKeyManager(
     private var cached: ByteArray? = null
     private val lock = Any()
 
+    /** Where the key file lives, so a startup failure can tell the user what was left untouched. */
+    val keyDirectory: File get() = keyDir
+
+    /**
+     * Loads the key now and returns the failure instead of throwing it (FU-2).
+     *
+     * Startup calls this before anything opens the database, so an unreadable key is explained to
+     * the user rather than surfacing as an uncaught exception from the database singleton, which
+     * ended the app on every launch with no message. Like [getPassphrase], it never moves,
+     * replaces or deletes the key file.
+     */
+    fun checkReadable(): Throwable? = runCatching { getPassphrase() }.exceptionOrNull()
+
     fun getPassphrase(): ByteArray = synchronized(lock) {
         cached?.let { return it.copyOf() }
         val loaded = loadOrCreate()
