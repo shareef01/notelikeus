@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerEnv } from './auth';
-import { sweepOrphanedDeletedAttachments, sweepUnconfirmedAttachmentDeletes } from './sweep';
+import worker from './index';
+import {
+  claimOrphanedProvisionalAttachments,
+  sweepOrphanedDeletedAttachments,
+  sweepUnconfirmedAttachmentDeletes,
+} from './sweep';
 
 const OWNER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const OBJECT_KEY = `owners/${OWNER}/notes/1/att1`;
@@ -36,6 +41,8 @@ function mockRpcs(handlers: {
   claimStatus?: number;
   purge?: unknown;
   purgeStatus?: number;
+  provisional?: unknown;
+  provisionalStatus?: number;
 }) {
   rpcCalls = [];
   vi.stubGlobal(
@@ -47,6 +54,11 @@ function mockRpcs(handlers: {
       if (url.includes('list_orphaned_deleted_attachments')) {
         return new Response(JSON.stringify(handlers.list ?? []), {
           status: handlers.listStatus ?? 200,
+        });
+      }
+      if (url.includes('claim_orphaned_provisional_attachments')) {
+        return new Response(JSON.stringify(handlers.provisional ?? []), {
+          status: handlers.provisionalStatus ?? 200,
         });
       }
       if (url.includes('claim_orphaned_attachment_for_delete')) {
@@ -391,5 +403,56 @@ describe('unconfirmed attachment delete sweep', () => {
     await expect(sweepUnconfirmedAttachmentDeletes(env)).rejects.toThrow(
       /Sweep RPC failed: list_unconfirmed_attachment_deletes \(500\)/,
     );
+  });
+});
+
+describe('provisional upload claim (F-09)', () => {
+  it('does nothing without a service-role key', async () => {
+    mockRpcs({});
+    env.SUPABASE_SERVICE_ROLE_KEY = undefined;
+
+    expect(await claimOrphanedProvisionalAttachments(env)).toEqual({ claimed: 0 });
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it('asks the database to claim, and leaves the bytes to the unconfirmed-delete pass', async () => {
+    bucket.objects.set(OBJECT_KEY, new Uint8Array([1]));
+    mockRpcs({
+      provisional: [{ owner_id: OWNER, note_id: '1', attachment_id: 'att1', object_key: OBJECT_KEY }],
+    });
+
+    expect(await claimOrphanedProvisionalAttachments(env)).toEqual({ claimed: 1 });
+    expect(rpcCalls.map((call) => call.url.split('/rpc/')[1])).toEqual([
+      'claim_orphaned_provisional_attachments',
+    ]);
+    expect(rpcCalls[0]!.body).toEqual({ p_limit: 50 });
+    // The claim alone never deletes: the object goes once the claimed row is swept as an
+    // unconfirmed delete, through that pass's canonical-key checks.
+    expect(bucket.objects.has(OBJECT_KEY)).toBe(true);
+  });
+
+  it('throws when the claim RPC fails', async () => {
+    mockRpcs({ provisionalStatus: 500 });
+
+    await expect(claimOrphanedProvisionalAttachments(env)).rejects.toThrow(
+      /claim_orphaned_provisional_attachments/,
+    );
+  });
+
+  it('runs on the cron trigger alongside the other two passes', async () => {
+    mockRpcs({});
+    const pending: Promise<unknown>[] = [];
+
+    await worker.scheduled(
+      {} as ScheduledController,
+      env,
+      { waitUntil: (promise: Promise<unknown>) => pending.push(promise) } as unknown as ExecutionContext,
+    );
+    await Promise.all(pending);
+
+    const called = rpcCalls.map((call) => call.url.split('/rpc/')[1]);
+    expect(called).toContain('list_orphaned_deleted_attachments');
+    expect(called).toContain('list_unconfirmed_attachment_deletes');
+    expect(called).toContain('claim_orphaned_provisional_attachments');
   });
 });
