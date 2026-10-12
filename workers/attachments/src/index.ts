@@ -1,6 +1,10 @@
 import { resolveAuthenticatedUserId, UpstreamServiceError, type WorkerEnv } from './auth';
 import { ATTACHMENT_ALLOWED_METHODS, withAttachmentCors } from './cors';
-import { sweepOrphanedDeletedAttachments, sweepUnconfirmedAttachmentDeletes } from './sweep';
+import {
+  claimOrphanedProvisionalAttachments,
+  sweepOrphanedDeletedAttachments,
+  sweepUnconfirmedAttachmentDeletes,
+} from './sweep';
 import {
   AttachmentTooLargeError,
   declaredContentLength,
@@ -464,14 +468,16 @@ export default {
     env: WorkerEnv,
     ctx: ExecutionContext,
   ): Promise<void> {
-    // Two independent passes: one reclaims blobs whose notes are long gone, the other finishes
-    // deletes a client abandoned. Neither may hide the other's failure, so both always run and
-    // the first rejection is rethrown for the runtime to log.
+    // Three independent passes: one reclaims blobs whose notes are long gone, one finishes deletes
+    // a client abandoned, and one claims provisional uploads nothing will ever commit (their bytes
+    // go through the unconfirmed-delete pass on a later run). None may hide another's failure, so
+    // all always run and the first rejection is rethrown for the runtime to log.
     ctx.waitUntil(
       (async () => {
         const results = await Promise.allSettled([
           sweepOrphanedDeletedAttachments(env),
           sweepUnconfirmedAttachmentDeletes(env),
+          claimOrphanedProvisionalAttachments(env),
         ]);
         const failed = results.find((result) => result.status === 'rejected');
         if (failed) throw (failed as PromiseRejectedResult).reason;

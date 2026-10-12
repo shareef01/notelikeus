@@ -134,6 +134,27 @@ export async function sweepOrphanedDeletedAttachments(env: WorkerEnv): Promise<S
 }
 
 /**
+ * Claims provisional uploads that no note commit will ever promote (F-09).
+ *
+ * Which rows qualify is decided entirely by `claim_orphaned_provisional_attachments`, under row locks
+ * and only on positive evidence that nothing will commit them. This pass deletes no bytes itself: a
+ * claimed row is exactly what an owner's DELETE leaves behind, so
+ * [sweepUnconfirmedAttachmentDeletes] removes the object on a later run, through the same
+ * canonical-key checks as every other delete.
+ */
+export async function claimOrphanedProvisionalAttachments(
+  env: WorkerEnv,
+): Promise<{ claimed: number }> {
+  if (!serviceRoleHeaders(env)) {
+    return { claimed: 0 };
+  }
+  const rows = await rpc<OrphanRow[]>(env, 'claim_orphaned_provisional_attachments', {
+    p_limit: SWEEP_LIMIT,
+  });
+  return { claimed: Array.isArray(rows) ? rows.length : 0 };
+}
+
+/**
  * Finishes attachment deletes that were claimed but never confirmed.
  *
  * A user DELETE marks the metadata deleted before it touches R2, so a request that dies in
