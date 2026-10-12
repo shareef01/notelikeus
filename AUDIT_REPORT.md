@@ -137,7 +137,7 @@ Severity: P0 Critical / P1 High / P2 Medium / P3 Low. Confidence: **Confirmed** 
 - **Complexity:** M
 
 ### F-07 (NLU-05) — Android backup import can exhaust the heap and crash
-- **Status (branch `fix/audit-sync-findings`):** Import fixed on Android and desktop. The desktop picker had the same defect: an uncapped `file.readBytes()`. `BundleImportHeapTest` imports a 144 MB bundle in a child JVM capped at `-Xmx96m`. Against the pre-fix code it fails with `OutOfMemoryError`; it now passes. Export still builds the bundle in memory (P2, not addressed).
+- **Status (branch `fix/audit-sync-findings`):** Import fixed on Android and desktop. The desktop picker had the same defect: an uncapped `file.readBytes()`. `BundleImportHeapTest` imports a 144 MB bundle in a child JVM capped at `-Xmx96m`. Against the pre-fix code it fails with `OutOfMemoryError`; it now passes. Export is fixed too: it streams into the destination the user picked, one image at a time, and `BundleExportHeapTest` exports 144 MB of images under `-Xmx96m` (it failed with `OutOfMemoryError` before).
 - **Severity:** P1 (restore availability) · **Confidence:** Confirmed at source level (peak heap needs runtime measurement) · **Platform:** Android (the bundle codec is shared with desktop)
 - **Location:**
   - `androidApp/src/main/kotlin/com/aus/notelikeus/BackupDocumentIo.kt:62-80` buffers up to 256 MiB in a `ByteArrayOutputStream`. Growth by doubling plus `toByteArray()` means roughly 2–3× transient.

@@ -2,9 +2,12 @@ package com.aus.notelikeus
 
 import android.content.ContentResolver
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.util.Log
 import com.aus.notelikeus.data.backup.bundle.BackupFileReads
 import java.io.File
+import okio.Sink
+import okio.sink
 
 /**
  * Reading and writing the backup document the user picked through the Storage Access Framework.
@@ -27,12 +30,27 @@ object BackupDocumentIo {
     fun write(resolver: ContentResolver, uri: Uri, json: String): Boolean =
         writeBytes(resolver, uri, json.toByteArray())
 
-    fun writeBytes(resolver: ContentResolver, uri: Uri, bytes: ByteArray): Boolean =
+    private fun writeBytes(resolver: ContentResolver, uri: Uri, bytes: ByteArray): Boolean =
         runCatching {
             resolver.openOutputStream(uri)?.use { output ->
                 output.write(bytes)
             } ?: error("no output stream for $uri")
         }.onFailure { Log.w(TAG, "Writing the backup document failed", it) }.isSuccess
+
+    /**
+     * A sink into the picked document, for a bundle streamed straight into it (F-07). The caller's
+     * writer closes it. Null when the document cannot be opened for writing.
+     */
+    fun openSink(resolver: ContentResolver, uri: Uri): Sink? =
+        runCatching { resolver.openOutputStream(uri)?.sink() }
+            .onFailure { Log.w(TAG, "Opening the backup document for writing failed", it) }
+            .getOrNull()
+
+    /** Removes a document whose bundle could not be written, so no partial backup is left behind. */
+    fun delete(resolver: ContentResolver, uri: Uri) {
+        runCatching { DocumentsContract.deleteDocument(resolver, uri) }
+            .onFailure { Log.w(TAG, "Could not remove the incomplete backup document", it) }
+    }
 
     /**
      * Reads a picked backup document, refusing anything larger than the importer would accept.

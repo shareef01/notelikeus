@@ -17,6 +17,7 @@ import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.util.AppLog
 import kotlinx.serialization.json.Json
 import okio.Path.Companion.toOkioPath
+import okio.buffer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -150,51 +151,46 @@ class BackupBundleTransfer(
         return "notelikeus_backup_${day}${BackupBundleLimits.BUNDLE_FILE_EXTENSION}"
     }
 
-    override suspend fun exportBundle(): BundleExportOutcome {
+    /**
+     * Streams the bundle into [sink], reading one image at a time (F-07), and closes it.
+     *
+     * Images are read when the codec asks for them, never collected up front: a library's images
+     * can be far larger than the app's heap.
+     */
+    override suspend fun exportBundle(sink: okio.Sink): BundleExportOutcome {
         val notes = repository.getAllNotesForBackup()
         val documentJson = exporter.createJson()
         val document = json.parseToJsonElement(documentJson).jsonObject
 
-        val sources = ArrayList<BundleAttachmentSource>()
-        var skipped = 0
-        val warnings = ArrayList<String>()
-
-        for (note in notes) {
-            val noteId = note.id ?: continue
-            for (attachment in note.attachments) {
-                val local = readLocalAttachmentBytes(attachment)
-                if (local == null) {
-                    skipped++
-                    continue
-                }
-                sources.add(
-                    BundleAttachmentSource(
-                        noteId = noteId,
-                        attachmentId = attachment.id,
-                        type = attachment.type.ifBlank { "image" },
-                        mimeType = local.mimeType ?: attachment.mimeType,
-                        bytes = local.bytes,
-                    ),
-                )
+        val entries = notes.flatMap { note ->
+            val noteId = note.id ?: return@flatMap emptyList()
+            note.attachments.map { attachment ->
+                BundleAttachmentEntry(
+                    noteId = noteId,
+                    attachmentId = attachment.id,
+                    type = attachment.type.ifBlank { "image" },
+                    mimeType = attachment.mimeType,
+                ) { readLocalAttachmentBytes(attachment)?.bytes }
             }
         }
 
+        val written = BackupBundleCodec.writeBackupBundle(
+            output = sink.buffer().outputStream(),
+            backupDocument = document,
+            attachments = entries,
+            origin = BundleOrigin(app = appName, appVersion = appVersion),
+        )
+
+        val skipped = written.unreadable
+        val warnings = ArrayList<String>()
         if (skipped > 0) {
             warnings.add(
                 "$skipped image${if (skipped == 1) " was" else "s were"} not included because " +
                     "${if (skipped == 1) "its bytes are" else "their bytes are"} only available in cloud storage on this device.",
             )
         }
-
-        val bytes = BackupBundleCodec.buildBackupBundle(
-            backupDocument = document,
-            attachments = sources,
-            app = appName,
-            appVersion = appVersion,
-        )
         return BundleExportOutcome(
-            bytes = bytes,
-            attachmentsIncluded = sources.size,
+            attachmentsIncluded = written.included,
             attachmentsSkipped = skipped,
             warnings = warnings,
         )
