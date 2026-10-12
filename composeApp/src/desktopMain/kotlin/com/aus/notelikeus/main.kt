@@ -28,6 +28,9 @@ import com.aus.notelikeus.di.initKoin
 import com.aus.notelikeus.platform.DesktopBiometricPrompt
 import com.aus.notelikeus.platform.DesktopReminderManager
 import com.aus.notelikeus.data.backup.BackupExportResult
+import com.aus.notelikeus.data.backup.NoteBackupImporter
+import com.aus.notelikeus.data.backup.bundle.BackupFileReads
+import okio.Path.Companion.toOkioPath
 import com.aus.notelikeus.util.AppLog
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
@@ -310,17 +313,24 @@ private fun launchApp(
                         val chooser = javax.swing.JFileChooser()
                         if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
                             launch(Dispatchers.IO) {
+                                // Never read whole: a bundle is imported from the file one image at a
+                                // time, and a JSON backup is read only up to the importer's limit (F-07).
                                 val file = chooser.selectedFile
-                                val bytes = runCatching { file.readBytes() }.getOrNull()
-                                if (bytes == null) {
+                                val head = runCatching {
+                                    file.inputStream().use { BackupFileReads.readHead(it) }
+                                }.getOrNull()
+                                if (head == null) {
                                     viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
                                     return@launch
                                 }
-                                val head = bytes.copyOf(minOf(2, bytes.size))
                                 if (viewModel.looksLikeBackupBundle(file.name, head)) {
-                                    viewModel.importBackupBundle(bytes)
+                                    viewModel.importBackupBundle(file.toOkioPath())
                                 } else {
-                                    val json = runCatching { bytes.toString(Charsets.UTF_8) }.getOrNull()
+                                    val json = runCatching {
+                                        file.inputStream().use {
+                                            BackupFileReads.readTextWithin(it, NoteBackupImporter.MAX_BACKUP_CHARS)
+                                        }
+                                    }.getOrNull()
                                     if (json != null) viewModel.importBackup(json)
                                     else viewModel.reportBackupTransfer(
                                         BackupTransferEvent.ImportFailed,

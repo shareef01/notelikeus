@@ -9,12 +9,15 @@ package com.aus.notelikeus.data.backup
 interface BackupBundleOperations {
     suspend fun exportBundle(): BundleExportOutcome
     /**
-     * Imports [archive] into the dataset [commitToken] was captured in — see
+     * Imports the bundle file at [archive] into the dataset [commitToken] was captured in — see
      * [NoteBackupImporter.importFromJson], whose rules this follows for the bundle's own notes and
      * for the attachment re-attachment that follows them.
+     *
+     * A file rather than bytes, so the bundle is never held in memory whole (F-07): implementations
+     * read its manifest and then one image at a time.
      */
     suspend fun importBundle(
-        archive: ByteArray,
+        archive: okio.Path,
         commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
     ): BackupImportResult
 
@@ -34,7 +37,7 @@ object NoopBackupBundleOperations : BackupBundleOperations {
         error("Bundle export is not available on this platform")
 
     override suspend fun importBundle(
-        archive: ByteArray,
+        archive: okio.Path,
         commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
     ): BackupImportResult =
         BackupImportResult.InvalidFormat("Bundle import is not available on this platform")

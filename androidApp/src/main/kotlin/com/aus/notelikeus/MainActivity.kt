@@ -11,6 +11,8 @@ import com.aus.notelikeus.ui.main.BackupTransferEvent
 import com.aus.notelikeus.ui.main.MainViewModel
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import okio.Path.Companion.toOkioPath
+import java.io.File
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
 import androidx.biometric.BiometricPrompt
@@ -169,18 +171,27 @@ class MainActivity : FragmentActivity() {
                     backupViewModel = null
                     if (uri == null || viewModel == null) return@rememberLauncherForActivityResult
                     scope.launch(Dispatchers.IO) {
-                        val bytes = BackupDocumentIo.readBytes(contentResolver, uri)
-                        if (bytes == null) {
+                        // Never buffered whole (F-07): a bundle is copied to a cache file and
+                        // imported one image at a time; a JSON backup is read only up to its limit.
+                        val head = BackupDocumentIo.readHead(contentResolver, uri)
+                        if (head == null) {
                             viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
                             return@launch
                         }
-                        val name = uri.lastPathSegment
-                        val head = bytes.copyOf(minOf(2, bytes.size))
-                        if (viewModel.looksLikeBackupBundle(name, head)) {
-                            viewModel.importBackupBundle(bytes)
+                        if (viewModel.looksLikeBackupBundle(uri.lastPathSegment, head)) {
+                            val staged = File.createTempFile("import", ".nlkbak", cacheDir)
+                            try {
+                                if (BackupDocumentIo.copyToFile(contentResolver, uri, staged)) {
+                                    viewModel.importBackupBundle(staged.toOkioPath())
+                                } else {
+                                    viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
+                                }
+                            } finally {
+                                staged.delete()
+                            }
                         } else {
-                            val json = bytes.toString(Charsets.UTF_8)
-                            if (json.length > BackupDocumentIo.MAX_BACKUP_DOCUMENT_CHARS) {
+                            val json = BackupDocumentIo.read(contentResolver, uri)
+                            if (json == null) {
                                 viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
                             } else {
                                 viewModel.importBackup(json)
