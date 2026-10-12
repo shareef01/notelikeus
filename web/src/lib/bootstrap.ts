@@ -1,4 +1,4 @@
-import { clearOwner } from '@/lib/local/notesLocalRepository';
+import { clearOwner, countPendingPushes } from '@/lib/local/notesLocalRepository';
 import { clearPendingAttachmentsForOwner } from '@/lib/local/pendingAttachmentRepository';
 import { isSupabaseBackendEnabled, loadSupabaseAnonKey, loadSupabaseUrl } from '@/lib/supabase/env';
 import { isBrowserSafeSupabaseKey } from '@/lib/supabase/backendFlag';
@@ -192,6 +192,11 @@ export function clearLocalUserData(): void {
  * Account switch only: clear session state and wipe the prior account's IndexedDB namespace and
  * pending attachments so the next account cannot read it. Normal sign-out must NOT call this ÔÇö
  * unsynced offline edits must remain in IndexedDB until the same account signs in again and syncs.
+ *
+ * The same holds across a switch (FU-1): while the prior account still has edits the cloud has not
+ * confirmed, its namespace is the only copy of them, so it is left in place — owner-scoped and
+ * sealed, out of the new account's reach — and uploads the next time that account signs in here.
+ * The in-memory and session state is still cleared either way.
  */
 export async function clearLocalUserDataForAccountSwitch(previousOwnerId: string): Promise<void> {
   clearGuestAdoptionIntent();
@@ -203,6 +208,13 @@ export async function clearLocalUserDataForAccountSwitch(previousOwnerId: string
     localStorage.removeItem(LAST_MERGED_USER_STORAGE_KEY);
   } catch {
     // ignore
+  }
+  const unsynced = await countPendingPushes(previousOwnerId).catch(() => 0);
+  if (unsynced > 0) {
+    console.warn(
+      `[Notelikeus] Keeping the previous account's local notes: ${unsynced} edit(s) have not been uploaded yet`,
+    );
+    return;
   }
   await clearOwner(previousOwnerId);
   try {
