@@ -265,3 +265,58 @@ Each fix should land with its regression test in the same change, and the test s
 **NO-GO** for a release that promises reliable multi-device sync and restorable backups. F-01 and F-06 lose or strand user data in ordinary use (undoing a delete; editing in a browser while offline). F-07 makes large backups unrestorable on Android.
 
 **Conditional GO** after F-01, F-02, F-06 and F-07 are fixed and verified, with the remaining P2 items scheduled. Server-side isolation and the Worker are in good shape and do not block release on the evidence collected.
+
+---
+
+## 12. Follow-up audit — areas the first pass did not cover (2026-10-12)
+
+Scope: the deployed `SECURITY DEFINER` surface; Android exported components (AppFunctions, share intents, widget receiver); web XSS sinks, link handling, CSP, service-worker caching and token storage; desktop key storage; reminders and DST; dependency vulnerabilities; and accessibility, via source heuristics plus the existing e2e coverage. Audit only: no product code was changed for this section.
+
+### Findings
+
+#### FU-1 — Signing a different account into a browser wipes the previous account's unsynced edits, without warning
+- **Severity:** P2 · **Confidence:** Confirmed at source level · **Platform:** Web
+- **Location:** `web/src/hooks/useNotesSync.ts:38-41` calls `clearLocalUserDataForAccountSwitch(lastMerged)` whenever the signed-in uid differs from the last account used in that browser. `web/src/lib/bootstrap.ts:196-207` then runs `clearOwner(previousOwnerId)`, which deletes that owner's note rows **and** its meta row, including `pendingPushes` (F-06).
+- **Sequence:** account A edits offline, then signs out. Signing out keeps A's IndexedDB rows, so A's edits are still safe at this point. Account B then signs in on the same browser profile, and A's unsynced edits are deleted. `SignOutDialog` gives no indication that unsynced edits exist.
+- **Fix:** when `listPendingPushes(uid)` is non-empty at sign-out, say so in `SignOutDialog` (N edits not yet uploaded; they upload when this account signs in again here; signing in a different account on this browser deletes them). Before the account-switch wipe, refuse or confirm when the previous owner still has pending pushes.
+- **Test:** an account-switch test with a pending marker for A expects a confirmation, or expects A's row and marker to survive until confirmed.
+
+#### FU-2 — Desktop: an unreadable DPAPI key crashes the app on every launch, with no message
+- **Severity:** P2 (availability) · **Confidence:** Probable (not reproduced on a live profile) · **Platform:** Windows
+- **Location:** `DesktopDatabaseKeyManager.loadOrCreate` throws `IllegalStateException` when the key file exists but `CryptUnprotectData` fails. That correctly keeps the key file. But it throws while Koin builds the database singleton, and `main.kt` has neither a startup handler nor an uncaught-exception handler.
+- **When:** an administrator password reset, or a profile copied to another machine. In both, the user's DPAPI master key no longer opens the blob. The encrypted notes stay intact on disk, but the app just exits. Android shows `DatabaseRecoveryNotice` for its equivalent case.
+- **Fix:** catch the key failure at startup and show a dialog that explains it and says where the files are, without deleting anything. Optionally offer to start a fresh library after moving the old files aside.
+- **Test:** a desktop test with a blob store that throws, asserting a typed startup result instead of an escaped exception.
+
+#### FU-3 — Web reminders fire only while the app is open; the UI does not say so
+- **Severity:** P2 (product) · **Confidence:** Confirmed at source level · **Platform:** Web
+- **Location:** `web/src/sw.ts:33-41` documents that service-worker timers die with the worker. Without the Push API, a reminder due while the app is closed fires late, on the next event that starts the worker (usually the next visit). `ReminderPickerDialog` and `useNoteEditor` carry no disclosure. Android and desktop schedule real alarms.
+- **Fix (smallest):** a line in the reminder picker on web: "Reminders appear when Notelikeus is open in a browser tab". A real fix needs Web Push, with a server-side scheduler.
+
+#### FU-4 — `begin_sync_mutation()` is callable by `authenticated` over REST
+- **Severity:** P3 (hardening) · **Confidence:** Confirmed · **Platform:** Server
+- **Detail:** `20250904000000_mapping_and_attachment_guards.sql:511` grants it to `authenticated`, so PostgREST exposes it. It sets a transaction-local flag, and PostgREST runs each request in its own transaction, so it cannot unlock a later direct table write: **not exploitable today**. Every caller is a `SECURITY INVOKER` RPC that already runs as `authenticated`. Revoking it would break those RPCs, so the hardening is to move the guard helpers to a non-exposed schema. That's low priority.
+
+#### FU-5 — `androidx.security:security-crypto` is deprecated
+- **Severity:** P3 (maintenance) · **Confidence:** Confirmed (CI deprecation warnings) · **Platform:** Android
+- **Detail:** `DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` store their secrets in `EncryptedSharedPreferences`/`MasterKey`, which are deprecated. They work today. A replacement must read the existing values and re-wrap them with the Android Keystore directly, keeping the old path readable for upgrades, because losing the database passphrase makes the whole local database unrecoverable.
+
+#### FU-6 — Web session (refresh token) lives in `localStorage`
+- **Severity:** P3 (note) · **Confidence:** Confirmed · **Platform:** Web
+- **Detail:** supabase-js defaults (`persistSession: true`, PKCE). Any XSS could read the refresh token. Mitigated by the absence of HTML sinks and by a script CSP of `'self'` plus Google sign-in. No change recommended unless the CSP is loosened.
+
+### Checked and found sound
+- **`SECURITY DEFINER`:** the only definer function (`firebase_uid_proven_elsewhere`) is dropped by `20260905000000_remove_firebase_compatibility.sql`. None remain deployed.
+- **AppFunctions:** callable only by holders of the platform's privileged permission. Every function refuses while the app lock is on, and inputs are size-limited.
+- **Share intents:** `content://` only; the provider's own type must be `image/*`; reads are capped at the attachment limit. The app exports no file or content provider that could be pointed back at its own files.
+- **Exported widget receiver:** an `APPWIDGET_UPDATE` only triggers a refresh, which returns nothing while the app is locked.
+- **Web XSS:** no `dangerouslySetInnerHTML`, `innerHTML`, `eval` or `new Function`. Markdown links allow only `http(s):` and `mailto:` (`toSafeHref`).
+- **CSP and headers:** `default-src 'self'`; scripts limited to `'self'` and Google sign-in; `object-src 'none'`; `frame-ancestors 'none'`; HSTS, `nosniff`, `X-Frame-Options: DENY`. `style-src` allows `'unsafe-inline'`, which is common for React and low risk.
+- **Service worker:** caches only the app shell, fonts and reminder schedules, never API responses. Reminder notifications never carry note text (`sanitizeReminders` owns the strings).
+- **Reminders on Android and desktop:** one-off instants. The picker conversion handles both UTC-midnight date values and the skipped spring-forward hour. Android falls back to an inexact alarm, and reports that it did, when exact alarms are not allowed.
+- **Desktop key storage:** user-scope DPAPI with per-purpose entropy, `CRYPTPROTECT_UI_FORBIDDEN`, and atomic publication by rename. An existing key that fails to unwrap is never replaced.
+- **Dependencies:** `npm audit` reports 0 vulnerabilities in `web/`, `workers/attachments/` and the root. Gradle dependencies are covered by verification metadata and CI dependency review; no local CVE scanner was run.
+- **Accessibility (web):** a heuristic scan finds no icon-only `<button>` without an accessible name. The e2e suite runs axe (`accessibility.spec.ts`), plus dialog, contrast, reflow and touch-target checks. Compose: the 30 `contentDescription = null` icons all sit beside text labels; none is the only content of a clickable control.
+
+### Still not covered
+Runtime screen-reader traversal and font scaling on Android and desktop; desktop keyboard-only navigation; performance profiling (cold start, large libraries, recomposition); a Gradle CVE scan (for example OWASP Dependency-Check).
