@@ -143,7 +143,8 @@ select is(
   'F09-2 only a provisional row proven orphaned, past the grace period, is claimed'
 );
 
-select tests.clear_authentication();
+-- Read as service_role: anon (clear_authentication) sees no rows through RLS.
+select tests.authenticate_as_service_role();
 select is(
   (select count(*)::int from public.note_attachments
     where attachment_id = 'stale'
@@ -171,7 +172,7 @@ select ok(
 );
 select ok(
   (select delete_claimed_at is null from public.note_attachments where attachment_id = 'on-deleted'),
-  'F09-7b a deleted note's rows are left to the orphan sweep'
+  'F09-7b a deleted note''s rows are left to the orphan sweep'
 );
 
 select tests.authenticate_as_service_role();
@@ -192,7 +193,8 @@ select is(
   'F09-9 a claimed identity cannot be re-uploaded'
 );
 select tests.commit_note('2', '["stale"]'::jsonb);
-select tests.clear_authentication();
+-- Read as service_role: anon (clear_authentication) sees no rows through RLS.
+select tests.authenticate_as_service_role();
 select ok(
   (select deleted_at is not null and committed_at is null
      from public.note_attachments where attachment_id = 'stale'),
@@ -219,7 +221,8 @@ select is(
 );
 
 -- Quota: the claimed rows no longer count against the owner's total.
-select tests.clear_authentication();
+-- Read as service_role: anon (clear_authentication) sees no rows through RLS.
+select tests.authenticate_as_service_role();
 select is(
   (select coalesce(sum(size_bytes), 0)::bigint from public.note_attachments
     where owner_id = tests.get_supabase_uid('prov_a@notelikeus.test') and deleted_at is null),
