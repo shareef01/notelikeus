@@ -95,6 +95,7 @@ Severity: P0 Critical / P1 High / P2 Medium / P3 Low. Confidence: **Confirmed** 
 - **Complexity:** S
 
 ### F-03 (NLU-04) — Web revision metadata is updated with non-atomic, multi-transaction read-modify-write
+- **Status (branch `fix/audit-sync-findings`):** Fixed. Every revision-state write is now one transaction. Pull pages and snapshots merge per note and never lower a revision. A snapshot keeps any revision learned after it was read. Tests: `web/src/lib/supabase/revisionStateIntegrity.test.ts`, which failed against the pre-fix code.
 - **Severity:** P1 · **Confidence:** Confirmed at source level · **Platform:** Web
 - **Location:** `web/src/lib/supabase/revisionStore.ts:25-64`. `rememberNoteRevision` reads (transaction 1), then `saveRevisionState` reads (transaction 2), then `setOwnerMeta` reads (`notesLocalRepository.ts:361`, transaction 3) and puts (transaction 4). `pullIncrementalChanges` (`supabaseSyncEngine.ts:155, 170, 211-217`) writes a `noteRevisions` map computed from state loaded *before* its network round trip.
 - **Root cause:** Every writer replaces the whole `noteRevisions` map and `knownCloudIds` from its own stale snapshot. Concurrent writers occur within one tab (async push of several notes, push overlapping a realtime pull, a reconcile) and across tabs.
@@ -104,6 +105,7 @@ Severity: P0 Critical / P1 High / P2 Medium / P3 Low. Confidence: **Confirmed** 
 - **Complexity:** M
 
 ### F-04 — Web pull cursor jumps to the client's own write revision, skipping other devices' changes
+- **Status (branch `fix/audit-sync-findings`):** Fixed. The cursor now moves only with pulls and snapshots. The reproduction showed the effect is worse than "skipped": once the cursor had jumped, `applyRemotePageAtomically` discarded the whole next pull page as stale. `supabaseDeleteNote.test.ts` had pinned the old cursor bump and was updated.
 - **Severity:** P2 · **Confidence:** Confirmed at source level · **Platform:** Web
 - **Location:** `web/src/lib/supabase/revisionStore.ts:49-56` sets `lastRemoteRevision = max(cursor, revision)` after every successful `apply_note_change` (`supabaseSyncEngine.ts:143`). Deletes do the same explicitly (`supabaseRemoteNotesDataSource.ts:301-308`).
 - **Root cause:** `sync_revision_seq` is one global sequence. Suppose the cursor is C, another device commits R, and this tab then pushes and receives P, with C < R < P. The cursor becomes P, and `pull_changes(p_after_revision = P)` never returns R.
@@ -113,6 +115,7 @@ Severity: P0 Critical / P1 High / P2 Medium / P3 Low. Confidence: **Confirmed** 
 - **Complexity:** S
 
 ### F-05 — Web remote delete silently does nothing when no base revision is known
+- **Status:** Not changed; **design decision pending**. This behaviour is deliberate and tested, under rule DEL-6 (`supabaseDeleteRevisionAuthority.test.ts`, `supabaseDeleteParity.test.ts`): a delete must never adopt a revision from the server, and with no baseline the cloud copy wins at the next snapshot. The F-03 fix removes the main way a synced note lost its baseline. What remains is notes whose revision was already lost before this fix.
 - **Severity:** P2 · **Confidence:** Confirmed at source level · **Platform:** Web
 - **Location:** `web/src/lib/supabase/supabaseRemoteNotesDataSource.ts:257-262` returns success after only marking the note deleted locally when `baseRevision == null`.
 - **Effect:** The note is hidden on this browser, still live in the cloud and on every other device, and nothing reports the divergence. A null baseline happens after F-03 loses the revision, or for notes whose revision was never learned in this profile.

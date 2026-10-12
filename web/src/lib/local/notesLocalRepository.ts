@@ -237,6 +237,53 @@ async function withNotesAndMeta(
 }
 
 /**
+ * Read-modify-write of the owner's meta row in one transaction. [update] gets the row as it is
+ * inside that transaction and returns the row to write, or null to leave it. It must not await.
+ */
+export async function updateOwnerMeta(
+  ownerId: string,
+  update: (meta: LocalOwnerMeta) => LocalOwnerMeta | null,
+): Promise<void> {
+  await withNotesAndMeta(ownerId, (_notes, meta) => update(meta));
+}
+
+/**
+ * Combines per-note revisions without ever losing a newer one (F-03).
+ *
+ * * Every revision in [incoming] is taken, unless [existing] already holds a higher one.
+ * * [replace] (a full snapshot as of revision [horizon]): an id the snapshot does not carry is
+ *   dropped — unless its revision is above [horizon], meaning it was learned after the snapshot
+ *   was read.
+ * * Ids in [deleted] are dropped, again unless their revision is above [horizon].
+ */
+export function mergeNoteRevisions(
+  existing: Record<string, number>,
+  incoming: Record<string, number>,
+  { replace, horizon, deleted = [] }: { replace: boolean; horizon: number; deleted?: string[] },
+): Record<string, number> {
+  const next: Record<string, number> = {};
+  for (const [id, revision] of Object.entries(existing)) {
+    if (!replace || revision > horizon) next[id] = revision;
+  }
+  for (const [id, revision] of Object.entries(incoming)) {
+    next[id] = Math.max(revision, existing[id] ?? revision);
+  }
+  for (const id of deleted) {
+    if ((existing[id] ?? 0) <= horizon) delete next[id];
+  }
+  return next;
+}
+
+function mergeKnownCloudIds(
+  existing: string[] | undefined,
+  incoming: string[],
+  deleted: string[],
+): string[] {
+  const gone = new Set(deleted);
+  return [...new Set([...(existing ?? []), ...incoming])].filter((id) => !gone.has(id));
+}
+
+/**
  * Saves a user's edit and records it as waiting for the cloud, in one transaction.
  *
  * The marker keeps the base revision of the *first* unconfirmed edit: later edits build on the same
@@ -542,12 +589,26 @@ export async function applyRemotePageAtomically(page: RemotePageApply): Promise<
         for (const noteId of page.deletedNoteIds) {
           if (!(noteId in pending)) notes.delete([page.ownerId, noteId]);
         }
+        // Merged against the meta read in this transaction, not replaced: the page's maps were
+        // built from state loaded before its network round trip, and a push may have recorded a
+        // newer revision since (F-03).
+        const replace = page.replaceOwnerNotes === true;
         meta.put({
           ...existing,
           ownerId: page.ownerId,
-          noteRevisions: page.noteRevisions,
+          noteRevisions: mergeNoteRevisions(existing.noteRevisions ?? {}, page.noteRevisions, {
+            replace,
+            horizon: page.lastRemoteRevision,
+            deleted: page.deletedNoteIds,
+          }),
           lastRemoteRevision: page.lastRemoteRevision,
-          ...(page.knownCloudIds !== undefined ? { knownCloudIds: page.knownCloudIds } : {}),
+          ...(page.knownCloudIds !== undefined
+            ? {
+                knownCloudIds: replace
+                  ? page.knownCloudIds
+                  : mergeKnownCloudIds(existing.knownCloudIds, page.knownCloudIds, page.deletedNoteIds),
+              }
+            : {}),
         } satisfies LocalOwnerMeta);
       };
 

@@ -6,7 +6,6 @@ import { subscribeSupabaseNoteRealtime } from "@/lib/supabase/supabaseRealtimeSy
 import {
   loadRevisionState,
   forgetNoteRevision,
-  rememberNoteRevision,
   saveRevisionState,
   getNoteBaseRevision,
 } from "@/lib/supabase/revisionStore";
@@ -318,19 +317,9 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
         throw new Error(`Delete conflict for note ${noteId}`);
       }
 
-      if (result.revision != null) {
-        let state = await loadRevisionState(userId);
-        await rememberNoteRevision(userId, noteId, result.revision);
-        await forgetNoteRevision(userId, noteId);
-        await saveRevisionState(userId, {
-          lastRemoteRevision: Math.max(
-            state.lastRemoteRevision,
-            result.revision,
-          ),
-        });
-      } else {
-        await forgetNoteRevision(userId, noteId);
-      }
+      // The note is gone, so its revision goes too. The pull cursor is left alone: the delete's
+      // revision says nothing about changes other devices committed below it (F-04).
+      await forgetNoteRevision(userId, noteId);
       useTombstoneStore.getState().markDeleted(noteId, baseRevision);
       return;
     } catch (error) {

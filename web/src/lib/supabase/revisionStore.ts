@@ -1,4 +1,8 @@
-import { getOwnerMeta, setOwnerMeta } from '@/lib/local/notesLocalRepository';
+import {
+  getOwnerMeta,
+  mergeNoteRevisions,
+  updateOwnerMeta,
+} from '@/lib/local/notesLocalRepository';
 
 export interface OwnerRevisionState {
   lastRemoteRevision: number;
@@ -22,45 +26,56 @@ export async function loadRevisionState(ownerId: string): Promise<OwnerRevisionS
   };
 }
 
+/**
+ * Records what a full snapshot said, as one transaction against the stored state.
+ *
+ * [patch.noteRevisions] is the snapshot's complete map and [patch.lastRemoteRevision] the revision
+ * it was read at: revisions recorded after that point — a push that landed while the snapshot was
+ * in flight — survive it (F-03). The cursor never moves backwards.
+ */
 export async function saveRevisionState(
   ownerId: string,
   patch: Partial<OwnerRevisionState>,
 ): Promise<void> {
-  const current = await loadRevisionState(ownerId);
-  const nextCursor = Math.max(
-    current.lastRemoteRevision,
-    patch.lastRemoteRevision ?? current.lastRemoteRevision,
-  );
-  await setOwnerMeta(ownerId, {
-    lastRemoteRevision: nextCursor,
-    noteRevisions: patch.noteRevisions ?? current.noteRevisions,
-    knownCloudIds: patch.knownCloudIds ?? current.knownCloudIds,
+  await updateOwnerMeta(ownerId, (meta) => {
+    const cursor = meta.lastRemoteRevision ?? 0;
+    const horizon = patch.lastRemoteRevision ?? cursor;
+    return {
+      ...meta,
+      lastRemoteRevision: Math.max(cursor, horizon),
+      noteRevisions: patch.noteRevisions
+        ? mergeNoteRevisions(meta.noteRevisions ?? {}, patch.noteRevisions, { replace: true, horizon })
+        : meta.noteRevisions,
+      knownCloudIds: patch.knownCloudIds ?? meta.knownCloudIds,
+    };
   });
 }
 
+/**
+ * Records the revision the cloud gave [noteId] — never lowering one already known.
+ *
+ * Deliberately leaves the pull cursor alone (F-04). Revisions come from one global sequence, so
+ * another device can have committed a change below this one that has not been pulled yet; moving
+ * the cursor here would skip it.
+ */
 export async function rememberNoteRevision(
   ownerId: string,
   noteId: string,
   revision: number,
-  lastRemoteRevision?: number,
 ): Promise<void> {
-  const current = await loadRevisionState(ownerId);
-  const noteRevisions = { ...current.noteRevisions, [noteId]: revision };
-  await saveRevisionState(ownerId, {
-    noteRevisions,
-    lastRemoteRevision: Math.max(
-      current.lastRemoteRevision,
-      lastRemoteRevision ?? revision,
-      revision,
-    ),
+  await updateOwnerMeta(ownerId, (meta) => {
+    const known = meta.noteRevisions?.[noteId];
+    if (known != null && known >= revision) return null;
+    return { ...meta, noteRevisions: { ...meta.noteRevisions, [noteId]: revision } };
   });
 }
 
 export async function forgetNoteRevision(ownerId: string, noteId: string): Promise<void> {
-  const current = await loadRevisionState(ownerId);
-  if (!(noteId in current.noteRevisions)) return;
-  const { [noteId]: _removed, ...noteRevisions } = current.noteRevisions;
-  await saveRevisionState(ownerId, { noteRevisions });
+  await updateOwnerMeta(ownerId, (meta) => {
+    if (!meta.noteRevisions || !(noteId in meta.noteRevisions)) return null;
+    const { [noteId]: _removed, ...noteRevisions } = meta.noteRevisions;
+    return { ...meta, noteRevisions };
+  });
 }
 
 export function getNoteBaseRevision(state: OwnerRevisionState, noteId: string): number | null {
