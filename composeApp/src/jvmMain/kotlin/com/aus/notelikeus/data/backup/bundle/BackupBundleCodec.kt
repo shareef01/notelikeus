@@ -154,33 +154,36 @@ object BackupBundleCodec {
             .toFile()
         try {
             file.writeBytes(archive)
-            openBackupBundle(file).use { bundle ->
-                val media = LinkedHashMap<String, ParsedMediaAttachment>()
-                val attachments = ArrayList<BundleAttachmentDto>()
-                val warnings = bundle.warnings.toMutableList()
-                var dropped = bundle.droppedAttachments
-                for (entry in bundle.manifest.attachments) {
-                    when (val read = bundle.readMedia(entry)) {
-                        is MediaRead.Dropped -> {
-                            dropped++
-                            warnings.add(read.warning)
-                        }
-                        is MediaRead.Loaded -> {
-                            media[entry.attachmentId] = read.media
-                            attachments.add(entry.copy(sizeBytes = read.media.bytes.size.toLong()))
-                        }
-                    }
-                }
-                return ParsedBackupBundle(
-                    manifest = bundle.manifest.copy(attachments = attachments),
-                    media = media,
-                    droppedAttachments = dropped,
-                    warnings = warnings,
-                )
-            }
+            return openBackupBundle(file).use(::readEveryImage)
         } finally {
             file.delete()
         }
+    }
+
+    /** Every image of [bundle], read and verified, in the shape [parseBackupBundle] returns. */
+    private fun readEveryImage(bundle: OpenedBackupBundle): ParsedBackupBundle {
+        val media = LinkedHashMap<String, ParsedMediaAttachment>()
+        val attachments = ArrayList<BundleAttachmentDto>()
+        val warnings = bundle.warnings.toMutableList()
+        var dropped = bundle.droppedAttachments
+        for (entry in bundle.manifest.attachments) {
+            when (val read = bundle.readMedia(entry)) {
+                is MediaRead.Dropped -> {
+                    dropped++
+                    warnings.add(read.warning)
+                }
+                is MediaRead.Loaded -> {
+                    media[entry.attachmentId] = read.media
+                    attachments.add(entry.copy(sizeBytes = read.media.bytes.size.toLong()))
+                }
+            }
+        }
+        return ParsedBackupBundle(
+            manifest = bundle.manifest.copy(attachments = attachments),
+            media = media,
+            droppedAttachments = dropped,
+            warnings = warnings,
+        )
     }
 
     /**
@@ -209,6 +212,39 @@ object BackupBundleCodec {
     }
 
     private fun indexBundle(zip: ZipFile): OpenedBackupBundle {
+        val byName = indexEntries(zip)
+        val manifest = readManifest(zip, byName)
+        val root = manifest.root
+
+        val formatVersion = root["formatVersion"]?.jsonPrimitive?.intOrNull ?: 0
+        if (formatVersion > BackupBundleManifest.BUNDLE_FORMAT_VERSION) {
+            throw BundleFormatException("Unsupported bundle version: $formatVersion")
+        }
+        val backup = root["backup"]?.jsonObject
+            ?: throw BundleFormatException("Backup bundle manifest carries no backup document")
+
+        val index = indexAttachments(root, byName)
+
+        return OpenedBackupBundle(
+            zip = zip,
+            entries = byName,
+            manifest = BackupBundleManifest(
+                formatVersion = formatVersion.takeIf { it > 0 }
+                    ?: BackupBundleManifest.BUNDLE_FORMAT_VERSION,
+                app = root["app"]?.jsonPrimitive?.contentOrNull ?: "Notelikeus",
+                appVersion = root["appVersion"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                exportedAt = root["exportedAt"]?.jsonPrimitive?.longOrNull ?: 0L,
+                backup = backup,
+                attachments = index.attachments,
+            ),
+            droppedAttachments = index.dropped,
+            warnings = index.warnings,
+            initialBytesRead = manifest.sizeBytes,
+        )
+    }
+
+    /** Every file entry by name, refusing the archive on any unsafe name or size limit. */
+    private fun indexEntries(zip: ZipFile): LinkedHashMap<String, ZipEntry> {
         val byName = LinkedHashMap<String, ZipEntry>()
         var declaredTotal = 0L
         for (entry in zip.entries()) {
@@ -228,7 +264,12 @@ object BackupBundleCodec {
             }
             byName[entry.name] = entry
         }
+        return byName
+    }
 
+    private class ManifestRoot(val root: JsonObject, val sizeBytes: Long)
+
+    private fun readManifest(zip: ZipFile, byName: Map<String, ZipEntry>): ManifestRoot {
         val manifestEntry = byName[BackupBundleLimits.BUNDLE_MANIFEST_ENTRY]
             ?: throw BundleFormatException("Backup bundle has no manifest.json")
         val manifestBytes = readEntryBytes(zip, manifestEntry, BackupBundleLimits.MAX_BUNDLE_MANIFEST_BYTES)
@@ -238,26 +279,25 @@ object BackupBundleCodec {
         if (maxJsonNestingDepth(manifestText) > MAX_JSON_DEPTH) {
             throw BundleFormatException("Backup bundle manifest is too deeply nested")
         }
-
         val root = try {
             json.parseToJsonElement(manifestText).jsonObject
         } catch (_: Exception) {
             throw BundleFormatException("Backup bundle manifest is not valid JSON")
         }
+        return ManifestRoot(root, manifestBytes.size.toLong())
+    }
 
-        val formatVersion = root["formatVersion"]?.jsonPrimitive?.intOrNull ?: 0
-        if (formatVersion > BackupBundleManifest.BUNDLE_FORMAT_VERSION) {
-            throw BundleFormatException("Unsupported bundle version: $formatVersion")
-        }
-        val backup = root["backup"]?.jsonObject
-            ?: throw BundleFormatException("Backup bundle manifest carries no backup document")
+    private class AttachmentIndex(
+        val attachments: List<BundleAttachmentDto>,
+        val dropped: Int,
+        val warnings: List<String>,
+    )
 
-        val warnings = ArrayList<String>()
-        var droppedAttachments = 0
-        val seen = HashSet<String>()
-        val attachments = ArrayList<BundleAttachmentDto>()
-        val referencedNames = hashSetOf(BackupBundleLimits.BUNDLE_MANIFEST_ENTRY)
-
+    /**
+     * The manifest's attachments that pass every check not needing their bytes, plus a warning for
+     * each one dropped and for media files the manifest does not list.
+     */
+    private fun indexAttachments(root: JsonObject, byName: Map<String, ZipEntry>): AttachmentIndex {
         val rawAttachments = root["attachments"]?.jsonArray.orEmpty()
         if (rawAttachments.size > BackupBundleLimits.MAX_BUNDLE_ATTACHMENTS) {
             throw BundleFormatException(
@@ -265,68 +305,56 @@ object BackupBundleCodec {
             )
         }
 
+        val warnings = ArrayList<String>()
+        val seen = HashSet<String>()
+        val attachments = ArrayList<BundleAttachmentDto>()
+        val referencedNames = hashSetOf(BackupBundleLimits.BUNDLE_MANIFEST_ENTRY)
         for (candidate in rawAttachments) {
             val entry = candidate.jsonObjectOrNull() ?: continue
             val attachmentId = entry["attachmentId"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            if (!BackupBundleLimits.ATTACHMENT_ID_PATTERN.matches(attachmentId)) {
-                droppedAttachments++
-                warnings.add("Skipped an attachment with an unusable id")
-                continue
-            }
-            if (!seen.add(attachmentId)) continue
-
+            val validId = BackupBundleLimits.ATTACHMENT_ID_PATTERN.matches(attachmentId)
+            // A repeated id is skipped silently; an unusable one is refused below, with a warning.
+            if (validId && !seen.add(attachmentId)) continue
             val mediaName = mediaEntryName(attachmentId)
-            referencedNames.add(mediaName)
-            val zipEntry = byName[mediaName]
-            if (zipEntry == null) {
-                droppedAttachments++
-                warnings.add("Attachment $attachmentId is listed but its file is missing")
+            if (validId) referencedNames.add(mediaName)
+            val refusal = attachmentRefusal(attachmentId, byName[mediaName])
+            if (refusal != null) {
+                warnings.add(refusal)
                 continue
             }
-            if (zipEntry.size > BackupBundleLimits.MAX_BUNDLE_ATTACHMENT_BYTES) {
-                droppedAttachments++
-                warnings.add("Attachment $attachmentId is too large to import")
-                continue
-            }
-
-            attachments.add(
-                BundleAttachmentDto(
-                    noteId = entry["noteId"]?.jsonPrimitive?.longOrNull ?: 0L,
-                    attachmentId = attachmentId,
-                    path = mediaName,
-                    type = entry["type"]?.jsonPrimitive?.contentOrNull?.ifBlank { null } ?: "image",
-                    mimeType = entry["mimeType"]?.jsonPrimitive?.contentOrNull,
-                    sizeBytes = entry["sizeBytes"]?.jsonPrimitive?.longOrNull,
-                    sha256 = entry["sha256"]?.jsonPrimitive?.contentOrNull.orEmpty().lowercase()
-                        .ifEmpty { null },
-                ),
-            )
+            attachments.add(attachmentDto(entry, attachmentId, mediaName))
         }
 
         val strayMedia = byName.keys.count {
             it.startsWith(BackupBundleLimits.BUNDLE_MEDIA_PREFIX) && it !in referencedNames
         }
+        val dropped = warnings.size
         if (strayMedia > 0) {
             warnings.add("$strayMedia file(s) in the bundle are not listed in its manifest")
         }
-
-        return OpenedBackupBundle(
-            zip = zip,
-            entries = byName,
-            manifest = BackupBundleManifest(
-                formatVersion = formatVersion.takeIf { it > 0 }
-                    ?: BackupBundleManifest.BUNDLE_FORMAT_VERSION,
-                app = root["app"]?.jsonPrimitive?.contentOrNull ?: "Notelikeus",
-                appVersion = root["appVersion"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                exportedAt = root["exportedAt"]?.jsonPrimitive?.longOrNull ?: 0L,
-                backup = backup,
-                attachments = attachments,
-            ),
-            droppedAttachments = droppedAttachments,
-            warnings = warnings,
-            initialBytesRead = manifestBytes.size.toLong(),
-        )
+        return AttachmentIndex(attachments, dropped, warnings)
     }
+
+    /** Why a listed attachment cannot be imported, or null when it can. */
+    private fun attachmentRefusal(attachmentId: String, zipEntry: ZipEntry?): String? = when {
+        !BackupBundleLimits.ATTACHMENT_ID_PATTERN.matches(attachmentId) ->
+            "Skipped an attachment with an unusable id"
+        zipEntry == null -> "Attachment $attachmentId is listed but its file is missing"
+        zipEntry.size > BackupBundleLimits.MAX_BUNDLE_ATTACHMENT_BYTES ->
+            "Attachment $attachmentId is too large to import"
+        else -> null
+    }
+
+    private fun attachmentDto(entry: JsonObject, attachmentId: String, mediaName: String) =
+        BundleAttachmentDto(
+            noteId = entry["noteId"]?.jsonPrimitive?.longOrNull ?: 0L,
+            attachmentId = attachmentId,
+            path = mediaName,
+            type = entry["type"]?.jsonPrimitive?.contentOrNull?.ifBlank { null } ?: "image",
+            mimeType = entry["mimeType"]?.jsonPrimitive?.contentOrNull,
+            sizeBytes = entry["sizeBytes"]?.jsonPrimitive?.longOrNull,
+            sha256 = entry["sha256"]?.jsonPrimitive?.contentOrNull.orEmpty().lowercase().ifEmpty { null },
+        )
 
     /**
      * The bytes of [entry], or null when more than [limit] arrive. The limit is enforced on what is
