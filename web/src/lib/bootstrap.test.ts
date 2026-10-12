@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const clearOwnerMock = vi.fn().mockResolvedValue(undefined);
 const clearPendingAttachmentsMock = vi.fn().mockResolvedValue(undefined);
+const countPendingPushesMock = vi.fn().mockResolvedValue(0);
 
 vi.mock('@/lib/local/notesLocalRepository', () => ({
   clearOwner: (...args: unknown[]) => clearOwnerMock(...args),
+  countPendingPushes: (...args: unknown[]) => countPendingPushesMock(...args),
 }));
 
 vi.mock('@/lib/local/pendingAttachmentRepository', () => ({
@@ -60,6 +62,20 @@ describe('clearLocalUserDataForAccountSwitch', () => {
     await clearLocalUserDataForAccountSwitch('user-a');
     expect(clearOwnerMock).toHaveBeenCalledWith('user-a');
     expect(clearPendingAttachmentsMock).toHaveBeenCalledWith('user-a');
+  });
+
+  // FU-1: the previous account's namespace is the only copy of edits the cloud never confirmed.
+  it("keeps the previous account's local notes while it has edits not yet uploaded", async () => {
+    countPendingPushesMock.mockResolvedValueOnce(2);
+    useNotesStore.getState().setNotes([createEmptyNote({ id: '1', localId: 1, title: 'A' })]);
+
+    await clearLocalUserDataForAccountSwitch('user-a');
+
+    expect(countPendingPushesMock).toHaveBeenCalledWith('user-a');
+    expect(clearOwnerMock).not.toHaveBeenCalled();
+    expect(clearPendingAttachmentsMock).not.toHaveBeenCalled();
+    // The session state is still cleared: the next account never sees A's notes in memory.
+    expect(useNotesStore.getState().notes).toEqual([]);
   });
 
   it('surfaces storage failure when clearing prior account data fails', async () => {

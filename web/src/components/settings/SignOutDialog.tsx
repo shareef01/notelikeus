@@ -5,6 +5,7 @@ import {
   dialogPrimaryButtonClass,
 } from '@/components/ui/ModalDialog';
 import { useId, useState } from 'react';
+import { useUnsyncedEditCount } from '@/hooks/useUnsyncedEditCount';
 
 interface SignOutDialogProps {
   open: boolean;
@@ -21,6 +22,7 @@ export function SignOutDialog({
 }: SignOutDialogProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const titleId = useId();
+  const unsyncedEdits = useUnsyncedEditCount(open);
 
   return (
     <ModalDialog open={open} onClose={onCancel} ariaLabelledBy={titleId}>
@@ -34,6 +36,17 @@ export function SignOutDialog({
             This only clears locally cached app data on this device, and you&apos;ll need to sign
             in again to keep using Notelikeus.
           </p>
+          {unsyncedEdits > 0 && (
+            <p
+              role="status"
+              className="mt-3 rounded-note border border-amber-700/40 bg-amber-950/20 px-3 py-2 text-sm text-amber-100"
+            >
+              {unsyncedEdits === 1
+                ? '1 note has an edit that hasn’t been uploaded yet.'
+                : `${unsyncedEdits} notes have edits that haven’t been uploaded yet.`}{' '}
+              It stays on this browser and uploads the next time you sign in to this account here.
+            </p>
+          )}
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}

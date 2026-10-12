@@ -36,6 +36,27 @@ export function notesContentKey(notes: Note[]): string {
     .join('|');
 }
 
+/**
+ * Whether two versions say the same thing to the user, ignoring when and where they were stamped
+ * (`timestamp`, `serverUpdatedAt`). Used to recognise the cloud already holding a local edit.
+ */
+export function notesUserContentEqual(a: Note, b: Note): boolean {
+  return (
+    a.id === b.id &&
+    a.position === b.position &&
+    a.color === b.color &&
+    a.isPinned === b.isPinned &&
+    a.isArchived === b.isArchived &&
+    a.isTrashed === b.isTrashed &&
+    a.reminderTimestamp === b.reminderTimestamp &&
+    a.title === b.title &&
+    a.content === b.content &&
+    labelsKey(a) === labelsKey(b) &&
+    attachmentsKey(a.attachments) === attachmentsKey(b.attachments) &&
+    checklistKey(a) === checklistKey(b)
+  );
+}
+
 export function notesEqual(a: Note, b: Note): boolean {
   if (a === b) return true;
   return (

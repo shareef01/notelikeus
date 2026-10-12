@@ -1,6 +1,5 @@
 ﻿package com.aus.notelikeus.data.backup.bundle
 
-import com.aus.notelikeus.data.backup.bundle.ParsedBackupBundle
 import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentStagingStore
 import com.aus.notelikeus.data.attachments.GUEST_STAGING_OWNER
@@ -17,6 +16,8 @@ import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.util.AppLog
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toOkioPath
+import okio.buffer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -53,12 +54,15 @@ class BackupBundleTransfer(
     /**
      * Stages every image the archive carries, keyed by the note id it was reminted onto.
      *
+     * One image at a time: each is read, verified, staged and released before the next is read, so
+     * the heap holds at most one image however large the bundle is (F-07).
+     *
      * Split out of [importBundle]: it is a self-contained pass over the manifest with its own
      * counters and warnings, and keeping it inline pushed that method past the project's length and
      * complexity limits.
      */
     private suspend fun stageBundleAttachments(
-        parsed: ParsedBackupBundle,
+        bundle: OpenedBackupBundle,
         newIdByOldId: Map<Long, Long>,
         owner: String,
         warnings: MutableList<String>,
@@ -68,17 +72,24 @@ class BackupBundleTransfer(
         var skipped = alreadySkipped
         var imported = 0
 
-        for (entry in parsed.manifest.attachments) {
+        for (entry in bundle.manifest.attachments) {
             val oldNoteId = entry.noteId ?: continue
             val newNoteId = newIdByOldId[oldNoteId]
-            val blob = parsed.media[entry.attachmentId]
-            if (newNoteId == null || blob == null) {
+            if (newNoteId == null) {
                 skipped++
                 continue
             }
+            val blob = when (val read = bundle.readMedia(entry)) {
+                is MediaRead.Loaded -> read.media
+                is MediaRead.Dropped -> {
+                    skipped++
+                    warnings.add(read.warning)
+                    continue
+                }
+            }
 
             val freshId = createAttachmentId()
-            val mime = blob.mimeType ?: entry.mimeType ?: "image/jpeg"
+            val mime = blob.mimeType ?: "image/jpeg"
             val staged = staging.stage(
                 attachmentId = freshId,
                 ownerId = owner,
@@ -140,86 +151,105 @@ class BackupBundleTransfer(
         return "notelikeus_backup_${day}${BackupBundleLimits.BUNDLE_FILE_EXTENSION}"
     }
 
-    override suspend fun exportBundle(): BundleExportOutcome {
+    /**
+     * Streams the bundle into [sink], reading one image at a time (F-07), and closes it.
+     *
+     * Images are read when the codec asks for them, never collected up front: a library's images
+     * can be far larger than the app's heap.
+     */
+    override suspend fun exportBundle(sink: okio.Sink): BundleExportOutcome {
         val notes = repository.getAllNotesForBackup()
         val documentJson = exporter.createJson()
         val document = json.parseToJsonElement(documentJson).jsonObject
 
-        val sources = ArrayList<BundleAttachmentSource>()
-        var skipped = 0
-        val warnings = ArrayList<String>()
-
-        for (note in notes) {
-            val noteId = note.id ?: continue
-            for (attachment in note.attachments) {
-                val local = readLocalAttachmentBytes(attachment)
-                if (local == null) {
-                    skipped++
-                    continue
-                }
-                sources.add(
-                    BundleAttachmentSource(
-                        noteId = noteId,
-                        attachmentId = attachment.id,
-                        type = attachment.type.ifBlank { "image" },
-                        mimeType = local.mimeType ?: attachment.mimeType,
-                        bytes = local.bytes,
-                    ),
-                )
+        val entries = notes.flatMap { note ->
+            val noteId = note.id ?: return@flatMap emptyList()
+            note.attachments.map { attachment ->
+                BundleAttachmentEntry(
+                    noteId = noteId,
+                    attachmentId = attachment.id,
+                    type = attachment.type.ifBlank { "image" },
+                    mimeType = attachment.mimeType,
+                ) { readLocalAttachmentBytes(attachment)?.bytes }
             }
         }
 
+        val written = BackupBundleCodec.writeBackupBundle(
+            output = sink.buffer().outputStream(),
+            backupDocument = document,
+            attachments = entries,
+            origin = BundleOrigin(app = appName, appVersion = appVersion),
+        )
+
+        val skipped = written.unreadable
+        val warnings = ArrayList<String>()
         if (skipped > 0) {
             warnings.add(
                 "$skipped image${if (skipped == 1) " was" else "s were"} not included because " +
                     "${if (skipped == 1) "its bytes are" else "their bytes are"} only available in cloud storage on this device.",
             )
         }
-
-        val bytes = BackupBundleCodec.buildBackupBundle(
-            backupDocument = document,
-            attachments = sources,
-            app = appName,
-            appVersion = appVersion,
-        )
         return BundleExportOutcome(
-            bytes = bytes,
-            attachmentsIncluded = sources.size,
+            attachmentsIncluded = written.included,
             attachmentsSkipped = skipped,
             warnings = warnings,
         )
     }
 
     override suspend fun importBundle(
-        archive: ByteArray,
+        archive: okio.Path,
         commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
     ): BackupImportResult {
-        val parsed = try {
-            BackupBundleCodec.parseBackupBundle(archive)
+        val bundle = try {
+            BackupBundleCodec.openBackupBundle(archive.toFile())
         } catch (error: BundleFormatException) {
             return BackupImportResult.InvalidFormat(error.message ?: "Invalid backup bundle")
         } catch (error: Exception) {
-            AppLog.warn(TAG, "Parsing backup bundle failed", error)
+            AppLog.warn(TAG, "Opening backup bundle failed", error)
             return BackupImportResult.Error(error)
         }
+        return bundle.use { importOpened(it, commitToken) }
+    }
 
-        val backupVersion = parsed.manifest.backup["version"]?.jsonPrimitive?.intOrNull
+    /** For callers that already hold the bytes; spills them to a temp file and imports that. */
+    internal suspend fun importBundle(
+        archive: ByteArray,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): BackupImportResult {
+        // Owner-only (0600 on POSIX), unlike File.createTempFile: the archive holds the user's notes
+        // and images, and the system temp directory is shared with other local users.
+        val file = java.nio.file.Files
+            .createTempFile("nlkbak-import", BackupBundleLimits.BUNDLE_FILE_EXTENSION)
+            .toFile()
+        return try {
+            file.writeBytes(archive)
+            importBundle(file.toOkioPath(), commitToken)
+        } finally {
+            file.delete()
+        }
+    }
+
+    private suspend fun importOpened(
+        bundle: OpenedBackupBundle,
+        commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
+    ): BackupImportResult {
+        val backupVersion = bundle.manifest.backup["version"]?.jsonPrimitive?.intOrNull
         if (backupVersion != null && backupVersion > NoteBackupExporter.BACKUP_VERSION) {
             return BackupImportResult.InvalidFormat("Unsupported backup version: $backupVersion")
         }
 
-        val backupJson = json.encodeToString(JsonObject.serializer(), parsed.manifest.backup)
+        val backupJson = json.encodeToString(JsonObject.serializer(), bundle.manifest.backup)
         val importResult = importer.importFromJson(backupJson, commitToken)
         if (importResult !is BackupImportResult.Success) return importResult
 
         val newIdByOldId = importResult.newNoteIdByOldId
-        val warnings = parsed.warnings.toMutableList()
+        val warnings = bundle.warnings.toMutableList()
         var attachmentsImported = 0
-        var attachmentsSkipped = parsed.droppedAttachments
+        var attachmentsSkipped = bundle.droppedAttachments
         val owner = ownerId()
 
         val staged = stageBundleAttachments(
-            parsed = parsed,
+            bundle = bundle,
             newIdByOldId = newIdByOldId,
             owner = owner,
             warnings = warnings,
