@@ -18,6 +18,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
+import okio.Buffer
 import org.junit.Test
 
 class BackupBundleTransferTest {
@@ -127,12 +128,14 @@ class BackupBundleTransferTest {
             },
         )
 
-        val outcome = transfer(repository, staging, local).exportBundle()
+        val buffer = Buffer()
+        val outcome = transfer(repository, staging, local).exportBundle(buffer)
+        val archive = buffer.readByteArray()
         assertEquals(2, outcome.attachmentsIncluded)
         assertEquals(1, outcome.attachmentsSkipped)
-        assertTrue(BackupBundleCodec.looksLikeBundle("x.nlkbak", outcome.bytes.copyOf(2)))
+        assertTrue(BackupBundleCodec.looksLikeBundle("x.nlkbak", archive.copyOf(2)))
 
-        val parsed = BackupBundleCodec.parseBackupBundle(outcome.bytes)
+        val parsed = BackupBundleCodec.parseBackupBundle(archive)
         assertEquals(2, parsed.media.size)
         assertTrue(parsed.media["pending-att"]!!.bytes.contentEquals(pendingBytes))
         assertTrue(parsed.media["file-att"]!!.bytes.contentEquals(fileBytes))
@@ -165,7 +168,9 @@ class BackupBundleTransferTest {
                 note.copy(attachments = note.attachments.map { it.copy(noteId = sourceNoteId) })
             },
         )
-        val archive = transfer(sourceRepo, sourceStaging, sourceLocal).exportBundle().bytes
+        val archive = Buffer()
+            .also { transfer(sourceRepo, sourceStaging, sourceLocal).exportBundle(it) }
+            .readByteArray()
 
         val destRepo = FakeNoteRepository()
         val destStaging = MemoryStaging()

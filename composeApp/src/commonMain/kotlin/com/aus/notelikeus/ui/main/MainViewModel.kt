@@ -665,8 +665,9 @@ class MainViewModel(
         }
     }
 
-    suspend fun exportBackupBundle(): Result<BundleExportOutcome> =
-        runCatching { bundleOperations.exportBundle() }
+    /** Streams the bundle into [sink] (the destination the user picked), and closes it. */
+    suspend fun exportBackupBundle(sink: okio.Sink): Result<BundleExportOutcome> =
+        runCatching { bundleOperations.exportBundle(sink) }
 
     fun bundleFileName(): String = bundleOperations.bundleFileName()
 

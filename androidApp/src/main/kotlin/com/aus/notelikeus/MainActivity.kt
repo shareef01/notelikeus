@@ -115,9 +115,6 @@ class MainActivity : FragmentActivity() {
                 // permission. Until this was wired, App()'s no-op defaults applied and both
                 // rows in the profile sheet did nothing at all when tapped.
                 var pendingExportJson by remember { mutableStateOf<String?>(null) }
-                var pendingExportBytes by remember { mutableStateOf<ByteArray?>(null) }
-                var pendingBundleIncluded by remember { mutableIntStateOf(0) }
-                var pendingBundleSkipped by remember { mutableIntStateOf(0) }
                 var backupViewModel by remember { mutableStateOf<MainViewModel?>(null) }
 
                 val exportJsonLauncher = rememberLauncherForActivityResult(
@@ -140,25 +137,29 @@ class MainActivity : FragmentActivity() {
                 val exportBundleLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.CreateDocument(BACKUP_BUNDLE_MIME_TYPE),
                 ) { uri ->
-                    val bytes = pendingExportBytes
                     val viewModel = backupViewModel
-                    val included = pendingBundleIncluded
-                    val skipped = pendingBundleSkipped
-                    pendingExportBytes = null
-                    pendingBundleIncluded = 0
-                    pendingBundleSkipped = 0
                     backupViewModel = null
-                    if (uri == null || bytes == null) return@rememberLauncherForActivityResult
+                    if (uri == null || viewModel == null) return@rememberLauncherForActivityResult
+                    // Streamed straight into the picked document, one image at a time: building the
+                    // bundle in memory first ran out of heap on a large library (F-07).
                     scope.launch(Dispatchers.IO) {
-                        val written = BackupDocumentIo.writeBytes(contentResolver, uri, bytes)
-                        viewModel?.reportBackupTransfer(
-                            if (written) {
-                                BackupTransferEvent.BundleExported(
-                                    attachmentsIncluded = included,
-                                    attachmentsSkipped = skipped,
+                        val result = BackupDocumentIo.openSink(contentResolver, uri)
+                            ?.let { sink -> viewModel.exportBackupBundle(sink) }
+                            ?: Result.failure(IllegalStateException("no output stream for the picked document"))
+                        result.fold(
+                            onSuccess = { outcome ->
+                                viewModel.reportBackupTransfer(
+                                    BackupTransferEvent.BundleExported(
+                                        attachmentsIncluded = outcome.attachmentsIncluded,
+                                        attachmentsSkipped = outcome.attachmentsSkipped,
+                                    ),
                                 )
-                            } else {
-                                BackupTransferEvent.ExportFailed
+                            },
+                            onFailure = { error ->
+                                Log.w(TAG, "Writing the backup bundle failed", error)
+                                // A half-written bundle must not be left looking like a backup.
+                                BackupDocumentIo.delete(contentResolver, uri)
+                                viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
                             },
                         )
                     }
@@ -203,22 +204,9 @@ class MainActivity : FragmentActivity() {
                 App(
                     windowSizeClass = windowSizeClass,
                     onExportBackup = { viewModel ->
-                        scope.launch {
-                            val result = viewModel.exportBackupBundle()
-                            result.fold(
-                                onSuccess = { outcome ->
-                                    pendingExportBytes = outcome.bytes
-                                    pendingBundleIncluded = outcome.attachmentsIncluded
-                                    pendingBundleSkipped = outcome.attachmentsSkipped
-                                    backupViewModel = viewModel
-                                    exportBundleLauncher.launch(viewModel.bundleFileName())
-                                },
-                                onFailure = { error ->
-                                    Log.w(TAG, "Building the backup bundle failed", error)
-                                    viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
-                                },
-                            )
-                        }
+                        // The destination comes first: the bundle is written straight into it.
+                        backupViewModel = viewModel
+                        exportBundleLauncher.launch(viewModel.bundleFileName())
                     },
                     onExportNotesOnly = { viewModel ->
                         scope.launch {

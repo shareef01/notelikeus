@@ -137,7 +137,7 @@ private fun storedEntry(name: String, size: Int, checksum: (CRC32) -> Unit): Zip
     }
 }
 
-private fun generate(seed: Long, total: Int, sink: (ByteArray, Int) -> Unit) {
+internal fun generate(seed: Long, total: Int, sink: (ByteArray, Int) -> Unit) {
     val random = Random(seed)
     val chunk = ByteArray(64 * 1024)
     var left = total

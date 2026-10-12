@@ -4,12 +4,15 @@ import com.aus.notelikeus.data.backup.BackupBundleManifest
 import com.aus.notelikeus.data.backup.BundleAttachmentDto
 import java.io.File
 import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.OutputStream
 import java.security.MessageDigest
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipException
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -32,6 +35,26 @@ data class BundleAttachmentSource(
     val mimeType: String? = null,
     val bytes: ByteArray,
 )
+
+/** One image for [BackupBundleCodec.writeBackupBundle], read on demand so the writer holds one at a time. */
+class BundleAttachmentEntry(
+    val noteId: Long,
+    val attachmentId: String,
+    val type: String = "image",
+    val mimeType: String? = null,
+    /** The image's bytes, or null when they are not available on this device. May be called twice. */
+    val read: suspend () -> ByteArray?,
+)
+
+/** Who wrote a bundle, and when: the manifest's app, appVersion and exportedAt. */
+data class BundleOrigin(
+    val app: String = "Notelikeus",
+    val appVersion: String = "1.0.0",
+    val exportedAt: Long = System.currentTimeMillis(),
+)
+
+/** What [BackupBundleCodec.writeBackupBundle] wrote: images included, and images it could not read. */
+data class BundleWriteResult(val included: Int, val unreadable: Int)
 
 data class ParsedMediaAttachment(
     val bytes: ByteArray,
@@ -71,6 +94,10 @@ object BackupBundleCodec {
     fun mediaEntryName(attachmentId: String): String =
         BackupBundleLimits.BUNDLE_MEDIA_PREFIX + attachmentId
 
+    /**
+     * Builds a whole bundle in memory. Kept for callers that already hold every image (tests, small
+     * archives); exports go through [writeBackupBundle], which never holds more than one image.
+     */
     fun buildBackupBundle(
         backupDocument: JsonObject,
         attachments: List<BundleAttachmentSource>,
@@ -78,66 +105,135 @@ object BackupBundleCodec {
         appVersion: String = "1.0.0",
         exportedAt: Long = System.currentTimeMillis(),
     ): ByteArray {
+        val out = ByteArrayOutputStream()
+        // Every read below returns bytes already in memory, so nothing actually suspends.
+        runBlocking {
+            writeBackupBundle(
+                output = out,
+                backupDocument = backupDocument,
+                attachments = attachments.map { source ->
+                    BundleAttachmentEntry(
+                        noteId = source.noteId,
+                        attachmentId = source.attachmentId,
+                        type = source.type,
+                        mimeType = source.mimeType,
+                    ) { source.bytes }
+                },
+                origin = BundleOrigin(app = app, appVersion = appVersion, exportedAt = exportedAt),
+            )
+        }
+        return out.toByteArray()
+    }
+
+    /**
+     * Streams a bundle to [output], holding at most one image at a time (F-07), and closes it.
+     *
+     * The manifest is the archive's first entry and carries each image's size and SHA-256, and a
+     * stored ZIP entry needs its CRC before its data. So images are read twice: once to measure them,
+     * and once, after the manifest, to write them. The second read is checked against the first; an
+     * image that changed in between fails the export rather than producing a bundle whose manifest
+     * does not match its contents. The archive is byte-for-byte what [buildBackupBundle] produced
+     * before streaming existed.
+     */
+    suspend fun writeBackupBundle(
+        output: OutputStream,
+        backupDocument: JsonObject,
+        attachments: List<BundleAttachmentEntry>,
+        origin: BundleOrigin = BundleOrigin(),
+    ): BundleWriteResult = output.use { stream ->
         if (attachments.size > BackupBundleLimits.MAX_BUNDLE_ATTACHMENTS) {
             throw BundleFormatException(
                 "Too many attachments for one bundle (max ${BackupBundleLimits.MAX_BUNDLE_ATTACHMENTS})",
             )
         }
+        val measured = measureAttachments(attachments)
+        writeArchive(stream, manifestBytes(backupDocument, measured.images, origin), measured.images)
+        BundleWriteResult(included = measured.images.size, unreadable = measured.unreadable)
+    }
 
-        val index = ArrayList<BundleAttachmentDto>()
-        val media = ArrayList<Pair<String, ByteArray>>()
+    private class MeasuredImage(val source: BundleAttachmentEntry, val size: Long, val sha256: String, val crc: Long)
+
+    private class MeasuredImages(val images: List<MeasuredImage>, val unreadable: Int)
+
+    /** Pass one: the size, SHA-256 and CRC of every image that will go into the bundle. */
+    private suspend fun measureAttachments(attachments: List<BundleAttachmentEntry>): MeasuredImages {
+        val measured = ArrayList<MeasuredImage>()
         val seen = HashSet<String>()
-
+        var unreadable = 0
         for (source in attachments) {
             if (!BackupBundleLimits.ATTACHMENT_ID_PATTERN.matches(source.attachmentId)) continue
             if (!seen.add(source.attachmentId)) continue
-            if (source.bytes.size.toLong() > BackupBundleLimits.MAX_BUNDLE_ATTACHMENT_BYTES) continue
-
-            val name = mediaEntryName(source.attachmentId)
-            index.add(
-                BundleAttachmentDto(
-                    noteId = source.noteId,
-                    attachmentId = source.attachmentId,
-                    path = name,
-                    type = source.type.ifBlank { "image" },
-                    mimeType = source.mimeType,
-                    sizeBytes = source.bytes.size.toLong(),
-                    sha256 = sha256Hex(source.bytes),
-                ),
-            )
-            media.add(name to source.bytes)
+            val bytes = source.read()
+            if (bytes == null) {
+                unreadable++
+                continue
+            }
+            if (bytes.size.toLong() > BackupBundleLimits.MAX_BUNDLE_ATTACHMENT_BYTES) continue
+            measured.add(MeasuredImage(source, bytes.size.toLong(), sha256Hex(bytes), crc32(bytes)))
         }
+        return MeasuredImages(measured, unreadable)
+    }
 
+    private fun manifestBytes(
+        backupDocument: JsonObject,
+        images: List<MeasuredImage>,
+        origin: BundleOrigin,
+    ): ByteArray {
         val manifest = buildJsonObject {
             put("formatVersion", BackupBundleManifest.BUNDLE_FORMAT_VERSION)
-            put("app", app)
-            put("appVersion", appVersion)
-            put("exportedAt", exportedAt)
+            put("app", origin.app)
+            put("appVersion", origin.appVersion)
+            put("exportedAt", origin.exportedAt)
             put("backup", backupDocument)
             putJsonArray("attachments") {
-                for (entry in index) {
+                for (image in images) {
                     add(
                         buildJsonObject {
-                            put("noteId", entry.noteId ?: 0L)
-                            put("attachmentId", entry.attachmentId)
-                            put("path", entry.path)
-                            put("type", entry.type)
-                            entry.mimeType?.let { put("mimeType", it) }
-                            entry.sizeBytes?.let { put("sizeBytes", it) }
-                            entry.sha256?.let { put("sha256", it) }
+                            put("noteId", image.source.noteId)
+                            put("attachmentId", image.source.attachmentId)
+                            put("path", mediaEntryName(image.source.attachmentId))
+                            put("type", image.source.type.ifBlank { "image" })
+                            image.source.mimeType?.let { put("mimeType", it) }
+                            put("sizeBytes", image.size)
+                            put("sha256", image.sha256)
                         },
                     )
                 }
             }
         }
-
-        val manifestBytes = json.encodeToString(JsonObject.serializer(), manifest)
-            .toByteArray(Charsets.UTF_8)
-
-        return writeStoredZip(
-            listOf(BackupBundleLimits.BUNDLE_MANIFEST_ENTRY to manifestBytes) + media,
-        )
+        return json.encodeToString(JsonObject.serializer(), manifest).toByteArray(Charsets.UTF_8)
     }
+
+    /** Pass two: the manifest, then each image read again and checked against pass one. */
+    private suspend fun writeArchive(stream: OutputStream, manifest: ByteArray, images: List<MeasuredImage>) {
+        ZipOutputStream(stream).use { zos ->
+            zos.setMethod(ZipEntry.STORED)
+            putStoredEntry(zos, BackupBundleLimits.BUNDLE_MANIFEST_ENTRY, manifest, crc32(manifest))
+            for (image in images) {
+                val id = image.source.attachmentId
+                val bytes = image.source.read()
+                    ?: throw IOException("Attachment $id could not be read a second time")
+                if (bytes.size.toLong() != image.size || sha256Hex(bytes) != image.sha256) {
+                    throw IOException("Attachment $id changed while the bundle was being written")
+                }
+                putStoredEntry(zos, mediaEntryName(id), bytes, image.crc)
+            }
+        }
+    }
+
+    private fun putStoredEntry(zos: ZipOutputStream, name: String, data: ByteArray, crc: Long) {
+        require(isSafeZipEntryName(name)) { "Unsafe ZIP entry name: $name" }
+        val entry = ZipEntry(name)
+        entry.method = ZipEntry.STORED
+        entry.size = data.size.toLong()
+        entry.compressedSize = data.size.toLong()
+        entry.crc = crc
+        zos.putNextEntry(entry)
+        zos.write(data)
+        zos.closeEntry()
+    }
+
+    private fun crc32(data: ByteArray): Long = CRC32().apply { update(data) }.value
 
     /**
      * Reads a whole bundle held in memory. Kept for callers that already have the bytes (tests,
@@ -376,27 +472,6 @@ object BackupBundleCodec {
             }
             return buffer.toByteArray()
         }
-    }
-
-    private fun writeStoredZip(entries: List<Pair<String, ByteArray>>): ByteArray {
-        val out = ByteArrayOutputStream()
-        ZipOutputStream(out).use { zos ->
-            zos.setMethod(ZipEntry.STORED)
-            for ((name, data) in entries) {
-                require(isSafeZipEntryName(name)) { "Unsafe ZIP entry name: $name" }
-                val entry = ZipEntry(name)
-                entry.method = ZipEntry.STORED
-                entry.size = data.size.toLong()
-                entry.compressedSize = data.size.toLong()
-                val crc = CRC32()
-                crc.update(data)
-                entry.crc = crc.value
-                zos.putNextEntry(entry)
-                zos.write(data)
-                zos.closeEntry()
-            }
-        }
-        return out.toByteArray()
     }
 
     fun isSafeZipEntryName(name: String): Boolean {

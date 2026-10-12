@@ -31,6 +31,7 @@ import com.aus.notelikeus.data.backup.BackupExportResult
 import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.data.backup.bundle.BackupFileReads
 import okio.Path.Companion.toOkioPath
+import okio.sink
 import com.aus.notelikeus.util.AppLog
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
@@ -257,31 +258,36 @@ private fun launchApp(
             },
             onExportBackup = { viewModel ->
                 coroutineScope.launch(Dispatchers.IO) {
-                    val outcome = viewModel.exportBackupBundle().getOrElse { error ->
-                        AppLog.warn("DesktopBackup", "Building the backup bundle failed", error)
-                        viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
-                        return@launch
-                    }
-                    withContext(Dispatchers.Main) {
+                    // The destination comes first, and the bundle is streamed straight into it, one
+                    // image at a time: building it in memory first could run out of heap (F-07).
+                    val target = withContext(Dispatchers.Main) {
                         val chooser = javax.swing.JFileChooser().apply {
                             selectedFile = java.io.File(viewModel.bundleFileName())
                         }
                         if (chooser.showSaveDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
-                            val written = runCatching {
-                                chooser.selectedFile.writeBytes(outcome.bytes)
-                            }
-                            viewModel.reportBackupTransfer(
-                                if (written.isSuccess) {
-                                    BackupTransferEvent.BundleExported(
-                                        attachmentsIncluded = outcome.attachmentsIncluded,
-                                        attachmentsSkipped = outcome.attachmentsSkipped,
-                                    )
-                                } else {
-                                    BackupTransferEvent.ExportFailed
-                                },
-                            )
+                            chooser.selectedFile
+                        } else {
+                            null
                         }
-                    }
+                    } ?: return@launch
+                    val result = runCatching { target.sink() }
+                        .mapCatching { sink -> viewModel.exportBackupBundle(sink).getOrThrow() }
+                    result.fold(
+                        onSuccess = { outcome ->
+                            viewModel.reportBackupTransfer(
+                                BackupTransferEvent.BundleExported(
+                                    attachmentsIncluded = outcome.attachmentsIncluded,
+                                    attachmentsSkipped = outcome.attachmentsSkipped,
+                                ),
+                            )
+                        },
+                        onFailure = { error ->
+                            AppLog.warn("DesktopBackup", "Writing the backup bundle failed", error)
+                            // A half-written bundle must not be left looking like a backup.
+                            target.delete()
+                            viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
+                        },
+                    )
                 }
             },
             onExportNotesOnly = { viewModel ->
