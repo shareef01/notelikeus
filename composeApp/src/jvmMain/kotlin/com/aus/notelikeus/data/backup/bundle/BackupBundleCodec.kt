@@ -147,7 +147,11 @@ object BackupBundleCodec {
         if (archive.size.toLong() > BackupBundleLimits.MAX_BUNDLE_FILE_BYTES) {
             throw BundleFormatException("Backup bundle is too large")
         }
-        val file = File.createTempFile("nlkbak-parse", BackupBundleLimits.BUNDLE_FILE_EXTENSION)
+        // NIO's temp file is owner-only (0600 on POSIX), unlike File.createTempFile: it holds the
+        // user's notes and images, and the system temp directory is shared with other local users.
+        val file = java.nio.file.Files
+            .createTempFile("nlkbak-parse", BackupBundleLimits.BUNDLE_FILE_EXTENSION)
+            .toFile()
         try {
             file.writeBytes(archive)
             openBackupBundle(file).use { bundle ->

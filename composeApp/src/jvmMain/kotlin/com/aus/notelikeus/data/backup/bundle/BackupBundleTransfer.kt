@@ -220,7 +220,11 @@ class BackupBundleTransfer(
         archive: ByteArray,
         commitToken: com.aus.notelikeus.domain.repository.LocalCommitToken,
     ): BackupImportResult {
-        val file = java.io.File.createTempFile("nlkbak-import", BackupBundleLimits.BUNDLE_FILE_EXTENSION)
+        // Owner-only (0600 on POSIX), unlike File.createTempFile: the archive holds the user's notes
+        // and images, and the system temp directory is shared with other local users.
+        val file = java.nio.file.Files
+            .createTempFile("nlkbak-import", BackupBundleLimits.BUNDLE_FILE_EXTENSION)
+            .toFile()
         return try {
             file.writeBytes(archive)
             importBundle(file.toOkioPath(), commitToken)
