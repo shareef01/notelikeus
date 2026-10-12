@@ -113,7 +113,7 @@ function claimKeySlot(db: IDBDatabase, candidate: CryptoKey): Promise<unknown> {
  */
 export async function getAttachmentCryptoKey(): Promise<CryptoKey | null> {
   if (!cachedKey) {
-    cachedKey = (async () => {
+    const loading = (async () => {
       if (typeof crypto === 'undefined' || !crypto.subtle) return null;
       const db = await openKeyDb();
       if (!db) return null;
@@ -135,6 +135,12 @@ export async function getAttachmentCryptoKey(): Promise<CryptoKey | null> {
         db.close();
       }
     })();
+    cachedKey = loading;
+    // Only a loaded key is remembered (F-11): a transient failure must not disable attachment
+    // sealing for the rest of the tab's life. Concurrent callers still share this one load.
+    void loading.then((key) => {
+      if (key === null && cachedKey === loading) cachedKey = null;
+    });
   }
   return cachedKey;
 }
