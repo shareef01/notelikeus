@@ -327,7 +327,12 @@ class SupabaseNoteTransport internal constructor(
         val noteId = note.id ?: return emptyMap()
         // Captured once, before the RPC: the writes below belong to the dataset this restore began in.
         val epoch = datasetEpoch()
-        val response = rpc.callRpc("restore_note", note.toRpcArgs(revisionState.read(epoch, uid, noteId)))
+        // `restore_note` has no attachment-id parameter, and PostgREST matches overloads by argument
+        // names, so sending one makes the call unresolvable (PGRST202). See RpcSignatureContractTest.
+        val response = rpc.callRpc(
+            "restore_note",
+            note.toRpcArgs(revisionState.read(epoch, uid, noteId), includeAttachmentIds = false),
+        )
         return when (response.stringField("status")) {
             "applied" -> {
                 val revision = response.longId("revision") ?: error("Missing required revision in successful restore_note")
@@ -357,7 +362,7 @@ class SupabaseNoteTransport internal constructor(
         revisionState.forget(uid)
     }
 
-    private fun Note.toRpcArgs(baseRevision: Long?): JsonObject = buildJsonObject {
+    private fun Note.toRpcArgs(baseRevision: Long?, includeAttachmentIds: Boolean = true): JsonObject = buildJsonObject {
         val noteId = id ?: return@buildJsonObject
         put("p_note_id", JsonPrimitive(noteId.toString()))
         put("p_local_id", JsonPrimitive(noteId))
@@ -388,7 +393,7 @@ class SupabaseNoteTransport internal constructor(
         //
         // Only `r2:` references can have a server-side row: a `pending:`/`file:` attachment's bytes are
         // still local, and naming one would promote a row this note does not consider remote.
-        put(
+        if (includeAttachmentIds) put(
             "p_attachment_ids",
             buildJsonArray {
                 attachments.filter { it.storagePath.startsWith(ATTACHMENT_R2_PREFIX) }
