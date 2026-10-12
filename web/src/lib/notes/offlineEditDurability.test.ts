@@ -40,8 +40,10 @@ import {
 import { rememberNoteRevision, saveRevisionState } from '@/lib/supabase/revisionStore';
 import { NoteConflictError } from '@/lib/supabase/supabaseSyncEngine';
 import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNotesDataSource';
+import { flushPendingPushes } from '@/lib/supabase/pendingPushes';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
+import { useToastStore } from '@/store/toastStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { createEmptyNote } from '@/types/note';
 
@@ -238,6 +240,41 @@ describe('F-06 offline edit durability', () => {
     expect(cloud.get('1')?.note.title).toBe('offline edit');
     expect(titlesById(await listNotes(USER))).toEqual({ '1': 'offline edit' });
     expect(await listPendingPushes(USER)).toEqual({});
+  });
+
+  describe('an edit the server refuses outright', () => {
+    const tooLong = Object.assign(new Error('note content exceeds 100000 characters'), {
+      code: '22023',
+    });
+
+    it('tells the user once, names the reason, and keeps the edit', async () => {
+      const edited = await editWhileOffline();
+      applyNoteChange.mockRejectedValue(tooLong);
+      useToastStore.getState().dismiss();
+
+      await flushPendingPushes(USER);
+
+      const toast = useToastStore.getState().message;
+      expect(toast?.tone).toBe('error');
+      expect(toast?.text).toContain('offline edit');
+      expect(toast?.text).toContain('note content exceeds 100000 characters');
+      expect(titlesById(await listNotes(USER))).toEqual({ '1': edited.title });
+      expect(Object.keys(await listPendingPushes(USER))).toEqual(['1']);
+
+      useToastStore.getState().dismiss();
+      await flushPendingPushes(USER);
+      expect(useToastStore.getState().message).toBeNull();
+    });
+
+    it('stays quiet about a network failure, which is expected to pass', async () => {
+      await editWhileOffline();
+      online = false;
+      useToastStore.getState().dismiss();
+
+      await flushPendingPushes(USER);
+
+      expect(useToastStore.getState().message).toBeNull();
+    });
   });
 
   it('keeps the edit pending while the cloud is still unreachable', async () => {

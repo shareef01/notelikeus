@@ -9,6 +9,7 @@ import { notesUserContentEqual } from '@/lib/notes/noteEquality';
 import { loadRevisionState } from '@/lib/supabase/revisionStore';
 import { applyNoteChange, NoteConflictError } from '@/lib/supabase/supabaseSyncEngine';
 import { useNotesStore } from '@/store/notesStore';
+import { useToastStore } from '@/store/toastStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { nextLocalNoteIdAfter, type Note } from '@/types/note';
 
@@ -63,12 +64,52 @@ async function runFlush(
       attempted.add(noteId);
       try {
         await flushOne(userId, noteId, result);
+        reportedRejections.delete(rejectionKey(userId, noteId));
       } catch (error) {
         console.warn(`[Notelikeus] Note ${noteId} is saved locally; its upload will be retried:`, error);
+        if (isPermanentRejection(error)) reportRejection(userId, noteId, error);
       }
     }
   }
   return result;
+}
+
+/** Notes already reported as refused, so a flush that fails the same way again stays quiet. */
+const reportedRejections = new Set<string>();
+
+function rejectionKey(userId: string, noteId: string): string {
+  return `${userId}:${noteId}`;
+}
+
+/**
+ * Whether the server refused the write itself, so every retry will fail the same way.
+ *
+ * Postgres answers with the SQLSTATE the function raised: data exceptions (22xxx, which is what
+ * `validate_note_payload` raises for a title or note that is too long) and integrity violations
+ * (23xxx). A network failure, a timeout or a 5xx carries no such code and is expected to pass.
+ */
+function isPermanentRejection(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && /^2[23][0-9A-Z]{3}$/.test(code);
+}
+
+/**
+ * Tells the user, once per note, that an edit is not reaching the cloud and why. The edit itself
+ * stays saved and queued: it is the only copy, and the user can fix it (shorten the note) and save
+ * again, which the next flush pushes. Without this the note silently stopped syncing.
+ */
+function reportRejection(userId: string, noteId: string, error: unknown): void {
+  const key = rejectionKey(userId, noteId);
+  if (reportedRejections.has(key)) return;
+  reportedRejections.add(key);
+  const title = useNotesStore.getState().notes.find((note) => note.id === noteId)?.title.trim();
+  const reason = error instanceof Error ? error.message : String(error);
+  useToastStore
+    .getState()
+    .show(
+      `${title ? `"${title}"` : 'A note'} can't sync: ${reason}. Your edit is kept on this device.`,
+      'error',
+    );
 }
 
 async function flushOne(userId: string, noteId: string, result: PendingFlushResult): Promise<void> {
