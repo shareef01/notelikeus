@@ -177,4 +177,42 @@ class PlaintextDatabaseMigratorTest {
             DatabaseRecoveryNotice.pending(context)
         )
     }
+
+    /**
+     * F-10: a readable plaintext database whose export fails — a full disk, an I/O error — stays in
+     * place and readable, instead of being quarantined so the app starts empty.
+     */
+    @Test
+    fun aFailedExportKeepsThePlaintextDatabaseInPlace() {
+        val original = databaseFile()
+        original.parentFile?.mkdirs()
+        SQLiteDatabase.openDatabase(original.absolutePath, "", null, SQLiteDatabase.CREATE_IF_NECESSARY, null)
+            .apply {
+                execSQL("CREATE TABLE probe (id INTEGER PRIMARY KEY, value TEXT)")
+                execSQL("INSERT INTO probe (value) VALUES ('still here')")
+                close()
+            }
+
+        PlaintextDatabaseMigrator.beforeExportForTests = { throw java.io.IOException("disk full") }
+        val outcome = try {
+            PlaintextDatabaseMigrator.migrateToEncryptedIfNeeded(context, dbName, "key".toByteArray())
+        } finally {
+            PlaintextDatabaseMigrator.beforeExportForTests = null
+        }
+
+        assertEquals(DatabaseEncryptionOutcome.PLAINTEXT_RETAINED, outcome)
+        assertNull("nothing was quarantined, so there is nothing to tell", DatabaseRecoveryNotice.pending(context))
+        SQLiteDatabase.openDatabase(original.absolutePath, "", null, SQLiteDatabase.OPEN_READONLY, null).use { db ->
+            db.rawQuery("SELECT value FROM probe", null).use { cursor ->
+                assertTrue("the kept database lost its rows", cursor.moveToFirst())
+                assertEquals("still here", cursor.getString(0))
+            }
+        }
+
+        // The next launch, with the fault gone, encrypts it.
+        assertEquals(
+            DatabaseEncryptionOutcome.ENCRYPTED,
+            PlaintextDatabaseMigrator.migrateToEncryptedIfNeeded(context, dbName, "key".toByteArray()),
+        )
+    }
 }

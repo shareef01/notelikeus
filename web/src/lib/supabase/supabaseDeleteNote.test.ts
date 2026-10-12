@@ -19,7 +19,12 @@ vi.mock('@/lib/supabase/supabaseRealtimeSync', () => ({
 
 import { NOTES_DB_NAME } from '@/lib/local/constants';
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
-import { forgetNoteRevision, loadRevisionState, rememberNoteRevision } from '@/lib/supabase/revisionStore';
+import {
+  forgetNoteRevision,
+  loadRevisionState,
+  rememberNoteRevision,
+  saveRevisionState,
+} from '@/lib/supabase/revisionStore';
 import { beginNotesSyncSession } from '@/lib/supabase/syncSession';
 import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNotesDataSource';
 import { useTombstoneStore } from '@/store/tombstoneStore';
@@ -75,7 +80,10 @@ describe('supabaseRemoteNotesDataSource.deleteNote — RPC status contract', () 
     );
   });
 
-  it('advances the cursor on an applied delete', async () => {
+  // F-04: revisions come from one global sequence, so another device may have committed a change
+  // below the delete's revision that has not been pulled yet. Advancing the cursor here skipped it.
+  it('leaves the pull cursor alone on an applied delete', async () => {
+    await saveRevisionState(USER, { noteRevisions: { '1': 10_005 }, lastRemoteRevision: 10_005 });
     rpcMock.mockResolvedValue({
       data: { status: 'applied', revision: 10_011 },
       error: null,
@@ -84,7 +92,7 @@ describe('supabaseRemoteNotesDataSource.deleteNote — RPC status contract', () 
     await supabaseRemoteNotesDataSource.deleteNote(USER, '1', 10_005);
 
     const state = await loadRevisionState(USER);
-    expect(state.lastRemoteRevision).toBe(10_011);
+    expect(state.lastRemoteRevision).toBe(10_005);
     expect(state.noteRevisions['1']).toBeUndefined();
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
   });

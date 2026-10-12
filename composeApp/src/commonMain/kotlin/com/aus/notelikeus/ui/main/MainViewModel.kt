@@ -665,8 +665,9 @@ class MainViewModel(
         }
     }
 
-    suspend fun exportBackupBundle(): Result<BundleExportOutcome> =
-        runCatching { bundleOperations.exportBundle() }
+    /** Streams the bundle into [sink] (the destination the user picked), and closes it. */
+    suspend fun exportBackupBundle(sink: okio.Sink): Result<BundleExportOutcome> =
+        runCatching { bundleOperations.exportBundle(sink) }
 
     fun bundleFileName(): String = bundleOperations.bundleFileName()
 
@@ -712,7 +713,7 @@ class MainViewModel(
         return result
     }
 
-    suspend fun importBackupBundle(archive: ByteArray): BackupImportResult {
+    suspend fun importBackupBundle(archive: okio.Path): BackupImportResult {
         // Captured at the same origin as importBackup above, for the same reason.
         val commitToken = localCommitTokenProvider.capture()
         val result = try {

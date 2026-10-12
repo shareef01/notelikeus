@@ -43,6 +43,28 @@ interface SnapshotResult {
   note_count?: number;
 }
 
+/**
+ * The server refused a write because the note is no longer at the revision it was based on.
+ *
+ * Kept distinct from transport failures on purpose: a network error means "try again later",
+ * while this means someone else's version is already in the cloud and retrying would overwrite it.
+ * [current] is that version, or null when the note was deleted in the cloud — or, when [missing],
+ * when the cloud has neither the note nor a tombstone for it (its data was wiped).
+ */
+export class NoteConflictError extends Error {
+  readonly noteId: string;
+  readonly current: Note | null;
+  readonly missing: boolean;
+
+  constructor(noteId: string, current: Note | null, message?: string, missing = false) {
+    super(message ?? `Revision conflict for note ${noteId}`);
+    this.name = 'NoteConflictError';
+    this.noteId = noteId;
+    this.current = current;
+    this.missing = missing;
+  }
+}
+
 export async function ensureSupabaseAuthenticated(): Promise<void> {
   const { data, error } = await getSupabaseClient().auth.getSession();
   if (error) throw error;
@@ -120,7 +142,7 @@ export async function applyNoteChange(
     if (result.error === 'note_deleted') {
       useTombstoneStore.getState().markDeleted(note.id);
       await forgetNoteRevision(userId, note.id);
-      throw new Error(`Note ${note.id} was deleted in the cloud`);
+      throw new NoteConflictError(note.id, null, `Note ${note.id} was deleted in the cloud`);
     }
     if (result.current) {
       const remoteRevision = result.current.revision;
@@ -131,9 +153,14 @@ export async function applyNoteChange(
         baseRevision != null ? `local revision ${baseRevision}` : 'no local revision';
       const remoteRevStr =
         remoteRevision != null ? `remote revision ${remoteRevision}` : 'unknown remote revision';
-      throw new Error(
+      throw new NoteConflictError(
+        note.id,
+        supabaseNoteToNote(result.current),
         `Revision conflict for note ${note.id} (${localRevStr}, ${remoteRevStr})`,
       );
+    }
+    if (result.error === 'note_not_found') {
+      throw new NoteConflictError(note.id, null, `Revision conflict for note ${note.id}`, true);
     }
     throw new Error(`Revision conflict for note ${note.id}`);
   }

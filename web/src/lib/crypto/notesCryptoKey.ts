@@ -106,7 +106,7 @@ function claimKeySlot(db: IDBDatabase, candidate: CryptoKey): Promise<unknown> {
 
 export async function getNotesCryptoKey(): Promise<CryptoKey | null> {
   if (!cachedKey) {
-    cachedKey = (async () => {
+    const loading = (async () => {
       if (typeof crypto === 'undefined' || !crypto.subtle) return null;
       const db = await openKeyDb();
       if (!db) return null;
@@ -125,6 +125,13 @@ export async function getNotesCryptoKey(): Promise<CryptoKey | null> {
         db.close();
       }
     })();
+    cachedKey = loading;
+    // Only a loaded key is remembered (F-11). A null is often transient — another tab blocking the
+    // open, an aborted transaction — and caching it refused every save until the page reloaded.
+    // Concurrent callers still share this one load, so they never mint competing keys.
+    void loading.then((key) => {
+      if (key === null && cachedKey === loading) cachedKey = null;
+    });
   }
   return cachedKey;
 }

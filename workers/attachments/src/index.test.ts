@@ -326,7 +326,7 @@ describe('R19.2 upload commitment protocol', () => {
     expect(finalize?.body.p_provisional).toBe(true);
   });
 
-  it('WATT-4 a provisional finalize failure keeps the existing compensation', async () => {
+  it('WATT-4 a provisional finalize failure leaves the bytes for the retry', async () => {
     const originalFetch = globalThis.fetch;
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -339,7 +339,8 @@ describe('R19.2 upload commitment protocol', () => {
     const response = await deferredUpload('1', 'att1', USER_A);
 
     expect(response.status).toBeGreaterThanOrEqual(500);
-    expect(bucket.objects.size).toBe(0);
+    // A 500 does not say whether the row committed (F-08), so the bytes are not destroyed.
+    expect(bucket.objects.size).toBe(1);
     expect(attachmentRows.size).toBe(0);
   });
 
@@ -946,7 +947,7 @@ describe('PUT retry against a committed attachment', () => {
     expect(bucket.objects.has(key)).toBe(true);
   });
 
-  it('still cleans up its own uncommitted blob when a fresh PUT fails to finalize', async () => {
+  it('keeps a fresh upload\'s bytes when finalization fails ambiguously', async () => {
     mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
       if (url.includes('finalize_note_attachment_put')) {
         return new Response('gateway timeout', { status: 504 });
@@ -954,11 +955,46 @@ describe('PUT retry against a committed attachment', () => {
       return undefined;
     });
 
-    const response = await upload('1', 'att-fresh', USER_A, 'never-committed');
+    const response = await upload('1', 'att-fresh', USER_A, 'maybe-committed');
 
     expect(response.status).toBe(502);
-    // Nothing else referenced these bytes, so compensation is still correct here.
-    expect(bucket.objects.has(`owners/${USER_A}/notes/1/att-fresh`)).toBe(false);
+    // F-08: a 504 cannot say whether the row committed. If it did, deleting these bytes would leave
+    // a live attachment with nothing behind it, so they stay; the client's retry overwrites them.
+    expect(bucket.objects.has(`owners/${USER_A}/notes/1/att-fresh`)).toBe(true);
+  });
+
+  it('keeps the bytes when finalization committed but its answer was lost', async () => {
+    const freshKey = `owners/${USER_A}/notes/1/att-lost`;
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('finalize_note_attachment_put')) {
+        // The database committed the row; only the response never made it back.
+        attachmentRows.set(rowKey(USER_A, '1', 'att-lost'), {
+          mimeType: 'image/png',
+          sizeBytes: 'lost-reply'.length,
+          deleted: false,
+          deleteClaimed: false,
+          objectDeleted: false,
+          committed: true,
+        });
+        throw Object.assign(new Error('The operation was aborted'), { name: 'TimeoutError' });
+      }
+      return undefined;
+    });
+
+    const response = await upload('1', 'att-lost', USER_A, 'lost-reply');
+
+    expect(response.status).toBe(503);
+    expect(attachmentRows.get(rowKey(USER_A, '1', 'att-lost'))?.deleted).toBe(false);
+    expect(bucket.objects.has(freshKey)).toBe(true);
+
+    // Every other device now sees a committed attachment, and it must still be downloadable.
+    mockSupabaseAuth({ [USER_A]: USER_A });
+    const download = await handleAttachmentRequest(
+      request('GET', '/v1/attachments/1/att-lost', USER_A),
+      env,
+    );
+    expect(download.status).toBe(200);
+    expect(await download.text()).toBe('lost-reply');
   });
 
   it('repairs a live attachment whose object is missing', async () => {

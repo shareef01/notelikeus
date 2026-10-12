@@ -11,6 +11,8 @@ import com.aus.notelikeus.ui.main.BackupTransferEvent
 import com.aus.notelikeus.ui.main.MainViewModel
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import okio.Path.Companion.toOkioPath
+import java.io.File
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
 import androidx.biometric.BiometricPrompt
@@ -113,9 +115,6 @@ class MainActivity : FragmentActivity() {
                 // permission. Until this was wired, App()'s no-op defaults applied and both
                 // rows in the profile sheet did nothing at all when tapped.
                 var pendingExportJson by remember { mutableStateOf<String?>(null) }
-                var pendingExportBytes by remember { mutableStateOf<ByteArray?>(null) }
-                var pendingBundleIncluded by remember { mutableIntStateOf(0) }
-                var pendingBundleSkipped by remember { mutableIntStateOf(0) }
                 var backupViewModel by remember { mutableStateOf<MainViewModel?>(null) }
 
                 val exportJsonLauncher = rememberLauncherForActivityResult(
@@ -138,25 +137,29 @@ class MainActivity : FragmentActivity() {
                 val exportBundleLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.CreateDocument(BACKUP_BUNDLE_MIME_TYPE),
                 ) { uri ->
-                    val bytes = pendingExportBytes
                     val viewModel = backupViewModel
-                    val included = pendingBundleIncluded
-                    val skipped = pendingBundleSkipped
-                    pendingExportBytes = null
-                    pendingBundleIncluded = 0
-                    pendingBundleSkipped = 0
                     backupViewModel = null
-                    if (uri == null || bytes == null) return@rememberLauncherForActivityResult
+                    if (uri == null || viewModel == null) return@rememberLauncherForActivityResult
+                    // Streamed straight into the picked document, one image at a time: building the
+                    // bundle in memory first ran out of heap on a large library (F-07).
                     scope.launch(Dispatchers.IO) {
-                        val written = BackupDocumentIo.writeBytes(contentResolver, uri, bytes)
-                        viewModel?.reportBackupTransfer(
-                            if (written) {
-                                BackupTransferEvent.BundleExported(
-                                    attachmentsIncluded = included,
-                                    attachmentsSkipped = skipped,
+                        val result = BackupDocumentIo.openSink(contentResolver, uri)
+                            ?.let { sink -> viewModel.exportBackupBundle(sink) }
+                            ?: Result.failure(IllegalStateException("no output stream for the picked document"))
+                        result.fold(
+                            onSuccess = { outcome ->
+                                viewModel.reportBackupTransfer(
+                                    BackupTransferEvent.BundleExported(
+                                        attachmentsIncluded = outcome.attachmentsIncluded,
+                                        attachmentsSkipped = outcome.attachmentsSkipped,
+                                    ),
                                 )
-                            } else {
-                                BackupTransferEvent.ExportFailed
+                            },
+                            onFailure = { error ->
+                                Log.w(TAG, "Writing the backup bundle failed", error)
+                                // A half-written bundle must not be left looking like a backup.
+                                BackupDocumentIo.delete(contentResolver, uri)
+                                viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
                             },
                         )
                     }
@@ -169,18 +172,27 @@ class MainActivity : FragmentActivity() {
                     backupViewModel = null
                     if (uri == null || viewModel == null) return@rememberLauncherForActivityResult
                     scope.launch(Dispatchers.IO) {
-                        val bytes = BackupDocumentIo.readBytes(contentResolver, uri)
-                        if (bytes == null) {
+                        // Never buffered whole (F-07): a bundle is copied to a cache file and
+                        // imported one image at a time; a JSON backup is read only up to its limit.
+                        val head = BackupDocumentIo.readHead(contentResolver, uri)
+                        if (head == null) {
                             viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
                             return@launch
                         }
-                        val name = uri.lastPathSegment
-                        val head = bytes.copyOf(minOf(2, bytes.size))
-                        if (viewModel.looksLikeBackupBundle(name, head)) {
-                            viewModel.importBackupBundle(bytes)
+                        if (viewModel.looksLikeBackupBundle(uri.lastPathSegment, head)) {
+                            val staged = File.createTempFile("import", ".nlkbak", cacheDir)
+                            try {
+                                if (BackupDocumentIo.copyToFile(contentResolver, uri, staged)) {
+                                    viewModel.importBackupBundle(staged.toOkioPath())
+                                } else {
+                                    viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
+                                }
+                            } finally {
+                                staged.delete()
+                            }
                         } else {
-                            val json = bytes.toString(Charsets.UTF_8)
-                            if (json.length > BackupDocumentIo.MAX_BACKUP_DOCUMENT_CHARS) {
+                            val json = BackupDocumentIo.read(contentResolver, uri)
+                            if (json == null) {
                                 viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
                             } else {
                                 viewModel.importBackup(json)
@@ -192,22 +204,9 @@ class MainActivity : FragmentActivity() {
                 App(
                     windowSizeClass = windowSizeClass,
                     onExportBackup = { viewModel ->
-                        scope.launch {
-                            val result = viewModel.exportBackupBundle()
-                            result.fold(
-                                onSuccess = { outcome ->
-                                    pendingExportBytes = outcome.bytes
-                                    pendingBundleIncluded = outcome.attachmentsIncluded
-                                    pendingBundleSkipped = outcome.attachmentsSkipped
-                                    backupViewModel = viewModel
-                                    exportBundleLauncher.launch(viewModel.bundleFileName())
-                                },
-                                onFailure = { error ->
-                                    Log.w(TAG, "Building the backup bundle failed", error)
-                                    viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
-                                },
-                            )
-                        }
+                        // The destination comes first: the bundle is written straight into it.
+                        backupViewModel = viewModel
+                        exportBundleLauncher.launch(viewModel.bundleFileName())
                     },
                     onExportNotesOnly = { viewModel ->
                         scope.launch {

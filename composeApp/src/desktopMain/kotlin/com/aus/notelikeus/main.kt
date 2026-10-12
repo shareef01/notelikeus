@@ -28,7 +28,16 @@ import com.aus.notelikeus.di.initKoin
 import com.aus.notelikeus.platform.DesktopBiometricPrompt
 import com.aus.notelikeus.platform.DesktopReminderManager
 import com.aus.notelikeus.data.backup.BackupExportResult
+import com.aus.notelikeus.data.backup.NoteBackupImporter
+import com.aus.notelikeus.data.backup.bundle.BackupFileReads
+import okio.Path.Companion.toOkioPath
+import okio.sink
+import com.aus.notelikeus.data.local.DesktopDatabaseKeyManager
+import com.aus.notelikeus.data.local.DesktopSqliteFlags
+import com.aus.notelikeus.data.local.UnreadableDatabaseKeyNotice
 import com.aus.notelikeus.util.AppLog
+import com.aus.notelikeus.util.DesktopPathProvider
+import kotlin.system.exitProcess
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.SidebarCollapsedStore
@@ -52,6 +61,7 @@ fun main() {
     // remembered in it changes (Ctrl+N, the tray item, the About dialog), and startKoin throws
     // KoinApplicationAlreadyStartedException the second time.
     initKoin()
+    exitIfDatabaseKeyUnreadable()
     // Read before the window exists, so the first frame is already the right size rather than
     // resizing itself once a flow emits.
     val metricsStore = GlobalContext.get().get<WindowMetricsStore>()
@@ -62,6 +72,27 @@ fun main() {
         sidebarStore,
         runBlocking { sidebarStore.collapsed.first() }
     )
+}
+
+/**
+ * Explains an unreadable notes-database key and exits, instead of letting the database singleton
+ * throw on first use (FU-2). That throw ended the app on every launch with no message at all,
+ * while the notes themselves were intact on disk. Only the encrypted (JDBC) database has a key.
+ */
+private fun exitIfDatabaseKeyUnreadable() {
+    if (!DesktopSqliteFlags.useJdbcSqlite()) return
+    val keyManager = GlobalContext.get().get<DesktopDatabaseKeyManager>()
+    val failure = keyManager.checkReadable() ?: return
+    AppLog.warn("DesktopStartup", "Notes database key could not be read; not opening the database", failure)
+    if (!GraphicsEnvironment.isHeadless()) {
+        javax.swing.JOptionPane.showMessageDialog(
+            null,
+            UnreadableDatabaseKeyNotice.message(DesktopPathProvider.getDataDirectory(), keyManager.keyDirectory),
+            UnreadableDatabaseKeyNotice.TITLE,
+            javax.swing.JOptionPane.ERROR_MESSAGE,
+        )
+    }
+    exitProcess(1)
 }
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
@@ -254,31 +285,36 @@ private fun launchApp(
             },
             onExportBackup = { viewModel ->
                 coroutineScope.launch(Dispatchers.IO) {
-                    val outcome = viewModel.exportBackupBundle().getOrElse { error ->
-                        AppLog.warn("DesktopBackup", "Building the backup bundle failed", error)
-                        viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
-                        return@launch
-                    }
-                    withContext(Dispatchers.Main) {
+                    // The destination comes first, and the bundle is streamed straight into it, one
+                    // image at a time: building it in memory first could run out of heap (F-07).
+                    val target = withContext(Dispatchers.Main) {
                         val chooser = javax.swing.JFileChooser().apply {
                             selectedFile = java.io.File(viewModel.bundleFileName())
                         }
                         if (chooser.showSaveDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
-                            val written = runCatching {
-                                chooser.selectedFile.writeBytes(outcome.bytes)
-                            }
-                            viewModel.reportBackupTransfer(
-                                if (written.isSuccess) {
-                                    BackupTransferEvent.BundleExported(
-                                        attachmentsIncluded = outcome.attachmentsIncluded,
-                                        attachmentsSkipped = outcome.attachmentsSkipped,
-                                    )
-                                } else {
-                                    BackupTransferEvent.ExportFailed
-                                },
-                            )
+                            chooser.selectedFile
+                        } else {
+                            null
                         }
-                    }
+                    } ?: return@launch
+                    val result = runCatching { target.sink() }
+                        .mapCatching { sink -> viewModel.exportBackupBundle(sink).getOrThrow() }
+                    result.fold(
+                        onSuccess = { outcome ->
+                            viewModel.reportBackupTransfer(
+                                BackupTransferEvent.BundleExported(
+                                    attachmentsIncluded = outcome.attachmentsIncluded,
+                                    attachmentsSkipped = outcome.attachmentsSkipped,
+                                ),
+                            )
+                        },
+                        onFailure = { error ->
+                            AppLog.warn("DesktopBackup", "Writing the backup bundle failed", error)
+                            // A half-written bundle must not be left looking like a backup.
+                            target.delete()
+                            viewModel.reportBackupTransfer(BackupTransferEvent.ExportFailed)
+                        },
+                    )
                 }
             },
             onExportNotesOnly = { viewModel ->
@@ -310,17 +346,24 @@ private fun launchApp(
                         val chooser = javax.swing.JFileChooser()
                         if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
                             launch(Dispatchers.IO) {
+                                // Never read whole: a bundle is imported from the file one image at a
+                                // time, and a JSON backup is read only up to the importer's limit (F-07).
                                 val file = chooser.selectedFile
-                                val bytes = runCatching { file.readBytes() }.getOrNull()
-                                if (bytes == null) {
+                                val head = runCatching {
+                                    file.inputStream().use { BackupFileReads.readHead(it) }
+                                }.getOrNull()
+                                if (head == null) {
                                     viewModel.reportBackupTransfer(BackupTransferEvent.ImportFailed)
                                     return@launch
                                 }
-                                val head = bytes.copyOf(minOf(2, bytes.size))
                                 if (viewModel.looksLikeBackupBundle(file.name, head)) {
-                                    viewModel.importBackupBundle(bytes)
+                                    viewModel.importBackupBundle(file.toOkioPath())
                                 } else {
-                                    val json = runCatching { bytes.toString(Charsets.UTF_8) }.getOrNull()
+                                    val json = runCatching {
+                                        file.inputStream().use {
+                                            BackupFileReads.readTextWithin(it, NoteBackupImporter.MAX_BACKUP_CHARS)
+                                        }
+                                    }.getOrNull()
                                     if (json != null) viewModel.importBackup(json)
                                     else viewModel.reportBackupTransfer(
                                         BackupTransferEvent.ImportFailed,
