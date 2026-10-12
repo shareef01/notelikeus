@@ -304,40 +304,41 @@ async function putAttachment(
     return new Response('Storage write failed', { status: 502 });
   }
 
-  // Phase 3: metadata finalization in database
-  let finalized: AttachmentAuthz | null;
-  try {
-    // The v2 route asks for the deferred protocol: the row is created provisional and becomes visible
-    // only when the note that references it commits (see `apply_note_change`'s attachment-id argument).
-    // The v1 payload is byte-identical to what every deployed client and Worker already send, so an
-    // older client's upload keeps committing its row at upload time.
-    finalized = await authorizeAttachment(
-      request,
-      env,
-      'finalize_note_attachment_put',
-      parsed.deferred
-        ? {
-            p_note_id: parsed.noteId,
-            p_attachment_id: parsed.attachmentId,
-            p_object_key: objectKey,
-            p_mime_type: mimeType,
-            p_size_bytes: body.byteLength,
-            p_provisional: true,
-            p_attachment_type: 'image',
-          }
-        : {
-            p_note_id: parsed.noteId,
-            p_attachment_id: parsed.attachmentId,
-            p_object_key: objectKey,
-            p_mime_type: mimeType,
-            p_size_bytes: body.byteLength,
-            p_attachment_type: 'image',
-          },
-    );
-  } catch (error) {
-    await compensate('upstream finalization error');
-    throw error;
-  }
+  // Phase 3: metadata finalization in database.
+  //
+  // A throw here (timeout, 5xx, lost response) is deliberately *not* compensated: it does not say
+  // whether finalization committed, and if it did, deleting the object would leave a live attachment
+  // whose bytes are gone (F-08). Bytes with no row are the recoverable side of that ambiguity: the
+  // client's retry rewrites this same object key, and only an upload abandoned for good leaves them
+  // orphaned. The definitive refusals below still compensate.
+  //
+  // The v2 route asks for the deferred protocol: the row is created provisional and becomes visible
+  // only when the note that references it commits (see `apply_note_change`'s attachment-id argument).
+  // The v1 payload is byte-identical to what every deployed client and Worker already send, so an
+  // older client's upload keeps committing its row at upload time.
+  const finalized = await authorizeAttachment(
+    request,
+    env,
+    'finalize_note_attachment_put',
+    parsed.deferred
+      ? {
+          p_note_id: parsed.noteId,
+          p_attachment_id: parsed.attachmentId,
+          p_object_key: objectKey,
+          p_mime_type: mimeType,
+          p_size_bytes: body.byteLength,
+          p_provisional: true,
+          p_attachment_type: 'image',
+        }
+      : {
+          p_note_id: parsed.noteId,
+          p_attachment_id: parsed.attachmentId,
+          p_object_key: objectKey,
+          p_mime_type: mimeType,
+          p_size_bytes: body.byteLength,
+          p_attachment_type: 'image',
+        },
+  );
 
   // Checked before the generic rejection below, which would otherwise take the conservative
   // branch and leave these bytes orphaned: a terminal answer carries no attachment_id, and on

@@ -150,6 +150,7 @@ Severity: P0 Critical / P1 High / P2 Medium / P3 Low. Confidence: **Confirmed** 
 - **Complexity:** M
 
 ### F-08 (NLU-02) — Worker deletes the R2 object when finalization commits but its response is lost
+- **Status (branch `fix/audit-sync-findings`):** Fixed in the Worker source. It takes effect only after the Worker is redeployed. A failed finalization no longer triggers compensation unless the answer is definitive (a refusal, or `terminally_deleted`). The new test "keeps the bytes when finalization committed but its answer was lost" failed against the pre-fix code. Two tests that encoded "a 5xx means nothing committed" were updated. Residual: an upload abandoned after an ambiguous failure leaves bytes with no row, and nothing sweeps those yet.
 - **Severity:** P2 · **Confidence:** Confirmed that the deletion happens; partially mitigated · **Platform:** Worker (affects all clients)
 - **Location:** `workers/attachments/src/index.ts:152-167`: the 10 s `AbortSignal.timeout`, or a lost body, throws `UpstreamServiceError`. `:337-340`: `catch { await compensate('upstream finalization error') }`, which deletes `objectKey` whenever `preflight.already_live !== true` (`:285-293`).
 - **Sequence:** A fresh upload writes to R2. `finalize_note_attachment_put` commits (`20260910000000_attachment_commitment.sql:185-217`). The response exceeds 10 s or the stream drops. The Worker deletes the object and returns 503.
