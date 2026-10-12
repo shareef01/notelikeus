@@ -1,5 +1,5 @@
 {
-  "comment": "The argument object both clients send to apply_note_change. Key names and value types are the contract; p_base_revision is null on a note the server has never seen.",
+  "comment": "The apply_note_change argument object the web client sends (the 14-argument overload). The Kotlin clients send the same keys plus p_attachment_ids (the 15-argument overload); restore_note takes only these 14. Key names and value types are the contract; p_base_revision is null on a note the server has never seen. Whether each client's argument set matches a deployed signature is checked against supabase/migrations by RpcSignatureContractTest (Kotlin) and rpcSignatureContract.test.ts (web).",
   "args": {
     "p_note_id": "12",
     "p_local_id": 12,
