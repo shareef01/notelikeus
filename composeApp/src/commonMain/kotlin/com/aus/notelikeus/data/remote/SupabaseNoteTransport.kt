@@ -362,7 +362,10 @@ class SupabaseNoteTransport internal constructor(
         revisionState.forget(uid)
     }
 
-    private fun Note.toRpcArgs(baseRevision: Long?, includeAttachmentIds: Boolean = true): JsonObject = buildJsonObject {
+    private fun Note.toRpcArgs(
+        baseRevision: Long?,
+        includeAttachmentIds: Boolean = true,
+    ): JsonObject = buildJsonObject {
         val noteId = id ?: return@buildJsonObject
         put("p_note_id", JsonPrimitive(noteId.toString()))
         put("p_local_id", JsonPrimitive(noteId))

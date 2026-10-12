@@ -37,18 +37,7 @@ object DesktopPlaintextDatabaseMigrator {
         val backup = File(parent, "${databaseFile.name}.pre-encrypt")
 
         if (!databaseFile.exists()) {
-            // A previous run was interrupted mid-swap. Prefer the encrypted copy when it opens;
-            // otherwise put the original back and migrate it like any plaintext database below —
-            // returning here would hand a plaintext file to an encrypted open.
-            if (encryptedTemp.exists() && canOpenEncrypted(encryptedTemp, passphrase)) {
-                if (encryptedTemp.renameTo(databaseFile)) {
-                    backup.delete()
-                    return DatabaseEncryptionOutcome.ENCRYPTED
-                }
-            }
-            if (!(backup.exists() && backup.renameTo(databaseFile))) {
-                return DatabaseEncryptionOutcome.ENCRYPTED
-            }
+            recoverInterruptedSwap(databaseFile, encryptedTemp, backup, passphrase)?.let { return it }
         }
 
         if (encryptedTemp.exists()) encryptedTemp.delete()
@@ -60,25 +49,9 @@ object DesktopPlaintextDatabaseMigrator {
             return DatabaseEncryptionOutcome.QUARANTINED
         }
 
-        try {
-            // SQLCipher/MC cannot rekey while journal_mode is WAL.
-            leaveWalJournalMode(databaseFile)
-            databaseFile.copyTo(encryptedTemp, overwrite = true)
-            for (suffix in listOf("-journal", "-shm", "-wal")) {
-                File(parent, encryptedTemp.name + suffix).delete()
-            }
-            JdbcSQLiteDriver.openJdbcConnection(encryptedTemp.absolutePath, passphrase = null)
-                .use { connection ->
-                    applySqlCipherV4(connection)
-                    beforeRekeyForTests?.invoke()
-                    val key = JdbcSQLiteDriver.passphraseAsHexKey(passphrase).replace("'", "''")
-                    connection.createStatement().use { stmt ->
-                        stmt.execute("PRAGMA rekey = '$key'")
-                    }
-                }
-        } catch (error: Exception) {
-            encryptedTemp.delete()
-            AppLog.warn(TAG, "Could not encrypt the desktop database; keeping it as plaintext for now", error)
+        // Every failure from here on leaves a readable plaintext database holding every note, so it
+        // stays in place rather than being quarantined, and the next launch tries again (F-10).
+        if (!rekeyCopy(databaseFile, encryptedTemp, passphrase)) {
             return DatabaseEncryptionOutcome.PLAINTEXT_RETAINED
         }
 
@@ -99,6 +72,56 @@ object DesktopPlaintextDatabaseMigrator {
         }
         return DatabaseEncryptionOutcome.ENCRYPTED
     }
+
+    /**
+     * A previous run was interrupted mid-swap. Prefers the encrypted copy when it opens; otherwise
+     * puts the original back and returns null, so the caller migrates it like any plaintext database
+     * — returning early here handed a plaintext file to an encrypted open.
+     */
+    private fun recoverInterruptedSwap(
+        databaseFile: File,
+        encryptedTemp: File,
+        backup: File,
+        passphrase: ByteArray,
+    ): DatabaseEncryptionOutcome? {
+        if (encryptedTemp.exists() && canOpenEncrypted(encryptedTemp, passphrase) &&
+            encryptedTemp.renameTo(databaseFile)
+        ) {
+            backup.delete()
+            return DatabaseEncryptionOutcome.ENCRYPTED
+        }
+        // Nothing to recover: no database yet, so Room creates a fresh, encrypted one.
+        if (!(backup.exists() && backup.renameTo(databaseFile))) return DatabaseEncryptionOutcome.ENCRYPTED
+        return null
+    }
+
+    /**
+     * Copies the plaintext [databaseFile] to [encryptedTemp] and rekeys the copy. False, with the
+     * partial copy removed and the source untouched, when that fails.
+     */
+    private fun rekeyCopy(databaseFile: File, encryptedTemp: File, passphrase: ByteArray): Boolean =
+        try {
+            // SQLCipher/MC cannot rekey while journal_mode is WAL.
+            leaveWalJournalMode(databaseFile)
+            databaseFile.copyTo(encryptedTemp, overwrite = true)
+            for (suffix in listOf("-journal", "-shm", "-wal")) {
+                File(encryptedTemp.parentFile, encryptedTemp.name + suffix).delete()
+            }
+            JdbcSQLiteDriver.openJdbcConnection(encryptedTemp.absolutePath, passphrase = null)
+                .use { connection ->
+                    applySqlCipherV4(connection)
+                    beforeRekeyForTests?.invoke()
+                    val key = JdbcSQLiteDriver.passphraseAsHexKey(passphrase).replace("'", "''")
+                    connection.createStatement().use { stmt ->
+                        stmt.execute("PRAGMA rekey = '$key'")
+                    }
+                }
+            true
+        } catch (error: Exception) {
+            encryptedTemp.delete()
+            AppLog.warn(TAG, "Could not encrypt the desktop database; keeping it as plaintext for now", error)
+            false
+        }
 
     internal fun swapEncryptedIntoPlace(databaseFile: File, encryptedTemp: File): Boolean {
         val backup = File(databaseFile.parent, "${databaseFile.name}.pre-encrypt")

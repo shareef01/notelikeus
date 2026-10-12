@@ -32,20 +32,7 @@ object PlaintextDatabaseMigrator {
         val backup = context.getDatabasePath("$databaseName.pre-encrypt")
 
         if (!databaseFile.exists()) {
-            // A previous run may have been interrupted mid-swap (original moved aside but the
-            // encrypted copy not yet moved into place). Recover instead of starting fresh: prefer
-            // the encrypted copy when it opens with our key, otherwise put the original back and
-            // migrate it like any plaintext database below — returning here would hand a plaintext
-            // file to an encrypted open.
-            if (encryptedTemp.exists() && canOpenEncrypted(encryptedTemp, passphrase)) {
-                if (encryptedTemp.renameTo(databaseFile)) {
-                    backup.delete()
-                    return DatabaseEncryptionOutcome.ENCRYPTED
-                }
-            }
-            if (!(backup.exists() && backup.renameTo(databaseFile))) {
-                return DatabaseEncryptionOutcome.ENCRYPTED
-            }
+            recoverInterruptedSwap(databaseFile, encryptedTemp, backup, passphrase)?.let { return it }
         }
 
         // A stale export from an earlier interrupted run is safe to remove now: the source database
@@ -57,20 +44,7 @@ object PlaintextDatabaseMigrator {
         // opens with that derivation there is nothing to migrate.
         if (canOpenEncrypted(databaseFile, passphrase)) return DatabaseEncryptionOutcome.ENCRYPTED
 
-        val isPlaintext = try {
-            SQLiteDatabase.openDatabase(
-                databaseFile.absolutePath,
-                "",
-                null,
-                SQLiteDatabase.OPEN_READWRITE,
-                null
-            ).close()
-            true
-        } catch (error: Exception) {
-            Log.i(TAG, "Database does not open as plaintext", error)
-            false
-        }
-        if (!isPlaintext) {
+        if (!opensAsPlaintext(databaseFile)) {
             // Can't open it plaintext, and not with our current passphrase either. The app sets
             // android:allowBackup="false", so this is not a backup-restore artefact; it is reachable
             // whenever the database file outlives the Keystore key that encrypted it — a
@@ -81,37 +55,10 @@ object PlaintextDatabaseMigrator {
             return DatabaseEncryptionOutcome.QUARANTINED
         }
 
-        try {
-            beforeExportForTests?.invoke()
-            // Create the encrypted copy with the SAME key derivation Room will use: raw passphrase
-            // bytes through the byte[] open API (identical code path to SupportOpenHelperFactory).
-            // The previous approach — ATTACH ... KEY "x'<hex>'" — was a key-format mismatch: SQLCipher
-            // parses that double-quoted text literal as a *raw* key (the x'...' prefix), which
-            // bypasses PBKDF2 and produces a file Room cannot open.
-            val encryptedDb = SQLiteDatabase.openDatabase(
-                encryptedTemp.absolutePath,
-                passphrase,
-                null,
-                SQLiteDatabase.CREATE_IF_NECESSARY,
-                null,
-                null
-            )
-            try {
-                // Attach the plaintext source (empty key -> plaintext attachment, per SQLCipher)
-                // and copy its schema and data into the encrypted 'main' database.
-                val escapedSource = databaseFile.absolutePath.replace("'", "''")
-                encryptedDb.execSQL("ATTACH DATABASE '$escapedSource' AS plain KEY ''")
-                encryptedDb.rawExecSQL("SELECT sqlcipher_export('main', 'plain')")
-                encryptedDb.execSQL("DETACH DATABASE plain")
-            } finally {
-                encryptedDb.close()
-            }
-        } catch (error: Exception) {
-            // The source is untouched; only the partial export is discarded. It is still a readable
-            // database holding every note, so it stays in place rather than being quarantined: the
-            // failure (a full disk, an I/O error) may well be gone by the next launch (F-10).
-            encryptedTemp.delete()
-            Log.e(TAG, "Could not encrypt the database; keeping it as plaintext for now", error)
+        // Every failure from here on leaves a readable plaintext database holding every note, so it
+        // stays in place rather than being quarantined: the cause (a full disk, an I/O error) may
+        // well be gone by the next launch (F-10).
+        if (!exportEncryptedCopy(databaseFile, encryptedTemp, passphrase)) {
             return DatabaseEncryptionOutcome.PLAINTEXT_RETAINED
         }
 
@@ -142,6 +89,85 @@ object PlaintextDatabaseMigrator {
         }
         return DatabaseEncryptionOutcome.ENCRYPTED
     }
+
+    /**
+     * A previous run may have been interrupted mid-swap (original moved aside but the encrypted copy
+     * not yet moved into place). Prefers the encrypted copy when it opens with our key; otherwise
+     * puts the original back and returns null, so the caller migrates it like any plaintext
+     * database — returning early here handed a plaintext file to an encrypted open.
+     */
+    private fun recoverInterruptedSwap(
+        databaseFile: File,
+        encryptedTemp: File,
+        backup: File,
+        passphrase: ByteArray,
+    ): DatabaseEncryptionOutcome? {
+        if (encryptedTemp.exists() && canOpenEncrypted(encryptedTemp, passphrase) &&
+            encryptedTemp.renameTo(databaseFile)
+        ) {
+            backup.delete()
+            return DatabaseEncryptionOutcome.ENCRYPTED
+        }
+        // Nothing to recover: no database yet, so Room creates a fresh, encrypted one.
+        if (!(backup.exists() && backup.renameTo(databaseFile))) return DatabaseEncryptionOutcome.ENCRYPTED
+        return null
+    }
+
+    private fun opensAsPlaintext(databaseFile: File): Boolean =
+        try {
+            SQLiteDatabase.openDatabase(
+                databaseFile.absolutePath,
+                "",
+                null,
+                SQLiteDatabase.OPEN_READWRITE,
+                null
+            ).close()
+            true
+        } catch (error: Exception) {
+            Log.i(TAG, "Database does not open as plaintext", error)
+            false
+        }
+
+    /**
+     * Writes an encrypted copy of the plaintext [databaseFile] to [encryptedTemp]. False, with the
+     * partial copy removed and the source untouched, when the export fails.
+     */
+    private fun exportEncryptedCopy(
+        databaseFile: File,
+        encryptedTemp: File,
+        passphrase: ByteArray,
+    ): Boolean =
+        try {
+            beforeExportForTests?.invoke()
+            // Create the encrypted copy with the SAME key derivation Room will use: raw passphrase
+            // bytes through the byte[] open API (identical code path to SupportOpenHelperFactory).
+            // The previous approach — ATTACH ... KEY "x'<hex>'" — was a key-format mismatch: SQLCipher
+            // parses that double-quoted text literal as a *raw* key (the x'...' prefix), which
+            // bypasses PBKDF2 and produces a file Room cannot open.
+            val encryptedDb = SQLiteDatabase.openDatabase(
+                encryptedTemp.absolutePath,
+                passphrase,
+                null,
+                SQLiteDatabase.CREATE_IF_NECESSARY,
+                null,
+                null
+            )
+            try {
+                // Attach the plaintext source (empty key -> plaintext attachment, per SQLCipher)
+                // and copy its schema and data into the encrypted 'main' database.
+                val escapedSource = databaseFile.absolutePath.replace("'", "''")
+                encryptedDb.execSQL("ATTACH DATABASE '$escapedSource' AS plain KEY ''")
+                encryptedDb.rawExecSQL("SELECT sqlcipher_export('main', 'plain')")
+                encryptedDb.execSQL("DETACH DATABASE plain")
+            } finally {
+                encryptedDb.close()
+            }
+            true
+        } catch (error: Exception) {
+            encryptedTemp.delete()
+            Log.e(TAG, "Could not encrypt the database; keeping it as plaintext for now", error)
+            false
+        }
 
     /**
      * Swaps the encrypted copy into the canonical database path without ever deleting the original
