@@ -32,7 +32,12 @@ import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.data.backup.bundle.BackupFileReads
 import okio.Path.Companion.toOkioPath
 import okio.sink
+import com.aus.notelikeus.data.local.DesktopDatabaseKeyManager
+import com.aus.notelikeus.data.local.DesktopSqliteFlags
+import com.aus.notelikeus.data.local.UnreadableDatabaseKeyNotice
 import com.aus.notelikeus.util.AppLog
+import com.aus.notelikeus.util.DesktopPathProvider
+import kotlin.system.exitProcess
 import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.SidebarCollapsedStore
@@ -56,6 +61,7 @@ fun main() {
     // remembered in it changes (Ctrl+N, the tray item, the About dialog), and startKoin throws
     // KoinApplicationAlreadyStartedException the second time.
     initKoin()
+    exitIfDatabaseKeyUnreadable()
     // Read before the window exists, so the first frame is already the right size rather than
     // resizing itself once a flow emits.
     val metricsStore = GlobalContext.get().get<WindowMetricsStore>()
@@ -66,6 +72,27 @@ fun main() {
         sidebarStore,
         runBlocking { sidebarStore.collapsed.first() }
     )
+}
+
+/**
+ * Explains an unreadable notes-database key and exits, instead of letting the database singleton
+ * throw on first use (FU-2). That throw ended the app on every launch with no message at all,
+ * while the notes themselves were intact on disk. Only the encrypted (JDBC) database has a key.
+ */
+private fun exitIfDatabaseKeyUnreadable() {
+    if (!DesktopSqliteFlags.useJdbcSqlite()) return
+    val keyManager = GlobalContext.get().get<DesktopDatabaseKeyManager>()
+    val failure = keyManager.checkReadable() ?: return
+    AppLog.warn("DesktopStartup", "Notes database key could not be read; not opening the database", failure)
+    if (!GraphicsEnvironment.isHeadless()) {
+        javax.swing.JOptionPane.showMessageDialog(
+            null,
+            UnreadableDatabaseKeyNotice.message(DesktopPathProvider.getDataDirectory(), keyManager.keyDirectory),
+            UnreadableDatabaseKeyNotice.TITLE,
+            javax.swing.JOptionPane.ERROR_MESSAGE,
+        )
+    }
+    exitProcess(1)
 }
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)

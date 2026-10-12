@@ -275,6 +275,7 @@ Scope: the deployed `SECURITY DEFINER` surface; Android exported components (App
 ### Findings
 
 #### FU-1 — Signing a different account into a browser wipes the previous account's unsynced edits, without warning
+- **Status (branch `fix/audit-sync-findings`):** Fixed. The switch keeps the previous account's namespace while it has pending pushes, and the sign-out dialog says how many notes have edits not uploaded yet (`bootstrap.test.ts`, `SignOutDialog.test.tsx`).
 - **Severity:** P2 · **Confidence:** Confirmed at source level · **Platform:** Web
 - **Location:** `web/src/hooks/useNotesSync.ts:38-41` calls `clearLocalUserDataForAccountSwitch(lastMerged)` whenever the signed-in uid differs from the last account used in that browser. `web/src/lib/bootstrap.ts:196-207` then runs `clearOwner(previousOwnerId)`, which deletes that owner's note rows **and** its meta row, including `pendingPushes` (F-06).
 - **Sequence:** account A edits offline, then signs out. Signing out keeps A's IndexedDB rows, so A's edits are still safe at this point. Account B then signs in on the same browser profile, and A's unsynced edits are deleted. `SignOutDialog` gives no indication that unsynced edits exist.
@@ -282,16 +283,16 @@ Scope: the deployed `SECURITY DEFINER` surface; Android exported components (App
 - **Test:** an account-switch test with a pending marker for A expects a confirmation, or expects A's row and marker to survive until confirmed.
 
 #### FU-2 — Desktop: an unreadable DPAPI key crashes the app on every launch, with no message
+- **Status (branch `fix/audit-sync-findings`):** Fixed. `main()` checks the key before anything opens the database. An unreadable key gets a dialog that says nothing was deleted and where the notes and key are, then the app exits cleanly (`UnreadableDatabaseKeyStartupTest`). The dialog itself is not exercised by tests.
 - **Severity:** P2 (availability) · **Confidence:** Probable (not reproduced on a live profile) · **Platform:** Windows
 - **Location:** `DesktopDatabaseKeyManager.loadOrCreate` throws `IllegalStateException` when the key file exists but `CryptUnprotectData` fails. That correctly keeps the key file. But it throws while Koin builds the database singleton, and `main.kt` has neither a startup handler nor an uncaught-exception handler.
 - **When:** an administrator password reset, or a profile copied to another machine. In both, the user's DPAPI master key no longer opens the blob. The encrypted notes stay intact on disk, but the app just exits. Android shows `DatabaseRecoveryNotice` for its equivalent case.
 - **Fix:** catch the key failure at startup and show a dialog that explains it and says where the files are, without deleting anything. Optionally offer to start a fresh library after moving the old files aside.
 - **Test:** a desktop test with a blob store that throws, asserting a typed startup result instead of an escaped exception.
 
-#### FU-3 — Web reminders fire only while the app is open; the UI does not say so
-- **Severity:** P2 (product) · **Confidence:** Confirmed at source level · **Platform:** Web
-- **Location:** `web/src/sw.ts:33-41` documents that service-worker timers die with the worker. Without the Push API, a reminder due while the app is closed fires late, on the next event that starts the worker (usually the next visit). `ReminderPickerDialog` and `useNoteEditor` carry no disclosure. Android and desktop schedule real alarms.
-- **Fix (smallest):** a line in the reminder picker on web: "Reminders appear when Notelikeus is open in a browser tab". A real fix needs Web Push, with a server-side scheduler.
+#### FU-3 — Web reminders fire only while the app is open (withdrawn: already disclosed)
+- **Severity:** none · **Status:** Withdrawn after re-checking.
+- **Detail:** `web/src/sw.ts:33-41` documents that service-worker timers die with the worker, so without the Push API a reminder due while the app is closed fires late, usually on the next visit. The first pass reported that the UI does not say so, but `ReminderPickerDialog.tsx:50-53` already does: "Web reminders fire when this app is open or recently used. They can be late or miss if the browser is fully closed". The original search used other phrasings and missed it. Reliable delivery would need Web Push with a server-side scheduler, which is a product decision rather than a defect.
 
 #### FU-4 — `begin_sync_mutation()` is callable by `authenticated` over REST
 - **Severity:** P3 (hardening) · **Confidence:** Confirmed · **Platform:** Server
