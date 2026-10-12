@@ -144,14 +144,41 @@ export async function listStoredNotes(ownerId: string): Promise<StoredNotesReadR
     }
     notes.push(opened);
     if (!isSealedStoredNote(record.note)) {
-      void maybeMigrateStoredNote(ownerId, record.note, async (next) => {
-        await withStore(NOTES_STORE, 'readwrite', (store) =>
-          store.put({ ownerId, id: record.id, note: next } satisfies StoredNoteRecord),
-        );
-      });
+      void maybeMigrateStoredNote(ownerId, record.note, (next) =>
+        replaceIfUnchanged(ownerId, record.id, record.note, next),
+      );
     }
   }
   return { notes, unreadable };
+}
+
+/**
+ * Writes [next] over row [noteId] only if, inside this transaction, the row is still exactly
+ * [expected] — the snapshot the caller read before awaiting anything.
+ *
+ * The legacy re-seal reads a row, then awaits the key and Web Crypto before writing. In that gap
+ * the user can save a newer version, delete the note, or sign out and clear the account; a blind
+ * put would then revert the edit, resurrect the note, or write one account's note back after it was
+ * cleared (F-02). Comparing inside the writing transaction makes the write apply only to the row it
+ * was computed from.
+ */
+async function replaceIfUnchanged(
+  ownerId: string,
+  noteId: string,
+  expected: StoredNotePayload,
+  next: StoredNotePayload,
+): Promise<void> {
+  const expectedJson = JSON.stringify(expected);
+  await withStore(NOTES_STORE, 'readwrite', (store) => {
+    const current = store.get([ownerId, noteId]);
+    current.onsuccess = () => {
+      const row = current.result as StoredNoteRecord | undefined;
+      if (row && JSON.stringify(row.note) === expectedJson) {
+        store.put({ ownerId, id: noteId, note: next } satisfies StoredNoteRecord);
+      }
+    };
+    return current;
+  });
 }
 
 /**

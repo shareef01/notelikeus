@@ -80,6 +80,7 @@ Severity: P0 Critical / P1 High / P2 Medium / P3 Low. Confidence: **Confirmed** 
 - **Complexity:** S
 
 ### F-02 (NLU-01) — Web legacy-plaintext sealing migration overwrites newer edits and resurrects deleted or cleared notes
+- **Status (branch `fix/audit-sync-findings`):** Fixed. `web/src/lib/local/legacySealingRace.test.ts` holds the migration's `encrypt` open while a newer save, a delete or an account clear lands. All three failed against the pre-fix code; they pass now. The migration write is a compare-and-set inside its own transaction.
 - **Severity:** P1 · **Confidence:** Confirmed at source level · **Platform:** Web
 - **Location:** `web/src/lib/local/notesLocalRepository.ts:106-111` fires `void maybeMigrateStoredNote(ownerId, record.note, write)`. `web/src/lib/local/notesSealing.ts:171-186` awaits the key and then `crypto.subtle.encrypt`, and calls `write`, which is a blind `store.put`, with the snapshot read earlier.
 - **Root cause:** A read-modify-write spans an unbounded async gap with no compare-and-set. The write does not re-read the row inside its own `readwrite` transaction.
