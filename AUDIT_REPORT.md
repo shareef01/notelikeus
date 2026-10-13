@@ -516,6 +516,21 @@ The trigger is narrow: it needs a restore marker and a newer edit elsewhere. It 
 
 Why it is not changed here: making restore reject a stale revision changes what an undo does when two devices disagree, which is a product decision — either "a restore is a deliberate user action that wins" (then say so, and document that the parameter is advisory) or "a restore is fenced like any other write" (then it needs a conflict path in both clients and the DEL-6 tests revisited). Both are defensible; neither is a mechanical fix, and picking one silently in an audit would be exactly the kind of substitution this report is meant to avoid. The lint's other advisory — `v_existing` assigned and never read — is benign: the `SELECT ... FOR UPDATE` is load-bearing for the row lock and for `FOUND`, not for the variable.
 
+#### 13.3.4 The app, launched on a real device
+
+With the owner's authorization, the debug build was installed on the Pixel 7 (Android 16, API 36) and driven over ADB. This is the first time in this audit that the Android app has been *run* rather than read, and it covers three of the items the first pass listed as never verified.
+
+- **It launches and renders.** Sign-in gate first (`Sign in with Google`, `Continue offline`, the debug email/password form), then the notes screen after `Continue offline`: search field, `Filters`, the sort chip, the layout toggle, the empty-state illustration, the compose button. Dark theme throughout, no crash, process alive throughout.
+- **The encrypted local database works end to end on the device.** Created a note through the UI, `am force-stop`, relaunched: the note was still there. That exercises the whole chain the F-10/FU-5 work protects — AndroidKeyStore-backed passphrase, SQLCipher database open, Room persistence across process death — on real hardware rather than in Robolectric.
+- **Large font does not break the layout.** At `font_scale 1.5` the app relaunched, the note card reflowed its title onto a second line instead of clipping, and every control stayed reachable. The one crash in the log during that check was `com.android.launcher3` — the *system* launcher, on its own taskbar recreation — not the app.
+
+Two things this did **not** establish, and they stay on the not-run list:
+
+- **Keyboard navigation on Android.** `adb shell input keyevent TAB/SPACE` on this device did not reach the app's focus system: the presses landed in system UI and raised a clipboard overlay instead of moving or selecting anything. Nothing about the Android focus model is claimed from that attempt. FU-8's evidence remains the Compose key-injection test (§13.2), which is a real check of the modifier but not a walkthrough of the running app.
+- **TalkBack.** Not exercised at all. Turning a screen reader on and traversing the UI is not something `adb` can assert.
+
+The device was left as the owner asked: the debug build installed with its data cleared (`pm clear`), `font_scale` and display density restored to their original values, and the screenshots this pass took removed from `/sdcard`.
+
 #### FU-5 was already fixed, and the finding was stale
 
 The second pass recorded FU-5 as "`DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` store their secrets in `EncryptedSharedPreferences`/`MasterKey`… they work today" and left the replacement as scheduled work. That is no longer true of the code, and this pass verified it rather than inheriting the claim:
@@ -529,8 +544,11 @@ What remains is not a defect but a support decision: the legacy ESP **read** pat
 
 ### 13.4 What this pass did not do
 
-- **The Compose UI on a device.** FU-8's key binding is verified by key injection, and the browser UI by Playwright, but nobody has walked the Compose screens by hand or with a keyboard: no screen-reader traversal, no font-scaling check, no 200% scaling check, no performance measurement, and the new cloud-wipe dialog in `MainDialogs` has only compile-plus-reachability behind it.
-- **Cloud paths in a browser.** The wipe protocol has no end-to-end test: the e2e harness has no Attachments Worker and no second device.
+- **TalkBack and Narrator.** Not exercised on any platform. The instrumented and ADB work in §13.3.4 cannot assert screen-reader traversal.
+- **Keyboard navigation of the Compose UI.** FU-8's modifier is verified by key injection, but the on-device attempt was inconclusive (§13.3.4) and nobody has walked the running app by keyboard on Windows either.
+- **Performance.** Nothing was profiled: cold start, large libraries, recomposition counts and Worker duration are all unmeasured, and no number is claimed for any of them.
+- **The new cloud-wipe dialog** in `MainDialogs` has compile-plus-reachability behind it and nothing else: it was not opened on the device.
+- **Cloud paths end to end.** The wipe protocol has no browser-level test (the e2e harness has no Worker and no second device), so its verification stays at pgTAP and unit level.
 - **Anything from §13.1.** The deployments, the `#317` merge and the client releases are all still outstanding and need the owner.
 
 ### 13.5 Remaining risks
