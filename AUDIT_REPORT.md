@@ -571,6 +571,16 @@ The editor's icon-only controls are all described too — `Bold`, `Italic`, `Lin
 
 What it still does not show is **spoken traversal** — the order a screen reader walks those nodes, and whether the card's merged description reads well out loud. That needs a person with TalkBack on, and it stays on the not-run list.
 
+#### 13.3.6 The Windows desktop app, started for the first time in this audit
+
+`gradlew :composeApp:run` was launched with `APPDATA` pointed at an isolated directory, so the app could not open, migrate or sync the owner's real library. It created its own database there, came up **signed out**, and rendered its sign-in gate — brand mark, `Sign in to continue`, `Sign in with Google`, `Continue offline` — in the dark theme at 1000×800.
+
+The check that the isolation actually held: `%APPDATA%\Notelikeus` and `~/.notelikeus/notes-db.key` were byte-for-byte the same before and after, same sizes and same timestamps. So the app was genuinely exercised without touching the library, the session or the DPAPI key that were already on this machine.
+
+The window was captured with `PrintWindow` against its handle rather than a screen grab, deliberately: a screen grab of a 1920×1080 desktop shows whatever else is open, and this one would have. `PrintWindow` asks the window for its own surface, which is both the honest evidence and none of anything else.
+
+**The keyboard walkthrough did not happen, and could not.** `SetForegroundWindow` is refused for a background process — Windows' focus-stealing protection — so the app cannot be given focus, and the first probe showed the foreground window was the owner's browser. Sending keys then would have typed into that browser. Posting synthetic `WM_KEYDOWN` messages into a Compose/Skia window was not tried as a workaround, because a result from it would not be evidence about real keyboard use. FU-8's Windows half therefore stays verified by the Compose key-injection test, and the walkthrough stays outstanding with a reason rather than a shrug.
+
 #### FU-5 was already fixed, and the finding was stale
 
 The second pass recorded FU-5 as "`DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` store their secrets in `EncryptedSharedPreferences`/`MasterKey`… they work today" and left the replacement as scheduled work. That is no longer true of the code, and this pass verified it rather than inheriting the claim:
@@ -585,7 +595,7 @@ What remains is not a defect but a support decision: the legacy ESP **read** pat
 ### 13.4 What this pass did not do
 
 - **TalkBack and Narrator.** The accessibility *tree* was inspected on the device and every actionable control is named (§13.3.5), but spoken traversal — order, phrasing — needs a person with a screen reader on, on both Android and Windows.
-- **Keyboard navigation of the Compose UI.** FU-8's modifier is verified by key injection, but the on-device attempt was inconclusive (§13.3.4) and nobody has walked the running app by keyboard on Windows either.
+- **Keyboard navigation of the Compose UI.** FU-8's modifier is verified by key injection, but neither running app has been walked by keyboard: the Android attempt was inconclusive (§13.3.4) and the Windows one cannot be given focus at all (§13.3.6).
 - **Performance beyond the two numbers in §13.3.5.** Cold start and post-launch memory are now measured, on a debug build. A library of thousands of notes, recomposition counts, sync latency and Worker duration are all still unmeasured, and no number is claimed for them.
 - **The new cloud-wipe dialog** in `MainDialogs` is now covered by `MainDialogsCloudWipeTest` — four Compose tests that press its button and assert its label, its explanation, its callback and the absence of an escape leak (§13.3.2). It was **not** opened on the device: by the time the fixed build was installed the phone had locked, and unlocking it is the owner's to do. `Profile → Restore from cloud` is the path someone should look at.
 - **Cloud paths end to end.** The wipe protocol has no browser-level test (the e2e harness has no Worker and no second device), so its verification stays at pgTAP and unit level.
