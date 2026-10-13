@@ -947,27 +947,17 @@ class NoteSyncEngine(
                 val cloudNote = record.toNote { name -> recordLabels.getValue(name) }
                 val localNote = localNotesById[noteId]
                 val syncedTimestamp = syncedTimestamps[noteId]
-                val locallyEdited = localNote != null &&
-                    ConflictResolution.isLocallyEdited(localNote, syncedTimestamp)
-
-                val cloudWins = if (localNote == null) {
-                    true
-                } else if (
-                    locallyEdited &&
-                    record.serverUpdatedAt != null &&
-                    record.serverUpdatedAt == localNote.serverUpdatedAt
-                ) {
-                    // The edit sits on exactly the revision the cloud still holds: it is pending, not
-                    // conflicting, whatever the two client clocks say about each other.
-                    false
-                } else {
-                    cloudWinsConflict(
+                val action = ConflictResolution.decide(
+                    local = localNote,
+                    syncedTimestamp = syncedTimestamp,
+                    cloud = cloudNote,
+                    cloudWinsByStamp = localNote == null || cloudWinsConflict(
                         record.serverUpdatedAt,
                         localNote.serverUpdatedAt,
                         record.clientTimestamp,
                         localNote.timestamp,
-                    )
-                }
+                    ),
+                )
 
                 when {
                     localNote == null -> {
@@ -991,11 +981,11 @@ class NoteSyncEngine(
                     // cross-ref and checklist item. Without this check a download rewrites the
                     // whole library through SQLCipher on every sync and reports each note as a
                     // change, so the snackbar always claims the full note count.
-                    cloudWins -> {
+                    action != ConflictResolution.InboundAction.KEEP_LOCAL -> {
                         // The payload cannot speak for attachments, so it must not delete the ones
                         // only this device knows about.
                         val merged = cloudNote.keepingLocalOnlyAttachmentsOf(localNote)
-                        val preserve = ConflictResolution.mustPreserve(localNote, merged, syncedTimestamp)
+                        val preserve = action == ConflictResolution.InboundAction.FORK
                         if (preserve || !sameContent(merged, localNote)) {
                             var copy: Note? = null
                             when (commitLocally(commitToken) {
