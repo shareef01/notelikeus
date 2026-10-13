@@ -576,6 +576,16 @@ export function EditorScreen({ route }: EditorScreenProps) {
         }}
       >
         <div className={['flex w-full flex-col', writingColumnClass].filter(Boolean).join(' ')}>
+          {state.conflictCopy ? (
+            <div
+              role="status"
+              className="mb-4 rounded-note border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+              style={{ color: contentColor }}
+            >
+              This note was changed on another device while you were editing. Your version is
+              saved as a separate copy, so neither version was lost.
+            </div>
+          ) : null}
           {state.saveFailed ? (
             <div
               role="alert"
