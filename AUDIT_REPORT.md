@@ -457,6 +457,17 @@ Two new assertions pin the property so it cannot silently reopen: `notelikeus_in
 
 #### 13.3.2 Instrumented tests on a real device
 
+> **Operational warning, learned the hard way.** Do not run the instrumented suites against a device
+> that already has a *differently signed* build of the app installed. This pass ran
+> `:androidApp:connectedDebugAndroidTest` against a Pixel 7 that carried a release-signed
+> `com.aus.notelikeus`, and the package — **with its local data** — was gone afterwards:
+> `pm list packages -u` shows nothing, and `/data/data/com.aus.notelikeus` no longer exists. The
+> run reported `INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.aus.notelikeus signatures
+> do not match newer version` and a failed `DELETE_FAILED_INTERNAL_ERROR` uninstall of the test
+> APK. Use a clean emulator (what CI does) or a device where nothing local matters. Nothing in the
+> repository or in CI is affected — this is a property of the instrumented-test runner meeting a
+> personal device.
+
 A Pixel 7 (Android 16, API 36) was reachable over wireless ADB, so the instrumented suite was run on it rather than left as "needs an emulator". `composeApp` has exactly one instrumented class, `PlaintextDatabaseMigratorTest`, and **all five of its tests ran and passed** on the device — the JUnit XML the run wrote records `tests="5" failures="0" errors="0"` against `device=192.168.2.223_35271`, the HTML report says 100%, and the device log shows each test finishing:
 
 - `aPlaintextDatabaseIsMigratedToEncryptedWithItsRowsIntact`
@@ -477,9 +488,9 @@ adb shell am instrument -w -e class com.aus.notelikeus.data.local.PlaintextDatab
   → OK (5 tests)            adb exit code: 0
 ```
 
-So the tests pass, the device agrees, and the non-zero code belongs to the Gradle plugin's own orchestration over this link. CI runs the identical command (`./gradlew :composeApp:connectedDebugAndroidTest :androidApp:connectedDebugAndroidTest`) on API 30 and 36 and passes, so this is not a repository configuration defect either — it reproduces only on this wireless-ADB setup, where the adb daemon was also observed being torn down between shell invocations. The honest reading is an environment artefact worth one `--info` run on a wired connection, not a gate anyone should change on the strength of it.
+So the tests pass, the device agrees, and the non-zero code belongs to the Gradle plugin's own orchestration. `:androidApp:connectedDebugAndroidTest` — run afterwards on the same device — fails earlier and more bluntly, and explains the family this belongs to: it could not install its debug APK at all over a differently-signed `com.aus.notelikeus` (`INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match`), and its teardown could not uninstall `com.aus.notelikeus.test` (`DELETE_FAILED_INTERNAL_ERROR`). CI runs the identical command on API 30 and 36 emulators, which are clean, and passes.
 
-**The instrumented suite is therefore not claimed green through Gradle.** The tests passed on the device; the task did not report success; the difference is explained above rather than left open.
+**The instrumented suite is therefore not claimed green through Gradle.** The tests passed on the device; the task did not report success; the cause is the device's package state, not the product or the repository, and the same device-run hazard is called out at the top of this section.
 
 #### 13.3.3 Playwright, finally run
 
