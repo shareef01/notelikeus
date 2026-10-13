@@ -9,7 +9,7 @@ import { useNotesStore } from '@/store/notesStore';
 import type { Note } from '@/types/note';
 
 /**
- * Commits an import to durable local storage (IndexedDB) ÔÇö and to the active remote when signed in ÔÇö
+ * Commits an import to durable local storage (IndexedDB) — and to the active remote when signed in —
  * without letting a realtime snapshot of the *pre-import* cloud replace the merged library first.
  *
  * For guest users, the merged library is durably persisted under GUEST_OWNER_ID before updating memory.
