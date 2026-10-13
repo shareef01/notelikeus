@@ -3,7 +3,7 @@ import type { Label } from './label';
 import type { Attachment } from './attachment';
 import { noteColorsMatch } from '@/theme/colors';
 import { byRelevance, fuzzyMatches } from '@/lib/text/noteSearchRanking';
-import { buildSearchText, noteMatchesSearchQuery, searchTokens } from '@/lib/text/searchText';
+import { buildSearchText, memoFolded, noteMatchesSearchQuery, searchTokens } from '@/lib/text/searchText';
 
 /**
  * Canonical note model — field names match Android Room and the cloud map.
@@ -109,11 +109,13 @@ function matchesScopeAndFacets(note: Note, filters: NoteQueryFilters): boolean {
 }
 
 function noteHaystack(note: Note): string {
-  return buildSearchText(
-    note.title,
-    note.content,
-    note.checklist.map((item) => item.text),
-    note.labels.map((label) => label.name),
+  return memoFolded(note, 'haystack', () =>
+    buildSearchText(
+      note.title,
+      note.content,
+      note.checklist.map((item) => item.text),
+      note.labels.map((label) => label.name),
+    ),
   );
 }
 

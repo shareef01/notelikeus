@@ -57,12 +57,34 @@ function isLetterOrDigit(ch: string): boolean {
   return /\p{L}|\p{N}/u.test(ch);
 }
 
-/** Lower case, diacritics stripped, punctuation collapsed to single spaces. */
+/**
+ * Lower case, diacritics stripped, punctuation collapsed to single spaces.
+ *
+ * ASCII takes a fast path: it is almost all of any note, and the general path's per-character
+ * regex test and string allocations made a search over 10,000 notes cost ~0.5 s per keystroke.
+ * The result is identical (searchText.equivalence.test.ts checks it against the original).
+ */
 export function foldForSearch(input: string): string {
   let out = '';
   let pendingSpace = false;
   for (const raw of input) {
-    const folded = foldChar(raw.codePointAt(0) ?? 0);
+    const code = raw.codePointAt(0) ?? 0;
+    if (code < 0x80) {
+      const isDigit = code >= 0x30 && code <= 0x39;
+      const isLower = code >= 0x61 && code <= 0x7a;
+      const isUpper = code >= 0x41 && code <= 0x5a;
+      if (!isDigit && !isLower && !isUpper) {
+        if (out.length > 0) pendingSpace = true;
+        continue;
+      }
+      if (pendingSpace) {
+        out += ' ';
+        pendingSpace = false;
+      }
+      out += isUpper ? String.fromCharCode(code + 32) : raw;
+      continue;
+    }
+    const folded = foldChar(code);
     const isWord = folded.length > 0 && [...folded].every(isLetterOrDigit);
     if (folded.length === 0 || !isWord) {
       if (out.length > 0) pendingSpace = true;
@@ -79,6 +101,27 @@ export function foldForSearch(input: string): string {
 
 export function searchTokens(input: string): string[] {
   return foldForSearch(input).split(' ').filter((token) => token.length > 0);
+}
+
+/**
+ * Folded text per note object. Notes are replaced, never mutated, on every edit, so a note object
+ * identity is a valid cache key and an edited note simply misses. Weak, so it never outlives them.
+ */
+const foldedFieldCache = new WeakMap<object, Map<string, string>>();
+
+/** [compute] folded once per (note object, field). */
+export function memoFolded(note: object, field: string, compute: () => string): string {
+  let fields = foldedFieldCache.get(note);
+  if (!fields) {
+    fields = new Map();
+    foldedFieldCache.set(note, fields);
+  }
+  let value = fields.get(field);
+  if (value === undefined) {
+    value = compute();
+    fields.set(field, value);
+  }
+  return value;
 }
 
 export function buildSearchText(
