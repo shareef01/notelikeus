@@ -233,7 +233,14 @@ class SupabaseNoteTransport internal constructor(
                         "apply_note_change conflict for note $noteId (baseRevision=$baseRevision, " +
                             "error=${response.stringField("error")}, serverRevision=$revision)",
                     )
-                    if (revision != null) revisionState.write(epoch, uid, noteId, revision)
+                    // Adopt the cloud revision as the next base only when the cloud already holds these
+                    // words — typically this device's own upload whose response was lost. Adopting it
+                    // for a copy that differs let the next upload pass the revision check and overwrite
+                    // the other device's edit unseen; that conflict now belongs to the download, which
+                    // keeps both versions (ConflictResolution).
+                    if (revision != null && current.holdsSameWordsAs(note)) {
+                        revisionState.write(epoch, uid, noteId, revision)
+                    }
                 }
                 else -> AppLog.warn(
                     "NoteTransport",
@@ -426,6 +433,17 @@ class SupabaseNoteTransport internal constructor(
                 )
             }
         }
+
+    /** Title, body, label names and checklist equal to [note]'s; see ConflictResolution.authoredContentEqual. */
+    private fun JsonObject?.holdsSameWordsAs(note: Note): Boolean {
+        if (this == null) return false
+        val record = runCatching { toCloudNoteRecord(note.id ?: return false) }.getOrNull() ?: return false
+        return record.title == note.title &&
+            record.content == note.content &&
+            record.labels.sorted() == note.labels.map { it.name }.sorted() &&
+            record.checklistItems.sortedBy { it.position }.map { it.isChecked to it.text } ==
+            note.checklist.sortedBy { it.position }.map { it.isChecked to it.text }
+    }
 
     private fun JsonObject.toCloudNoteRecord(noteId: Long): CloudNoteRecord {
         val labels = this["labels"]?.jsonArray.orEmpty().mapNotNull { element ->

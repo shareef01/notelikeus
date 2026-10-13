@@ -99,6 +99,18 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
         knownServerRevisions.keys.removeAll(noteIds.toSet())
     }
 
+    private val syncedTimestamps = mutableMapOf<Long, Long>()
+
+    override fun syncedTimestampById(): Map<Long, Long> = syncedTimestamps.toMap()
+
+    override fun updateSyncedTimestamps(timestamps: Map<Long, Long>) {
+        syncedTimestamps.putAll(timestamps)
+    }
+
+    override fun clearSyncedTimestamps(noteIds: Collection<Long>) {
+        syncedTimestamps.keys.removeAll(noteIds.toSet())
+    }
+
     override fun baselineDeleteRevisionById(): Map<Long, Long> = baselineDeleteRevisions.toMap()
 
     override fun setBaselineDeleteRevision(noteId: Long, revision: Long) {
@@ -122,6 +134,7 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
         knownCloud.clear()
         knownServerRevisions.clear()
         baselineDeleteRevisions.clear()
+        syncedTimestamps.clear()
         reconciledAt = 0L
         mergedUserId = null
     }

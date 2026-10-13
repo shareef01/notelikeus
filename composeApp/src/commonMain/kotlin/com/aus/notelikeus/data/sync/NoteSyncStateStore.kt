@@ -92,6 +92,19 @@ interface NoteSyncStateStore {
 
     fun clearKnownServerRevisions(noteIds: Collection<Long>)
 
+    // ---- synced-version baselines ----
+
+    /**
+     * Note id → the client `timestamp` of the version this device last knew to be identical to the
+     * cloud's. A row whose timestamp differs holds an edit the cloud has not confirmed; see
+     * [ConflictResolution]. Equality, not ordering, so a wrong device clock cannot fake or hide one.
+     */
+    fun syncedTimestampById(): Map<Long, Long>
+
+    fun updateSyncedTimestamps(timestamps: Map<Long, Long>)
+
+    fun clearSyncedTimestamps(noteIds: Collection<Long>)
+
     // ---- delete baselines ----
 
     fun baselineDeleteRevisionById(): Map<Long, Long>
