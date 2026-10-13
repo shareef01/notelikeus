@@ -354,7 +354,7 @@ Method | Source reading, `supabase db reset` + `supabase test db` against a loca
 | **F-13b** (new) | **P1** | Found while implementing F-13: on Android and Windows the wipe undid *itself*, with no other device involved. `deleteAllCloudData()` clears only the sync-state store, so the next sync saw an empty cloud, found no known-id explanation and uploaded every local note straight back. | Fixed with F-13 | **Verified** |
 | F-05 | P2 | A delete with no captured baseline answered success while the cloud row stayed live. Rule DEL-6 kept; the failure is now reported. | **Fixed, Option B** |
 | FU-7 | P3 | Gradle libraries were absent from GitHub's dependency graph, so Dependabot could never raise an advisory for Android or Windows dependencies. | **Fixed** (`gradle/actions/dependency-submission`, pinned to `v6.4.0`) |
-| FU-8 | P3 | Multi-select starts only on long-press; `combinedClickable` binds Enter to `onClick` and has no Space binding, so a keyboard user cannot toggle selection. | **Fixed in source** (`NoteCard`); not verified in a running app |
+| FU-8 | P3 | Multi-select starts only on long-press; `combinedClickable` binds Enter to `onClick` and has no Space binding, so a keyboard user cannot toggle selection. | **Fixed and verified** — key-injection test; the two Space cases fail without the binding |
 | FU-4 | P3 | `begin_sync_mutation()` is REST-callable by `authenticated`. | **Fixed** — helpers moved to `notelikeus_internal`, exposure pinned by a test |
 | FU-5 | P3 | `EncryptedSharedPreferences`/`MasterKey` are deprecated and hold the database passphrase. | **Already implemented — corrected**, see below |
 
@@ -396,8 +396,8 @@ The engine is where the invariant is enforced, because that is where the destruc
 | `web: npx oxlint` | 0 errors, 83 warnings (pre-existing class: `no-array-sort`, `consistent-function-scoping`) |
 | `workers/attachments: npx vitest run` | **PASS — 6 files, 137 tests** |
 | `workers/attachments: npx tsc --noEmit` | exit 0 |
-| `gradlew :composeApp:desktopTest --no-daemon --rerun` | **PASS — 101 suites, 768 tests, 0 failures, 0 errors**, re-executed after the contract fixture and migration changes so the contract tests really ran |
-| `gradlew :composeApp:desktopTest :composeApp:testDebugUnitTest :androidApp:testDebugUnitTest :composeApp:compileDebugAndroidTestSources :androidApp:compileDebugAndroidTestSources --no-daemon --rerun-tasks` | **PASS — 174 suites, 1417 tests, 0 failures, 0 errors** (desktop 102/774, composeApp unit 70/617, androidApp unit 2/26), instrumented sources compile, with `-Djava.io.tmpdir` shortened; see §13.3.1 |
+| `gradlew :composeApp:desktopTest --no-daemon --rerun` | **PASS — 101 suites, 768 tests, 0 failures, 0 errors**, re-executed after the contract fixture and migration changes so the contract tests really ran (778 by the end of the pass, once FU-8's four key-injection tests landed) |
+| `gradlew :composeApp:desktopTest :composeApp:testDebugUnitTest :androidApp:testDebugUnitTest :composeApp:compileDebugAndroidTestSources :androidApp:compileDebugAndroidTestSources --no-daemon --rerun-tasks` | **PASS — 175 suites, 1421 tests, 0 failures, 0 errors** (desktop 103/778, composeApp unit 70/617, androidApp unit 2/26), instrumented sources compile, with `-Djava.io.tmpdir` shortened; see §13.3.1 |
 | `gradlew :composeApp:connectedDebugAndroidTest` on a **real Pixel 7 (Android 16) over wireless ADB** | **5 tests, 0 failures — but the task still failed**, on a non-zero device instrumentation exit code. See §13.3.2. |
 | `node scripts/ops/unreferenced-kotlin.mjs` | **PASS** — 0 unreferenced declarations (§13.4) |
 
@@ -421,14 +421,18 @@ The client half is covered by `CloudWipeGenerationFenceTest` (desktop, 6 tests, 
 
 The Android and JVM suites were run in full, not skipped. Two environment problems had to be worked around, and both were reproduced rather than assumed:
 
-1. `gradlew` with a **daemon** cannot start its test-worker JVM here: `java.io.IOException: Unable to establish loopback connection` at `sun.nio.ch.UnixDomainSockets.connect`. `--no-daemon` succeeds. This is the failure the first pass recorded as "the Gradle test executor JVM exits at launch", and it is why that pass reported `:composeApp:testDebugUnitTest` as never having run. It is an environment problem, not a source defect: `:composeApp:desktopTest` (768 tests) and `:composeApp:testDebugUnitTest` + `:androidApp:testDebugUnitTest` (643 tests) both pass with `--no-daemon`.
+1. `gradlew` with a **daemon** cannot start its test-worker JVM here: `java.io.IOException: Unable to establish loopback connection` at `sun.nio.ch.UnixDomainSockets.connect`. `--no-daemon` succeeds. This is the failure the first pass recorded as "the Gradle test executor JVM exits at launch", and it is why that pass reported `:composeApp:testDebugUnitTest` as never having run. It is an environment problem, not a source defect: `:composeApp:desktopTest` (778 tests by the end of this pass) and `:composeApp:testDebugUnitTest` + `:androidApp:testDebugUnitTest` (643 tests) both pass with `--no-daemon`.
 2. Two Robolectric tests in `DatabaseMigrationSchemaTest` fail with `SQLiteCantOpenDatabaseException: ... doesn't exist and CREATE_IF_NECESSARY is set, check directory permissions` because the sandbox temp path is too long for Robolectric to create its database directory. With `-Djava.io.tmpdir` pointed at a short path they pass, and they were the only two failures — 615 of 617 passed without the workaround.
 
 So every Kotlin suite that this machine can run was run, and is green. What remains unverified on a device is listed in §13.4.
 
-#### FU-8, in source
+#### FU-8, verified by pressing the keys
 
-`NoteCard` handles `Key.Spacebar` on key-**up** on the focused card and runs the same callback the long press runs, so mouse, touch and keyboard cannot drift apart and a key repeat cannot toggle selection back and forth. It is dispatched on the card rather than at screen level, because the screen's handler already owns Ctrl-key shortcuts, Delete and Escape and does not see a focused card's Space. It compiles for desktop and Android and the existing Compose semantics tests still pass — but **no one has pressed the key in a running app**, which is exactly the gap the previous pass recorded for FU-8. Treat it as unconfirmed.
+`NoteCard` handles `Key.Spacebar` on key-**up** on the focused card and runs the same callback the long press runs, so mouse, touch and keyboard cannot drift apart and a key repeat cannot toggle selection back and forth. It is dispatched on the card rather than at screen level, because the screen's handler already owns Ctrl-key shortcuts, Delete and Escape and does not see a focused card's Space.
+
+`NoteCardKeyboardSelectionTest` exercises it the way a user would, by focusing the card and injecting the key: Space starts a selection, Space on an already-selected card still answers (so a selection can be undone from the keyboard, not only added to), Enter still opens the note instead of selecting it, and a click still opens it. **Both Space cases fail with the binding removed and the Enter and click cases pass either way** — checked, not assumed, so the tests are evidence rather than decoration. That is a stronger position than the previous pass, which could only read the modifier.
+
+What is still not verified is the *app*: nobody has walked the Compose UI with a keyboard, and the new cloud-wipe dialog (`MainDialogs`) has only compile-plus-reachability behind it.
 
 #### FU-4, in full
 
@@ -445,7 +449,7 @@ Two new assertions pin the property so it cannot silently reopen: `notelikeus_in
 
 ### 13.4 What this pass did not do
 
-- **Device coverage beyond instrumentation.** The instrumented suite (§13.3.2) ran on a real Pixel 7, but nothing else on a device did: no screen-reader walkthrough, no font-scaling check, no performance measurement, and the app was never opened by hand. Nothing about how it looks or reads is claimed.
+- **Device coverage beyond instrumentation.** The instrumented suite (§13.3.2) ran on a real Pixel 7, but nothing else on a device did: no screen-reader walkthrough, no font-scaling check, no performance measurement, and the app was never opened by hand. FU-8's key binding is verified by key injection (§13.2), not by a keyboard walkthrough of the running app, and the new cloud-wipe dialog has only compile-plus-reachability behind it.
 - **The Compose affordances are only source-verified.** `MainDialogs` and the strings compile and the reachability check passes, and FU-8's key binding compiles — but no one has looked at either in a running app.
 
 #### 13.3.2 Instrumented tests on a real device
@@ -460,9 +464,19 @@ A Pixel 7 (Android 16, API 36) was reachable over wireless ADB, so the instrumen
 
 That is **new evidence for F-10**: the quarantine-never-delete behaviour on a failed encryption export is now device-verified, not source-verified.
 
-The task itself, however, still reports failure: `:composeApp:connectedDebugAndroidTest` fails with "There were failing tests" while its own report shows none, because the Android Gradle Plugin decides from the device instrumentation's exit code and `build/outputs/androidTest-results/connected/debug/test-result-exit-code.txt` contains `1`. I could not attribute that code to the product: there is no crash in the logcat, every test finished, and the report is 100%. It was reproduced twice on the same device. CI's `instrumented (30)` and `instrumented (36)` jobs pass, so the anomaly is device- or OS-specific rather than a test failure.
+The task itself, however, still reports failure: `:composeApp:connectedDebugAndroidTest` fails with "There were failing tests" while its own report shows none, because the Android Gradle Plugin decides from the device instrumentation's exit code and `build/outputs/androidTest-results/connected/debug/test-result-exit-code.txt` contains `1`.
 
-**The instrumented suite is therefore not claimed green end-to-end.** The tests passed; the runner did not report success; the difference is unexplained and worth one investigation on a device with `--info` before anyone changes the release gate on it.
+Running the same instrumentation directly settles what that code is not:
+
+```
+adb shell am instrument -w -e class com.aus.notelikeus.data.local.PlaintextDatabaseMigratorTest \
+  com.aus.notelikeus.shared.test/androidx.test.runner.AndroidJUnitRunner
+  → OK (5 tests)            adb exit code: 0
+```
+
+So the tests pass, the device agrees, and the non-zero code belongs to the Gradle plugin's own orchestration over this link. CI runs the identical command (`./gradlew :composeApp:connectedDebugAndroidTest :androidApp:connectedDebugAndroidTest`) on API 30 and 36 and passes, so this is not a repository configuration defect either — it reproduces only on this wireless-ADB setup, where the adb daemon was also observed being torn down between shell invocations. The honest reading is an environment artefact worth one `--info` run on a wired connection, not a gate anyone should change on the strength of it.
+
+**The instrumented suite is therefore not claimed green through Gradle.** The tests passed on the device; the task did not report success; the difference is explained above rather than left open.
 
 The second pass recorded FU-5 as "`DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` store their secrets in `EncryptedSharedPreferences`/`MasterKey`… they work today" and left the replacement as scheduled work. That is no longer true of the code, and this pass verified it rather than inheriting the claim:
 

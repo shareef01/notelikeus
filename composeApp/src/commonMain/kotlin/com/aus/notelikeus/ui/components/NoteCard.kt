@@ -481,6 +481,9 @@ fun NoteCard(
              *
              * It runs the same callback as the long press rather than a second selection path, so
              * mouse, touch and keyboard cannot drift apart.
+             *
+             * Verified by NoteCardKeyboardSelectionTest, which presses the keys: both Space cases fail
+             * with this block removed and the Enter and click cases pass either way.
              */
             .onKeyEvent { event ->
                 if (event.type == KeyEventType.KeyUp && event.key == Key.Spacebar) {
