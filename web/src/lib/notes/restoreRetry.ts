@@ -1,4 +1,4 @@
-import { restoreCloudNote } from '@/lib/notes/tombstones';
+import { restoreCloudNote, RestoreRefusedError } from '@/lib/notes/tombstones';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 
@@ -41,8 +41,14 @@ export async function retryPendingCloudRestores(
     try {
       await restoreCloudNote(userId, local);
       useTombstoneStore.getState().clearRestored([id]);
-    } catch {
-      // Marker stays; the next snapshot or pull retries.
+    } catch (error) {
+      // F-14: a refusal means the note moved on elsewhere and can only be refused again, so the
+      // marker goes with it. A transient failure keeps the marker, and the next snapshot or pull
+      // retries.
+      if (error instanceof RestoreRefusedError) {
+        useTombstoneStore.getState().clearRestored([id]);
+      }
+      // Marker stays otherwise; the next snapshot or pull retries.
     }
   }
 }

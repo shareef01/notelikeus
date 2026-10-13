@@ -50,6 +50,25 @@ class CloudWipedElsewhereException(
 )
 
 /**
+ * The server refused to undo a delete because the note moved on since this device last saw it.
+ *
+ * `restore_note` is fenced on the revision it is presented, exactly as `apply_note_change` and
+ * `apply_note_delete` are. Without that fence an offline device's undo could put its older copy on
+ * top of an edit made elsewhere, silently (F-14).
+ *
+ * The refusal is **terminal**: the same baseline can only be refused again, so callers clear the
+ * restore marker that would retry it rather than looping, and the user hears about it. The local
+ * undo itself stands — the next snapshot reconciles the cloud row.
+ */
+class RestoreRefusedException(
+    /** The note whose restore was refused. */
+    val noteId: Long? = null,
+) : Exception(
+    "Couldn't undo the delete for note $noteId: it changed on another device, so the version " +
+        "there has been kept."
+)
+
+/**
  * Platform-agnostic transport for cloud note sync.
  *
  * Every method takes an explicit [uid] so the engine (commonMain) controls

@@ -7,6 +7,7 @@ import com.aus.notelikeus.data.sync.CloudNoteSnapshot
 import com.aus.notelikeus.data.sync.CloudNoteTransport
 import com.aus.notelikeus.data.sync.CloudWipedElsewhereException
 import com.aus.notelikeus.data.sync.IdentityBoundNoteTransport
+import com.aus.notelikeus.data.sync.RestoreRefusedException
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.util.AppLog
 import kotlinx.serialization.json.JsonArray
@@ -412,9 +413,14 @@ class SupabaseNoteTransport internal constructor(
                 mapOf(noteId to CloudNoteTransport.PutResult(revision, serverUpdatedAt))
             }
             "conflict" -> {
-                val current = response["current"]?.jsonObject?.longId("revision")
-                if (current != null) revisionState.write(epoch, uid, noteId, current)
-                emptyMap()
+                // F-14: the live row moved on, so the undo is refused rather than overwriting it.
+                // The revision the server actually has is recorded first, so the merge that follows
+                // is not deciding from one this device has just been told is wrong — then the
+                // refusal is raised, because it is not the same as "nothing to record".
+                response["current"]?.jsonObject?.longId("revision")?.let { current ->
+                    revisionState.write(epoch, uid, noteId, current)
+                }
+                throw RestoreRefusedException(noteId)
             }
             else -> emptyMap()
         }

@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/notes/tombstones', () => ({
+// The real module is spread in rather than replaced: this test needs the genuine
+// `RestoreRefusedError` class for the terminal-refusal paths, and mocking it away would make
+// `instanceof` a lie rather than a check.
+vi.mock('@/lib/notes/tombstones', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/notes/tombstones')>()),
   restoreCloudNote: vi.fn().mockResolvedValue(undefined),
 }));
 

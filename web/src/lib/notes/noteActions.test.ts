@@ -19,7 +19,10 @@ vi.mock("@/lib/local/notesLocalRepository", () => ({
   getOwnerMeta: vi.fn().mockResolvedValue({ lastRemoteRevision: 0 }),
 }));
 
-vi.mock("@/lib/notes/tombstones", () => ({
+vi.mock("@/lib/notes/tombstones", async (importOriginal) => ({
+  // The real module is spread so `RestoreRefusedError` is the genuine class: the restore path
+  // checks for it, and a partially mocked module would make that check throw rather than decide.
+  ...(await importOriginal<typeof import("@/lib/notes/tombstones")>()),
   restoreCloudNote: vi.fn().mockResolvedValue(undefined),
 }));
 

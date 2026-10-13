@@ -529,7 +529,17 @@ class NoteSyncEngine(
             beforeRemoteMutationStart(restoreMutation)
             val restore = LocalCommitGate.authorizeRemoteMutationStart(commitToken, restoreMutation)
                 ?: return@runCatching
-            val results = restore.consumeOnce { transport.restoreNote(remoteIdentity, note) }
+            val results = try {
+                restore.consumeOnce { transport.restoreNote(remoteIdentity, note) }
+            } catch (refusal: RestoreRefusedException) {
+                // F-14: terminal. The cloud row moved on and this baseline cannot overwrite it, so
+                // the marker goes with the refusal rather than driving a reconcile loop that could
+                // only be refused again. The local undo stands, and the next snapshot reconciles
+                // the cloud row. Rethrown, because the user asked for this and needs to hear that
+                // it did not happen.
+                commitLocally(commitToken) { syncStateStore.clearRestored(listOf(noteId)) }
+                throw refusal
+            }
             commitLocally(commitToken) {
                 for ((id, result) in results) {
                     if (result.serverUpdatedAt != null) {
@@ -1815,8 +1825,13 @@ class NoteSyncEngine(
                 beforeRemoteMutationStart(mergeRestoreMutation)
                 val mergeRestore = LocalCommitGate.authorizeRemoteMutationStart(commitToken, mergeRestoreMutation)
                     ?: return LocalCommitResult.StaleGeneration
-                val results = runCatching { mergeRestore.consumeOnce { transport.restoreNote(identity, local) } }
-                    .getOrNull()
+                val restored = runCatching { mergeRestore.consumeOnce { transport.restoreNote(identity, local) } }
+                if (restored.exceptionOrNull() is RestoreRefusedException) {
+                    // F-14: a refusal here is terminal too — the merge would otherwise carry the
+                    // marker into the next reconcile and be refused again.
+                    commitLocally(commitToken) { syncStateStore.clearRestored(listOf(noteId)) }
+                }
+                val results = restored.getOrNull()
                 if (results != null) {
                     // The local half of the restore and the decision to ignore this note's tombstone are
                     // one generation-scoped outcome. A refused commit means the dataset that asked for

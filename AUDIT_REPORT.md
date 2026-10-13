@@ -357,7 +357,7 @@ Method | Source reading, `supabase db reset` + `supabase test db` against a loca
 | FU-8 | P3 | Multi-select starts only on long-press; `combinedClickable` binds Enter to `onClick` and has no Space binding, so a keyboard user cannot toggle selection. | **Fixed and verified** — key-injection test; the two Space cases fail without the binding |
 | FU-4 | P3 | `begin_sync_mutation()` is REST-callable by `authenticated`. | **Fixed** — helpers moved to `notelikeus_internal`, exposure pinned by a test |
 | FU-5 | P3 | `EncryptedSharedPreferences`/`MasterKey` are deprecated and hold the database passphrase. | **Already implemented — corrected**, see below |
-| **F-14** (new) | **P2** | `public.restore_note` accepts `p_base_revision` and never reads it, so a restore is the one mutation with no optimistic-concurrency fence: it deletes the tombstone and unconditionally upserts. A device that was offline while another device edited the note can restore its older copy over the newer one. | **Not changed** — needs a decision, see below |
+| **F-14** (new) | **P2** | `public.restore_note` accepted `p_base_revision` and never read it — one return path, `applied` — so a restore was the only mutation with no optimistic-concurrency fence: it deleted the tombstone and unconditionally upserted, and an offline device's undo could put its older copy on top of a newer edit elsewhere, silently. | **Fixed** on the server and in both clients (§13.3.7) |
 
 #### F-13 — the wipe protocol, as implemented
 
@@ -391,8 +391,8 @@ The engine is where the invariant is enforced, because that is where the destruc
 | Command | Result |
 |---|---|
 | `npx supabase start` + `npx supabase db reset --yes` | exit 0 — all 28 migrations apply to a fresh database, including `20261013000000` |
-| `npx supabase test db` | **PASS — 31 files, 348 assertions, 0 failures.** 35 assertions are new (`notelikeus_account_wipe_generation.test.sql`), 15 more are new (`notelikeus_internal_guard_schema.test.sql`). All 29 pre-existing files still pass, which is itself the backward-compatibility evidence for generation `0` and for the FU-4 move. |
-| `web: npx vitest run` | **PASS — 116 files, 848 tests** (113 files / 833 tests at the branch point: 7 new in `wipeGenerationProtocol.test.ts`, 6 in `CloudWipeNotice.test.tsx`, 2 in `supabaseExposure.test.ts`) |
+| `npx supabase test db` | **PASS — 31 files, 350 assertions, 0 failures.** 35 assertions are new (`notelikeus_account_wipe_generation.test.sql`), 15 more are new (`notelikeus_internal_guard_schema.test.sql`). All 29 pre-existing files still pass, which is itself the backward-compatibility evidence for generation `0` and for the FU-4 move. |
+| `web: npx vitest run` | **PASS — 117 files, 855 tests** (113 files / 833 tests at the branch point: 7 new in `wipeGenerationProtocol.test.ts`, 7 in `restoreRevisionFence.test.ts`, 6 in `CloudWipeNotice.test.tsx`, 2 in `supabaseExposure.test.ts`) |
 | `web: npx tsc -b --noEmit` | exit 0 |
 | `web: npx oxlint` | 0 errors, 83 warnings (pre-existing class: `no-array-sort`, `consistent-function-scoping`) |
 | `web: npm run test:e2e` (Playwright, against local Supabase) | **PASS — 171 passed, 1 skipped, 0 failed, 8.3 min** across `chromium` and a Pixel 5 viewport. See §13.3.3. |
@@ -405,7 +405,7 @@ The engine is where the invariant is enforced, because that is where the destruc
 | `workers/attachments: npx vitest run` | **PASS — 6 files, 137 tests** |
 | `workers/attachments: npx tsc --noEmit` | exit 0 |
 | `gradlew :composeApp:desktopTest --no-daemon --rerun` | **PASS — 101 suites, 768 tests, 0 failures, 0 errors**, re-executed after the contract fixture and migration changes so the contract tests really ran (782 by the end of the pass, once FU-8's key-injection tests and the `MainDialogs` dialog tests landed) |
-| `gradlew :composeApp:desktopTest :composeApp:testDebugUnitTest :androidApp:testDebugUnitTest :composeApp:compileDebugAndroidTestSources :androidApp:compileDebugAndroidTestSources --no-daemon --rerun-tasks` | **PASS — 176 suites, 1425 tests, 0 failures, 0 errors** (desktop 104/782, composeApp unit 70/617, androidApp unit 2/26), instrumented sources compile, with `-Djava.io.tmpdir` shortened; see §13.3.1 |
+| `gradlew :composeApp:desktopTest :composeApp:testDebugUnitTest :androidApp:testDebugUnitTest :composeApp:compileDebugAndroidTestSources :androidApp:compileDebugAndroidTestSources --no-daemon --rerun-tasks` | **PASS — 177 suites, 1427 tests, 0 failures, 0 errors** (desktop 105/784, composeApp unit 70/617, androidApp unit 2/26), instrumented sources compile, with `-Djava.io.tmpdir` shortened; see §13.3.1 |
 | `gradlew :composeApp:connectedDebugAndroidTest` on a **real Pixel 7 (Android 16) over wireless ADB** | **5 tests, 0 failures — but the task still failed**, on a non-zero device instrumentation exit code. See §13.3.2. |
 | `node scripts/ops/unreferenced-kotlin.mjs` | **PASS** — 0 unreferenced declarations (§13.4) |
 
@@ -509,7 +509,7 @@ That closes a gap this audit has carried since its first pass, and it covers gro
 
 It does **not** exercise the cloud-wipe paths — those need the Attachments Worker and a second device, which the browser harness does not have. The wipe protocol's verification therefore stays where §13.3 put it: pgTAP on the server, and unit-level on the clients.
 
-#### F-14 — a restore ignores the revision it was given
+#### F-14 — a restore ignored the revision it was given, and now does not
 
 Found with `npx supabase db lint`, which this pass ran for the first time; it is the only tool in the project that inspects plpgsql bodies rather than behaviour.
 
@@ -521,7 +521,18 @@ Found with `npx supabase db lint`, which this pass ran for the first time; it is
 
 The trigger is narrow: it needs a restore marker and a newer edit elsewhere. It is not the F-01 defect (that was the argument *name* making the RPC unresolvable) and it is not fixed by F-13 (the wipe generation fences wiped accounts, not stale edits on a live one) — the two are orthogonal.
 
-Why it is not changed here: making restore reject a stale revision changes what an undo does when two devices disagree, which is a product decision — either "a restore is a deliberate user action that wins" (then say so, and document that the parameter is advisory) or "a restore is fenced like any other write" (then it needs a conflict path in both clients and the DEL-6 tests revisited). Both are defensible; neither is a mechanical fix, and picking one silently in an audit would be exactly the kind of substitution this report is meant to avoid. The lint's other advisory — `v_existing` assigned and never read — is benign: the `SELECT ... FOR UPDATE` is load-bearing for the row lock and for `FOUND`, not for the variable.
+It is fixed, on the owner's decision, and the fix is small because the fence was the missing piece rather than a design:
+
+- **Server** (`20261015000000_restore_revision_fence.sql`): when the note is live, the restore must present its current revision, and `NULL` is refused too — "I do not know the baseline" is not a licence to overwrite what is there, which is what `apply_note_change` already answers for a null base against an existing row. A refusal carries `current`, so the caller can learn the revision. When there is **no** live row the restore applies whatever baseline was claimed: nothing is being overwritten, so there is nothing for a fence to protect, and that is the ordinary undo path.
+  - A stricter version — refusing a claimed-but-absent baseline as well — was written, tried against the suite, and **reverted**: it refused a legitimate undo purely for presenting a baseline, which two pgTAP files caught.
+  - An "identical payload means idempotent success" exemption was considered and dropped: once both clients present the revision they hold, the benign case passes the fence on its own, and the exemption would have added a comparison to reason about for no user-visible gain.
+- **Web**: `restoreCloudNote` now presents the revision this browser holds instead of a hard-coded `null`, and turns a refusal into a typed `RestoreRefusedError` after recording the revision the server actually has. `restorePermanentlyDeletedNote` and `retryPendingCloudRestores` treat that as **terminal** — the marker goes, so no reconcile retries a request that can only be refused again — while a transient failure still keeps it. The user is told the note changed on another device and that the version there was kept.
+- **Android/Windows**: the transport raises `RestoreRefusedException` on the conflict instead of returning an empty map (which read as "nothing to record"), after recording the server's revision; the engine clears the restore marker and lets the failure surface, in both the direct restore path and the merge-time one.
+- **Evidence**: two pgTAP assertions in `notelikeus_restore_note.test.sql` were rewritten deliberately — the old ones asserted exactly the value the fence now refuses — and the suite is 350 assertions green. Seven new web tests in `restoreRevisionFence.test.ts` (the revision presented, the typed refusal, the recorded revision, terminal versus transient, and the user-facing message) and two Kotlin tests in `RestoreRevisionFenceTest` (the refusal fails and leaves no marker; a transient failure keeps it).
+
+What it deliberately does not change: a restore can still consume a tombstone another device wrote, so undoing a delete that happened elsewhere still succeeds locally. That is a cross-device disagreement about a *delete*, pre-existing and separate from a stale copy overwriting a live row; it is recorded here rather than folded in silently.
+
+The lint's other advisory — `v_existing` assigned and never read — is benign: the `SELECT ... FOR UPDATE` is load-bearing for the row lock and for `FOUND`, not for the variable.
 
 #### 13.3.4 The app, launched on a real device
 
@@ -607,6 +618,6 @@ What remains is not a defect but a support decision: the legacy ESP **read** pat
 |---|---|
 | P1 | `supabase.yml` (`20261012000000`, `20261012010000`, `20261013000000`, `20261014000000`) and `attachments-worker.yml` are still undeployed — verified, not inferred. The F-08, F-09 and F-13 fixes exist only in source. |
 | P1 | Android and Windows releases still do not carry F-01, F-07, F-10, FU-2 or F-13/F-13b. |
-| P2 | **F-14**: `restore_note` ignores `p_base_revision`, so an offline device's undo can overwrite a newer edit made elsewhere. Narrow trigger, no conflict surfaced, and it needs a product decision rather than a patch. |
 | P2 | The Kotlin block is only lifted through the new button; until it ships, a wiped account's Android or Windows device reports the wipe and uploads nothing, which is safe but requires the user to reach that dialog. |
+| P3 | A restore still succeeds against a tombstone another device wrote, so undoing a delete that happened elsewhere is not refused — F-14's residual, out of its scope, pre-existing, and recorded rather than folded in (§13.3.7). |
 | P3 | The legacy `EncryptedSharedPreferences` read path in `DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` (FU-5's residual) — remove when the support window allows, not before. |
