@@ -321,3 +321,99 @@ Scope: the deployed `SECURITY DEFINER` surface; Android exported components (App
 
 ### Still not covered
 Runtime screen-reader traversal and font scaling on Android and desktop; desktop keyboard-only navigation; performance profiling (cold start, large libraries, recomposition); a Gradle CVE scan (for example OWASP Dependency-Check).
+
+---
+
+## 13. Third pass — cloud-wipe generation, deployment verification, hardening (2026-10-13)
+
+Audited ref | `main` at `08eb7f9c` (the `#316` merge) plus the open `#317` branch
+Branch under review | `fix/wipe-generation-and-hardening` (this pass)
+Method | Source reading, `supabase db reset` + `supabase test db` against a local Docker stack, the repository's own test/lint/typecheck commands, and the GitHub API for CI and deployment state. No production system was touched.
+
+### 13.1 Deployment status, verified against the GitHub API (not inferred from a green build)
+
+`supabase.yml` and `attachments-worker.yml` both gate their `deploy` job on `github.event_name == 'workflow_dispatch'`. The successful runs on `08eb7f9c` were `push` events, so they ran `database-tests` / `verify` and **skipped** `deploy`. Queried 2026-10-13:
+
+| Artifact | Evidence | Verdict |
+|---|---|---|
+| F-01–F-12, FU-1, FU-2 merged | `08eb7f9c` is an ancestor of `main` | **MERGED** |
+| Gate coverage on `main` | `supabase.yml` run `38296652949`: `preflight` success, `database-tests` success, `deploy` **skipped**; `attachments-worker.yml` run `38296653024`: `verify` success, `deploy` **skipped**; `android.yml` `38296653063` and `desktop.yml` `38296653155`: `build`/`package`/`instrumented` success, `release`/`msi-release` **skipped** | **CI VALIDATED, NOT DEPLOYED** |
+| Supabase migrations | Last `workflow_dispatch` run of `supabase.yml`: 2026-09-09 (`34300509280`), before `20261012000000`/`20261012010000` existed | **NOT DEPLOYED** |
+| Attachments Worker | Last `workflow_dispatch` run: 2026-09-10 (`34486228437`), before the F-08 change | **NOT DEPLOYED** |
+| Web (Cloudflare Pages) | `cloudflare-pages.yml` run `38296653011` on the `08eb7f9c` push: success | **DEPLOYED** |
+| Android / Windows releases | No `workflow_dispatch` release runs recorded | **NOT RELEASED** |
+| PR `#317` | Open, `MERGEABLE`, `mergeStateStatus: CLEAN`, 17 checks; `release`, `deploy`, `deploy-preview`, `msi-release` are the only non-pass entries and are all `skipping` | **READY, NOT MERGED** |
+
+`#317` was reviewed line by line: `signOutGoogle({deleteCloudData: true})` wipes the cloud first and throws on failure *before* touching anything local, then clears the account's notes, meta row and pending attachments, then signs out; an ordinary sign-out keeps the local copy. It is correct as written.
+
+### 13.2 New work in this pass
+
+| ID | Severity | What | Status |
+|---|---|---|---|
+| **F-13** (new) | **P1** | A device that was offline across "delete cloud data" could not tell an intentional wipe from a truncated read, so the cloud could be repopulated with the notes the user had just deleted. `delete_all_user_cloud_data()` recorded nothing durable. | Server and web **fixed and verified**; Kotlin clients **not yet implemented** (§13.4) |
+| F-05 | P2 | A delete with no captured baseline answered success while the cloud row stayed live. Rule DEL-6 kept; the failure is now reported. | **Fixed, Option B** |
+| FU-7 | P3 | Gradle libraries were absent from GitHub's dependency graph, so Dependabot could never raise an advisory for Android or Windows dependencies. | **Fixed** (`gradle/actions/dependency-submission`, pinned to `v6.4.0`) |
+| FU-8 | P3 | Multi-select starts only on long-press; `combinedClickable` binds Enter to `onClick` and has no Space binding, so a keyboard user cannot toggle selection. | **Not done** |
+| FU-4 | P3 | `begin_sync_mutation()` is REST-callable by `authenticated`. | **Not done** |
+| FU-5 | P3 | `EncryptedSharedPreferences`/`MasterKey` are deprecated and hold the database passphrase. | **Not done** |
+
+#### F-13 — the wipe protocol, as implemented
+
+`supabase/migrations/20261013000000_account_wipe_generation.sql` adds a durable per-account `wipe_generation` that `delete_all_user_cloud_data()` increments in the same transaction as the deletes. `fetch_full_snapshot()`, `pull_changes()` and a new `get_sync_generation()` publish it.
+
+Enforcement is a `BEFORE INSERT OR UPDATE OR DELETE` trigger on `notes` and `note_tombstones`, not a check inside each RPC. That is the load-bearing choice: it is the one place every write already passes through, so a future RPC, a direct PostgREST table write, or any *older arity* of every mutation RPC is covered by construction. The mutation wrappers copy the presented generation into a transaction-local setting; the trigger compares it against the durable value:
+
+- generation `0` (never wiped) — every write allowed, with or without a generation. Accounts that were never wiped, and every deployed client, are untouched.
+- generation `> 0` — a write presenting nothing is refused (`NL001`), one presenting a stale value is refused (`NL002`).
+
+`assert_live_owned_note()` already requires a live note row for every attachment upload and finalization, so the attachment path is fenced behind the note path: after a wipe no attachment row can be recreated for that account. That is why no separate attachment enforcement was added.
+
+The **invariant**: after a wipe, no note or tombstone can be created, updated or deleted by a writer that cannot prove it knows the wipe happened. A stale device therefore cannot silently reverse it.
+
+Web behaviour: pushes present the generation; a refusal records a block, so nothing is attempted again — a retry loop cannot wear the protocol down. Local notes are kept, nothing is deleted, and `CloudWipeNotice` tells the user the cloud data was erased from another device and offers "Upload my notes again". That action is the *only* thing that clears the block, and it clears `knownCloudIds`/`noteRevisions` at the same time so the re-upload lands as new notes rather than reading their absence from the cloud as a deletion. The server cannot distinguish that decision from a stale arrival, which is why it is the user's to make.
+
+### 13.3 Test execution (commands actually run, 2026-10-13)
+
+| Command | Result |
+|---|---|
+| `npx supabase start` + `npx supabase db reset --yes` | exit 0 — all 28 migrations apply to a fresh database, including `20261013000000` |
+| `npx supabase test db` | **PASS — 30 files, 333 assertions, 0 failures.** 35 assertions are new (`notelikeus_account_wipe_generation.test.sql`). All 29 pre-existing files still pass, which is itself the backward-compatibility evidence for generation `0`. |
+| `web: npx vitest run` | **PASS — 114 files, 840 tests** (113 files / 833 tests at the branch point; 7 new in `wipeGenerationProtocol.test.ts`) |
+| `web: npx tsc -b --noEmit` | exit 0 |
+| `web: npx oxlint` | 0 errors, 83 warnings (pre-existing class: `no-array-sort`, `consistent-function-scoping`) |
+| `workers/attachments: npx vitest run` | **PASS — 6 files, 137 tests** |
+| `workers/attachments: npx tsc --noEmit` | exit 0 |
+| `gradlew :composeApp:desktopTest --no-daemon --rerun` | **PASS — 101 suites, 768 tests, 0 failures, 0 errors**, re-executed after the contract fixture and migration changes so the contract tests really ran |
+| `gradlew :composeApp:testDebugUnitTest :androidApp:testDebugUnitTest --no-daemon --rerun-tasks` | **PASS — 72 suites, 643 tests, 0 failures, 0 errors** (composeApp 70/617, androidApp 2/26) with `-Djava.io.tmpdir` shortened; see §13.3.1 |
+
+New assertions that matter most, in `notelikeus_account_wipe_generation.test.sql`:
+
+1. A raw `INSERT INTO public.notes` performed **after** `begin_sync_mutation()` is still refused — the exact bypass an older endpoint or a direct Data-API write would attempt.
+2. Each legacy arity (14-argument `apply_note_change`, 15-argument with attachment ids, 2-argument `apply_note_delete`, 14-argument `restore_note`) is refused with `NL001`, which is what protects the installed Android and Windows builds.
+3. A delete for a note that is not on the server touches no row, so it returns `conflict / note_not_found` rather than an error — and still cannot resurrect anything.
+4. The generation never decreases, and the value the first wipe published is stale after the second.
+
+#### 13.3.1 Kotlin tests on this machine
+
+The Android and JVM suites were run in full, not skipped. Two environment problems had to be worked around, and both were reproduced rather than assumed:
+
+1. `gradlew` with a **daemon** cannot start its test-worker JVM here: `java.io.IOException: Unable to establish loopback connection` at `sun.nio.ch.UnixDomainSockets.connect`. `--no-daemon` succeeds. This is the failure the first pass recorded as "the Gradle test executor JVM exits at launch", and it is why that pass reported `:composeApp:testDebugUnitTest` as never having run. It is an environment problem, not a source defect: `:composeApp:desktopTest` (768 tests) and `:composeApp:testDebugUnitTest` + `:androidApp:testDebugUnitTest` (643 tests) both pass with `--no-daemon`.
+2. Two Robolectric tests in `DatabaseMigrationSchemaTest` fail with `SQLiteCantOpenDatabaseException: ... doesn't exist and CREATE_IF_NECESSARY is set, check directory permissions` because the sandbox temp path is too long for Robolectric to create its database directory. With `-Djava.io.tmpdir` pointed at a short path they pass, and they were the only two failures — 615 of 617 passed without the workaround.
+
+So every Kotlin suite that this machine can run was run, and is green. What remains unverified on a device is listed in §13.4.
+
+### 13.4 What this pass did not do
+
+- **The Kotlin half of F-13.** Android and Windows do not yet present a generation. They are *refused* by the trigger (`NL001`, covered by the pgTAP legacy-arity cases), so they cannot repopulate a wiped cloud; what is missing is the explanation and the "upload these notes again" decision in their UI. This is the top remaining item and the reason Android and Windows should not be released as "wipe-safe" without it.
+- **FU-8, FU-4, FU-5.** Unchanged from the previous pass, and still not release blockers.
+- **Device verification.** A Pixel 7 is reachable over wireless ADB from the development machine, and was used to confirm the toolchain, but no instrumented suite, screen-reader walkthrough, font-scaling or performance measurement was run in this pass. Nothing about device behaviour is claimed.
+
+### 13.5 Remaining risks
+
+| Class | Item |
+|---|---|
+| P1 | Kotlin clients do not present the wipe generation (§13.4). The server refuses them, so the cloud cannot be repopulated, but the user sees a generic sync failure instead of the wipe notice. |
+| P1 | `supabase.yml` (`20261012000000`, `20261012010000`, `20261013000000`) and `attachments-worker.yml` are still undeployed — verified, not inferred. The F-08, F-09 and F-13 fixes exist only in source. |
+| P1 | Android and Windows releases still do not carry F-01, F-07, F-10, FU-2. |
+| P2 | A mid-sync partial snapshot on a *wiped* account whose cloud has gained a note is still read as "deleted elsewhere" by the Kotlin engine, which can delete local copies. Pre-existing, not worsened by this pass, and closed by the Kotlin half of F-13. |
+| P3 | FU-4, FU-5, FU-8. |
