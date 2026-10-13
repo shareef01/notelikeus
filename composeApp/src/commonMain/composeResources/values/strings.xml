@@ -37,6 +37,7 @@
     <string name="note_order_save_failed">Couldn’t save the new order</string>
     <string name="note_save_failed">Couldn’t save this note</string>
     <string name="note_save_failed_kept">Couldn’t save this note — your changes are still here</string>
+    <string name="note_conflict_copy_chip">Conflict copy</string>
     <string name="note_conflict_copy_saved">This note changed on another device. Your version is saved as a separate copy — nothing was lost.</string>
     <string name="action_discard">Discard</string>
     <string name="note_changes_discarded">Changes discarded</string>

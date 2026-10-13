@@ -54,6 +54,10 @@ internal object ConflictResolution {
     fun mustPreserve(local: Note, cloud: Note, syncedTimestamp: Long?): Boolean =
         isLocallyEdited(local, syncedTimestamp) && !authoredContentEqual(local, cloud)
 
+    /** Whether [title] is one a conflict resolution wrote (every client writes the same suffix). */
+    fun isConflictedCopyTitle(title: String): Boolean =
+        title == BLANK_COPY_TITLE || title.endsWith(COPY_SUFFIX)
+
     /** A new, never-synced note carrying [local]'s words. Room assigns the id on insert. */
     fun conflictedCopyOf(local: Note): Note {
         val title = if (local.title.isBlank()) {
