@@ -11,7 +11,8 @@ import androidx.compose.ui.graphics.toArgb
 // Light
 val PrimaryLight = Color(0xFF1A1A1A)
 val SecondaryLight = Color(0xFF4A4A4A)
-val MutedLight = Color(0xFF717171)
+// 4.70:1 on SurfaceVariantLight, the surface Material draws onSurfaceVariant on; #717171 was 3.87:1.
+val MutedLight = Color(0xFF646464)
 val BackgroundLight = Color(0xFFF0F0F0) // Slightly darker base
 val SurfaceLight = Color(0xFFFFFFFF)    // Pure white for cards/editor
 val SurfaceVariantLight = Color(0xFFE5E5E5)
