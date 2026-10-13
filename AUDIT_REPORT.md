@@ -332,6 +332,8 @@ Method | Source reading, `supabase db reset` + `supabase test db` against a loca
 
 ### 13.1 Deployment status, verified against the GitHub API (not inferred from a green build)
 
+The ordered plan for closing the gap below — with the verification and rollback for each step — is in [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md). None of it has been executed.
+
 `supabase.yml` and `attachments-worker.yml` both gate their `deploy` job on `github.event_name == 'workflow_dispatch'`. The successful runs on `08eb7f9c` were `push` events, so they ran `database-tests` / `verify` and **skipped** `deploy`. Queried 2026-10-13:
 
 | Artifact | Evidence | Verdict |
@@ -622,6 +624,8 @@ The `androidApp` run is the first device-level evidence this audit has for two p
 **Two failures, recorded as an open question rather than a verdict.** Both are in `PredictiveBackTest`, with the assertion "a back press did not reach `OnBackPressedDispatcher`; BackHandler in EditorScreen would not fire, so backing out of the editor would not save" (and its sibling, that the system does not drive `OnBackInvokedDispatcher`, so the manifest opt-in is not in effect for the running app). CI runs this suite on **API 30** (where it self-skips below 33) and **API 36** (where it passes), so an API 35 device failing it is either version- or image-specific — this was a headless emulator with no GPU acceleration — or a gap in what CI covers. A reproduction on an API 36 image was attempted here and failed at *install* (`Failure calling service package: Broken pipe (32)`; the `google_apis_playstore` image is too heavy for this machine), so it is **not settled**, and nothing is claimed about whether the app's predictive-back opt-in works on API 35. The way to settle it is CI's own API 36 leg with this class selected.
 
 ### 13.4 What this pass did not do
+
+It did not merge, deploy or release anything, and it did not touch the hosted Supabase project: no credential for it was available from this machine, so remote state is the GitHub-API read in §13.1 and never a query of the database. The plan for the owner to close that is in [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md).
 
 - **TalkBack and Narrator.** The accessibility *tree* was inspected on the device and every actionable control is named (§13.3.5), but spoken traversal — order, phrasing — needs a person with a screen reader on, on both Android and Windows.
 - **Keyboard navigation of the Compose UI.** FU-8's modifier is verified by key injection, but neither running app has been walked by keyboard: the Android attempt was inconclusive (§13.3.4) and the Windows one cannot be given focus at all (§13.3.6).
