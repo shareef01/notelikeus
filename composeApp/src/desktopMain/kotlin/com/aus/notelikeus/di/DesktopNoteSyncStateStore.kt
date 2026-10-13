@@ -27,6 +27,7 @@ class DesktopNoteSyncStateStore(
     private val knownCloudSet: MutableSet<Long>
     private val knownServerRevisionsMap: MutableMap<Long, Long>
     private val baselineDeleteRevisionsMap: MutableMap<Long, Long>
+    private val syncedTimestampsMap: MutableMap<Long, Long>
     private var reconciledAt: Long
     private var mergedUserId: String?
 
@@ -38,6 +39,7 @@ class DesktopNoteSyncStateStore(
         knownCloudSet = parseIdSet(prefs, KEY_KNOWN_CLOUD_IDS).toMutableSet()
         knownServerRevisionsMap = parseLongMap(prefs, KEY_KNOWN_SERVER_REVISIONS).toMutableMap()
         baselineDeleteRevisionsMap = parseLongMap(prefs, KEY_BASELINE_DELETE_REVISIONS).toMutableMap()
+        syncedTimestampsMap = parseLongMap(prefs, KEY_SYNCED_TIMESTAMPS).toMutableMap()
         reconciledAt = prefs?.get(KEY_LAST_RECONCILED) ?: 0L
         mergedUserId = prefs?.get(KEY_LAST_MERGED_USER_ID)
     }
@@ -162,6 +164,29 @@ class DesktopNoteSyncStateStore(
         if (changed) persistKnownServerRevisions()
     }
 
+    override fun syncedTimestampById(): Map<Long, Long> = syncedTimestampsMap.toMap()
+
+    override fun updateSyncedTimestamps(timestamps: Map<Long, Long>) {
+        if (timestamps.isEmpty()) return
+        syncedTimestampsMap.putAll(timestamps)
+        persistSyncedTimestamps()
+    }
+
+    override fun clearSyncedTimestamps(noteIds: Collection<Long>) {
+        if (noteIds.isEmpty()) return
+        var changed = false
+        for (id in noteIds) {
+            if (syncedTimestampsMap.remove(id) != null) changed = true
+        }
+        if (changed) persistSyncedTimestamps()
+    }
+
+    private fun persistSyncedTimestamps() {
+        val encoded = json.encodeToString(MapSerializer(String.serializer(), Long.serializer()),
+            syncedTimestampsMap.mapKeys { it.key.toString() })
+        runBlocking { dataStore.edit { it[KEY_SYNCED_TIMESTAMPS] = encoded } }
+    }
+
     override fun baselineDeleteRevisionById(): Map<Long, Long> = baselineDeleteRevisionsMap.toMap()
 
     override fun setBaselineDeleteRevision(noteId: Long, revision: Long) {
@@ -187,6 +212,7 @@ class DesktopNoteSyncStateStore(
         knownCloudSet.clear()
         knownServerRevisionsMap.clear()
         baselineDeleteRevisionsMap.clear()
+        syncedTimestampsMap.clear()
         reconciledAt = 0L
         mergedUserId = null
         runBlocking { dataStore.edit { it.clear() } }
@@ -285,6 +311,7 @@ class DesktopNoteSyncStateStore(
         private val KEY_KNOWN_CLOUD_IDS = stringPreferencesKey("sync_known_cloud_ids")
         private val KEY_KNOWN_SERVER_REVISIONS = stringPreferencesKey("sync_known_server_revisions")
         private val KEY_BASELINE_DELETE_REVISIONS = stringPreferencesKey("sync_baseline_delete_revisions")
+        private val KEY_SYNCED_TIMESTAMPS = stringPreferencesKey("sync_synced_timestamps")
         private val KEY_LAST_RECONCILED = longPreferencesKey("sync_last_reconciled")
         private val KEY_LAST_MERGED_USER_ID = stringPreferencesKey("sync_last_merged_user_id")
     }

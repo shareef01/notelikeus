@@ -785,7 +785,13 @@ class NoteSyncEngine(
                 LocalCommitResult.StaleGeneration -> return@runCatching 0
             }
             val localNotesBeforePurge = noteDao.getAllNotesForBackup().map { it.toNote() }
-            val purgedIds = when (val purge = purgeLocalTombstonedNotes(localNotesBeforePurge, commitToken)) {
+            // Read once: every decision below about whether a row holds an unsynced edit is made
+            // against the baselines as they stood when this run started.
+            val syncedTimestamps = syncStateStore.syncedTimestampById()
+            val purgeCopies = mutableListOf<Note>()
+            val purgedIds = when (
+                val purge = purgeLocalTombstonedNotes(localNotesBeforePurge, commitToken, syncedTimestamps, purgeCopies)
+            ) {
                 is LocalCommitResult.Applied -> purge.value
                 // The dataset that decided is gone, so the run stops here. Everything after this point
                 // is either a write to that dataset or an account-owned remote mutation decided from its
@@ -830,6 +836,7 @@ class NoteSyncEngine(
             // one as its own single-note commit inside the loop cost a round trip per note, while
             // uploadAllNotes batched the identical work.
             val toPushBack = mutableListOf<Note>()
+            toPushBack += purgeCopies
             val allLocalNotes = localNotesBeforePurge.filter { note -> note.id !in purgedIds }
             val localNotesById = allLocalNotes.mapNotNull { note -> note.id?.let { it to note } }.toMap()
 
@@ -939,9 +946,20 @@ class NoteSyncEngine(
                 }
                 val cloudNote = record.toNote { name -> recordLabels.getValue(name) }
                 val localNote = localNotesById[noteId]
+                val syncedTimestamp = syncedTimestamps[noteId]
+                val locallyEdited = localNote != null &&
+                    ConflictResolution.isLocallyEdited(localNote, syncedTimestamp)
 
                 val cloudWins = if (localNote == null) {
                     true
+                } else if (
+                    locallyEdited &&
+                    record.serverUpdatedAt != null &&
+                    record.serverUpdatedAt == localNote.serverUpdatedAt
+                ) {
+                    // The edit sits on exactly the revision the cloud still holds: it is pending, not
+                    // conflicting, whatever the two client clocks say about each other.
+                    false
                 } else {
                     cloudWinsConflict(
                         record.serverUpdatedAt,
@@ -956,7 +974,10 @@ class NoteSyncEngine(
                         // A cloud note may only become a local row in the dataset that authorised
                         // this download. A refused commit means the snapshot belongs to a dataset
                         // that is gone, so the row is deliberately not created.
-                        when (commitLocally(commitToken) { innerInsert(cloudNote) }) {
+                        when (commitLocally(commitToken) {
+                            innerInsert(cloudNote)
+                            syncStateStore.updateSyncedTimestamps(mapOf(noteId to cloudNote.timestamp))
+                        }) {
                             is LocalCommitResult.Applied -> changes++
                             // The dataset that authorised this download is gone, so the run stops: every
                             // later record and the whole tail would be new work for an extinct dataset.
@@ -974,10 +995,28 @@ class NoteSyncEngine(
                         // The payload cannot speak for attachments, so it must not delete the ones
                         // only this device knows about.
                         val merged = cloudNote.keepingLocalOnlyAttachmentsOf(localNote)
-                        if (!sameContent(merged, localNote)) {
-                            when (commitLocally(commitToken) { innerUpdate(merged) }) {
-                                is LocalCommitResult.Applied -> changes++
+                        val preserve = ConflictResolution.mustPreserve(localNote, merged, syncedTimestamp)
+                        if (preserve || !sameContent(merged, localNote)) {
+                            var copy: Note? = null
+                            when (commitLocally(commitToken) {
+                                // Copy first: a crash between the two leaves both versions, never neither.
+                                if (preserve) copy = insertConflictedCopy(localNote)
+                                innerUpdate(merged)
+                                syncStateStore.updateSyncedTimestamps(mapOf(noteId to merged.timestamp))
+                            }) {
+                                is LocalCommitResult.Applied -> {
+                                    changes++
+                                    copy?.let { toPushBack += it; changes++ }
+                                }
                                 // Same rule as the insert above: a refused update means the run is over.
+                                LocalCommitResult.StaleGeneration -> return@runCatching changes
+                            }
+                        } else {
+                            // Identical already: record the baseline so a later edit is recognised.
+                            when (commitLocally(commitToken) {
+                                syncStateStore.updateSyncedTimestamps(mapOf(noteId to localNote.timestamp))
+                            }) {
+                                is LocalCommitResult.Applied -> Unit
                                 LocalCommitResult.StaleGeneration -> return@runCatching changes
                             }
                         }
@@ -1003,11 +1042,19 @@ class NoteSyncEngine(
                     // row the replacement dataset owns under a colliding id nor write its deletion
                     // marker into that dataset's sync state.
                     val deletedAt = now()
+                    var copy: Note? = null
                     when (commitLocally(commitToken) {
+                        // Gone from the cloud while edited here: the deletion stands for the id, the
+                        // words live on as a new note.
+                        if (ConflictResolution.isLocallyEdited(localNote, syncedTimestamps[noteId])) {
+                            copy = insertConflictedCopy(localNote)
+                        }
                         noteDao.deleteNote(localNote.toNoteEntity())
                         syncStateStore.markDeleted(noteId, deletedAt)
+                        syncStateStore.clearSyncedTimestamps(listOf(noteId))
                     }) {
                         is LocalCommitResult.Applied -> {
+                            copy?.let { toPushBack += it }
                             // The local half is committed, but publishing the deletion is a separate
                             // account-owned request and takes its own authority: a refused grant means
                             // the dataset that decided is gone, so the run stops here rather than
@@ -1398,6 +1445,7 @@ class NoteSyncEngine(
         // The decision is handed back rather than swallowed: a refusal means the upload belongs to an
         // extinct dataset, and the caller's remaining tail — hydration, staged reconciliation, attachment
         // GC, the prune, the sync-meta write — is all new work for that dataset.
+        val uploadedTimestamps = syncedNotes.mapNotNull { note -> note.id?.let { it to note.timestamp } }.toMap()
         return commitLocally(commitToken) {
             for ((noteId, result) in results) {
                 if (result.serverUpdatedAt != null) {
@@ -1405,6 +1453,11 @@ class NoteSyncEngine(
                 }
                 syncStateStore.updateKnownServerRevision(noteId, result.revision)
             }
+            // The baseline is the timestamp that was *uploaded*. A row edited while the upload ran
+            // already carries a newer one, and so still reads as edited — which it is.
+            syncStateStore.updateSyncedTimestamps(
+                results.keys.mapNotNull { id -> uploadedTimestamps[id]?.let { id to it } }.toMap(),
+            )
             // [syncNotesAttachments] maps one-to-one, so index i of `notes` is the pre-upload
             // snapshot of `syncedNotes[i]`: the only way to tell "the sync dropped this attachment"
             // (it was in the payload and is now gone) from "the user added this during the upload"
@@ -1666,20 +1719,35 @@ class NoteSyncEngine(
      * instead of slipping out through an "empty work" early exit. The sync state is left untouched
      * either way: tombstone bookkeeping is [mergeCloudTombstones]' business, not this helper's.
      */
+    /**
+     * @param copies receives the conflicted copies made for tombstoned rows that still held an
+     *   unsynced edit; filled only when the commit applies.
+     */
     private suspend fun purgeLocalTombstonedNotes(
         localNotes: List<Note>,
         commitToken: LocalCommitToken,
+        syncedTimestamps: Map<Long, Long> = emptyMap(),
+        copies: MutableList<Note> = mutableListOf(),
     ): LocalCommitResult<Set<Long>> =
         commitLocally(commitToken) {
             // One commit for the whole snapshot rather than one per row: the candidates are a single
             // snapshot result read in one pass, and a partial purge would be worse than none — some
             // rows gone, the caller told nothing about which.
-            localNotes.mapNotNull { note ->
+            val made = mutableListOf<Note>()
+            val purged = localNotes.mapNotNull { note ->
                 val id = note.id ?: return@mapNotNull null
                 if (!syncStateStore.isDeleted(id)) return@mapNotNull null
+                // A row still present under a tombstone was deleted on another device (a local
+                // permanent delete removes the row itself). If it was edited here, keep the words.
+                if (ConflictResolution.isLocallyEdited(note, syncedTimestamps[id])) {
+                    made += insertConflictedCopy(note)
+                }
                 noteDao.deleteNote(note.toNoteEntity())
                 id
             }.toSet()
+            syncStateStore.clearSyncedTimestamps(purged)
+            copies += made
+            purged
         }
 
     /**
@@ -1785,9 +1853,11 @@ class NoteSyncEngine(
         return copy(attachments = attachments + localOnly.filterNot { it.id in known })
     }
 
-    private suspend fun innerInsert(note: Note) {
+    /** Returns the row id Room assigned (the note's own id when it carried one). */
+    private suspend fun innerInsert(note: Note): Long {
+        var insertedId = note.id ?: 0L
         runInTransaction {
-            val insertedId = noteDao.insertNote(note.toNoteEntity())
+            insertedId = noteDao.insertNote(note.toNoteEntity())
             note.labels.forEach { label ->
                 label.id?.let { labelId ->
                     noteDao.insertNoteLabelCrossRef(NoteLabelCrossRef(insertedId, labelId))
@@ -1797,6 +1867,18 @@ class NoteSyncEngine(
                 noteDao.insertChecklistItem(item.toChecklistItemEntity(insertedId))
             }
         }
+        return insertedId
+    }
+
+    /**
+     * Re-homes [local]'s words under a new id before the caller overwrites or deletes the original.
+     * Runs inside the caller's commit, so the copy and the overwrite land together or not at all.
+     */
+    private suspend fun insertConflictedCopy(local: Note): Note {
+        val copy = ConflictResolution.conflictedCopyOf(local)
+        val id = innerInsert(copy)
+        AppLog.warn(TAG, "Kept an unsynced edit to note ${local.id} as conflicted copy $id")
+        return copy.copy(id = id)
     }
 
     private suspend fun innerUpdate(note: Note) {

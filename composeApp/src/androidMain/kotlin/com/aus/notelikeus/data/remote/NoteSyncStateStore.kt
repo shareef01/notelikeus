@@ -224,6 +224,25 @@ class SharedPrefsNoteSyncStateStore(
         if (changed) writeLongMap(KEY_KNOWN_SERVER_REVISIONS, map)
     }
 
+    override fun syncedTimestampById(): Map<Long, Long> = readLongMap(KEY_SYNCED_TIMESTAMPS)
+
+    override fun updateSyncedTimestamps(timestamps: Map<Long, Long>) {
+        if (timestamps.isEmpty()) return
+        val map = syncedTimestampById().toMutableMap()
+        map.putAll(timestamps)
+        writeLongMap(KEY_SYNCED_TIMESTAMPS, map)
+    }
+
+    override fun clearSyncedTimestamps(noteIds: Collection<Long>) {
+        if (noteIds.isEmpty()) return
+        val map = syncedTimestampById().toMutableMap()
+        var changed = false
+        for (id in noteIds) {
+            if (map.remove(id) != null) changed = true
+        }
+        if (changed) writeLongMap(KEY_SYNCED_TIMESTAMPS, map)
+    }
+
     override fun baselineDeleteRevisionById(): Map<Long, Long> = readLongMap(KEY_BASELINE_DELETE_REVISIONS)
 
     override fun setBaselineDeleteRevision(noteId: Long, revision: Long) {
@@ -304,6 +323,7 @@ class SharedPrefsNoteSyncStateStore(
         private const val KEY_PENDING_ATTACHMENT_GC = "pending_attachment_gc_ids"
         private const val KEY_KNOWN_SERVER_REVISIONS = "known_server_revisions"
         private const val KEY_BASELINE_DELETE_REVISIONS = "baseline_delete_revisions"
+        private const val KEY_SYNCED_TIMESTAMPS = "synced_timestamps"
         private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
         private const val KEY_LAST_RECONCILED = "last_reconciled_at"
     }
