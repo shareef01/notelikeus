@@ -15,11 +15,11 @@ security definer
 set search_path = public
 as $$
 begin
-  perform public.begin_sync_mutation();
+  perform notelikeus_internal.begin_sync_mutation();
   update public.note_attachments
   set created_at = timezone('utc', now()) - make_interval(days => p_days)
   where attachment_id = p_attachment_id;
-  perform public.end_sync_mutation();
+  perform notelikeus_internal.end_sync_mutation();
 end;
 $$;
 
@@ -30,11 +30,11 @@ security definer
 set search_path = public
 as $$
 begin
-  perform public.begin_sync_mutation();
+  perform notelikeus_internal.begin_sync_mutation();
   update public.notes
   set server_updated_at = timezone('utc', now()) - make_interval(days => p_days)
   where note_id = p_note_id;
-  perform public.end_sync_mutation();
+  perform notelikeus_internal.end_sync_mutation();
 end;
 $$;
 
@@ -45,11 +45,11 @@ security definer
 set search_path = public
 as $$
 begin
-  perform public.begin_sync_mutation();
+  perform notelikeus_internal.begin_sync_mutation();
   update public.note_attachments
   set delete_claimed_at = timezone('utc', now()) - make_interval(hours => p_hours)
   where delete_claimed_at is not null;
-  perform public.end_sync_mutation();
+  perform notelikeus_internal.end_sync_mutation();
 end;
 $$;
 

@@ -355,7 +355,7 @@ Method | Source reading, `supabase db reset` + `supabase test db` against a loca
 | F-05 | P2 | A delete with no captured baseline answered success while the cloud row stayed live. Rule DEL-6 kept; the failure is now reported. | **Fixed, Option B** |
 | FU-7 | P3 | Gradle libraries were absent from GitHub's dependency graph, so Dependabot could never raise an advisory for Android or Windows dependencies. | **Fixed** (`gradle/actions/dependency-submission`, pinned to `v6.4.0`) |
 | FU-8 | P3 | Multi-select starts only on long-press; `combinedClickable` binds Enter to `onClick` and has no Space binding, so a keyboard user cannot toggle selection. | **Fixed in source** (`NoteCard`); not verified in a running app |
-| FU-4 | P3 | `begin_sync_mutation()` is REST-callable by `authenticated`. | **Not done** |
+| FU-4 | P3 | `begin_sync_mutation()` is REST-callable by `authenticated`. | **Fixed** — helpers moved to `notelikeus_internal`, exposure pinned by a test |
 | FU-5 | P3 | `EncryptedSharedPreferences`/`MasterKey` are deprecated and hold the database passphrase. | **Not done** |
 
 #### F-13 — the wipe protocol, as implemented
@@ -390,8 +390,8 @@ The engine is where the invariant is enforced, because that is where the destruc
 | Command | Result |
 |---|---|
 | `npx supabase start` + `npx supabase db reset --yes` | exit 0 — all 28 migrations apply to a fresh database, including `20261013000000` |
-| `npx supabase test db` | **PASS — 30 files, 333 assertions, 0 failures.** 35 assertions are new (`notelikeus_account_wipe_generation.test.sql`). All 29 pre-existing files still pass, which is itself the backward-compatibility evidence for generation `0`. |
-| `web: npx vitest run` | **PASS — 114 files, 840 tests** (113 files / 833 tests at the branch point; 7 new in `wipeGenerationProtocol.test.ts`) |
+| `npx supabase test db` | **PASS — 31 files, 348 assertions, 0 failures.** 35 assertions are new (`notelikeus_account_wipe_generation.test.sql`), 15 more are new (`notelikeus_internal_guard_schema.test.sql`). All 29 pre-existing files still pass, which is itself the backward-compatibility evidence for generation `0` and for the FU-4 move. |
+| `web: npx vitest run` | **PASS — 115 files, 842 tests** (113 files / 833 tests at the branch point: 7 new in `wipeGenerationProtocol.test.ts`, 2 in `supabaseExposure.test.ts`) |
 | `web: npx tsc -b --noEmit` | exit 0 |
 | `web: npx oxlint` | 0 errors, 83 warnings (pre-existing class: `no-array-sort`, `consistent-function-scoping`) |
 | `workers/attachments: npx vitest run` | **PASS — 6 files, 137 tests** |
@@ -429,9 +429,22 @@ So every Kotlin suite that this machine can run was run, and is green. What rema
 
 `NoteCard` handles `Key.Spacebar` on key-**up** on the focused card and runs the same callback the long press runs, so mouse, touch and keyboard cannot drift apart and a key repeat cannot toggle selection back and forth. It is dispatched on the card rather than at screen level, because the screen's handler already owns Ctrl-key shortcuts, Delete and Escape and does not see a focused card's Space. It compiles for desktop and Android and the existing Compose semantics tests still pass — but **no one has pressed the key in a running app**, which is exactly the gap the previous pass recorded for FU-8. Treat it as unconfirmed.
 
+#### FU-4, in full
+
+`begin_sync_mutation()` and `end_sync_mutation()` were never exploitable — the flag they set is transaction-local and PostgREST gives each request its own transaction, so a caller could not pair one with a table write. But a helper whose only job is to open a write gate has no business being addressable from outside the database, and it was, because `public` is exposed and the SECURITY INVOKER RPCs need EXECUTE on it.
+
+They now live in `notelikeus_internal`, which `supabase/config.toml` does not list in `[api] schemas`, together with `sync_mutation_guard()`. The 16 RPCs that called them were recreated with a qualified reference — generated from each caller's own latest definition rather than retyped, so no body changed apart from the three references — and the four guard triggers were repointed before the `public` originals were dropped, so a missed dependency would fail the drop loudly instead of leaving a dangling trigger. Grants are unchanged for every RPC; `authenticated` and `service_role` keep USAGE on the schema and EXECUTE on the helpers, and `anon` gets neither.
+
+Two things surfaced while doing it, both handled:
+
+- The pgTAP suites were themselves calling `public.begin_sync_mutation()` to open the guard for their own direct table writes. They now call the internal one — which is what an in-database caller does, and is the honest way to read the change: the *Data API* surface closed, the in-database contract did not.
+- `migrations()` extraction over-read function bodies: several migrations terminate with `$function$;`, and the single-line `AS $$ SELECT ...; $$;` bodies end their dollar-quote without a preceding newline. Both are worth knowing for anyone parsing these files; the generated migration was rebuilt from scratch twice as a result, and the `db reset` plus 348 assertions are what caught it.
+
+Two new assertions pin the property so it cannot silently reopen: `notelikeus_internal_guard_schema.test.sql` (15 assertions — the helpers are absent from `public`, present in the new schema, executable by exactly the right roles, and a direct write is still refused while the guard is closed) and `web/src/lib/contract/supabaseExposure.test.ts` (the `[api] schemas` list is exactly `public` and `graphql_public`, and the last definition of each helper is in the internal schema).
+
 ### 13.4 What this pass did not do
 
-- **FU-4 and FU-5.** Unchanged from the previous pass, and still not release blockers. (FU-7 and FU-8 are in §13.2.)
+- **FU-5.** Unchanged from the previous pass, and still not a release blocker.
 - **Device verification.** A Pixel 7 is reachable over wireless ADB from the development machine and was used to confirm the toolchain and the debug keystore, but no instrumented suite, screen-reader walkthrough, font-scaling or performance measurement was run in this pass. Nothing about device behaviour is claimed.
 - **The Compose affordances are only source-verified.** `MainDialogs` and the strings compile and the reachability check passes, and FU-8's key binding compiles — but no one has looked at either in a running app.
 
@@ -439,7 +452,7 @@ So every Kotlin suite that this machine can run was run, and is green. What rema
 
 | Class | Item |
 |---|---|
-| P1 | `supabase.yml` (`20261012000000`, `20261012010000`, `20261013000000`) and `attachments-worker.yml` are still undeployed — verified, not inferred. The F-08, F-09 and F-13 fixes exist only in source. |
+| P1 | `supabase.yml` (`20261012000000`, `20261012010000`, `20261013000000`, `20261014000000`) and `attachments-worker.yml` are still undeployed — verified, not inferred. The F-08, F-09 and F-13 fixes exist only in source. |
 | P1 | Android and Windows releases still do not carry F-01, F-07, F-10, FU-2 or F-13/F-13b. |
 | P2 | The Kotlin block is only lifted through the new button; until it ships, a wiped account's Android or Windows device reports the wipe and uploads nothing, which is safe but requires the user to reach that dialog. |
-| P3 | FU-4, FU-5, FU-8. |
+| P3 | FU-5. |

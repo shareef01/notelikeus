@@ -129,7 +129,7 @@ select throws_ok(
 -- ------------------------------------------------ opening the sync-mutation guard changes nothing
 
 select set_config('notelikeus.wipe_generation', '', true);
-select public.begin_sync_mutation();
+select notelikeus_internal.begin_sync_mutation();
 select throws_ok(
   $$ insert into public.notes (
        note_id, local_id, owner_id, revision, title, content, client_timestamp, color, position
@@ -140,7 +140,7 @@ select throws_ok(
   null,
   'a raw write cannot bypass the wipe generation by opening the sync-mutation guard'
 );
-select public.end_sync_mutation();
+select notelikeus_internal.end_sync_mutation();
 
 -- ------------------------------------------------------------------ a device that did resync
 
