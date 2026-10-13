@@ -354,7 +354,7 @@ Method | Source reading, `supabase db reset` + `supabase test db` against a loca
 | **F-13b** (new) | **P1** | Found while implementing F-13: on Android and Windows the wipe undid *itself*, with no other device involved. `deleteAllCloudData()` clears only the sync-state store, so the next sync saw an empty cloud, found no known-id explanation and uploaded every local note straight back. | Fixed with F-13 | **Verified** |
 | F-05 | P2 | A delete with no captured baseline answered success while the cloud row stayed live. Rule DEL-6 kept; the failure is now reported. | **Fixed, Option B** |
 | FU-7 | P3 | Gradle libraries were absent from GitHub's dependency graph, so Dependabot could never raise an advisory for Android or Windows dependencies. | **Fixed** (`gradle/actions/dependency-submission`, pinned to `v6.4.0`) |
-| FU-8 | P3 | Multi-select starts only on long-press; `combinedClickable` binds Enter to `onClick` and has no Space binding, so a keyboard user cannot toggle selection. | **Not done** |
+| FU-8 | P3 | Multi-select starts only on long-press; `combinedClickable` binds Enter to `onClick` and has no Space binding, so a keyboard user cannot toggle selection. | **Fixed in source** (`NoteCard`); not verified in a running app |
 | FU-4 | P3 | `begin_sync_mutation()` is REST-callable by `authenticated`. | **Not done** |
 | FU-5 | P3 | `EncryptedSharedPreferences`/`MasterKey` are deprecated and hold the database passphrase. | **Not done** |
 
@@ -425,11 +425,15 @@ The Android and JVM suites were run in full, not skipped. Two environment proble
 
 So every Kotlin suite that this machine can run was run, and is green. What remains unverified on a device is listed in §13.4.
 
+#### FU-8, in source
+
+`NoteCard` handles `Key.Spacebar` on key-**up** on the focused card and runs the same callback the long press runs, so mouse, touch and keyboard cannot drift apart and a key repeat cannot toggle selection back and forth. It is dispatched on the card rather than at screen level, because the screen's handler already owns Ctrl-key shortcuts, Delete and Escape and does not see a focused card's Space. It compiles for desktop and Android and the existing Compose semantics tests still pass — but **no one has pressed the key in a running app**, which is exactly the gap the previous pass recorded for FU-8. Treat it as unconfirmed.
+
 ### 13.4 What this pass did not do
 
-- **FU-8, FU-4, FU-5.** Unchanged from the previous pass, and still not release blockers. (FU-7 was done; it is listed in §13.2.)
+- **FU-4 and FU-5.** Unchanged from the previous pass, and still not release blockers. (FU-7 and FU-8 are in §13.2.)
 - **Device verification.** A Pixel 7 is reachable over wireless ADB from the development machine and was used to confirm the toolchain and the debug keystore, but no instrumented suite, screen-reader walkthrough, font-scaling or performance measurement was run in this pass. Nothing about device behaviour is claimed.
-- **The Compose affordance is only source-verified.** `MainDialogs` and the strings compile and the reachability check passes, but no one has looked at the dialog in a running app.
+- **The Compose affordances are only source-verified.** `MainDialogs` and the strings compile and the reachability check passes, and FU-8's key binding compiles — but no one has looked at either in a running app.
 
 ### 13.5 Remaining risks
 
