@@ -107,6 +107,20 @@
   --outline-rgb: 38 38 38;
 }
 
+/* The default theme now follows the device (settingsStore DEFAULT_THEME), so the pre-mount shell
+   does too — in CSS, which needs no inline script and so stays inside the CSP. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --background-rgb: 247 247 247;
+    --surface-rgb: 255 255 255;
+    --surface-variant-rgb: 239 239 239;
+    --primary-rgb: 17 17 17;
+    --secondary-rgb: 82 82 82;
+    --muted-rgb: 107 107 107;
+    --outline-rgb: 216 216 216;
+  }
+}
+
 /* Appearance is three independent settings -- a base, an accent and a black level -- composed by
    the classes ThemeApplier puts on <html>. It used to be five fused themes, one class each, which
    is why a blue theme could never also be OLED: there was one black level per named theme. */

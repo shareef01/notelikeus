@@ -15,6 +15,7 @@ import { useLongPress } from '@/hooks/useLongPress';
 import { formatListTimestamp } from '@/lib/text/dateTime';
 import { highlightSearchText } from '@/lib/text/highlightSearch';
 import { stripMarkdownForPreview } from '@/lib/text/markdown';
+import { isConflictedCopyTitle } from '@/lib/notes/conflictResolution';
 import type { Note } from '@/types/note';
 import { noteSurfaceStyle } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
@@ -98,7 +99,10 @@ function NoteCardImpl({
   const labels = note.labels ?? [];
   const checkedCount = checklist.filter((item) => item.isChecked).length;
   const showChecklist = checklist.length > 0;
-  const showLabels = labels.length > 0;
+  // A note re-homed by sync conflict resolution. Marked on the card so the duplicate explains
+  // itself; the title suffix is what every client writes, so the marker works cross-platform.
+  const isConflictedCopy = isConflictedCopyTitle(note.title);
+  const showLabels = labels.length > 0 || isConflictedCopy;
   const labelLimit = isDense ? 1 : isList ? 3 : 2;
   const timeLabel = formatListTimestamp(note.timestamp);
 
@@ -121,6 +125,7 @@ function NoteCardImpl({
   };
 
   const statusParts = [
+    isConflictedCopy ? 'Kept from a sync conflict' : null,
     note.isPinned ? 'Pinned' : null,
     hasReminder ? 'Reminder set' : null,
     showAttachments ? 'Has image' : null,
@@ -150,7 +155,17 @@ function NoteCardImpl({
 
   const labelChips = showLabels ? (
     <div className={`flex flex-wrap gap-1 ${isList ? 'mt-1.5' : 'mt-1.5'}`}>
-      {note.labels.slice(0, labelLimit).map((label) =>
+      {isConflictedCopy ? (
+        <span
+          className={`inline-flex min-h-[20px] items-center rounded-full border border-amber-500/50 bg-amber-500/15 font-semibold tracking-wide ${
+            isDense || isList ? 'px-1.5 py-px text-[10px]' : 'px-2 py-0.5 text-[11px]'
+          }`}
+          title="Another device changed this note at the same time. This copy keeps the version from this device."
+        >
+          Conflict copy
+        </span>
+      ) : null}
+      {labels.slice(0, labelLimit).map((label) =>
         onLabelClick ? (
           <button
             key={label.id}
@@ -178,9 +193,9 @@ function NoteCardImpl({
           </span>
         ),
       )}
-      {note.labels.length > labelLimit ? (
+      {labels.length > labelLimit ? (
         <span className="self-center text-[10px] font-semibold uppercase tracking-wider opacity-80">
-          +{note.labels.length - labelLimit}
+          +{labels.length - labelLimit}
         </span>
       ) : null}
     </div>
@@ -272,7 +287,7 @@ function NoteCardImpl({
               </h2>
             ) : null}
             {showBody ? (
-              <p className={`break-words text-note-body opacity-80 sm:line-clamp-3 ${title ? 'mt-2 line-clamp-2 sm:mt-2.5' : 'line-clamp-3 font-semibold'}`}>
+              <p className={`whitespace-pre-line break-words text-note-body opacity-80 sm:line-clamp-3 ${title ? 'mt-2 line-clamp-2 sm:mt-2.5' : 'line-clamp-3 font-semibold'}`}>
                 {highlight(previewBody)}
               </p>
             ) : null}
@@ -337,8 +352,8 @@ function NoteCardImpl({
             <p
               className={
                 isDense
-                  ? 'mt-2 line-clamp-5 break-words text-[13px] leading-relaxed opacity-80'
-                  : 'mt-3 line-clamp-7 break-words text-note-body leading-relaxed opacity-80'
+                  ? 'mt-2 line-clamp-5 whitespace-pre-line break-words text-[13px] leading-relaxed opacity-80'
+                  : 'mt-3 line-clamp-7 whitespace-pre-line break-words text-note-body leading-relaxed opacity-80'
               }
             >
               {highlight(previewBody)}
