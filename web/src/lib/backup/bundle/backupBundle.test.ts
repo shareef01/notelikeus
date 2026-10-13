@@ -128,7 +128,7 @@ describe('bundle parsing refuses what it cannot trust', () => {
   it('rejects an oversized manifest before extracting media', async () => {
     const { MAX_BUNDLE_MANIFEST_BYTES } = await import('@/lib/backup/bundle/backupBundle');
     const huge = new Uint8Array(MAX_BUNDLE_MANIFEST_BYTES + 1);
-    huge.fill(0x20); // spaces ÔÇö valid-ish payload shape, refused by size alone
+    huge.fill(0x20); // spaces — valid-ish payload shape, refused by size alone
     const archive = writeZip([
       { name: 'manifest.json', data: huge },
       { name: 'media/att-one', data: PNG },
@@ -195,7 +195,7 @@ describe('a corrupt attachment never costs a note', () => {
     ]);
     // Rebuild the archive with different bytes under the same name, so the manifest's sha256
     // and sizeBytes no longer describe the file. This is what bit rot or a hand-edited archive
-    // looks like ÔÇö the ZIP's own CRC still matches, so only the manifest catches it.
+    // looks like — the ZIP's own CRC still matches, so only the manifest catches it.
     const entries = await readZip(archive);
     return writeZip(
       entries.map((entry) =>

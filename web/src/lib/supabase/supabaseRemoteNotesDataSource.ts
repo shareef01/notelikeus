@@ -77,7 +77,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
      * `onData` is contractually the caller's *complete* note set: notesSyncService diffs it
      * against the previously known cloud ids and tombstones everything missing. `pull_changes`
      * only returns notes above the persisted revision cursor, so layering it on a map that the
-     * snapshot never filled emits "the library is now just these two notes" ÔÇö and the diff then
+     * snapshot never filled emits "the library is now just these two notes" — and the diff then
      * deletes the rest on this device and, via the tombstone purge, in the cloud and on every
      * other device. Nothing may be emitted until a snapshot has actually landed.
      */
@@ -123,7 +123,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       );
       if (snapshot.notes.length === 0 && unexplained.length > 0) {
         throw new Error(
-          `Cloud returned no notes but ${unexplained.length} were expected ÔÇö ` +
+          `Cloud returned no notes but ${unexplained.length} were expected — ` +
             `refusing to overwrite local copies. Check the connection or sign in again.`,
         );
       }
@@ -416,7 +416,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     );
     if (remoteNotes.length === 0 && unexplainedMissing.length > 0) {
       throw new Error(
-        `Cloud returned no notes but ${unexplainedMissing.length} were expected ÔÇö refusing to ` +
+        `Cloud returned no notes but ${unexplainedMissing.length} were expected — refusing to ` +
           `delete local copies. Check the connection or sign in again.`,
       );
     }
@@ -452,7 +452,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
             );
             changes++;
           } catch {
-            // Conflict ÔÇö keep merged remote winner from mergeRemoteNotes.
+            // Conflict — keep merged remote winner from mergeRemoteNotes.
           }
         }
         continue;

@@ -26,7 +26,7 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * JVM port of `web/src/lib/backup/bundle/bundleTransfer.ts`.
  *
- * Export includes only bytes already on this device (pending staging or local `file:` paths) ÔÇö
+ * Export includes only bytes already on this device (pending staging or local `file:` paths) —
  * never fetches R2. Import remints attachment ids onto freshly allocated note ids.
  */
 class BackupBundleTransfer(

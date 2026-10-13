@@ -15,7 +15,7 @@ import java.io.File
 /**
  * Persistence tests for the Desktop notes-DB passphrase.
  *
- * Real DPAPI is not exercised here ÔÇö desktop unit tests run on Linux CI without Crypt32.
+ * Real DPAPI is not exercised here — desktop unit tests run on Linux CI without Crypt32.
  */
 class DesktopDatabaseKeyManagerTest {
 
