@@ -356,7 +356,7 @@ Method | Source reading, `supabase db reset` + `supabase test db` against a loca
 | FU-7 | P3 | Gradle libraries were absent from GitHub's dependency graph, so Dependabot could never raise an advisory for Android or Windows dependencies. | **Fixed** (`gradle/actions/dependency-submission`, pinned to `v6.4.0`) |
 | FU-8 | P3 | Multi-select starts only on long-press; `combinedClickable` binds Enter to `onClick` and has no Space binding, so a keyboard user cannot toggle selection. | **Fixed in source** (`NoteCard`); not verified in a running app |
 | FU-4 | P3 | `begin_sync_mutation()` is REST-callable by `authenticated`. | **Fixed** — helpers moved to `notelikeus_internal`, exposure pinned by a test |
-| FU-5 | P3 | `EncryptedSharedPreferences`/`MasterKey` are deprecated and hold the database passphrase. | **Not done** |
+| FU-5 | P3 | `EncryptedSharedPreferences`/`MasterKey` are deprecated and hold the database passphrase. | **Already implemented — corrected**, see below |
 
 #### F-13 — the wipe protocol, as implemented
 
@@ -444,9 +444,19 @@ Two new assertions pin the property so it cannot silently reopen: `notelikeus_in
 
 ### 13.4 What this pass did not do
 
-- **FU-5.** Unchanged from the previous pass, and still not a release blocker.
 - **Device verification.** A Pixel 7 is reachable over wireless ADB from the development machine and was used to confirm the toolchain and the debug keystore, but no instrumented suite, screen-reader walkthrough, font-scaling or performance measurement was run in this pass. Nothing about device behaviour is claimed.
 - **The Compose affordances are only source-verified.** `MainDialogs` and the strings compile and the reachability check passes, and FU-8's key binding compiles — but no one has looked at either in a running app.
+
+#### FU-5 was already fixed, and the finding was stale
+
+The second pass recorded FU-5 as "`DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` store their secrets in `EncryptedSharedPreferences`/`MasterKey`… they work today" and left the replacement as scheduled work. That is no longer true of the code, and this pass verified it rather than inheriting the claim:
+
+- **`DatabaseKeyManager`** stores the SQLCipher passphrase as an AES-GCM file under `filesDir`, with the key in AndroidKeyStore — the replacement FU-5 asked for. The legacy ESP is read **once**, copied in, and only then cleared; a file whose key can no longer decrypt it is renamed aside (`unrecoverable-<timestamp>`), never deleted; the payload is published by rename so a crash cannot leave a truncated file that reads back as corrupt and costs the database; a Keystore write failure falls back to the legacy ESP so the database still opens. The alias is deleted in exactly one case — an encrypt failure, where it protects nothing — and the decrypt path deliberately keeps it.
+- **`AndroidSupabaseSessionPersistence`** has the same shape for the session, including the plaintext fallback preferences the previous pass did not mention: read once, migrated into the Keystore file, then cleared. An undecryptable session file is treated as signed out and left on disk.
+- Both are what production DI constructs (`PlatformModule`: `single { DatabaseKeyManager(get()) }`, `single { SupabaseStore(AndroidSupabaseSessionPersistence(get())) }`), not test-only paths.
+- The behaviour is executed, not merely read: `DatabaseKeyManagerRecoveryTest` covers a key that cannot encrypt being replaced with the passphrase re-persisted under the new one, a healthy key never being deleted, and an undeletable key not being retried into a loop; `DatabaseKeyManagerTest` covers the codec (fresh IV per encryption, tamper and magic rejection) and the swap's failure branches; `AndroidSupabaseSessionPersistenceTest` covers the plaintext-fallback migration and the undecryptable-file case. All of them ran green in this pass's `:composeApp:testDebugUnitTest` sweep.
+
+What remains is not a defect but a support decision: the legacy ESP **read** path has to stay until the project is willing to drop installs old enough to still hold secrets there. It is the only remaining `EncryptedSharedPreferences` reference in the Android sources, it is annotated as legacy, and removing it early would strand exactly the users FU-5 set out to protect.
 
 ### 13.5 Remaining risks
 
@@ -455,4 +465,4 @@ Two new assertions pin the property so it cannot silently reopen: `notelikeus_in
 | P1 | `supabase.yml` (`20261012000000`, `20261012010000`, `20261013000000`, `20261014000000`) and `attachments-worker.yml` are still undeployed — verified, not inferred. The F-08, F-09 and F-13 fixes exist only in source. |
 | P1 | Android and Windows releases still do not carry F-01, F-07, F-10, FU-2 or F-13/F-13b. |
 | P2 | The Kotlin block is only lifted through the new button; until it ships, a wiped account's Android or Windows device reports the wipe and uploads nothing, which is safe but requires the user to reach that dialog. |
-| P3 | FU-5. |
+| P3 | The legacy `EncryptedSharedPreferences` read path in `DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` (FU-5's residual) — remove when the support window allows, not before. |
