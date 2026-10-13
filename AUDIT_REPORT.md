@@ -350,7 +350,8 @@ Method | Source reading, `supabase db reset` + `supabase test db` against a loca
 
 | ID | Severity | What | Status |
 |---|---|---|---|
-| **F-13** (new) | **P1** | A device that was offline across "delete cloud data" could not tell an intentional wipe from a truncated read, so the cloud could be repopulated with the notes the user had just deleted. `delete_all_user_cloud_data()` recorded nothing durable. | Server and web **fixed and verified**; Kotlin clients **not yet implemented** (§13.4) |
+| **F-13** (new) | **P1** | A device that was offline across "delete cloud data" could not tell an intentional wipe from a truncated read, so the cloud could be repopulated with the notes the user had just deleted. `delete_all_user_cloud_data()` recorded nothing durable. | Fixed on the server, on web and on Android/Windows | **Verified** on all three |
+| **F-13b** (new) | **P1** | Found while implementing F-13: on Android and Windows the wipe undid *itself*, with no other device involved. `deleteAllCloudData()` clears only the sync-state store, so the next sync saw an empty cloud, found no known-id explanation and uploaded every local note straight back. | Fixed with F-13 | **Verified** |
 | F-05 | P2 | A delete with no captured baseline answered success while the cloud row stayed live. Rule DEL-6 kept; the failure is now reported. | **Fixed, Option B** |
 | FU-7 | P3 | Gradle libraries were absent from GitHub's dependency graph, so Dependabot could never raise an advisory for Android or Windows dependencies. | **Fixed** (`gradle/actions/dependency-submission`, pinned to `v6.4.0`) |
 | FU-8 | P3 | Multi-select starts only on long-press; `combinedClickable` binds Enter to `onClick` and has no Space binding, so a keyboard user cannot toggle selection. | **Not done** |
@@ -372,6 +373,18 @@ The **invariant**: after a wipe, no note or tombstone can be created, updated or
 
 Web behaviour: pushes present the generation; a refusal records a block, so nothing is attempted again — a retry loop cannot wear the protocol down. Local notes are kept, nothing is deleted, and `CloudWipeNotice` tells the user the cloud data was erased from another device and offers "Upload my notes again". That action is the *only* thing that clears the block, and it clears `knownCloudIds`/`noteRevisions` at the same time so the re-upload lands as new notes rather than reading their absence from the cloud as a deletion. The server cannot distinguish that decision from a stale arrival, which is why it is the user's to make.
 
+#### F-13, Android and Windows
+
+The transport learns the generation from every snapshot and presents it on `apply_note_change`, `apply_note_delete` and `restore_note`; `SupabaseTransportException` recognises `NL001`/`NL002` and the transport raises `CloudWipedElsewhereException` instead of a generic failure. It also reads the generation out of the wipe's own response, which is what closes F-13b.
+
+The engine is where the invariant is enforced, because that is where the destructive decision lives:
+
+- `downloadAllNotes` compares the snapshot's generation with the one this device acknowledged. If it is newer **and** there are local notes whose ids the last download recorded as present in the cloud, it records the generation, sets a durable block and refuses — *before* the loop that treats every absent known id as a deletion. Without that ordering the wipe would delete the user's local library on every device that had ever synced it.
+- `uploadAllNotes` and `reconcileUploads` refuse while the block is set, so nothing is sent. A refused write also sets the block (`noteWipeRefusal`), so the block survives a transport-level refusal too.
+- A device holding nothing — a fresh install on a wiped account — adopts the generation and syncs normally instead of failing forever.
+- `NoteSyncEngine.allowUploadAfterCloudWipe()` is the user's answer: it lifts the block and clears `knownCloudIds`, so the local notes upload as ones the cloud has never seen. It is reached from `SyncManager.allowUploadAfterCloudWipe()` → `CloudSyncController` → `MainViewModel`, and the affordance is a button in the existing cloud dialog next to "Restore" (`MainDialogs`, strings `cloud_upload_after_wipe_*`). The repository's `unreferenced-kotlin` reachability check is what forced that wiring rather than a test-only entry point, and it passes.
+- Accounts that were never wiped are untouched: generation 0 short-circuits every one of these paths, and a transport that cannot report a generation leaves it at 0.
+
 ### 13.3 Test execution (commands actually run, 2026-10-13)
 
 | Command | Result |
@@ -384,7 +397,8 @@ Web behaviour: pushes present the generation; a refusal records a block, so noth
 | `workers/attachments: npx vitest run` | **PASS — 6 files, 137 tests** |
 | `workers/attachments: npx tsc --noEmit` | exit 0 |
 | `gradlew :composeApp:desktopTest --no-daemon --rerun` | **PASS — 101 suites, 768 tests, 0 failures, 0 errors**, re-executed after the contract fixture and migration changes so the contract tests really ran |
-| `gradlew :composeApp:testDebugUnitTest :androidApp:testDebugUnitTest --no-daemon --rerun-tasks` | **PASS — 72 suites, 643 tests, 0 failures, 0 errors** (composeApp 70/617, androidApp 2/26) with `-Djava.io.tmpdir` shortened; see §13.3.1 |
+| `gradlew :composeApp:desktopTest :composeApp:testDebugUnitTest :androidApp:testDebugUnitTest :composeApp:compileDebugAndroidTestSources :androidApp:compileDebugAndroidTestSources --no-daemon --rerun-tasks` | **PASS — 174 suites, 1417 tests, 0 failures, 0 errors** (desktop 102/774, composeApp unit 70/617, androidApp unit 2/26), instrumented sources compile, with `-Djava.io.tmpdir` shortened; see §13.3.1 |
+| `node scripts/ops/unreferenced-kotlin.mjs` | **PASS** — 0 unreferenced declarations (§13.4) |
 
 New assertions that matter most, in `notelikeus_account_wipe_generation.test.sql`:
 
@@ -392,6 +406,15 @@ New assertions that matter most, in `notelikeus_account_wipe_generation.test.sql
 2. Each legacy arity (14-argument `apply_note_change`, 15-argument with attachment ids, 2-argument `apply_note_delete`, 14-argument `restore_note`) is refused with `NL001`, which is what protects the installed Android and Windows builds.
 3. A delete for a note that is not on the server touches no row, so it returns `conflict / note_not_found` rather than an error — and still cannot resurrect anything.
 4. The generation never decreases, and the value the first wipe published is stale after the second.
+
+The client half is covered by `CloudWipeGenerationFenceTest` (desktop, 6 tests, all passing), which is where the destructive decision lives:
+
+1. A snapshot at a generation this device has not seen, with a local note the last download recorded as being in the cloud: the download fails with `CloudWipedElsewhereException`, **the local note is still in the database**, nothing was uploaded, the generation is recorded and uploads are blocked.
+2. A queued upload is refused while the block stands, and the note is still present.
+3. `allowUploadAfterCloudWipe()` lifts the block and clears the known cloud ids, after which the same note uploads as new (`p_base_revision` null) instead of being deleted.
+4. A device holding nothing adopts the generation and syncs — a fresh install on a wiped account is not left permanently broken.
+5. An account that was never wiped (generation 0) syncs exactly as before, including the ordinary cloud-wins path.
+6. The same generation is only news once, so answering the prompt is what lets the sync through.
 
 #### 13.3.1 Kotlin tests on this machine
 
@@ -404,16 +427,15 @@ So every Kotlin suite that this machine can run was run, and is green. What rema
 
 ### 13.4 What this pass did not do
 
-- **The Kotlin half of F-13.** Android and Windows do not yet present a generation. They are *refused* by the trigger (`NL001`, covered by the pgTAP legacy-arity cases), so they cannot repopulate a wiped cloud; what is missing is the explanation and the "upload these notes again" decision in their UI. This is the top remaining item and the reason Android and Windows should not be released as "wipe-safe" without it.
-- **FU-8, FU-4, FU-5.** Unchanged from the previous pass, and still not release blockers.
-- **Device verification.** A Pixel 7 is reachable over wireless ADB from the development machine, and was used to confirm the toolchain, but no instrumented suite, screen-reader walkthrough, font-scaling or performance measurement was run in this pass. Nothing about device behaviour is claimed.
+- **FU-8, FU-4, FU-5.** Unchanged from the previous pass, and still not release blockers. (FU-7 was done; it is listed in §13.2.)
+- **Device verification.** A Pixel 7 is reachable over wireless ADB from the development machine and was used to confirm the toolchain and the debug keystore, but no instrumented suite, screen-reader walkthrough, font-scaling or performance measurement was run in this pass. Nothing about device behaviour is claimed.
+- **The Compose affordance is only source-verified.** `MainDialogs` and the strings compile and the reachability check passes, but no one has looked at the dialog in a running app.
 
 ### 13.5 Remaining risks
 
 | Class | Item |
 |---|---|
-| P1 | Kotlin clients do not present the wipe generation (§13.4). The server refuses them, so the cloud cannot be repopulated, but the user sees a generic sync failure instead of the wipe notice. |
 | P1 | `supabase.yml` (`20261012000000`, `20261012010000`, `20261013000000`) and `attachments-worker.yml` are still undeployed — verified, not inferred. The F-08, F-09 and F-13 fixes exist only in source. |
-| P1 | Android and Windows releases still do not carry F-01, F-07, F-10, FU-2. |
-| P2 | A mid-sync partial snapshot on a *wiped* account whose cloud has gained a note is still read as "deleted elsewhere" by the Kotlin engine, which can delete local copies. Pre-existing, not worsened by this pass, and closed by the Kotlin half of F-13. |
+| P1 | Android and Windows releases still do not carry F-01, F-07, F-10, FU-2 or F-13/F-13b. |
+| P2 | The Kotlin block is only lifted through the new button; until it ships, a wiped account's Android or Windows device reports the wipe and uploads nothing, which is safe but requires the user to reach that dialog. |
 | P3 | FU-4, FU-5, FU-8. |

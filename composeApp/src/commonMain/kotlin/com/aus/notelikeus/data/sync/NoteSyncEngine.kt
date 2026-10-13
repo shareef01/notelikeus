@@ -246,6 +246,8 @@ class NoteSyncEngine(
                 // contract ("notes uploaded") is honestly served by reporting none.
                 LocalCommitResult.StaleGeneration -> return@runCatching 0
             }
+            // Nothing is sent while a wipe this device has not answered for is outstanding.
+            requireNotBlockedAfterCloudWipe()
             val notes = localNotes.filter { note ->
                 val id = note.id ?: return@filter false
                 !syncStateStore.isDeleted(id)
@@ -262,7 +264,7 @@ class NoteSyncEngine(
                 return@runCatching 0
             }
 
-            val remoteRecords = fetchCompleteSnapshot(remoteIdentity)
+            val remoteRecords = fetchCompleteSnapshot(remoteIdentity).records
 
             // The same hazard downloadAllNotes guards against, pointing the other way. Here an
             // empty fetch does not delete anything directly — it empties the timestamp maps below,
@@ -310,7 +312,7 @@ class NoteSyncEngine(
                 ?: return@runCatching uploaded
             uploadMeta.consumeOnce { transport.writeSyncMeta(remoteIdentity, eligibleNoteCount(), platform) }
             uploaded
-        }
+        }.onFailure { failure -> noteWipeRefusal(failure) }
     }
 
     suspend fun reconcileUploads(): Result<Int> {
@@ -354,12 +356,18 @@ class NoteSyncEngine(
                 note.timestamp > since && !syncStateStore.isDeleted(id)
             }
 
+            // Same rule as uploadAllNotes: a wipe this device has not answered for stops the run
+            // before any note is sent.
+            if (changed.isNotEmpty()) {
+                requireNotBlockedAfterCloudWipe()
+            }
+
             // Belongs to this account: the lastMergedUserId check above already returned otherwise.
             val knownCloudIds = syncStateStore.knownCloudIds()
 
             var uploaded = 0
             if (changed.isNotEmpty()) {
-                val remoteRecords = fetchCompleteSnapshot(remoteIdentity)
+                val remoteRecords = fetchCompleteSnapshot(remoteIdentity).records
                 val remoteMap = remoteRecords.associateBy { it.noteId }
 
                 for (note in changed) {
@@ -406,7 +414,7 @@ class NoteSyncEngine(
                 LocalCommitResult.StaleGeneration -> return@runCatching uploaded
             }
             uploaded
-        }
+        }.onFailure { failure -> noteWipeRefusal(failure) }
     }
 
     suspend fun uploadNote(noteId: Long): Result<Unit> =
@@ -836,7 +844,18 @@ class NoteSyncEngine(
             var changes = purgedIds.size
             // Before anything is compared, let alone deleted: a short snapshot must not reach the
             // reconciliation loops below, which read every absent known id as a remote deletion.
-            val remoteRecords = fetchCompleteSnapshot(remoteIdentity)
+            val snapshot = fetchCompleteSnapshot(remoteIdentity)
+            val remoteRecords = snapshot.records
+            // A generation this device has not acknowledged means the cloud was emptied on purpose,
+            // not that the read failed. Decided here — before the delete-on-absence loop below — so
+            // the local copies the loop would remove are still there to be kept.
+            val notesAtRisk = localNotesBeforePurge.count { note -> note.id !in purgedIds }
+            if (observeWipeGeneration(snapshot, commitToken, notesAtRisk)) {
+                throw CloudWipedElsewhereException(
+                    wipeGeneration = snapshot.wipeGeneration,
+                    localNoteCount = notesAtRisk,
+                )
+            }
             // Everything below writes device-local state (notes, labels, revision maps, known ids).
             // Another account may have signed in while that snapshot was on the wire.
             requireSameSession(uid)
@@ -1238,7 +1257,7 @@ class NoteSyncEngine(
             commitLocally(commitToken) { syncStateStore.setLastMergedUserId(uid) }
 
             changes
-        }
+        }.onFailure { failure -> noteWipeRefusal(failure) }
     }
 
     suspend fun deleteAllCloudData(): Result<Int> {
@@ -1283,7 +1302,7 @@ class NoteSyncEngine(
      */
     private suspend fun fetchCompleteSnapshot(
         identity: OperationRemoteIdentity,
-    ): List<CloudNoteRecord> {
+    ): CloudNoteSnapshot {
         val snapshot = transport.fetchNotesSnapshot(identity)
         val expected = snapshot.authoritativeNoteCount
         if (expected != null && expected != snapshot.records.size) {
@@ -1292,7 +1311,7 @@ class NoteSyncEngine(
                 receivedNoteCount = snapshot.records.size,
             )
         }
-        return snapshot.records
+        return snapshot
     }
 
     /**
@@ -1311,6 +1330,92 @@ class NoteSyncEngine(
      */
     private fun unexplainedMissingCloudIds(knownCloudIds: Set<Long>): Set<Long> =
         knownCloudIds.filterTo(mutableSetOf()) { !syncStateStore.isDeleted(it) }
+
+    /**
+     * Records that a write was refused because of a cloud wipe, so the block outlives this call.
+     *
+     * The transport raises [CloudWipedElsewhereException] without touching device state, and the
+     * block has to be durable on this side: a later sync that had forgotten it would go back to
+     * reading the wiped account's missing rows as deletions and remove the local copies.
+     */
+    private fun noteWipeRefusal(failure: Throwable) {
+        if (failure is CloudWipedElsewhereException) {
+            syncStateStore.blockUploadsAfterCloudWipe()
+        }
+    }
+
+    /**
+     * Refuses to upload while a wipe this device has not answered for is outstanding.
+     *
+     * Called at the entry of both upload paths, before any remote write. The server cannot tell an
+     * upload made here apart from a stale device undoing the wipe, so the decision belongs to the
+     * user — and until they make it, nothing is sent and nothing local is removed.
+     */
+    private suspend fun requireNotBlockedAfterCloudWipe() {
+        if (syncStateStore.uploadsBlockedAfterCloudWipe()) {
+            throw CloudWipedElsewhereException(
+                wipeGeneration = syncStateStore.wipeGeneration(),
+                localNoteCount = eligibleNoteCount(),
+            )
+        }
+    }
+
+    /**
+     * Acts on the wipe generation a snapshot published, and reports whether the caller must stop.
+     *
+     * A generation this device has not acknowledged means the account's cloud data was deleted
+     * deliberately. When there is local state that the ordinary reconciliation would destroy — local
+     * notes whose ids the last download recorded as present in the cloud — that state is not
+     * touched: the generation is recorded, uploads are blocked, and `true` is returned so the caller
+     * raises [CloudWipedElsewhereException] rather than continuing into the delete-on-absence loop.
+     *
+     * With nothing to protect (a fresh install, a device whose copy is already gone), the generation
+     * is adopted and the sync continues normally, so a wiped account does not look broken forever on
+     * a device that never held the notes.
+     */
+    private suspend fun observeWipeGeneration(
+        snapshot: CloudNoteSnapshot,
+        commitToken: LocalCommitToken,
+        notesAtRisk: Int,
+    ): Boolean {
+        val generation = snapshot.wipeGeneration
+        if (generation <= syncStateStore.wipeGeneration()) return false
+        val mustStop = notesAtRisk > 0
+        val committed = commitLocally(commitToken) {
+            syncStateStore.setWipeGeneration(generation)
+            if (mustStop) syncStateStore.blockUploadsAfterCloudWipe()
+        }
+        // A replacement dataset owns the store now, and its own snapshot will report its own
+        // generation; deciding anything for it from this one would be exactly the cross-dataset
+        // write the commit gate exists to refuse.
+        if (committed is LocalCommitResult.StaleGeneration) return false
+        return mustStop
+    }
+
+    /**
+     * The user's decision to upload this device's notes into the cloud that was emptied.
+     *
+     * Clears the block *and* the ids the last download recorded as present in the cloud. While those
+     * ids are recorded, their absence is read as "deleted elsewhere" and the local notes would be
+     * removed rather than uploaded; forgetting them is what makes the next sync treat every local
+     * note as one the cloud has never seen.
+     */
+    suspend fun allowUploadAfterCloudWipe(): Result<Unit> = runCatching {
+        val commitToken = localCommitTokenProvider.capture()
+        val uid = uidProvider().getOrThrow()
+        when (
+            commitLocally(commitToken) {
+                syncStateStore.allowUploadsAfterCloudWipe()
+                syncStateStore.setKnownCloudIds(emptySet())
+            }
+        ) {
+            is LocalCommitResult.Applied -> Unit
+            // Nothing was lifted, so the caller must not be told the upload may proceed.
+            LocalCommitResult.StaleGeneration -> error(
+                "Cloud-wipe decision refused: the local dataset changed under it.",
+            )
+        }
+    }
 
     /**
      * `lastMergedUserId == null` is a first sync (guest notes may upload). A non-null value that

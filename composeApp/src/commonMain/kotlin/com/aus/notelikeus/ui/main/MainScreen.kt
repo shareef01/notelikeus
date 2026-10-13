@@ -665,6 +665,11 @@ fun MainScreen(
             showProfileSheet = false
             viewModel.downloadNotesFromCloud()
         },
+        onUploadLocalNotesAfterWipe = {
+            showCloudRestoreConfirm = false
+            showProfileSheet = false
+            viewModel.allowUploadAfterCloudWipe()
+        },
         onEmptyTrashConfirmDismiss = { showEmptyTrashConfirm = false },
         onConfirmEmptyTrash = {
             val trashedCount = state.notes.size

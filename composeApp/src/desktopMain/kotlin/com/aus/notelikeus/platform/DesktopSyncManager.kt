@@ -117,6 +117,16 @@ class DesktopSyncManager(
         ) { syncEngine.downloadAllNotes() }
     }
 
+    /**
+     * Lifts the cloud-wipe block and uploads, in that order: the block is what has been stopping
+     * every upload, so it has to go first, and the upload is the whole point of asking.
+     */
+    override suspend fun allowUploadAfterCloudWipe(): Result<Unit> {
+        val lifted = syncEngine.allowUploadAfterCloudWipe()
+        if (lifted.isSuccess) syncNotes()
+        return lifted
+    }
+
     private suspend fun runSync(
         successEvent: (Int) -> CloudSyncEvent? = { null },
         block: suspend () -> Result<Int>,

@@ -184,6 +184,9 @@
     <string name="cloud_restore_confirm_title">Restore from cloud?</string>
     <string name="cloud_restore_confirm_message">This merges the notes in your cloud account into this device. Where the same note differs, the more recently synced version wins. Notes this device has already synced, and that are no longer in the cloud, are removed here too.</string>
     <string name="cloud_restore_confirm_action">Restore</string>
+    <string name="cloud_upload_after_wipe_message">Deleted your cloud notes from another device? This device still has its notes, and they are not uploaded on their own. Uploading them again puts them back in your cloud account as new notes.</string>
+    <string name="cloud_upload_after_wipe_action">Upload this device\'s notes</string>
+    <string name="cloud_upload_after_wipe_failed">Couldn\'t upload your notes. They are still on this device — try again.</string>
     <string name="cloud_sync_failed">Cloud sync failed</string>
     <string name="cloud_status_checking">…</string>
     <string name="cloud_status_signed_out">Not signed in</string>

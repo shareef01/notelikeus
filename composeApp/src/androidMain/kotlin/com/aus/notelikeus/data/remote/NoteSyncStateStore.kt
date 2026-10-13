@@ -318,6 +318,26 @@ class SharedPrefsNoteSyncStateStore(
         prefs.edit().putString(KEY_LAST_MERGED_USER_ID, userId).apply()
     }
 
+    // Both wipe keys live in the same preferences file, so clear() removes them with everything
+    // else this store owns. A fresh sign-in therefore starts unacknowledged and unblocked, which is
+    // what makes the first sync after it re-detect a wipe instead of trusting a stale number.
+    override fun wipeGeneration(): Long = prefs.getLong(KEY_WIPE_GENERATION, 0L)
+
+    override fun setWipeGeneration(generation: Long) {
+        prefs.edit().putLong(KEY_WIPE_GENERATION, generation).apply()
+    }
+
+    override fun uploadsBlockedAfterCloudWipe(): Boolean =
+        prefs.getBoolean(KEY_WIPE_UPLOADS_BLOCKED, false)
+
+    override fun blockUploadsAfterCloudWipe() {
+        prefs.edit().putBoolean(KEY_WIPE_UPLOADS_BLOCKED, true).apply()
+    }
+
+    override fun allowUploadsAfterCloudWipe() {
+        prefs.edit().putBoolean(KEY_WIPE_UPLOADS_BLOCKED, false).apply()
+    }
+
     override fun clear() {
         prefs.edit().clear().apply()
     }
@@ -381,5 +401,7 @@ class SharedPrefsNoteSyncStateStore(
         private const val KEY_DELETED_DIGESTS = "deleted_digests"
         private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
         private const val KEY_LAST_RECONCILED = "last_reconciled_at"
+        private const val KEY_WIPE_GENERATION = "wipe_generation"
+        private const val KEY_WIPE_UPLOADS_BLOCKED = "wipe_uploads_blocked"
     }
 }
