@@ -7,6 +7,7 @@ import { InstallPrompt } from '@/components/layout/InstallPrompt';
 import { SyncStatusBanner } from '@/components/layout/SyncStatusBanner';
 import { SideDrawer } from '@/components/layout/SideDrawer';
 import { TopBar } from '@/components/layout/TopBar';
+import { CloudWipeNotice } from '@/components/notes/CloudWipeNotice';
 import { NoteStaggeredGrid } from '@/components/notes/NoteStaggeredGrid';
 import { NotesEmptyState } from '@/components/notes/NotesEmptyState';
 import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
@@ -433,6 +434,8 @@ export function MainScreen() {
         <SyncStatusBanner />
 
         <InstallPrompt />
+
+        {user?.uid ? <CloudWipeNotice userId={user.uid} /> : null}
 
         {filters.filter === 'trashed' && filteredNotes.length > 0 ? (
           <TrashBanner onEmptyTrash={() => openDialogs({ emptyTrashConfirm: true })} />

@@ -18,6 +18,11 @@ import {
   type SupabaseNotePayload,
   type SupabaseTombstonePayload,
 } from '@/lib/supabase/supabaseNoteMapper';
+import {
+  asWipeRefusal,
+  recordWipeGeneration,
+  wipeGenerationForPush,
+} from '@/lib/supabase/wipeGeneration';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
 import {
@@ -37,12 +42,14 @@ export interface ApplyNoteResult {
 interface PullChangesResult {
   changes?: SupabaseNotePayload[] | SupabaseTombstonePayload[];
   has_more?: boolean;
+  wipe_generation?: number;
 }
 
 interface SnapshotResult {
   notes?: SupabaseNotePayload[];
   tombstones?: SupabaseTombstonePayload[];
   note_count?: number;
+  wipe_generation?: number;
 }
 
 /**
@@ -92,6 +99,7 @@ export async function fetchSnapshotNotes(options?: {
   tombstones: Record<string, number>;
   noteRevisions: Record<string, number>;
   maxRevision: number;
+  wipeGeneration: number;
 }> {
   const { data, error } = await getSupabaseClient().rpc('fetch_full_snapshot');
   if (error) throw error;
@@ -128,7 +136,13 @@ export async function fetchSnapshotNotes(options?: {
       maxRevision = Math.max(maxRevision, row.revision);
     }
   }
-  return { notes: hydratedNotes, tombstones, noteRevisions, maxRevision };
+  // The account's wipe generation, published alongside the rows: an empty snapshot at a generation
+  // this browser has not seen is an intentional wipe, not a truncated read (F-05's guard).
+  const wipeGeneration =
+    typeof snapshot.wipe_generation === 'number' && Number.isFinite(snapshot.wipe_generation)
+      ? snapshot.wipe_generation
+      : 0;
+  return { notes: hydratedNotes, tombstones, noteRevisions, maxRevision, wipeGeneration };
 }
 
 export async function applyNoteChange(
@@ -136,9 +150,11 @@ export async function applyNoteChange(
   note: Note,
   baseRevision: number | null,
 ): Promise<Note> {
-  const args = noteToSupabaseRpcArgs(note, baseRevision);
+  const wipeGeneration = await wipeGenerationForPush(userId);
+  const args = noteToSupabaseRpcArgs(note, baseRevision, wipeGeneration);
   const { data, error } = await getSupabaseClient().rpc('apply_note_change', args);
-  if (error) throw error;
+  // A wipe refusal throws a typed error and blocks every later push; anything else rethrows.
+  if (error) await asWipeRefusal(userId, error);
   const result = (data ?? {}) as ApplyNoteResult;
   if (result.status === 'conflict') {
     if (result.error === 'note_deleted') {
@@ -193,6 +209,11 @@ export async function pullIncrementalChanges(
     if (error) throw error;
     const payload = (data ?? {}) as PullChangesResult;
     const changes = payload.changes ?? [];
+    // Every pull carries the generation, so an account wiped on another device is learned about
+    // here even when it had no changes left to report.
+    if (typeof payload.wipe_generation === 'number') {
+      await recordWipeGeneration(userId, payload.wipe_generation);
+    }
     if (changes.length === 0) break;
 
     let maxRevision = state.lastRemoteRevision;

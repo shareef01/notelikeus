@@ -84,15 +84,22 @@ export function supabaseNoteToNote(payload: SupabaseNotePayload): Note {
 }
 
 /**
- * The `apply_note_change` arguments for [note]. With [attachmentIds] (the default) they include
- * `p_attachment_ids`, the 15-argument overload: exactly the uploaded (`r2:`) attachments this version
- * references, which the commit promotes from provisional in the same transaction. A `pending:` image
- * has no server row yet. `restore_note` has no such parameter, and PostgREST matches overloads by
- * argument names, so its caller passes `attachmentIds: false`.
+ * The argument object for `apply_note_change` and `restore_note`.
+ *
+ * [wipeGeneration] is required rather than optional: the server refuses a mutation that presents
+ * nothing once the account has been wiped, so a caller that forgot it would only find out after a
+ * wipe — the worst possible moment. 0 is the honest value for an account that has never been wiped.
+ *
+ * With [attachmentIds] (the default) they include `p_attachment_ids`, the 16-argument
+ * `apply_note_change` overload: exactly the uploaded (`r2:`) attachments this version references,
+ * which the commit promotes from provisional in the same transaction. A `pending:` image has no
+ * server row yet. `restore_note` has no such parameter, and PostgREST matches overloads by argument
+ * names, so its caller passes `attachmentIds: false`.
  */
 export function noteToSupabaseRpcArgs(
   note: Note,
   baseRevision: number | null,
+  wipeGeneration: number,
   { attachmentIds = true }: { attachmentIds?: boolean } = {},
 ) {
   const args = {
@@ -114,6 +121,7 @@ export function noteToSupabaseRpcArgs(
       isChecked: item.isChecked,
       position: item.position,
     })),
+    p_wipe_generation: wipeGeneration,
   };
   if (!attachmentIds) return args;
   return {

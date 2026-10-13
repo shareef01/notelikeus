@@ -367,3 +367,70 @@ jobs:
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
             dist/*
+
+  # FU-7. Gradle dependencies were invisible to GitHub's dependency graph: the graph understood
+  # npm (Dependabot's `npm` entries in .github/dependabot.yml) but nothing submitted the resolved
+  # Gradle graph, so Dependabot could never open an advisory for an Android or Windows/JVM library.
+  # The one-off OSV scan in AUDIT_REPORT.md was clean, but a scan nobody re-runs is not a control.
+  #
+  # It lives here rather than in desktop.yml because the graph is one graph per commit: submitting
+  # it from two workflows would race, and this job needs the Android SDK that ubuntu-latest already
+  # carries (the `build` job above relies on the same preinstalled SDK). Every JVM configuration in
+  # the build is resolved by the one injected task, so the desktop libraries are covered here too.
+  #
+  # `contents: write` is what the Dependency Submission API needs, and it is scoped to this job
+  # rather than widened on `build`, which stays `contents: read`.
+  dependency-submission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Same two-JDK arrangement as `build`: the daemon is pinned to 21 by
+      # gradle/gradle-daemon-jvm.properties, the build runs on 17.
+      - name: Set up JDK 21 for the Gradle daemon
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up JDK 17 for the build
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Point Gradle at the provisioned JDK 21
+        shell: bash
+        run: echo "GRADLE_OPTS=${GRADLE_OPTS} -Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
+
+      - name: Cache Gradle
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # `--no-configuration-cache`: gradle.properties turns the configuration cache on for every
+      # build, and this action injects a task into the build to resolve everything. Keeping the two
+      # apart removes a failure mode that would look like a dependency problem.
+      #
+      # `dependency-graph-continue-on-failure: false` is the point of the job: a graph that stopped
+      # being generated must fail loudly, not warn. Dependabot visibility is the control, and a
+      # silently empty graph is the same as no control at all.
+      - name: Submit Gradle dependency graph
+        uses: gradle/actions/dependency-submission@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+          additional-arguments: --no-configuration-cache
+          dependency-graph-continue-on-failure: false

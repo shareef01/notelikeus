@@ -12,11 +12,14 @@ export async function restoreCloudNote(userId: string, note: Note): Promise<void
   const { getSupabaseClient } = await import('@/lib/supabase/client');
   const { noteToSupabaseRpcArgs } = await import('@/lib/supabase/supabaseNoteMapper');
   const { rememberNoteRevision } = await import('@/lib/supabase/revisionStore');
+  const { asWipeRefusal, wipeGenerationForPush } = await import('@/lib/supabase/wipeGeneration');
+  const wipeGeneration = await wipeGenerationForPush(userId);
   const { data, error } = await getSupabaseClient().rpc(
     'restore_note',
-    noteToSupabaseRpcArgs(note, null, { attachmentIds: false }),
+    noteToSupabaseRpcArgs(note, null, wipeGeneration, { attachmentIds: false }),
   );
-  if (error) throw error;
+  // A restore is what puts a deleted note back, so it is exactly what a wipe refusal must stop.
+  if (error) await asWipeRefusal(userId, error);
   const result = (data ?? {}) as { status?: string; revision?: number };
   if (result.status !== 'applied') {
     throw new Error(`restore_note failed for note ${note.id}`);

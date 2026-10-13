@@ -366,6 +366,19 @@ export function startNotesRealtimeSync(userId: string): void {
   );
 }
 
+/**
+ * Skips the reconcile throttle for one pass.
+ *
+ * Both windows exist to keep a burst of tab-focus events from becoming a burst of network calls.
+ * An explicit user action is not a burst: after "upload my notes again" the user expects the
+ * upload to start now, and waiting out a 30-second window would read as the button doing nothing.
+ */
+export async function reconcileNowAfterUserAction(userId: string): Promise<void> {
+  lastReconcileStartedAt = 0;
+  lastSnapshotAppliedAt = 0;
+  return reconcileNow(userId);
+}
+
 export function stopNotesRealtimeSync(): void {
   unsubscribeRealtime?.();
   unsubscribeRealtime = null;

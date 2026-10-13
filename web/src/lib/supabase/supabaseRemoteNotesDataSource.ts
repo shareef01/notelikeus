@@ -17,6 +17,14 @@ import {
   pullIncrementalChanges,
 } from "@/lib/supabase/supabaseSyncEngine";
 import {
+  asWipeRefusal,
+  blockPushesAfterWipe,
+  pushesBlockedByWipe,
+  readWipeGeneration,
+  recordWipeGeneration,
+  wipeGenerationForPush,
+} from "@/lib/supabase/wipeGeneration";
+import {
   beginNotesSyncSession,
   getActiveNotesSyncSession,
 } from "@/lib/supabase/syncSession";
@@ -53,6 +61,28 @@ interface ApplyNoteResult {
     note_id?: string;
     revision?: number;
   };
+}
+
+/**
+ * F-05: the note was suppressed locally, but the cloud row could not be deleted because this
+ * browser never learned its revision.
+ *
+ * Raised instead of returning success, which is what it used to do. The cloud copy is live on every
+ * other device, so the user has to be told — and the safe retry is to learn the revision on
+ * purpose (a snapshot the retry itself triggers) rather than to adopt whatever the failed delete
+ * answered with, which is what DEL-6 forbids.
+ */
+export class CloudDeleteUnconfirmedError extends Error {
+  readonly noteId: string;
+
+  constructor(noteId: string) {
+    super(
+      `Couldn’t delete note ${noteId} from the cloud: this browser no longer knows its revision. ` +
+        "It is hidden here, but still on your other devices. Try again.",
+    );
+    this.name = "CloudDeleteUnconfirmedError";
+    this.noteId = noteId;
+  }
 }
 
 /** [notes] with a flush's local rewrites applied, so a caller's copy matches what is on disk. */
@@ -286,10 +316,13 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     await ensureSupabaseAuthenticated();
 
     if (baseRevision == null) {
-      // Path 2 remediation: strict delete intent bound to immutable revision.
-      // Leave local suppression, but fail the remote live note delete.
+      // F-05, Option B: DEL-6 stands — a delete never adopts a revision from the server, so there
+      // is nothing to delete the cloud row *with*, and inventing one here is how a stale device
+      // silently overwrites another device's edit. But reporting success was a lie: the row is
+      // still live in the cloud and comes back at the next snapshot. Suppress locally, then say so,
+      // so the caller can tell the user and offer a retry that learns the revision deliberately.
       useTombstoneStore.getState().markDeleted(noteId);
-      return;
+      throw new CloudDeleteUnconfirmedError(noteId);
     }
 
     if (!accountStillOwnsDelete(userId)) {
@@ -298,15 +331,18 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     const { getSupabaseClient } = await import("@/lib/supabase/client");
 
     try {
+      const wipeGeneration = await wipeGenerationForPush(userId);
       const { data, error } = await getSupabaseClient().rpc(
         "apply_note_delete",
         {
           p_note_id: noteId,
           p_base_revision: baseRevision,
+          p_wipe_generation: wipeGeneration,
         },
       );
       if (error) {
-        throw error;
+        // A wipe refusal is definite and must not be retried with the same arguments.
+        await asWipeRefusal(userId, error);
       }
       if (!accountStillOwnsDelete(userId)) {
         throw new Error("Account changed during delete");
@@ -403,6 +439,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       tombstones,
       noteRevisions,
       maxRevision,
+      wipeGeneration,
     } = await fetchSnapshotNotes();
     useTombstoneStore.getState().mergeFromCloud(tombstones);
     useTombstoneStore
@@ -415,13 +452,40 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     const isDeleted = (id: string) =>
       useTombstoneStore.getState().isDeleted(id);
 
+    // A generation this browser has not seen is the server saying, durably, that the missing rows
+    // are the result of an intentional wipe rather than a truncated read. Learning it is not the
+    // same as being allowed to upload: re-creating the notes is the user's call, which is why the
+    // block stays set and the local copies are neither uploaded nor deleted here.
+    const knownGeneration = await readWipeGeneration(userId);
+    const wipedElsewhere = wipeGeneration > knownGeneration;
+    await recordWipeGeneration(userId, wipeGeneration);
+    if (wipedElsewhere) {
+      await blockPushesAfterWipe(userId);
+    }
+    if (wipedElsewhere || (await pushesBlockedByWipe(userId))) {
+      useNotesStore.getState().setCloudWipeNotice({
+        generation: wipeGeneration,
+        localNoteCount: localNotes.filter((note) => !isDeleted(note.id)).length,
+      });
+      return { merged: localNotes, remoteIds: remoteNotes.map((note) => note.id) };
+    }
+    useNotesStore.getState().clearCloudWipeNotice();
+
+    // A wiped account that is not blocked is one the user has already answered for: they chose to
+    // upload these notes again (that is what lifts the block — `reuploadLocalNotesAfterWipe`). The
+    // ids the cloud used to have are therefore not "known cloud ids" any more. Without this an
+    // empty cloud plus a local note would read as "deleted elsewhere" and delete the very notes the
+    // user just asked to upload, and the known-id guard below would refuse the sync forever.
+    const pushesAuthorizedAfterWipe = wipeGeneration > 0;
+    const cloudKnownIds = pushesAuthorizedAfterWipe ? new Set<string>() : previouslyKnownCloudIds;
+
     // The same rule loadBaseline() applies, and for the same reason: refusing on the raw size of
     // the known-id set turned a user who deleted their last note on another device into a
     // permanently failing sync, because every one of those ids has a tombstone explaining it.
     // Ids with no tombstone at all still trip the guard, which is the case it exists for.
     const tombstonedRemotely = new Set(Object.keys(tombstones));
     const unexplainedMissing = unexplainedMissingCloudIds(
-      previouslyKnownCloudIds,
+      cloudKnownIds,
       cloudIds,
       (id) => tombstonedRemotely.has(id) || isDeleted(id),
     );
@@ -469,7 +533,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
         continue;
       }
 
-      if (previouslyKnownCloudIds.has(localNote.id)) {
+      if (cloudKnownIds.has(localNote.id)) {
         droppedLocalIds.add(localNote.id);
         useTombstoneStore.getState().markDeleted(localNote.id);
         changes++;

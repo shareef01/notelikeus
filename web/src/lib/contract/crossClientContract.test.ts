@@ -156,10 +156,10 @@ describe('cloud mapper contract', () => {
     );
     const row = readContractFixture<{ row: never }>('cloud/note-row.json');
     const note = supabaseNoteToNote(row.row);
-    expect(noteToSupabaseRpcArgs(note, null)).toEqual(fixture.args);
+    expect(noteToSupabaseRpcArgs(note, null, 0)).toEqual(fixture.args);
     // restore_note has no attachment-id parameter.
     const { p_attachment_ids: _ids, ...restoreArgs } = fixture.args;
-    expect(noteToSupabaseRpcArgs(note, null, { attachmentIds: false })).toEqual(restoreArgs);
+    expect(noteToSupabaseRpcArgs(note, null, 0, { attachmentIds: false })).toEqual(restoreArgs);
   });
 
   it('derives the tombstone map', () => {

@@ -87,8 +87,12 @@ describe('Audit Gate Proofs', () => {
       
       useTombstoneStore.setState(merged);
       
-      // Missing baseline -> NO authorize deleting a currently live remote note
-      await supabaseRemoteNotesDataSource.deleteNote(USER, '1', undefined);
+      // Missing baseline -> NO authorize deleting a currently live remote note. Since F-05
+      // (Option B) that refusal is reported rather than answered with a silent success, which is
+      // what this call now asserts: no RPC, and the caller learns the cloud row survived.
+      await expect(
+        supabaseRemoteNotesDataSource.deleteNote(USER, '1', undefined),
+      ).rejects.toThrow(/still on your other devices/);
       expect(rpcMock).not.toHaveBeenCalled();
     });
   });

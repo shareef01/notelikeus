@@ -1,5 +1,5 @@
 {
-  "comment": "The apply_note_change argument object every client sends: the 15-argument overload, whose p_attachment_ids names exactly the uploaded (r2:) attachments the version references (none here; pending: images have no server row yet). restore_note takes the other 14 only. Key names and value types are the contract; p_base_revision is null on a note the server has never seen. Whether each client's argument set matches a deployed signature is checked against supabase/migrations by RpcSignatureContractTest (Kotlin) and rpcSignatureContract.test.ts (web).",
+  "comment": "The apply_note_change argument object every client sends: the 16-argument overload, the 14 note fields plus p_attachment_ids and p_wipe_generation. p_attachment_ids names exactly the uploaded (r2:) attachments the version references (none here; pending: images have no server row yet). p_wipe_generation is 0 for an account that has never had its cloud data deleted. restore_note takes the 14 note fields plus p_wipe_generation, without p_attachment_ids. Key names and value types are the contract; p_base_revision is null on a note the server has never seen. Whether each client's argument set matches a deployed signature is checked against supabase/migrations by RpcSignatureContractTest (Kotlin) and rpcSignatureContract.test.ts (web).",
   "args": {
     "p_note_id": "12",
     "p_local_id": 12,
@@ -33,6 +33,7 @@
         "position": 1
       }
     ],
-    "p_attachment_ids": []
+    "p_attachment_ids": [],
+    "p_wipe_generation": 0
   }
 }

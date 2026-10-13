@@ -36,6 +36,18 @@ export interface LocalOwnerMeta {
    * the only copy of the user's latest text, so no remote apply may overwrite or delete it.
    */
   pendingPushes?: Record<string, PendingPush>;
+  /**
+   * The account's cloud wipe generation, as last published by the server. 0 means never wiped.
+   * Every note mutation presents this so a wipe cannot be reversed by a stale device — see
+   * `lib/supabase/wipeGeneration.ts`.
+   */
+  wipeGeneration?: number;
+  /**
+   * Set when the server refused a push because this account was wiped on another device. While it
+   * is set nothing is pushed, because uploading anyway is exactly the silent reversal the wipe
+   * generation exists to prevent. Cleared only by the user choosing to upload again.
+   */
+  wipeBlockedAt?: number;
 }
 
 /** A local edit waiting for the cloud — see {@link putLocalEdit}. */
