@@ -357,7 +357,7 @@ Method | Source reading, `supabase db reset` + `supabase test db` against a loca
 | FU-8 | P3 | Multi-select starts only on long-press; `combinedClickable` binds Enter to `onClick` and has no Space binding, so a keyboard user cannot toggle selection. | **Fixed and verified** — key-injection test; the two Space cases fail without the binding |
 | FU-4 | P3 | `begin_sync_mutation()` is REST-callable by `authenticated`. | **Fixed** — helpers moved to `notelikeus_internal`, exposure pinned by a test |
 | FU-5 | P3 | `EncryptedSharedPreferences`/`MasterKey` are deprecated and hold the database passphrase. | **Already implemented — corrected**, see below |
-| **F-14** (new) | **P2** | `public.restore_note` accepted `p_base_revision` and never read it — one return path, `applied` — so a restore was the only mutation with no optimistic-concurrency fence: it deleted the tombstone and unconditionally upserted, and an offline device's undo could put its older copy on top of a newer edit elsewhere, silently. | **Fixed** on the server and in both clients (§13.3.7) |
+| **F-14** (new) | **P2** | `public.restore_note` accepted `p_base_revision` and never read it — one return path, `applied` — so a restore was the only mutation with no optimistic-concurrency fence: it deleted the tombstone and unconditionally upserted, and an offline device's undo could put its older copy on top of a newer edit elsewhere, silently. | **Fixed** on the server and in both clients (F-14, below) |
 
 #### F-13 — the wipe protocol, as implemented
 
@@ -603,6 +603,24 @@ The second pass recorded FU-5 as "`DatabaseKeyManager` and `AndroidSupabaseSessi
 
 What remains is not a defect but a support decision: the legacy ESP **read** path has to stay until the project is willing to drop installs old enough to still hold secrets there. It is the only remaining `EncryptedSharedPreferences` reference in the Android sources, it is annotated as legacy, and removing it early would strand exactly the users FU-5 set out to protect.
 
+#### 13.3.7 The instrumented suites on a clean emulator
+
+The Pixel could not run them (§13.3.2), so one was provisioned: a dedicated AVD (`nlu-instrumented`, API 35, `google_apis`) created from the system image already on this machine. The owner's own AVDs (`deutschflow-test`, `test-tabakpp`) were not touched, and the AVD was deleted afterwards along with the emulator.
+
+| Module | Result |
+|---|---|
+| `:composeApp:connectedDebugAndroidTest` | **5 tests, 0 failures** |
+| `:androidApp:connectedDebugAndroidTest` | **14 tests, 12 passed, 2 failed** |
+
+The `composeApp` result is the confirmation the Pixel could not give: the same suite passes on a clean device, so the non-zero exit code there was that device's package state and not the tests, the product or the repository.
+
+The `androidApp` run is the first device-level evidence this audit has for two paths it had only compiled:
+
+- `BackupDocumentIoTest` — 6/6, including the import size limit, non-ASCII content surviving a round trip, and an unreadable or unwritable document failing rather than throwing.
+- `MainActivityShareInstrumentationTest` — 6/6, cold and warm image-share delivery, rotation without duplicating or crashing, rapid successive shares being rejected rather than merged, and an external share intent that must not target an existing note.
+
+**Two failures, recorded as an open question rather than a verdict.** Both are in `PredictiveBackTest`, with the assertion "a back press did not reach `OnBackPressedDispatcher`; BackHandler in EditorScreen would not fire, so backing out of the editor would not save" (and its sibling, that the system does not drive `OnBackInvokedDispatcher`, so the manifest opt-in is not in effect for the running app). CI runs this suite on **API 30** (where it self-skips below 33) and **API 36** (where it passes), so an API 35 device failing it is either version- or image-specific — this was a headless emulator with no GPU acceleration — or a gap in what CI covers. A reproduction on an API 36 image was attempted here and failed at *install* (`Failure calling service package: Broken pipe (32)`; the `google_apis_playstore` image is too heavy for this machine), so it is **not settled**, and nothing is claimed about whether the app's predictive-back opt-in works on API 35. The way to settle it is CI's own API 36 leg with this class selected.
+
 ### 13.4 What this pass did not do
 
 - **TalkBack and Narrator.** The accessibility *tree* was inspected on the device and every actionable control is named (§13.3.5), but spoken traversal — order, phrasing — needs a person with a screen reader on, on both Android and Windows.
@@ -619,5 +637,6 @@ What remains is not a defect but a support decision: the legacy ESP **read** pat
 | P1 | `supabase.yml` (`20261012000000`, `20261012010000`, `20261013000000`, `20261014000000`) and `attachments-worker.yml` are still undeployed — verified, not inferred. The F-08, F-09 and F-13 fixes exist only in source. |
 | P1 | Android and Windows releases still do not carry F-01, F-07, F-10, FU-2 or F-13/F-13b. |
 | P2 | The Kotlin block is only lifted through the new button; until it ships, a wiped account's Android or Windows device reports the wipe and uploads nothing, which is safe but requires the user to reach that dialog. |
-| P3 | A restore still succeeds against a tombstone another device wrote, so undoing a delete that happened elsewhere is not refused — F-14's residual, out of its scope, pre-existing, and recorded rather than folded in (§13.3.7). |
+| P3 | A restore still succeeds against a tombstone another device wrote, so undoing a delete that happened elsewhere is not refused — F-14's residual, out of its scope, pre-existing, and recorded rather than folded in (see the F-14 section). |
+| P3 | `PredictiveBackTest` fails on an API 35 `google_apis` emulator while CI passes the same suite on API 36 (§13.3.7). Not settled: either version/image-specific or a CI version gap. |
 | P3 | The legacy `EncryptedSharedPreferences` read path in `DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` (FU-5's residual) — remove when the support window allows, not before. |
