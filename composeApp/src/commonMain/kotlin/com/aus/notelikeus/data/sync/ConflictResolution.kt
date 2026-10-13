@@ -50,9 +50,35 @@ internal object ConflictResolution {
             a.checklist.sortedBy { it.position }.map { it.isChecked to it.text } ==
             b.checklist.sortedBy { it.position }.map { it.isChecked to it.text }
 
-    /** True when writing [cloud] over [local] would destroy words only this device has. */
-    fun mustPreserve(local: Note, cloud: Note, syncedTimestamp: Long?): Boolean =
-        isLocallyEdited(local, syncedTimestamp) && !authoredContentEqual(local, cloud)
+    /** What an inbound cloud version may do to the local row. Pinned by `contracts/sync/inbound-resolution.json`. */
+    enum class InboundAction {
+        /** Write the cloud version (a no-op when identical). */
+        ACCEPT,
+
+        /** Keep the local row; it is newer or a pending edit on the current revision, and is pushed. */
+        KEEP_LOCAL,
+
+        /** Re-home the local words as a conflicted copy, then write the cloud version. */
+        FORK,
+    }
+
+    /**
+     * The download's decision for one cloud record, shared by [NoteSyncEngine] and the contract test.
+     *
+     * @param cloudWinsByStamp [NoteSyncEngine.cloudWinsConflict] for this pair: whether the server
+     *   stamps (and, on a tie, the client clocks) favour the cloud copy.
+     */
+    fun decide(local: Note?, syncedTimestamp: Long?, cloud: Note, cloudWinsByStamp: Boolean): InboundAction {
+        if (local == null) return InboundAction.ACCEPT
+        val edited = isLocallyEdited(local, syncedTimestamp)
+        // The edit sits on exactly the revision the cloud still holds: pending, not conflicting,
+        // whatever the two client clocks say about each other.
+        if (edited && cloud.serverUpdatedAt != null && cloud.serverUpdatedAt == local.serverUpdatedAt) {
+            return InboundAction.KEEP_LOCAL
+        }
+        if (!cloudWinsByStamp) return InboundAction.KEEP_LOCAL
+        return if (edited && !authoredContentEqual(local, cloud)) InboundAction.FORK else InboundAction.ACCEPT
+    }
 
     /** Whether [title] is one a conflict resolution wrote (every client writes the same suffix). */
     fun isConflictedCopyTitle(title: String): Boolean =
