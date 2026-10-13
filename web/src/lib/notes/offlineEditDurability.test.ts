@@ -61,6 +61,8 @@ const USER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 let online = true;
 let revisionSeq = 0;
 const cloud = new Map<string, { note: Note; revision: number }>();
+/** Notes deleted in the cloud: note id → deleted-at. The server refuses writes to them. */
+const cloudTombstones = new Map<string, number>();
 
 function cloudWrite(note: Note): Note {
   const revision = ++revisionSeq;
@@ -102,6 +104,7 @@ describe('F-06 offline edit durability', () => {
     online = true;
     revisionSeq = 0;
     cloud.clear();
+    cloudTombstones.clear();
     useTombstoneStore.getState().reset();
     await resetNotesDatabaseForTests();
     indexedDB.deleteDatabase(NOTES_DB_NAME);
@@ -109,6 +112,11 @@ describe('F-06 offline edit durability', () => {
 
     applyNoteChange.mockImplementation(async (userId: string, note: Note, base: number | null) => {
       if (!online) throw offlineError();
+      if (cloudTombstones.has(note.id)) {
+        // What applyNoteChange does with the server's note_deleted answer.
+        useTombstoneStore.getState().markDeleted(note.id);
+        throw new NoteConflictError(note.id, null, `Note ${note.id} was deleted in the cloud`);
+      }
       const row = cloud.get(note.id);
       if (row && base !== row.revision) throw new NoteConflictError(note.id, row.note);
       if (!row && base != null) throw new NoteConflictError(note.id, null, undefined, true);
@@ -121,7 +129,7 @@ describe('F-06 offline edit durability', () => {
       const rows = [...cloud.values()];
       return {
         notes: rows.map((row) => row.note),
-        tombstones: {},
+        tombstones: Object.fromEntries(cloudTombstones),
         noteRevisions: Object.fromEntries(rows.map((row) => [row.note.id, row.revision])),
         maxRevision: revisionSeq,
       };
@@ -199,6 +207,20 @@ describe('F-06 offline edit durability', () => {
     ]);
     expect(cloud.get(copy!.id)?.note.title).toBe('offline edit (conflicted copy)');
     expect(cloud.get('1')!.note.title).toBe('android edit');
+    expect(await listPendingPushes(USER)).toEqual({});
+  });
+
+  it('keeps the edit as a copy when another device deleted the note meanwhile', async () => {
+    await editWhileOffline();
+    cloud.delete('1');
+    cloudTombstones.set('1', 2_000);
+
+    await subscribeOnce();
+
+    const stored = await listNotes(USER);
+    expect(stored.map((note) => note.id)).not.toContain('1');
+    expect(stored.map((note) => note.title)).toEqual(['offline edit (conflicted copy)']);
+    expect([...cloud.values()].map((row) => row.note.title)).toEqual(['offline edit (conflicted copy)']);
     expect(await listPendingPushes(USER)).toEqual({});
   });
 
