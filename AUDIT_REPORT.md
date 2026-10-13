@@ -392,7 +392,7 @@ The engine is where the invariant is enforced, because that is where the destruc
 |---|---|
 | `npx supabase start` + `npx supabase db reset --yes` | exit 0 — all 28 migrations apply to a fresh database, including `20261013000000` |
 | `npx supabase test db` | **PASS — 31 files, 348 assertions, 0 failures.** 35 assertions are new (`notelikeus_account_wipe_generation.test.sql`), 15 more are new (`notelikeus_internal_guard_schema.test.sql`). All 29 pre-existing files still pass, which is itself the backward-compatibility evidence for generation `0` and for the FU-4 move. |
-| `web: npx vitest run` | **PASS — 115 files, 842 tests** (113 files / 833 tests at the branch point: 7 new in `wipeGenerationProtocol.test.ts`, 2 in `supabaseExposure.test.ts`) |
+| `web: npx vitest run` | **PASS — 116 files, 848 tests** (113 files / 833 tests at the branch point: 7 new in `wipeGenerationProtocol.test.ts`, 6 in `CloudWipeNotice.test.tsx`, 2 in `supabaseExposure.test.ts`) |
 | `web: npx tsc -b --noEmit` | exit 0 |
 | `web: npx oxlint` | 0 errors, 83 warnings (pre-existing class: `no-array-sort`, `consistent-function-scoping`) |
 | `web: npm run test:e2e` (Playwright, against local Supabase) | **PASS — 171 passed, 1 skipped, 0 failed, 8.3 min** across `chromium` and a Pixel 5 viewport. See §13.3.3. |
@@ -404,8 +404,8 @@ The engine is where the invariant is enforced, because that is where the destruc
 | `npx supabase projects list`, `supabase db push` | **NOT RUN — no credentials.** The CLI is not linked and has no access token (`SUPABASE_ACCESS_TOKEN` is unset and the token is a GitHub secret, which cannot be read back). The remote state therefore stays API-verified (§13.1) and `db push` stays the owner's action. |
 | `workers/attachments: npx vitest run` | **PASS — 6 files, 137 tests** |
 | `workers/attachments: npx tsc --noEmit` | exit 0 |
-| `gradlew :composeApp:desktopTest --no-daemon --rerun` | **PASS — 101 suites, 768 tests, 0 failures, 0 errors**, re-executed after the contract fixture and migration changes so the contract tests really ran (778 by the end of the pass, once FU-8's four key-injection tests landed) |
-| `gradlew :composeApp:desktopTest :composeApp:testDebugUnitTest :androidApp:testDebugUnitTest :composeApp:compileDebugAndroidTestSources :androidApp:compileDebugAndroidTestSources --no-daemon --rerun-tasks` | **PASS — 175 suites, 1421 tests, 0 failures, 0 errors** (desktop 103/778, composeApp unit 70/617, androidApp unit 2/26), instrumented sources compile, with `-Djava.io.tmpdir` shortened; see §13.3.1 |
+| `gradlew :composeApp:desktopTest --no-daemon --rerun` | **PASS — 101 suites, 768 tests, 0 failures, 0 errors**, re-executed after the contract fixture and migration changes so the contract tests really ran (782 by the end of the pass, once FU-8's key-injection tests and the `MainDialogs` dialog tests landed) |
+| `gradlew :composeApp:desktopTest :composeApp:testDebugUnitTest :androidApp:testDebugUnitTest :composeApp:compileDebugAndroidTestSources :androidApp:compileDebugAndroidTestSources --no-daemon --rerun-tasks` | **PASS — 176 suites, 1425 tests, 0 failures, 0 errors** (desktop 104/782, composeApp unit 70/617, androidApp unit 2/26), instrumented sources compile, with `-Djava.io.tmpdir` shortened; see §13.3.1 |
 | `gradlew :composeApp:connectedDebugAndroidTest` on a **real Pixel 7 (Android 16) over wireless ADB** | **5 tests, 0 failures — but the task still failed**, on a non-zero device instrumentation exit code. See §13.3.2. |
 | `node scripts/ops/unreferenced-kotlin.mjs` | **PASS** — 0 unreferenced declarations (§13.4) |
 
@@ -435,7 +435,6 @@ The Android and JVM suites were run in full, not skipped. Two environment proble
 So every Kotlin suite that this machine can run was run, and is green. What remains unverified on a device is listed in §13.4.
 
 #### FU-8, verified by pressing the keys
-
 `NoteCard` handles `Key.Spacebar` on key-**up** on the focused card and runs the same callback the long press runs, so mouse, touch and keyboard cannot drift apart and a key repeat cannot toggle selection back and forth. It is dispatched on the card rather than at screen level, because the screen's handler already owns Ctrl-key shortcuts, Delete and Escape and does not see a focused card's Space.
 
 `NoteCardKeyboardSelectionTest` exercises it the way a user would, by focusing the card and injecting the key: Space starts a selection, Space on an already-selected card still answers (so a selection can be undone from the keyboard, not only added to), Enter still opens the note instead of selecting it, and a click still opens it. **Both Space cases fail with the binding removed and the Enter and click cases pass either way** — checked, not assumed, so the tests are evidence rather than decoration. That is a stronger position than the previous pass, which could only read the modifier.
@@ -491,6 +490,14 @@ adb shell am instrument -w -e class com.aus.notelikeus.data.local.PlaintextDatab
 So the tests pass, the device agrees, and the non-zero code belongs to the Gradle plugin's own orchestration. `:androidApp:connectedDebugAndroidTest` — run afterwards on the same device — fails earlier and more bluntly, and explains the family this belongs to: it could not install its debug APK at all over a differently-signed `com.aus.notelikeus` (`INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match`), and its teardown could not uninstall `com.aus.notelikeus.test` (`DELETE_FAILED_INTERNAL_ERROR`). CI runs the identical command on API 30 and 36 emulators, which are clean, and passes.
 
 **The instrumented suite is therefore not claimed green through Gradle.** The tests passed on the device; the task did not report success; the cause is the device's package state, not the product or the repository, and the same device-run hazard is called out at the top of this section.
+
+#### A label bug in this pass's own Compose work, found by writing the test
+
+`MainDialogsCloudWipeTest` was written to close the last source-only claim about the new dialog, and it found a defect in it immediately: the button read `Upload this device's notes` **with a visible backslash**.
+
+The cause: the three strings this pass added to `composeResources/values/strings.xml` were the only ones in the file written with an Android-style `\'`, and this Compose resource loader does not unescape it. The file's other eleven apostrophes are typographic (`’`, U+2019) and need no escaping at all — the repo's convention was there to copy and this pass did not. Both affected labels now use `’`, and the test keeps a guard that fails if any user-facing string in the dialog contains a backslash.
+
+Worth recording because of what it says about the previous pass's evidence: this shipped nowhere (the branch is unmerged) but it would have reached every Android and Windows user of the wipe notice, and no amount of source reading had noticed it — the fix was only visible by asserting the rendered text. That is the same reason FU-8 needed key injection rather than a modifier to look at.
 
 #### 13.3.3 Playwright, finally run
 
@@ -580,7 +587,7 @@ What remains is not a defect but a support decision: the legacy ESP **read** pat
 - **TalkBack and Narrator.** The accessibility *tree* was inspected on the device and every actionable control is named (§13.3.5), but spoken traversal — order, phrasing — needs a person with a screen reader on, on both Android and Windows.
 - **Keyboard navigation of the Compose UI.** FU-8's modifier is verified by key injection, but the on-device attempt was inconclusive (§13.3.4) and nobody has walked the running app by keyboard on Windows either.
 - **Performance beyond the two numbers in §13.3.5.** Cold start and post-launch memory are now measured, on a debug build. A library of thousands of notes, recomposition counts, sync latency and Worker duration are all still unmeasured, and no number is claimed for them.
-- **The new cloud-wipe dialog** in `MainDialogs` has compile-plus-reachability behind it and nothing else: it was not opened on the device.
+- **The new cloud-wipe dialog** in `MainDialogs` is now covered by `MainDialogsCloudWipeTest` — four Compose tests that press its button and assert its label, its explanation, its callback and the absence of an escape leak (§13.3.2) — but the rest of the Compose UI is still only checked as far as other tests reach.
 - **Cloud paths end to end.** The wipe protocol has no browser-level test (the e2e harness has no Worker and no second device), so its verification stays at pgTAP and unit level.
 - **Anything from §13.1.** The deployments, the `#317` merge and the client releases are all still outstanding and need the owner.
 
