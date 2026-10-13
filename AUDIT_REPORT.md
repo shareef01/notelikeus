@@ -357,6 +357,7 @@ Method | Source reading, `supabase db reset` + `supabase test db` against a loca
 | FU-8 | P3 | Multi-select starts only on long-press; `combinedClickable` binds Enter to `onClick` and has no Space binding, so a keyboard user cannot toggle selection. | **Fixed and verified** — key-injection test; the two Space cases fail without the binding |
 | FU-4 | P3 | `begin_sync_mutation()` is REST-callable by `authenticated`. | **Fixed** — helpers moved to `notelikeus_internal`, exposure pinned by a test |
 | FU-5 | P3 | `EncryptedSharedPreferences`/`MasterKey` are deprecated and hold the database passphrase. | **Already implemented — corrected**, see below |
+| **F-14** (new) | **P2** | `public.restore_note` accepts `p_base_revision` and never reads it, so a restore is the one mutation with no optimistic-concurrency fence: it deletes the tombstone and unconditionally upserts. A device that was offline while another device edited the note can restore its older copy over the newer one. | **Not changed** — needs a decision, see below |
 
 #### F-13 — the wipe protocol, as implemented
 
@@ -397,6 +398,10 @@ The engine is where the invariant is enforced, because that is where the destruc
 | `web: npm run test:e2e` (Playwright, against local Supabase) | **PASS — 171 passed, 1 skipped, 0 failed, 8.3 min** across `chromium` and a Pixel 5 viewport. See §13.3.3. |
 | `npm run pages:verify` | **PASS — "Cloudflare Pages artifacts verified in web/dist", "Cloudflare Pages security headers verified".** Builds the bundle and checks the artifact's shape and headers, so the CSP and redirect claims are verified against what the deploy would ship rather than against the source that generates it. |
 | `node --test scripts/ops/attachments-worker-deploy.test.mjs` / `write-kotlin-staging-properties.test.mjs` | **PASS — 7 pass, 0 fail** / **PASS — 0 fail** (CI-parity checks, run locally here) |
+| `npx supabase db lint --local --level warning --fail-on error` | **PASS — exit 0, zero errors.** Three advisory warnings only: two in `public.restore_note` (see F-14) and one in the pgTAP helper `tests.authenticate_as`. It lints `notelikeus_internal` and `public` clean, which independently type-checks the 1269-line generated FU-4 migration and the wipe-generation migration — analysis no test in this repository performs. |
+| `npx supabase db diff --local --schema public` and `--schema notelikeus_internal` | **PASS — "No schema changes found"** for both. `db diff` replays every migration into a shadow database and compares, so this says the committed migrations *determine* the schema: nothing was created outside them, and `20261014000000` is complete rather than merely accepted. |
+| `npx supabase migration list --local` | **PASS** — all 34 migrations applied, including `20261012000000`, `20261012010000`, `20261013000000`, `20261014000000`. |
+| `npx supabase projects list`, `supabase db push` | **NOT RUN — no credentials.** The CLI is not linked and has no access token (`SUPABASE_ACCESS_TOKEN` is unset and the token is a GitHub secret, which cannot be read back). The remote state therefore stays API-verified (§13.1) and `db push` stays the owner's action. |
 | `workers/attachments: npx vitest run` | **PASS — 6 files, 137 tests** |
 | `workers/attachments: npx tsc --noEmit` | exit 0 |
 | `gradlew :composeApp:desktopTest --no-daemon --rerun` | **PASS — 101 suites, 768 tests, 0 failures, 0 errors**, re-executed after the contract fixture and migration changes so the contract tests really ran (778 by the end of the pass, once FU-8's four key-injection tests landed) |
@@ -486,6 +491,20 @@ That closes a gap this audit has carried since its first pass, and it covers gro
 
 It does **not** exercise the cloud-wipe paths — those need the Attachments Worker and a second device, which the browser harness does not have. The wipe protocol's verification therefore stays where §13.3 put it: pgTAP on the server, and unit-level on the clients.
 
+#### F-14 — a restore ignores the revision it was given
+
+Found with `npx supabase db lint`, which this pass ran for the first time; it is the only tool in the project that inspects plpgsql bodies rather than behaviour.
+
+`public.restore_note` takes `p_base_revision` and **never reads it**. In the final body the parameter appears once, in the signature; the body locks the tombstone and the note with `FOR UPDATE`, branches on `FOUND`, and then unconditionally `UPDATE`s or `INSERT`s. Every other mutation (`apply_note_change`, `apply_note_delete`) compares `p_base_revision` with the stored revision and answers `conflict` when they disagree; restore is the exception, so it is un-fenced optimistic concurrency in the one direction that writes content:
+
+- Device A edits a note, syncs, then goes offline.
+- Device B edits the same note and syncs; the cloud holds B's newer version.
+- On A the user undoes a delete (or a queued restore marker replays) and A's restore runs — B's version is overwritten with A's older copy, with no conflict and nothing reported.
+
+The trigger is narrow: it needs a restore marker and a newer edit elsewhere. It is not the F-01 defect (that was the argument *name* making the RPC unresolvable) and it is not fixed by F-13 (the wipe generation fences wiped accounts, not stale edits on a live one) — the two are orthogonal.
+
+Why it is not changed here: making restore reject a stale revision changes what an undo does when two devices disagree, which is a product decision — either "a restore is a deliberate user action that wins" (then say so, and document that the parameter is advisory) or "a restore is fenced like any other write" (then it needs a conflict path in both clients and the DEL-6 tests revisited). Both are defensible; neither is a mechanical fix, and picking one silently in an audit would be exactly the kind of substitution this report is meant to avoid. The lint's other advisory — `v_existing` assigned and never read — is benign: the `SELECT ... FOR UPDATE` is load-bearing for the row lock and for `FOUND`, not for the variable.
+
 #### FU-5 was already fixed, and the finding was stale
 
 The second pass recorded FU-5 as "`DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` store their secrets in `EncryptedSharedPreferences`/`MasterKey`… they work today" and left the replacement as scheduled work. That is no longer true of the code, and this pass verified it rather than inheriting the claim:
@@ -509,5 +528,6 @@ What remains is not a defect but a support decision: the legacy ESP **read** pat
 |---|---|
 | P1 | `supabase.yml` (`20261012000000`, `20261012010000`, `20261013000000`, `20261014000000`) and `attachments-worker.yml` are still undeployed — verified, not inferred. The F-08, F-09 and F-13 fixes exist only in source. |
 | P1 | Android and Windows releases still do not carry F-01, F-07, F-10, FU-2 or F-13/F-13b. |
+| P2 | **F-14**: `restore_note` ignores `p_base_revision`, so an offline device's undo can overwrite a newer edit made elsewhere. Narrow trigger, no conflict surfaced, and it needs a product decision rather than a patch. |
 | P2 | The Kotlin block is only lifted through the new button; until it ships, a wiped account's Android or Windows device reports the wipe and uploads nothing, which is safe but requires the user to reach that dialog. |
 | P3 | The legacy `EncryptedSharedPreferences` read path in `DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` (FU-5's residual) — remove when the support window allows, not before. |
