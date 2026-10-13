@@ -398,6 +398,7 @@ The engine is where the invariant is enforced, because that is where the destruc
 | `workers/attachments: npx tsc --noEmit` | exit 0 |
 | `gradlew :composeApp:desktopTest --no-daemon --rerun` | **PASS — 101 suites, 768 tests, 0 failures, 0 errors**, re-executed after the contract fixture and migration changes so the contract tests really ran |
 | `gradlew :composeApp:desktopTest :composeApp:testDebugUnitTest :androidApp:testDebugUnitTest :composeApp:compileDebugAndroidTestSources :androidApp:compileDebugAndroidTestSources --no-daemon --rerun-tasks` | **PASS — 174 suites, 1417 tests, 0 failures, 0 errors** (desktop 102/774, composeApp unit 70/617, androidApp unit 2/26), instrumented sources compile, with `-Djava.io.tmpdir` shortened; see §13.3.1 |
+| `gradlew :composeApp:connectedDebugAndroidTest` on a **real Pixel 7 (Android 16) over wireless ADB** | **5 tests, 0 failures — but the task still failed**, on a non-zero device instrumentation exit code. See §13.3.2. |
 | `node scripts/ops/unreferenced-kotlin.mjs` | **PASS** — 0 unreferenced declarations (§13.4) |
 
 New assertions that matter most, in `notelikeus_account_wipe_generation.test.sql`:
@@ -444,10 +445,24 @@ Two new assertions pin the property so it cannot silently reopen: `notelikeus_in
 
 ### 13.4 What this pass did not do
 
-- **Device verification.** A Pixel 7 is reachable over wireless ADB from the development machine and was used to confirm the toolchain and the debug keystore, but no instrumented suite, screen-reader walkthrough, font-scaling or performance measurement was run in this pass. Nothing about device behaviour is claimed.
+- **Device coverage beyond instrumentation.** The instrumented suite (§13.3.2) ran on a real Pixel 7, but nothing else on a device did: no screen-reader walkthrough, no font-scaling check, no performance measurement, and the app was never opened by hand. Nothing about how it looks or reads is claimed.
 - **The Compose affordances are only source-verified.** `MainDialogs` and the strings compile and the reachability check passes, and FU-8's key binding compiles — but no one has looked at either in a running app.
 
-#### FU-5 was already fixed, and the finding was stale
+#### 13.3.2 Instrumented tests on a real device
+
+A Pixel 7 (Android 16, API 36) was reachable over wireless ADB, so the instrumented suite was run on it rather than left as "needs an emulator". `composeApp` has exactly one instrumented class, `PlaintextDatabaseMigratorTest`, and **all five of its tests ran and passed** on the device — the JUnit XML the run wrote records `tests="5" failures="0" errors="0"` against `device=192.168.2.223_35271`, the HTML report says 100%, and the device log shows each test finishing:
+
+- `aPlaintextDatabaseIsMigratedToEncryptedWithItsRowsIntact`
+- `aFailedExportKeepsThePlaintextDatabaseInPlace` — the test the first pass recorded as "compiles; needs a device"
+- `anUnopenableDatabaseIsQuarantinedRatherThanDeleted`
+- `aDatabaseThatOpensWithTheCurrentKeyIsLeftAlone`
+- `quarantiningLeavesANoticeForTheUser`
+
+That is **new evidence for F-10**: the quarantine-never-delete behaviour on a failed encryption export is now device-verified, not source-verified.
+
+The task itself, however, still reports failure: `:composeApp:connectedDebugAndroidTest` fails with "There were failing tests" while its own report shows none, because the Android Gradle Plugin decides from the device instrumentation's exit code and `build/outputs/androidTest-results/connected/debug/test-result-exit-code.txt` contains `1`. I could not attribute that code to the product: there is no crash in the logcat, every test finished, and the report is 100%. It was reproduced twice on the same device. CI's `instrumented (30)` and `instrumented (36)` jobs pass, so the anomaly is device- or OS-specific rather than a test failure.
+
+**The instrumented suite is therefore not claimed green end-to-end.** The tests passed; the runner did not report success; the difference is unexplained and worth one investigation on a device with `--info` before anyone changes the release gate on it.
 
 The second pass recorded FU-5 as "`DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` store their secrets in `EncryptedSharedPreferences`/`MasterKey`… they work today" and left the replacement as scheduled work. That is no longer true of the code, and this pass verified it rather than inheriting the claim:
 
