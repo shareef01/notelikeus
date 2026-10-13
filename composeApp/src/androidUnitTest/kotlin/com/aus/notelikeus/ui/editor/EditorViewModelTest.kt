@@ -333,4 +333,51 @@ class EditorViewModelTest {
         assertEquals("Line one\nLine two", viewModel.state.value.content)
         assertEquals(emptyList<com.aus.notelikeus.domain.model.ChecklistItem>(), viewModel.state.value.checklist)
     }
+
+    // ---- a remote change to the open note ----
+
+    private val openedNote = Note(
+        id = 1L, title = "Groceries", content = "milk", timestamp = 900L, color = 0, serverUpdatedAt = 1_000L,
+    )
+
+    @Test
+    fun `typing against a version another device replaced is saved as a conflicted copy`() = runTest {
+        val replaced = openedNote.copy(content = "milk, eggs (from phone)", timestamp = 1_900L, serverUpdatedAt = 2_000L)
+        coEvery { repository.getNoteById(1L) } returnsMany listOf(openedNote, replaced)
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(42L)
+        coEvery { repository.updateNote(any(), any()) } returns LocalCommitResult.Applied(Unit)
+        viewModel = createViewModel(SavedStateHandle(mapOf("noteId" to 1L)))
+        advanceUntilIdle()
+
+        viewModel.onContentValueChange(TextFieldValue("milk, bread (typed here)"))
+        viewModel.saveNoteAndAwait()
+
+        // The row keeps the other device's version; the draft lands beside it.
+        coVerify(exactly = 0) { repository.updateNote(any(), any()) }
+        coVerify(exactly = 1) {
+            repository.insertNoteWithResult(
+                match { it.id == null && it.content == "milk, bread (typed here)" && it.title == "Groceries (conflicted copy)" },
+                any(),
+            )
+        }
+        assertTrue(viewModel.state.value.conflictCopy)
+        assertEquals(42L, viewModel.state.value.id)
+    }
+
+    @Test
+    fun `this device's own upload echoing back is still a straight edit`() = runTest {
+        // The upload stamped the row with a newer server time; the words are the ones saved here.
+        val echoed = openedNote.copy(serverUpdatedAt = 2_000L)
+        coEvery { repository.getNoteById(1L) } returnsMany listOf(openedNote, echoed)
+        coEvery { repository.updateNote(any(), any()) } returns LocalCommitResult.Applied(Unit)
+        viewModel = createViewModel(SavedStateHandle(mapOf("noteId" to 1L)))
+        advanceUntilIdle()
+
+        viewModel.onContentValueChange(TextFieldValue("milk, more"))
+        viewModel.saveNoteAndAwait()
+
+        coVerify(exactly = 1) { repository.updateNote(match { it.id == 1L && it.content == "milk, more" }, any()) }
+        coVerify(exactly = 0) { repository.insertNoteWithResult(any(), any()) }
+        assertEquals(false, viewModel.state.value.conflictCopy)
+    }
 }
