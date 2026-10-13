@@ -5,6 +5,7 @@ import {
   resolveConflictedPush,
   settlePendingPush,
 } from '@/lib/local/notesLocalRepository';
+import { conflictedCopyOf } from '@/lib/notes/conflictResolution';
 import { notesUserContentEqual } from '@/lib/notes/noteEquality';
 import { loadRevisionState } from '@/lib/supabase/revisionStore';
 import { applyNoteChange, NoteConflictError } from '@/lib/supabase/supabaseSyncEngine';
@@ -183,23 +184,12 @@ async function keepBothVersions(
   result.upserted.push(copy);
 }
 
-/**
- * The local version as a new note. Attachments stay with the original: their cloud rows and
- * pending bytes are keyed to that note's id, and pointing a second note at them would break both.
- */
+/** The local version as a new note; see conflictResolution.ts for what the copy keeps. */
 function conflictedCopy(local: Note): Note {
   const maxLocalId = useNotesStore
     .getState()
     .notes.reduce((max, note) => Math.max(max, note.localId), local.localId);
-  const localId = nextLocalNoteIdAfter(maxLocalId);
-  return {
-    ...local,
-    id: String(localId),
-    localId,
-    title: local.title ? `${local.title} (conflicted copy)` : 'Conflicted copy',
-    serverUpdatedAt: null,
-    attachments: [],
-  };
+  return conflictedCopyOf(local, nextLocalNoteIdAfter(maxLocalId));
 }
 
 /** Shows the confirmed version, unless the UI already moved on to a newer local edit. */
