@@ -13,7 +13,7 @@ import java.security.SecureRandom
  * ([Dpapi.databaseKeyEntropy]), separate from the session token and attachment AES key.
  * Consumed when [DesktopSqliteFlags.useJdbcSqlite] is true (default on Windows).
  * Failure policy: a present key file that DPAPI cannot unwrap is preserved in place intact,
- * never silently replaced or moved aside ÔÇö minting a new key would orphan an encrypted DB,
+ * never silently replaced or moved aside — minting a new key would orphan an encrypted DB,
  * and moving it aside would cause a subsequent launch to mint a fresh key and quarantine the DB.
  * Inject [blobStore] so Linux CI can exercise persistence without Crypt32.
  */

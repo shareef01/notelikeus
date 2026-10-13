@@ -7,7 +7,7 @@ interface AuthState {
   user: AuthUser | null;
   isReady: boolean;
   /**
-   * Try-out mode: the app runs without an account. Guest notes are not throwaway ÔÇö they persist
+   * Try-out mode: the app runs without an account. Guest notes are not throwaway — they persist
    * in IndexedDB under their own owner namespace, so they survive a reload like any other note.
    */
   guestMode: boolean;
@@ -35,11 +35,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   enterGuestMode: () => {
     clearGuestAdoptionIntent();
     // Guest IndexedDB is a separate owner namespace, but labels and tombstones
-    // lived in un-namespaced localStorage ÔÇö a prior account's labels would otherwise
+    // lived in un-namespaced localStorage — a prior account's labels would otherwise
     // appear in guest filters, and in-memory notes would flash until guest bootstrap.
     clearLocalUserData();
     // Guest is a different namespace, so a signed-in account's pending deletions must not follow
-    // the user into it ÔÇö and guest deletes never record tombstones to begin with.
+    // the user into it — and guest deletes never record tombstones to begin with.
     clearPendingDeletions();
     set({ guestMode: true });
   },

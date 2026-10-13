@@ -12,7 +12,7 @@
   /**
    * Optional Cloudflare rate-limiting binding. Cloudflare counts these at the edge rather than
    * in isolate memory, so the limit holds across every isolate the Worker runs in. Absent
-   * binding means no Worker-level throttling at all ÔÇö see `wrangler.toml.example`.
+   * binding means no Worker-level throttling at all — see `wrangler.toml.example`.
    */
   ATTACHMENT_RATE_LIMITER?: RateLimiterBinding;
 }
