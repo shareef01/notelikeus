@@ -395,6 +395,8 @@ The engine is where the invariant is enforced, because that is where the destruc
 | `web: npx tsc -b --noEmit` | exit 0 |
 | `web: npx oxlint` | 0 errors, 83 warnings (pre-existing class: `no-array-sort`, `consistent-function-scoping`) |
 | `web: npm run test:e2e` (Playwright, against local Supabase) | **PASS — 171 passed, 1 skipped, 0 failed, 8.3 min** across `chromium` and a Pixel 5 viewport. See §13.3.3. |
+| `npm run pages:verify` | **PASS — "Cloudflare Pages artifacts verified in web/dist", "Cloudflare Pages security headers verified".** Builds the bundle and checks the artifact's shape and headers, so the CSP and redirect claims are verified against what the deploy would ship rather than against the source that generates it. |
+| `node --test scripts/ops/attachments-worker-deploy.test.mjs` / `write-kotlin-staging-properties.test.mjs` | **PASS — 7 pass, 0 fail** / **PASS — 0 fail** (CI-parity checks, run locally here) |
 | `workers/attachments: npx vitest run` | **PASS — 6 files, 137 tests** |
 | `workers/attachments: npx tsc --noEmit` | exit 0 |
 | `gradlew :composeApp:desktopTest --no-daemon --rerun` | **PASS — 101 suites, 768 tests, 0 failures, 0 errors**, re-executed after the contract fixture and migration changes so the contract tests really ran (778 by the end of the pass, once FU-8's four key-injection tests landed) |
