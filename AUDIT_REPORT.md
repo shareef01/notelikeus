@@ -394,6 +394,7 @@ The engine is where the invariant is enforced, because that is where the destruc
 | `web: npx vitest run` | **PASS — 115 files, 842 tests** (113 files / 833 tests at the branch point: 7 new in `wipeGenerationProtocol.test.ts`, 2 in `supabaseExposure.test.ts`) |
 | `web: npx tsc -b --noEmit` | exit 0 |
 | `web: npx oxlint` | 0 errors, 83 warnings (pre-existing class: `no-array-sort`, `consistent-function-scoping`) |
+| `web: npm run test:e2e` (Playwright, against local Supabase) | **PASS — 171 passed, 1 skipped, 0 failed, 8.3 min** across `chromium` and a Pixel 5 viewport. See §13.3.3. |
 | `workers/attachments: npx vitest run` | **PASS — 6 files, 137 tests** |
 | `workers/attachments: npx tsc --noEmit` | exit 0 |
 | `gradlew :composeApp:desktopTest --no-daemon --rerun` | **PASS — 101 suites, 768 tests, 0 failures, 0 errors**, re-executed after the contract fixture and migration changes so the contract tests really ran (778 by the end of the pass, once FU-8's four key-injection tests landed) |
@@ -447,11 +448,6 @@ Two things surfaced while doing it, both handled:
 
 Two new assertions pin the property so it cannot silently reopen: `notelikeus_internal_guard_schema.test.sql` (15 assertions — the helpers are absent from `public`, present in the new schema, executable by exactly the right roles, and a direct write is still refused while the guard is closed) and `web/src/lib/contract/supabaseExposure.test.ts` (the `[api] schemas` list is exactly `public` and `graphql_public`, and the last definition of each helper is in the internal schema).
 
-### 13.4 What this pass did not do
-
-- **Device coverage beyond instrumentation.** The instrumented suite (§13.3.2) ran on a real Pixel 7, but nothing else on a device did: no screen-reader walkthrough, no font-scaling check, no performance measurement, and the app was never opened by hand. FU-8's key binding is verified by key injection (§13.2), not by a keyboard walkthrough of the running app, and the new cloud-wipe dialog has only compile-plus-reachability behind it.
-- **The Compose affordances are only source-verified.** `MainDialogs` and the strings compile and the reachability check passes, and FU-8's key binding compiles — but no one has looked at either in a running app.
-
 #### 13.3.2 Instrumented tests on a real device
 
 A Pixel 7 (Android 16, API 36) was reachable over wireless ADB, so the instrumented suite was run on it rather than left as "needs an emulator". `composeApp` has exactly one instrumented class, `PlaintextDatabaseMigratorTest`, and **all five of its tests ran and passed** on the device — the JUnit XML the run wrote records `tests="5" failures="0" errors="0"` against `device=192.168.2.223_35271`, the HTML report says 100%, and the device log shows each test finishing:
@@ -478,6 +474,18 @@ So the tests pass, the device agrees, and the non-zero code belongs to the Gradl
 
 **The instrumented suite is therefore not claimed green through Gradle.** The tests passed on the device; the task did not report success; the difference is explained above rather than left open.
 
+#### 13.3.3 Playwright, finally run
+
+The first pass listed the end-to-end suite as **not run** — "needs local Supabase and a browser build". Both became available in this pass, so it was run rather than left as a caveat: `npm run test:e2e` asserts the Supabase URL is loopback, builds for the e2e mode, serves it, and drives it with Playwright.
+
+**171 passed, 1 skipped, 0 failed** in 8.3 minutes, across `chromium` and a Pixel 5 viewport. `test-results/.last-run.json` records `"status": "passed"` with an empty `failedTests`. The single skip is project-conditional and deliberate: the layout controls only render on tablet width and up, so the mobile project skips that one assertion rather than passing it vacuously.
+
+That closes a gap this audit has carried since its first pass, and it covers ground no unit test reaches: axe accessibility checks, dialog focus containment and start-focus, reflow with no sideways scrolling at 320/360/390/768/1024/1440px, swatch contrast in the light, dark and amoled themes, the 24px and 44px touch-target floors, `Ctrl+K` reaching the search field as the hint claims, and the note, label, reminder, filter, sort, search, save-failure, image-ingestion and backup journeys. It also exercises account isolation directly: `switching accounts does not leak the previous account notes` runs and passes, which is adjacent to FU-1 and FU-6.
+
+It does **not** exercise the cloud-wipe paths — those need the Attachments Worker and a second device, which the browser harness does not have. The wipe protocol's verification therefore stays where §13.3 put it: pgTAP on the server, and unit-level on the clients.
+
+#### FU-5 was already fixed, and the finding was stale
+
 The second pass recorded FU-5 as "`DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` store their secrets in `EncryptedSharedPreferences`/`MasterKey`… they work today" and left the replacement as scheduled work. That is no longer true of the code, and this pass verified it rather than inheriting the claim:
 
 - **`DatabaseKeyManager`** stores the SQLCipher passphrase as an AES-GCM file under `filesDir`, with the key in AndroidKeyStore — the replacement FU-5 asked for. The legacy ESP is read **once**, copied in, and only then cleared; a file whose key can no longer decrypt it is renamed aside (`unrecoverable-<timestamp>`), never deleted; the payload is published by rename so a crash cannot leave a truncated file that reads back as corrupt and costs the database; a Keystore write failure falls back to the legacy ESP so the database still opens. The alias is deleted in exactly one case — an encrypt failure, where it protects nothing — and the decrypt path deliberately keeps it.
@@ -486,6 +494,12 @@ The second pass recorded FU-5 as "`DatabaseKeyManager` and `AndroidSupabaseSessi
 - The behaviour is executed, not merely read: `DatabaseKeyManagerRecoveryTest` covers a key that cannot encrypt being replaced with the passphrase re-persisted under the new one, a healthy key never being deleted, and an undeletable key not being retried into a loop; `DatabaseKeyManagerTest` covers the codec (fresh IV per encryption, tamper and magic rejection) and the swap's failure branches; `AndroidSupabaseSessionPersistenceTest` covers the plaintext-fallback migration and the undecryptable-file case. All of them ran green in this pass's `:composeApp:testDebugUnitTest` sweep.
 
 What remains is not a defect but a support decision: the legacy ESP **read** path has to stay until the project is willing to drop installs old enough to still hold secrets there. It is the only remaining `EncryptedSharedPreferences` reference in the Android sources, it is annotated as legacy, and removing it early would strand exactly the users FU-5 set out to protect.
+
+### 13.4 What this pass did not do
+
+- **The Compose UI on a device.** FU-8's key binding is verified by key injection, and the browser UI by Playwright, but nobody has walked the Compose screens by hand or with a keyboard: no screen-reader traversal, no font-scaling check, no 200% scaling check, no performance measurement, and the new cloud-wipe dialog in `MainDialogs` has only compile-plus-reachability behind it.
+- **Cloud paths in a browser.** The wipe protocol has no end-to-end test: the e2e harness has no Attachments Worker and no second device.
+- **Anything from §13.1.** The deployments, the `#317` merge and the client releases are all still outstanding and need the owner.
 
 ### 13.5 Remaining risks
 
