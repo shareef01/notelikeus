@@ -531,6 +531,39 @@ Two things this did **not** establish, and they stay on the not-run list:
 
 The device was left as the owner asked: the debug build installed with its data cleared (`pm clear`), `font_scale` and display density restored to their original values, and the screenshots this pass took removed from `/sdcard`.
 
+#### 13.3.5 Cold start, memory, and the accessibility tree
+
+Three numbers this audit previously declined to guess at, measured on the Pixel 7 (Android 16) with the **debug** build, plus the first look at what a screen reader would actually be given.
+
+**Cold start** — `am force-stop`, then `am start -W`, three times:
+
+| Run | TotalTime |
+|---|---|
+| 1 | 1774 ms |
+| 2 | 1769 ms |
+| 3 | 1758 ms |
+
+**Memory after launch** — `dumpsys meminfo`: TOTAL PSS 174,100 KB (≈170 MB), TOTAL RSS ≈293 MB, Java heap 21.5 MB, native heap 9.5 MB.
+
+Both carry the same caveats, and they are not small: this is a debug build (no R8, no minification, extra instrumentation), on one device, with no release-build comparison and no baseline from before this pass. They are data points, not a regression check, and nothing here should be quoted as the app's production cost.
+
+**The accessibility tree** — `uiautomator dump` on the notes screen gives 44 nodes, and every `clickable="true"` container has its label inside its own subtree:
+
+| Container | Label announced |
+|---|---|
+| note card | the note title, plus its timestamp as a sibling node |
+| drawer | `Menu` |
+| search field | `Search your notes` |
+| profile | `Open settings` |
+| filter chip | `Filters` |
+| sort chip | `Manual (drag to reorder)` |
+| view toggle | `Change view mode` |
+| compose button | `Add note` |
+
+The editor's icon-only controls are all described too — `Bold`, `Italic`, `Link`, `List`, `Checklist`, `Add image`, `Back`, `Set reminder`, `Pin note`, `Archive note`, `More options` — and the save state is a labelled line (`Saved locally • 05:14`). This is stronger than the previous pass's source heuristic ("the 30 `contentDescription = null` icons sit beside text labels"): it is the tree TalkBack is handed, and it shows no actionable control without a name.
+
+What it still does not show is **spoken traversal** — the order a screen reader walks those nodes, and whether the card's merged description reads well out loud. That needs a person with TalkBack on, and it stays on the not-run list.
+
 #### FU-5 was already fixed, and the finding was stale
 
 The second pass recorded FU-5 as "`DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` store their secrets in `EncryptedSharedPreferences`/`MasterKey`… they work today" and left the replacement as scheduled work. That is no longer true of the code, and this pass verified it rather than inheriting the claim:
@@ -544,9 +577,9 @@ What remains is not a defect but a support decision: the legacy ESP **read** pat
 
 ### 13.4 What this pass did not do
 
-- **TalkBack and Narrator.** Not exercised on any platform. The instrumented and ADB work in §13.3.4 cannot assert screen-reader traversal.
+- **TalkBack and Narrator.** The accessibility *tree* was inspected on the device and every actionable control is named (§13.3.5), but spoken traversal — order, phrasing — needs a person with a screen reader on, on both Android and Windows.
 - **Keyboard navigation of the Compose UI.** FU-8's modifier is verified by key injection, but the on-device attempt was inconclusive (§13.3.4) and nobody has walked the running app by keyboard on Windows either.
-- **Performance.** Nothing was profiled: cold start, large libraries, recomposition counts and Worker duration are all unmeasured, and no number is claimed for any of them.
+- **Performance beyond the two numbers in §13.3.5.** Cold start and post-launch memory are now measured, on a debug build. A library of thousands of notes, recomposition counts, sync latency and Worker duration are all still unmeasured, and no number is claimed for them.
 - **The new cloud-wipe dialog** in `MainDialogs` has compile-plus-reachability behind it and nothing else: it was not opened on the device.
 - **Cloud paths end to end.** The wipe protocol has no browser-level test (the e2e harness has no Worker and no second device), so its verification stays at pgTAP and unit level.
 - **Anything from §13.1.** The deployments, the `#317` merge and the client releases are all still outstanding and need the owner.
