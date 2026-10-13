@@ -1,0 +1,83 @@
+{
+  "description": "What an inbound cloud version may do to the local row on Android/Windows, asserted against Kotlin ConflictResolution.decide (InboundResolutionContractTest). The web client reaches the same end states differently - inbound applies skip rows with a pending-push marker and conflicts resolve at push time (pendingPushes.ts) - and pins them in offlineEditDurability.test.ts. 'synced' is the baseline: the client timestamp of the version last known identical to the cloud's (null = no baseline recorded). Both-unstamped pairs are deliberately absent: the clients fall back to different legacy clock rules there.",
+  "cases": [
+    {
+      "name": "a note new to this device is accepted",
+      "local": null, "synced": null,
+      "cloud": { "title": "Groceries", "content": "milk", "timestamp": 900, "serverUpdatedAt": 1000 },
+      "expected": "accept"
+    },
+    {
+      "name": "an unedited stale row takes the newer cloud version",
+      "local": { "title": "Groceries", "content": "milk", "timestamp": 900, "serverUpdatedAt": 1000 }, "synced": 900,
+      "cloud": { "title": "Groceries", "content": "milk, eggs", "timestamp": 1900, "serverUpdatedAt": 2000 },
+      "expected": "accept"
+    },
+    {
+      "name": "an edit made against an older revision is kept as a conflicted copy",
+      "local": { "title": "Groceries", "content": "milk, bread", "timestamp": 5000, "serverUpdatedAt": 1000 }, "synced": 900,
+      "cloud": { "title": "Groceries", "content": "milk, eggs", "timestamp": 1900, "serverUpdatedAt": 2000 },
+      "expected": "fork"
+    },
+    {
+      "name": "an edit the cloud already holds word for word is not duplicated",
+      "local": { "title": "Groceries", "content": "milk, bread", "timestamp": 5000, "serverUpdatedAt": 1000 }, "synced": 900,
+      "cloud": { "title": "Groceries", "content": "milk, bread", "timestamp": 5000, "serverUpdatedAt": 2000 },
+      "expected": "accept"
+    },
+    {
+      "name": "a pending edit on the revision the cloud still holds is kept and pushed",
+      "local": { "title": "Groceries", "content": "milk, bread", "timestamp": 5000, "serverUpdatedAt": 1000 }, "synced": 900,
+      "cloud": { "title": "Groceries", "content": "milk", "timestamp": 900, "serverUpdatedAt": 1000 },
+      "expected": "keep-local"
+    },
+    {
+      "name": "a pending edit survives a local clock running behind",
+      "local": { "title": "Groceries", "content": "milk, bread", "timestamp": 800, "serverUpdatedAt": 1000 }, "synced": 900,
+      "cloud": { "title": "Groceries", "content": "milk", "timestamp": 900, "serverUpdatedAt": 1000 },
+      "expected": "keep-local"
+    },
+    {
+      "name": "a pending metadata-only edit (same words) on the current revision is kept",
+      "local": { "title": "Groceries", "content": "milk", "timestamp": 5000, "serverUpdatedAt": 1000 }, "synced": 900,
+      "cloud": { "title": "Groceries", "content": "milk", "timestamp": 900, "serverUpdatedAt": 1000 },
+      "expected": "keep-local"
+    },
+    {
+      "name": "a cloud copy older than the confirmed local row never wins",
+      "local": { "title": "Groceries", "content": "milk, eggs", "timestamp": 900, "serverUpdatedAt": 3000 }, "synced": 900,
+      "cloud": { "title": "Groceries", "content": "milk", "timestamp": 800, "serverUpdatedAt": 2000 },
+      "expected": "keep-local"
+    },
+    {
+      "name": "without a baseline, a row not edited after its stamp takes the cloud version",
+      "local": { "title": "Groceries", "content": "milk", "timestamp": 900, "serverUpdatedAt": 1000 }, "synced": null,
+      "cloud": { "title": "Groceries", "content": "milk, eggs", "timestamp": 1900, "serverUpdatedAt": 2000 },
+      "expected": "accept"
+    },
+    {
+      "name": "without a baseline, a row edited after its stamp is kept as a copy",
+      "local": { "title": "Groceries", "content": "milk, bread", "timestamp": 5000, "serverUpdatedAt": 1000 }, "synced": null,
+      "cloud": { "title": "Groceries", "content": "milk, eggs", "timestamp": 1900, "serverUpdatedAt": 2000 },
+      "expected": "fork"
+    },
+    {
+      "name": "a never-stamped row without a baseline yields to a confirmed cloud version",
+      "local": { "title": "Groceries", "content": "milk, bread", "timestamp": 5000, "serverUpdatedAt": null }, "synced": null,
+      "cloud": { "title": "Groceries", "content": "milk, eggs", "timestamp": 1900, "serverUpdatedAt": 2000 },
+      "expected": "accept"
+    },
+    {
+      "name": "a note deleted elsewhere and untouched here is deleted",
+      "local": { "title": "Groceries", "content": "milk", "timestamp": 900, "serverUpdatedAt": 1000 }, "synced": 900,
+      "cloud": null,
+      "expected": "delete"
+    },
+    {
+      "name": "a note deleted elsewhere but edited here keeps the words as a copy",
+      "local": { "title": "Groceries", "content": "milk, bread", "timestamp": 5000, "serverUpdatedAt": 1000 }, "synced": 900,
+      "cloud": null,
+      "expected": "fork-then-delete"
+    }
+  ]
+}
