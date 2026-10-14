@@ -142,7 +142,7 @@ sequenceDiagram
   W->>R: stream ≤ limit
   W->>P: finalize (provisional row)
   C->>P: apply_note_change(…, attachment_ids) → commit rows
-  Note over C,P: web uses the 14-arg form (AU-17)
+  Note over C,P: every client: v2 upload, 15-arg commit naming its r2 ids (AU-17)
   C->>W: DELETE → P: claim → R: delete → P: terminal
   P->>P: orphan sweep for uncommitted rows
 ```
