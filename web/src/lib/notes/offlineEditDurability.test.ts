@@ -46,6 +46,7 @@ import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNote
 import { flushPendingPushes } from '@/lib/supabase/pendingPushes';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
+import { useSyncStatusStore } from '@/store/syncStatusStore';
 import { useToastStore } from '@/store/toastStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { createEmptyNote } from '@/types/note';
@@ -101,6 +102,8 @@ function anotherDeviceEdits(title: string): Note {
   const row = cloud.get('1')!;
   return cloudWrite({ ...row.note, title, timestamp: row.note.timestamp + 1 });
 }
+
+const status = () => useSyncStatusStore.getState();
 
 describe('F-06 offline edit durability', () => {
   beforeEach(async () => {
@@ -404,5 +407,47 @@ describe('F-06 offline edit durability', () => {
     expect(cloud.size).toBe(1);
     expect(cloud.get('1')!.note.title).toBe('second');
     expect(titlesById(await listNotes(USER))).toEqual({ '1': 'second' });
+  });
+
+  // DESIGN_SYSTEM §5.1: "Synced" only once the server confirmed the write. The status line and
+  // banner read this store, so it has to follow the queue and the flush, not connectivity.
+  describe('sync status shown to the user', () => {
+    it('marks an edit that could not be pushed as waiting, and the push as failed', async () => {
+      await editWhileOffline();
+
+      expect(status().pendingByOwner[USER]).toEqual(['1']);
+      expect(status().failedByOwner[USER]).toBe(true);
+      expect(status().flushingByOwner[USER]).toBe(false);
+    });
+
+    it('clears both once a later push lands', async () => {
+      await editWhileOffline();
+
+      await flushPendingPushes(USER);
+
+      expect(status().pendingByOwner[USER]).toEqual([]);
+      expect(status().failedByOwner[USER]).toBe(false);
+    });
+
+    it('reports a push in flight as syncing, with the edit still unconfirmed', async () => {
+      await editWhileOffline();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const realApply = applyNoteChange.getMockImplementation()!;
+      applyNoteChange.mockImplementationOnce(async (...args: unknown[]) => {
+        await gate;
+        return realApply(...(args as Parameters<typeof realApply>));
+      });
+
+      const flushing = flushPendingPushes(USER);
+      await vi.waitFor(() => expect(applyNoteChange).toHaveBeenCalledTimes(2));
+      expect(status().flushingByOwner[USER]).toBe(true);
+      expect(status().pendingByOwner[USER]).toEqual(['1']);
+
+      release();
+      await flushing;
+      expect(status().flushingByOwner[USER]).toBe(false);
+      expect(status().pendingByOwner[USER]).toEqual([]);
+    });
   });
 });

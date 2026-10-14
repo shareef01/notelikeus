@@ -30,4 +30,10 @@ export interface RemoteNotesDataSource {
     localNotes: Note[],
     previouslyKnownCloudIds: Set<string>,
   ): Promise<{ merged: Note[]; remoteIds: string[] }>;
+
+  /**
+   * Pushes the local edits the cloud has not confirmed, and nothing else: no snapshot. For the
+   * moments a full sync is throttled but an edit made offline should not have to wait.
+   */
+  pushPendingEdits?(userId: string): Promise<void>;
 }
