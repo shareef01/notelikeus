@@ -17,6 +17,7 @@ import { notesUserContentEqual } from '@/lib/notes/noteEquality';
 import { loadRevisionState } from '@/lib/supabase/revisionStore';
 import { applyNoteChange, NoteConflictError } from '@/lib/supabase/supabaseSyncEngine';
 import { useNotesStore } from '@/store/notesStore';
+import { useSyncStatusStore } from '@/store/syncStatusStore';
 import { useToastStore } from '@/store/toastStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { nextLocalNoteIdAfter, type Note } from '@/types/note';
@@ -64,22 +65,36 @@ async function runFlush(
   const isActive = () => options?.isActive?.() !== false;
   const result = emptyResult();
   const attempted = new Set<string>();
-  // A conflict adds a copy that is itself pending, so a second pass pushes it straight away.
-  for (let pass = 0; pass < 2; pass++) {
-    const ids = Object.keys(await listPendingPushes(userId)).filter((id) => !attempted.has(id));
-    for (const noteId of ids) {
-      if (!isActive()) return result;
-      attempted.add(noteId);
-      try {
-        await flushOne(userId, noteId, result);
-        reportedRejections.delete(rejectionKey(userId, noteId));
-      } catch (error) {
-        console.warn(`[Notelikeus] Note ${noteId} is saved locally; its upload will be retried:`, error);
-        if (isPermanentRejection(error)) reportRejection(userId, noteId, error);
+  const status = useSyncStatusStore.getState();
+  let failed = false;
+  status.setFlushing(userId, true);
+  try {
+    // A conflict adds a copy that is itself pending, so a second pass pushes it straight away.
+    for (let pass = 0; pass < 2; pass++) {
+      const ids = Object.keys(await listPendingPushes(userId)).filter((id) => !attempted.has(id));
+      for (const noteId of ids) {
+        // Cut short, so this flush says nothing about whether the rest would have gone through.
+        if (!isActive()) return result;
+        attempted.add(noteId);
+        try {
+          await flushOne(userId, noteId, result);
+          reportedRejections.delete(rejectionKey(userId, noteId));
+        } catch (error) {
+          failed = true;
+          console.warn(`[Notelikeus] Note ${noteId} is saved locally; its upload will be retried:`, error);
+          if (isPermanentRejection(error)) reportRejection(userId, noteId, error);
+        }
       }
     }
+    status.setFailed(userId, failed);
+    return result;
+  } catch (error) {
+    // The queue itself could not be read: nothing was pushed, so nothing can be called synced.
+    status.setFailed(userId, true);
+    throw error;
+  } finally {
+    status.setFlushing(userId, false);
   }
-  return result;
 }
 
 /** Notes already reported as refused, so a flush that fails the same way again stays quiet. */

@@ -197,11 +197,13 @@ function trackRemoteIds(userId: string, ids: string[]) {
 async function reconcileNow(userId: string): Promise<void> {
   const now = Date.now();
   if (reconcileInFlight) return reconcileInFlight;
-  if (now - lastReconcileStartedAt < RECONCILE_MIN_INTERVAL_MS) {
-    return Promise.resolve();
-  }
-  if (now - lastSnapshotAppliedAt < SNAPSHOT_FRESHNESS_WINDOW_MS) {
-    return Promise.resolve();
+  if (
+    now - lastReconcileStartedAt < RECONCILE_MIN_INTERVAL_MS ||
+    now - lastSnapshotAppliedAt < SNAPSHOT_FRESHNESS_WINDOW_MS
+  ) {
+    // The throttle spares a snapshot that is still fresh, not the edits queued against it: an edit
+    // made during a short drop would otherwise wait for the next refocus or edit.
+    return pushQueuedEdits(userId);
   }
 
   lastReconcileStartedAt = now;
@@ -241,6 +243,15 @@ async function reconcileNow(userId: string): Promise<void> {
     }
   })();
   return reconcileInFlight;
+}
+
+async function pushQueuedEdits(userId: string): Promise<void> {
+  try {
+    await getRemoteNotesDataSource().pushPendingEdits?.(userId);
+  } catch (error) {
+    // Still queued; the flush already marked it as not synced, and the next trigger retries it.
+    console.warn('[Notelikeus] Pushing queued edits after reconnect failed:', error);
+  }
 }
 
 let reconcileUserId: string | null = null;

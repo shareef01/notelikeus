@@ -12,6 +12,7 @@ import {
 import { ChecklistEditor } from '@/components/editor/ChecklistEditor';
 import { AttachmentImageStrip } from '@/components/editor/AttachmentImageStrip';
 import { EditorBottomBar } from '@/components/editor/EditorBottomBar';
+import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { EditorOptionsSheet } from '@/components/editor/EditorOptionsSheet';
 import { LinkDialog } from '@/components/editor/LinkDialog';
 import { MarkdownBody } from '@/components/editor/MarkdownPreview';
@@ -98,6 +99,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const editor = useNoteEditor(noteId);
   const { state } = editor;
   const hasPendingAttachments = state.attachments.some((a) => isPendingAttachment(a.storagePath));
+  const syncQueue = useSyncQueue();
+  const hasUnconfirmedEdit = state.id != null && syncQueue.pendingIds.includes(state.id);
 
   // Closing on a failed write would discard the only copy of the edit, so navigation is
   // conditional on the local save landing. The failure banner below is then the way out:
@@ -791,7 +794,9 @@ export function EditorScreen({ route }: EditorScreenProps) {
             isSavedLocally={state.lastSavedAt != null}
             isSignedIn={Boolean(userId) && !isGuest}
             isOnline={online}
-            hasPendingAttachments={hasPendingAttachments}
+            isPending={hasPendingAttachments || hasUnconfirmedEdit}
+            isFlushing={syncQueue.isFlushing}
+            flushFailed={syncQueue.flushFailed}
             contentColor={contentColor}
             reminderTimestamp={state.reminderTimestamp}
             onRetrySave={() => void handleRetrySave()}
