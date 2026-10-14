@@ -1,4 +1,9 @@
 import {
+  releaseCopiedPendingAttachments,
+  releaseCopyAttachments,
+  withPendingAttachments,
+} from '@/lib/attachments/conflictCopyAttachments';
+import {
   dropPendingPush,
   listPendingPushes,
   readPendingEdit,
@@ -169,8 +174,13 @@ async function keepBothVersions(
   current: Note | null,
   result: PendingFlushResult,
 ): Promise<void> {
-  const copy = conflictedCopy(local);
-  if (!(await resolveConflictedPush(userId, local.id, seq, copy, current))) return;
+  // Images not uploaded yet exist only here, under the local note's id: they go with the copy.
+  const copy = await withPendingAttachments(local, conflictedCopy(local), userId);
+  if (!(await resolveConflictedPush(userId, local.id, seq, copy, current))) {
+    await releaseCopyAttachments(copy, userId);
+    return;
+  }
+  await releaseCopiedPendingAttachments(local, current, userId);
 
   const store = useNotesStore.getState();
   if (current) {

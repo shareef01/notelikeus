@@ -45,8 +45,8 @@ Ordered by risk reduction, then user value. M1 and M2 are done on branch
   run both contrast sweeps. **Rollback:** revert.
 
 ## M6 — Attachment parity (AU-13, AU-17)
-- Web moves to the 15-argument `apply_note_change` with its committed attachment ids; conflicted
-  copies re-stage the original's local blobs under the new id.
+- Web moves to the 15-argument `apply_note_change` with its committed attachment ids.
+- **Done (AU-13):** conflicted copies re-stage the original's local blobs under new ids on every client.
 - **Requires:** local Supabase (pgTAP + e2e), Worker tests. **Risk:** medium — attachment
   commitment is the most intricate protocol in the system; do not start without the database suite.
 

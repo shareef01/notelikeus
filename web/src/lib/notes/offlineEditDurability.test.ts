@@ -24,7 +24,10 @@ vi.mock('@/lib/supabase/supabaseRealtimeSync', () => ({
   subscribeSupabaseNoteRealtime: vi.fn(() => () => {}),
 }));
 
+import { pendingStoragePath } from '@/lib/attachments/attachmentPaths';
+import { storePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
 import { NOTES_DB_NAME } from '@/lib/local/constants';
+import { getPendingAttachment } from '@/lib/local/pendingAttachmentRepository';
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
 import {
   applyRemotePageAtomically,
@@ -208,6 +211,36 @@ describe('F-06 offline edit durability', () => {
     expect(cloud.get(copy!.id)?.note.title).toBe('offline edit (conflicted copy)');
     expect(cloud.get('1')!.note.title).toBe('android edit');
     expect(await listPendingPushes(USER)).toEqual({});
+  });
+
+  it('gives the copy the images that were never uploaded, staged under the copy', async () => {
+    const bytes = new Blob(['photo'], { type: 'image/png' });
+    expect(await storePendingAttachment('att-photo', bytes, 'image/png', '1', USER)).toBe(true);
+    online = false;
+    const current = useNotesStore.getState().notes.find((note) => note.id === '1')!;
+    await saveNote({
+      ...current,
+      title: 'offline edit',
+      timestamp: current.timestamp + 100,
+      attachments: [
+        { id: 'att-photo', noteId: 1, storagePath: pendingStoragePath('att-photo'), type: 'image', mimeType: 'image/png' },
+      ],
+    });
+    online = true;
+    anotherDeviceEdits('android edit');
+
+    await subscribeOnce();
+
+    const copy = (await listNotes(USER)).find((note) => note.id !== '1')!;
+    expect(copy.attachments).toHaveLength(1);
+    const [moved] = copy.attachments;
+    // A new id: the cloud keys attachments by id, so the copy cannot share the original's.
+    expect(moved.id).not.toBe('att-photo');
+    expect(moved.storagePath).toBe(pendingStoragePath(moved.id));
+    expect(moved.noteId).toBe(copy.localId);
+    expect((await getPendingAttachment(USER, copy.id, moved.id))?.sizeBytes).toBe(bytes.size);
+    // The cloud version that kept id 1 never had the image, so its staged record is released.
+    expect(await getPendingAttachment(USER, '1', 'att-photo')).toBeNull();
   });
 
   it('keeps the edit as a copy when another device deleted the note meanwhile', async () => {

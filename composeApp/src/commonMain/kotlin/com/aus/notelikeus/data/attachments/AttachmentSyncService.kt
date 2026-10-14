@@ -103,6 +103,41 @@ class AttachmentSyncService(
         Unit
     }
 
+    /**
+     * Stages again, under new ids, the images of [attachments] that exist only on this device, for
+     * a conflicted copy about to carry them. Keyed by the original attachment id.
+     *
+     * A `pending:` image's bytes are staged under the note that added them and a `file:` image is a
+     * file of that note's, so a copy that dropped them would drop the only copy once the original's
+     * row is overwritten or deleted. The cloud keys attachments by id per owner, so the copy cannot
+     * share the original's ids either. An image whose bytes cannot be read or staged is left out of
+     * the result, and the caller leaves it where it was. `r2:` images are already in the cloud under
+     * the original note and are not copied.
+     */
+    suspend fun stageForCopy(attachments: List<Attachment>): Map<String, Attachment> {
+        val owner = ownerId()
+        val carried = mutableMapOf<String, Attachment>()
+        for (attachment in attachments) {
+            val source = when {
+                isPendingAttachment(attachment.storagePath) -> loadStaged(owner, pendingId(attachment.storagePath))
+                isFileAttachment(attachment.storagePath) -> runCatching {
+                    localStorage.readBytes(attachment.storagePath)
+                }.getOrNull()?.let { PendingAttachment(it, attachment.mimeType ?: "image/jpeg") }
+                else -> null
+            } ?: continue
+            val id = createAttachmentId()
+            if (!stageAttachment(id, null, source.bytes, source.mimeType)) continue
+            carried[attachment.id] = attachment.copy(
+                id = id,
+                noteId = 0L,
+                storagePath = pendingStoragePath(id),
+                mimeType = source.mimeType,
+                sizeBytes = source.bytes.size.toLong(),
+            )
+        }
+        return carried
+    }
+
     /** Drops staged bytes the user explicitly removed, or that a discarded note referenced. */
     suspend fun releaseStagedAttachments(attachments: List<Attachment>) {
         val owner = ownerId()

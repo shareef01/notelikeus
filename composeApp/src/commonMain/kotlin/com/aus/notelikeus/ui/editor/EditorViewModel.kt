@@ -722,7 +722,10 @@ class EditorViewModel(
                 if (ownOrSameWords) {
                     loadedServerUpdatedAt = storedStamp
                 } else {
-                    val copy = ConflictResolution.conflictedCopyOf(note)
+                    // The draft's images that exist only here go with it, staged again for the copy.
+                    val carried = runCatching { attachmentSync?.stageForCopy(note.attachments) }
+                        .getOrNull().orEmpty()
+                    val copy = ConflictResolution.conflictedCopyOf(note, carried.values.toList())
                     val copyId = when (val inserted = repository.insertNoteWithResult(copy, commitToken)) {
                         is LocalCommitResult.Applied -> inserted.value
                         LocalCommitResult.StaleGeneration -> {
@@ -730,19 +733,24 @@ class EditorViewModel(
                             return@withLock PersistNoteOutcome.StaleGeneration
                         }
                     }
+                    val saved = copy.copy(id = copyId, attachments = copy.attachments.map { it.copy(noteId = copyId) })
                     loadedServerUpdatedAt = null
-                    persistedSnapshot = copy.copy(id = copyId).persistedContent()
+                    persistedSnapshot = saved.persistedContent()
                     _state.update {
                         it.copy(
                             id = copyId,
                             title = copy.title,
-                            attachments = emptyList(),
+                            attachments = saved.attachments,
                             timestamp = updatedTimestamp,
                             isSaving = false,
                             isSavedLocally = true,
                             saveFailed = false,
                             conflictCopy = true,
                         )
+                    }
+                    // Same continuation as any save: the carried images upload under the copy.
+                    if (bindStagedAttachmentsToNote(copyId, saved.attachments, commitToken)) {
+                        syncRemoteAttachments(saved, commitToken)
                     }
                     return@withLock PersistNoteOutcome.Saved(copyId)
                 }
