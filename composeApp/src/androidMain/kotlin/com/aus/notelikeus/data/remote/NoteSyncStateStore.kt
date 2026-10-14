@@ -243,6 +243,40 @@ class SharedPrefsNoteSyncStateStore(
         if (changed) writeLongMap(KEY_SYNCED_TIMESTAMPS, map)
     }
 
+    override fun deletedDigestById(): Map<Long, String> {
+        val json = prefs.getString(KEY_DELETED_DIGESTS, null)
+        if (json.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val obj = JSONObject(json)
+            buildMap {
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val name = keys.next()
+                    val id = name.toLongOrNull() ?: continue
+                    val value = obj.optString(name)
+                    if (value.isNotEmpty()) put(id, value)
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    override fun setDeletedDigest(noteId: Long, digest: String) {
+        writeDigests(deletedDigestById() + (noteId to digest))
+    }
+
+    override fun clearDeletedDigests(noteIds: Collection<Long>) {
+        if (noteIds.isEmpty()) return
+        val current = deletedDigestById()
+        val next = current - noteIds.toSet()
+        if (next.size != current.size) writeDigests(next)
+    }
+
+    private fun writeDigests(map: Map<Long, String>) {
+        val obj = JSONObject()
+        for ((id, value) in map) obj.put(id.toString(), value)
+        prefs.edit().putString(KEY_DELETED_DIGESTS, obj.toString()).apply()
+    }
+
     override fun baselineDeleteRevisionById(): Map<Long, Long> = readLongMap(KEY_BASELINE_DELETE_REVISIONS)
 
     override fun setBaselineDeleteRevision(noteId: Long, revision: Long) {
@@ -324,6 +358,7 @@ class SharedPrefsNoteSyncStateStore(
         private const val KEY_KNOWN_SERVER_REVISIONS = "known_server_revisions"
         private const val KEY_BASELINE_DELETE_REVISIONS = "baseline_delete_revisions"
         private const val KEY_SYNCED_TIMESTAMPS = "synced_timestamps"
+        private const val KEY_DELETED_DIGESTS = "deleted_digests"
         private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
         private const val KEY_LAST_RECONCILED = "last_reconciled_at"
     }

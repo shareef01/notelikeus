@@ -80,6 +80,44 @@ internal object ConflictResolution {
         return if (edited && !authoredContentEqual(local, cloud)) InboundAction.FORK else InboundAction.ACCEPT
     }
 
+    /**
+     * A short fingerprint of a note's words (the fields [authoredContentEqual] compares), recorded
+     * when a note is deleted so a later download can tell whether the cloud copy still says exactly
+     * what the user deleted (AU-07). The same 53-bit hash (cyrb53) and key as the web client's
+     * `authoredContentDigest`, so the two agree on any note; not a secret and not reversible.
+     */
+    fun authoredContentDigest(note: Note): String = authoredContentDigest(
+        title = note.title,
+        content = note.content,
+        checklist = note.checklist.map { Triple(it.position, it.isChecked, it.text) },
+        labels = note.labels.map { it.name },
+    )
+
+    /** [authoredContentDigest] from raw fields, for a cloud record whose labels are not resolved. */
+    fun authoredContentDigest(
+        title: String,
+        content: String,
+        checklist: List<Triple<Int, Boolean, String>>,
+        labels: List<String>,
+    ): String {
+        val checklistKey = checklist.sortedBy { it.first }
+            .joinToString("\u001e") { "${if (it.second) 1 else 0}:${it.third}" }
+        val key = listOf(title, content, checklistKey, labels.sorted().joinToString("\u001e"))
+            .joinToString("\u001f")
+        // Int arithmetic wraps exactly like JavaScript's Math.imul; ushr is >>>.
+        var h1 = 0xdeadbeef.toInt()
+        var h2 = 0x41c6ce57
+        for (ch in key) {
+            val c = ch.code
+            h1 = (h1 xor c) * -1640531535 // 2654435761
+            h2 = (h2 xor c) * 1597334677
+        }
+        h1 = ((h1 xor (h1 ushr 16)) * -2048144789) xor ((h2 xor (h2 ushr 13)) * -1028477387)
+        h2 = ((h2 xor (h2 ushr 16)) * -2048144789) xor ((h1 xor (h1 ushr 13)) * -1028477387)
+        val value = 4294967296L * (2097151L and h2.toLong()) + (h1.toLong() and 0xffffffffL)
+        return value.toString(36)
+    }
+
     /** Whether [title] is one a conflict resolution wrote (every client writes the same suffix). */
     fun isConflictedCopyTitle(title: String): Boolean =
         title == BLANK_COPY_TITLE || title.endsWith(COPY_SUFFIX)

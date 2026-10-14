@@ -105,6 +105,19 @@ interface NoteSyncStateStore {
 
     fun clearSyncedTimestamps(noteIds: Collection<Long>)
 
+    // ---- delete fingerprints ----
+
+    /**
+     * Note id → [ConflictResolution.authoredContentDigest] of the words deleted on this device. Used
+     * only when no baseline revision was known at delete time: a download may then complete the
+     * delete at the revision it observes, but only if the cloud copy still holds exactly those words.
+     */
+    fun deletedDigestById(): Map<Long, String>
+
+    fun setDeletedDigest(noteId: Long, digest: String)
+
+    fun clearDeletedDigests(noteIds: Collection<Long>)
+
     // ---- delete baselines ----
 
     fun baselineDeleteRevisionById(): Map<Long, Long>
