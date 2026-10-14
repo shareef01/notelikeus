@@ -69,6 +69,7 @@ No schema migration, no backup-format change, no RPC change.
 | Kotlin desktop | **776 / 776** |
 | Kotlin Android JVM | **627 / 627** |
 | Android app module | **26 / 26** |
+| Android instrumented (`connectedDebugAndroidTest`, Pixel 7, Android 16, wireless ADB) | **5 / 5** — `PlaintextDatabaseMigratorTest` only; it does not exercise the sync or editor changes |
 
 Shown failing on the unfixed code: Kotlin `ConcurrentEditPreservationTest` (4 cases, against the
 original engine, which `main` has not changed); web `useNoteEditor.remoteChange` (2 cases,
@@ -88,6 +89,6 @@ replayed unchanged.
 
 ## Not done / not verified
 
-- pgTAP, Playwright e2e, Android instrumented, MSI — no Docker/device; CI runs the first two.
+- pgTAP, Playwright e2e, MSI — no Docker locally; CI runs the first two.
 - Native UI not visually captured.
 - AU-07, AU-08 (review panel), AU-12, AU-13, AU-17 — designed, not implemented (roadmap M3–M6).
