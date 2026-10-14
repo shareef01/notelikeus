@@ -598,6 +598,28 @@ class MainViewModel(
 
     fun trashNote(note: Note) = noteActions.trashNote(note)
 
+    /**
+     * Opens the review for a conflicted copy (AU-08). The pairing is looked up across the whole
+     * library, not the filtered list on screen, so a colour or label filter cannot hide the original.
+     */
+    fun openConflictReview(noteId: Long) {
+        viewModelScope.launch {
+            val library = repository.getActiveNotes().first() + repository.getArchivedNotes().first()
+            val copy = library.firstOrNull { it.id == noteId } ?: return@launch
+            _state.update {
+                it.copy(conflictReview = ConflictReviewState(copy, ConflictReview.findOriginal(copy, library)))
+            }
+        }
+    }
+
+    fun closeConflictReview() = _state.update { it.copy(conflictReview = null) }
+
+    fun resolveConflict(choice: ConflictChoice) {
+        val review = _state.value.conflictReview ?: return
+        closeConflictReview()
+        noteActions.resolveConflict(review.copy, review.original, choice)
+    }
+
     fun toggleSelectAll() = noteActions.toggleSelectAll()
 
     fun emptyTrash() = noteActions.emptyTrash()
