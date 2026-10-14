@@ -474,7 +474,7 @@ export function MainScreen() {
               if (view.kind === 'blocking-error') {
                 return (
                   <div className="flex flex-col items-center justify-center px-shell py-16 text-center">
-                    <p role="alert" className="mb-4 max-w-md text-sm text-red-500 dark:text-red-400">
+                    <p role="alert" className="mb-4 max-w-md text-sm text-red-700 dark:text-red-400">
                       {view.message}
                     </p>
                     <button
@@ -511,7 +511,7 @@ export function MainScreen() {
                   {view.syncWarning ? (
                     <div className="px-shell mb-3">
                       <div className="flex flex-wrap items-center justify-between gap-3 rounded-note border border-red-500/25 bg-red-500/5 px-3 py-2.5 sm:px-4">
-                      <p role="status" className="min-w-0 flex-1 text-sm text-red-500 dark:text-red-400">
+                      <p role="status" className="min-w-0 flex-1 text-sm text-red-700 dark:text-red-400">
                         {view.syncWarning}
                       </p>
                       <button

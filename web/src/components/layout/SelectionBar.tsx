@@ -110,7 +110,7 @@ function IconAction({
       title={label}
       className={`flex size-10 items-center justify-center rounded-full transition-colors ${CHROME_FOCUS} ${
         danger
-          ? 'text-red-400 hover:bg-red-500/10'
+          ? 'text-red-700 hover:bg-red-500/10 dark:text-red-400'
           : 'text-brand-muted hover:bg-brand-primary/5 hover:text-brand-primary'
       }`}
     >

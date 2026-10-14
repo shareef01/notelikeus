@@ -70,7 +70,7 @@ export function EditorBottomBar({
       <div className="flex-1" />
       <div className="text-center text-xs font-medium">
         {isError ? (
-          <div className="flex items-center justify-center gap-1 text-red-500 dark:text-red-400">
+          <div className="flex items-center justify-center gap-1 text-red-700 dark:text-red-400">
             <span>{statusText}</span>
             {onRetrySave ? (
               <button
