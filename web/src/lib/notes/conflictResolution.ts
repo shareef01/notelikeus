@@ -63,6 +63,28 @@ export function conflictedCopyOf(local: Note, localId: number): Note {
   };
 }
 
+/**
+ * A short fingerprint of [note]'s words (the fields {@link authoredContentEqual} compares), for
+ * recognising later that a cloud copy still says exactly what the user deleted.
+ *
+ * Not a secret and not cryptographic: it is kept in unsealed localStorage beside the tombstone, so
+ * it is a 53-bit hash (cyrb53) rather than anything reversible. A wrong match would need two
+ * different texts for the same note id to hash alike — about one in 2^53.
+ */
+export function authoredContentDigest(note: Note): string {
+  const key = [note.title, note.content, checklistKey(note), labelsKey(note)].join('\u001f');
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < key.length; i++) {
+    const ch = key.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
 /** Whether [title] is one a conflict resolution wrote (every client writes the same suffix). */
 export function isConflictedCopyTitle(title: string): boolean {
   return title === CONFLICTED_COPY_BLANK_TITLE || title.endsWith(CONFLICTED_COPY_SUFFIX);

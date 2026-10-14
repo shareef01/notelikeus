@@ -8,6 +8,12 @@ interface TombstoneState {
   /** Note ID → immutable known server revision at the exact moment of deletion. */
   baselineRevisionById: Record<string, number>;
   /**
+   * Note ID → fingerprint of the words the user deleted (authoredContentDigest), recorded only when
+   * no baseline revision was known. Lets a later snapshot complete the delete at the revision it
+   * observes if — and only if — the cloud still holds exactly those words.
+   */
+  deletedDigestById: Record<string, string>;
+  /**
    * Notes brought back by an explicit restore. Survives process death so a cloud
    * tombstone is not re-imported, and so a successful server restore can clear
    * leftover local suppression after crash.
@@ -18,7 +24,14 @@ interface TombstoneState {
    * death so R2 cleanup can retry without deleting blobs before the note is gone.
    */
   pendingAttachmentGcByNoteId: Record<string, string[]>;
-  markDeleted: (noteId: string, baselineRevision?: number | null, deletedAt?: number) => void;
+  markDeleted: (
+    noteId: string,
+    baselineRevision?: number | null,
+    deletedAt?: number,
+    contentDigest?: string | null,
+  ) => void;
+  /** Records the revision a digest-verified delete may now be sent against. */
+  setVerifiedBaseline: (noteId: string, revision: number) => void;
   isDeleted: (noteId: string) => boolean;
   markRestored: (noteId: string) => void;
   isRestored: (noteId: string) => boolean;
@@ -86,14 +99,24 @@ function normalizeNumberMap(raw: unknown): Record<string, number> {
   return result;
 }
 
+function normalizeStringMap(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object') return {};
+  const result: Record<string, string> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string' && value.length > 0) result[id] = value;
+  }
+  return result;
+}
+
 export const useTombstoneStore = create<TombstoneState>()(
   persist(
     (set, get) => ({
       deletedAtById: {},
       baselineRevisionById: {},
+      deletedDigestById: {},
       restoredIds: [],
       pendingAttachmentGcByNoteId: {},
-      markDeleted: (noteId, baselineRevision = null, deletedAt = Date.now()) =>
+      markDeleted: (noteId, baselineRevision = null, deletedAt = Date.now(), contentDigest = null) =>
         set((state) => {
           if (state.deletedAtById[noteId] !== undefined) return state; // keeps first
           const nextRestored = state.restoredIds.filter((id) => id !== noteId);
@@ -103,11 +126,21 @@ export const useTombstoneStore = create<TombstoneState>()(
           if (baselineRevision != null) {
             nextBaselines[noteId] = baselineRevision;
           }
+          const nextDigests =
+            baselineRevision == null && contentDigest
+              ? { ...state.deletedDigestById, [noteId]: contentDigest }
+              : state.deletedDigestById;
           return {
             deletedAtById: nextDeleted,
             baselineRevisionById: nextBaselines,
+            deletedDigestById: nextDigests,
             restoredIds: nextRestored,
           };
+        }),
+      setVerifiedBaseline: (noteId, revision) =>
+        set((state) => {
+          if (!(noteId in state.deletedAtById)) return state;
+          return { baselineRevisionById: { ...state.baselineRevisionById, [noteId]: revision } };
         }),
       isDeleted: (noteId) => noteId in get().deletedAtById,
       markRestored: (noteId) =>
@@ -162,15 +195,17 @@ export const useTombstoneStore = create<TombstoneState>()(
         const expired: string[] = [];
         const next = { ...get().deletedAtById };
         const nextBaselines = { ...get().baselineRevisionById };
+        const nextDigests = { ...get().deletedDigestById };
         for (const [id, deletedAt] of Object.entries(next)) {
           if (now - deletedAt >= TOMBSTONE_TTL_MS) {
             delete next[id];
             delete nextBaselines[id];
+            delete nextDigests[id];
             expired.push(id);
           }
         }
         if (expired.length > 0) {
-          set({ deletedAtById: next, baselineRevisionById: nextBaselines });
+          set({ deletedAtById: next, baselineRevisionById: nextBaselines, deletedDigestById: nextDigests });
         }
         return expired;
       },
@@ -179,15 +214,19 @@ export const useTombstoneStore = create<TombstoneState>()(
           if (noteIds.length === 0) return state;
           const next = { ...state.deletedAtById };
           const nextBaselines = { ...state.baselineRevisionById };
+          const nextDigests = { ...state.deletedDigestById };
           let changed = false;
           for (const id of noteIds) {
-            if (id in next || id in nextBaselines) {
+            if (id in next || id in nextBaselines || id in nextDigests) {
               delete next[id];
               delete nextBaselines[id];
+              delete nextDigests[id];
               changed = true;
             }
           }
-          return changed ? { deletedAtById: next, baselineRevisionById: nextBaselines } : state;
+          return changed
+            ? { deletedAtById: next, baselineRevisionById: nextBaselines, deletedDigestById: nextDigests }
+            : state;
         }),
       markPendingAttachmentGc: (noteId, attachmentIds) =>
         set((state) => ({
@@ -208,7 +247,14 @@ export const useTombstoneStore = create<TombstoneState>()(
         })),
       pendingAttachmentGcEntries: () =>
         Object.entries(get().pendingAttachmentGcByNoteId),
-      reset: () => set({ deletedAtById: {}, baselineRevisionById: {}, restoredIds: [], pendingAttachmentGcByNoteId: {} }),
+      reset: () =>
+        set({
+          deletedAtById: {},
+          baselineRevisionById: {},
+          deletedDigestById: {},
+          restoredIds: [],
+          pendingAttachmentGcByNoteId: {},
+        }),
     }),
     {
       name: 'notelikeus-deleted-notes',
@@ -216,6 +262,7 @@ export const useTombstoneStore = create<TombstoneState>()(
       partialize: (state) => ({
         deletedAtById: state.deletedAtById,
         baselineRevisionById: state.baselineRevisionById,
+        deletedDigestById: state.deletedDigestById,
         restoredIds: state.restoredIds,
         pendingAttachmentGcByNoteId: state.pendingAttachmentGcByNoteId,
       }),
@@ -223,6 +270,7 @@ export const useTombstoneStore = create<TombstoneState>()(
         const raw = persisted as {
           deletedAtById?: unknown;
           baselineRevisionById?: unknown;
+          deletedDigestById?: unknown;
           deletedIds?: unknown;
           restoredIds?: unknown;
           pendingAttachmentGcByNoteId?: unknown;
@@ -237,6 +285,7 @@ export const useTombstoneStore = create<TombstoneState>()(
           ...current,
           deletedAtById: { ...fromLegacy, ...fromNew },
           baselineRevisionById: baselines,
+          deletedDigestById: normalizeStringMap(raw?.deletedDigestById),
           restoredIds,
           pendingAttachmentGcByNoteId: normalizePendingGc(raw?.pendingAttachmentGcByNoteId),
         };
