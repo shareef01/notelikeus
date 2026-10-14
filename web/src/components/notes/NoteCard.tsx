@@ -16,6 +16,7 @@ import { formatListTimestamp } from '@/lib/text/dateTime';
 import { highlightSearchText } from '@/lib/text/highlightSearch';
 import { stripMarkdownForPreview } from '@/lib/text/markdown';
 import { isConflictedCopyTitle } from '@/lib/notes/conflictResolution';
+import { useUiStore } from '@/store/uiStore';
 import type { Note } from '@/types/note';
 import { noteSurfaceStyle } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
@@ -156,14 +157,20 @@ function NoteCardImpl({
   const labelChips = showLabels ? (
     <div className={`flex flex-wrap gap-1 ${isList ? 'mt-1.5' : 'mt-1.5'}`}>
       {isConflictedCopy ? (
-        <span
-          className={`inline-flex min-h-[20px] items-center rounded-full border border-amber-500/50 bg-amber-500/15 font-semibold tracking-wide ${
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            useUiStore.getState().openConflictReview(note.id);
+          }}
+          className={`pointer-events-auto inline-flex min-h-[24px] items-center rounded-full border border-amber-500/50 bg-amber-500/15 font-semibold tracking-wide hover:bg-amber-500/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
             isDense || isList ? 'px-1.5 py-px text-[10px]' : 'px-2 py-0.5 text-[11px]'
           }`}
-          title="Another device changed this note at the same time. This copy keeps the version from this device."
+          title="Another device changed this note at the same time. Compare the two versions."
+          aria-label="Conflict copy: compare with the current note"
         >
           Conflict copy
-        </span>
+        </button>
       ) : null}
       {labels.slice(0, labelLimit).map((label) =>
         onLabelClick ? (
