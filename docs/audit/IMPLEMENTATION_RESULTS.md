@@ -127,9 +127,10 @@ fork stranding an uncommitted one). Tests: web 122 files / 890 tests; Kotlin `De
 
 ## Not done / not verified
 
-- pgTAP, Playwright e2e, MSI — no Docker locally; CI runs the first two.
+- pgTAP, Playwright e2e, MSI — no Docker locally. CI runs e2e on every push; pgTAP runs only on changes under `supabase/`, which this branch does not make.
 - Two-device conflict on Android not exercised end to end: Google sign-in is bound to the real
   application id, and the owner's installed build is signed with another key, so the branch build
   could not replace it without deleting its local notes.
-- AU-17 against a live database and Worker: the RPC argument sets are checked against the migrations
-  locally (`rpcSignatureContract.test.ts`); pgTAP and Playwright run in CI only.
+- AU-17 against a live Worker: the e2e suite mocks it. The 15-argument commit itself ran for real in
+  CI's Playwright job, against a local Supabase built from every migration (green on `35f08d85`).
+  pgTAP only runs when `supabase/` changes, so it did not run for this branch.
