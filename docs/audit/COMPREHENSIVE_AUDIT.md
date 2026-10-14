@@ -121,7 +121,7 @@ and a refactor without device tests would add risk, not remove it.
 ## 9. Testing and CI
 
 CI runs lint, unit, coverage and build (which typechecks) for web; Playwright e2e against local
-Supabase; Gradle unit and instrumented suites; pgTAP; Worker tests; CodeQL; dependency review. This
+Supabase; Gradle unit and instrumented suites; pgTAP (only when `supabase/` changes); Worker tests; CodeQL; dependency review. This
 pass added 11 web tests (web suite 856 on the rebased branch) and 10 Kotlin test methods, incl. the Kotlin contract-fixture suite. Gap: no automated
 *two-client* test — the contract fixture checks each client's rule in isolation, not their
 interaction over a real backend (roadmap M4 e2e).
