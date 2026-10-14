@@ -87,8 +87,16 @@ surfaceVariant 3.87 → 4.70:1.
 headless Playwright in guest mode. The changes they show (theme default, previews, chip) were
 replayed unchanged.
 
+Native, on a Pixel 7 (Android 16, wireless ADB): the branch's debug build installed beside the owner's
+app as `com.aus.notelikeus.audit` (temporary Gradle init script, not committed), guest mode, notes
+entered through the UI. `android-pixel7-notes-{light,dark}.png` (status bar cropped) show the
+"Conflict copy" chip, line-preserving previews and the darker muted text in both themes. The test app
+was uninstalled afterwards.
+
 ## Not done / not verified
 
 - pgTAP, Playwright e2e, MSI — no Docker locally; CI runs the first two.
-- Native UI not visually captured.
+- Two-device conflict on Android not exercised end to end: Google sign-in is bound to the real
+  application id, and the owner's installed build is signed with another key, so the branch build
+  could not replace it without deleting its local notes.
 - AU-07, AU-08 (review panel), AU-12, AU-13, AU-17 — designed, not implemented (roadmap M3–M6).
