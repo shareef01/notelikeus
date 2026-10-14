@@ -136,7 +136,8 @@ interaction over a real backend (roadmap M4 e2e).
 
 ## 11. Residual risks
 
-- Conflicted copies do not carry attachments (AU-13).
+- A conflicted copy carries the images that had not uploaded yet, but not the uploaded ones: those stay
+  on the original note in the cloud (AU-13).
 - Pre-upgrade notes use a clock heuristic once; a fast-clock device may create one redundant copy
   (AU-14).
 - With the Kotlin editor open during a download that already forked the row, continued typing can

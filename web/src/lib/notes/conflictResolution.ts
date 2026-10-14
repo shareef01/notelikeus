@@ -43,9 +43,10 @@ export function authoredContentEqual(a: Note, b: Note): boolean {
 }
 
 /**
- * [local] as a new, never-synced note under [localId]. Attachments stay with the original: their
- * cloud rows and pending bytes are keyed to that note's id, and pointing a second note at them
- * would break both.
+ * [local] as a new, never-synced note under [localId], without attachments: their cloud rows and
+ * pending bytes are keyed to the original's id, and pointing a second note at them would break
+ * both. Callers re-stage the pending ones under the copy (withPendingAttachments), since those
+ * exist nowhere else.
  */
 export function conflictedCopyOf(local: Note, localId: number): Note {
   const title =

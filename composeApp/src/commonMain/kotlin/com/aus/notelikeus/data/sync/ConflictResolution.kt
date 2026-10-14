@@ -1,5 +1,6 @@
 package com.aus.notelikeus.data.sync
 
+import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.Note
 
 /**
@@ -122,8 +123,14 @@ internal object ConflictResolution {
     fun isConflictedCopyTitle(title: String): Boolean =
         title == BLANK_COPY_TITLE || title.endsWith(COPY_SUFFIX)
 
-    /** A new, never-synced note carrying [local]'s words. Room assigns the id on insert. */
-    fun conflictedCopyOf(local: Note): Note {
+    /**
+     * A new, never-synced note carrying [local]'s words. Room assigns the id on insert.
+     *
+     * [attachments] are the copy's own: attachment rows and R2 objects are keyed by the original
+     * note id and stay with it, so only images re-staged for the copy under new ids
+     * ([com.aus.notelikeus.data.attachments.AttachmentSyncService.stageForCopy]) may come along.
+     */
+    fun conflictedCopyOf(local: Note, attachments: List<Attachment> = emptyList()): Note {
         val title = if (local.title.isBlank()) {
             BLANK_COPY_TITLE
         } else {
@@ -133,8 +140,7 @@ internal object ConflictResolution {
             id = null,
             title = title,
             serverUpdatedAt = null,
-            // Attachment rows and R2 objects are keyed by the original note id and stay with it.
-            attachments = emptyList(),
+            attachments = attachments,
             checklist = local.checklist.map { it.copy(id = null) },
             searchText = null,
         )

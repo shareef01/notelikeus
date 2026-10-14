@@ -99,10 +99,23 @@ entered through the UI. `android-pixel7-notes-{light,dark}.png` (status bar crop
 "Conflict copy" chip, line-preserving previews and the darker muted text in both themes. The test app
 was uninstalled afterwards.
 
+## AU-13 — conflicted copies keep images not uploaded yet
+
+When a conflict turns the local version into a copy, each image of it that exists only on this device
+is staged again under the copy with a new attachment id before the copy is written (web
+`withPendingAttachments`, Kotlin `AttachmentSyncService.stageForCopy`), and the copy uploads it like
+any other pending image. Kotlin also carries `file:` images, as staged copies. The original's own
+staging is released once nothing references it; an image that cannot be read or staged stays on the
+original rather than vanishing. Tests: web full suite (121 files, 880 tests) incl. a push-conflict and an
+editor-fork case on real IndexedDB (fake-indexeddb); Kotlin `ConflictCopyAttachmentsTest` (download
+fork, cloud delete, unreadable bytes) on the real file staging store, and an `EditorViewModelTest`
+fork case.
+
 ## Not done / not verified
 
 - pgTAP, Playwright e2e, MSI — no Docker locally; CI runs the first two.
 - Two-device conflict on Android not exercised end to end: Google sign-in is bound to the real
   application id, and the owner's installed build is signed with another key, so the branch build
   could not replace it without deleting its local notes.
-- AU-08 (review panel), AU-13, AU-17 — designed, not implemented (roadmap M4–M6).
+- AU-17 (web on the 15-argument `apply_note_change`) — designed, not implemented (roadmap M6); it needs
+  the database suite.
