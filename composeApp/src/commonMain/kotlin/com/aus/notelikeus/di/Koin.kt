@@ -24,10 +24,9 @@ val sharedModule = module {
     single<LocalCommitTokenProvider> { SessionLocalCommitTokenProvider(get()) }
     single<NoteRepository> {
         val syncState = get<NoteSyncStateStore>()
-        NoteRepositoryImpl(
-            get(), get(), get(), get(), get(), get(), get(),
-            recordDeletedDigest = syncState::setDeletedDigest,
-        )
+        NoteRepositoryImpl(get(), get(), get(), get(), get(), get(), get()).apply {
+            recordDeletedDigest = syncState::setDeletedDigest
+        }
     }
     single<SettingsRepository> { SettingsRepositoryImpl(get(), get()) }
     

@@ -24,33 +24,42 @@ class ThemeTextContrastTest {
         return (lighter + 0.05f) / (darker + 0.05f)
     }
 
-    @Test
-    fun `chrome text clears WCAG AA on every surface of every theme`() {
-        val failures = mutableListOf<String>()
-        for (base in ThemeBase.entries) {
-            for (accent in AccentColor.entries) {
-                for (amoled in listOf(false, true)) {
-                    for (systemDark in listOf(false, true)) {
-                        val scheme = colorSchemeFor(ThemePreference(base, amoled, accent), systemDark)
-                        val surfaces = mapOf(
-                            "background" to scheme.background,
-                            "surface" to scheme.surface,
-                            "surfaceVariant" to scheme.surfaceVariant,
-                        )
-                        val texts = mapOf("onSurface" to scheme.onSurface, "onSurfaceVariant" to scheme.onSurfaceVariant)
-                        for ((textName, text) in texts) {
-                            for ((surfaceName, surface) in surfaces) {
-                                val ratio = contrast(text, surface)
-                                if (ratio < 4.5f) {
-                                    failures += "$base/$accent/amoled=$amoled/systemDark=$systemDark: " +
-                                        "$textName on $surfaceName = ${(ratio * 100).toInt() / 100f}"
-                                }
-                            }
-                        }
+    private data class Combination(val preference: ThemePreference, val systemDark: Boolean)
+
+    private fun combinations(): List<Combination> =
+        ThemeBase.entries.flatMap { base ->
+            AccentColor.entries.flatMap { accent ->
+                listOf(false, true).flatMap { amoled ->
+                    listOf(false, true).map { systemDark ->
+                        Combination(ThemePreference(base, amoled, accent), systemDark)
                     }
                 }
             }
         }
-        assertEquals(emptyList(), failures.distinct())
+
+    private fun failuresFor(combination: Combination): List<String> {
+        val scheme = colorSchemeFor(combination.preference, combination.systemDark)
+        val surfaces = mapOf(
+            "background" to scheme.background,
+            "surface" to scheme.surface,
+            "surfaceVariant" to scheme.surfaceVariant,
+        )
+        val texts = mapOf("onSurface" to scheme.onSurface, "onSurfaceVariant" to scheme.onSurfaceVariant)
+        return texts.flatMap { (textName, text) ->
+            surfaces.mapNotNull { (surfaceName, surface) ->
+                val ratio = contrast(text, surface)
+                if (ratio >= 4.5f) {
+                    null
+                } else {
+                    "${combination.preference}/systemDark=${combination.systemDark}: " +
+                        "$textName on $surfaceName = ${(ratio * 100).toInt() / 100f}"
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `chrome text clears WCAG AA on every surface of every theme`() {
+        assertEquals(emptyList(), combinations().flatMap(::failuresFor).distinct())
     }
 }

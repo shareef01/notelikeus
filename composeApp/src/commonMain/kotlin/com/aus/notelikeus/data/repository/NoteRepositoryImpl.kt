@@ -35,14 +35,15 @@ class NoteRepositoryImpl(
     private val reminderManager: ReminderManager,
     private val widgetManager: PlatformWidgetManager,
     private val syncCoordinator: SyncCoordinator,
-    private val ioDispatcher: CoroutineDispatcher,
-    /**
-     * Records [com.aus.notelikeus.data.sync.ConflictResolution.authoredContentDigest] of a note as it
-     * is deleted (AU-07). The row is gone by the time the sync engine handles the delete, so this is
-     * the last point that still has the words.
-     */
-    private val recordDeletedDigest: (noteId: Long, digest: String) -> Unit = { _, _ -> },
+    private val ioDispatcher: CoroutineDispatcher
 ) : NoteRepository {
+
+    /**
+     * Records [ConflictResolution.authoredContentDigest] of a note as it is deleted (AU-07). The row
+     * is gone by the time the sync engine handles the delete, so this is the last point that still
+     * has the words. Wired by Koin to NoteSyncStateStore.setDeletedDigest; a no-op until then.
+     */
+    var recordDeletedDigest: (noteId: Long, digest: String) -> Unit = { _, _ -> }
 
     private val widgetScope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val widgetRefreshLock = Any()
