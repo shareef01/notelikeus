@@ -1,5 +1,6 @@
 package com.aus.notelikeus.di
 
+import com.aus.notelikeus.data.sync.NoteSyncStateStore
 import com.aus.notelikeus.data.sync.SessionLocalCommitTokenProvider
 import com.aus.notelikeus.domain.repository.LocalCommitTokenProvider
 import androidx.lifecycle.SavedStateHandle
@@ -21,7 +22,13 @@ import org.koin.core.qualifier.named
 
 val sharedModule = module {
     single<LocalCommitTokenProvider> { SessionLocalCommitTokenProvider(get()) }
-    single<NoteRepository> { NoteRepositoryImpl(get(), get(), get(), get(), get(), get(), get()) }
+    single<NoteRepository> {
+        val syncState = get<NoteSyncStateStore>()
+        NoteRepositoryImpl(
+            get(), get(), get(), get(), get(), get(), get(),
+            recordDeletedDigest = syncState::setDeletedDigest,
+        )
+    }
     single<SettingsRepository> { SettingsRepositoryImpl(get(), get()) }
     
     single { Dispatchers.IO }

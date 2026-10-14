@@ -100,6 +100,17 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
     }
 
     private val syncedTimestamps = mutableMapOf<Long, Long>()
+    private val deletedDigests = mutableMapOf<Long, String>()
+
+    override fun deletedDigestById(): Map<Long, String> = deletedDigests.toMap()
+
+    override fun setDeletedDigest(noteId: Long, digest: String) {
+        deletedDigests[noteId] = digest
+    }
+
+    override fun clearDeletedDigests(noteIds: Collection<Long>) {
+        deletedDigests.keys.removeAll(noteIds.toSet())
+    }
 
     override fun syncedTimestampById(): Map<Long, Long> = syncedTimestamps.toMap()
 
@@ -135,6 +146,7 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
         knownServerRevisions.clear()
         baselineDeleteRevisions.clear()
         syncedTimestamps.clear()
+        deletedDigests.clear()
         reconciledAt = 0L
         mergedUserId = null
     }

@@ -2,6 +2,7 @@ package com.aus.notelikeus.data.repository
 
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
+import com.aus.notelikeus.data.sync.ConflictResolution
 import com.aus.notelikeus.data.local.NotelikeusDatabase
 import com.aus.notelikeus.data.local.dao.LabelDao
 import com.aus.notelikeus.data.local.dao.NoteDao
@@ -34,7 +35,13 @@ class NoteRepositoryImpl(
     private val reminderManager: ReminderManager,
     private val widgetManager: PlatformWidgetManager,
     private val syncCoordinator: SyncCoordinator,
-    private val ioDispatcher: CoroutineDispatcher
+    private val ioDispatcher: CoroutineDispatcher,
+    /**
+     * Records [com.aus.notelikeus.data.sync.ConflictResolution.authoredContentDigest] of a note as it
+     * is deleted (AU-07). The row is gone by the time the sync engine handles the delete, so this is
+     * the last point that still has the words.
+     */
+    private val recordDeletedDigest: (noteId: Long, digest: String) -> Unit = { _, _ -> },
 ) : NoteRepository {
 
     private val widgetScope = CoroutineScope(SupervisorJob() + ioDispatcher)
@@ -397,6 +404,7 @@ class NoteRepositoryImpl(
      */
     private suspend fun applyExistingNoteDeleteLocally(note: Note) {
         note.id?.let { reminderManager.cancelReminder(it) }
+        note.id?.let { recordDeletedDigest(it, ConflictResolution.authoredContentDigest(note)) }
         writeTransaction {
             note.id?.let {
                 noteDao.deleteNoteLabelCrossRefs(it)
