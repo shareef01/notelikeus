@@ -878,8 +878,29 @@ class NoteSyncEngine(
                 val noteId = record.noteId
 
                 if (syncStateStore.isDeleted(noteId)) {
-                    val baseline = syncStateStore.baselineDeleteRevisionById()[noteId]
                     val remoteRevision = record.revision
+                    var baseline = syncStateStore.baselineDeleteRevisionById()[noteId]
+                    // Deleted here before this device knew the note's revision (AU-07). The cloud
+                    // copy may be deleted at the revision now observed only because it still holds
+                    // exactly the words the user deleted; anything else falls through to cloud-wins.
+                    val digest = syncStateStore.deletedDigestById()[noteId]
+                    if (
+                        baseline == null &&
+                        digest != null &&
+                        digest == ConflictResolution.authoredContentDigest(
+                            title = record.title,
+                            content = record.content,
+                            checklist = record.checklistItems.map { Triple(it.position, it.isChecked, it.text) },
+                            labels = record.labels,
+                        )
+                    ) {
+                        when (commitLocally(commitToken) {
+                            syncStateStore.setBaselineDeleteRevision(noteId, remoteRevision)
+                        }) {
+                            is LocalCommitResult.Applied -> baseline = remoteRevision
+                            LocalCommitResult.StaleGeneration -> return@runCatching changes
+                        }
+                    }
 
                     if (baseline != null && baseline == remoteRevision) {
                         // Two account-owned requests, so two grants: the first authorizes the server
@@ -910,6 +931,7 @@ class NoteSyncEngine(
                             // replacement dataset's bookkeeping for a colliding id.
                             val recorded = commitLocally(commitToken) {
                                 syncStateStore.clearKnownServerRevisions(listOf(noteId))
+                                syncStateStore.clearDeletedDigests(listOf(noteId))
                             }
                             // The server accepted this delete and its tombstone above stands — that work
                             // was already in flight when the boundary landed. But the dataset that asked
@@ -922,9 +944,13 @@ class NoteSyncEngine(
                     }
 
                     // Cloud wins (mismatch or missing baseline)
+                    if (digest != null || baseline != null) {
+                        AppLog.warn(TAG, "Note $noteId deleted here changed on another device; restored")
+                    }
                     when (commitLocally(commitToken) {
                         syncStateStore.clearDeleted(listOf(noteId))
                         syncStateStore.clearBaselineDeleteRevision(noteId)
+                        syncStateStore.clearDeletedDigests(listOf(noteId))
                     }) {
                         is LocalCommitResult.Applied -> Unit
                         // A refused commit here means the dataset is gone, so the note is not merged and
