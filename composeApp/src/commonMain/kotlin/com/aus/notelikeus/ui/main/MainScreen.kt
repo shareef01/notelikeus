@@ -1,4 +1,5 @@
 package com.aus.notelikeus.ui.main
+import com.aus.notelikeus.ui.main.components.ConflictReviewDialog
 import com.aus.notelikeus.ui.main.components.DiagnosticsDialog
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
@@ -610,6 +611,14 @@ fun MainScreen(
                 showProfileSheet = false
                 viewModel.openDiagnostics()
             }
+        )
+    }
+
+    state.conflictReview?.let { review ->
+        ConflictReviewDialog(
+            review = review,
+            onChoice = viewModel::resolveConflict,
+            onDismiss = viewModel::closeConflictReview,
         )
     }
 

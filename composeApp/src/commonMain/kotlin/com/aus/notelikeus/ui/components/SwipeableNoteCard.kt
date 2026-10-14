@@ -47,6 +47,7 @@ fun SwipeableNoteCard(
     onSwipeToArchive: () -> Unit,
     onSwipeToTrash: () -> Unit,
     onLabelClick: ((Long) -> Unit)? = null,
+    onConflictReview: ((Long) -> Unit)? = null,
     searchQuery: String = "",
     listRevision: Int = 0,
     enableArchiveSwipe: Boolean = true,
@@ -169,6 +170,7 @@ fun SwipeableNoteCard(
                 onClick = onNoteClick,
                 onLongClick = onNoteLongClick,
                 onLabelClick = onLabelClick,
+                onConflictReview = onConflictReview,
                 showReorderHandle = showReorderHandle,
                 reorderDragModifier = reorderDragModifier
             )
