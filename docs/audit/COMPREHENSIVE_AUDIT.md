@@ -40,12 +40,12 @@ Examined: repository docs and both prior audits; web sync engine, data source, l
 editor; Kotlin sync engine, transport, state stores, editor; Supabase migrations (RPC signatures,
 RLS, definer functions); CSP and production headers; CI workflows; UI via headless captures.
 
-Not executable here, and therefore **not verified in this pass**:
+pgTAP (29 files, 298 tests) and the web e2e suite were run later in the pass, once Docker could
+be started; see `IMPLEMENTATION_RESULTS.md`. Not executable here, and therefore **not verified in
+this pass**:
 
 | Not run | Why | Command |
 |---|---|---|
-| pgTAP database suite | Docker daemon not running | `npm run supabase:start && npm run supabase:reset && npm run supabase:test` |
-| Web e2e (Playwright vs local Supabase) | Same | `cd web && npm run test:e2e` |
 | Android instrumented tests | No device/emulator | `./gradlew :composeApp:connectedDebugAndroidTest` |
 | Windows MSI, desktop UI | Not packaged; no GUI capture of Compose | `./gradlew :composeApp:packageMsi` |
 | Two real devices against the cloud | No authorisation to touch production data | Manual, roadmap M7 |

@@ -125,12 +125,27 @@ web, and the same review found AU-24 on Kotlin (hydration dropping an unconfirme
 fork stranding an uncommitted one). Tests: web 122 files / 890 tests; Kotlin `DeferredUploadCommitTest`
 (the two engine cases fail without the fix).
 
+## Later verification (Docker available)
+
+- **pgTAP** on this branch: `supabase start`, `db reset`, `supabase test db` — 29 files, 298 tests, all
+  pass.
+- **AU-17 against a real Worker:** `wrangler dev` running `workers/attachments` (local R2) against
+  the local Supabase, driven by the web client's own `r2AttachmentBlobStore` and `applyNoteChange`,
+  in `saveNote`'s order. The note was pushed, the image was uploaded on `/v2/` (200) and stayed out
+  of `list_user_attachments` until committed, the 15-argument commit named it, the snapshot hydrated
+  it, and `/v1/` returned the same bytes. A throwaway test, not committed: it needs a running Worker.
+- **AU-20** fixed (see FINDINGS); new unit test and e2e case, both failing without the fix.
+- **Web e2e** locally: 171 passed, 1 skipped, 2 failed. The two failures are the same reminders case
+  (`unstubbed, the app refuses without permission`) on both projects. It fails identically on the
+  base commit with this container's older Chromium (build 1194; the pinned Playwright expects
+  1243) and passes in CI.
+
 ## Not done / not verified
 
-- pgTAP, Playwright e2e, MSI — no Docker locally. CI runs e2e on every push; pgTAP runs only on changes under `supabase/`, which this branch does not make.
+- MSI and Windows desktop UI: not packaged here.
 - Two-device conflict on Android not exercised end to end: Google sign-in is bound to the real
   application id, and the owner's installed build is signed with another key, so the branch build
   could not replace it without deleting its local notes.
-- AU-17 against a live Worker: the e2e suite mocks it. The 15-argument commit itself ran for real in
-  CI's Playwright job, against a local Supabase built from every migration (green on `35f08d85`).
-  pgTAP only runs when `supabase/` changes, so it did not run for this branch.
+- AU-17 against the *deployed* Worker: not checked; it needs the production URL. Run
+  `curl -i -X PUT <worker>/v2/attachments/a/b`: an up-to-date Worker answers 401 or 415, one that
+  predates the deferred protocol answers 404.

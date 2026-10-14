@@ -176,6 +176,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showReminderPicker, setShowReminderPicker] = useState(false);
   const [contentFocused, setContentFocused] = useState(true);
+  const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectionRef = useRef({ start: 0, end: 0 });
@@ -214,6 +215,9 @@ export function EditorScreen({ route }: EditorScreenProps) {
     if (noteId !== 'new' || hasChecklist) return;
     setContentFocused(true);
     const id = requestAnimationFrame(() => {
+      // A user who already clicked into the title keeps it: moving focus here sent the rest of
+      // their title into the body (AU-20).
+      if (titleRef.current && document.activeElement === titleRef.current) return;
       contentRef.current?.focus();
     });
     return () => cancelAnimationFrame(id);
@@ -616,6 +620,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             Note title
           </label>
           <input
+            ref={titleRef}
             id="note-title"
             type="text"
             value={state.title}
