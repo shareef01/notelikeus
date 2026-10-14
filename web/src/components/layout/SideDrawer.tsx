@@ -338,7 +338,7 @@ export function SideDrawer({
                 <button
                   type="button"
                   onClick={onSignOut}
-                  className="w-full rounded-xl bg-rose-500/15 px-3 py-2.5 text-center text-sm font-semibold text-rose-400 ring-1 ring-inset ring-rose-500/25 transition-colors hover:bg-rose-500/25 hover:text-rose-300"
+                  className="w-full rounded-xl bg-rose-500/15 px-3 py-2.5 text-center text-sm font-semibold text-rose-700 ring-1 ring-inset ring-rose-500/25 transition-colors hover:bg-rose-500/25 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300"
                 >
                   Sign out
                 </button>

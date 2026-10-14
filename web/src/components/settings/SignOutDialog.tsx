@@ -50,7 +50,7 @@ export function SignOutDialog({
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="mt-4 w-full rounded-note border border-red-900/40 py-2.5 text-sm font-semibold text-red-400 transition-colors hover:bg-red-950/30"
+            className="mt-4 w-full rounded-note border border-red-900/40 py-2.5 text-sm font-semibold text-red-700 dark:text-red-400 transition-colors hover:bg-red-950/30"
           >
             Review permanent cloud deletion…
           </button>
