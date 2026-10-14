@@ -46,7 +46,7 @@ Ordered by risk reduction, then user value. M1 and M2 are done on branch
 
 ## M6 — Attachment parity (AU-13, AU-17)
 - **Done (AU-17):** web uploads on `/v2/` and commits with its attachment ids, with hydration and
-  conflict guards (AU-23..AU-25). pgTAP and e2e verify it in CI.
+  conflict guards (AU-23..AU-25). The CI e2e job runs it against a local Supabase.
 - **Done (AU-13):** conflicted copies re-stage the original's local blobs under new ids on every client.
 - **Requires:** local Supabase (pgTAP + e2e), Worker tests. **Risk:** medium — attachment
   commitment is the most intricate protocol in the system; do not start without the database suite.

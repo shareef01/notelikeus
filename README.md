@@ -63,6 +63,8 @@ Saved locally and synced are reported as different things. An edit counts as sav
 
 Attachments are written to durable local storage before the note references them, so a note that points at an image still has the bytes after a restart and the upload can resume. Blobs live in Cloudflare R2 behind a Worker that verifies the Supabase session and derives the object key from the authenticated user. Staged bytes are scoped to the account that created them.
 
+An uploaded image becomes visible to other devices only when a note commit names it. Every client uploads through the Worker's `/v2/` route, which records the image as provisional, and then names it in the note's `apply_note_change`. An upload whose note never commits therefore cannot attach itself to an unrelated note that later reuses the id. Until that commit lands, the note keeps its own uploads through every sync. A cloud version written over a local note keeps the images that have not uploaded yet. If the commit that was to name an upload conflicts, the conflicted copy takes the image.
+
 Importing a backup adds its notes as new notes rather than replacing what is on the device, so importing the same file twice gives you two copies. A JSON backup carries note content only. Every client can also export and import a `.nlkbak` bundle — a plain ZIP holding the same JSON document plus the attachment bytes this device actually has. Images that exist only in the cloud are left out and reported as skipped.
 
 Something not syncing has a settings screen for it. Sync diagnostics shows counts, cursors and version numbers — never note text, tokens or your account id — and copying it anywhere is up to you.
