@@ -260,6 +260,11 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     return snapshot.notes;
   },
 
+  async pushPendingEdits(userId) {
+    await ensureSupabaseAuthenticated();
+    await flushPendingPushes(userId);
+  },
+
   async upsertNote(userId, note) {
     await ensureSupabaseAuthenticated();
     if (useTombstoneStore.getState().isDeleted(note.id)) {

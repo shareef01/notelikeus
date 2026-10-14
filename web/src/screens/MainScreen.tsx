@@ -6,7 +6,7 @@ import { AddIcon } from '@/components/icons/Icons';
 import { ToastHost } from '@/components/feedback/ToastHost';
 import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
 import { InstallPrompt } from '@/components/layout/InstallPrompt';
-import { OfflineBanner } from '@/components/layout/OfflineBanner';
+import { SyncStatusBanner } from '@/components/layout/SyncStatusBanner';
 import { SideDrawer } from '@/components/layout/SideDrawer';
 import { TopBar } from '@/components/layout/TopBar';
 import { NoteStaggeredGrid } from '@/components/notes/NoteStaggeredGrid';
@@ -425,7 +425,7 @@ export function MainScreen() {
 
 
 
-        <OfflineBanner />
+        <SyncStatusBanner />
 
         <InstallPrompt />
 

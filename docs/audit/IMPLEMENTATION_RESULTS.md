@@ -53,6 +53,11 @@ conflicts resolved at push time into "(conflicted copy)" notes). The branch was 
 - Web follows the OS light/dark setting on first run (stored choices are kept).
 - Cards keep line breaks; `- [ ]` shows as ☐. Search stays responsive on large libraries.
 - Compose light theme muted text is darker (#717171 → #646464).
+- Web editor status line uses the §5.1 vocabulary — Saving…, Saved on this device, Waiting to
+  sync, Syncing…, Synced, Offline — changes saved here, Couldn’t sync — and says "Synced" only
+  after the server accepted the note's latest edit (AU-27). The main-screen banner counts edits
+  waiting offline and says when a push left edits behind, with Retry.
+- Web: reconnecting pushes edits made offline straight away, even right after a sync (AU-26).
 
 ## Persisted-state changes
 
@@ -139,6 +144,20 @@ fork stranding an uncommitted one). Tests: web 122 files / 890 tests; Kotlin `De
   (`unstubbed, the app refuses without permission`) on both projects. It fails identically on the
   base commit with this container's older Chromium (build 1194; the pinned Playwright expects
   1243) and passes in CI.
+
+## Sync status (AU-26, AU-27)
+
+`syncStatusStore` is fed by the queue (`notesLocalRepository` publishes its pending ids after every
+marker change, and on `clearOwner`) and by `runFlush` (in flight; whether the last flush left an
+edit behind). `noteSyncStatus` turns that, plus the local save state and connectivity, into one §5.1
+state for the editor; `SyncStatusBanner` (was `OfflineBanner`) covers offline and stuck pushes and
+stands aside while the existing reconcile warning, which has its own Retry, is up.
+
+Writing `sync-status.spec.ts` against the real app found AU-26: after reconnecting, the offline edit
+was still unpushed 30 s later, because the reconcile the `online` event runs was inside its throttle.
+The old status line would have said "Synced" throughout. Tests: web 126 files / 910 tests; the e2e case
+passes on both projects, and screenshots of the banner and status line were checked in light and
+dark at 1280 px and on Pixel 5.
 
 ## Not done / not verified
 
