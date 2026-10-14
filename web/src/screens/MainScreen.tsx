@@ -1,4 +1,5 @@
 import { DiagnosticsDialog } from '@/components/settings/DiagnosticsDialog';
+import { ConflictReviewDialog } from '@/components/notes/ConflictReviewDialog';
 import { version as appVersion } from '../../package.json';
 import { AddIcon } from '@/components/icons/Icons';
 
@@ -685,6 +686,7 @@ export function MainScreen() {
         onBulkPermanentDelete={() => void bulkPermanentDelete()}
       />
 
+      <ConflictReviewDialog />
       <DiagnosticsDialog
         open={showDiagnostics}
         appVersion={appVersion}

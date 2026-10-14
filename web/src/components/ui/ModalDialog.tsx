@@ -19,6 +19,8 @@ interface ModalDialogProps {
   ariaLabel?: string;
   /** Id of the visible heading. Takes precedence over `ariaLabel`. */
   ariaLabelledBy?: string;
+  /** `wide` for side-by-side content (conflict review); the default suits confirmations. */
+  size?: 'default' | 'wide';
   children: ReactNode;
 }
 
@@ -37,6 +39,7 @@ export function ModalDialog({
   onClose,
   ariaLabel,
   ariaLabelledBy,
+  size = 'default',
   children,
 }: ModalDialogProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
@@ -52,7 +55,7 @@ export function ModalDialog({
         aria-modal="true"
         aria-labelledby={ariaLabelledBy}
         aria-label={ariaLabelledBy ? undefined : ariaLabel}
-        className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl animate-in zoom-in-95 duration-200"
+        className={`w-full ${size === 'wide' ? 'max-w-3xl' : 'max-w-md'} rounded-note bg-true-surface p-5 shadow-xl animate-in zoom-in-95 duration-200`}
       >
         {children}
       </div>
