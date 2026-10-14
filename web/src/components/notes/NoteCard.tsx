@@ -107,6 +107,12 @@ function NoteCardImpl({
   const labelLimit = isDense ? 1 : isList ? 3 : 2;
   const timeLabel = formatListTimestamp(note.timestamp);
 
+  // On touch the selection circle is always shown, over the card's top-left corner, where the first
+  // line of text starts unless an image sits above it. Indenting only that line clears the circle
+  // without narrowing the rest of the card. A reorder handle already pushes the content past it.
+  const clearsSelectionCircle =
+    onToggleSelect && !showReorderHandle && !thumbnailAttachment ? 'pointer-coarse:indent-6' : '';
+
   // Names the card's selection checkbox after the note it belongs to: a screen reader hears which
   // note a checkbox selects, and a test can address it by name instead of by DOM position.
   // Untitled notes keep the generic label — there is no title line to point at (D15).
@@ -289,12 +295,12 @@ function NoteCardImpl({
           ) : null}
           <div className="min-w-0 flex-1">
             {title ? (
-              <h2 id={titleId} className="line-clamp-2 break-words text-note-title tracking-[-0.02em] sm:line-clamp-2">
+              <h2 id={titleId} className={`line-clamp-2 break-words text-note-title tracking-[-0.02em] sm:line-clamp-2 ${clearsSelectionCircle}`}>
                 {highlight(title)}
               </h2>
             ) : null}
             {showBody ? (
-              <p className={`whitespace-pre-line break-words text-note-body opacity-80 sm:line-clamp-3 ${title ? 'mt-2 line-clamp-2 sm:mt-2.5' : 'line-clamp-3 font-semibold'}`}>
+              <p className={`whitespace-pre-line break-words text-note-body opacity-80 sm:line-clamp-3 ${title ? 'mt-2 line-clamp-2 sm:mt-2.5' : `line-clamp-3 font-semibold ${clearsSelectionCircle}`}`}>
                 {highlight(previewBody)}
               </p>
             ) : null}
@@ -330,7 +336,7 @@ function NoteCardImpl({
             {title ? (
               <h2
                 id={titleId}
-                className={`min-w-0 flex-1 break-words font-semibold tracking-[-0.02em] ${
+                className={`min-w-0 flex-1 break-words font-semibold tracking-[-0.02em] ${clearsSelectionCircle} ${
                   isDense
                     ? 'line-clamp-2 text-[15px] leading-snug'
                     : 'line-clamp-3 text-note-title'
