@@ -124,6 +124,71 @@ class EditorViewModel(
     /** Whether the row's stamp is newer than the one this editor loaded; unknown counts as older. */
     private fun isNewerThanLoaded(storedStamp: Long): Boolean =
         loadedServerUpdatedAt.let { loaded -> loaded == null || storedStamp > loaded }
+
+    /** Follows the open note's row; see [refreshFromStoredRow]. Replaced when the route changes. */
+    private var openNoteObserver: Job? = null
+
+    /**
+     * Watches the open note's row while the editor shows it (AU-12).
+     *
+     * A download can replace the row underneath an open editor. Without this the editor kept the
+     * text it loaded, so the next keystroke built on a stale version and the save had to fork it
+     * into a conflicted copy. The three library flows already carry full rows (labels, checklist,
+     * attachments), so following them needs no new repository API.
+     */
+    private fun observeOpenNote(id: Long) {
+        openNoteObserver?.cancel()
+        openNoteObserver = combine(
+            repository.getActiveNotes(),
+            repository.getArchivedNotes(),
+            repository.getTrashedNotes(),
+        ) { active, archived, trashed ->
+            active.firstOrNull { it.id == id }
+                ?: archived.firstOrNull { it.id == id }
+                ?: trashed.firstOrNull { it.id == id }
+        }
+            .filterNotNull()
+            .distinctUntilChanged()
+            .onEach { stored -> refreshFromStoredRow(id, stored) }
+            .launchIn(viewModelScope)
+    }
+
+    /**
+     * Shows a newer version of the open note when nothing is waiting to be saved — the web editor's
+     * rule. With typing pending the save decides instead ([persistNote]'s stale-row check), and an
+     * editor that has moved onto a conflicted copy no longer follows the original.
+     */
+    private fun refreshFromStoredRow(id: Long, stored: Note) {
+        val current = _state.value
+        if (current.id != id) return
+        val storedStamp = stored.serverUpdatedAt ?: return
+        if (!isNewerThanLoaded(storedStamp)) return
+        val pending = autosaveJob?.isActive == true || current.isSaving || !isUnchangedSinceLastPersist(current)
+        if (pending) return
+        loadedServerUpdatedAt = storedStamp
+        // This device's own upload echoing back: the words are already on screen.
+        if (ConflictResolution.authoredContentEqual(stored, buildNoteFromState(current))) return
+        _state.update {
+            it.copy(
+                title = stored.title,
+                content = stored.content,
+                contentValue = TextFieldValue(stored.content),
+                color = stored.color,
+                isPinned = stored.isPinned,
+                isArchived = stored.isArchived,
+                isTrashed = stored.isTrashed,
+                reminderTimestamp = stored.reminderTimestamp,
+                labels = stored.labels,
+                checklist = stored.checklist.sortedWith(
+                    compareBy({ item -> item.isChecked }, { item -> item.position }),
+                ),
+                attachments = stored.attachments,
+                timestamp = stored.timestamp,
+                position = stored.position,
+            )
+        }
+        persistedSnapshot = _state.value.asPersistedContent()
+    }
     private var noteId: Long? = savedStateHandle.get<Long>("noteId")?.takeIf { it != -1L }
     private var routedInitialColor: Int? =
         savedStateHandle.get<Int>("initialColor")?.takeIf { it != Int.MIN_VALUE }
@@ -273,6 +338,7 @@ class EditorViewModel(
                 val id = noteId!!
                 repository.getNoteById(id)?.let { note ->
                     loadedServerUpdatedAt = note.serverUpdatedAt
+                    observeOpenNote(id)
                     _state.update { current ->
                         val loaded = EditorState(
                             id = note.id,

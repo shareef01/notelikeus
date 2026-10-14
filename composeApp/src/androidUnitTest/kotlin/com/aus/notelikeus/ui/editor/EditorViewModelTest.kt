@@ -380,4 +380,55 @@ class EditorViewModelTest {
         coVerify(exactly = 0) { repository.insertNoteWithResult(any(), any()) }
         assertEquals(false, viewModel.state.value.conflictCopy)
     }
+
+    // ---- the open note changing underneath the editor (AU-12) ----
+
+    private fun openWithLiveRow(initial: Note): kotlinx.coroutines.flow.MutableStateFlow<List<Note>> {
+        val active = kotlinx.coroutines.flow.MutableStateFlow(listOf(initial))
+        coEvery { repository.getNoteById(initial.id!!) } returns initial
+        every { repository.getActiveNotes() } returns active
+        every { repository.getArchivedNotes() } returns flowOf(emptyList())
+        every { repository.getTrashedNotes() } returns flowOf(emptyList())
+        coEvery { repository.updateNote(any(), any()) } returns LocalCommitResult.Applied(Unit)
+        viewModel = createViewModel(SavedStateHandle(mapOf("noteId" to initial.id!!)))
+        return active
+    }
+
+    @Test
+    fun `an open note with nothing unsaved shows the newer version a download wrote`() = runTest {
+        val rows = openWithLiveRow(openedNote)
+        advanceUntilIdle()
+
+        rows.value = listOf(openedNote.copy(content = "milk, eggs (from phone)", timestamp = 1_900L, serverUpdatedAt = 2_000L))
+        advanceUntilIdle()
+
+        assertEquals("milk, eggs (from phone)", viewModel.state.value.content)
+        // Showing it is not an edit: nothing is written back.
+        coVerify(exactly = 0) { repository.updateNote(any(), any()) }
+    }
+
+    @Test
+    fun `unsaved typing is never replaced by a newer version`() = runTest {
+        val rows = openWithLiveRow(openedNote)
+        advanceUntilIdle()
+        viewModel.onContentValueChange(TextFieldValue("milk, bread (typed here)"))
+
+        rows.value = listOf(openedNote.copy(content = "milk, eggs (from phone)", timestamp = 1_900L, serverUpdatedAt = 2_000L))
+        advanceUntilIdle()
+
+        assertEquals("milk, bread (typed here)", viewModel.state.value.content)
+    }
+
+    @Test
+    fun `this device's own echo changes nothing on screen`() = runTest {
+        val rows = openWithLiveRow(openedNote)
+        advanceUntilIdle()
+        val before = viewModel.state.value
+
+        rows.value = listOf(openedNote.copy(serverUpdatedAt = 2_000L))
+        advanceUntilIdle()
+
+        assertEquals(before.content, viewModel.state.value.content)
+        assertEquals(before.title, viewModel.state.value.title)
+    }
 }
