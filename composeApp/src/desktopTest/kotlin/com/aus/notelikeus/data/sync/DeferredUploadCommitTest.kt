@@ -1,0 +1,202 @@
+package com.aus.notelikeus.data.sync
+
+import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
+import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.attachments.FileAttachmentStagingStore
+import com.aus.notelikeus.data.attachments.NoteAttachmentMetadata
+import com.aus.notelikeus.data.attachments.PendingDeletedAttachment
+import com.aus.notelikeus.data.attachments.mergeAttachmentsIntoNotes
+import com.aus.notelikeus.data.mapper.toNote
+import com.aus.notelikeus.data.mapper.toNoteEntity
+import com.aus.notelikeus.data.remote.AttachmentBlobTransport
+import com.aus.notelikeus.data.remote.AttachmentBlobUploadResult
+import com.aus.notelikeus.data.remote.AttachmentRemoteContext
+import com.aus.notelikeus.data.remote.AttachmentRemoteMetadata
+import com.aus.notelikeus.data.remote.OperationRemoteIdentity
+import com.aus.notelikeus.domain.model.Attachment
+import com.aus.notelikeus.domain.model.Note
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.runTest
+import okio.Path.Companion.toPath
+import java.io.File
+import java.nio.file.Files
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
+
+/**
+ * Uploads use the deferred protocol: an attachment row stays provisional, and out of the listing that
+ * hydration reads, until a note commit names it. So a note whose commit has not landed must keep its
+ * own uploads through hydration, and a conflict on the commit that was to name an upload must not
+ * strand it — the conflicted copy takes it.
+ */
+class DeferredUploadCommitTest {
+
+    private lateinit var tempDir: File
+    private val noteDao = FakeNoteDao()
+    private val stateStore = FakeNoteSyncStateStore()
+
+    /** Committed rows only, as `list_user_attachments` answers. */
+    private val committedRows = mutableListOf<NoteAttachmentMetadata>()
+    private val objects = mutableMapOf<Pair<String, String>, ByteArray>()
+    private val uploads = mutableListOf<Pair<String, ByteArray>>()
+
+    /** Ids whose next commit the cloud refuses, as it refuses a stale base revision. */
+    private val refused = mutableSetOf<Long>()
+    private val transport = object : FakeCloudNoteTransport() {
+        override suspend fun putNotes(uid: String, notes: List<Note>) =
+            super.putNotes(uid, notes.filterNot { it.id in refused })
+    }
+
+    private val blobs = object : AttachmentBlobTransport {
+        override suspend fun captureContext() = AttachmentRemoteContext(ownerId = UID, accessToken = "token")
+        override suspend fun upload(
+            context: AttachmentRemoteContext,
+            noteId: String,
+            attachmentId: String,
+            bytes: ByteArray,
+            mimeType: String,
+        ): AttachmentBlobUploadResult {
+            uploads += noteId to bytes
+            objects[noteId to attachmentId] = bytes
+            return AttachmentBlobUploadResult("owners/$UID/notes/$noteId/$attachmentId", bytes.size.toLong(), mimeType)
+        }
+        override suspend fun download(context: AttachmentRemoteContext, noteId: String, attachmentId: String) =
+            objects.getValue(noteId to attachmentId)
+        override suspend fun delete(context: AttachmentRemoteContext, noteId: String, attachmentId: String) = Unit
+    }
+
+    private val metadata = object : AttachmentRemoteMetadata {
+        override suspend fun register(identity: OperationRemoteIdentity, metadata: NoteAttachmentMetadata) = Unit
+        override suspend fun delete(identity: OperationRemoteIdentity, attachmentId: String, noteId: String) = Unit
+        override suspend fun listUserAttachments(identity: OperationRemoteIdentity) = committedRows.toList()
+        override suspend fun listPendingDeletedAttachments(identity: OperationRemoteIdentity) =
+            emptyList<PendingDeletedAttachment>()
+        override suspend fun purgeDeleted(identity: OperationRemoteIdentity, attachmentId: String, noteId: String) = Unit
+    }
+
+    private val noLocalFiles = object : AttachmentLocalStorage {
+        override fun persistImageBytes(bytes: ByteArray, extension: String): String? = null
+        override fun readBytes(storagePath: String): ByteArray? = null
+        override fun deleteIfLocal(storagePath: String) = Unit
+    }
+
+    private lateinit var engine: NoteSyncEngine
+
+    @BeforeTest
+    fun setUp() {
+        tempDir = Files.createTempDirectory("notelikeus-deferred-upload").toFile()
+        val attachments = AttachmentSyncService(
+            blobTransport = blobs,
+            metadata = metadata,
+            localStorage = noLocalFiles,
+            noteDao = noteDao,
+            staging = FileAttachmentStagingStore(
+                root = File(tempDir, "staging").absolutePath.toPath(),
+                ioDispatcher = Dispatchers.Unconfined,
+            ),
+            ownerIdProvider = { UID },
+            attachmentsEnabled = { true },
+        )
+        engine = NoteSyncEngine(
+            transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { UID },
+            noteDao = noteDao,
+            labelDao = FakeLabelDao(),
+            syncStateStore = stateStore,
+            uidProvider = { Result.success(UID) },
+            attachmentSync = attachments,
+            localCommitTokenProvider = { LocalCommitGate.captureCoherent { UID } },
+        )
+        stateStore.setLastMergedUserId(UID)
+    }
+
+    @AfterTest
+    fun tearDown() {
+        tempDir.deleteRecursively()
+    }
+
+    private fun uploaded(id: String, noteId: Long = 1L) =
+        Attachment(id = id, noteId = noteId, storagePath = "r2:owners/$UID/notes/$noteId/$id", mimeType = "image/png")
+
+    /** Revision 5 last synced; then edited here, and [image] uploaded, without the commit landing. */
+    private suspend fun seedUnconfirmedEditWith(image: Attachment) {
+        noteDao.insertNote(
+            Note(
+                id = 1L, title = "Trip", content = "tickets (typed here)", timestamp = 5_000L, color = 0,
+                serverUpdatedAt = 1_000L, attachments = listOf(image),
+            ).toNoteEntity(),
+        )
+        objects["1" to image.id] = "photo".encodeToByteArray()
+        stateStore.updateKnownServerRevision(1L, 5L)
+        stateStore.updateSyncedTimestamps(mapOf(1L to 900L))
+        stateStore.setKnownCloudIds(setOf(1L))
+    }
+
+    private fun cloudRecord(content: String, serverUpdatedAt: Long, revision: Long) = CloudNoteRecord(
+        noteId = 1L, serverUpdatedAt = serverUpdatedAt, clientTimestamp = serverUpdatedAt - 100,
+        title = "Trip", content = content, timestamp = serverUpdatedAt - 100, color = 0,
+        isPinned = false, isArchived = false, isTrashed = false, position = 0, reminderTimestamp = null,
+        labels = emptyList(), checklistItems = emptyList(), revision = revision,
+    )
+
+    @Test
+    fun `hydration drops an unlisted upload of a confirmed note but keeps one awaiting its commit`() {
+        val confirmed = Note(id = 1L, title = "a", content = "", timestamp = 1L, color = 0, attachments = listOf(uploaded("x")))
+        val awaiting = confirmed.copy(id = 2L, attachments = listOf(uploaded("y", 2L)))
+
+        val merged = mergeAttachmentsIntoNotes(listOf(confirmed, awaiting), emptyList()) { it.id == 2L }
+
+        assertEquals(emptyList(), merged[0].attachments)
+        assertEquals(listOf("y"), merged[1].attachments.map { it.id })
+    }
+
+    @Test
+    fun `a note whose commit is refused keeps its upload through the download's hydration`() = runTest {
+        seedUnconfirmedEditWith(uploaded("att-up"))
+        transport.notes[1L] = cloudRecord("tickets", 1_000L, 5L)
+        refused += 1L
+        // Another note's committed image, so the listing is not empty and hydration runs.
+        committedRows += NoteAttachmentMetadata("att-other", "9", "owners/$UID/notes/9/att-other", "image/png", 5L, "image")
+
+        engine.downloadAllNotes().getOrThrow()
+
+        assertEquals(listOf("att-up"), noteDao.notes.getValue(1L).toNote().attachments.map { it.id })
+    }
+
+    @Test
+    fun `a conflicted copy takes an upload no commit named, and uploads it under the copy`() = runTest {
+        seedUnconfirmedEditWith(uploaded("att-new"))
+        // Another device's version is newer: the download keeps both.
+        transport.notes[1L] = cloudRecord("tickets, passport (from phone)", 2_000L, 6L)
+
+        engine.downloadAllNotes().getOrThrow()
+
+        val copy = noteDao.notes.values.single { it.id != 1L }.toNote()
+        val carried = copy.attachments.single()
+        assertNotEquals("att-new", carried.id)
+        assertEquals(copy.id, carried.noteId)
+        assertTrue(uploads.any { (noteId, bytes) -> noteId == copy.id.toString() && bytes.contentEquals("photo".encodeToByteArray()) })
+        assertContentEquals("photo".encodeToByteArray(), objects.getValue(copy.id.toString() to carried.id))
+    }
+
+    @Test
+    fun `a committed upload stays with the original and is not copied`() = runTest {
+        seedUnconfirmedEditWith(uploaded("att-old"))
+        committedRows += NoteAttachmentMetadata("att-old", "1", "owners/$UID/notes/1/att-old", "image/png", 5L, "image")
+        transport.notes[1L] = cloudRecord("tickets, passport (from phone)", 2_000L, 6L)
+
+        engine.downloadAllNotes().getOrThrow()
+
+        assertTrue(noteDao.notes.values.single { it.id != 1L }.toNote().attachments.isEmpty())
+        assertEquals(listOf("att-old"), noteDao.notes.getValue(1L).toNote().attachments.map { it.id })
+    }
+
+    private companion object {
+        const val UID = "uid"
+    }
+}

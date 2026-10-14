@@ -41,3 +41,20 @@ export function attachmentsKey(attachments: Attachment[]): string {
     .sort()
     .join(',');
 }
+
+/**
+ * [incoming] — a cloud version, whose payload cannot carry attachments — keeping [local]'s images
+ * that are not uploaded yet.
+ *
+ * A `pending:` image exists only on this device until its upload lands, which can be long after the
+ * note's words were pushed. Writing the cloud version over the local row without it would drop the
+ * only reference to those bytes. Uploaded (`r2:`) images are the server's to report, through the
+ * attachment listing. Kotlin's `keepingLocalOnlyAttachmentsOf` is the same rule.
+ */
+export function keepingLocalOnlyAttachments(incoming: Note, local: Note | undefined): Note {
+  const localOnly = (local?.attachments ?? []).filter((attachment) => isPendingAttachment(attachment.storagePath));
+  if (localOnly.length === 0) return incoming;
+  const known = new Set(incoming.attachments.map((attachment) => attachment.id));
+  const kept = localOnly.filter((attachment) => !known.has(attachment.id));
+  return kept.length === 0 ? incoming : { ...incoming, attachments: [...incoming.attachments, ...kept] };
+}

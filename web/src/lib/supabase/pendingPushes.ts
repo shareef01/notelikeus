@@ -1,4 +1,6 @@
+import { ATTACHMENT_R2_PREFIX } from '@/lib/attachments/attachmentPaths';
 import {
+  reclaimUncommittedUploads,
   releaseCopiedPendingAttachments,
   releaseCopyAttachments,
   withPendingAttachments,
@@ -142,8 +144,10 @@ async function flushOne(userId: string, noteId: string, result: PendingFlushResu
       await settleAccepted(userId, note, marker.seq, accepted, result);
       return;
     }
-    if (error.current && notesUserContentEqual(note, error.current)) {
-      accepted = error.current;
+    // The cloud's version carries no attachments (the payload has none), so the comparison leaves
+    // them out; comparing them made every note with an image look changed elsewhere.
+    if (error.current && notesUserContentEqual({ ...note, attachments: [] }, error.current)) {
+      accepted = await adoptSameVersion(userId, note, error.current);
     } else {
       await keepBothVersions(userId, note, marker.seq, error.current, result);
       return;
@@ -151,6 +155,20 @@ async function flushOne(userId: string, noteId: string, result: PendingFlushResu
   }
 
   await settleAccepted(userId, note, marker.seq, accepted, result);
+}
+
+/**
+ * The cloud already holds [note]'s words — usually this device's own push whose reply was lost. The
+ * attachments stay this device's: the payload cannot speak for them. Uploads only become visible
+ * when a commit names them, so a version with any is committed once more against the cloud's
+ * revision, naming them, rather than assumed to have done so.
+ */
+async function adoptSameVersion(userId: string, note: Note, current: Note): Promise<Note> {
+  if (!note.attachments.some((attachment) => attachment.storagePath.startsWith(ATTACHMENT_R2_PREFIX))) {
+    return { ...current, attachments: note.attachments };
+  }
+  const revision = (await loadRevisionState(userId)).noteRevisions[note.id] ?? null;
+  return applyNoteChange(userId, note, revision);
 }
 
 async function settleAccepted(
@@ -174,13 +192,15 @@ async function keepBothVersions(
   current: Note | null,
   result: PendingFlushResult,
 ): Promise<void> {
-  // Images not uploaded yet exist only here, under the local note's id: they go with the copy.
-  const copy = await withPendingAttachments(local, conflictedCopy(local), userId);
+  // Images not uploaded yet exist only here, under the local note's id, and an upload this push was
+  // to name is visible nowhere until a commit does: both go with the copy.
+  const source = await reclaimUncommittedUploads(local, userId, { noteGone: current === null });
+  const copy = await withPendingAttachments(source, conflictedCopy(local), userId);
   if (!(await resolveConflictedPush(userId, local.id, seq, copy, current))) {
     await releaseCopyAttachments(copy, userId);
     return;
   }
-  await releaseCopiedPendingAttachments(local, current, userId);
+  await releaseCopiedPendingAttachments(source, current, userId);
 
   const store = useNotesStore.getState();
   if (current) {

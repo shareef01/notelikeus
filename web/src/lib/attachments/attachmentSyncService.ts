@@ -17,13 +17,24 @@ import {
   peekPendingAttachment,
   releasePendingAttachment,
 } from '@/lib/attachments/pendingAttachmentStore';
+import { listPendingPushes } from '@/lib/local/notesLocalRepository';
+import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Attachment } from '@/types/attachment';
 import type { Note } from '@/types/note';
 
+/**
+ * Rebuilds each note's attachments from the account's committed attachment rows, keeping the
+ * `pending:` ones (not uploaded yet).
+ *
+ * [awaitingCommit] are notes with a local edit the cloud has not confirmed. Their uploads stay
+ * provisional, and so unlisted, until that edit's commit names them — dropping them here would
+ * erase the reference the commit is about to make — so their `r2:` attachments are kept too.
+ */
 export function mergeAttachmentsIntoNotes(
   notes: Note[],
   metadata: NoteAttachmentMetadata[],
+  awaitingCommit: ReadonlySet<string> = new Set(),
 ): Note[] {
   const byNoteId = new Map<string, NoteAttachmentMetadata[]>();
   for (const row of metadata) {
@@ -36,8 +47,10 @@ export function mergeAttachmentsIntoNotes(
     const remote = (byNoteId.get(note.id) ?? []).map((row) =>
       attachmentFromMetadata(note, row),
     );
-    const pending = note.attachments.filter((attachment) =>
-      isPendingAttachment(attachment.storagePath),
+    const pending = note.attachments.filter(
+      (attachment) =>
+        isPendingAttachment(attachment.storagePath) ||
+        (awaitingCommit.has(note.id) && attachment.storagePath.startsWith(ATTACHMENT_R2_PREFIX)),
     );
     const remoteIds = new Set(remote.map((attachment) => attachment.id));
     const keptPending = pending.filter((attachment) => !remoteIds.has(attachment.id));
@@ -48,7 +61,17 @@ export function mergeAttachmentsIntoNotes(
 export async function hydrateNotesWithAttachments(notes: Note[]): Promise<Note[]> {
   if (!isR2AttachmentsEnabled() || notes.length === 0) return notes;
   const metadata = await listUserAttachments();
-  return mergeAttachmentsIntoNotes(notes, metadata);
+  return mergeAttachmentsIntoNotes(notes, metadata, await notesAwaitingCommit());
+}
+
+async function notesAwaitingCommit(): Promise<Set<string>> {
+  const ownerId = resolveOwnerId();
+  if (!ownerId) return new Set();
+  try {
+    return new Set(Object.keys(await listPendingPushes(ownerId)));
+  } catch {
+    return new Set();
+  }
 }
 
 export async function syncNoteAttachments(note: Note): Promise<Note> {
