@@ -89,35 +89,36 @@
  * static-color utilities of the same name.
  */
 /*
- * :root carries the app's default theme (true dark, per settingsStore) rather than the light
- * palette, so the static shell in index.html is self-consistent before React mounts. It used to
- * share the light block, which meant the shell's dark background rendered near-black text on
- * black until ThemeApplier ran. An inline theme script in <head> is the usual fix, but the CSP
- * has no 'unsafe-inline' in script-src, so the default belongs here.
+ * :root carries the dark palette so the static shell in index.html is self-consistent before React
+ * mounts (the light one follows in a media query; the default theme follows the device). An inline
+ * theme script is the usual fix, but the CSP has no 'unsafe-inline' in script-src.
+ *
+ * The light and dark palettes are pinned by contracts/design/theme-colors.json, which Compose is
+ * held to as well (themeTokens.test.ts / ThemeTokensContractTest): change both or neither.
  *
  * ThemeApplier adds a .theme-* class on mount; those follow below and win on source order.
  */
 :root {
-  --background-rgb: 0 0 0;
-  --surface-rgb: 0 0 0;
-  --surface-variant-rgb: 18 18 18;
-  --primary-rgb: 255 255 255;
-  --secondary-rgb: 168 168 168;
-  --muted-rgb: 153 153 153;
-  --outline-rgb: 38 38 38;
+  --background-rgb: 16 16 16;
+  --surface-rgb: 27 27 27;
+  --surface-variant-rgb: 39 39 39;
+  --primary-rgb: 237 237 237;
+  --secondary-rgb: 176 176 176;
+  --muted-rgb: 148 148 148;
+  --outline-rgb: 50 50 50;
 }
 
 /* The default theme now follows the device (settingsStore DEFAULT_THEME), so the pre-mount shell
    does too — in CSS, which needs no inline script and so stays inside the CSP. */
 @media (prefers-color-scheme: light) {
   :root {
-    --background-rgb: 247 247 247;
+    --background-rgb: 244 244 242;
     --surface-rgb: 255 255 255;
-    --surface-variant-rgb: 239 239 239;
-    --primary-rgb: 17 17 17;
-    --secondary-rgb: 82 82 82;
-    --muted-rgb: 107 107 107;
-    --outline-rgb: 216 216 216;
+    --surface-variant-rgb: 236 236 234;
+    --primary-rgb: 21 21 21;
+    --secondary-rgb: 77 77 75;
+    --muted-rgb: 102 102 99;
+    --outline-rgb: 214 214 211;
   }
 }
 
@@ -126,13 +127,13 @@
    is why a blue theme could never also be OLED: there was one black level per named theme. */
 
 .theme-light {
-  --background-rgb: 247 247 247;
+  --background-rgb: 244 244 242;
   --surface-rgb: 255 255 255;
-  --surface-variant-rgb: 239 239 239;
-  --primary-rgb: 17 17 17;
-  --secondary-rgb: 82 82 82;
-  --muted-rgb: 107 107 107;
-  --outline-rgb: 216 216 216;
+  --surface-variant-rgb: 236 236 234;
+  --primary-rgb: 21 21 21;
+  --secondary-rgb: 77 77 75;
+  --muted-rgb: 102 102 99;
+  --outline-rgb: 214 214 211;
 }
 
 /* On light, an accent tints the primary and nothing else -- matching lightSchemeFor() in
@@ -146,13 +147,13 @@
 }
 
 .theme-dark {
-  --background-rgb: 18 18 18;
-  --surface-rgb: 28 28 28;
-  --surface-variant-rgb: 40 40 40;
-  --primary-rgb: 245 245 245;
+  --background-rgb: 16 16 16;
+  --surface-rgb: 27 27 27;
+  --surface-variant-rgb: 39 39 39;
+  --primary-rgb: 237 237 237;
   --secondary-rgb: 176 176 176;
-  --muted-rgb: 156 156 156;
-  --outline-rgb: 55 55 55;
+  --muted-rgb: 148 148 148;
+  --outline-rgb: 50 50 50;
 }
 
 /* What Midnight was. */
@@ -190,13 +191,28 @@
   --outline-rgb: 38 38 38;
 }
 
-/* An accented theme at true black keeps its hue: only the surface family drops, exactly as
-   ColorScheme.asAmoled() does. Three classes, so this wins over the neutral rule above. */
-.theme-dark.accent-blue.amoled,
+/* An accented theme at true black keeps its hue: only the background and surface drop to black,
+   exactly as ColorScheme.asAmoled() does. Three classes, so these win over the neutral rule above —
+   which is why they carry the accent's text colours too: with only the surfaces here, the neutral
+   rule's white text used to win and the hue was lost on the web alone. */
+.theme-dark.accent-blue.amoled {
+  --background-rgb: 0 0 0;
+  --surface-rgb: 0 0 0;
+  --surface-variant-rgb: 20 27 42;
+  --primary-rgb: 220 232 255;
+  --secondary-rgb: 154 172 204;
+  --muted-rgb: 138 156 184;
+  --outline-rgb: 40 52 72;
+}
+
 .theme-dark.accent-green.amoled {
   --background-rgb: 0 0 0;
   --surface-rgb: 0 0 0;
-  --surface-variant-rgb: 18 18 18;
+  --surface-variant-rgb: 24 33 25;
+  --primary-rgb: 214 240 214;
+  --secondary-rgb: 154 184 158;
+  --muted-rgb: 138 164 142;
+  --outline-rgb: 42 56 44;
 }
 
 @layer base {
