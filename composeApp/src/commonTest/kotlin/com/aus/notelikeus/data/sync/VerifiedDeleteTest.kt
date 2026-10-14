@@ -105,4 +105,28 @@ class VerifiedDeleteTest {
             ),
         )
     }
+
+    @Test
+    fun `a restored deleted note is counted once for the user-facing notice`() = runTest {
+        setup()
+        deletedHereWithoutRevision()
+        transport.notes[1L] = cloud("milk, eggs (from the phone)")
+
+        engine.downloadAllNotes().getOrThrow()
+
+        assertEquals(1, engine.takeDeletedNotesCameBack())
+        assertEquals(0, engine.takeDeletedNotesCameBack(), "taking the count resets it")
+    }
+
+    @Test
+    fun `a tombstone this device never made is not announced`() = runTest {
+        setup()
+        // Merged from the cloud: no fingerprint, no baseline — another device deleted it.
+        stateStore.markDeleted(1L, deletedAt = 50L, baselineRevision = null)
+        transport.notes[1L] = cloud("milk")
+
+        engine.downloadAllNotes().getOrThrow()
+
+        assertEquals(0, engine.takeDeletedNotesCameBack())
+    }
 }

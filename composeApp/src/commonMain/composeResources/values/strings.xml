@@ -307,6 +307,10 @@ Sync diagnostics shows counts and version numbers only — never note text, toke
       The Filters sheet’s live count. Plurals rather than "%1$d notes", which renders "1 notes" for
       the single-note case that a new or heavily-filtered library hits constantly.
     -->
+    <plurals name="deleted_notes_came_back">
+        <item quantity="one">A note you deleted changed on another device, so it’s back</item>
+        <item quantity="other">%1$d notes you deleted changed on another device, so they’re back</item>
+    </plurals>
     <plurals name="showing_all">
         <item quantity="one">%1$d note</item>
         <item quantity="other">%1$d notes</item>
