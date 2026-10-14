@@ -294,44 +294,35 @@ export function MainScreen() {
   const overlayEditor =
     desktopEditor && editorLayout !== 'dock' ? desktopEditor : null;
 
-  useShortcuts([
-    {
-      key: '/',
-      action: () => {
-        if (editorRoute.mode === 'closed') searchInputRef.current?.focus();
+  // Main-screen keys stand aside while a dialog holds the keyboard, and decline (rather than
+  // swallow) a key while the editor is open, so Ctrl+F there still opens the browser's find bar.
+  const focusSearch = () => {
+    if (editorRoute.mode !== 'closed') return false;
+    searchInputRef.current?.focus();
+  };
+  useShortcuts(
+    [
+      { key: '/', action: focusSearch },
+      { key: 'k', ctrlOrMeta: true, action: focusSearch },
+      { key: 'f', ctrlOrMeta: true, action: focusSearch },
+      {
+        key: 'n',
+        action: () => {
+          if (editorRoute.mode !== 'closed' || filters.filter !== 'active') return false;
+          openNewNote();
+        },
       },
-    },
-    {
-      key: 'k',
-      ctrlOrMeta: true,
-      action: () => {
-        if (editorRoute.mode === 'closed') searchInputRef.current?.focus();
+      {
+        key: 'Escape',
+        action: () => {
+          if (editorRoute.mode !== 'closed') return false;
+          if (selectionMode) clearSelection();
+          else setDrawerOpen(false);
+        },
       },
-    },
-    {
-      key: 'f',
-      ctrlOrMeta: true,
-      action: () => {
-        if (editorRoute.mode === 'closed') searchInputRef.current?.focus();
-      },
-    },
-    {
-      key: 'n',
-      action: () => {
-        if (editorRoute.mode === 'closed' && filters.filter === 'active') openNewNote();
-      },
-    },
-    {
-      key: 'Escape',
-      action: () => {
-        if (editorRoute.mode !== 'closed') {
-          return;
-        }
-        if (selectionMode) clearSelection();
-        else setDrawerOpen(false);
-      },
-    },
-  ]);
+    ],
+    { ignoreWhileModalOpen: true },
+  );
 
   return (
     <div className="flex min-h-screen w-full bg-true-surface lg:mx-auto lg:max-w-shell">
