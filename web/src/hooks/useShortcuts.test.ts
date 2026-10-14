@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { useShortcuts, type ShortcutBinding } from '@/hooks/useShortcuts';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useShortcuts, type ShortcutBinding, type ShortcutOptions } from '@/hooks/useShortcuts';
 
-function mountShortcuts(bindings: ShortcutBinding[]): () => void {
+function mountShortcuts(bindings: ShortcutBinding[], options?: ShortcutOptions): () => void {
   const container = document.createElement('div');
   document.body.appendChild(container);
 
   function Host() {
-    useShortcuts(bindings);
+    useShortcuts(bindings, options);
     return createElement('div', null, createElement('input', { id: 'test-input', type: 'text' }));
   }
 
@@ -23,6 +24,12 @@ function mountShortcuts(bindings: ShortcutBinding[]): () => void {
     });
     container.remove();
   };
+}
+
+/** A dialog holding the keyboard, as ModalDialog and ResponsiveSheet do. */
+function Dialog() {
+  const ref = useFocusTrap<HTMLDivElement>(true, () => {});
+  return createElement('div', { ref }, createElement('button', null, 'OK'));
 }
 
 describe('useShortcuts', () => {
@@ -107,5 +114,56 @@ describe('useShortcuts', () => {
     });
 
     expect(action).not.toHaveBeenCalled();
+  });
+
+  it('leaves a key it does not handle to the browser', () => {
+    const unmount = mountShortcuts([{ key: 'f', ctrlOrMeta: true, action: () => false }]);
+    const event = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true });
+
+    act(() => {
+      window.dispatchEvent(event);
+    });
+
+    // Ctrl+F with nothing to focus must still open the browser's find bar.
+    expect(event.defaultPrevented).toBe(false);
+    unmount();
+  });
+
+  it('tries the next binding when one declines', () => {
+    const second = vi.fn();
+    const unmount = mountShortcuts([
+      { key: 'n', action: () => false },
+      { key: 'n', action: second },
+    ]);
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
+    });
+
+    expect(second).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it('stands aside while a dialog is open when asked to, so keys reach the dialog only', () => {
+    const screen = vi.fn();
+    const unmount = mountShortcuts([{ key: 'n', action: screen }], { ignoreWhileModalOpen: true });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const dialogRoot = createRoot(host);
+    act(() => dialogRoot.render(createElement(Dialog)));
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
+    });
+    expect(screen).not.toHaveBeenCalled();
+
+    act(() => dialogRoot.unmount());
+    host.remove();
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
+    });
+    expect(screen).toHaveBeenCalledTimes(1);
+    unmount();
   });
 });
