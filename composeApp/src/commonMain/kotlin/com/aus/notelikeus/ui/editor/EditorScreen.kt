@@ -218,7 +218,11 @@ fun EditorScreen(
     // Both versions are safe, so this is information rather than an alarm: said once, plainly.
     LaunchedEffect(state.conflictCopy) {
         if (state.conflictCopy) {
-            snackbarHostState.showSnackbar(conflictCopySavedMsg, withDismissAction = true, duration = SnackbarDuration.Long)
+            snackbarHostState.showSnackbar(
+                conflictCopySavedMsg,
+                withDismissAction = true,
+                duration = SnackbarDuration.Long,
+            )
         }
     }
 
