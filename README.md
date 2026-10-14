@@ -47,6 +47,17 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 | Sync diagnostics | ✓ | ✓ | ✓ |
 | Installable PWA | — | — | ✓ |
 
+Web keyboard shortcuts:
+
+| Key | Where | Does |
+|---|---|---|
+| `/`, Ctrl/⌘+K, Ctrl/⌘+F | Note list | Focus search. With a note open, Ctrl/⌘+F is the browser's find. |
+| N | Note list | New note |
+| Ctrl/⌘+Enter | Editor | Save now |
+| Escape | Anywhere | Close the innermost dialog, then the note, then leave selection |
+
+Shortcuts on the note list stay out of the way while a dialog is open, and typing in a text field never triggers them.
+
 ## How it works
 
 Notes are stored on the device. Android and Windows use Room with SQLCipher: Android seals the passphrase in the Android Keystore; Windows seals it with DPAPI. Attachment image bytes are AES-GCM sealed on both. The web client seals note titles, bodies, and checklists in IndexedDB (and staged pending attachment blobs) with WebCrypto AES-GCM — profile-at-rest only, not an XSS control. Nothing about the app requires an account.
