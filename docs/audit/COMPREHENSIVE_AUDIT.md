@@ -80,8 +80,8 @@ suite. A shared two-client fixture would need an adapter over that design (roadm
 ## 5. Security
 
 Re-verified: RLS on all five tables; a single `SECURITY DEFINER` function with pinned
-`search_path`; web RPC arity compatible with the server (14-arg overload retained, AU-17 notes the
-parity gap); production CSP pins only the Supabase and Worker origins plus Google sign-in; the
+`search_path`; every client commits attachments through the 15-argument `apply_note_change` (AU-17; the 14-arg
+overload stays for older builds); production CSP pins only the Supabase and Worker origins plus Google sign-in; the
 email/password test login cannot ship (`DEV`/`VITE_E2E` gate; absent from the production bundle);
 no raw-HTML sinks in the web client; link targets pass `toSafeHref`.
 

@@ -1021,7 +1021,7 @@ class NoteSyncEngine(
                         val preserve = action == ConflictResolution.InboundAction.FORK
                         // The local version's own images go with it into the copy; any that could
                         // not be staged again stay on the row, where they were.
-                        val carried = if (preserve) carriedAttachmentsFor(localNote) else emptyMap()
+                        val carried = if (preserve) carriedAttachmentsFor(localNote, remoteIdentity) else emptyMap()
                         val merged = cloudNote.keepingLocalOnlyAttachmentsOf(localNote, except = carried.keys)
                         if (preserve || !sameContent(merged, localNote)) {
                             var copy: Note? = null
@@ -1120,8 +1120,14 @@ class NoteSyncEngine(
             // Hydration's metadata read is a protected remote call, so it runs under this download's
             // own immutable identity — the same value every other remote step in this run uses, never a
             // fresh read of the live session and never a credential acquired inside the helper.
+            // A note whose local version the cloud has not confirmed keeps its uploads: they stay
+            // unlisted until that version's commit names them.
+            val syncedAfterPush = syncStateStore.syncedTimestampById()
             val hydration = attachmentSync
-                ?.hydrateAllNotes(commitToken, remoteIdentity)
+                ?.hydrateAllNotes(commitToken, remoteIdentity) { note ->
+                    note.serverUpdatedAt == null ||
+                        ConflictResolution.isLocallyEdited(note, syncedAfterPush[note.id])
+                }
                 ?: LocalCommitResult.Applied(0)
             when (hydration) {
                 is LocalCommitResult.Applied -> Unit
@@ -1928,8 +1934,11 @@ class NoteSyncEngine(
      * the copy, since staging is file I/O. Bytes staged for a copy whose commit is then refused are
      * referenced by nothing, and [AttachmentSyncService.reconcileStagedAttachments] releases them.
      */
-    private suspend fun carriedAttachmentsFor(local: Note): Map<String, Attachment> =
-        runCatching { attachmentSync?.stageForCopy(local.attachments) }.getOrNull().orEmpty()
+    private suspend fun carriedAttachmentsFor(
+        local: Note,
+        remoteIdentity: OperationRemoteIdentity? = null,
+    ): Map<String, Attachment> =
+        runCatching { attachmentSync?.stageForCopy(local.attachments, remoteIdentity) }.getOrNull().orEmpty()
 
     private suspend fun innerUpdate(note: Note) {
         val noteId = note.id ?: return

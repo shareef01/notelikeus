@@ -1,4 +1,6 @@
-﻿import { applyRemotePageAtomically } from '@/lib/local/notesLocalRepository';
+﻿import { keepingLocalOnlyAttachments } from '@/lib/attachments/attachmentPaths';
+import { applyRemotePageAtomically } from '@/lib/local/notesLocalRepository';
+import { useNotesStore } from '@/store/notesStore';
 import {
   retryPendingCloudRestores,
   withoutRestoredDeletes,
@@ -218,7 +220,10 @@ export async function pullIncrementalChanges(
 
       const notePayload = change as SupabaseNotePayload;
       if (!notePayload.note_id) continue;
-      const note = supabaseNoteToNote(notePayload);
+      const local =
+        useNotesStore.getState().notes.find((candidate) => candidate.id === notePayload.note_id) ??
+        notesById.get(notePayload.note_id);
+      const note = keepingLocalOnlyAttachments(supabaseNoteToNote(notePayload), local);
       upserts.push(note);
       if (notePayload.revision != null) {
         noteRevisions[note.id] = notePayload.revision;

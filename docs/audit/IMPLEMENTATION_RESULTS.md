@@ -111,11 +111,25 @@ editor-fork case on real IndexedDB (fake-indexeddb); Kotlin `ConflictCopyAttachm
 fork, cloud delete, unreadable bytes) on the real file staging store, and an `EditorViewModelTest`
 fork case.
 
+## AU-17 — the web on the deferred attachment protocol (with AU-23..AU-25)
+
+Web uploads go to the Worker's `/v2/` route, which leaves the row provisional, and every
+`apply_note_change` names the version's `r2:` attachments (`p_attachment_ids`), as Kotlin does;
+`restore_note` keeps its 14 arguments. An upload is now invisible until a commit names it, so:
+hydration keeps the uploads of a note whose edit is queued; a conflicted push reclaims an upload it
+was to name (`reclaimUncommittedUploads` fetches it back for the copy, or the conflict waits for the
+next flush); a same-words conflict commits again naming the uploads (AU-25, which also ended spurious
+copies of notes with images). Making the test fake return attachment-less payloads, as the server
+does, exposed AU-23 (cloud versions written over a local row dropped its unuploaded images) on the
+web, and the same review found AU-24 on Kotlin (hydration dropping an unconfirmed note's upload; a
+fork stranding an uncommitted one). Tests: web 122 files / 890 tests; Kotlin `DeferredUploadCommitTest`
+(the two engine cases fail without the fix).
+
 ## Not done / not verified
 
 - pgTAP, Playwright e2e, MSI — no Docker locally; CI runs the first two.
 - Two-device conflict on Android not exercised end to end: Google sign-in is bound to the real
   application id, and the owner's installed build is signed with another key, so the branch build
   could not replace it without deleting its local notes.
-- AU-17 (web on the 15-argument `apply_note_change`) — designed, not implemented (roadmap M6); it needs
-  the database suite.
+- AU-17 against a live database and Worker: the RPC argument sets are checked against the migrations
+  locally (`rpcSignatureContract.test.ts`); pgTAP and Playwright run in CI only.

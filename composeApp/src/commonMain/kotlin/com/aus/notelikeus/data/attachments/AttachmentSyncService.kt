@@ -111,11 +111,20 @@ class AttachmentSyncService(
      * file of that note's, so a copy that dropped them would drop the only copy once the original's
      * row is overwritten or deleted. The cloud keys attachments by id per owner, so the copy cannot
      * share the original's ids either. An image whose bytes cannot be read or staged is left out of
-     * the result, and the caller leaves it where it was. `r2:` images are already in the cloud under
-     * the original note and are not copied.
+     * the result, and the caller leaves it where it was.
+     *
+     * A committed `r2:` image is in the cloud under the original note, which keeps it, and is not
+     * copied. An upload no commit has named yet is different: rows stay provisional, and out of every
+     * listing, until a note commit names them, and the commit that was to do so is the one that
+     * conflicted. Given [remoteIdentity] (the download's), such an upload is fetched back and carried
+     * like a staged image; without it, or when the listing or the fetch fails, it is left as it was.
      */
-    suspend fun stageForCopy(attachments: List<Attachment>): Map<String, Attachment> {
+    suspend fun stageForCopy(
+        attachments: List<Attachment>,
+        remoteIdentity: OperationRemoteIdentity? = null,
+    ): Map<String, Attachment> {
         val owner = ownerId()
+        val uncommitted = uncommittedUploadsAmong(attachments, remoteIdentity)
         val carried = mutableMapOf<String, Attachment>()
         for (attachment in attachments) {
             val source = when {
@@ -123,6 +132,8 @@ class AttachmentSyncService(
                 isFileAttachment(attachment.storagePath) -> runCatching {
                     localStorage.readBytes(attachment.storagePath)
                 }.getOrNull()?.let { PendingAttachment(it, attachment.mimeType ?: "image/jpeg") }
+                attachment.id in uncommitted -> readAttachmentBytes(attachment)
+                    ?.let { PendingAttachment(it, attachment.mimeType ?: "image/jpeg") }
                 else -> null
             } ?: continue
             val id = createAttachmentId()
@@ -136,6 +147,21 @@ class AttachmentSyncService(
             )
         }
         return carried
+    }
+
+    /** The ids among [attachments]' `r2:` uploads that no committed row lists. Empty when unknowable. */
+    private suspend fun uncommittedUploadsAmong(
+        attachments: List<Attachment>,
+        remoteIdentity: OperationRemoteIdentity?,
+    ): Set<String> {
+        val uploads = attachments.filter { isR2Attachment(it.storagePath) }
+        if (uploads.isEmpty() || remoteIdentity == null || !enabled) return emptySet()
+        val metadataClient = metadata ?: return emptySet()
+        val committed = runCatching { metadataClient.listUserAttachments(remoteIdentity) }
+            .getOrElse { return emptySet() }
+            .map { it.noteId to it.attachmentId }
+            .toSet()
+        return uploads.filterNot { (it.noteId.toString() to it.id) in committed }.map { it.id }.toSet()
     }
 
     /** Drops staged bytes the user explicitly removed, or that a discarded note referenced. */
@@ -180,6 +206,7 @@ class AttachmentSyncService(
     suspend fun hydrateAllNotes(
         commitToken: LocalCommitToken,
         metadataIdentity: OperationRemoteIdentity,
+        awaitingCommit: (Note) -> Boolean = { false },
     ): LocalCommitResult<Int> {
         if (!enabled) return LocalCommitResult.Applied(0)
         val metadataClient = metadata ?: return LocalCommitResult.Applied(0)
@@ -197,7 +224,7 @@ class AttachmentSyncService(
         return LocalCommitGate.commit(commitToken) {
             var updated = 0
             val notes = noteDao.getAllNotesForBackup().map { it.toNote() }
-            for (merged in mergeAttachmentsIntoNotes(notes, rows)) {
+            for (merged in mergeAttachmentsIntoNotes(notes, rows, awaitingCommit)) {
                 val original = notes.firstOrNull { it.id == merged.id } ?: continue
                 if (attachmentsKey(original.attachments) == attachmentsKey(merged.attachments)) continue
                 noteDao.updateNote(merged.toNoteEntity())

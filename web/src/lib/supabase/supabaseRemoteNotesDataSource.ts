@@ -1,3 +1,4 @@
+import { keepingLocalOnlyAttachments } from '@/lib/attachments/attachmentPaths';
 import {
   mergeRemoteNotes,
   shouldUploadOverRemote,
@@ -104,10 +105,15 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       // snapshot below already contains them — or, on a conflict, both versions.
       await flushPendingPushes(userId, { isActive: () => session.isActive() });
       if (!session.isActive()) return;
-      const snapshot = await fetchSnapshotNotes({ hydrateAttachments: false });
+      const fetched = await fetchSnapshotNotes({ hydrateAttachments: false });
       if (!session.isActive()) return;
       const prior = await loadRevisionState(userId);
       const local = await listNotes(userId);
+      const localById = new Map(local.map((note) => [note.id, note]));
+      const snapshot = {
+        ...fetched,
+        notes: fetched.notes.map((note) => keepingLocalOnlyAttachments(note, localById.get(note.id))),
+      };
       const snapshotIds = new Set(snapshot.notes.map((note) => note.id));
       const tombstoneIds = new Set(Object.keys(snapshot.tombstones));
       const knownIds = [
