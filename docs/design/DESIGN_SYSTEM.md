@@ -53,12 +53,15 @@ contrast-tested (`NotePaletteContrastTest`). **Rule:** on a coloured note, secon
 note's own text colour at 80 % opacity, never the `muted` token — `muted` on the dark blue note is
 3.0:1, the note colour at 80 % is 5.5:1.
 
-### 2.4 Drift between clients (to close)
+### 2.4 One source for every client
 
-`tokens.json` records, per role, what web (`globals.css`) and Compose (`Color.kt`) ship where they
-differ. The differences are small (e.g. light background `#F7F7F7` vs `#F0F0F0`, dark background
-`#121212` vs `#0F0F0F`) but they mean the same note looks different on two devices side by side.
-Roadmap M5 moves both to the canonical values and adds a test on each side that reads `tokens.json`.
+The chrome colours of all seven themes (light, dark, true black, midnight, forest, and midnight and
+forest at true black) live in [`contracts/design/theme-colors.json`](../../contracts/design/theme-colors.json).
+`ThemeTokensContractTest` holds Compose's `colorSchemeFor` to it and `themeTokens.test.ts` holds the
+cascaded variables of `globals.css` to it, so a colour changed on one client fails the other's build
+until it changes there too. Before M5 the light and dark palettes differed slightly per client (e.g. a
+light background of `#F7F7F7` on the web and `#F0F0F0` in Compose), and the web lost an accent's hue
+at true black.
 
 ## 3. Typography
 
