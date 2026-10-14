@@ -91,7 +91,7 @@ export function ReminderPickerDialog({
             <button
               type="button"
               onClick={onRemove}
-              className={`mr-auto rounded-note px-4 py-2 text-sm text-red-400 transition-colors hover:bg-red-950/30 ${CHROME_FOCUS}`}
+              className={`mr-auto rounded-note px-4 py-2 text-sm text-red-700 dark:text-red-400 transition-colors hover:bg-red-950/30 ${CHROME_FOCUS}`}
             >
               Remove
             </button>
