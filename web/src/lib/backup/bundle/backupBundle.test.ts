@@ -12,7 +12,11 @@ import {
   applyBundle,
   buildBundleFromNotes,
   bundleFileName,
+  planBundleImport,
+  releaseStagedBundle,
+  stagePlannedAttachments,
 } from '@/lib/backup/bundle/bundleTransfer';
+import { listPendingAttachmentsForOwner } from '@/lib/local/pendingAttachmentRepository';
 import { readZip, writeZip } from '@/lib/backup/bundle/zip';
 import { exportBackupPayload } from '@/lib/backup/exportBackup';
 import { importNotesFromBackup } from '@/lib/backup/importBackup';
@@ -507,5 +511,58 @@ describe('bundle import stays additive and deterministic', () => {
     ]) {
       expect(text, `manifest must not contain ${forbidden}`).not.toContain(forbidden);
     }
+  });
+});
+
+/** A bundle of one note with one image, and a device that holds neither. */
+async function bundleWithOneImage(): Promise<Uint8Array> {
+  await stage('att-one', '7', PNG);
+  const source = note('7', {
+    title: 'Trip',
+    attachments: [
+      {
+        id: 'att-one',
+        noteId: 7,
+        storagePath: pendingStoragePath('att-one'),
+        type: 'image',
+        mimeType: 'image/png',
+        sizeBytes: PNG.byteLength,
+      },
+    ],
+  });
+  const exported = await buildBundleFromNotes([source], GUEST_OWNER_ID);
+  // Only what the import itself writes should be left to count.
+  await resetNotesDatabaseForTests();
+  clearPendingAttachmentsForTests();
+  return exported.bytes;
+}
+
+describe('a bundle import writes nothing until it is confirmed', () => {
+  it('previewing stages no images: a cancelled import leaves nothing behind', async () => {
+    const plan = await planBundleImport(await bundleWithOneImage(), [], { ownerId: GUEST_OWNER_ID });
+
+    expect(plan.notesImported).toBe(1);
+    expect(plan.attachmentsImported).toBe(1);
+    expect(plan.merged[0]!.attachments).toEqual([]);
+    expect(await listPendingAttachmentsForOwner(GUEST_OWNER_ID)).toEqual([]);
+  });
+
+  it('confirming stages the images onto the imported notes', async () => {
+    const plan = await planBundleImport(await bundleWithOneImage(), [], { ownerId: GUEST_OWNER_ID });
+
+    const staged = await stagePlannedAttachments(plan, GUEST_OWNER_ID);
+
+    expect(staged.attachmentsImported).toBe(1);
+    expect(staged.merged[0]!.attachments).toHaveLength(1);
+    expect(await listPendingAttachmentsForOwner(GUEST_OWNER_ID)).toHaveLength(1);
+  });
+
+  it('a commit that fails afterwards can take the staged images back out', async () => {
+    const plan = await planBundleImport(await bundleWithOneImage(), [], { ownerId: GUEST_OWNER_ID });
+    const staged = await stagePlannedAttachments(plan, GUEST_OWNER_ID);
+
+    await releaseStagedBundle(staged, GUEST_OWNER_ID);
+
+    expect(await listPendingAttachmentsForOwner(GUEST_OWNER_ID)).toEqual([]);
   });
 });
