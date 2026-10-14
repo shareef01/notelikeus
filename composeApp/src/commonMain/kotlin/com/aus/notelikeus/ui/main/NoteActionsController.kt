@@ -164,6 +164,26 @@ internal class NoteActionsController(
         }
     }
 
+    /**
+     * Applies a conflict-review choice (AU-08). Keeping one version moves the other to Trash, so every
+     * choice is recoverable; the copy kept loses its "(conflicted copy)" suffix.
+     */
+    fun resolveConflict(copy: Note, original: Note?, choice: ConflictChoice) {
+        launchAction(NoteActionFailure.UPDATE) { token, _ ->
+            val now = DateUtils.currentTimeMillis()
+            val renamed = copy.copy(title = ConflictReview.originalTitleOf(copy.title) ?: "", timestamp = now)
+            fun trashed(note: Note) = note.copy(isTrashed = true, isArchived = false, timestamp = now)
+            when (choice) {
+                ConflictChoice.KEEP_BOTH -> applyUpdate(token, renamed)
+                ConflictChoice.KEEP_CURRENT -> applyUpdate(token, trashed(copy))
+                ConflictChoice.KEEP_COPY -> {
+                    original?.let { applyUpdate(token, trashed(it)) }
+                    applyUpdate(token, renamed)
+                }
+            }
+        }
+    }
+
     fun emptyTrash() {
         if (state.value.currentFilter != NoteFilter.TRASHED) return
         launchAction(NoteActionFailure.DELETE) { token, hide ->

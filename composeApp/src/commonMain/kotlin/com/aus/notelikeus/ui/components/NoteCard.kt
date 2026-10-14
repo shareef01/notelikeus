@@ -122,7 +122,8 @@ private fun NoteCardLabelChips(
     chipStyle: TextStyle,
     chipHorizontalPadding: Dp,
     chipVerticalPadding: Dp,
-    onLabelClick: ((Long) -> Unit)?
+    onLabelClick: ((Long) -> Unit)?,
+    onConflictReview: ((Long) -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -132,6 +133,7 @@ private fun NoteCardLabelChips(
         // A note re-homed by sync conflict resolution explains itself: the title suffix is what
         // every client writes, so the marker matches the web card's "Conflict copy" chip.
         if (ConflictResolution.isConflictedCopyTitle(note.title)) {
+            val reviewLabel = stringResource(Res.string.conflict_review_open)
             Text(
                 text = stringResource(Res.string.note_conflict_copy_chip),
                 style = chipStyle,
@@ -142,6 +144,12 @@ private fun NoteCardLabelChips(
                     .clip(CircleShape)
                     .background(ConflictChipAmber.copy(alpha = 0.18f))
                     .border(BorderStroke(1.dp, ConflictChipAmber.copy(alpha = 0.5f)), CircleShape)
+                    .then(
+                        // Opens the side-by-side review (AU-08), as the web chip does.
+                        if (onConflictReview != null && note.id != null) {
+                            Modifier.clickable(onClickLabel = reviewLabel) { onConflictReview(note.id) }
+                        } else Modifier
+                    )
                     .padding(horizontal = chipHorizontalPadding, vertical = chipVerticalPadding)
             )
         }
@@ -256,6 +264,7 @@ fun NoteCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onLabelClick: ((Long) -> Unit)? = null,
+    onConflictReview: ((Long) -> Unit)? = null,
     showReorderHandle: Boolean = false,
     reorderDragModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
@@ -481,7 +490,8 @@ fun NoteCard(
                                 chipStyle = NoteCardLabelChipStyle.copy(fontSize = 9.sp),
                                 chipHorizontalPadding = 6.dp,
                                 chipVerticalPadding = Spacing.xxs,
-                                onLabelClick = onLabelClick
+                                onLabelClick = onLabelClick,
+                                onConflictReview = onConflictReview
                             )
                         }
                     }
@@ -648,7 +658,8 @@ fun NoteCard(
                         chipStyle = NoteCardLabelChipStyle,
                         chipHorizontalPadding = Spacing.sm,
                         chipVerticalPadding = 3.dp,
-                        onLabelClick = onLabelClick
+                        onLabelClick = onLabelClick,
+                        onConflictReview = onConflictReview
                     )
                 }
             }
