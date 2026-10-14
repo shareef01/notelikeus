@@ -1018,13 +1018,16 @@ class NoteSyncEngine(
                     action != ConflictResolution.InboundAction.KEEP_LOCAL -> {
                         // The payload cannot speak for attachments, so it must not delete the ones
                         // only this device knows about.
-                        val merged = cloudNote.keepingLocalOnlyAttachmentsOf(localNote)
                         val preserve = action == ConflictResolution.InboundAction.FORK
+                        // The local version's own images go with it into the copy; any that could
+                        // not be staged again stay on the row, where they were.
+                        val carried = if (preserve) carriedAttachmentsFor(localNote) else emptyMap()
+                        val merged = cloudNote.keepingLocalOnlyAttachmentsOf(localNote, except = carried.keys)
                         if (preserve || !sameContent(merged, localNote)) {
                             var copy: Note? = null
                             when (commitLocally(commitToken) {
                                 // Copy first: a crash between the two leaves both versions, never neither.
-                                if (preserve) copy = insertConflictedCopy(localNote)
+                                if (preserve) copy = insertConflictedCopy(localNote, carried)
                                 innerUpdate(merged)
                                 syncStateStore.updateSyncedTimestamps(mapOf(noteId to merged.timestamp))
                             }) {
@@ -1066,13 +1069,13 @@ class NoteSyncEngine(
                     // row the replacement dataset owns under a colliding id nor write its deletion
                     // marker into that dataset's sync state.
                     val deletedAt = now()
+                    val edited = ConflictResolution.isLocallyEdited(localNote, syncedTimestamps[noteId])
+                    val carried = if (edited) carriedAttachmentsFor(localNote) else emptyMap()
                     var copy: Note? = null
                     when (commitLocally(commitToken) {
                         // Gone from the cloud while edited here: the deletion stands for the id, the
                         // words live on as a new note.
-                        if (ConflictResolution.isLocallyEdited(localNote, syncedTimestamps[noteId])) {
-                            copy = insertConflictedCopy(localNote)
-                        }
+                        if (edited) copy = insertConflictedCopy(localNote, carried)
                         noteDao.deleteNote(localNote.toNoteEntity())
                         syncStateStore.markDeleted(noteId, deletedAt)
                         syncStateStore.clearSyncedTimestamps(listOf(noteId))
@@ -1752,8 +1755,15 @@ class NoteSyncEngine(
         commitToken: LocalCommitToken,
         syncedTimestamps: Map<Long, Long> = emptyMap(),
         copies: MutableList<Note> = mutableListOf(),
-    ): LocalCommitResult<Set<Long>> =
-        commitLocally(commitToken) {
+    ): LocalCommitResult<Set<Long>> {
+        // Staging is file I/O, so it happens before the commit rather than inside it.
+        val carried = localNotes
+            .filter { note ->
+                val id = note.id ?: return@filter false
+                syncStateStore.isDeleted(id) && ConflictResolution.isLocallyEdited(note, syncedTimestamps[id])
+            }
+            .associate { it.id to carriedAttachmentsFor(it) }
+        return commitLocally(commitToken) {
             // One commit for the whole snapshot rather than one per row: the candidates are a single
             // snapshot result read in one pass, and a partial purge would be worse than none — some
             // rows gone, the caller told nothing about which.
@@ -1764,7 +1774,7 @@ class NoteSyncEngine(
                 // A row still present under a tombstone was deleted on another device (a local
                 // permanent delete removes the row itself). If it was edited here, keep the words.
                 if (ConflictResolution.isLocallyEdited(note, syncedTimestamps[id])) {
-                    made += insertConflictedCopy(note)
+                    made += insertConflictedCopy(note, carried[id].orEmpty())
                 }
                 noteDao.deleteNote(note.toNoteEntity())
                 id
@@ -1773,6 +1783,7 @@ class NoteSyncEngine(
             copies += made
             purged
         }
+    }
 
     /**
      * Drops tombstones that have outlived [NoteSyncStateStore.TOMBSTONE_TTL_MS], locally and in the
@@ -1868,9 +1879,9 @@ class NoteSyncEngine(
      * a download that finds no metadata row for one must let the reference go, and `hydrateAllNotes`
      * restores the ones the server still has.
      */
-    private fun Note.keepingLocalOnlyAttachmentsOf(local: Note): Note {
+    private fun Note.keepingLocalOnlyAttachmentsOf(local: Note, except: Set<String> = emptySet()): Note {
         val localOnly = local.attachments.filter {
-            isPendingAttachment(it.storagePath) || isFileAttachment(it.storagePath)
+            (isPendingAttachment(it.storagePath) || isFileAttachment(it.storagePath)) && it.id !in except
         }
         if (localOnly.isEmpty()) return this
         val known = attachments.map { it.id }.toSet()
@@ -1898,12 +1909,27 @@ class NoteSyncEngine(
      * Re-homes [local]'s words under a new id before the caller overwrites or deletes the original.
      * Runs inside the caller's commit, so the copy and the overwrite land together or not at all.
      */
-    private suspend fun insertConflictedCopy(local: Note): Note {
-        val copy = ConflictResolution.conflictedCopyOf(local)
+    private suspend fun insertConflictedCopy(
+        local: Note,
+        carried: Map<String, Attachment> = emptyMap(),
+    ): Note {
+        val copy = ConflictResolution.conflictedCopyOf(local, carried.values.toList())
         val id = innerInsert(copy)
+        val inserted = copy.copy(id = id, attachments = copy.attachments.map { it.copy(noteId = id) })
+        // The attachment metadata names its note, which has an id only now.
+        if (inserted.attachments.isNotEmpty()) noteDao.updateNote(inserted.toNoteEntity())
         AppLog.warn(TAG, "Kept an unsynced edit to note ${local.id} as conflicted copy $id")
-        return copy.copy(id = id)
+        return inserted
     }
+
+    /**
+     * [local]'s device-only images staged again for its conflicted copy, keyed by the original
+     * attachment id; see [AttachmentSyncService.stageForCopy]. Called before the commit that makes
+     * the copy, since staging is file I/O. Bytes staged for a copy whose commit is then refused are
+     * referenced by nothing, and [AttachmentSyncService.reconcileStagedAttachments] releases them.
+     */
+    private suspend fun carriedAttachmentsFor(local: Note): Map<String, Attachment> =
+        runCatching { attachmentSync?.stageForCopy(local.attachments) }.getOrNull().orEmpty()
 
     private suspend fun innerUpdate(note: Note) {
         val noteId = note.id ?: return

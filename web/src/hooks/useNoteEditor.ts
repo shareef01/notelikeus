@@ -8,6 +8,10 @@ import {
 import { useNoteLabels } from '@/hooks/useNoteLabels';
 import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { saveNote, removeNote } from '@/lib/notes/noteActions';
+import {
+  releaseCopiedPendingAttachments,
+  withPendingAttachments,
+} from '@/lib/attachments/conflictCopyAttachments';
 import { conflictedCopyOf } from '@/lib/notes/conflictResolution';
 import { decideEditorSave } from '@/lib/notes/editorConflict';
 import type { LocalSaveResult } from '@/lib/notes/localSaveResult';
@@ -151,6 +155,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     }
 
     let forked = false;
+    let forkedFrom: Note | null = null;
     switch (decideEditorSave({ draft: note, stored, lastSaved: lastSavedRef.current })) {
       case 'adopt-stamp': {
         // A remote snapshot can load the editor before the server has assigned a revision, and
@@ -165,14 +170,16 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         // Another device changed this note while it was open here. Writing the draft over it would
         // erase that change, so the draft becomes its own note and the editor follows it.
         const localId = allocateLocalNoteId(useNotesStore.getState().notes);
-        const copy = conflictedCopyOf(note, localId);
+        // The draft's images that are not uploaded yet go with it; see withPendingAttachments.
+        const copy = await withPendingAttachments(note, conflictedCopyOf(note, localId));
+        forkedFrom = note;
         working = {
           ...working,
           id: copy.id,
           localId,
           title: copy.title,
           serverUpdatedAt: null,
-          attachments: [],
+          attachments: copy.attachments,
           checklist: copy.checklist,
         };
         note = copy;
@@ -186,6 +193,8 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     try {
       await saveNote(note);
       lastSavedRef.current = note;
+      // Only once the copy is saved: until then the draft's own staged images are the ones to keep.
+      if (forkedFrom) await releaseCopiedPendingAttachments(forkedFrom, stored ?? null);
       if (isCurrentRoute()) {
         setState((prev) => ({
           ...working,

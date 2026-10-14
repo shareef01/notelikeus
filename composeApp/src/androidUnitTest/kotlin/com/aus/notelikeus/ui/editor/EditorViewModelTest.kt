@@ -2,6 +2,9 @@ package com.aus.notelikeus.ui.editor
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
+import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.attachments.pendingStoragePath
+import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.data.backup.NoteBackupImporter
@@ -362,6 +365,37 @@ class EditorViewModelTest {
         }
         assertTrue(viewModel.state.value.conflictCopy)
         assertEquals(42L, viewModel.state.value.id)
+    }
+
+    @Test
+    fun `a conflicted copy takes the draft's unuploaded image, staged again under a new id`() = runTest {
+        val image = Attachment(id = "att-1", noteId = 1L, storagePath = pendingStoragePath("att-1"))
+        val opened = openedNote.copy(attachments = listOf(image))
+        val replaced = openedNote.copy(content = "milk, eggs (from phone)", timestamp = 1_900L, serverUpdatedAt = 2_000L)
+        val restaged = image.copy(id = "att-copy", noteId = 0L, storagePath = pendingStoragePath("att-copy"))
+        val attachmentSync = mockk<AttachmentSyncService>(relaxed = true)
+        coEvery { attachmentSync.stageForCopy(listOf(image)) } returns mapOf("att-1" to restaged)
+        coEvery { attachmentSync.bindStagedAttachmentsToNote(any(), any(), any()) } returns LocalCommitResult.Applied(Unit)
+        coEvery { attachmentSync.syncNoteAttachments(any(), any()) } answers { LocalCommitResult.Applied(firstArg()) }
+        coEvery { repository.getNoteById(1L) } returnsMany listOf(opened, replaced)
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(42L)
+        viewModel = EditorViewModel(
+            repository,
+            reminderManager,
+            SavedStateHandle(mapOf("noteId" to 1L)),
+            attachmentSync = attachmentSync,
+            localCommitTokenProvider = FakeLocalCommitTokenProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.onContentValueChange(TextFieldValue("milk, bread (typed here)"))
+        viewModel.saveNoteAndAwait()
+
+        coVerify(exactly = 1) {
+            repository.insertNoteWithResult(match { it.attachments == listOf(restaged) }, any())
+        }
+        assertEquals(listOf(restaged.copy(noteId = 42L)), viewModel.state.value.attachments)
+        coVerify { attachmentSync.bindStagedAttachmentsToNote(42L, listOf(restaged.copy(noteId = 42L)), any()) }
     }
 
     @Test
