@@ -120,6 +120,10 @@ class EditorViewModel(
      * [persistNote]. Null means "unknown", which any stamp is newer than.
      */
     private var loadedServerUpdatedAt: Long? = null
+
+    /** Whether the row's stamp is newer than the one this editor loaded; unknown counts as older. */
+    private fun isNewerThanLoaded(storedStamp: Long): Boolean =
+        loadedServerUpdatedAt.let { loaded -> loaded == null || storedStamp > loaded }
     private var noteId: Long? = savedStateHandle.get<Long>("noteId")?.takeIf { it != -1L }
     private var routedInitialColor: Int? =
         savedStateHandle.get<Int>("initialColor")?.takeIf { it != Int.MIN_VALUE }
@@ -646,8 +650,7 @@ class EditorViewModel(
             // draft that collides with words this editor never saw becomes its own note instead.
             val stored = runCatching { repository.getNoteById(note.id!!) }.getOrNull()
             val storedStamp = stored?.serverUpdatedAt
-            val loadedStamp = loadedServerUpdatedAt
-            if (stored != null && storedStamp != null && (loadedStamp == null || storedStamp > loadedStamp)) {
+            if (stored != null && storedStamp != null && isNewerThanLoaded(storedStamp)) {
                 val ownOrSameWords = ConflictResolution.authoredContentEqual(stored, note) ||
                     persistedSnapshot?.let { ConflictResolution.authoredContentEqual(stored, it) } == true
                 if (ownOrSameWords) {
