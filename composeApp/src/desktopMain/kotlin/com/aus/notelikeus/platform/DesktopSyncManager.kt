@@ -103,13 +103,23 @@ class DesktopSyncManager(
 
     override suspend fun downloadNotes() {
         sessionManager.getCurrentAccount().userId?.let { isolator.isolateIfAccountChanged(it) }
-        runSync { syncEngine.downloadAllNotes() }
+        // Desktop downloads stay quiet, except to say a deleted note came back (AU-07).
+        runSync(
+            successEvent = { count ->
+                syncEngine.takeDeletedNotesCameBack().takeIf { it > 0 }
+                    ?.let { back -> CloudSyncEvent.Downloaded(count, back) }
+            },
+        ) { syncEngine.downloadAllNotes() }
     }
 
-    private suspend fun runSync(block: suspend () -> Result<Int>) = runTimedSync(
+    private suspend fun runSync(
+        successEvent: (Int) -> CloudSyncEvent? = { null },
+        block: suspend () -> Result<Int>,
+    ) = runTimedSync(
         status = _syncStatus,
         pendingEvent = _pendingEvent,
         describeError = sessionManager::diagnose,
+        successEvent = successEvent,
         onFailure = {
             if (sessionManager.getCurrentAccount().userId == null) {
                 _cloudAccount.value = CloudAccount(isOfflineMode = true)

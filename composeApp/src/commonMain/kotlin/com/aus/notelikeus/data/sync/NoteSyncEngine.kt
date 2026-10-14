@@ -766,7 +766,14 @@ class NoteSyncEngine(
         }
     }
 
+    /** Deleted-here notes the last download restored because the cloud copy changed (AU-07). */
+    private var deletedNotesCameBack = 0
+
+    /** Returns, and resets, how many notes deleted here the last download had to restore. */
+    fun takeDeletedNotesCameBack(): Int = deletedNotesCameBack.also { deletedNotesCameBack = 0 }
+
     suspend fun downloadAllNotes(): Result<Int> {
+        deletedNotesCameBack = 0
         return runCatching {
             // Captured before the tombstone merge and the snapshot fetch: everything this run writes
             // locally afterwards is authorized by the generation it started in.
@@ -946,6 +953,7 @@ class NoteSyncEngine(
                     // Cloud wins (mismatch or missing baseline)
                     if (digest != null || baseline != null) {
                         AppLog.warn(TAG, "Note $noteId deleted here changed on another device; restored")
+                        deletedNotesCameBack++
                     }
                     when (commitLocally(commitToken) {
                         syncStateStore.clearDeleted(listOf(noteId))
