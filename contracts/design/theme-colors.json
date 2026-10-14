@@ -1,0 +1,66 @@
+{
+  "description": "Canonical chrome colours per theme, asserted by web themeTokens.test.ts (against the cascaded CSS variables in globals.css) and Kotlin ThemeTokensContractTest (against colorSchemeFor). Role mapping — web: background-rgb, surface-rgb, surface-variant-rgb, primary-rgb (text), secondary-rgb, muted-rgb, outline-rgb; Compose: background, surface, surfaceVariant, onSurface, secondary, onSurfaceVariant, outline. Every text role clears WCAG AA (4.5:1) on every surface of its theme. Design rationale: docs/design/DESIGN_SYSTEM.md.",
+  "themes": {
+    "light": {
+      "web": ["theme-light"],
+      "compose": { "base": "LIGHT", "amoled": false, "accent": "NEUTRAL" },
+      "colors": {
+        "background": "#F4F4F2", "surface": "#FFFFFF", "surfaceVariant": "#ECECEA",
+        "onSurface": "#151515", "secondary": "#4D4D4B", "muted": "#666663", "outline": "#D6D6D3"
+      }
+    },
+    "dark": {
+      "web": ["theme-dark"],
+      "compose": { "base": "DARK", "amoled": false, "accent": "NEUTRAL" },
+      "colors": {
+        "background": "#101010", "surface": "#1B1B1B", "surfaceVariant": "#272727",
+        "onSurface": "#EDEDED", "secondary": "#B0B0B0", "muted": "#949494", "outline": "#323232"
+      }
+    },
+    "amoled": {
+      "web": ["theme-dark", "amoled"],
+      "compose": { "base": "DARK", "amoled": true, "accent": "NEUTRAL" },
+      "colors": {
+        "background": "#000000", "surface": "#000000", "surfaceVariant": "#121212",
+        "onSurface": "#FFFFFF", "secondary": "#A8A8A8", "muted": "#999999", "outline": "#262626"
+      }
+    },
+    "midnight": {
+      "web": ["theme-dark", "accent-blue"],
+      "compose": { "base": "DARK", "amoled": false, "accent": "BLUE" },
+      "colors": {
+        "background": "#070A12", "surface": "#0C111C", "surfaceVariant": "#141B2A",
+        "onSurface": "#DCE8FF", "secondary": "#9AACCC", "muted": "#8A9CB8", "outline": "#283448"
+      }
+    },
+    "midnightAmoled": {
+      "web": ["theme-dark", "accent-blue", "amoled"],
+      "compose": { "base": "DARK", "amoled": true, "accent": "BLUE" },
+      "colors": {
+        "background": "#000000", "surface": "#000000", "surfaceVariant": "#141B2A",
+        "onSurface": "#DCE8FF", "secondary": "#9AACCC", "muted": "#8A9CB8", "outline": "#283448"
+      }
+    },
+    "forest": {
+      "web": ["theme-dark", "accent-green"],
+      "compose": { "base": "DARK", "amoled": false, "accent": "GREEN" },
+      "colors": {
+        "background": "#090E0A", "surface": "#0F1610", "surfaceVariant": "#182119",
+        "onSurface": "#D6F0D6", "secondary": "#9AB89E", "muted": "#8AA48E", "outline": "#2A382C"
+      }
+    },
+    "forestAmoled": {
+      "web": ["theme-dark", "accent-green", "amoled"],
+      "compose": { "base": "DARK", "amoled": true, "accent": "GREEN" },
+      "colors": {
+        "background": "#000000", "surface": "#000000", "surfaceVariant": "#182119",
+        "onSurface": "#D6F0D6", "secondary": "#9AB89E", "muted": "#8AA48E", "outline": "#2A382C"
+      }
+    }
+  },
+  "lightAccentPrimary": {
+    "description": "On light, an accent tints the primary colour only. Web: --primary-rgb of theme-light.accent-*; Compose: colorScheme.primary.",
+    "blue": "#0B57D0",
+    "green": "#1B6B2E"
+  }
+}

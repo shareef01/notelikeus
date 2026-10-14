@@ -21,7 +21,9 @@ private val DarkColorScheme = darkColorScheme(
     onSecondary = Color(0xFFE8E8E8),
     onBackground = PrimaryDark,
     onSurface = PrimaryDark,
-    onSurfaceVariant = SecondaryDark,
+    // The muted role, as in every other scheme (it used SecondaryDark, so dark muted text was
+    // brighter than its own secondary text and differed from the web client).
+    onSurfaceVariant = MutedDark,
     outline = OutlineDark,
     outlineVariant = Color(0xFF262626),
     primaryContainer = PrimaryDark.copy(alpha = 0.15f),
