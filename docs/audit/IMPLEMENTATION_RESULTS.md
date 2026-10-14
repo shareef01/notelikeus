@@ -35,6 +35,11 @@ conflicts resolved at push time into "(conflicted copy)" notes). The branch was 
 | `cd20ca11` | Web test: offline edit vs delete on another device (passes on #316's design) | AU-01 coverage |
 | `0611913e` | Mis-decoded em dashes, redone against `main` (53) | AU-15 |
 | `51fde68f` | `contracts/sync/inbound-resolution.json` + Kotlin consumer; `ConflictResolution.decide` | contract |
+| `a2052d63`, `5a2bfda8` | Verified deletes: fingerprint at delete time, delete completed only against identical words (web, Kotlin) | AU-07 |
+| `515c2635` | detekt fixes on this branch's Kotlin | CI |
+| `7d021995` | Light-theme danger text and search hint failed WCAG AA (surfaced by the e2e axe scans once the theme followed the OS) | a11y |
+| `a23b567d` | Kotlin editor follows its row and refreshes when nothing is unsaved | AU-12 |
+| `b7cfe63f` | Android/Windows notice when a deleted note came back | AU-07 |
 
 ## Behaviour changes users can see
 
@@ -64,10 +69,11 @@ No schema migration, no backup-format change, no RPC change.
 | Suite | Result |
 |---|---|
 | Web lint / typecheck | pass / pass |
-| Web unit (`npx vitest run`) | **856 / 856** |
+| Web unit (`npx vitest run`) | **862 / 862** |
 | Attachments Worker | **137 / 137** |
-| Kotlin desktop | **776 / 776** |
-| Kotlin Android JVM | **627 / 627** |
+| Kotlin detekt | pass |
+| Kotlin desktop | **781 / 781** |
+| Kotlin Android JVM | **635 / 635** |
 | Android app module | **26 / 26** |
 | Android instrumented (`connectedDebugAndroidTest`, Pixel 7, Android 16, wireless ADB) | **5 / 5** — `PlaintextDatabaseMigratorTest` only; it does not exercise the sync or editor changes |
 
@@ -99,4 +105,4 @@ was uninstalled afterwards.
 - Two-device conflict on Android not exercised end to end: Google sign-in is bound to the real
   application id, and the owner's installed build is signed with another key, so the branch build
   could not replace it without deleting its local notes.
-- AU-07, AU-08 (review panel), AU-12, AU-13, AU-17 — designed, not implemented (roadmap M3–M6).
+- AU-08 (review panel), AU-13, AU-17 — designed, not implemented (roadmap M4–M6).

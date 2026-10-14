@@ -15,7 +15,7 @@ Ordered by risk reduction, then user value. M1 and M2 are done on branch
 ## M2 — Search performance, readability, accessibility · **done**
 - AU-06, AU-10, AU-11, AU-15, AU-16, AU-19. Rollback per commit; no data impact.
 
-## M3 — Verified deletes without a base revision (AU-07)
+## M3 — Verified deletes without a base revision (AU-07) · **done**
 - **Objective:** a delete issued without a known revision is either completed safely or visibly
   undone — never silently.
 - **Design:** at delete time store `{deletedAt, contentDigest}` (SHA-256 of the normalised authored
@@ -29,7 +29,7 @@ Ordered by risk reduction, then user value. M1 and M2 are done on branch
 - **Risk:** low; adopting a revision only after a content match is the same rule as AU-03.
 - **Tests:** digest equal / different / missing; account switch clears digests.
 
-## M4 — Conflict review panel (AU-08) and Kotlin editor refresh (AU-12)
+## M4 — Conflict review panel (AU-08) and Kotlin editor refresh (AU-12) · **AU-12 done**
 - **Objective:** resolve a conflict in one place without data loss.
 - **Scope:** UI_UX_REDESIGN.md §7.2. "Keep one" moves the other version to Trash. Kotlin editor
   observes its row while open and refreshes when clean (web behaviour).
