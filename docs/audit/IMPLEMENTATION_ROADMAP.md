@@ -37,7 +37,7 @@ Ordered by risk reduction, then user value. M1 and M2 are done on branch
 - **Tests:** component tests per action; e2e: two contexts editing one note (Playwright, local
   Supabase).
 
-## M5 — Token single-source (design drift)
+## M5 — Token single-source (design drift) · **done** (`contracts/design/theme-colors.json`)
 - **Objective:** the same note looks the same on every device.
 - **Scope:** move `globals.css` and `Color.kt` to `docs/design/tokens.json` values (or move the file
   to `contracts/design/` and read it in tests on both sides, as with the sync contract).
