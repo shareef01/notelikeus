@@ -8,24 +8,28 @@ import androidx.compose.ui.graphics.toArgb
  * Theme tokens aligned with web `globals.css` / ThemePicker.
  */
 
-// Light
-val PrimaryLight = Color(0xFF1A1A1A)
-val SecondaryLight = Color(0xFF4A4A4A)
-// 4.70:1 on SurfaceVariantLight, the surface Material draws onSurfaceVariant on; #717171 was 3.87:1.
-val MutedLight = Color(0xFF646464)
-val BackgroundLight = Color(0xFFF0F0F0) // Slightly darker base
+// Light and Dark are pinned by contracts/design/theme-colors.json, which the web client's
+// globals.css is held to as well (ThemeTokensContractTest / themeTokens.test.ts): change both or
+// neither. Every text role clears 4.5:1 on every surface of its theme.
+
+// Light — a trace of warmth so a page of white cards reads as paper.
+val PrimaryLight = Color(0xFF151515)
+val SecondaryLight = Color(0xFF4D4D4B)
+// 4.87:1 on SurfaceVariantLight, the surface Material draws onSurfaceVariant on.
+val MutedLight = Color(0xFF666663)
+val BackgroundLight = Color(0xFFF4F4F2)
 val SurfaceLight = Color(0xFFFFFFFF)    // Pure white for cards/editor
-val SurfaceVariantLight = Color(0xFFE5E5E5)
-val OutlineLight = Color(0xFFD1D1D1)
+val SurfaceVariantLight = Color(0xFFECECEA)
+val OutlineLight = Color(0xFFD6D6D3)
 
 // Dark (Deep Charcoal)
-val PrimaryDark = Color(0xFFE8E8E8)
+val PrimaryDark = Color(0xFFEDEDED)
 val SecondaryDark = Color(0xFFB0B0B0)
-val MutedDark = Color(0xFF888888)
-val BackgroundDark = Color(0xFF0F0F0F) // Deep base
-val SurfaceDark = Color(0xFF1A1A1A)    // Elevated surface
-val SurfaceVariantDark = Color(0xFF262626)
-val OutlineDark = Color(0xFF333333)
+val MutedDark = Color(0xFF949494)
+val BackgroundDark = Color(0xFF101010) // Deep base
+val SurfaceDark = Color(0xFF1B1B1B)    // Elevated surface
+val SurfaceVariantDark = Color(0xFF272727)
+val OutlineDark = Color(0xFF323232)
 
 // True dark / OLED
 val PrimaryTrueDark = Color(0xFFFFFFFF)
