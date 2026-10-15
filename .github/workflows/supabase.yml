@@ -131,6 +131,9 @@ jobs:
       - name: Test the connection retry helper
         run: npm run test:retry-on-connect
 
+      - name: Test the migrations-applied check the web deploy runs
+        run: bash scripts/ops/require-migrations-applied.test.sh
+
       - name: Stop local Supabase stack
         if: always()
         run: npm run supabase:stop
@@ -140,8 +143,10 @@ jobs:
   #
   # `environment: production` is where to attach required reviewers if this should ever
   # need a second pair of eyes; it works unconfigured today.
+  # Only reviewed code reaches the production schema: a dispatch from any other branch runs the
+  # tests above and stops here.
   deploy:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: [preflight, database-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -16,10 +16,11 @@ on:
         description: 'Type the Worker name to confirm (notelikeus-attachments)'
         required: true
         type: string
+      # No default: the production Worker must name its bucket on purpose. A default here once
+      # pointed every dispatch that kept it at the dev bucket.
       r2_bucket:
-        description: 'R2 bucket holding attachment objects'
+        description: 'R2 bucket holding attachment objects (type it; the production bucket, not a dev one)'
         required: true
-        default: notelikeus-attachments-dev
         type: string
       allowed_origins:
         description: 'Extra CORS origins, comma-separated. localhost and notelikeus[.pages.dev] projects are always allowed; a custom domain must be listed here.'
@@ -29,7 +30,7 @@ on:
       rate_limit_requests:
         description: 'Requests allowed per key per period, counted at the edge. 0 disables Worker-level throttling (auth is unaffected either way).'
         required: false
-        default: '120'
+        default: '600'
         type: string
       rate_limit_period:
         description: 'Rate-limit window in seconds. Cloudflare accepts only 10 or 60.'
@@ -101,7 +102,8 @@ jobs:
   # `environment: production` is where to attach required reviewers if this should ever
   # need a second pair of eyes; it works unconfigured today.
   deploy:
-    if: github.event_name == 'workflow_dispatch'
+    # Only reviewed code (main) is deployed as the production Worker.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
