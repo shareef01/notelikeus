@@ -21,7 +21,7 @@ The sync, conflict and attachment code is in good shape. Every finding from the 
 Severity: P0 is irreversible loss or a cross-account breach. P1 is high-impact reliability or security. P2 is a material issue. P3 is polish or hardening. Confidence is **Confirmed** (traced in source end to end) or **Probable** (one step needs runtime confirmation).
 
 ### N-01 (P1, Confirmed): the provisional-attachment sweep will delete the last copy of images stranded by Android v2.0.0
-- **Status:** Fixed in `20261015000000_provisional_sweep_longer_grace.sql`: the claim's floor is 90 days in the database, whatever the caller asks (pgTAP F09-8b). Takes effect once the Supabase deploy is run; no Worker deploy needed. Recovery of already-stranded rows (option 3) not done.
+- **Status:** Fixed in `20261015000000_provisional_sweep_longer_grace.sql`: the claim's floor is 90 days in the database, whatever the caller asks (pgTAP F09-8b). Deployed 2026-10-15. Recovery (option 3): `20261016000000_restore_stranded_provisional_attachments.sql` promotes live provisional rows older than a day, so stranded images hydrate again.
 
 - **Where:** `supabase/migrations/20261012000000_provisional_attachment_sweep.sql:46-61` claims a provisional row when its note was committed again after the upload and that commit is 14 days old. `workers/attachments/src/sweep.ts:201-211` runs it every 6 hours; `list_unconfirmed_attachment_deletes` (`20260908120000_attachment_delete_claim.sql`) then deletes the R2 object an hour later.
 - **Why it matters now:** the bug fixed today in `e5c5762` and `a5c3047` is in the released v2.0.0 (tag `3b4a970`, 2026-10-08: it uses `/v2/` uploads and has the old `reconcileStagedAttachments` path). On those builds, a new note whose image uploads after the note's first push is never committed again. The row stays provisional, and the next download drops the `r2:` reference and releases the local bytes. **The R2 object is then the only copy of that image.**
@@ -73,7 +73,7 @@ Severity: P0 is irreversible loss or a cross-account breach. P1 is high-impact r
 - **Needs:** confirm whether any non-conflict error from `apply_note_change` can repeat for the same payload, such as a validation limit or a malformed attachment-id list. If so, catch it per note in `pushPendingRecommits`, keep the mark, and continue with the download.
 
 ### N-06 (P3, Probable): clients ignore the Worker's 429
-- **Status:** Fixed by raising the deploy default to 600 a minute (takes effect on the next Worker deploy). Client-side 429 back-off not added.
+- **Status:** Fixed. The Worker runs at 600 a minute (deployed 2026-10-15), and both clients retry a 429 twice, waiting up to a minute (`fetchWithRateLimitRetry`, `retryOnAttachmentRateLimit`).
 
 The Worker throttles at 120 requests per minute per user (`attachments-worker.yml` default, `rateLimit.ts`). Neither client handles 429 or `Retry-After`: the web throws a generic error (`r2AttachmentBlobStore.ts:70`), and Kotlin has no 429 path. A new device hydrating a few hundred images will see failed loads that only clear on later syncs. **Fix:** back off on 429, or raise the limit for GET.
 
