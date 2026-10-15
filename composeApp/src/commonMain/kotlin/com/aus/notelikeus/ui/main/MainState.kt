@@ -128,7 +128,9 @@ data class MainState(
      * The user chose to use the app without an account. Persisted, so the sign-in gate asks once
      * rather than on every launch.
      */
-    val hasChosenOffline: Boolean = false
+    val hasChosenOffline: Boolean = false,
+    /** The conflicted copy being reviewed (ConflictReviewDialog), or null. */
+    val conflictReview: ConflictReviewState? = null,
 ) {
     // The five fields the query replaced, kept as read-only views onto it.
     //

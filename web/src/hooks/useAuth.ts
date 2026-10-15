@@ -52,7 +52,7 @@ export function ensureSupabaseAuthStarted(): Promise<void> {
   return authStart;
 }
 
-/** Mount once in App ÔÇö registers the only auth listener (Supabase) when a session is likely. */
+/** Mount once in App — registers the only auth listener (Supabase) when a session is likely. */
 export function useAuthSync() {
   useEffect(() => {
     if (!shouldStartSupabaseAuthOnBoot(hadSessionLastLoad(), window.location.search)) {

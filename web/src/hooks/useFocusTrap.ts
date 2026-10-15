@@ -42,6 +42,11 @@ function innermostTrap(): TrapEntry | null {
   return null;
 }
 
+/** Whether a dialog, sheet or overlay is holding the keyboard right now. */
+export function isFocusTrapOpen(): boolean {
+  return openTraps.some((entry) => entry.getPanel() != null);
+}
+
 /**
  * Traps focus inside a dialog while `open`: focuses the first focusable element,
  * wraps Tab/Shift+Tab at the panel's edges, closes on Escape, and restores focus

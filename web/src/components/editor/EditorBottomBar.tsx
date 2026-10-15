@@ -1,3 +1,5 @@
+import { NOTE_SYNC_LABELS, noteSyncStatus, showsEditedTime } from '@/lib/sync/noteSyncStatus';
+
 interface EditorBottomBarProps {
   timestamp: number;
   isSaving: boolean;
@@ -5,7 +7,12 @@ interface EditorBottomBarProps {
   isSavedLocally?: boolean;
   isSignedIn?: boolean;
   isOnline?: boolean;
-  hasPendingAttachments?: boolean;
+  /** The note holds an edit or an image the cloud has not confirmed. */
+  isPending?: boolean;
+  /** The account's queue is being pushed right now. */
+  isFlushing?: boolean;
+  /** The account's last push left edits behind. */
+  flushFailed?: boolean;
   contentColor: string;
   reminderTimestamp?: number | null;
   onRetrySave?: () => void;
@@ -30,7 +37,9 @@ export function EditorBottomBar({
   isSavedLocally = false,
   isSignedIn = false,
   isOnline = true,
-  hasPendingAttachments = false,
+  isPending = false,
+  isFlushing = false,
+  flushFailed = false,
   contentColor,
   reminderTimestamp = null,
   onRetrySave,
@@ -42,25 +51,19 @@ export function EditorBottomBar({
   }).format(new Date(timestamp));
   const reminderLabel = formatReminderLabel(reminderTimestamp);
 
-  let statusText = `Saved locally • ${editedLabel}`;
-  let isError = false;
-
-  if (saveFailed) {
-    statusText = 'Local save failed';
-    isError = true;
-  } else if (isSaving) {
-    statusText = 'Saving locally…';
-  } else if (!isSavedLocally) {
-    statusText = 'Not saved yet';
-  } else if (!isSignedIn) {
-    statusText = `Saved locally • ${editedLabel}`;
-  } else if (!isOnline) {
-    statusText = 'Saved locally • Offline';
-  } else if (hasPendingAttachments) {
-    statusText = 'Saved locally • Sync pending';
-  } else {
-    statusText = 'Saved locally • Synced';
-  }
+  const status = noteSyncStatus({
+    saveFailed,
+    isSaving,
+    isSavedLocally,
+    isSignedIn,
+    isOnline,
+    isPending,
+    isFlushing,
+    flushFailed,
+  });
+  const label = NOTE_SYNC_LABELS[status];
+  const statusText = showsEditedTime(status) ? `${label} • ${editedLabel}` : label;
+  const isError = status === 'save-failed';
 
   return (
     <footer
@@ -68,9 +71,9 @@ export function EditorBottomBar({
       style={{ color: contentColor }}
     >
       <div className="flex-1" />
-      <div className="text-center text-xs font-medium">
+      <div className="text-center text-xs font-medium" role="status" aria-live="polite">
         {isError ? (
-          <div className="flex items-center justify-center gap-1 text-red-500 dark:text-red-400">
+          <div className="flex items-center justify-center gap-1 text-red-700 dark:text-red-400">
             <span>{statusText}</span>
             {onRetrySave ? (
               <button

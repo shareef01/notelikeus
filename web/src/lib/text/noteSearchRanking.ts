@@ -1,4 +1,4 @@
-import { buildSearchText, foldForSearch, searchTokens } from '@/lib/text/searchText';
+import { buildSearchText, foldForSearch, memoFolded, searchTokens } from '@/lib/text/searchText';
 import type { Note } from '@/types/note';
 
 /**
@@ -23,11 +23,14 @@ function containsTokenPrefix(haystack: string, needle: string): boolean {
 }
 
 function searchableText(note: Note): string {
-  return buildSearchText(
-    note.title,
-    note.content,
-    note.checklist.map((item) => item.text),
-    note.labels.map((label) => label.name),
+  // Same key as types/note.ts noteHaystack: one fold per note object serves both.
+  return memoFolded(note, 'haystack', () =>
+    buildSearchText(
+      note.title,
+      note.content,
+      note.checklist.map((item) => item.text),
+      note.labels.map((label) => label.name),
+    ),
   );
 }
 
@@ -46,7 +49,7 @@ function isCloseTo(token: string, needle: string): boolean {
 export function scoreNote(note: Note, needles: string[]): number {
   if (needles.length === 0) return 0;
 
-  const title = foldForSearch(note.title);
+  const title = memoFolded(note, 'title', () => foldForSearch(note.title));
   let labels: string | undefined;
   let checklist: string | undefined;
   let body: string | undefined;
@@ -58,17 +61,17 @@ export function scoreNote(note: Note, needles: string[]): number {
       total += TITLE_PREFIX;
       continue;
     }
-    labels ??= note.labels.map((label) => foldForSearch(label.name)).join(' ');
+    labels ??= memoFolded(note, 'labels', () => note.labels.map((label) => foldForSearch(label.name)).join(' '));
     if (containsTokenPrefix(labels, needle)) {
       total += LABEL;
       continue;
     }
-    checklist ??= note.checklist.map((item) => foldForSearch(item.text)).join(' ');
+    checklist ??= memoFolded(note, 'checklist', () => note.checklist.map((item) => foldForSearch(item.text)).join(' '));
     if (containsTokenPrefix(checklist, needle)) {
       total += CHECKLIST;
       continue;
     }
-    body ??= foldForSearch(note.content);
+    body ??= memoFolded(note, 'body', () => foldForSearch(note.content));
     if (containsTokenPrefix(body, needle)) total += BODY;
   }
   return total;

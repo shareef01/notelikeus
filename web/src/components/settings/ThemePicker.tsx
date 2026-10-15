@@ -19,17 +19,17 @@ type SwatchMeta = {
 const BASE_META: Record<ThemeBase, SwatchMeta> = {
   system: {
     label: 'System',
-    surface: '#f7f7f7',
-    surfaceAlt: '#1c1c1c',
+    surface: '#f4f4f2',
+    surfaceAlt: '#1b1b1b',
     accent: '#8b8b8b',
     lightCheck: true,
   },
-  light: { label: 'Light', surface: '#ffffff', accent: '#111111', lightCheck: true },
-  dark: { label: 'Dark', surface: '#1c1c1c', accent: '#f5f5f5' },
+  light: { label: 'Light', surface: '#ffffff', accent: '#151515', lightCheck: true },
+  dark: { label: 'Dark', surface: '#1b1b1b', accent: '#ededed' },
 };
 
 const ACCENT_META: Record<AccentColor, SwatchMeta> = {
-  neutral: { label: 'Neutral', surface: '#ffffff', accent: '#111111', lightCheck: true },
+  neutral: { label: 'Neutral', surface: '#ffffff', accent: '#151515', lightCheck: true },
   blue: { label: 'Blue', surface: '#ffffff', accent: '#0b57d0', lightCheck: true },
   green: { label: 'Green', surface: '#ffffff', accent: '#1b6b2e', lightCheck: true },
 };
@@ -53,7 +53,7 @@ function Swatch({ meta, selected }: { meta: SwatchMeta; selected: boolean }) {
           />
           <span
             className="absolute left-[28%] top-[30%] size-1.5 rounded-full shadow-sm"
-            style={{ backgroundColor: '#111111' }}
+            style={{ backgroundColor: '#151515' }}
             aria-hidden
           />
           <span

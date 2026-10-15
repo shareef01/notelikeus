@@ -68,6 +68,21 @@ interface NoteSyncStateStore {
 
     fun clearPendingAttachmentGc(noteId: Long)
 
+    // ---- recommits ----
+
+    /**
+     * Notes whose row took an attachment upload after the push that carried them, so no commit has
+     * named that upload yet. Its server row stays provisional, and so out of hydration, until a push
+     * of the note names it; a download that ran first would let the `r2:` reference go and lose the
+     * image. Survives process death, so a sync cut off before that push makes it next time, ahead
+     * of any download.
+     */
+    fun markRecommitNeeded(noteId: Long)
+
+    fun recommitNeededIds(): Set<Long>
+
+    fun clearRecommitNeeded(ids: Collection<Long>)
+
     // ---- reconciliation ----
 
     /** High-water mark (note timestamp) for the last successful reconcile. */
@@ -91,6 +106,32 @@ interface NoteSyncStateStore {
     fun updateKnownServerRevisions(revisions: Map<Long, Long>)
 
     fun clearKnownServerRevisions(noteIds: Collection<Long>)
+
+    // ---- synced-version baselines ----
+
+    /**
+     * Note id → the client `timestamp` of the version this device last knew to be identical to the
+     * cloud's. A row whose timestamp differs holds an edit the cloud has not confirmed; see
+     * [ConflictResolution]. Equality, not ordering, so a wrong device clock cannot fake or hide one.
+     */
+    fun syncedTimestampById(): Map<Long, Long>
+
+    fun updateSyncedTimestamps(timestamps: Map<Long, Long>)
+
+    fun clearSyncedTimestamps(noteIds: Collection<Long>)
+
+    // ---- delete fingerprints ----
+
+    /**
+     * Note id → [ConflictResolution.authoredContentDigest] of the words deleted on this device. Used
+     * only when no baseline revision was known at delete time: a download may then complete the
+     * delete at the revision it observes, but only if the cloud copy still holds exactly those words.
+     */
+    fun deletedDigestById(): Map<Long, String>
+
+    fun setDeletedDigest(noteId: Long, digest: String)
+
+    fun clearDeletedDigests(noteIds: Collection<Long>)
 
     // ---- delete baselines ----
 

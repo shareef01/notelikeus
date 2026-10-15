@@ -14,7 +14,7 @@ export async function restoreCloudNote(userId: string, note: Note): Promise<void
   const { rememberNoteRevision } = await import('@/lib/supabase/revisionStore');
   const { data, error } = await getSupabaseClient().rpc(
     'restore_note',
-    noteToSupabaseRpcArgs(note, null),
+    noteToSupabaseRpcArgs(note, null, { attachmentIds: false }),
   );
   if (error) throw error;
   const result = (data ?? {}) as { status?: string; revision?: number };

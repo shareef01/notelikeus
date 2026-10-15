@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aus.notelikeus.data.sync.ConflictResolution
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -68,6 +69,9 @@ import com.aus.notelikeus.ui.theme.Spacing
 private val NoteCardContentPadding = Spacing.xl
 
 /** Compact uppercase label pill, matching the web card's chip typography. */
+/** Amber-500, the same hue the web chip uses; a fixed caution colour, not a theme role. */
+private val ConflictChipAmber = Color(0xFFF59E0B)
+
 private val NoteCardLabelChipStyle = TextStyle(
     fontWeight = FontWeight.SemiBold,
     fontSize = 10.sp,
@@ -118,13 +122,37 @@ private fun NoteCardLabelChips(
     chipStyle: TextStyle,
     chipHorizontalPadding: Dp,
     chipVerticalPadding: Dp,
-    onLabelClick: ((Long) -> Unit)?
+    onLabelClick: ((Long) -> Unit)?,
+    onConflictReview: ((Long) -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // A note re-homed by sync conflict resolution explains itself: the title suffix is what
+        // every client writes, so the marker matches the web card's "Conflict copy" chip.
+        if (ConflictResolution.isConflictedCopyTitle(note.title)) {
+            val reviewLabel = stringResource(Res.string.conflict_review_open)
+            Text(
+                text = stringResource(Res.string.note_conflict_copy_chip),
+                style = chipStyle,
+                color = contentColor,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(ConflictChipAmber.copy(alpha = 0.18f))
+                    .border(BorderStroke(1.dp, ConflictChipAmber.copy(alpha = 0.5f)), CircleShape)
+                    .then(
+                        // Opens the side-by-side review (AU-08), as the web chip does.
+                        if (onConflictReview != null && note.id != null) {
+                            Modifier.clickable(onClickLabel = reviewLabel) { onConflictReview(note.id) }
+                        } else Modifier
+                    )
+                    .padding(horizontal = chipHorizontalPadding, vertical = chipVerticalPadding)
+            )
+        }
         note.labels.take(maxVisible).forEach { label ->
             val labelId = label.id
             val clickable = labelId != null && onLabelClick != null
@@ -236,6 +264,7 @@ fun NoteCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onLabelClick: ((Long) -> Unit)? = null,
+    onConflictReview: ((Long) -> Unit)? = null,
     showReorderHandle: Boolean = false,
     reorderDragModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
@@ -452,7 +481,7 @@ fun NoteCard(
                             Spacer(modifier = Modifier.height(6.dp))
                             ChecklistProgressText(note = note, contentColor = contentColor)
                         }
-                        if (note.labels.isNotEmpty()) {
+                        if (note.labels.isNotEmpty() || ConflictResolution.isConflictedCopyTitle(note.title)) {
                             Spacer(modifier = Modifier.height(6.dp))
                             NoteCardLabelChips(
                                 note = note,
@@ -461,7 +490,8 @@ fun NoteCard(
                                 chipStyle = NoteCardLabelChipStyle.copy(fontSize = 9.sp),
                                 chipHorizontalPadding = 6.dp,
                                 chipVerticalPadding = Spacing.xxs,
-                                onLabelClick = onLabelClick
+                                onLabelClick = onLabelClick,
+                                onConflictReview = onConflictReview
                             )
                         }
                     }
@@ -619,7 +649,7 @@ fun NoteCard(
                     }
                 }
 
-                if (!compact && note.labels.isNotEmpty()) {
+                if (!compact && (note.labels.isNotEmpty() || ConflictResolution.isConflictedCopyTitle(note.title))) {
                     Spacer(modifier = Modifier.height(6.dp))
                     NoteCardLabelChips(
                         note = note,
@@ -628,7 +658,8 @@ fun NoteCard(
                         chipStyle = NoteCardLabelChipStyle,
                         chipHorizontalPadding = Spacing.sm,
                         chipVerticalPadding = 3.dp,
-                        onLabelClick = onLabelClick
+                        onLabelClick = onLabelClick,
+                        onConflictReview = onConflictReview
                     )
                 }
             }

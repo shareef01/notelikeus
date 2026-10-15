@@ -8,13 +8,19 @@ import {
 import { useNoteLabels } from '@/hooks/useNoteLabels';
 import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { saveNote, removeNote } from '@/lib/notes/noteActions';
+import {
+  releaseCopiedPendingAttachments,
+  withPendingAttachments,
+} from '@/lib/attachments/conflictCopyAttachments';
+import { conflictedCopyOf } from '@/lib/notes/conflictResolution';
+import { decideEditorSave } from '@/lib/notes/editorConflict';
 import type { LocalSaveResult } from '@/lib/notes/localSaveResult';
 import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
 import { useNotesStore } from '@/store/notesStore';
 import { useToastStore } from '@/store/toastStore';
 import { createChecklistItem, sortChecklistItems } from '@/types/checklist';
 import type { Label } from '@/types/label';
-import { allocateLocalNoteId } from '@/types/note';
+import { allocateLocalNoteId, type Note } from '@/types/note';
 import { labelFromName } from '@/types/label';
 import { processSmartText, type TextEdit } from '@/lib/text/smartTextProcessor';
 import {
@@ -71,6 +77,8 @@ export function useNoteEditor(noteId: string | 'new' | null) {
   });
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef(state);
+  /** The version this editor last loaded or wrote — tells its own echo from another device's edit. */
+  const lastSavedRef = useRef<Note | null>(buildNoteFromEditor(state));
   const loadedRouteRef = useRef<string | null>(noteId);
   const routeRef = useRef(noteId);
   const lastContentEditRef = useRef<TextEdit>({
@@ -136,34 +144,65 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       timestamp: updatedTimestamp,
     };
 
-    // A remote snapshot can load the editor before the server has assigned a revision.
-    // upsertNote then sees an unconfirmed local vs a confirmed remote and
-    // skips the write — the e2e edit-after-reload path, and any live save in that window.
-    // The store may already have the stamp from a later snapshot; take it without discarding
-    // the in-progress edit. Never adopt a stamp the editor already has: a newer remote stamp
-    // means another device won, and shouldUploadOverRemote must still see that.
     const stored = working.id
       ? useNotesStore.getState().notes.find((n) => n.id === working.id)
       : undefined;
-    if (working.serverUpdatedAt == null && stored?.serverUpdatedAt != null) {
-      working = { ...working, serverUpdatedAt: stored.serverUpdatedAt };
-    }
 
-    const note = buildNoteFromEditor(working);
+    let note = buildNoteFromEditor(working);
     if (!note) {
       setState((prev) => (isCurrentRoute() ? { ...prev, isSaving: false } : prev));
       return { status: 'unchanged' };
     }
 
+    let forked = false;
+    let forkedFrom: Note | null = null;
+    switch (decideEditorSave({ draft: note, stored, lastSaved: lastSavedRef.current })) {
+      case 'adopt-stamp': {
+        // A remote snapshot can load the editor before the server has assigned a revision, and
+        // this device's own upload echoes back with a newer stamp. Either way the words are still
+        // ours to edit; take the stamp so shouldUploadOverRemote sees a straight edit.
+        const serverUpdatedAt = stored?.serverUpdatedAt ?? null;
+        working = { ...working, serverUpdatedAt };
+        note = { ...note, serverUpdatedAt };
+        break;
+      }
+      case 'fork': {
+        // Another device changed this note while it was open here. Writing the draft over it would
+        // erase that change, so the draft becomes its own note and the editor follows it.
+        const localId = allocateLocalNoteId(useNotesStore.getState().notes);
+        // The draft's images that are not uploaded yet go with it; see withPendingAttachments.
+        const copy = await withPendingAttachments(note, conflictedCopyOf(note, localId));
+        forkedFrom = note;
+        working = {
+          ...working,
+          id: copy.id,
+          localId,
+          title: copy.title,
+          serverUpdatedAt: null,
+          attachments: copy.attachments,
+          checklist: copy.checklist,
+        };
+        note = copy;
+        forked = true;
+        break;
+      }
+      case 'save':
+        break;
+    }
+
     try {
       await saveNote(note);
+      lastSavedRef.current = note;
+      // Only once the copy is saved: until then the draft's own staged images are the ones to keep.
+      if (forkedFrom) await releaseCopiedPendingAttachments(forkedFrom, stored ?? null);
       if (isCurrentRoute()) {
-        setState({
+        setState((prev) => ({
           ...working,
           isSaving: false,
           lastSavedAt: updatedTimestamp,
           saveFailed: false,
-        });
+          conflictCopy: forked || prev.conflictCopy === true,
+        }));
       }
       return { status: 'saved', noteId: note.id };
     } catch (error) {
@@ -206,6 +245,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         nextNotePosition(),
       );
       setState(blank);
+      lastSavedRef.current = null;
       lastContentEditRef.current = { text: '', selectionStart: 0, selectionEnd: 0 };
       loadedRouteRef.current = noteId;
       return;
@@ -214,6 +254,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     const existing = useNotesStore.getState().notes.find((note) => note.id === noteId);
     if (existing) {
       setState(editorStateFromNote(existing));
+      lastSavedRef.current = existing;
       loadedRouteRef.current = noteId;
       lastContentEditRef.current = {
         text: existing.content,
@@ -231,9 +272,30 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     if (!noteId || noteId === 'new') return;
     if (loadedRouteRef.current !== noteId) return;
     if (sourceServerUpdatedAt == null) return;
-    if (stateRef.current.serverUpdatedAt != null) return;
-    const next = { ...stateRef.current, serverUpdatedAt: sourceServerUpdatedAt };
+    const current = stateRef.current;
+    // The editor has moved onto a conflicted copy; the original is no longer what it edits.
+    if (current.id !== noteId) return;
+    if (current.serverUpdatedAt == null) {
+      const next = { ...current, serverUpdatedAt: sourceServerUpdatedAt };
+      stateRef.current = next;
+      setState(next);
+      return;
+    }
+    if (sourceServerUpdatedAt <= current.serverUpdatedAt) return;
+    // A newer version arrived. With typing still waiting to be saved, the save decides (see
+    // decideEditorSave); with nothing pending, show the newer version rather than let the next
+    // keystroke build on a stale one.
+    if (autosaveTimer.current || current.isSaving) return;
+    const stored = useNotesStore.getState().notes.find((note) => note.id === noteId);
+    if (!stored) return;
+    const next = editorStateFromNote(stored);
     stateRef.current = next;
+    lastSavedRef.current = stored;
+    lastContentEditRef.current = {
+      text: stored.content,
+      selectionStart: stored.content.length,
+      selectionEnd: stored.content.length,
+    };
     setState(next);
   }, [noteId, sourceServerUpdatedAt]);
 

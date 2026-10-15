@@ -29,10 +29,14 @@ export interface ThemePreference {
   amoled: boolean;
 }
 
+/**
+ * Follows the device, like Android and Windows (ThemePreference.kt). A pure-black default ignored
+ * a light OS setting on first launch and made the web the odd one out.
+ */
 export const DEFAULT_THEME: ThemePreference = {
-  base: 'dark',
+  base: 'system',
   accent: 'neutral',
-  amoled: true,
+  amoled: false,
 };
 
 /**

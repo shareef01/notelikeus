@@ -60,15 +60,27 @@ fun attachmentFromMetadata(note: Note, row: NoteAttachmentMetadata): Attachment 
     )
 }
 
+/**
+ * Rebuilds each note's attachments from the account's committed rows, keeping the ones whose bytes
+ * are still only local.
+ *
+ * A note for which [awaitingCommit] holds has a local version the cloud has not confirmed. Its uploads
+ * stay provisional, and so unlisted, until that version's commit names them, so its `r2:` attachments
+ * are kept as well rather than read as deleted elsewhere.
+ */
 fun mergeAttachmentsIntoNotes(
     notes: List<Note>,
     rows: List<NoteAttachmentMetadata>,
+    awaitingCommit: (Note) -> Boolean = { false },
 ): List<Note> {
     val byNoteId = rows.groupBy { it.noteId }
     return notes.map { note ->
         val noteId = note.id?.toString() ?: return@map note
         val remote = (byNoteId[noteId] ?: emptyList()).map { row -> attachmentFromMetadata(note, row) }
-        val pending = note.attachments.filter { isPendingAttachment(it.storagePath) }
+        val keepR2 = awaitingCommit(note)
+        val pending = note.attachments.filter {
+            isPendingAttachment(it.storagePath) || (keepR2 && isR2Attachment(it.storagePath))
+        }
         val remoteIds = remote.map { it.id }.toSet()
         val keptPending = pending.filter { it.id !in remoteIds }
         note.copy(attachments = remote + keptPending)

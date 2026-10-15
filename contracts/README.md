@@ -18,10 +18,12 @@ side that reads it is enough to make drift a failing test rather than a support 
 | `backup/v3-expected-notes.json` | The notes both importers must produce from **either** file |
 | `backup/v4-bundle-manifest.json` | The `manifest.json` inside a `.nlkbak` bundle (see below) |
 | `backup/import-limits.json` | Soft caps both importers must enforce (depth, notes, labels, field sizes) |
-| `cloud/note-rpc-args.json` | The `apply_note_change` argument object the web client sends (Kotlin adds `p_attachment_ids`) |
+| `cloud/note-rpc-args.json` | The `apply_note_change` argument object every client sends, `p_attachment_ids` included (`restore_note` takes the other 14) |
 | `cloud/note-row.json` | A note row as `pull_changes` / `fetch_full_snapshot` return it |
 | `cloud/note-row-expected.json` | The note both cloud mappers must produce from that row |
 | `cloud/tombstone-row.json` | A tombstone row and the deleted-at map it must produce |
+| `design/theme-colors.json` | The chrome colours of every theme (background, surfaces, text roles, outline) and the light accent tints |
+| `sync/inbound-resolution.json` | Kotlin download rules: what an inbound cloud version may do to the local row — accept, keep the local row, or keep the local edit as a conflicted copy. Web reaches the same end states through pending-push markers (`offlineEditDurability.test.ts`) |
 
 ## The normal form
 
@@ -41,6 +43,9 @@ fields leaking in:
 |---|---|
 | Kotlin | `composeApp/src/commonTest/kotlin/com/aus/notelikeus/contract/CrossClientContractTest.kt` |
 | TypeScript | `web/src/lib/contract/crossClientContract.test.ts` |
+| Kotlin | `composeApp/src/commonTest/kotlin/com/aus/notelikeus/contract/InboundResolutionContractTest.kt` (sync rules) |
+| Kotlin | `composeApp/src/commonTest/kotlin/com/aus/notelikeus/contract/ThemeTokensContractTest.kt` (theme colours) |
+| TypeScript | `web/src/styles/themeTokens.test.ts` (theme colours) |
 
 Both resolve this directory by walking up from the working directory, so they run from the
 repository root or from inside a module.

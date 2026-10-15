@@ -9,6 +9,7 @@ import {
 import { META_STORE, NOTES_STORE } from '@/lib/local/constants';
 import { withStore } from '@/lib/local/idb';
 import type { Note } from '@/types/note';
+import { useSyncStatusStore } from '@/store/syncStatusStore';
 
 export interface LocalOwnerMeta {
   ownerId: string;
@@ -60,7 +61,9 @@ export interface PendingPush {
 const pendingIdsByOwner = new Map<string, Set<string>>();
 
 function mirrorPending(ownerId: string, pending: Record<string, PendingPush> | undefined): void {
-  pendingIdsByOwner.set(ownerId, new Set(Object.keys(pending ?? {})));
+  const ids = new Set(Object.keys(pending ?? {}));
+  pendingIdsByOwner.set(ownerId, ids);
+  useSyncStatusStore.getState().setPending(ownerId, ids);
 }
 
 /** Whether [noteId] holds a local edit the cloud has not confirmed, as far as this tab knows. */
@@ -488,6 +491,7 @@ export async function clearOwner(ownerId: string): Promise<void> {
     tx.onerror = () => reject(tx.error ?? new Error('clearOwner failed'));
     tx.onabort = () => reject(tx.error ?? new Error('clearOwner aborted'));
   });
+  mirrorPending(ownerId, undefined);
 }
 
 /**

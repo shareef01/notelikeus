@@ -1,3 +1,4 @@
+import { keepingLocalOnlyAttachments } from '@/lib/attachments/attachmentPaths';
 import {
   mergeRemoteNotes,
   shouldUploadOverRemote,
@@ -77,7 +78,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
      * `onData` is contractually the caller's *complete* note set: notesSyncService diffs it
      * against the previously known cloud ids and tombstones everything missing. `pull_changes`
      * only returns notes above the persisted revision cursor, so layering it on a map that the
-     * snapshot never filled emits "the library is now just these two notes" ÔÇö and the diff then
+     * snapshot never filled emits "the library is now just these two notes" — and the diff then
      * deletes the rest on this device and, via the tombstone purge, in the cloud and on every
      * other device. Nothing may be emitted until a snapshot has actually landed.
      */
@@ -104,10 +105,15 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       // snapshot below already contains them — or, on a conflict, both versions.
       await flushPendingPushes(userId, { isActive: () => session.isActive() });
       if (!session.isActive()) return;
-      const snapshot = await fetchSnapshotNotes({ hydrateAttachments: false });
+      const fetched = await fetchSnapshotNotes({ hydrateAttachments: false });
       if (!session.isActive()) return;
       const prior = await loadRevisionState(userId);
       const local = await listNotes(userId);
+      const localById = new Map(local.map((note) => [note.id, note]));
+      const snapshot = {
+        ...fetched,
+        notes: fetched.notes.map((note) => keepingLocalOnlyAttachments(note, localById.get(note.id))),
+      };
       const snapshotIds = new Set(snapshot.notes.map((note) => note.id));
       const tombstoneIds = new Set(Object.keys(snapshot.tombstones));
       const knownIds = [
@@ -123,7 +129,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       );
       if (snapshot.notes.length === 0 && unexplained.length > 0) {
         throw new Error(
-          `Cloud returned no notes but ${unexplained.length} were expected ÔÇö ` +
+          `Cloud returned no notes but ${unexplained.length} were expected — ` +
             `refusing to overwrite local copies. Check the connection or sign in again.`,
         );
       }
@@ -252,6 +258,11 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       knownCloudIds: snapshot.notes.map((note) => note.id),
     });
     return snapshot.notes;
+  },
+
+  async pushPendingEdits(userId) {
+    await ensureSupabaseAuthenticated();
+    await flushPendingPushes(userId);
   },
 
   async upsertNote(userId, note) {
@@ -416,7 +427,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     );
     if (remoteNotes.length === 0 && unexplainedMissing.length > 0) {
       throw new Error(
-        `Cloud returned no notes but ${unexplainedMissing.length} were expected ÔÇö refusing to ` +
+        `Cloud returned no notes but ${unexplainedMissing.length} were expected — refusing to ` +
           `delete local copies. Check the connection or sign in again.`,
       );
     }
@@ -452,7 +463,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
             );
             changes++;
           } catch {
-            // Conflict ÔÇö keep merged remote winner from mergeRemoteNotes.
+            // Conflict — keep merged remote winner from mergeRemoteNotes.
           }
         }
         continue;

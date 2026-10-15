@@ -23,10 +23,13 @@ class DesktopNoteSyncStateStore(
 
     private val deletedMap: MutableMap<Long, Long>
     private val restoredSet: MutableSet<Long>
+    private val recommitNeededSet: MutableSet<Long>
     private val pendingAttachmentGcMap: MutableMap<Long, MutableSet<String>>
     private val knownCloudSet: MutableSet<Long>
     private val knownServerRevisionsMap: MutableMap<Long, Long>
     private val baselineDeleteRevisionsMap: MutableMap<Long, Long>
+    private val syncedTimestampsMap: MutableMap<Long, Long>
+    private val deletedDigestsMap: MutableMap<Long, String>
     private var reconciledAt: Long
     private var mergedUserId: String?
 
@@ -34,10 +37,19 @@ class DesktopNoteSyncStateStore(
         val prefs = runBlocking { dataStore.data.firstOrNull() }
         deletedMap = parseDeletedMap(prefs).toMutableMap()
         restoredSet = parseIdSet(prefs, KEY_RESTORED_IDS).toMutableSet()
+        recommitNeededSet = parseIdSet(prefs, KEY_RECOMMIT_NEEDED_IDS).toMutableSet()
         pendingAttachmentGcMap = parsePendingGc(prefs).mapValues { it.value.toMutableSet() }.toMutableMap()
         knownCloudSet = parseIdSet(prefs, KEY_KNOWN_CLOUD_IDS).toMutableSet()
         knownServerRevisionsMap = parseLongMap(prefs, KEY_KNOWN_SERVER_REVISIONS).toMutableMap()
         baselineDeleteRevisionsMap = parseLongMap(prefs, KEY_BASELINE_DELETE_REVISIONS).toMutableMap()
+        syncedTimestampsMap = parseLongMap(prefs, KEY_SYNCED_TIMESTAMPS).toMutableMap()
+        deletedDigestsMap = prefs?.get(KEY_DELETED_DIGESTS)?.let { raw ->
+            runCatching { json.decodeFromString<Map<String, String>>(raw).mapKeys { it.key.toLong() } }
+                .getOrElse { error ->
+                    AppLog.warn(TAG, "Delete fingerprints unreadable; starting with none", error)
+                    emptyMap()
+                }
+        }.orEmpty().toMutableMap()
         reconciledAt = prefs?.get(KEY_LAST_RECONCILED) ?: 0L
         mergedUserId = prefs?.get(KEY_LAST_MERGED_USER_ID)
     }
@@ -112,6 +124,17 @@ class DesktopNoteSyncStateStore(
         if (restoredSet.removeAll(ids.toSet())) persistRestored()
     }
 
+    override fun markRecommitNeeded(noteId: Long) {
+        if (recommitNeededSet.add(noteId)) persistRecommitNeeded()
+    }
+
+    override fun recommitNeededIds(): Set<Long> = recommitNeededSet.toSet()
+
+    override fun clearRecommitNeeded(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        if (recommitNeededSet.removeAll(ids.toSet())) persistRecommitNeeded()
+    }
+
     override fun markPendingAttachmentGc(noteId: Long, attachmentIds: Collection<String>) {
         pendingAttachmentGcMap.getOrPut(noteId) { mutableSetOf() }.addAll(attachmentIds)
         persistPendingGc()
@@ -162,6 +185,50 @@ class DesktopNoteSyncStateStore(
         if (changed) persistKnownServerRevisions()
     }
 
+    override fun syncedTimestampById(): Map<Long, Long> = syncedTimestampsMap.toMap()
+
+    override fun updateSyncedTimestamps(timestamps: Map<Long, Long>) {
+        if (timestamps.isEmpty()) return
+        syncedTimestampsMap.putAll(timestamps)
+        persistSyncedTimestamps()
+    }
+
+    override fun clearSyncedTimestamps(noteIds: Collection<Long>) {
+        if (noteIds.isEmpty()) return
+        var changed = false
+        for (id in noteIds) {
+            if (syncedTimestampsMap.remove(id) != null) changed = true
+        }
+        if (changed) persistSyncedTimestamps()
+    }
+
+    private fun persistSyncedTimestamps() {
+        val encoded = json.encodeToString(MapSerializer(String.serializer(), Long.serializer()),
+            syncedTimestampsMap.mapKeys { it.key.toString() })
+        runBlocking { dataStore.edit { it[KEY_SYNCED_TIMESTAMPS] = encoded } }
+    }
+
+    override fun deletedDigestById(): Map<Long, String> = deletedDigestsMap.toMap()
+
+    override fun setDeletedDigest(noteId: Long, digest: String) {
+        deletedDigestsMap[noteId] = digest
+        persistDeletedDigests()
+    }
+
+    override fun clearDeletedDigests(noteIds: Collection<Long>) {
+        var changed = false
+        for (id in noteIds) {
+            if (deletedDigestsMap.remove(id) != null) changed = true
+        }
+        if (changed) persistDeletedDigests()
+    }
+
+    private fun persistDeletedDigests() {
+        val encoded = json.encodeToString(MapSerializer(String.serializer(), String.serializer()),
+            deletedDigestsMap.mapKeys { it.key.toString() })
+        runBlocking { dataStore.edit { it[KEY_DELETED_DIGESTS] = encoded } }
+    }
+
     override fun baselineDeleteRevisionById(): Map<Long, Long> = baselineDeleteRevisionsMap.toMap()
 
     override fun setBaselineDeleteRevision(noteId: Long, revision: Long) {
@@ -183,10 +250,13 @@ class DesktopNoteSyncStateStore(
     override fun clear() {
         deletedMap.clear()
         restoredSet.clear()
+        recommitNeededSet.clear()
         pendingAttachmentGcMap.clear()
         knownCloudSet.clear()
         knownServerRevisionsMap.clear()
         baselineDeleteRevisionsMap.clear()
+        syncedTimestampsMap.clear()
+        deletedDigestsMap.clear()
         reconciledAt = 0L
         mergedUserId = null
         runBlocking { dataStore.edit { it.clear() } }
@@ -204,6 +274,12 @@ class DesktopNoteSyncStateStore(
         val encoded = json.encodeToString(SetSerializer(String.serializer()),
             restoredSet.map { it.toString() }.toSet())
         runBlocking { dataStore.edit { it[KEY_RESTORED_IDS] = encoded } }
+    }
+
+    private fun persistRecommitNeeded() {
+        val encoded = json.encodeToString(SetSerializer(String.serializer()),
+            recommitNeededSet.map { it.toString() }.toSet())
+        runBlocking { dataStore.edit { it[KEY_RECOMMIT_NEEDED_IDS] = encoded } }
     }
 
     private fun persistPendingGc() {
@@ -281,10 +357,13 @@ class DesktopNoteSyncStateStore(
         private const val TAG = "NoteSyncStateStore"
         private val KEY_DELETED_JSON = stringPreferencesKey("sync_deleted_json")
         private val KEY_RESTORED_IDS = stringPreferencesKey("sync_restored_ids")
+        private val KEY_RECOMMIT_NEEDED_IDS = stringPreferencesKey("sync_recommit_needed_ids")
         private val KEY_PENDING_ATTACHMENT_GC = stringPreferencesKey("sync_pending_attachment_gc")
         private val KEY_KNOWN_CLOUD_IDS = stringPreferencesKey("sync_known_cloud_ids")
         private val KEY_KNOWN_SERVER_REVISIONS = stringPreferencesKey("sync_known_server_revisions")
         private val KEY_BASELINE_DELETE_REVISIONS = stringPreferencesKey("sync_baseline_delete_revisions")
+        private val KEY_SYNCED_TIMESTAMPS = stringPreferencesKey("sync_synced_timestamps")
+        private val KEY_DELETED_DIGESTS = stringPreferencesKey("sync_deleted_digests")
         private val KEY_LAST_RECONCILED = longPreferencesKey("sync_last_reconciled")
         private val KEY_LAST_MERGED_USER_ID = stringPreferencesKey("sync_last_merged_user_id")
     }

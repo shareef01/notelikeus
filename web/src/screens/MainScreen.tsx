@@ -1,11 +1,12 @@
 import { DiagnosticsDialog } from '@/components/settings/DiagnosticsDialog';
+import { ConflictReviewDialog } from '@/components/notes/ConflictReviewDialog';
 import { version as appVersion } from '../../package.json';
 import { AddIcon } from '@/components/icons/Icons';
 
 import { ToastHost } from '@/components/feedback/ToastHost';
 import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
 import { InstallPrompt } from '@/components/layout/InstallPrompt';
-import { OfflineBanner } from '@/components/layout/OfflineBanner';
+import { SyncStatusBanner } from '@/components/layout/SyncStatusBanner';
 import { SideDrawer } from '@/components/layout/SideDrawer';
 import { TopBar } from '@/components/layout/TopBar';
 import { NoteStaggeredGrid } from '@/components/notes/NoteStaggeredGrid';
@@ -293,44 +294,35 @@ export function MainScreen() {
   const overlayEditor =
     desktopEditor && editorLayout !== 'dock' ? desktopEditor : null;
 
-  useShortcuts([
-    {
-      key: '/',
-      action: () => {
-        if (editorRoute.mode === 'closed') searchInputRef.current?.focus();
+  // Main-screen keys stand aside while a dialog holds the keyboard, and decline (rather than
+  // swallow) a key while the editor is open, so Ctrl+F there still opens the browser's find bar.
+  const focusSearch = () => {
+    if (editorRoute.mode !== 'closed') return false;
+    searchInputRef.current?.focus();
+  };
+  useShortcuts(
+    [
+      { key: '/', action: focusSearch },
+      { key: 'k', ctrlOrMeta: true, action: focusSearch },
+      { key: 'f', ctrlOrMeta: true, action: focusSearch },
+      {
+        key: 'n',
+        action: () => {
+          if (editorRoute.mode !== 'closed' || filters.filter !== 'active') return false;
+          openNewNote();
+        },
       },
-    },
-    {
-      key: 'k',
-      ctrlOrMeta: true,
-      action: () => {
-        if (editorRoute.mode === 'closed') searchInputRef.current?.focus();
+      {
+        key: 'Escape',
+        action: () => {
+          if (editorRoute.mode !== 'closed') return false;
+          if (selectionMode) clearSelection();
+          else setDrawerOpen(false);
+        },
       },
-    },
-    {
-      key: 'f',
-      ctrlOrMeta: true,
-      action: () => {
-        if (editorRoute.mode === 'closed') searchInputRef.current?.focus();
-      },
-    },
-    {
-      key: 'n',
-      action: () => {
-        if (editorRoute.mode === 'closed' && filters.filter === 'active') openNewNote();
-      },
-    },
-    {
-      key: 'Escape',
-      action: () => {
-        if (editorRoute.mode !== 'closed') {
-          return;
-        }
-        if (selectionMode) clearSelection();
-        else setDrawerOpen(false);
-      },
-    },
-  ]);
+    ],
+    { ignoreWhileModalOpen: true },
+  );
 
   return (
     <div className="flex min-h-screen w-full bg-true-surface lg:mx-auto lg:max-w-shell">
@@ -424,7 +416,7 @@ export function MainScreen() {
 
 
 
-        <OfflineBanner />
+        <SyncStatusBanner />
 
         <InstallPrompt />
 
@@ -474,7 +466,7 @@ export function MainScreen() {
               if (view.kind === 'blocking-error') {
                 return (
                   <div className="flex flex-col items-center justify-center px-shell py-16 text-center">
-                    <p role="alert" className="mb-4 max-w-md text-sm text-red-500 dark:text-red-400">
+                    <p role="alert" className="mb-4 max-w-md text-sm text-red-700 dark:text-red-400">
                       {view.message}
                     </p>
                     <button
@@ -511,7 +503,7 @@ export function MainScreen() {
                   {view.syncWarning ? (
                     <div className="px-shell mb-3">
                       <div className="flex flex-wrap items-center justify-between gap-3 rounded-note border border-red-500/25 bg-red-500/5 px-3 py-2.5 sm:px-4">
-                      <p role="status" className="min-w-0 flex-1 text-sm text-red-500 dark:text-red-400">
+                      <p role="status" className="min-w-0 flex-1 text-sm text-red-700 dark:text-red-400">
                         {view.syncWarning}
                       </p>
                       <button
@@ -685,6 +677,7 @@ export function MainScreen() {
         onBulkPermanentDelete={() => void bulkPermanentDelete()}
       />
 
+      <ConflictReviewDialog />
       <DiagnosticsDialog
         open={showDiagnostics}
         appVersion={appVersion}

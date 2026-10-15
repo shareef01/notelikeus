@@ -24,7 +24,10 @@ vi.mock('@/lib/supabase/supabaseRealtimeSync', () => ({
   subscribeSupabaseNoteRealtime: vi.fn(() => () => {}),
 }));
 
+import { pendingStoragePath } from '@/lib/attachments/attachmentPaths';
+import { storePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
 import { NOTES_DB_NAME } from '@/lib/local/constants';
+import { getPendingAttachment } from '@/lib/local/pendingAttachmentRepository';
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
 import {
   applyRemotePageAtomically,
@@ -43,6 +46,7 @@ import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNote
 import { flushPendingPushes } from '@/lib/supabase/pendingPushes';
 import { useAuthStore } from '@/store/authStore';
 import { useNotesStore } from '@/store/notesStore';
+import { useSyncStatusStore } from '@/store/syncStatusStore';
 import { useToastStore } from '@/store/toastStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { createEmptyNote } from '@/types/note';
@@ -61,10 +65,13 @@ const USER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 let online = true;
 let revisionSeq = 0;
 const cloud = new Map<string, { note: Note; revision: number }>();
+/** Notes deleted in the cloud: note id → deleted-at. The server refuses writes to them. */
+const cloudTombstones = new Map<string, number>();
 
 function cloudWrite(note: Note): Note {
   const revision = ++revisionSeq;
-  const stored = { ...note, serverUpdatedAt: 1_000 + revision };
+  // The note payload carries no attachments; the server keeps those in their own table.
+  const stored = { ...note, attachments: [], serverUpdatedAt: 1_000 + revision };
   cloud.set(note.id, { note: stored, revision });
   return stored;
 }
@@ -96,12 +103,15 @@ function anotherDeviceEdits(title: string): Note {
   return cloudWrite({ ...row.note, title, timestamp: row.note.timestamp + 1 });
 }
 
+const status = () => useSyncStatusStore.getState();
+
 describe('F-06 offline edit durability', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     online = true;
     revisionSeq = 0;
     cloud.clear();
+    cloudTombstones.clear();
     useTombstoneStore.getState().reset();
     await resetNotesDatabaseForTests();
     indexedDB.deleteDatabase(NOTES_DB_NAME);
@@ -109,19 +119,29 @@ describe('F-06 offline edit durability', () => {
 
     applyNoteChange.mockImplementation(async (userId: string, note: Note, base: number | null) => {
       if (!online) throw offlineError();
+      if (cloudTombstones.has(note.id)) {
+        // What applyNoteChange does with the server's note_deleted answer.
+        useTombstoneStore.getState().markDeleted(note.id);
+        throw new NoteConflictError(note.id, null, `Note ${note.id} was deleted in the cloud`);
+      }
       const row = cloud.get(note.id);
-      if (row && base !== row.revision) throw new NoteConflictError(note.id, row.note);
+      if (row && base !== row.revision) {
+        // As the real applyNoteChange does: the conflict reply carries the revision it is at.
+        await rememberNoteRevision(userId, note.id, row.revision);
+        throw new NoteConflictError(note.id, row.note);
+      }
       if (!row && base != null) throw new NoteConflictError(note.id, null, undefined, true);
       const stored = cloudWrite(note);
       await rememberNoteRevision(userId, note.id, cloud.get(note.id)!.revision);
-      return stored;
+      // applyServerFields: the accepted note is the pushed one with the server's stamps.
+      return { ...stored, attachments: note.attachments };
     });
     fetchSnapshotNotes.mockImplementation(async () => {
       if (!online) throw offlineError();
       const rows = [...cloud.values()];
       return {
         notes: rows.map((row) => row.note),
-        tombstones: {},
+        tombstones: Object.fromEntries(cloudTombstones),
         noteRevisions: Object.fromEntries(rows.map((row) => [row.note.id, row.revision])),
         maxRevision: revisionSeq,
       };
@@ -202,6 +222,50 @@ describe('F-06 offline edit durability', () => {
     expect(await listPendingPushes(USER)).toEqual({});
   });
 
+  it('gives the copy the images that were never uploaded, staged under the copy', async () => {
+    const bytes = new Blob(['photo'], { type: 'image/png' });
+    expect(await storePendingAttachment('att-photo', bytes, 'image/png', '1', USER)).toBe(true);
+    online = false;
+    const current = useNotesStore.getState().notes.find((note) => note.id === '1')!;
+    await saveNote({
+      ...current,
+      title: 'offline edit',
+      timestamp: current.timestamp + 100,
+      attachments: [
+        { id: 'att-photo', noteId: 1, storagePath: pendingStoragePath('att-photo'), type: 'image', mimeType: 'image/png' },
+      ],
+    });
+    online = true;
+    anotherDeviceEdits('android edit');
+
+    await subscribeOnce();
+
+    const copy = (await listNotes(USER)).find((note) => note.id !== '1')!;
+    expect(copy.attachments).toHaveLength(1);
+    const [moved] = copy.attachments;
+    // A new id: the cloud keys attachments by id, so the copy cannot share the original's.
+    expect(moved.id).not.toBe('att-photo');
+    expect(moved.storagePath).toBe(pendingStoragePath(moved.id));
+    expect(moved.noteId).toBe(copy.localId);
+    expect((await getPendingAttachment(USER, copy.id, moved.id))?.sizeBytes).toBe(bytes.size);
+    // The cloud version that kept id 1 never had the image, so its staged record is released.
+    expect(await getPendingAttachment(USER, '1', 'att-photo')).toBeNull();
+  });
+
+  it('keeps the edit as a copy when another device deleted the note meanwhile', async () => {
+    await editWhileOffline();
+    cloud.delete('1');
+    cloudTombstones.set('1', 2_000);
+
+    await subscribeOnce();
+
+    const stored = await listNotes(USER);
+    expect(stored.map((note) => note.id)).not.toContain('1');
+    expect(stored.map((note) => note.title)).toEqual(['offline edit (conflicted copy)']);
+    expect([...cloud.values()].map((row) => row.note.title)).toEqual(['offline edit (conflicted copy)']);
+    expect(await listPendingPushes(USER)).toEqual({});
+  });
+
   it('keeps both versions on reconcile too', async () => {
     const edited = await editWhileOffline();
     anotherDeviceEdits('android edit');
@@ -229,6 +293,50 @@ describe('F-06 offline edit durability', () => {
     expect(titlesById(await listNotes(USER))).toEqual({ '1': 'offline edit' });
     expect(cloud.size).toBe(1);
     expect(await listPendingPushes(USER)).toEqual({});
+  });
+
+  it('does not make a copy of a note with an image when its earlier push landed, and names the image again', async () => {
+    online = false;
+    const current = useNotesStore.getState().notes.find((note) => note.id === '1')!;
+    const edited: Note = {
+      ...current,
+      title: 'offline edit',
+      timestamp: current.timestamp + 100,
+      attachments: [{ id: 'att-up', noteId: 1, storagePath: 'r2:owners/u/notes/1/att-up', type: 'image' }],
+    };
+    await saveNote(edited);
+    online = true;
+    cloudWrite(edited);
+    applyNoteChange.mockClear();
+
+    await subscribeOnce();
+
+    expect((await listNotes(USER)).map((note) => note.id)).toEqual(['1']);
+    // The landed write may not have been the one that named the upload, so it is committed once more.
+    const [pushed, base] = applyNoteChange.mock.calls.at(-1)!.slice(1) as [Note, number];
+    expect(pushed.attachments.map((attachment) => attachment.id)).toEqual(['att-up']);
+    expect(base).toBe(revisionSeq - 1);
+    expect(await listPendingPushes(USER)).toEqual({});
+  });
+
+  it('keeps an image that never uploaded when the next page load brings the cloud version', async () => {
+    // The words reached the cloud; the image upload did not (it would have run after the push).
+    const current = useNotesStore.getState().notes.find((note) => note.id === '1')!;
+    const bytes = new Blob(['photo'], { type: 'image/png' });
+    expect(await storePendingAttachment('att-local', bytes, 'image/png', '1', USER)).toBe(true);
+    await saveNote({
+      ...current,
+      title: 'with photo',
+      timestamp: current.timestamp + 100,
+      attachments: [{ id: 'att-local', noteId: 1, storagePath: pendingStoragePath('att-local'), type: 'image' }],
+    });
+    expect(await listPendingPushes(USER)).toEqual({});
+
+    await subscribeOnce();
+
+    const [stored] = await listNotes(USER);
+    expect(stored.title).toBe('with photo');
+    expect(stored.attachments.map((attachment) => attachment.id)).toEqual(['att-local']);
   });
 
   it('pushes the edit as a new note when the cloud no longer has it at all', async () => {
@@ -299,5 +407,47 @@ describe('F-06 offline edit durability', () => {
     expect(cloud.size).toBe(1);
     expect(cloud.get('1')!.note.title).toBe('second');
     expect(titlesById(await listNotes(USER))).toEqual({ '1': 'second' });
+  });
+
+  // DESIGN_SYSTEM §5.1: "Synced" only once the server confirmed the write. The status line and
+  // banner read this store, so it has to follow the queue and the flush, not connectivity.
+  describe('sync status shown to the user', () => {
+    it('marks an edit that could not be pushed as waiting, and the push as failed', async () => {
+      await editWhileOffline();
+
+      expect(status().pendingByOwner[USER]).toEqual(['1']);
+      expect(status().failedByOwner[USER]).toBe(true);
+      expect(status().flushingByOwner[USER]).toBe(false);
+    });
+
+    it('clears both once a later push lands', async () => {
+      await editWhileOffline();
+
+      await flushPendingPushes(USER);
+
+      expect(status().pendingByOwner[USER]).toEqual([]);
+      expect(status().failedByOwner[USER]).toBe(false);
+    });
+
+    it('reports a push in flight as syncing, with the edit still unconfirmed', async () => {
+      await editWhileOffline();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const realApply = applyNoteChange.getMockImplementation()!;
+      applyNoteChange.mockImplementationOnce(async (...args: unknown[]) => {
+        await gate;
+        return realApply(...(args as Parameters<typeof realApply>));
+      });
+
+      const flushing = flushPendingPushes(USER);
+      await vi.waitFor(() => expect(applyNoteChange).toHaveBeenCalledTimes(2));
+      expect(status().flushingByOwner[USER]).toBe(true);
+      expect(status().pendingByOwner[USER]).toEqual(['1']);
+
+      release();
+      await flushing;
+      expect(status().flushingByOwner[USER]).toBe(false);
+      expect(status().pendingByOwner[USER]).toEqual([]);
+    });
   });
 });

@@ -81,8 +81,9 @@ export default defineConfig(({ mode }) => {
         short_name: 'Notelikeus',
         description: 'Minimal, premium notes — synced across devices.',
         id: '/',
-        theme_color: '#000000',
-        background_color: '#000000',
+        // One value only in a manifest: the dark background, as the pre-mount shell uses.
+        theme_color: '#101010',
+        background_color: '#101010',
         display: 'standalone',
         orientation: 'any',
         scope: '/',

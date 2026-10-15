@@ -419,6 +419,7 @@ internal fun MainScaffold(
                         onLabelClick = { labelId ->
                             viewModel.selectLabelFilter(labelId)
                         },
+                        onConflictReview = viewModel::openConflictReview,
                         onMoveNote = viewModel::previewMoveNote,
                         onReorderComplete = viewModel::commitNoteOrder,
                         // In two-pane mode the list shares the window with the editor, so the
