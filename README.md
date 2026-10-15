@@ -34,7 +34,8 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 | Swipe actions with undo | ✓ | ✓ | ✓ |
 | Manual reorder in list view | ✓ | ✓ | ✓ |
 | Image attachments, with the first picture on the card | ✓ | ✓ | ✓ |
-| Theme, accent, pure black | ✓ | ✓ | ✓ |
+| Theme (follows the system by default), accent, pure black | ✓ | ✓ | ✓ |
+| Conflict copies, with a side-by-side review | ✓ | ✓ | ✓ |
 | Reminders, with presets and an exact date & time | Notifications | Tray, while the app runs | Service worker |
 | Encrypted local database | SQLCipher | SQLCipher (DPAPI key) | WebCrypto (note bodies) |
 | Biometric app lock | ✓ | — | — |
@@ -46,19 +47,34 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 | Sync diagnostics | ✓ | ✓ | ✓ |
 | Installable PWA | — | — | ✓ |
 
+Web keyboard shortcuts:
+
+| Key | Where | Does |
+|---|---|---|
+| `/`, Ctrl/⌘+K, Ctrl/⌘+F | Note list | Focus search. With a note open, Ctrl/⌘+F is the browser's find. |
+| N | Note list | New note |
+| Ctrl/⌘+Enter | Editor | Save now |
+| Escape | Anywhere | Close the innermost dialog, then the note, then leave selection |
+
+Shortcuts on the note list stay out of the way while a dialog is open, and typing in a text field never triggers them.
+
 ## How it works
 
 Notes are stored on the device. Android and Windows use Room with SQLCipher: Android seals the passphrase in the Android Keystore; Windows seals it with DPAPI. Attachment image bytes are AES-GCM sealed on both. The web client seals note titles, bodies, and checklists in IndexedDB (and staged pending attachment blobs) with WebCrypto AES-GCM — profile-at-rest only, not an XSS control. Nothing about the app requires an account.
 
 Sync sits above that. When you sign in, notes replicate through Supabase: Postgres RPCs for mutations, Realtime as a wake-up signal, row-level security for isolation.
 
-Conflicts resolve on a server-assigned revision rather than a client clock, so a device with a skewed clock cannot overwrite a revision the server has already confirmed. Deletions travel as tombstones, so a note deleted on one device stays deleted when another device syncs later.
+Conflicts are detected on a server-assigned revision rather than a client clock, so a device with a skewed clock cannot overwrite a revision the server has already confirmed. When two devices edit the same note before either syncs, neither edit is thrown away: the note keeps the version that reached the cloud first, and the other becomes a new note titled "… (conflicted copy)", taking with it any image that had not uploaded yet. Its "Conflict copy" tag opens a side-by-side review, where keeping one version moves the other to Trash. The same applies to a note open in the editor when another device changes it, and to a note edited on one device while it is deleted on another.
+
+Deletions travel as tombstones, so a note deleted on one device stays deleted when another device syncs later. A note deleted before this device knew its server revision is deleted once a later sync shows the cloud copy still says exactly what was deleted; if it changed on another device in the meantime, it comes back and the app says so.
 
 A cloud read that fails is not treated as an empty account. A fetch returning nothing where notes were expected refuses the sync rather than concluding everything was deleted.
 
 Saved locally and synced are reported as different things. An edit counts as saved once Room or IndexedDB has taken it; a later network failure shows as sync pending, not as a lost note. If the local write itself fails, the editor stays open holding the text and offers a retry.
 
 Attachments are written to durable local storage before the note references them, so a note that points at an image still has the bytes after a restart and the upload can resume. Blobs live in Cloudflare R2 behind a Worker that verifies the Supabase session and derives the object key from the authenticated user. Staged bytes are scoped to the account that created them.
+
+An uploaded image becomes visible to other devices only when a note commit names it. Every client uploads through the Worker's `/v2/` route, which records the image as provisional, and then names it in the note's `apply_note_change`. An upload whose note never commits therefore cannot attach itself to an unrelated note that later reuses the id. Until that commit lands, the note keeps its own uploads through every sync. A cloud version written over a local note keeps the images that have not uploaded yet. If the commit that was to name an upload conflicts, the conflicted copy takes the image.
 
 Importing a backup adds its notes as new notes rather than replacing what is on the device, so importing the same file twice gives you two copies. A JSON backup carries note content only. Every client can also export and import a `.nlkbak` bundle — a plain ZIP holding the same JSON document plus the attachment bytes this device actually has. Images that exist only in the cloud are left out and reported as skipped.
 
@@ -121,12 +137,13 @@ Production builds need a hosted `VITE_SUPABASE_URL` and the public `VITE_SUPABAS
 
 | Suite | Covers | Command |
 |---|---|---|
-| Kotlin unit | Sync engine, mappers, repositories, backup, key management, Room migrations, reminder time zones | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest :androidApp:testDebugUnitTest` |
+| Kotlin lint | detekt, against the baseline in `config/detekt/` | `./gradlew detekt` |
+| Kotlin unit | Sync engine (incl. conflict copies and verified deletes), mappers, repositories, backup, key management, Room migrations, reminder time zones, theme contrast | `./gradlew :composeApp:testDebugUnitTest :composeApp:desktopTest :androidApp:testDebugUnitTest` |
 | Cross-client contracts | Backup and cloud payload formats, asserted from the same fixtures by Kotlin and TypeScript | part of the Kotlin unit and web unit suites |
 | Sync invariants | Crash, offline, account-switch and restore interleavings against a fault-injecting transport | part of the Kotlin unit suite |
 | Instrumented | Database quarantine and encryption migration, on a device | `./gradlew :composeApp:connectedDebugAndroidTest` |
 | Minified release | R8 and resource shrinking | `./gradlew :androidApp:assembleRelease` |
-| Web unit | Merge logic, conflict resolution, backup parsing, bundle archives, diagnostics redaction, search | `cd web && npm test` |
+| Web unit | Merge logic, conflict resolution and review, backup parsing, bundle archives, diagnostics redaction, search, theme contrast | `cd web && npm test` |
 | Web end-to-end | Built bundle in Chromium against local Supabase | `cd web && npm run test:e2e` |
 | Database | RLS, sync RPCs, tombstones, attachments (pgTAP) | `npm run supabase:test` |
 | Attachments Worker | JWT auth, path isolation, size and MIME limits | `npm run test:attachments-worker` |
@@ -135,8 +152,8 @@ Production builds need a hosted `VITE_SUPABASE_URL` and the public `VITE_SUPABAS
 The instrumented suite needs a connected device or emulator; the database and end-to-end suites need a running local Supabase (`npm run supabase:start`), which needs Docker.
 
 The cross-client fixtures live in [`contracts/`](contracts/) and are read by both test suites, so a
-field renamed or defaulted differently on one client fails on both. The most recent audit of the
-whole system is [`docs/AUDIT_2026.md`](docs/AUDIT_2026.md).
+field renamed or defaulted differently on one client fails on both. `contracts/sync/` pins the rules for what an incoming cloud version may do to a local note. The most recent audit of the
+whole system is [`docs/audit/COMPREHENSIVE_AUDIT.md`](docs/audit/COMPREHENSIVE_AUDIT.md), with its findings in [`docs/audit/FINDINGS.md`](docs/audit/FINDINGS.md); the earlier [`docs/AUDIT_2026.md`](docs/AUDIT_2026.md) and the design system in [`docs/design/`](docs/design/) sit alongside it.
 
 ## Repository layout
 

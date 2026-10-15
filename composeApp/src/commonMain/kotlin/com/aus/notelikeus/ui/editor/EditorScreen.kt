@@ -155,6 +155,7 @@ fun EditorScreen(
     val noteArchivedMsg = stringResource(Res.string.note_archived)
     val noteTrashedMsg = stringResource(Res.string.note_trashed)
     val noteSaveFailedMsg = stringResource(Res.string.note_save_failed_kept)
+    val conflictCopySavedMsg = stringResource(Res.string.note_conflict_copy_saved)
     val noteTruncatedMsg = stringResource(Res.string.note_truncated_to_sync_limit)
     val noteDeleteFailedMsg = stringResource(Res.string.note_delete_failed)
     val reminderRemovedMsg = stringResource(Res.string.reminder_removed_confirmation)
@@ -212,6 +213,17 @@ fun EditorScreen(
             return
         }
         scheduleReminderIfAllowed(millis)
+    }
+
+    // Both versions are safe, so this is information rather than an alarm: said once, plainly.
+    LaunchedEffect(state.conflictCopy) {
+        if (state.conflictCopy) {
+            snackbarHostState.showSnackbar(
+                conflictCopySavedMsg,
+                withDismissAction = true,
+                duration = SnackbarDuration.Long,
+            )
+        }
     }
 
     // A failed local save leaves the editor holding the only copy, so the notice is indefinite and

@@ -1,4 +1,5 @@
 package com.aus.notelikeus.ui.main
+import com.aus.notelikeus.ui.main.components.ConflictReviewDialog
 import com.aus.notelikeus.ui.main.components.DiagnosticsDialog
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
@@ -42,6 +43,7 @@ import com.aus.notelikeus.domain.model.SavedFilter
     import kotlinx.coroutines.launch
     import notelikeus.composeapp.generated.resources.Res
     import notelikeus.composeapp.generated.resources.*
+    import org.jetbrains.compose.resources.getPluralString
     import org.jetbrains.compose.resources.getString
     import org.jetbrains.compose.resources.stringResource
     import org.koin.compose.viewmodel.koinViewModel
@@ -174,7 +176,15 @@ fun MainScreen(
             }
             is CloudSyncEvent.Downloaded -> {
                 snackbarHostState.showSnackbar(
-                    getString(Res.string.cloud_download_success, event.noteCount)
+                    if (event.deletedNotesBack > 0) {
+                        getPluralString(
+                            Res.plurals.deleted_notes_came_back,
+                            event.deletedNotesBack,
+                            event.deletedNotesBack,
+                        )
+                    } else {
+                        getString(Res.string.cloud_download_success, event.noteCount)
+                    }
                 )
             }
             is CloudSyncEvent.Failure -> {
@@ -601,6 +611,14 @@ fun MainScreen(
                 showProfileSheet = false
                 viewModel.openDiagnostics()
             }
+        )
+    }
+
+    state.conflictReview?.let { review ->
+        ConflictReviewDialog(
+            review = review,
+            onChoice = viewModel::resolveConflict,
+            onDismiss = viewModel::closeConflictReview,
         )
     }
 

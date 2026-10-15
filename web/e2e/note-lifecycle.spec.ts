@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { leaveEditor, openNewNote } from './helpers/newNote';
 
 /**
  * A note's full round trip through a real browser and local Supabase.
@@ -75,4 +76,36 @@ test('a note survives create, reload and edit', async ({ page }) => {
 
   await reloadApp(page);
   await expect(noteCard(page, edited)).toBeVisible({ timeout: 30_000 });
+});
+
+// AU-20: the new-note editor moves focus to the body one frame after it opens. A title typed
+// straight away used to lose that race and land in the body, so the note was saved untitled.
+test('a title typed the moment a new note opens stays the title', async ({ page }) => {
+  await signUp(page);
+  // A busy main thread (the cold start AU-20 was seen on) stretches that one frame. Slowing frames
+  // makes the race certain here instead of depending on runner speed.
+  await page.evaluate(() => {
+    window.requestAnimationFrame = (callback) =>
+      window.setTimeout(() => callback(performance.now()), 500);
+    window.cancelAnimationFrame = (id) => window.clearTimeout(id);
+  });
+
+  const title = `E2E instant ${Date.now()}`;
+  await openNewNote(page);
+  // No wait for the editor to settle: click and type the way a quick user does.
+  await page.locator('#note-title').click();
+  // A person's typing spans that frame: half the title before it fires, half after.
+  await page.keyboard.type(title.slice(0, 6));
+  await page.waitForTimeout(800);
+  await page.keyboard.type(title.slice(6));
+  await expect(page.locator('#note-title')).toHaveValue(title);
+  await expect(page.getByRole('textbox', { name: 'Note body' })).toHaveValue('');
+
+  const created = writeAccepted(page);
+  await leaveEditor(page);
+  await expect(noteCard(page, title)).toBeVisible({ timeout: 20_000 });
+  await created;
+
+  await reloadApp(page);
+  await expect(noteCard(page, title)).toBeVisible({ timeout: 30_000 });
 });

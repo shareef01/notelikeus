@@ -750,4 +750,59 @@ class MainViewModelTest {
         coVerify(exactly = 0) { settingsRepository.addRecentSearch(any()) }
     }
 
+    // ---- conflict review (AU-08) ----
+
+    private val reviewOriginal = Note(id = 1L, title = "Groceries", content = "milk\neggs (from phone)", timestamp = 2_000L, color = 0)
+    private val reviewCopy = Note(id = 2L, title = "Groceries (conflicted copy)", content = "milk\nbread (typed here)", timestamp = 3_000L, color = 0)
+
+    private fun openReview(): MainViewModel {
+        every { repository.getActiveNotes() } returns flowOf(listOf(reviewOriginal, reviewCopy))
+        every { repository.getArchivedNotes() } returns flowOf(emptyList())
+        val subject = createViewModel()
+        subject.openConflictReview(2L)
+        testDispatcher.scheduler.advanceUntilIdle()
+        return subject
+    }
+
+    @Test
+    fun `opening a review pairs the copy with its original from the whole library`() = runTest {
+        val subject = openReview()
+
+        val review = subject.state.value.conflictReview
+        assertEquals(2L, review?.copy?.id)
+        assertEquals(1L, review?.original?.id)
+    }
+
+    @Test
+    fun `keeping the copy trashes the original and gives the copy the original title`() = runTest {
+        val subject = openReview()
+
+        subject.resolveConflict(ConflictChoice.KEEP_COPY)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify { repository.updateNote(match { it.id == 1L && it.isTrashed }, any()) }
+        coVerify { repository.updateNote(match { it.id == 2L && it.title == "Groceries" && !it.isTrashed }, any()) }
+        assertEquals(null, subject.state.value.conflictReview)
+    }
+
+    @Test
+    fun `keeping the current note trashes only the copy`() = runTest {
+        val subject = openReview()
+
+        subject.resolveConflict(ConflictChoice.KEEP_CURRENT)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.updateNote(any(), any()) }
+        coVerify { repository.updateNote(match { it.id == 2L && it.isTrashed }, any()) }
+    }
+
+    @Test
+    fun `keeping both renames the copy and trashes nothing`() = runTest {
+        val subject = openReview()
+
+        subject.resolveConflict(ConflictChoice.KEEP_BOTH)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.updateNote(match { it.id == 2L && it.title == "Groceries" && !it.isTrashed }, any()) }
+    }
 }

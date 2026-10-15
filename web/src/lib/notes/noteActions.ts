@@ -1,4 +1,5 @@
 import { restoreCloudNote } from '@/lib/notes/tombstones';
+import { authoredContentDigest } from '@/lib/notes/conflictResolution';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
 import {
@@ -144,7 +145,11 @@ export async function removeNote(noteId: string): Promise<void> {
   }
 
   if (!isGuest) {
-    useTombstoneStore.getState().markDeleted(noteId, baselineRevision);
+    // Without a known revision the delete cannot be sent yet. The fingerprint of what the user
+    // deleted lets a later snapshot finish it, but only against a cloud copy that still says
+    // exactly that (notesSyncService.partitionTombstoned).
+    const digest = baselineRevision == null && existing ? authoredContentDigest(existing) : null;
+    useTombstoneStore.getState().markDeleted(noteId, baselineRevision, undefined, digest);
   }
   useNotesStore.getState().removeLocalNote(noteId);
 

@@ -1,4 +1,6 @@
-﻿import { applyRemotePageAtomically } from '@/lib/local/notesLocalRepository';
+﻿import { keepingLocalOnlyAttachments } from '@/lib/attachments/attachmentPaths';
+import { applyRemotePageAtomically } from '@/lib/local/notesLocalRepository';
+import { useNotesStore } from '@/store/notesStore';
 import {
   retryPendingCloudRestores,
   withoutRestoredDeletes,
@@ -70,7 +72,7 @@ export async function ensureSupabaseAuthenticated(): Promise<void> {
   if (error) throw error;
   if (!data.session) {
     throw new Error(
-      'Supabase session missing ÔÇö sign in via Supabase Auth (Phase 5) before using the Supabase backend.',
+      'Supabase session missing — sign in via Supabase Auth (Phase 5) before using the Supabase backend.',
     );
   }
 }
@@ -94,7 +96,7 @@ export async function fetchSnapshotNotes(options?: {
   const { data, error } = await getSupabaseClient().rpc('fetch_full_snapshot');
   if (error) throw error;
   // SQL NULL used to mean "zero notes" because fetch_full_snapshot's outer FROM notes
-  // matched nothing ÔÇö that also dropped tombstones. Refuse it; the RPC must return JSON.
+  // matched nothing — that also dropped tombstones. Refuse it; the RPC must return JSON.
   if (data == null) {
     throw new Error('Incomplete snapshot: fetch_full_snapshot returned null');
   }
@@ -218,7 +220,10 @@ export async function pullIncrementalChanges(
 
       const notePayload = change as SupabaseNotePayload;
       if (!notePayload.note_id) continue;
-      const note = supabaseNoteToNote(notePayload);
+      const local =
+        useNotesStore.getState().notes.find((candidate) => candidate.id === notePayload.note_id) ??
+        notesById.get(notePayload.note_id);
+      const note = keepingLocalOnlyAttachments(supabaseNoteToNote(notePayload), local);
       upserts.push(note);
       if (notePayload.revision != null) {
         noteRevisions[note.id] = notePayload.revision;

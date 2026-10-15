@@ -394,7 +394,7 @@ describe('F04 Stale-Intent Lifecycle & Failed/Cancelled Auth Invalidation', () =
     vi.restoreAllMocks();
   });
 
-  // Test A ÔÇö OAuth cancelled
+  // Test A — OAuth cancelled
   it('oauthCancelledClearsAdoptionIntentAndPreservesGuestData', async () => {
     useAuthStore.getState().enterGuestMode();
     const guestNote = createEmptyNote({
@@ -419,7 +419,7 @@ describe('F04 Stale-Intent Lifecycle & Failed/Cancelled Auth Invalidation', () =
     expect(sessionStorage.getItem('notelikeus-pending-guest-adoption')).toBeNull();
   });
 
-  // Test B ÔÇö OAuth fails, later unrelated direct login
+  // Test B — OAuth fails, later unrelated direct login
   it('oauthFailureDoesNotAllowLaterUnrelatedLoginToAdoptGuestData', async () => {
     // 1. Alice uses Guest Mode
     useAuthStore.getState().enterGuestMode();
@@ -463,7 +463,7 @@ describe('F04 Stale-Intent Lifecycle & Failed/Cancelled Auth Invalidation', () =
     expect((await listNotes(GUEST_OWNER_ID))[0]?.title).toBe('Alice Private Thoughts');
   });
 
-  // Test C ÔÇö Email/password login failure
+  // Test C — Email/password login failure
   it('passwordLoginFailureClearsIntentAndPreventsLaterAdoption', async () => {
     // 1. Guest session with note
     useAuthStore.getState().enterGuestMode();
@@ -500,7 +500,7 @@ describe('F04 Stale-Intent Lifecycle & Failed/Cancelled Auth Invalidation', () =
     expect(await listNotes(GUEST_OWNER_ID)).toHaveLength(1);
   });
 
-  // Test D ÔÇö Signup failure
+  // Test D — Signup failure
   it('signupFailureClearsIntentAndPreventsIndefiniteArming', async () => {
     useAuthStore.getState().enterGuestMode();
     const guestNote = createEmptyNote({
@@ -532,7 +532,7 @@ describe('F04 Stale-Intent Lifecycle & Failed/Cancelled Auth Invalidation', () =
     expect(await listNotes(GUEST_OWNER_ID)).toHaveLength(1);
   });
 
-  // Test E ÔÇö Successful auth consumes intent exactly once
+  // Test E — Successful auth consumes intent exactly once
   it('successfulAuthConsumesIntentExactlyOnce', async () => {
     useAuthStore.getState().enterGuestMode();
     const guestNote = createEmptyNote({
@@ -581,7 +581,7 @@ describe('F04 Stale-Intent Lifecycle & Failed/Cancelled Auth Invalidation', () =
     expect(await listNotes(GUEST_OWNER_ID)).toHaveLength(1);
   });
 
-  // Test F ÔÇö Expired intent (> 10 minutes) fails closed
+  // Test F — Expired intent (> 10 minutes) fails closed
   it('expiredIntentFailsClosedAndRejectsAdoption', async () => {
     const ELEVEN_MINUTES_AGO = Date.now() - (MAX_INTENT_AGE_MS + 60_000);
     const staleIntent = {

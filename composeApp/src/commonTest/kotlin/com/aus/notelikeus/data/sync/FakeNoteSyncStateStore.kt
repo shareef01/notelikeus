@@ -7,6 +7,7 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
 
     private val deleted = mutableMapOf<Long, Long>()
     private val restored = mutableSetOf<Long>()
+    private val recommitNeeded = mutableSetOf<Long>()
     private val pendingAttachmentGc = mutableMapOf<Long, MutableSet<String>>()
     private val knownCloud = mutableSetOf<Long>()
     private val knownServerRevisions = mutableMapOf<Long, Long>()
@@ -59,6 +60,16 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
         restored.removeAll(ids.toSet())
     }
 
+    override fun markRecommitNeeded(noteId: Long) {
+        recommitNeeded.add(noteId)
+    }
+
+    override fun recommitNeededIds(): Set<Long> = recommitNeeded.toSet()
+
+    override fun clearRecommitNeeded(ids: Collection<Long>) {
+        recommitNeeded.removeAll(ids.toSet())
+    }
+
     override fun markPendingAttachmentGc(noteId: Long, attachmentIds: Collection<String>) {
         pendingAttachmentGc.getOrPut(noteId) { mutableSetOf() }.addAll(attachmentIds)
     }
@@ -99,6 +110,29 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
         knownServerRevisions.keys.removeAll(noteIds.toSet())
     }
 
+    private val syncedTimestamps = mutableMapOf<Long, Long>()
+    private val deletedDigests = mutableMapOf<Long, String>()
+
+    override fun deletedDigestById(): Map<Long, String> = deletedDigests.toMap()
+
+    override fun setDeletedDigest(noteId: Long, digest: String) {
+        deletedDigests[noteId] = digest
+    }
+
+    override fun clearDeletedDigests(noteIds: Collection<Long>) {
+        deletedDigests.keys.removeAll(noteIds.toSet())
+    }
+
+    override fun syncedTimestampById(): Map<Long, Long> = syncedTimestamps.toMap()
+
+    override fun updateSyncedTimestamps(timestamps: Map<Long, Long>) {
+        syncedTimestamps.putAll(timestamps)
+    }
+
+    override fun clearSyncedTimestamps(noteIds: Collection<Long>) {
+        syncedTimestamps.keys.removeAll(noteIds.toSet())
+    }
+
     override fun baselineDeleteRevisionById(): Map<Long, Long> = baselineDeleteRevisions.toMap()
 
     override fun setBaselineDeleteRevision(noteId: Long, revision: Long) {
@@ -118,10 +152,13 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
     override fun clear() {
         deleted.clear()
         restored.clear()
+        recommitNeeded.clear()
         pendingAttachmentGc.clear()
         knownCloud.clear()
         knownServerRevisions.clear()
         baselineDeleteRevisions.clear()
+        syncedTimestamps.clear()
+        deletedDigests.clear()
         reconciledAt = 0L
         mergedUserId = null
     }

@@ -37,6 +37,22 @@
     <string name="note_order_save_failed">Couldn’t save the new order</string>
     <string name="note_save_failed">Couldn’t save this note</string>
     <string name="note_save_failed_kept">Couldn’t save this note — your changes are still here</string>
+    <string name="note_conflict_copy_chip">Conflict copy</string>
+    <string name="conflict_review_open">Compare with the current note</string>
+    <string name="conflict_review_title">This note changed on two devices</string>
+    <string name="conflict_review_explainer">Nothing was lost. Pick what to keep — a version you don’t keep goes to Trash, where you can still restore it.</string>
+    <string name="conflict_review_current">Current note</string>
+    <string name="conflict_review_copy">Conflicted copy</string>
+    <string name="conflict_review_edited">Edited %1$s</string>
+    <string name="conflict_review_empty">(empty)</string>
+    <string name="conflict_review_only_here">only in this version</string>
+    <string name="conflict_review_unpaired">The note this copy came from couldn’t be identified — it may have been renamed or deleted. You can keep the copy as an ordinary note or move it to Trash.</string>
+    <string name="conflict_review_keep_both">Keep both</string>
+    <string name="conflict_review_keep_copy">Keep conflicted copy</string>
+    <string name="conflict_review_keep_current">Keep current note</string>
+    <string name="conflict_review_trash_copy">Move copy to Trash</string>
+    <string name="conflict_review_later">Decide later</string>
+    <string name="note_conflict_copy_saved">This note changed on another device. Your version is saved as a separate copy — nothing was lost.</string>
     <string name="action_discard">Discard</string>
     <string name="note_changes_discarded">Changes discarded</string>
     <string name="attachment_staging_failed">Couldn’t add that image</string>
@@ -305,6 +321,10 @@ Sync diagnostics shows counts and version numbers only — never note text, toke
       The Filters sheet’s live count. Plurals rather than "%1$d notes", which renders "1 notes" for
       the single-note case that a new or heavily-filtered library hits constantly.
     -->
+    <plurals name="deleted_notes_came_back">
+        <item quantity="one">A note you deleted changed on another device, so it’s back</item>
+        <item quantity="other">%1$d notes you deleted changed on another device, so they’re back</item>
+    </plurals>
     <plurals name="showing_all">
         <item quantity="one">%1$d note</item>
         <item quantity="other">%1$d notes</item>

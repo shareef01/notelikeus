@@ -24,6 +24,10 @@ interface UiState {
   labelsOpen: boolean;
   selectedNoteIds: string[];
   recentSearches: string[];
+  /** The conflicted copy being reviewed (ConflictReviewDialog), or null. Never persisted. */
+  conflictReviewNoteId: string | null;
+  openConflictReview: (noteId: string) => void;
+  closeConflictReview: () => void;
   setDrawerOpen: (open: boolean) => void;
   toggleDrawer: () => void;
   toggleSidebarCollapsed: () => void;
@@ -57,6 +61,9 @@ export const useUiStore = create<UiState>()(
       labelsOpen: false,
       selectedNoteIds: [],
       recentSearches: [],
+      conflictReviewNoteId: null,
+      openConflictReview: (noteId) => set({ conflictReviewNoteId: noteId }),
+      closeConflictReview: () => set({ conflictReviewNoteId: null }),
       setDrawerOpen: (drawerOpen) =>
         set((state) => (state.drawerOpen === drawerOpen ? state : { drawerOpen })),
       toggleDrawer: () => set({ drawerOpen: !get().drawerOpen }),

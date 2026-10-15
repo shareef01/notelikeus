@@ -4,7 +4,10 @@ export function stripMarkdownForPreview(text: string): string {
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/_(.+?)_/g, '$1')
     .replace(/\[(.+?)\]\([^)]+\)/g, '$1')
-    .replace(/^• /gm, '');
+    .replace(/^• /gm, '')
+    // Task-list syntax typed or pasted as text reads as a checkbox, not as brackets.
+    .replace(/^(\s*)[-*] \[ \] /gm, '$1☐ ')
+    .replace(/^(\s*)[-*] \[[xX]\] /gm, '$1☑ ');
 }
 
 export function wrapSelection(

@@ -103,6 +103,67 @@ class AttachmentSyncService(
         Unit
     }
 
+    /**
+     * Stages again, under new ids, the images of [attachments] that exist only on this device, for
+     * a conflicted copy about to carry them. Keyed by the original attachment id.
+     *
+     * A `pending:` image's bytes are staged under the note that added them and a `file:` image is a
+     * file of that note's, so a copy that dropped them would drop the only copy once the original's
+     * row is overwritten or deleted. The cloud keys attachments by id per owner, so the copy cannot
+     * share the original's ids either. An image whose bytes cannot be read or staged is left out of
+     * the result, and the caller leaves it where it was.
+     *
+     * A committed `r2:` image is in the cloud under the original note, which keeps it, and is not
+     * copied. An upload no commit has named yet is different: rows stay provisional, and out of every
+     * listing, until a note commit names them, and the commit that was to do so is the one that
+     * conflicted. Given [remoteIdentity] (the download's), such an upload is fetched back and carried
+     * like a staged image; without it, or when the listing or the fetch fails, it is left as it was.
+     */
+    suspend fun stageForCopy(
+        attachments: List<Attachment>,
+        remoteIdentity: OperationRemoteIdentity? = null,
+    ): Map<String, Attachment> {
+        val owner = ownerId()
+        val uncommitted = uncommittedUploadsAmong(attachments, remoteIdentity)
+        val carried = mutableMapOf<String, Attachment>()
+        for (attachment in attachments) {
+            val source = when {
+                isPendingAttachment(attachment.storagePath) -> loadStaged(owner, pendingId(attachment.storagePath))
+                isFileAttachment(attachment.storagePath) -> runCatching {
+                    localStorage.readBytes(attachment.storagePath)
+                }.getOrNull()?.let { PendingAttachment(it, attachment.mimeType ?: "image/jpeg") }
+                attachment.id in uncommitted -> readAttachmentBytes(attachment)
+                    ?.let { PendingAttachment(it, attachment.mimeType ?: "image/jpeg") }
+                else -> null
+            } ?: continue
+            val id = createAttachmentId()
+            if (!stageAttachment(id, null, source.bytes, source.mimeType)) continue
+            carried[attachment.id] = attachment.copy(
+                id = id,
+                noteId = 0L,
+                storagePath = pendingStoragePath(id),
+                mimeType = source.mimeType,
+                sizeBytes = source.bytes.size.toLong(),
+            )
+        }
+        return carried
+    }
+
+    /** The ids among [attachments]' `r2:` uploads that no committed row lists. Empty when unknowable. */
+    private suspend fun uncommittedUploadsAmong(
+        attachments: List<Attachment>,
+        remoteIdentity: OperationRemoteIdentity?,
+    ): Set<String> {
+        val uploads = attachments.filter { isR2Attachment(it.storagePath) }
+        if (uploads.isEmpty() || remoteIdentity == null || !enabled) return emptySet()
+        val metadataClient = metadata ?: return emptySet()
+        val committed = runCatching { metadataClient.listUserAttachments(remoteIdentity) }
+            .getOrElse { return emptySet() }
+            .map { it.noteId to it.attachmentId }
+            .toSet()
+        return uploads.filterNot { (it.noteId.toString() to it.id) in committed }.map { it.id }.toSet()
+    }
+
     /** Drops staged bytes the user explicitly removed, or that a discarded note referenced. */
     suspend fun releaseStagedAttachments(attachments: List<Attachment>) {
         val owner = ownerId()
@@ -145,6 +206,7 @@ class AttachmentSyncService(
     suspend fun hydrateAllNotes(
         commitToken: LocalCommitToken,
         metadataIdentity: OperationRemoteIdentity,
+        awaitingCommit: (Note) -> Boolean = { false },
     ): LocalCommitResult<Int> {
         if (!enabled) return LocalCommitResult.Applied(0)
         val metadataClient = metadata ?: return LocalCommitResult.Applied(0)
@@ -162,7 +224,7 @@ class AttachmentSyncService(
         return LocalCommitGate.commit(commitToken) {
             var updated = 0
             val notes = noteDao.getAllNotesForBackup().map { it.toNote() }
-            for (merged in mergeAttachmentsIntoNotes(notes, rows)) {
+            for (merged in mergeAttachmentsIntoNotes(notes, rows, awaitingCommit)) {
                 val original = notes.firstOrNull { it.id == merged.id } ?: continue
                 if (attachmentsKey(original.attachments) == attachmentsKey(merged.attachments)) continue
                 noteDao.updateNote(merged.toNoteEntity())
@@ -635,10 +697,11 @@ class AttachmentSyncService(
     /**
      * One note's staged bytes, resumed under the reconciliation's own token.
      *
-     * `Applied(true)` means this note recorded an upload; `Applied(false)` means there was nothing to
-     * do, or that this attempt failed and the next reconciliation will retry. Both failure policies
-     * here are the historical ones and are deliberately *not* aliased to stale: an unreachable server
-     * and a failed local write both leave the staged bytes and the note exactly as they were.
+     * `Applied(note)` means this note recorded an upload, and is the row as written; `Applied(null)`
+     * means there was nothing to do, or that this attempt failed and the next reconciliation will
+     * retry. Both failure policies here are the historical ones and are deliberately *not* aliased
+     * to stale: an unreachable server and a failed local write both leave the staged bytes and the
+     * note exactly as they were.
      *
      * [LocalCommitResult.StaleGeneration] means the reconciliation's dataset is gone, which ends the
      * whole run — the row write is account-owned local state keyed by a per-device autoincrement id,
@@ -650,24 +713,24 @@ class AttachmentSyncService(
         owner: String,
         referenced: MutableSet<String>,
         onMissingBytes: (Note, Attachment) -> Unit,
-    ): LocalCommitResult<Boolean> {
+    ): LocalCommitResult<Note?> {
         for (attachment in note.attachments) {
             if (!isPendingAttachment(attachment.storagePath)) continue
             val id = pendingId(attachment.storagePath)
             referenced.add(id)
             if (staging.metadata(id, owner) == null) onMissingBytes(note, attachment)
         }
-        if (!enabled) return LocalCommitResult.Applied(false)
+        if (!enabled) return LocalCommitResult.Applied(null)
         val upload = runCatching { syncNoteAttachments(note, commitToken) }.getOrElse { error ->
             AppLog.warn(TAG, "Resuming staged attachment upload failed", error)
-            return LocalCommitResult.Applied(false)
+            return LocalCommitResult.Applied(null)
         }
         val synced = when (upload) {
             is LocalCommitResult.Applied -> upload.value
             LocalCommitResult.StaleGeneration -> return LocalCommitResult.StaleGeneration
         }
         if (attachmentsKey(note.attachments) == attachmentsKey(synced.attachments)) {
-            return LocalCommitResult.Applied(false)
+            return LocalCommitResult.Applied(null)
         }
         // The row write runs inside the originating token's commit, and a refused one both skips the
         // write and ends the caller's loop.
@@ -677,9 +740,9 @@ class AttachmentSyncService(
                 Unit
             }
         }
-        val outcome = stored.getOrNull() ?: return LocalCommitResult.Applied(false)
+        val outcome = stored.getOrNull() ?: return LocalCommitResult.Applied(null)
         return when (outcome) {
-            is LocalCommitResult.Applied -> LocalCommitResult.Applied(true)
+            is LocalCommitResult.Applied -> LocalCommitResult.Applied(synced)
             LocalCommitResult.StaleGeneration -> LocalCommitResult.StaleGeneration
         }
     }
@@ -853,6 +916,12 @@ class AttachmentSyncService(
      * whose staging is gone (older builds staged in memory) are reported through [onMissingBytes]
      * so the caller can surface a recoverable broken attachment instead of silently erasing it.
      *
+     * Each note whose row now carries an upload made here is reported through [onResumed], and the
+     * caller must push that note again. The upload's server row is provisional until a note commit
+     * names it, and the push that took this note up named nothing: its upload was still deferred
+     * then (refused until the server held the note). Left unpushed, the row never commits, the next
+     * download finds no metadata for the `r2:` reference and lets it go, and the image is lost.
+     *
      * [commitToken] is the **enclosing download's** generation, threaded in rather than captured here
      * for the same reason [hydrateAllNotes]'s is: this reconciliation belongs to the run that asked
      * for it, and a re-capture would launder an old run's aftermath into the replacement dataset.
@@ -876,6 +945,7 @@ class AttachmentSyncService(
     suspend fun reconcileStagedAttachments(
         commitToken: LocalCommitToken,
         onMissingBytes: (Note, Attachment) -> Unit = { _, _ -> },
+        onResumed: (Note) -> Unit = {},
     ): LocalCommitResult<Int> {
         val owner = ownerId()
         val notes = runCatching { noteDao.getAllNotesForBackup().map { it.toNote() } }.getOrNull()
@@ -891,7 +961,10 @@ class AttachmentSyncService(
 
         for (note in notes) {
             when (val outcome = resumeStagedUploadsFor(note, commitToken, owner, referenced, onMissingBytes)) {
-                is LocalCommitResult.Applied -> if (outcome.value) resumed++
+                is LocalCommitResult.Applied -> if (outcome.value != null) {
+                    resumed++
+                    onResumed(outcome.value)
+                }
                 // The reconciliation's dataset is gone, so no later note is processed either.
                 LocalCommitResult.StaleGeneration -> return LocalCommitResult.StaleGeneration
             }

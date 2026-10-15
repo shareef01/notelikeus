@@ -1,4 +1,5 @@
 import {
+  attachmentDeferredWorkerPath,
   attachmentWorkerPath,
   buildAttachmentObjectKey,
 } from '@/lib/attachments/attachmentObjectKey';
@@ -37,7 +38,8 @@ export function createR2AttachmentBlobStore(
       const token = await accessToken();
       const userId = await ownerId();
       const objectKey = buildAttachmentObjectKey(userId, noteId, attachmentId);
-      const response = await fetch(`${base}${attachmentWorkerPath(noteId, attachmentId)}`, {
+      // Deferred protocol, with no fallback to v1: v1 would commit the row before any note names it.
+      const response = await fetch(`${base}${attachmentDeferredWorkerPath(noteId, attachmentId)}`, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
