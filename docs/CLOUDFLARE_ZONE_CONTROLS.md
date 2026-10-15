@@ -12,7 +12,7 @@ binding alone. It stores no secrets; values are starting points, not product gua
 
 | Control | Where |
 |---|---|
-| Per-IP then per-user request throttling | `ATTACHMENT_RATE_LIMITER` binding (default **120 / 60s** via deploy workflow inputs; `0` disables) |
+| Per-IP then per-user request throttling | `ATTACHMENT_RATE_LIMITER` binding (default **600 / 60s** via deploy workflow inputs; `0` disables) |
 | Upload size / MIME caps | Worker `src/limits.ts` (enforced after auth) |
 | Auth + object-key ownership | Supabase JWT + RPC authorization path |
 
