@@ -7,6 +7,7 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
 
     private val deleted = mutableMapOf<Long, Long>()
     private val restored = mutableSetOf<Long>()
+    private val recommitNeeded = mutableSetOf<Long>()
     private val pendingAttachmentGc = mutableMapOf<Long, MutableSet<String>>()
     private val knownCloud = mutableSetOf<Long>()
     private val knownServerRevisions = mutableMapOf<Long, Long>()
@@ -57,6 +58,16 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
 
     override fun clearRestored(ids: Collection<Long>) {
         restored.removeAll(ids.toSet())
+    }
+
+    override fun markRecommitNeeded(noteId: Long) {
+        recommitNeeded.add(noteId)
+    }
+
+    override fun recommitNeededIds(): Set<Long> = recommitNeeded.toSet()
+
+    override fun clearRecommitNeeded(ids: Collection<Long>) {
+        recommitNeeded.removeAll(ids.toSet())
     }
 
     override fun markPendingAttachmentGc(noteId: Long, attachmentIds: Collection<String>) {
@@ -141,6 +152,7 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
     override fun clear() {
         deleted.clear()
         restored.clear()
+        recommitNeeded.clear()
         pendingAttachmentGc.clear()
         knownCloud.clear()
         knownServerRevisions.clear()

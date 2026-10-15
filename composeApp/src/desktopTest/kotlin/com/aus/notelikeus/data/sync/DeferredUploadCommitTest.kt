@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import okio.Path.Companion.toPath
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -56,10 +57,17 @@ class DeferredUploadCommitTest {
      * note commit promotes exactly the provisional rows its `r2:` attachments name.
      */
     private var serverEnforcesCommitment = false
+
+    /** When set, the next push carrying an `r2:` reference — the recommit — loses its connection. */
+    private var dropNextRecommit = false
     private val provisionalRows = mutableMapOf<String, NoteAttachmentMetadata>()
 
     private val transport = object : FakeCloudNoteTransport() {
         override suspend fun putNotes(uid: String, notes: List<Note>): Map<Long, CloudNoteTransport.PutResult> {
+            if (dropNextRecommit && notes.any { note -> note.attachments.any { it.storagePath.startsWith("r2:") } }) {
+                dropNextRecommit = false
+                throw IOException("connection reset")
+            }
             val accepted = notes.filterNot { it.id in refused }
             if (serverEnforcesCommitment) {
                 for (note in accepted) {
@@ -224,11 +232,12 @@ class DeferredUploadCommitTest {
         assertEquals(listOf("att-old"), noteDao.notes.getValue(1L).toNote().attachments.map { it.id })
     }
 
-    @Test
-    fun `an upload deferred on a note's first push is committed once resumed, and survives the next download`() = runTest {
+    /**
+     * A note this device made with an image — an imported bundle does exactly this — that the server
+     * has never seen: its bytes are staged, so its first push cannot upload them yet.
+     */
+    private suspend fun seedNewNoteWithStagedImage() {
         serverEnforcesCommitment = true
-        // A note this device made with an image — an imported bundle does exactly this — that the
-        // server has never seen: its bytes are staged, so its first push cannot upload them yet.
         val photo = "photo".encodeToByteArray()
         staging.stage(attachmentId = "att-imp", ownerId = UID, noteId = 1L, bytes = photo, mimeType = "image/png")
         noteDao.insertNote(
@@ -239,6 +248,11 @@ class DeferredUploadCommitTest {
                 ),
             ).toNoteEntity(),
         )
+    }
+
+    @Test
+    fun `an upload deferred on a note's first push is committed once resumed, and survives the next download`() = runTest {
+        seedNewNoteWithStagedImage()
 
         // Pushes the note with its upload deferred, then resumes the upload once the server has it.
         engine.downloadAllNotes().getOrThrow()
@@ -249,6 +263,38 @@ class DeferredUploadCommitTest {
         val attachment = noteDao.notes.getValue(1L).toNote().attachments.single()
         assertEquals("att-imp", attachment.id)
         assertTrue(attachment.storagePath.startsWith("r2:"))
+    }
+
+    @Test
+    fun `a recommit cut off by a dropped connection is made by the next sync, and the image is kept`() = runTest {
+        seedNewNoteWithStagedImage()
+        dropNextRecommit = true
+
+        // Pushes the note, resumes the upload, and loses the connection on the push that would commit it.
+        assertTrue(engine.downloadAllNotes().isFailure)
+        // Back online: this run used to find no row for the upload and drop the image.
+        engine.downloadAllNotes().getOrThrow()
+        engine.downloadAllNotes().getOrThrow()
+
+        assertEquals(listOf("att-imp"), committedRows.map { it.attachmentId })
+        val attachment = noteDao.notes.getValue(1L).toNote().attachments.single()
+        assertEquals("att-imp", attachment.id)
+        assertTrue(attachment.storagePath.startsWith("r2:"))
+        assertTrue(stateStore.recommitNeededIds().isEmpty())
+    }
+
+    @Test
+    fun `a recommit the server keeps refusing still keeps the image, and stays marked`() = runTest {
+        seedNewNoteWithStagedImage()
+        dropNextRecommit = true
+        assertTrue(engine.downloadAllNotes().isFailure)
+        // From here on the cloud refuses every commit of this note.
+        refused += 1L
+
+        engine.downloadAllNotes().getOrThrow()
+
+        assertEquals(listOf("att-imp"), noteDao.notes.getValue(1L).toNote().attachments.map { it.id })
+        assertEquals(setOf(1L), stateStore.recommitNeededIds())
     }
 
     private companion object {
