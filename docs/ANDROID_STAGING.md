@@ -26,11 +26,11 @@ See `docs/BACKEND_ARCHITECTURE.md` for production env names (`NOTELIKEUS_SUPABAS
 2. Rebuild and install (`./gradlew :androidApp:installDebug` or `assembleRelease` with env keys).
 3. Sign in with Google (or a staging email user).
 
-A properties change is compile-time for Android: rebuild after editing `local.properties`.
+A properties change is compile-time for Android: rebuild after editing `local.properties`. `bundleRelease` refuses to build without a hosted URL, anon key and Worker URL, so a store bundle cannot ship with sync off.
 
 ## Desktop
 
-`./gradlew run` reads the same `local.properties` keys at runtime (env vars still win). Restart the process after changing the file.
+The same keys are compiled into the desktop build (`CompiledBackendConfig`), which is what an installed MSI uses. At runtime env vars win, then the compiled values, then a `local.properties` found on disk. Rebuild after changing the file. Packaging an MSI refuses to run without all three values.
 
 ## Tests
 
