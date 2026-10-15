@@ -8,6 +8,7 @@ import {
 import { useNoteLabels } from '@/hooks/useNoteLabels';
 import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { saveNote, removeNote } from '@/lib/notes/noteActions';
+import { markEditorSavePending, markEditorSaveSettled } from '@/lib/notes/pendingEditorSaves';
 import {
   releaseCopiedPendingAttachments,
   withPendingAttachments,
@@ -88,7 +89,14 @@ export function useNoteEditor(noteId: string | 'new' | null) {
   });
   stateRef.current = state;
 
-  const persistNow = useCallback(async (): Promise<LocalSaveResult> => {
+  // This editor's identity in pendingEditorSaves, and how many of its saves are running.
+  const saveTracker = useRef({});
+  const savesInFlight = useRef(0);
+  const settleIfIdle = useCallback(() => {
+    if (!autosaveTimer.current && savesInFlight.current === 0) markEditorSaveSettled(saveTracker.current);
+  }, []);
+
+  const persistDraft = useCallback(async (): Promise<LocalSaveResult> => {
     if (autosaveTimer.current) {
       clearTimeout(autosaveTimer.current);
       autosaveTimer.current = null;
@@ -217,7 +225,19 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     }
   }, []);
 
+  const persistNow = useCallback(async (): Promise<LocalSaveResult> => {
+    savesInFlight.current += 1;
+    markEditorSavePending(saveTracker.current);
+    try {
+      return await persistDraft();
+    } finally {
+      savesInFlight.current -= 1;
+      settleIfIdle();
+    }
+  }, [persistDraft, settleIfIdle]);
+
   const scheduleAutosave = useCallback(() => {
+    markEditorSavePending(saveTracker.current);
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
       void persistNow();
@@ -327,8 +347,9 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       window.removeEventListener('pagehide', flushIfPending);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       if (autosaveTimer.current) void persistNow();
+      else settleIfIdle();
     };
-  }, [persistNow]);
+  }, [persistNow, settleIfIdle]);
 
   const patch = useCallback(
     (updater: (prev: EditorState) => EditorState) => {
@@ -546,6 +567,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         clearTimeout(autosaveTimer.current);
         autosaveTimer.current = null;
       }
+      settleIfIdle();
       const current = stateRef.current;
       const savedIds = new Set(
         (current.id
@@ -580,6 +602,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         clearTimeout(autosaveTimer.current);
         autosaveTimer.current = null;
       }
+      settleIfIdle();
       const current = stateRef.current;
       if (current.id) {
         await removeNote(current.id);
