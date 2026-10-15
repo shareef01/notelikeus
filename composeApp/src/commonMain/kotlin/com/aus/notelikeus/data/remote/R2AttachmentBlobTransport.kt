@@ -42,12 +42,14 @@ class R2AttachmentBlobTransport(
         // unsupported `v2` is an unsupported deployment, and retrying on `v1` would commit the row and
         // recreate the orphan. Reads and deletes keep the `v1` route — they are protocol-independent.
         val path = AttachmentObjectKey.deferredWorkerPath(noteId, attachmentId)
-        val responseBody = attachmentWorkerPut(
-            url = "$baseUrl$path",
-            accessToken = context.accessToken,
-            body = bytes,
-            mimeType = mimeType,
-        )
+        val responseBody = retryOnAttachmentRateLimit {
+            attachmentWorkerPut(
+                url = "$baseUrl$path",
+                accessToken = context.accessToken,
+                body = bytes,
+                mimeType = mimeType,
+            )
+        }
         val payload = json.parseToJsonElement(responseBody).jsonObject
         val uploadedKey = payload["objectKey"]?.jsonPrimitive?.content ?: objectKey
         val uploadedMime = payload["mimeType"]?.jsonPrimitive?.content ?: mimeType
@@ -65,7 +67,7 @@ class R2AttachmentBlobTransport(
         attachmentId: String,
     ): ByteArray {
         val path = AttachmentObjectKey.workerPath(noteId, attachmentId)
-        return attachmentWorkerGet("$baseUrl$path", context.accessToken)
+        return retryOnAttachmentRateLimit { attachmentWorkerGet("$baseUrl$path", context.accessToken) }
     }
 
     override suspend fun delete(
@@ -74,6 +76,6 @@ class R2AttachmentBlobTransport(
         attachmentId: String,
     ) {
         val path = AttachmentObjectKey.workerPath(noteId, attachmentId)
-        attachmentWorkerDelete("$baseUrl$path", context.accessToken)
+        retryOnAttachmentRateLimit { attachmentWorkerDelete("$baseUrl$path", context.accessToken) }
     }
 }
