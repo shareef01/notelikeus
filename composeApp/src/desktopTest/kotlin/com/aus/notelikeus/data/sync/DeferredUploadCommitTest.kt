@@ -6,6 +6,7 @@ import com.aus.notelikeus.data.attachments.FileAttachmentStagingStore
 import com.aus.notelikeus.data.attachments.NoteAttachmentMetadata
 import com.aus.notelikeus.data.attachments.PendingDeletedAttachment
 import com.aus.notelikeus.data.attachments.mergeAttachmentsIntoNotes
+import com.aus.notelikeus.data.attachments.pendingStoragePath
 import com.aus.notelikeus.data.mapper.toNote
 import com.aus.notelikeus.data.mapper.toNoteEntity
 import com.aus.notelikeus.data.remote.AttachmentBlobTransport
@@ -13,6 +14,7 @@ import com.aus.notelikeus.data.remote.AttachmentBlobUploadResult
 import com.aus.notelikeus.data.remote.AttachmentRemoteContext
 import com.aus.notelikeus.data.remote.AttachmentRemoteMetadata
 import com.aus.notelikeus.data.remote.OperationRemoteIdentity
+import com.aus.notelikeus.data.remote.SupabaseTransportException
 import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.Note
 import kotlinx.coroutines.Dispatchers
@@ -47,9 +49,27 @@ class DeferredUploadCommitTest {
 
     /** Ids whose next commit the cloud refuses, as it refuses a stale base revision. */
     private val refused = mutableSetOf<Long>()
+
+    /**
+     * When set, the fakes behave as the deployed Worker and `apply_note_change` do: an upload is
+     * refused (403) until the server holds its note, an accepted upload's row is provisional, and a
+     * note commit promotes exactly the provisional rows its `r2:` attachments name.
+     */
+    private var serverEnforcesCommitment = false
+    private val provisionalRows = mutableMapOf<String, NoteAttachmentMetadata>()
+
     private val transport = object : FakeCloudNoteTransport() {
-        override suspend fun putNotes(uid: String, notes: List<Note>) =
-            super.putNotes(uid, notes.filterNot { it.id in refused })
+        override suspend fun putNotes(uid: String, notes: List<Note>): Map<Long, CloudNoteTransport.PutResult> {
+            val accepted = notes.filterNot { it.id in refused }
+            if (serverEnforcesCommitment) {
+                for (note in accepted) {
+                    note.attachments.filter { it.storagePath.startsWith("r2:") }
+                        .mapNotNull { provisionalRows.remove(it.id) }
+                        .forEach { committedRows += it }
+                }
+            }
+            return super.putNotes(uid, accepted)
+        }
     }
 
     private val blobs = object : AttachmentBlobTransport {
@@ -61,9 +81,15 @@ class DeferredUploadCommitTest {
             bytes: ByteArray,
             mimeType: String,
         ): AttachmentBlobUploadResult {
+            val objectKey = "owners/$UID/notes/$noteId/$attachmentId"
+            if (serverEnforcesCommitment) {
+                if (noteId.toLong() !in transport.notes) throw SupabaseTransportException("attachments", 403, "")
+                provisionalRows[attachmentId] =
+                    NoteAttachmentMetadata(attachmentId, noteId, objectKey, mimeType, bytes.size.toLong(), "image")
+            }
             uploads += noteId to bytes
             objects[noteId to attachmentId] = bytes
-            return AttachmentBlobUploadResult("owners/$UID/notes/$noteId/$attachmentId", bytes.size.toLong(), mimeType)
+            return AttachmentBlobUploadResult(objectKey, bytes.size.toLong(), mimeType)
         }
         override suspend fun download(context: AttachmentRemoteContext, noteId: String, attachmentId: String) =
             objects.getValue(noteId to attachmentId)
@@ -86,19 +112,21 @@ class DeferredUploadCommitTest {
     }
 
     private lateinit var engine: NoteSyncEngine
+    private lateinit var staging: FileAttachmentStagingStore
 
     @BeforeTest
     fun setUp() {
         tempDir = Files.createTempDirectory("notelikeus-deferred-upload").toFile()
+        staging = FileAttachmentStagingStore(
+            root = File(tempDir, "staging").absolutePath.toPath(),
+            ioDispatcher = Dispatchers.Unconfined,
+        )
         val attachments = AttachmentSyncService(
             blobTransport = blobs,
             metadata = metadata,
             localStorage = noLocalFiles,
             noteDao = noteDao,
-            staging = FileAttachmentStagingStore(
-                root = File(tempDir, "staging").absolutePath.toPath(),
-                ioDispatcher = Dispatchers.Unconfined,
-            ),
+            staging = staging,
             ownerIdProvider = { UID },
             attachmentsEnabled = { true },
         )
@@ -194,6 +222,33 @@ class DeferredUploadCommitTest {
 
         assertTrue(noteDao.notes.values.single { it.id != 1L }.toNote().attachments.isEmpty())
         assertEquals(listOf("att-old"), noteDao.notes.getValue(1L).toNote().attachments.map { it.id })
+    }
+
+    @Test
+    fun `an upload deferred on a note's first push is committed once resumed, and survives the next download`() = runTest {
+        serverEnforcesCommitment = true
+        // A note this device made with an image — an imported bundle does exactly this — that the
+        // server has never seen: its bytes are staged, so its first push cannot upload them yet.
+        val photo = "photo".encodeToByteArray()
+        staging.stage(attachmentId = "att-imp", ownerId = UID, noteId = 1L, bytes = photo, mimeType = "image/png")
+        noteDao.insertNote(
+            Note(
+                id = 1L, title = "Imported", content = "", timestamp = 5_000L, color = 0,
+                attachments = listOf(
+                    Attachment(id = "att-imp", noteId = 1L, storagePath = pendingStoragePath("att-imp"), mimeType = "image/png"),
+                ),
+            ).toNoteEntity(),
+        )
+
+        // Pushes the note with its upload deferred, then resumes the upload once the server has it.
+        engine.downloadAllNotes().getOrThrow()
+        // The next sync, which used to find no row for the upload and drop the image.
+        engine.downloadAllNotes().getOrThrow()
+
+        assertEquals(listOf("att-imp"), committedRows.map { it.attachmentId })
+        val attachment = noteDao.notes.getValue(1L).toNote().attachments.single()
+        assertEquals("att-imp", attachment.id)
+        assertTrue(attachment.storagePath.startsWith("r2:"))
     }
 
     private companion object {

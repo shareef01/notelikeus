@@ -1142,10 +1142,22 @@ class NoteSyncEngine(
             // it means this download's dataset is gone, so the run stops before the attachment GC,
             // the end-of-run bookkeeping, the prune, the sync-meta write and the merged-user marker,
             // all of which would be new work for a dataset that no longer exists.
+            val resumedNoteIds = mutableListOf<Long>()
             val stagedReconciliation = runCatching {
-                attachmentSync?.reconcileStagedAttachments(commitToken)
+                attachmentSync?.reconcileStagedAttachments(commitToken) { note ->
+                    note.id?.let(resumedNoteIds::add)
+                }
             }.getOrNull() ?: LocalCommitResult.Applied(0)
             when (stagedReconciliation) {
+                is LocalCommitResult.Applied -> Unit
+                LocalCommitResult.StaleGeneration -> return@runCatching changes
+            }
+            // A resumed upload's server row is provisional until a commit names it, and the push that
+            // took these notes up could not: their uploads were still deferred then. Without this push
+            // the next download finds no row for the `r2:` reference and drops the image. The rows are
+            // read again rather than taken from the reconciliation, so an edit made meanwhile goes up.
+            val resumedNotes = resumedNoteIds.mapNotNull { id -> noteDao.getNoteById(id)?.toNote() }
+            when (putNotes(resumedNotes, commitToken, remoteIdentity)) {
                 is LocalCommitResult.Applied -> Unit
                 LocalCommitResult.StaleGeneration -> return@runCatching changes
             }
