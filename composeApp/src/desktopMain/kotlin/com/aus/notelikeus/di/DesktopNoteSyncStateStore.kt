@@ -23,6 +23,7 @@ class DesktopNoteSyncStateStore(
 
     private val deletedMap: MutableMap<Long, Long>
     private val restoredSet: MutableSet<Long>
+    private val recommitNeededSet: MutableSet<Long>
     private val pendingAttachmentGcMap: MutableMap<Long, MutableSet<String>>
     private val knownCloudSet: MutableSet<Long>
     private val knownServerRevisionsMap: MutableMap<Long, Long>
@@ -36,6 +37,7 @@ class DesktopNoteSyncStateStore(
         val prefs = runBlocking { dataStore.data.firstOrNull() }
         deletedMap = parseDeletedMap(prefs).toMutableMap()
         restoredSet = parseIdSet(prefs, KEY_RESTORED_IDS).toMutableSet()
+        recommitNeededSet = parseIdSet(prefs, KEY_RECOMMIT_NEEDED_IDS).toMutableSet()
         pendingAttachmentGcMap = parsePendingGc(prefs).mapValues { it.value.toMutableSet() }.toMutableMap()
         knownCloudSet = parseIdSet(prefs, KEY_KNOWN_CLOUD_IDS).toMutableSet()
         knownServerRevisionsMap = parseLongMap(prefs, KEY_KNOWN_SERVER_REVISIONS).toMutableMap()
@@ -120,6 +122,17 @@ class DesktopNoteSyncStateStore(
     override fun clearRestored(ids: Collection<Long>) {
         if (ids.isEmpty()) return
         if (restoredSet.removeAll(ids.toSet())) persistRestored()
+    }
+
+    override fun markRecommitNeeded(noteId: Long) {
+        if (recommitNeededSet.add(noteId)) persistRecommitNeeded()
+    }
+
+    override fun recommitNeededIds(): Set<Long> = recommitNeededSet.toSet()
+
+    override fun clearRecommitNeeded(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        if (recommitNeededSet.removeAll(ids.toSet())) persistRecommitNeeded()
     }
 
     override fun markPendingAttachmentGc(noteId: Long, attachmentIds: Collection<String>) {
@@ -237,6 +250,7 @@ class DesktopNoteSyncStateStore(
     override fun clear() {
         deletedMap.clear()
         restoredSet.clear()
+        recommitNeededSet.clear()
         pendingAttachmentGcMap.clear()
         knownCloudSet.clear()
         knownServerRevisionsMap.clear()
@@ -260,6 +274,12 @@ class DesktopNoteSyncStateStore(
         val encoded = json.encodeToString(SetSerializer(String.serializer()),
             restoredSet.map { it.toString() }.toSet())
         runBlocking { dataStore.edit { it[KEY_RESTORED_IDS] = encoded } }
+    }
+
+    private fun persistRecommitNeeded() {
+        val encoded = json.encodeToString(SetSerializer(String.serializer()),
+            recommitNeededSet.map { it.toString() }.toSet())
+        runBlocking { dataStore.edit { it[KEY_RECOMMIT_NEEDED_IDS] = encoded } }
     }
 
     private fun persistPendingGc() {
@@ -337,6 +357,7 @@ class DesktopNoteSyncStateStore(
         private const val TAG = "NoteSyncStateStore"
         private val KEY_DELETED_JSON = stringPreferencesKey("sync_deleted_json")
         private val KEY_RESTORED_IDS = stringPreferencesKey("sync_restored_ids")
+        private val KEY_RECOMMIT_NEEDED_IDS = stringPreferencesKey("sync_recommit_needed_ids")
         private val KEY_PENDING_ATTACHMENT_GC = stringPreferencesKey("sync_pending_attachment_gc")
         private val KEY_KNOWN_CLOUD_IDS = stringPreferencesKey("sync_known_cloud_ids")
         private val KEY_KNOWN_SERVER_REVISIONS = stringPreferencesKey("sync_known_server_revisions")

@@ -791,6 +791,16 @@ class NoteSyncEngine(
                 // uploads or writes anything else for it — the cloud work the merge already did stands.
                 LocalCommitResult.StaleGeneration -> return@runCatching 0
             }
+            // Before any local note is read: a note an earlier run marked for recommit holds an upload
+            // no commit has named, and pushing it first commits that upload before the snapshot below
+            // can be merged over it. A failed push throws and ends the run with the image still local.
+            when (pushPendingRecommits(commitToken, remoteIdentity)) {
+                is LocalCommitResult.Applied -> Unit
+                LocalCommitResult.StaleGeneration -> return@runCatching 0
+            }
+            // Whatever that push could not commit (the server refused it) stays marked, and the merge
+            // and hydration below keep those uploads instead of reading them as gone.
+            val recommitIds = syncStateStore.recommitNeededIds()
             val localNotesBeforePurge = noteDao.getAllNotesForBackup().map { it.toNote() }
             // Read once: every decision below about whether a row holds an unsynced edit is made
             // against the baselines as they stood when this run started.
@@ -1022,7 +1032,11 @@ class NoteSyncEngine(
                         // The local version's own images go with it into the copy; any that could
                         // not be staged again stay on the row, where they were.
                         val carried = if (preserve) carriedAttachmentsFor(localNote, remoteIdentity) else emptyMap()
-                        val merged = cloudNote.keepingLocalOnlyAttachmentsOf(localNote, except = carried.keys)
+                        val merged = cloudNote.keepingLocalOnlyAttachmentsOf(
+                            localNote,
+                            except = carried.keys,
+                            keepUploads = noteId in recommitIds,
+                        )
                         if (preserve || !sameContent(merged, localNote)) {
                             var copy: Note? = null
                             when (commitLocally(commitToken) {
@@ -1034,11 +1048,13 @@ class NoteSyncEngine(
                                 is LocalCommitResult.Applied -> {
                                     changes++
                                     copy?.let { toPushBack += it; changes++ }
+                                    if (noteId in recommitIds && !preserve) toPushBack += merged
                                 }
                                 // Same rule as the insert above: a refused update means the run is over.
                                 LocalCommitResult.StaleGeneration -> return@runCatching changes
                             }
                         } else {
+                            if (noteId in recommitIds) toPushBack += localNote
                             // Identical already: record the baseline so a later edit is recognised.
                             when (commitLocally(commitToken) {
                                 syncStateStore.updateSyncedTimestamps(mapOf(noteId to localNote.timestamp))
@@ -1125,7 +1141,8 @@ class NoteSyncEngine(
             val syncedAfterPush = syncStateStore.syncedTimestampById()
             val hydration = attachmentSync
                 ?.hydrateAllNotes(commitToken, remoteIdentity) { note ->
-                    note.serverUpdatedAt == null ||
+                    note.id in recommitIds ||
+                        note.serverUpdatedAt == null ||
                         ConflictResolution.isLocallyEdited(note, syncedAfterPush[note.id])
                 }
                 ?: LocalCommitResult.Applied(0)
@@ -1153,11 +1170,14 @@ class NoteSyncEngine(
                 LocalCommitResult.StaleGeneration -> return@runCatching changes
             }
             // A resumed upload's server row is provisional until a commit names it, and the push that
-            // took these notes up could not: their uploads were still deferred then. Without this push
-            // the next download finds no row for the `r2:` reference and drops the image. The rows are
-            // read again rather than taken from the reconciliation, so an edit made meanwhile goes up.
-            val resumedNotes = resumedNoteIds.mapNotNull { id -> noteDao.getNoteById(id)?.toNote() }
-            when (putNotes(resumedNotes, commitToken, remoteIdentity)) {
+            // took these notes up could not: their uploads were still deferred then. The mark is
+            // written before the push, so a push cut off here is made by the next run instead of the
+            // next download dropping the `r2:` reference, and with it the image.
+            when (commitLocally(commitToken) { resumedNoteIds.forEach(syncStateStore::markRecommitNeeded) }) {
+                is LocalCommitResult.Applied -> Unit
+                LocalCommitResult.StaleGeneration -> return@runCatching changes
+            }
+            when (pushPendingRecommits(commitToken, remoteIdentity)) {
                 is LocalCommitResult.Applied -> Unit
                 LocalCommitResult.StaleGeneration -> return@runCatching changes
             }
@@ -1498,6 +1518,8 @@ class NoteSyncEngine(
                 }
                 syncStateStore.updateKnownServerRevision(noteId, result.revision)
             }
+            // An accepted push names every `r2:` upload the note carries, so none awaits a commit.
+            syncStateStore.clearRecommitNeeded(results.keys)
             // The baseline is the timestamp that was *uploaded*. A row edited while the upload ran
             // already carries a newer one, and so still reads as edited — which it is.
             syncStateStore.updateSyncedTimestamps(
@@ -1515,6 +1537,31 @@ class NoteSyncEngine(
                 )
             }
         }
+    }
+
+    /**
+     * Pushes the notes marked by [NoteSyncStateStore.markRecommitNeeded], so the commit names the
+     * uploads they took after their last push. [putNotes] clears the mark for each note the server
+     * accepts; a note no longer on this device has nothing left to commit and its mark is dropped.
+     * The rows are read now, so an edit made since the mark goes up with them.
+     */
+    private suspend fun pushPendingRecommits(
+        commitToken: LocalCommitToken,
+        identity: OperationRemoteIdentity,
+    ): LocalCommitResult<Unit> {
+        val marked = syncStateStore.recommitNeededIds()
+        if (marked.isEmpty()) return LocalCommitResult.Applied(Unit)
+        val notes = marked.mapNotNull { id -> noteDao.getNoteById(id)?.toNote() }
+        val gone = marked - notes.mapNotNull { it.id }.toSet()
+        if (gone.isNotEmpty()) {
+            when (commitLocally(commitToken) { syncStateStore.clearRecommitNeeded(gone) }) {
+                is LocalCommitResult.Applied -> Unit
+                LocalCommitResult.StaleGeneration -> return LocalCommitResult.StaleGeneration
+            }
+        }
+        // A note tombstoned here is the delete's to finish, not this push's to bring back.
+        val pushable = notes.filterNot { note -> note.id?.let(syncStateStore::isDeleted) == true }
+        return putNotes(pushable, commitToken, identity)
     }
 
     /**
@@ -1895,11 +1942,18 @@ class NoteSyncEngine(
      *
      * An `r2:` attachment is deliberately *not* carried over: the server does speak for those, so
      * a download that finds no metadata row for one must let the reference go, and `hydrateAllNotes`
-     * restores the ones the server still has.
+     * restores the ones the server still has. The exception is [keepUploads], for a note marked by
+     * [NoteSyncStateStore.markRecommitNeeded]: its uploads have no committed row *yet*, because the
+     * push that would name them has not landed, and the note is pushed again to commit them.
      */
-    private fun Note.keepingLocalOnlyAttachmentsOf(local: Note, except: Set<String> = emptySet()): Note {
+    private fun Note.keepingLocalOnlyAttachmentsOf(
+        local: Note,
+        except: Set<String> = emptySet(),
+        keepUploads: Boolean = false,
+    ): Note {
         val localOnly = local.attachments.filter {
-            (isPendingAttachment(it.storagePath) || isFileAttachment(it.storagePath)) && it.id !in except
+            val localBytes = isPendingAttachment(it.storagePath) || isFileAttachment(it.storagePath)
+            (localBytes || keepUploads) && it.id !in except
         }
         if (localOnly.isEmpty()) return this
         val known = attachments.map { it.id }.toSet()
