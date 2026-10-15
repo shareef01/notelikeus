@@ -18,9 +18,12 @@ function fakeBucket() {
   return {
     objects,
     uploadedAt,
-    /** The subset of R2's list() these sweeps use: prefix, cursor and limit, keys in order. */
-    async list(options: { prefix?: string; cursor?: string; limit?: number }) {
-      const keys = [...objects.keys()].filter((key) => key.startsWith(options.prefix ?? '')).sort();
+    /** The subset of R2's list() these sweeps use: prefix, startAfter, cursor and limit, keys in order. */
+    async list(options: { prefix?: string; cursor?: string; limit?: number; startAfter?: string }) {
+      const keys = [...objects.keys()]
+        .filter((key) => key.startsWith(options.prefix ?? ''))
+        .filter((key) => options.startAfter === undefined || key > options.startAfter)
+        .sort();
       const start = options.cursor ? Number(options.cursor) : 0;
       const limit = options.limit ?? 1000;
       const page = keys.slice(start, start + limit);
@@ -495,7 +498,7 @@ describe('unreferenced object report', () => {
     mockRpcs({});
     env.SUPABASE_SERVICE_ROLE_KEY = undefined;
 
-    expect(await reportUnreferencedAttachmentObjects(env, NOW)).toEqual({
+    expect(await reportUnreferencedAttachmentObjects(env, NOW, 'owners/')).toEqual({
       scanned: 0,
       unreferenced: 0,
       unreferencedBytes: 0,
@@ -511,7 +514,7 @@ describe('unreferenced object report', () => {
     bucket.uploadedAt.set(key('fresh'), new Date(NOW - DAY));
     mockRpcs({ unreferenced: (keys) => keys.filter((k) => !k.endsWith('/live')) });
 
-    const report = await reportUnreferencedAttachmentObjects(env, NOW);
+    const report = await reportUnreferencedAttachmentObjects(env, NOW, 'owners/');
 
     expect(report).toEqual({ scanned: 3, unreferenced: 1, unreferencedBytes: 5, truncated: false });
     expect(rpcCalls).toHaveLength(1);
@@ -525,10 +528,40 @@ describe('unreferenced object report', () => {
     }
     mockRpcs({ unreferenced: (keys) => keys });
 
-    const report = await reportUnreferencedAttachmentObjects(env, NOW);
+    const report = await reportUnreferencedAttachmentObjects(env, NOW, 'owners/');
 
     expect(report).toEqual({ scanned: 5_000, unreferenced: 5_000, unreferencedBytes: 5_000, truncated: true });
     expect(rpcCalls).toHaveLength(5);
+  });
+
+  it('starts at the given point and wraps around, so every owner is measured once', async () => {
+    const early = 'owners/0aaaaaaa-0000-4000-8000-000000000000/notes/1/a';
+    const late = 'owners/faaaaaaa-0000-4000-8000-000000000000/notes/1/b';
+    bucket.objects.set(early, new Uint8Array(2));
+    bucket.objects.set(late, new Uint8Array(4));
+    mockRpcs({ unreferenced: (keys) => keys });
+
+    const report = await reportUnreferencedAttachmentObjects(env, NOW, 'owners/8');
+
+    expect(report).toEqual({ scanned: 2, unreferenced: 2, unreferencedBytes: 6, truncated: false });
+    // The keys after the start first, then the ones before it.
+    expect(rpcCalls.map((call) => call.body)).toEqual([
+      { p_object_keys: [late] },
+      { p_object_keys: [early] },
+    ]);
+  });
+
+  it('measures a different part of a large bucket from a different start', async () => {
+    for (let index = 0; index < 6_000; index++) {
+      const owner = index < 3_000 ? '1' : 'e';
+      bucket.objects.set(`owners/${owner}${String(index).padStart(7, '0')}/notes/1/x`, new Uint8Array(1));
+    }
+    mockRpcs({ unreferenced: () => [] });
+
+    await reportUnreferencedAttachmentObjects(env, NOW, 'owners/d');
+
+    const firstAsked = (rpcCalls[0]!.body as { p_object_keys: string[] }).p_object_keys[0]!;
+    expect(firstAsked.startsWith('owners/e')).toBe(true);
   });
 
   it('throws when the report RPC fails', async () => {
@@ -536,7 +569,7 @@ describe('unreferenced object report', () => {
     mockRpcs({});
     vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 503 })));
 
-    await expect(reportUnreferencedAttachmentObjects(env, NOW)).rejects.toThrow(
+    await expect(reportUnreferencedAttachmentObjects(env, NOW, 'owners/')).rejects.toThrow(
       /find_unreferenced_attachment_objects/,
     );
   });
