@@ -26,6 +26,12 @@ expect "a local migration not applied" fail "${header}   20250902000000 | 202509
 expect "a remote-only migration is not this check's concern" pass "${header}                  | 20240101000000 | 2024-01-01 00:00:00
    20250902000000 | 20250902000000 | 2025-09-02 00:00:00
 "
+expect "versions in backticks (Supabase CLI 2.120)" pass "${header}   \`20250902000000\` | \`20250902000000\` | \`2025-09-02 00:00:00\`
+   \`20261015000000\` | \`20261015000000\` | \`2026-10-15 00:00:00\`
+"
+expect "a backticked migration not applied" fail "${header}   \`20250902000000\` | \`20250902000000\` | \`2025-09-02 00:00:00\`
+   \`20261015000000\` |                  | \`2026-10-15 00:00:00\`
+"
 expect "an unreadable listing" fail "Connecting to remote database...
 "
 expect "an empty listing" fail ""
