@@ -69,9 +69,9 @@ export function SignOutDialog({
             Delete cloud data and sign out?
           </h2>
           <p className="mt-2 text-sm text-brand-muted">
-            This permanently deletes your synced notes from Notelikeus cloud for this account.
-            It does not just remove this device. This action cannot be undone unless you have a
-            backup or another copy elsewhere.
+            This permanently deletes this account&apos;s notes from Notelikeus cloud and from this
+            browser, including any edits that haven&apos;t been uploaded yet. This action cannot be
+            undone unless you have a backup or another copy elsewhere.
           </p>
           <p className="mt-3 rounded-note border border-red-900/30 bg-red-950/20 px-3 py-2 text-sm text-red-200">
             Use this only if you want to erase your cloud notes, not if you only want to sign
