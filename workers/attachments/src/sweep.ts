@@ -142,7 +142,7 @@ export interface UnreferencedReport {
   scanned: number;
   unreferenced: number;
   unreferencedBytes: number;
-  /** True when the listing had more pages than one run reads, so the counts are a lower bound. */
+  /** True when one run's page budget ran out before the whole bucket was read: a sample, not a total. */
   truncated: boolean;
 }
 
@@ -158,35 +158,70 @@ export interface UnreferencedReport {
 export async function reportUnreferencedAttachmentObjects(
   env: WorkerEnv,
   now: number = Date.now(),
+  startAfter: string = randomOwnersStart(),
 ): Promise<UnreferencedReport> {
   const report: UnreferencedReport = { scanned: 0, unreferenced: 0, unreferencedBytes: 0, truncated: false };
   if (!serviceRoleHeaders(env)) return report;
 
-  let cursor: string | undefined;
-  for (let page = 0; page < UNREFERENCED_MAX_PAGES; page++) {
-    const listing = await env.ATTACHMENTS_BUCKET.list({ prefix: 'owners/', cursor, limit: 1000 });
-    report.scanned += listing.objects.length;
-    const old = listing.objects.filter(
-      (object) => now - object.uploaded.getTime() >= UNREFERENCED_MIN_AGE_MS,
-    );
-    if (old.length > 0) {
-      const missing = await rpc<string[]>(env, 'find_unreferenced_attachment_objects', {
-        p_object_keys: old.map((object) => object.key),
+  // Each run starts at a random point in the key space and wraps around to the beginning, so over
+  // several runs every owner is measured. Starting at the beginning every time measured the same
+  // first pages forever once the bucket outgrew one run's budget.
+  const passes: { startAfter?: string; stopAt?: string }[] = [{ startAfter }, { stopAt: startAfter }];
+  let pagesLeft = UNREFERENCED_MAX_PAGES;
+  for (const pass of passes) {
+    let cursor: string | undefined;
+    let more = true;
+    while (more && pagesLeft > 0) {
+      pagesLeft -= 1;
+      const listing = await env.ATTACHMENTS_BUCKET.list({
+        prefix: 'owners/',
+        cursor,
+        limit: 1000,
+        ...(cursor === undefined && pass.startAfter !== undefined ? { startAfter: pass.startAfter } : {}),
       });
-      const unreferenced = new Set(Array.isArray(missing) ? missing : []);
-      for (const object of old) {
-        if (!unreferenced.has(object.key)) continue;
-        report.unreferenced += 1;
-        report.unreferencedBytes += object.size;
-      }
+      const objects = listing.objects.filter(
+        (object) => pass.stopAt === undefined || object.key <= pass.stopAt,
+      );
+      const reachedStop = objects.length < listing.objects.length;
+      await countUnreferenced(env, objects, now, report);
+      more = listing.truncated && !reachedStop;
+      cursor = listing.truncated ? listing.cursor : undefined;
+      if (reachedStop) break;
     }
-    report.truncated = listing.truncated;
-    if (!listing.truncated) break;
-    cursor = listing.cursor;
+    if (more) {
+      report.truncated = true;
+      break;
+    }
   }
 
-  console.log('[Sweep] Unreferenced attachment objects', report);
+  console.log('[Sweep] Unreferenced attachment objects', { ...report, startAfter });
   return report;
+}
+
+async function countUnreferenced(
+  env: WorkerEnv,
+  objects: R2Object[],
+  now: number,
+  report: UnreferencedReport,
+): Promise<void> {
+  report.scanned += objects.length;
+  const old = objects.filter((object) => now - object.uploaded.getTime() >= UNREFERENCED_MIN_AGE_MS);
+  if (old.length === 0) return;
+  const missing = await rpc<string[]>(env, 'find_unreferenced_attachment_objects', {
+    p_object_keys: old.map((object) => object.key),
+  });
+  const unreferenced = new Set(Array.isArray(missing) ? missing : []);
+  for (const object of old) {
+    if (!unreferenced.has(object.key)) continue;
+    report.unreferenced += 1;
+    report.unreferencedBytes += object.size;
+  }
+}
+
+/** A random point among owner ids (UUIDs, so lowercase hex), as an R2 `startAfter` key. */
+function randomOwnersStart(): string {
+  const hex = Math.floor(Math.random() * 256).toString(16).padStart(2, '0');
+  return `owners/${hex}`;
 }
 
 /**
