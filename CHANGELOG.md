@@ -4,10 +4,20 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-10-15
+
 ### Added
 - **An image note shows its first picture on its card**, on Android and the web, with a screen-reader hint that the card has an image.
+- **Conflicted copies can be reviewed against their original**, on Android, Windows and the web, and are marked on the note card.
+- **The web sync status tells the truth**: it says when an edit is refused by the server, and reconnecting pushes edits made offline.
+- **Themes follow the operating system by default**, and every client uses one shared set of theme colours.
 
 ### Fixed
+- **An open note is never saved over a newer version from another device**, and an unsynced local edit to a note changed elsewhere is kept as a conflicted copy instead of being overwritten.
+- **Signing out with "delete cloud data" now also clears this browser's copy**, and a previous account's unsynced edits survive an account switch on the web.
+- **Offline edits on the web are kept until the cloud confirms them**, and a web app update waits for unsaved typing before reloading.
+- **Images attached to a note after its first sync are committed**, and an upload interrupted by a dropped connection is no longer lost.
+- **Release builds are signed and carry the hosted backend**, so the store build installs with sign-in and sync on.
 - **Backup with images (`.nlkbak`) did nothing on Android and Windows.** The note list's view model was wired with positional arguments; when a parameter was added ahead of the bundle support, the bundle support quietly fell back to a do-nothing default, so picking a `.nlkbak` file failed as unreadable JSON and exporting one was unavailable. The wiring is now by name and covered by a test that builds the view model through the real module.
 - **The installed Windows app could not open its notes.** The packaged runtime left out `java.sql`, which the encrypted database driver needs, so every read failed with `NoClassDefFoundError: java/sql/Driver` while `./gradlew run` — with the whole JDK on hand — worked. The module is now bundled.
 - **Reminders:** clearing a reminder now syncs, so the cloud can no longer bring a cleared reminder back.
