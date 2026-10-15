@@ -2,6 +2,13 @@ name: Cloudflare Pages CI
 
 on:
   workflow_dispatch:
+  # Production deploys only after Web CI (unit, build and the Playwright e2e gate) has passed on the
+  # pushed commit. A push alone used to deploy after this file's own lint and unit job, so a commit
+  # pushed straight to main reached production whether e2e passed or not.
+  workflow_run:
+    workflows: ['Web CI']
+    types: [completed]
+    branches: [main]
   push:
     branches: [main, master]
     paths:
@@ -18,12 +25,14 @@ on:
 permissions:
   contents: read
 
+# Per event: a push's verify run must not cancel a deploy that Web CI started for the commit before.
 concurrency:
-  group: cloudflare-pages-ci-${{ github.ref }}
+  group: cloudflare-pages-ci-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
   verify:
+    if: github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -59,8 +68,10 @@ jobs:
       - name: Verify security headers
         run: node cloudflare/scripts/verify-headers-parity.mjs
 
+  # The staging site talks to the same Supabase project as production, so only reviewed code
+  # (main) may be deployed to it; a branch dispatch would run unreviewed code against real data.
   deploy-preview:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -113,29 +124,57 @@ jobs:
           command: pages deploy web/dist --project-name=notelikeus-dev
 
   # The verify job builds with placeholder env so PRs never need secrets, which pins its
-  # CSP to placeholder.supabase.co — that artifact must never be deployed. Push to main
-  # rebuilds with the real secrets and publishes the production alias.
+  # CSP to placeholder.supabase.co — that artifact must never be deployed. This job rebuilds the
+  # commit Web CI passed with the real secrets and publishes the production alias.
+  #
+  # Order matters: migrations and the attachments Worker deploy by hand, and this deploy is
+  # automatic. A web build that calls an RPC its database does not have yet fails for every user,
+  # so the deploy first proves every committed migration is applied to the hosted project.
   deploy:
-    if: github.event_name == 'push'
-    needs: verify
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       deployments: write
 
     steps:
-      - name: Checkout
+      - name: Checkout the commit Web CI passed
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Require Pages secrets
+      # A slower run for an older push must not replace a newer deploy.
+      - name: Skip unless this is still main's tip
+        id: tip
+        env:
+          PASSED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          tip=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$tip" != "$PASSED_SHA" ]; then
+            echo "main has moved on ($tip); not deploying $PASSED_SHA."
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Require Pages and Supabase secrets
+        if: steps.tip.outputs.current == 'true'
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
         run: |
           missing=0
-          for name in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY VITE_ATTACHMENTS_WORKER_URL; do
+          for name in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY VITE_ATTACHMENTS_WORKER_URL \
+                      SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF; do
             if [ -z "${!name}" ]; then
               echo "Missing GitHub secret: $name"
               missing=1
@@ -147,13 +186,29 @@ jobs:
           fi
 
       - name: Set up Node.js
+        if: steps.tip.outputs.current == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      - name: Require every migration to be applied to the hosted database
+        if: steps.tip.outputs.current == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          npm ci
+          npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          bash scripts/ops/retry-on-connect.sh npx supabase migration list --linked \
+            | bash scripts/ops/require-migrations-applied.sh
 
       - name: Build static bundle
+        if: steps.tip.outputs.current == 'true'
         working-directory: web
         run: npm ci && npm run build
         env:
@@ -162,9 +217,11 @@ jobs:
           VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
 
       - name: Verify Pages artifacts
+        if: steps.tip.outputs.current == 'true'
         run: node web/scripts/verifyPagesArtifacts.mjs --deployable
 
       - name: Deploy to Cloudflare Pages (production)
+        if: steps.tip.outputs.current == 'true'
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

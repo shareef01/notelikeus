@@ -793,8 +793,11 @@ class NoteSyncEngine(
             }
             // Before any local note is read: a note an earlier run marked for recommit holds an upload
             // no commit has named, and pushing it first commits that upload before the snapshot below
-            // can be merged over it. A failed push throws and ends the run with the image still local.
-            when (pushPendingRecommits(commitToken, remoteIdentity)) {
+            // can be merged over it. A note whose push fails stays marked and the download goes on:
+            // the merge and hydration below keep a marked note's uploads, exactly as for a refused
+            // push. Ending the run here instead let one note that keeps failing stop every download
+            // on this device, so other devices' edits never arrived.
+            when (pushPendingRecommits(commitToken, remoteIdentity, continueOnFailure = true)) {
                 is LocalCommitResult.Applied -> Unit
                 LocalCommitResult.StaleGeneration -> return@runCatching 0
             }
@@ -1548,6 +1551,7 @@ class NoteSyncEngine(
     private suspend fun pushPendingRecommits(
         commitToken: LocalCommitToken,
         identity: OperationRemoteIdentity,
+        continueOnFailure: Boolean = false,
     ): LocalCommitResult<Unit> {
         val marked = syncStateStore.recommitNeededIds()
         if (marked.isEmpty()) return LocalCommitResult.Applied(Unit)
@@ -1561,7 +1565,21 @@ class NoteSyncEngine(
         }
         // A note tombstoned here is the delete's to finish, not this push's to bring back.
         val pushable = notes.filterNot { note -> note.id?.let(syncStateStore::isDeleted) == true }
-        return putNotes(pushable, commitToken, identity)
+        if (!continueOnFailure) return putNotes(pushable, commitToken, identity)
+        // One note at a time, so a note that fails cannot keep the others from committing.
+        for (note in pushable) {
+            val result = try {
+                putNotes(listOf(note), commitToken, identity)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                // The mark stays set; the next run tries again. Note id only, never content.
+                AppLog.warn(TAG, "Recommit of note ${note.id} failed; kept for the next sync: ${failure.message}")
+                continue
+            }
+            if (result == LocalCommitResult.StaleGeneration) return LocalCommitResult.StaleGeneration
+        }
+        return LocalCommitResult.Applied(Unit)
     }
 
     /**

@@ -60,8 +60,27 @@ test('binds ATTACHMENT_RATE_LIMITER with the operator-chosen values', () => {
   assert.match(toml, /simple = \{ limit = 90, period = 10 \}/);
 });
 
-test('defaults to 120 requests per 60 seconds', () => {
-  assert.match(generateWranglerToml({}), /simple = \{ limit = 120, period = 60 \}/);
+/** The workflow_dispatch input default, as an operator who keeps it gets it. */
+function inputDefault(name) {
+  const match = workflow.match(new RegExp(`\\n      ${name}:[\\s\\S]*?\\n        default: '([^']*)'`));
+  assert.ok(match, `input ${name} must declare a default`);
+  return match[1];
+}
+
+// 600 a minute: a new device hydrating a library of a few hundred images stays under it, while
+// one key still cannot hammer the Supabase Auth call behind every request (N-06).
+test('defaults to 600 requests per 60 seconds', () => {
+  const toml = generateWranglerToml({
+    RATE_LIMIT_REQUESTS: inputDefault('rate_limit_requests'),
+    RATE_LIMIT_PERIOD: inputDefault('rate_limit_period'),
+  });
+  assert.match(toml, /simple = \{ limit = 600, period = 60 \}/);
+});
+
+test('the bucket has no default, so a dispatch must name the production bucket', () => {
+  const block = workflow.match(/\n      r2_bucket:\n([\s\S]*?)\n      [a-z_]+:\n/);
+  assert.ok(block, 'r2_bucket input must exist');
+  assert.doesNotMatch(block[1], /default:/);
 });
 
 test('omits the binding entirely when throttling is set to 0', () => {
