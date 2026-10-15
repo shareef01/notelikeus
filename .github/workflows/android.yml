@@ -171,13 +171,17 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           EXPECTED_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        # pipefail: without it the tee below hides apksigner's exit status, which is the real
+        # verification result. --verbose is what makes apksigner print "Verifies"; plain
+        # --print-certs prints only the certificates, so v2.1.0's correctly signed APK was refused.
         run: |
+          set -o pipefail
           apk=$(ls androidApp/build/outputs/apk/release/*.apk)
           aab=$(ls androidApp/build/outputs/bundle/release/*.aab)
           apksigner=$(ls "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/*/apksigner | sort -V | tail -1)
-          "$apksigner" verify --print-certs "$apk" | tee /tmp/apk-certs.txt
+          "$apksigner" verify --verbose --print-certs "$apk" | tee /tmp/apk-certs.txt
           grep -q "Verifies" /tmp/apk-certs.txt || { echo "::error::$apk does not verify"; exit 1; }
-          fingerprint=$(awk '/SHA-256 digest/ {print $NF; exit}' /tmp/apk-certs.txt)
+          fingerprint=$(awk '/certificate SHA-256 digest/ {print $NF; exit}' /tmp/apk-certs.txt)
           echo "::notice::APK certificate SHA-256: $fingerprint"
           if [ -z "$EXPECTED_SHA256" ]; then
             echo "::error::Set the repository variable ANDROID_SIGNING_CERT_SHA256 to $fingerprint (after checking it is your release key), so a release signed by any other key is refused."
@@ -187,7 +191,9 @@ jobs:
             echo "::error::APK is signed by $fingerprint but this repository expects $EXPECTED_SHA256"
             exit 1
           fi
-          unzip -l "$aab" | grep -qE 'META-INF/.*\.(RSA|DSA|EC|SF)' \
+          # Listed to a file rather than piped: under pipefail, grep -q exiting early can fail unzip.
+          unzip -l "$aab" > /tmp/aab-entries.txt
+          grep -qE 'META-INF/.*\.(RSA|DSA|EC|SF)' /tmp/aab-entries.txt \
             || { echo "::error::$aab carries no signing metadata"; exit 1; }
           echo "AAB signing metadata present."
 
