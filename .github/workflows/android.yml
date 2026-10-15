@@ -125,10 +125,11 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
         run: |
+          # A tag publishes a GitHub Release, so it must be signed: an unsigned APK cannot be
+          # installed over a signed one, and an unsigned AAB cannot be uploaded to the store.
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "No Android signing secrets are configured; release artifacts stay unsigned."
-            exit 0
+            echo "::error::No Android signing secrets are configured (ANDROID_SIGNING_*). A release tag must be signed; nothing was published."
+            exit 1
           fi
           umask 077
           dir="$RUNNER_TEMP/android-signing"
@@ -150,14 +151,21 @@ jobs:
       - name: Build minified release APK
         run: ./gradlew :androidApp:assembleRelease --stacktrace
 
-      - name: Build release AAB
+      # The store bundle must carry the hosted backend, or it installs with sign-in and sync off.
+      # Same secrets the Pages build uses; bundleRelease fails without them
+      # (:composeApp:verifyReleaseBackendConfig). The minified APK above is a shrink check and
+      # stays buildable on pull requests, which have no secrets.
+      - name: Build release APK and AAB with the hosted backend
         if: startsWith(github.ref, 'refs/tags/v')
-        run: ./gradlew :androidApp:bundleRelease --stacktrace
+        env:
+          NOTELIKEUS_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          NOTELIKEUS_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          NOTELIKEUS_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
+        run: ./gradlew :androidApp:assembleRelease :androidApp:bundleRelease --stacktrace
 
-      # An unsigned or wrong-identity artifact must never reach the release. With credentials
-      # present the APK has to verify and match the fingerprint the repository expects
-      # (vars.ANDROID_SIGNING_CERT_SHA256 — public metadata, never a secret); with none present the
-      # artifacts are asserted to be unsigned, so "configured but silently unsigned" cannot pass.
+      # An unsigned or wrong-identity artifact must never reach the release. The APK has to verify
+      # and match the fingerprint the repository expects (vars.ANDROID_SIGNING_CERT_SHA256 — public
+      # metadata, never a secret), and the AAB has to carry signing metadata.
       - name: Verify release signatures
         id: verify-signing
         if: startsWith(github.ref, 'refs/tags/v')
@@ -167,19 +175,15 @@ jobs:
           apk=$(ls androidApp/build/outputs/apk/release/*.apk)
           aab=$(ls androidApp/build/outputs/bundle/release/*.aab)
           apksigner=$(ls "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/*/apksigner | sort -V | tail -1)
-          if [ "${{ steps.signing.outputs.enabled }}" != "true" ]; then
-            if "$apksigner" verify "$apk" >/dev/null 2>&1; then
-              echo "::error::$apk verifies as signed although no signing secrets are configured"
-              exit 1
-            fi
-            echo "No signing identity configured: $apk is unsigned, as documented."
-            exit 0
-          fi
           "$apksigner" verify --print-certs "$apk" | tee /tmp/apk-certs.txt
           grep -q "Verifies" /tmp/apk-certs.txt || { echo "::error::$apk does not verify"; exit 1; }
           fingerprint=$(awk '/SHA-256 digest/ {print $NF; exit}' /tmp/apk-certs.txt)
           echo "::notice::APK certificate SHA-256: $fingerprint"
-          if [ -n "$EXPECTED_SHA256" ] && [ "$fingerprint" != "$EXPECTED_SHA256" ]; then
+          if [ -z "$EXPECTED_SHA256" ]; then
+            echo "::error::Set the repository variable ANDROID_SIGNING_CERT_SHA256 to $fingerprint (after checking it is your release key), so a release signed by any other key is refused."
+            exit 1
+          fi
+          if [ "$fingerprint" != "$EXPECTED_SHA256" ]; then
             echo "::error::APK is signed by $fingerprint but this repository expects $EXPECTED_SHA256"
             exit 1
           fi
@@ -310,10 +314,10 @@ jobs:
             androidApp/build/reports/androidTests/
 
   # Publishes the tag's artifacts as a GitHub Release. Runs only after every gate has
-  # passed — a release tag on a red build must not ship. The artifacts are signed when the tag's
-  # signing secrets are configured (see signing.properties.example, and the signing steps in
-  # `build`), and unsigned when they are not — which is what v2.0.0 shipped. This repo's
-  # distribution model remains build-from-source plus the Cloudflare Pages web app.
+  # passed — a release tag on a red build must not ship. The artifacts are always signed with the
+  # key pinned by vars.ANDROID_SIGNING_CERT_SHA256 (see signing.properties.example, and the signing
+  # steps in `build`); a tag without signing secrets fails instead of publishing unsigned artifacts,
+  # as v2.0.0 did. They also carry the hosted backend (verifyReleaseBackendConfig).
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build, instrumented]
