@@ -62,11 +62,17 @@ class DeferredUploadCommitTest {
     private var dropNextRecommit = false
     private val provisionalRows = mutableMapOf<String, NoteAttachmentMetadata>()
 
+    /** A note whose every push fails with an error that is not a conflict, such as a 400. */
+    private var alwaysFailingNote: Long? = null
+
     private val transport = object : FakeCloudNoteTransport() {
         override suspend fun putNotes(uid: String, notes: List<Note>): Map<Long, CloudNoteTransport.PutResult> {
             if (dropNextRecommit && notes.any { note -> note.attachments.any { it.storagePath.startsWith("r2:") } }) {
                 dropNextRecommit = false
                 throw IOException("connection reset")
+            }
+            if (alwaysFailingNote != null && notes.any { it.id == alwaysFailingNote }) {
+                throw SupabaseTransportException("apply_note_change", 400, "")
             }
             val accepted = notes.filterNot { it.id in refused }
             if (serverEnforcesCommitment) {
@@ -293,6 +299,24 @@ class DeferredUploadCommitTest {
 
         engine.downloadAllNotes().getOrThrow()
 
+        assertEquals(listOf("att-imp"), noteDao.notes.getValue(1L).toNote().attachments.map { it.id })
+        assertEquals(setOf(1L), stateStore.recommitNeededIds())
+    }
+
+    @Test
+    fun `a recommit that keeps failing does not stop other devices' notes from arriving`() = runTest {
+        seedNewNoteWithStagedImage()
+        dropNextRecommit = true
+        assertTrue(engine.downloadAllNotes().isFailure)
+        // From here on every push of this note fails outright, and another device adds a note.
+        alwaysFailingNote = 1L
+        transport.notes[2L] = cloudRecord("from the phone", serverUpdatedAt = 9_000L, revision = 9L)
+            .copy(noteId = 2L, title = "Groceries")
+
+        // The run still reports the stuck note, but only after the download has run.
+        engine.downloadAllNotes()
+
+        assertEquals("from the phone", noteDao.notes.getValue(2L).toNote().content)
         assertEquals(listOf("att-imp"), noteDao.notes.getValue(1L).toNote().attachments.map { it.id })
         assertEquals(setOf(1L), stateStore.recommitNeededIds())
     }
