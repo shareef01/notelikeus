@@ -42,3 +42,14 @@ export function parseAttachmentObjectKey(
 export function attachmentWorkerPath(noteId: string, attachmentId: string): string {
   return `/v1/attachments/${encodeURIComponent(noteId.trim())}/${encodeURIComponent(attachmentId.trim())}`;
 }
+
+/**
+ * The upload route of the deferred protocol (R19.2), as the Kotlin clients use it: the metadata row
+ * stays provisional until a note commit names the attachment (`p_attachment_ids`), so an upload whose
+ * note never commits cannot be hydrated into a note that merely reuses the id. Versioned in the path
+ * on purpose: a Worker without the protocol has no `v2` route and refuses before storing anything,
+ * where a header would be ignored and the row committed. Reads and deletes stay on `v1`.
+ */
+export function attachmentDeferredWorkerPath(noteId: string, attachmentId: string): string {
+  return `/v2/attachments/${encodeURIComponent(noteId.trim())}/${encodeURIComponent(attachmentId.trim())}`;
+}

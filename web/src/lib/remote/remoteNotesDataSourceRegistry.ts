@@ -51,6 +51,9 @@ const lazySupabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       previouslyKnownCloudIds,
     );
   },
+  async pushPendingEdits(userId) {
+    return (await loadSupabaseNotesSource()).pushPendingEdits?.(userId);
+  },
 };
 
 export function getRemoteNotesDataSource(): RemoteNotesDataSource {

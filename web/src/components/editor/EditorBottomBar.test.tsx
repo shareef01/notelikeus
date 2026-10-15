@@ -12,7 +12,9 @@ interface RenderOptions {
   isSavedLocally?: boolean;
   isSignedIn?: boolean;
   isOnline?: boolean;
-  hasPendingAttachments?: boolean;
+  isPending?: boolean;
+  isFlushing?: boolean;
+  flushFailed?: boolean;
   reminderTimestamp?: number | null;
   onRetrySave?: () => void;
   onMoreClick?: () => void;
@@ -32,7 +34,9 @@ function render(options: RenderOptions = {}) {
         isSavedLocally: options.isSavedLocally ?? true,
         isSignedIn: options.isSignedIn ?? false,
         isOnline: options.isOnline ?? true,
-        hasPendingAttachments: options.hasPendingAttachments ?? false,
+        isPending: options.isPending ?? false,
+        isFlushing: options.isFlushing ?? false,
+        flushFailed: options.flushFailed ?? false,
         reminderTimestamp: options.reminderTimestamp ?? null,
         onRetrySave: options.onRetrySave,
         onMoreClick,
@@ -53,16 +57,16 @@ function render(options: RenderOptions = {}) {
 }
 
 describe('EditorBottomBar', () => {
-  it('shows saving locally when a write is in flight', () => {
+  it('shows saving when a write is in flight', () => {
     const { container, cleanup } = render({ isSaving: true });
-    expect(container.textContent).toContain('Saving locally…');
+    expect(container.textContent).toContain('Saving…');
     cleanup();
   });
 
-  it('shows local save failed with a retry action when save fails', () => {
+  it('shows couldn’t save with a retry action when save fails', () => {
     const onRetry = vi.fn();
     const { container, cleanup } = render({ saveFailed: true, onRetrySave: onRetry });
-    expect(container.textContent).toContain('Local save failed');
+    expect(container.textContent).toContain('Couldn’t save');
     const retryBtn = Array.from(container.querySelectorAll('button')).find((b) =>
       b.textContent?.includes('Retry'),
     );
@@ -74,31 +78,49 @@ describe('EditorBottomBar', () => {
     cleanup();
   });
 
-  it('shows saved locally with edited time for guest / unauthenticated notes', () => {
+  it('shows saved on this device with the edited time for a guest', () => {
     const { container, cleanup } = render({ isSignedIn: false });
-    expect(container.textContent).toContain('Saved locally •');
+    expect(container.textContent).toContain('Saved on this device •');
     cleanup();
   });
 
-  it('shows saved locally and synced when online and authenticated', () => {
+  it('shows synced once the cloud has confirmed the note', () => {
     const { container, cleanup } = render({ isSignedIn: true, isOnline: true });
-    expect(container.textContent).toContain('Saved locally • Synced');
+    expect(container.textContent).toContain('Synced •');
     cleanup();
   });
 
-  it('shows saved locally and offline when signed in but network is offline', () => {
-    const { container, cleanup } = render({ isSignedIn: true, isOnline: false });
-    expect(container.textContent).toContain('Saved locally • Offline');
+  it('does not claim synced for an edit the cloud has not confirmed, however online', () => {
+    const { container, cleanup } = render({ isSignedIn: true, isOnline: true, isPending: true });
+    expect(container.textContent).toContain('Waiting to sync');
+    expect(container.textContent).not.toContain('Synced');
     cleanup();
   });
 
-  it('shows saved locally and sync pending when attachments are awaiting upload', () => {
-    const { container, cleanup } = render({
-      isSignedIn: true,
-      isOnline: true,
-      hasPendingAttachments: true,
-    });
-    expect(container.textContent).toContain('Saved locally • Sync pending');
+  it('shows syncing while the queue is being pushed', () => {
+    const { container, cleanup } = render({ isSignedIn: true, isPending: true, isFlushing: true });
+    expect(container.textContent).toContain('Syncing…');
+    cleanup();
+  });
+
+  it('says the edit is kept here when the last push failed', () => {
+    const { container, cleanup } = render({ isSignedIn: true, isPending: true, flushFailed: true });
+    expect(container.textContent).toContain('Couldn’t sync — saved on this device');
+    cleanup();
+  });
+
+  it('says offline only when there is something waiting to go up', () => {
+    const waiting = render({ isSignedIn: true, isOnline: false, isPending: true });
+    expect(waiting.container.textContent).toContain('Offline — changes saved here');
+    waiting.cleanup();
+    const settled = render({ isSignedIn: true, isOnline: false });
+    expect(settled.container.textContent).toContain('Synced •');
+    settled.cleanup();
+  });
+
+  it('announces status changes politely', () => {
+    const { container, cleanup } = render();
+    expect(container.querySelector('[role="status"][aria-live="polite"]')).not.toBeNull();
     cleanup();
   });
 
@@ -130,7 +152,7 @@ describe('EditorBottomBar', () => {
       saveFailed: false,
     });
     expect(container.textContent).toContain('Not saved yet');
-    expect(container.textContent).not.toContain('Saved locally');
+    expect(container.textContent).not.toContain('Saved on this device');
     cleanup();
   });
 
@@ -143,7 +165,7 @@ describe('EditorBottomBar', () => {
       saveFailed: false,
     });
     expect(container.textContent).toContain('Not saved yet');
-    expect(container.textContent).not.toContain('Saved locally');
+    expect(container.textContent).not.toContain('Saved on this device');
     expect(container.textContent).not.toContain('Synced');
     cleanup();
   });
@@ -154,7 +176,7 @@ describe('EditorBottomBar', () => {
       isSavedLocally: false,
       isSaving: false,
     });
-    expect(container.textContent).toContain('Local save failed');
+    expect(container.textContent).toContain('Couldn’t save');
     cleanup();
   });
 
@@ -164,7 +186,7 @@ describe('EditorBottomBar', () => {
       isSavedLocally: false,
       saveFailed: false,
     });
-    expect(container.textContent).toContain('Saving locally…');
+    expect(container.textContent).toContain('Saving…');
     cleanup();
   });
 });

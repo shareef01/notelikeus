@@ -1,3 +1,10 @@
+import { ATTACHMENT_R2_PREFIX } from '@/lib/attachments/attachmentPaths';
+import {
+  reclaimUncommittedUploads,
+  releaseCopiedPendingAttachments,
+  releaseCopyAttachments,
+  withPendingAttachments,
+} from '@/lib/attachments/conflictCopyAttachments';
 import {
   dropPendingPush,
   listPendingPushes,
@@ -5,10 +12,12 @@ import {
   resolveConflictedPush,
   settlePendingPush,
 } from '@/lib/local/notesLocalRepository';
+import { conflictedCopyOf } from '@/lib/notes/conflictResolution';
 import { notesUserContentEqual } from '@/lib/notes/noteEquality';
 import { loadRevisionState } from '@/lib/supabase/revisionStore';
 import { applyNoteChange, NoteConflictError } from '@/lib/supabase/supabaseSyncEngine';
 import { useNotesStore } from '@/store/notesStore';
+import { useSyncStatusStore } from '@/store/syncStatusStore';
 import { useToastStore } from '@/store/toastStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { nextLocalNoteIdAfter, type Note } from '@/types/note';
@@ -56,22 +65,36 @@ async function runFlush(
   const isActive = () => options?.isActive?.() !== false;
   const result = emptyResult();
   const attempted = new Set<string>();
-  // A conflict adds a copy that is itself pending, so a second pass pushes it straight away.
-  for (let pass = 0; pass < 2; pass++) {
-    const ids = Object.keys(await listPendingPushes(userId)).filter((id) => !attempted.has(id));
-    for (const noteId of ids) {
-      if (!isActive()) return result;
-      attempted.add(noteId);
-      try {
-        await flushOne(userId, noteId, result);
-        reportedRejections.delete(rejectionKey(userId, noteId));
-      } catch (error) {
-        console.warn(`[Notelikeus] Note ${noteId} is saved locally; its upload will be retried:`, error);
-        if (isPermanentRejection(error)) reportRejection(userId, noteId, error);
+  const status = useSyncStatusStore.getState();
+  let failed = false;
+  status.setFlushing(userId, true);
+  try {
+    // A conflict adds a copy that is itself pending, so a second pass pushes it straight away.
+    for (let pass = 0; pass < 2; pass++) {
+      const ids = Object.keys(await listPendingPushes(userId)).filter((id) => !attempted.has(id));
+      for (const noteId of ids) {
+        // Cut short, so this flush says nothing about whether the rest would have gone through.
+        if (!isActive()) return result;
+        attempted.add(noteId);
+        try {
+          await flushOne(userId, noteId, result);
+          reportedRejections.delete(rejectionKey(userId, noteId));
+        } catch (error) {
+          failed = true;
+          console.warn(`[Notelikeus] Note ${noteId} is saved locally; its upload will be retried:`, error);
+          if (isPermanentRejection(error)) reportRejection(userId, noteId, error);
+        }
       }
     }
+    status.setFailed(userId, failed);
+    return result;
+  } catch (error) {
+    // The queue itself could not be read: nothing was pushed, so nothing can be called synced.
+    status.setFailed(userId, true);
+    throw error;
+  } finally {
+    status.setFlushing(userId, false);
   }
-  return result;
 }
 
 /** Notes already reported as refused, so a flush that fails the same way again stays quiet. */
@@ -136,8 +159,10 @@ async function flushOne(userId: string, noteId: string, result: PendingFlushResu
       await settleAccepted(userId, note, marker.seq, accepted, result);
       return;
     }
-    if (error.current && notesUserContentEqual(note, error.current)) {
-      accepted = error.current;
+    // The cloud's version carries no attachments (the payload has none), so the comparison leaves
+    // them out; comparing them made every note with an image look changed elsewhere.
+    if (error.current && notesUserContentEqual({ ...note, attachments: [] }, error.current)) {
+      accepted = await adoptSameVersion(userId, note, error.current);
     } else {
       await keepBothVersions(userId, note, marker.seq, error.current, result);
       return;
@@ -145,6 +170,20 @@ async function flushOne(userId: string, noteId: string, result: PendingFlushResu
   }
 
   await settleAccepted(userId, note, marker.seq, accepted, result);
+}
+
+/**
+ * The cloud already holds [note]'s words — usually this device's own push whose reply was lost. The
+ * attachments stay this device's: the payload cannot speak for them. Uploads only become visible
+ * when a commit names them, so a version with any is committed once more against the cloud's
+ * revision, naming them, rather than assumed to have done so.
+ */
+async function adoptSameVersion(userId: string, note: Note, current: Note): Promise<Note> {
+  if (!note.attachments.some((attachment) => attachment.storagePath.startsWith(ATTACHMENT_R2_PREFIX))) {
+    return { ...current, attachments: note.attachments };
+  }
+  const revision = (await loadRevisionState(userId)).noteRevisions[note.id] ?? null;
+  return applyNoteChange(userId, note, revision);
 }
 
 async function settleAccepted(
@@ -168,8 +207,15 @@ async function keepBothVersions(
   current: Note | null,
   result: PendingFlushResult,
 ): Promise<void> {
-  const copy = conflictedCopy(local);
-  if (!(await resolveConflictedPush(userId, local.id, seq, copy, current))) return;
+  // Images not uploaded yet exist only here, under the local note's id, and an upload this push was
+  // to name is visible nowhere until a commit does: both go with the copy.
+  const source = await reclaimUncommittedUploads(local, userId, { noteGone: current === null });
+  const copy = await withPendingAttachments(source, conflictedCopy(local), userId);
+  if (!(await resolveConflictedPush(userId, local.id, seq, copy, current))) {
+    await releaseCopyAttachments(copy, userId);
+    return;
+  }
+  await releaseCopiedPendingAttachments(source, current, userId);
 
   const store = useNotesStore.getState();
   if (current) {
@@ -183,23 +229,12 @@ async function keepBothVersions(
   result.upserted.push(copy);
 }
 
-/**
- * The local version as a new note. Attachments stay with the original: their cloud rows and
- * pending bytes are keyed to that note's id, and pointing a second note at them would break both.
- */
+/** The local version as a new note; see conflictResolution.ts for what the copy keeps. */
 function conflictedCopy(local: Note): Note {
   const maxLocalId = useNotesStore
     .getState()
     .notes.reduce((max, note) => Math.max(max, note.localId), local.localId);
-  const localId = nextLocalNoteIdAfter(maxLocalId);
-  return {
-    ...local,
-    id: String(localId),
-    localId,
-    title: local.title ? `${local.title} (conflicted copy)` : 'Conflicted copy',
-    serverUpdatedAt: null,
-    attachments: [],
-  };
+  return conflictedCopyOf(local, nextLocalNoteIdAfter(maxLocalId));
 }
 
 /** Shows the confirmed version, unless the UI already moved on to a newer local edit. */

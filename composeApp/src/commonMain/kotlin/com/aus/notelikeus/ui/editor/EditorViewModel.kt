@@ -17,6 +17,7 @@ import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.data.sync.ConflictResolution
 import com.aus.notelikeus.domain.repository.LocalCommitResult
 import com.aus.notelikeus.domain.repository.LocalCommitToken
 import com.aus.notelikeus.domain.repository.LocalCommitTokenProvider
@@ -69,6 +70,11 @@ data class EditorState(
     val truncatedToSyncLimit: Boolean = false,
     val cloudSyncStatus: CloudSyncStatus = CloudSyncStatus.Unknown,
     val isGuest: Boolean = true,
+    /**
+     * Another device changed the note while it was open here, so this editor's version was saved
+     * as a separate "conflicted copy" and the editor now edits that copy.
+     */
+    val conflictCopy: Boolean = false,
 )
 
 class EditorViewModel(
@@ -107,6 +113,82 @@ class EditorViewModel(
      * proceed: unknown is treated as changed, never as unchanged.
      */
     private var persistedSnapshot: Note? = null
+
+    /**
+     * The row's server stamp when this editor loaded it (or last confirmed it as its own). A newer
+     * stamp on the row at save time means a download replaced it while the note was open; see
+     * [persistNote]. Null means "unknown", which any stamp is newer than.
+     */
+    private var loadedServerUpdatedAt: Long? = null
+
+    /** Whether the row's stamp is newer than the one this editor loaded; unknown counts as older. */
+    private fun isNewerThanLoaded(storedStamp: Long): Boolean =
+        loadedServerUpdatedAt.let { loaded -> loaded == null || storedStamp > loaded }
+
+    /** Follows the open note's row; see [refreshFromStoredRow]. Replaced when the route changes. */
+    private var openNoteObserver: Job? = null
+
+    /**
+     * Watches the open note's row while the editor shows it (AU-12).
+     *
+     * A download can replace the row underneath an open editor. Without this the editor kept the
+     * text it loaded, so the next keystroke built on a stale version and the save had to fork it
+     * into a conflicted copy. The three library flows already carry full rows (labels, checklist,
+     * attachments), so following them needs no new repository API.
+     */
+    private fun observeOpenNote(id: Long) {
+        openNoteObserver?.cancel()
+        openNoteObserver = combine(
+            repository.getActiveNotes(),
+            repository.getArchivedNotes(),
+            repository.getTrashedNotes(),
+        ) { active, archived, trashed ->
+            active.firstOrNull { it.id == id }
+                ?: archived.firstOrNull { it.id == id }
+                ?: trashed.firstOrNull { it.id == id }
+        }
+            .filterNotNull()
+            .distinctUntilChanged()
+            .onEach { stored -> refreshFromStoredRow(id, stored) }
+            .launchIn(viewModelScope)
+    }
+
+    /**
+     * Shows a newer version of the open note when nothing is waiting to be saved — the web editor's
+     * rule. With typing pending the save decides instead ([persistNote]'s stale-row check), and an
+     * editor that has moved onto a conflicted copy no longer follows the original.
+     */
+    private fun refreshFromStoredRow(id: Long, stored: Note) {
+        val current = _state.value
+        if (current.id != id) return
+        val storedStamp = stored.serverUpdatedAt ?: return
+        if (!isNewerThanLoaded(storedStamp)) return
+        val pending = autosaveJob?.isActive == true || current.isSaving || !isUnchangedSinceLastPersist(current)
+        if (pending) return
+        loadedServerUpdatedAt = storedStamp
+        // This device's own upload echoing back: the words are already on screen.
+        if (ConflictResolution.authoredContentEqual(stored, buildNoteFromState(current))) return
+        _state.update {
+            it.copy(
+                title = stored.title,
+                content = stored.content,
+                contentValue = TextFieldValue(stored.content),
+                color = stored.color,
+                isPinned = stored.isPinned,
+                isArchived = stored.isArchived,
+                isTrashed = stored.isTrashed,
+                reminderTimestamp = stored.reminderTimestamp,
+                labels = stored.labels,
+                checklist = stored.checklist.sortedWith(
+                    compareBy({ item -> item.isChecked }, { item -> item.position }),
+                ),
+                attachments = stored.attachments,
+                timestamp = stored.timestamp,
+                position = stored.position,
+            )
+        }
+        persistedSnapshot = _state.value.asPersistedContent()
+    }
     private var noteId: Long? = savedStateHandle.get<Long>("noteId")?.takeIf { it != -1L }
     private var routedInitialColor: Int? =
         savedStateHandle.get<Int>("initialColor")?.takeIf { it != Int.MIN_VALUE }
@@ -255,6 +337,8 @@ class EditorViewModel(
             } else {
                 val id = noteId!!
                 repository.getNoteById(id)?.let { note ->
+                    loadedServerUpdatedAt = note.serverUpdatedAt
+                    observeOpenNote(id)
                     _state.update { current ->
                         val loaded = EditorState(
                             id = note.id,
@@ -626,6 +710,51 @@ class EditorViewModel(
             }
             newId
         } else {
+            // The upload takes its base revision from the sync state, which a download advances
+            // underneath an open editor. Writing a draft typed against an older version over the
+            // row would pass the server's revision check and erase the other device's edit, so a
+            // draft that collides with words this editor never saw becomes its own note instead.
+            val stored = runCatching { repository.getNoteById(note.id!!) }.getOrNull()
+            val storedStamp = stored?.serverUpdatedAt
+            if (stored != null && storedStamp != null && isNewerThanLoaded(storedStamp)) {
+                val ownOrSameWords = ConflictResolution.authoredContentEqual(stored, note) ||
+                    persistedSnapshot?.let { ConflictResolution.authoredContentEqual(stored, it) } == true
+                if (ownOrSameWords) {
+                    loadedServerUpdatedAt = storedStamp
+                } else {
+                    // The draft's images that exist only here go with it, staged again for the copy.
+                    val carried = runCatching { attachmentSync?.stageForCopy(note.attachments) }
+                        .getOrNull().orEmpty()
+                    val copy = ConflictResolution.conflictedCopyOf(note, carried.values.toList())
+                    val copyId = when (val inserted = repository.insertNoteWithResult(copy, commitToken)) {
+                        is LocalCommitResult.Applied -> inserted.value
+                        LocalCommitResult.StaleGeneration -> {
+                            _state.update { it.copy(isSaving = false, saveFailed = false) }
+                            return@withLock PersistNoteOutcome.StaleGeneration
+                        }
+                    }
+                    val saved = copy.copy(id = copyId, attachments = copy.attachments.map { it.copy(noteId = copyId) })
+                    loadedServerUpdatedAt = null
+                    persistedSnapshot = saved.persistedContent()
+                    _state.update {
+                        it.copy(
+                            id = copyId,
+                            title = copy.title,
+                            attachments = saved.attachments,
+                            timestamp = updatedTimestamp,
+                            isSaving = false,
+                            isSavedLocally = true,
+                            saveFailed = false,
+                            conflictCopy = true,
+                        )
+                    }
+                    // Same continuation as any save: the carried images upload under the copy.
+                    if (bindStagedAttachmentsToNote(copyId, saved.attachments, commitToken)) {
+                        syncRemoteAttachments(saved, commitToken)
+                    }
+                    return@withLock PersistNoteOutcome.Saved(copyId)
+                }
+            }
             note = note.copy(attachments = note.attachments.map { it.copy(noteId = note.id!!) })
             when (repository.updateNote(note, commitToken)) {
                 is LocalCommitResult.Applied -> Unit

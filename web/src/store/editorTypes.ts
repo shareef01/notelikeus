@@ -29,6 +29,12 @@ export interface EditorState {
    * sync failure: this means IndexedDB rejected the write, not that the cloud is unreachable.
    */
   saveFailed: boolean;
+  /**
+   * Another device changed the note while it was open, so the editor's version was saved as a
+   * separate "conflicted copy" and the editor now edits that copy. Shown to the user; never cleared
+   * while the editor stays on the copy.
+   */
+  conflictCopy?: boolean;
 }
 
 export const DEFAULT_EDITOR_COLOR = 0; // Use theme background by default to prevent blinking

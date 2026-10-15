@@ -2,6 +2,9 @@ package com.aus.notelikeus.ui.editor
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
+import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.attachments.pendingStoragePath
+import com.aus.notelikeus.domain.model.Attachment
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.data.backup.NoteBackupImporter
@@ -332,5 +335,134 @@ class EditorViewModelTest {
 
         assertEquals("Line one\nLine two", viewModel.state.value.content)
         assertEquals(emptyList<com.aus.notelikeus.domain.model.ChecklistItem>(), viewModel.state.value.checklist)
+    }
+
+    // ---- a remote change to the open note ----
+
+    private val openedNote = Note(
+        id = 1L, title = "Groceries", content = "milk", timestamp = 900L, color = 0, serverUpdatedAt = 1_000L,
+    )
+
+    @Test
+    fun `typing against a version another device replaced is saved as a conflicted copy`() = runTest {
+        val replaced = openedNote.copy(content = "milk, eggs (from phone)", timestamp = 1_900L, serverUpdatedAt = 2_000L)
+        coEvery { repository.getNoteById(1L) } returnsMany listOf(openedNote, replaced)
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(42L)
+        coEvery { repository.updateNote(any(), any()) } returns LocalCommitResult.Applied(Unit)
+        viewModel = createViewModel(SavedStateHandle(mapOf("noteId" to 1L)))
+        advanceUntilIdle()
+
+        viewModel.onContentValueChange(TextFieldValue("milk, bread (typed here)"))
+        viewModel.saveNoteAndAwait()
+
+        // The row keeps the other device's version; the draft lands beside it.
+        coVerify(exactly = 0) { repository.updateNote(any(), any()) }
+        coVerify(exactly = 1) {
+            repository.insertNoteWithResult(
+                match { it.id == null && it.content == "milk, bread (typed here)" && it.title == "Groceries (conflicted copy)" },
+                any(),
+            )
+        }
+        assertTrue(viewModel.state.value.conflictCopy)
+        assertEquals(42L, viewModel.state.value.id)
+    }
+
+    @Test
+    fun `a conflicted copy takes the draft's unuploaded image, staged again under a new id`() = runTest {
+        val image = Attachment(id = "att-1", noteId = 1L, storagePath = pendingStoragePath("att-1"))
+        val opened = openedNote.copy(attachments = listOf(image))
+        val replaced = openedNote.copy(content = "milk, eggs (from phone)", timestamp = 1_900L, serverUpdatedAt = 2_000L)
+        val restaged = image.copy(id = "att-copy", noteId = 0L, storagePath = pendingStoragePath("att-copy"))
+        val attachmentSync = mockk<AttachmentSyncService>(relaxed = true)
+        coEvery { attachmentSync.stageForCopy(listOf(image)) } returns mapOf("att-1" to restaged)
+        coEvery { attachmentSync.bindStagedAttachmentsToNote(any(), any(), any()) } returns LocalCommitResult.Applied(Unit)
+        coEvery { attachmentSync.syncNoteAttachments(any(), any()) } answers { LocalCommitResult.Applied(firstArg()) }
+        coEvery { repository.getNoteById(1L) } returnsMany listOf(opened, replaced)
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(42L)
+        viewModel = EditorViewModel(
+            repository,
+            reminderManager,
+            SavedStateHandle(mapOf("noteId" to 1L)),
+            attachmentSync = attachmentSync,
+            localCommitTokenProvider = FakeLocalCommitTokenProvider(),
+        )
+        advanceUntilIdle()
+
+        viewModel.onContentValueChange(TextFieldValue("milk, bread (typed here)"))
+        viewModel.saveNoteAndAwait()
+
+        coVerify(exactly = 1) {
+            repository.insertNoteWithResult(match { it.attachments == listOf(restaged) }, any())
+        }
+        assertEquals(listOf(restaged.copy(noteId = 42L)), viewModel.state.value.attachments)
+        coVerify { attachmentSync.bindStagedAttachmentsToNote(42L, listOf(restaged.copy(noteId = 42L)), any()) }
+    }
+
+    @Test
+    fun `this device's own upload echoing back is still a straight edit`() = runTest {
+        // The upload stamped the row with a newer server time; the words are the ones saved here.
+        val echoed = openedNote.copy(serverUpdatedAt = 2_000L)
+        coEvery { repository.getNoteById(1L) } returnsMany listOf(openedNote, echoed)
+        coEvery { repository.updateNote(any(), any()) } returns LocalCommitResult.Applied(Unit)
+        viewModel = createViewModel(SavedStateHandle(mapOf("noteId" to 1L)))
+        advanceUntilIdle()
+
+        viewModel.onContentValueChange(TextFieldValue("milk, more"))
+        viewModel.saveNoteAndAwait()
+
+        coVerify(exactly = 1) { repository.updateNote(match { it.id == 1L && it.content == "milk, more" }, any()) }
+        coVerify(exactly = 0) { repository.insertNoteWithResult(any(), any()) }
+        assertEquals(false, viewModel.state.value.conflictCopy)
+    }
+
+    // ---- the open note changing underneath the editor (AU-12) ----
+
+    private fun openWithLiveRow(initial: Note): kotlinx.coroutines.flow.MutableStateFlow<List<Note>> {
+        val active = kotlinx.coroutines.flow.MutableStateFlow(listOf(initial))
+        coEvery { repository.getNoteById(initial.id!!) } returns initial
+        every { repository.getActiveNotes() } returns active
+        every { repository.getArchivedNotes() } returns flowOf(emptyList())
+        every { repository.getTrashedNotes() } returns flowOf(emptyList())
+        coEvery { repository.updateNote(any(), any()) } returns LocalCommitResult.Applied(Unit)
+        viewModel = createViewModel(SavedStateHandle(mapOf("noteId" to initial.id!!)))
+        return active
+    }
+
+    @Test
+    fun `an open note with nothing unsaved shows the newer version a download wrote`() = runTest {
+        val rows = openWithLiveRow(openedNote)
+        advanceUntilIdle()
+
+        rows.value = listOf(openedNote.copy(content = "milk, eggs (from phone)", timestamp = 1_900L, serverUpdatedAt = 2_000L))
+        advanceUntilIdle()
+
+        assertEquals("milk, eggs (from phone)", viewModel.state.value.content)
+        // Showing it is not an edit: nothing is written back.
+        coVerify(exactly = 0) { repository.updateNote(any(), any()) }
+    }
+
+    @Test
+    fun `unsaved typing is never replaced by a newer version`() = runTest {
+        val rows = openWithLiveRow(openedNote)
+        advanceUntilIdle()
+        viewModel.onContentValueChange(TextFieldValue("milk, bread (typed here)"))
+
+        rows.value = listOf(openedNote.copy(content = "milk, eggs (from phone)", timestamp = 1_900L, serverUpdatedAt = 2_000L))
+        advanceUntilIdle()
+
+        assertEquals("milk, bread (typed here)", viewModel.state.value.content)
+    }
+
+    @Test
+    fun `this device's own echo changes nothing on screen`() = runTest {
+        val rows = openWithLiveRow(openedNote)
+        advanceUntilIdle()
+        val before = viewModel.state.value
+
+        rows.value = listOf(openedNote.copy(serverUpdatedAt = 2_000L))
+        advanceUntilIdle()
+
+        assertEquals(before.content, viewModel.state.value.content)
+        assertEquals(before.title, viewModel.state.value.title)
     }
 }

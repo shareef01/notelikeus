@@ -1,3 +1,4 @@
+import { ATTACHMENT_R2_PREFIX } from '@/lib/attachments/attachmentPaths';
 import { labelFromName } from '@/types/label';
 import type { Note } from '@/types/note';
 
@@ -82,8 +83,19 @@ export function supabaseNoteToNote(payload: SupabaseNotePayload): Note {
   };
 }
 
-export function noteToSupabaseRpcArgs(note: Note, baseRevision: number | null) {
-  return {
+/**
+ * The `apply_note_change` arguments for [note]. With [attachmentIds] (the default) they include
+ * `p_attachment_ids`, the 15-argument overload: exactly the uploaded (`r2:`) attachments this version
+ * references, which the commit promotes from provisional in the same transaction. A `pending:` image
+ * has no server row yet. `restore_note` has no such parameter, and PostgREST matches overloads by
+ * argument names, so its caller passes `attachmentIds: false`.
+ */
+export function noteToSupabaseRpcArgs(
+  note: Note,
+  baseRevision: number | null,
+  { attachmentIds = true }: { attachmentIds?: boolean } = {},
+) {
+  const args = {
     p_note_id: note.id,
     p_local_id: note.localId,
     p_base_revision: baseRevision,
@@ -102,6 +114,13 @@ export function noteToSupabaseRpcArgs(note: Note, baseRevision: number | null) {
       isChecked: item.isChecked,
       position: item.position,
     })),
+  };
+  if (!attachmentIds) return args;
+  return {
+    ...args,
+    p_attachment_ids: note.attachments
+      .filter((attachment) => attachment.storagePath.startsWith(ATTACHMENT_R2_PREFIX))
+      .map((attachment) => attachment.id),
   };
 }
 

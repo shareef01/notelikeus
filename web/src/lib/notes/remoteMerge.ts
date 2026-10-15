@@ -1,3 +1,4 @@
+import { keepingLocalOnlyAttachments } from '@/lib/attachments/attachmentPaths';
 import type { Note } from '@/types/note';
 
 /**
@@ -33,7 +34,7 @@ export async function mergeRemoteNotes(localNotes: Note[], remoteNotes: Note[]):
       continue;
     }
     if (!shouldUploadOverRemote(local, remote)) {
-      byId.set(remote.id, remote);
+      byId.set(remote.id, keepingLocalOnlyAttachments(remote, local));
     }
   }
 

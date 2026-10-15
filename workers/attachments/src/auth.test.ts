@@ -26,14 +26,14 @@ describe('F08: Supabase Auth Response Runtime Validation', () => {
     );
   }
 
-  // Case 1 ÔÇö valid user
+  // Case 1 — valid user
   it('Case 1: resolves trimmed userId for valid user payload', async () => {
     mockAuthFetch(200, JSON.stringify({ id: ' user-123 ' }));
     const userId = await resolveAuthenticatedUserId(makeRequest(), env);
     expect(userId).toBe('user-123');
   });
 
-  // Case 2 ÔÇö invalid JSON
+  // Case 2 — invalid JSON
   it('Case 2: throws controlled UpstreamServiceError on invalid JSON', async () => {
     mockAuthFetch(200, '<html>gateway error</html>');
     await expect(resolveAuthenticatedUserId(makeRequest(), env)).rejects.toThrow(
@@ -42,7 +42,7 @@ describe('F08: Supabase Auth Response Runtime Validation', () => {
     await expect(resolveAuthenticatedUserId(makeRequest(), env)).rejects.not.toThrow(SyntaxError);
   });
 
-  // Case 3 ÔÇö empty body
+  // Case 3 — empty body
   it('Case 3: throws controlled UpstreamServiceError on empty body', async () => {
     mockAuthFetch(200, '');
     await expect(resolveAuthenticatedUserId(makeRequest(), env)).rejects.toThrow(
@@ -50,7 +50,7 @@ describe('F08: Supabase Auth Response Runtime Validation', () => {
     );
   });
 
-  // Case 4 ÔÇö null
+  // Case 4 — null
   it('Case 4: throws controlled UpstreamServiceError on null payload', async () => {
     mockAuthFetch(200, 'null');
     await expect(resolveAuthenticatedUserId(makeRequest(), env)).rejects.toThrow(
@@ -58,7 +58,7 @@ describe('F08: Supabase Auth Response Runtime Validation', () => {
     );
   });
 
-  // Case 5 ÔÇö array
+  // Case 5 — array
   it('Case 5: throws controlled UpstreamServiceError on array payload', async () => {
     mockAuthFetch(200, '[]');
     await expect(resolveAuthenticatedUserId(makeRequest(), env)).rejects.toThrow(
@@ -66,7 +66,7 @@ describe('F08: Supabase Auth Response Runtime Validation', () => {
     );
   });
 
-  // Case 6 ÔÇö empty object
+  // Case 6 — empty object
   it('Case 6: throws controlled UpstreamServiceError on empty object (missing id)', async () => {
     mockAuthFetch(200, '{}');
     await expect(resolveAuthenticatedUserId(makeRequest(), env)).rejects.toThrow(
@@ -74,7 +74,7 @@ describe('F08: Supabase Auth Response Runtime Validation', () => {
     );
   });
 
-  // Case 7 ÔÇö numeric id
+  // Case 7 — numeric id
   it('Case 7: throws controlled UpstreamServiceError on numeric id', async () => {
     mockAuthFetch(200, JSON.stringify({ id: 123 }));
     await expect(resolveAuthenticatedUserId(makeRequest(), env)).rejects.toThrow(
@@ -82,7 +82,7 @@ describe('F08: Supabase Auth Response Runtime Validation', () => {
     );
   });
 
-  // Case 8 ÔÇö blank string id
+  // Case 8 — blank string id
   it('Case 8: throws controlled UpstreamServiceError on blank string id', async () => {
     mockAuthFetch(200, JSON.stringify({ id: '   ' }));
     await expect(resolveAuthenticatedUserId(makeRequest(), env)).rejects.toThrow(

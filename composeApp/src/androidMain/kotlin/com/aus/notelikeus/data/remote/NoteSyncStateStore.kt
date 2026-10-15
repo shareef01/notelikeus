@@ -133,6 +133,23 @@ class SharedPrefsNoteSyncStateStore(
         if (current.removeAll(ids.toSet())) writeRestored(current)
     }
 
+    override fun markRecommitNeeded(noteId: Long) {
+        val ids = recommitNeededIds().toMutableSet()
+        if (ids.add(noteId)) writeLongSet(KEY_RECOMMIT_NEEDED, ids)
+    }
+
+    override fun recommitNeededIds(): Set<Long> =
+        prefs.getStringSet(KEY_RECOMMIT_NEEDED, emptySet())
+            .orEmpty()
+            .mapNotNull { it.toLongOrNull() }
+            .toSet()
+
+    override fun clearRecommitNeeded(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        val current = recommitNeededIds().toMutableSet()
+        if (current.removeAll(ids.toSet())) writeLongSet(KEY_RECOMMIT_NEEDED, current)
+    }
+
     override fun markPendingAttachmentGc(noteId: Long, attachmentIds: Collection<String>) {
         val map = pendingAttachmentGcEntries().mapValues { it.value.toMutableSet() }.toMutableMap()
         map.getOrPut(noteId) { mutableSetOf() }.addAll(attachmentIds)
@@ -175,8 +192,10 @@ class SharedPrefsNoteSyncStateStore(
         prefs.edit().putString(KEY_PENDING_ATTACHMENT_GC, obj.toString()).apply()
     }
 
-    private fun writeRestored(ids: Set<Long>) {
-        prefs.edit().putStringSet(KEY_RESTORED, ids.map { it.toString() }.toSet()).apply()
+    private fun writeRestored(ids: Set<Long>) = writeLongSet(KEY_RESTORED, ids)
+
+    private fun writeLongSet(key: String, ids: Set<Long>) {
+        prefs.edit().putStringSet(key, ids.map { it.toString() }.toSet()).apply()
     }
 
     /**
@@ -222,6 +241,59 @@ class SharedPrefsNoteSyncStateStore(
             if (map.remove(id) != null) changed = true
         }
         if (changed) writeLongMap(KEY_KNOWN_SERVER_REVISIONS, map)
+    }
+
+    override fun syncedTimestampById(): Map<Long, Long> = readLongMap(KEY_SYNCED_TIMESTAMPS)
+
+    override fun updateSyncedTimestamps(timestamps: Map<Long, Long>) {
+        if (timestamps.isEmpty()) return
+        val map = syncedTimestampById().toMutableMap()
+        map.putAll(timestamps)
+        writeLongMap(KEY_SYNCED_TIMESTAMPS, map)
+    }
+
+    override fun clearSyncedTimestamps(noteIds: Collection<Long>) {
+        if (noteIds.isEmpty()) return
+        val map = syncedTimestampById().toMutableMap()
+        var changed = false
+        for (id in noteIds) {
+            if (map.remove(id) != null) changed = true
+        }
+        if (changed) writeLongMap(KEY_SYNCED_TIMESTAMPS, map)
+    }
+
+    override fun deletedDigestById(): Map<Long, String> {
+        val json = prefs.getString(KEY_DELETED_DIGESTS, null)
+        if (json.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val obj = JSONObject(json)
+            buildMap {
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val name = keys.next()
+                    val id = name.toLongOrNull() ?: continue
+                    val value = obj.optString(name)
+                    if (value.isNotEmpty()) put(id, value)
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    override fun setDeletedDigest(noteId: Long, digest: String) {
+        writeDigests(deletedDigestById() + (noteId to digest))
+    }
+
+    override fun clearDeletedDigests(noteIds: Collection<Long>) {
+        if (noteIds.isEmpty()) return
+        val current = deletedDigestById()
+        val next = current - noteIds.toSet()
+        if (next.size != current.size) writeDigests(next)
+    }
+
+    private fun writeDigests(map: Map<Long, String>) {
+        val obj = JSONObject()
+        for ((id, value) in map) obj.put(id.toString(), value)
+        prefs.edit().putString(KEY_DELETED_DIGESTS, obj.toString()).apply()
     }
 
     override fun baselineDeleteRevisionById(): Map<Long, Long> = readLongMap(KEY_BASELINE_DELETE_REVISIONS)
@@ -301,9 +373,12 @@ class SharedPrefsNoteSyncStateStore(
         private const val KEY_DELETED_JSON = "deleted_at_by_id"
         private const val KEY_KNOWN_CLOUD = "known_cloud_ids"
         private const val KEY_RESTORED = "restored_ids"
+        private const val KEY_RECOMMIT_NEEDED = "recommit_needed_ids"
         private const val KEY_PENDING_ATTACHMENT_GC = "pending_attachment_gc_ids"
         private const val KEY_KNOWN_SERVER_REVISIONS = "known_server_revisions"
         private const val KEY_BASELINE_DELETE_REVISIONS = "baseline_delete_revisions"
+        private const val KEY_SYNCED_TIMESTAMPS = "synced_timestamps"
+        private const val KEY_DELETED_DIGESTS = "deleted_digests"
         private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
         private const val KEY_LAST_RECONCILED = "last_reconciled_at"
     }

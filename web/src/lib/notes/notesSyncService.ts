@@ -1,4 +1,6 @@
 import { recordSyncFailure, recordSyncSuccess } from '@/lib/diagnostics/collectDiagnostics';
+import { authoredContentDigest } from '@/lib/notes/conflictResolution';
+import { useToastStore } from '@/store/toastStore';
 import { categorizeSyncError } from '@/lib/diagnostics/diagnosticsReport';
 import { formatUnknownError } from '@/lib/errors/formatUnknownError';
 import { deleteNote, hasPendingPush, putNotes } from '@/lib/local/notesLocalRepository';
@@ -20,15 +22,32 @@ export function partitionTombstoned(remoteNotes: Note[], state: OwnerRevisionSta
   const staleIds: string[] = [];
   const restoredIds: string[] = [];
   const cloudWonIds: string[] = [];
+  const digests = useTombstoneStore.getState().deletedDigestById;
+  const cameBack: Note[] = [];
   for (const note of remoteNotes) {
     if (isDeleted(note.id)) {
       const baseline = baselineRevisionById[note.id];
       const remoteRevision = state.noteRevisions[note.id];
-      // Path 1 missing baseline policy: cloud wins if missing baseline or remote is newer
+      const digest = digests[note.id];
+      // Deleted here before this device knew the note's revision. The cloud copy may be deleted
+      // at the revision now observed only because it still says exactly what the user deleted:
+      // that is the decision they made. Anything else changed since, and the cloud wins.
+      if (
+        baseline == null &&
+        digest != null &&
+        remoteRevision != null &&
+        digest === authoredContentDigest(note)
+      ) {
+        useTombstoneStore.getState().setVerifiedBaseline(note.id, remoteRevision);
+        staleIds.push(note.id);
+        continue;
+      }
+      // Missing baseline, or the cloud moved past the one the delete was made against: cloud wins.
       if (baseline == null || (remoteRevision != null && remoteRevision !== baseline)) {
         live.push(note);
         restoredIds.push(note.id);
         cloudWonIds.push(note.id);
+        if (baseline != null || digest != null) cameBack.push(note);
       } else {
         staleIds.push(note.id);
       }
@@ -42,7 +61,21 @@ export function partitionTombstoned(remoteNotes: Note[], state: OwnerRevisionSta
   if (cloudWonIds.length > 0) {
     useTombstoneStore.getState().clearIds(cloudWonIds);
   }
+  if (cameBack.length > 0) announceDeletedNotesCameBack(cameBack);
   return { live, staleIds };
+}
+
+/**
+ * A delete this device made was overruled by a newer cloud version. That is the safe answer —
+ * the other device's words are not destroyed — but it must not look like the delete failed.
+ */
+function announceDeletedNotesCameBack(notes: Note[]): void {
+  const first = notes[0]?.title?.trim();
+  const text =
+    notes.length === 1
+      ? `${first ? `"${first}"` : 'A note you deleted'} changed on another device, so it's back. Delete it again if you still don't need it.`
+      : `${notes.length} notes you deleted changed on another device, so they're back.`;
+  useToastStore.getState().show(text);
 }
 
 function purgeStaleCloudDocs(userId: string, staleIds: string[]): void {
@@ -164,11 +197,13 @@ function trackRemoteIds(userId: string, ids: string[]) {
 async function reconcileNow(userId: string): Promise<void> {
   const now = Date.now();
   if (reconcileInFlight) return reconcileInFlight;
-  if (now - lastReconcileStartedAt < RECONCILE_MIN_INTERVAL_MS) {
-    return Promise.resolve();
-  }
-  if (now - lastSnapshotAppliedAt < SNAPSHOT_FRESHNESS_WINDOW_MS) {
-    return Promise.resolve();
+  if (
+    now - lastReconcileStartedAt < RECONCILE_MIN_INTERVAL_MS ||
+    now - lastSnapshotAppliedAt < SNAPSHOT_FRESHNESS_WINDOW_MS
+  ) {
+    // The throttle spares a snapshot that is still fresh, not the edits queued against it: an edit
+    // made during a short drop would otherwise wait for the next refocus or edit.
+    return pushQueuedEdits(userId);
   }
 
   lastReconcileStartedAt = now;
@@ -208,6 +243,15 @@ async function reconcileNow(userId: string): Promise<void> {
     }
   })();
   return reconcileInFlight;
+}
+
+async function pushQueuedEdits(userId: string): Promise<void> {
+  try {
+    await getRemoteNotesDataSource().pushPendingEdits?.(userId);
+  } catch (error) {
+    // Still queued; the flush already marked it as not synced, and the next trigger retries it.
+    console.warn('[Notelikeus] Pushing queued edits after reconnect failed:', error);
+  }
 }
 
 let reconcileUserId: string | null = null;

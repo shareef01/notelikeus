@@ -154,7 +154,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
             <h1 className="mt-5 text-2xl font-semibold text-brand-primary">{copy.title}</h1>
             <p className="mt-2 text-sm text-brand-muted">
               {mandatory
-                ? 'Notes are saved locally on this device. Sign in with Google to optionally sync across your Android devices and the cloud.'
+                ? 'Notes are saved locally on this device. Sign in with Google to optionally sync them across Android, Windows and the web.'
                 : copy.subtitle}
             </p>
           </div>

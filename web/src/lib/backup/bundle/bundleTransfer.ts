@@ -6,7 +6,7 @@
  * 1. **A note never depends on its attachment.** Export skips bytes it cannot read; import drops
  *    attachments it cannot verify. Neither loses a note, and both say what they dropped.
  * 2. **Import stays additive**, exactly as JSON import is. Notes arrive with newly allocated ids,
- *    and attachments are re-minted onto those ids ÔÇö so importing the same bundle twice produces
+ *    and attachments are re-minted onto those ids — so importing the same bundle twice produces
  *    two independent copies rather than two notes fighting over one attachment id.
  */
 import { exportBackupPayload } from '@/lib/backup/exportBackup';
@@ -27,7 +27,11 @@ import {
   pendingStoragePath,
   ATTACHMENT_PENDING_PREFIX,
 } from '@/lib/attachments/attachmentPaths';
-import { getPendingAttachmentBlob, storePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
+import {
+  getPendingAttachmentBlob,
+  releasePendingAttachment,
+  storePendingAttachment,
+} from '@/lib/attachments/pendingAttachmentStore';
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import type { Attachment } from '@/types/attachment';
 import type { Note } from '@/types/note';
@@ -44,7 +48,7 @@ export interface BundleExportResult {
  *
  * Only locally-staged bytes are reachable without the network. An attachment already committed to
  * R2 lives behind an authenticated Worker call, and fetching it would make an export depend on
- * being online and signed in ÔÇö which the product principles rule out. Those are reported as
+ * being online and signed in — which the product principles rule out. Those are reported as
  * skipped rather than silently omitted.
  */
 async function readLocalAttachmentBytes(
@@ -70,7 +74,7 @@ export async function buildBundleFromNotes(
   /**
    * The staging namespace to read from. Explicit rather than ambient because staged bytes are
    * namespaced per account: reading the wrong one would silently export a bundle with no images,
-   * or ÔÇö far worse ÔÇö with the previous account's.
+   * or — far worse — with the previous account's.
    */
   ownerId: string | null = resolveOwnerId(),
 ): Promise<BundleExportResult> {
@@ -139,6 +143,29 @@ export interface BundleImportPlan {
   warnings: string[];
 }
 
+/** An image the plan will restore, held in memory until the import is confirmed. */
+interface PlannedAttachment {
+  target: Note;
+  bytes: Uint8Array;
+  mimeType?: string;
+  type?: string;
+}
+
+/**
+ * What importing a bundle would do, worked out without writing anything. `merged` carries the
+ * imported notes without their images; `attachmentsImported` is how many images confirming would
+ * restore. Nothing is staged until {@link stagePlannedAttachments}, so a preview that is cancelled,
+ * or a tab closed while it is open, leaves no bytes behind.
+ */
+export interface PlannedBundleImport extends BundleImportPlan {
+  planned: PlannedAttachment[];
+}
+
+/** A confirmed import with its images staged; `staged` is what to take back if the commit fails. */
+export interface StagedBundleImport extends BundleImportPlan {
+  staged: { attachmentId: string; noteId: string }[];
+}
+
 export async function readBundleFile(file: File): Promise<Uint8Array> {
   if (file.size > MAX_BUNDLE_FILE_BYTES) {
     throw new BundleFormatError('Backup bundle is too large');
@@ -147,27 +174,17 @@ export async function readBundleFile(file: File): Promise<Uint8Array> {
 }
 
 /**
- * Applies a parsed bundle on top of [existingNotes].
+ * Plans [parsed] on top of [existingNotes] without writing anything.
  *
- * Notes go through the ordinary v3 importer, which allocates fresh local ids. Attachments are then
- * re-attached by mapping the bundle's *old* note id to the id the importer just assigned ÔÇö and
- * given **new** attachment ids, so a second import of the same file cannot collide with the first
- * and cannot point two notes at one staged blob.
- *
- * Staging is awaited per attachment and the reference is only added when the write lands, which is
- * the same rule the editor follows: a persisted note must never reference bytes that are not there.
+ * Notes go through the ordinary v3 importer, which allocates fresh local ids. Each image is matched
+ * to its note by mapping the bundle's *old* note id to the id the importer just assigned.
  */
-export async function applyBundle(
+export function planBundle(
   parsed: ParsedBundle,
   existingNotes: Note[],
-  options: {
-    now?: number;
-    /** Staging namespace to write into. Same reason as the export side: it is per account. */
-    ownerId?: string | null;
-  } = {},
-): Promise<BundleImportPlan> {
+  options: { now?: number } = {},
+): PlannedBundleImport {
   const now = options.now ?? Date.now();
-  const ownerId = options.ownerId === undefined ? resolveOwnerId() : options.ownerId;
   assertSupportedEmbeddedBackup(parsed.manifest.backup);
 
   const backupNotes = Array.isArray(
@@ -188,13 +205,10 @@ export async function applyBundle(
     if (oldId != null && !newIdByOldId.has(oldId)) newIdByOldId.set(oldId, note);
   });
 
-  const warnings = [...parsed.warnings];
-  const attachmentsByNote = new Map<string, Attachment[]>();
-  let attachmentsImported = 0;
+  const planned: PlannedAttachment[] = [];
   // Starts at what the parse already refused, so the reported total covers the whole journey
   // rather than only the part this function saw.
   let attachmentsSkipped = parsed.droppedAttachments;
-
   for (const entry of parsed.manifest.attachments) {
     const target = newIdByOldId.get(entry.noteId);
     const blobRecord = parsed.media.get(entry.attachmentId);
@@ -202,39 +216,78 @@ export async function applyBundle(
       attachmentsSkipped++;
       continue;
     }
+    planned.push({
+      target,
+      bytes: blobRecord.bytes,
+      mimeType: blobRecord.mimeType,
+      type: blobRecord.type,
+    });
+  }
 
+  return {
+    merged,
+    notesImported: result.notesImported,
+    labelsCreated: result.labelsCreated,
+    attachmentsImported: planned.length,
+    attachmentsSkipped,
+    warnings: [...parsed.warnings],
+    planned,
+  };
+}
+
+/**
+ * Stages the planned images and attaches them to their notes: the confirm step.
+ *
+ * Each image gets a **new** attachment id, so a second import of the same file cannot collide with
+ * the first and cannot point two notes at one staged blob. Staging is awaited per image and the
+ * reference is only added when the write lands — the editor's rule: a persisted note must never
+ * reference bytes that are not there. A write that fails (a full disk, typically) drops that image
+ * and keeps its note.
+ */
+export async function stagePlannedAttachments(
+  plan: PlannedBundleImport,
+  /** Staging namespace to write into. Same reason as the export side: it is per account. */
+  ownerId: string | null = resolveOwnerId(),
+): Promise<StagedBundleImport> {
+  const warnings = [...plan.warnings];
+  const attachmentsByNote = new Map<string, Attachment[]>();
+  const staged: StagedBundleImport['staged'] = [];
+  let attachmentsSkipped = plan.attachmentsSkipped;
+
+  for (const item of plan.planned) {
     const freshId = createAttachmentId();
+    const mimeType = item.mimeType ?? 'image/jpeg';
     // eslint-disable-next-line no-await-in-loop -- each staging write is awaited before use
-    const staged = ownerId
+    const ok = ownerId
       ? await storePendingAttachment(
           freshId,
-          new Blob([blobRecord.bytes as BlobPart], { type: blobRecord.mimeType ?? 'image/jpeg' }),
-          blobRecord.mimeType ?? 'image/jpeg',
-          target.id,
+          new Blob([item.bytes as BlobPart], { type: mimeType }),
+          mimeType,
+          item.target.id,
           ownerId,
         ).catch(() => false)
       : false;
 
-    if (!staged) {
+    if (!ok) {
       attachmentsSkipped++;
-      warnings.push(`Could not save the image for "${target.title || 'a note'}"`);
+      warnings.push(`Could not save the image for "${item.target.title || 'a note'}"`);
       continue;
     }
 
-    const list = attachmentsByNote.get(target.id) ?? [];
+    staged.push({ attachmentId: freshId, noteId: item.target.id });
+    const list = attachmentsByNote.get(item.target.id) ?? [];
     list.push({
       id: freshId,
-      noteId: target.localId,
+      noteId: item.target.localId,
       storagePath: pendingStoragePath(freshId),
-      type: blobRecord.type || 'image',
-      mimeType: blobRecord.mimeType,
-      sizeBytes: blobRecord.bytes.byteLength,
+      type: item.type || 'image',
+      mimeType: item.mimeType,
+      sizeBytes: item.bytes.byteLength,
     });
-    attachmentsByNote.set(target.id, list);
-    attachmentsImported++;
+    attachmentsByNote.set(item.target.id, list);
   }
 
-  const withAttachments = merged.map((note) => {
+  const merged = plan.merged.map((note) => {
     const attachments = attachmentsByNote.get(note.id);
     return attachments ? { ...note, attachments } : note;
   });
@@ -247,20 +300,46 @@ export async function applyBundle(
   }
 
   return {
-    merged: withAttachments,
-    notesImported: result.notesImported,
-    labelsCreated: result.labelsCreated,
-    attachmentsImported,
+    merged,
+    notesImported: plan.notesImported,
+    labelsCreated: plan.labelsCreated,
+    attachmentsImported: staged.length,
     attachmentsSkipped,
     warnings,
+    staged,
   };
 }
 
-/** Parses and plans a bundle import in one step. */
+/**
+ * Takes back the images a confirmed import staged, for when committing its notes then fails: no
+ * note references them, and on a large bundle they are hundreds of megabytes of nothing.
+ */
+export async function releaseStagedBundle(
+  staged: Pick<StagedBundleImport, 'staged'>,
+  ownerId: string | null = resolveOwnerId(),
+): Promise<void> {
+  if (!ownerId) return;
+  for (const { attachmentId, noteId } of staged.staged) {
+    // eslint-disable-next-line no-await-in-loop -- best-effort deletes, one at a time
+    await releasePendingAttachment(attachmentId, noteId, ownerId);
+  }
+}
+
+/** Plans and stages in one step: what an import does once confirmed. */
+export async function applyBundle(
+  parsed: ParsedBundle,
+  existingNotes: Note[],
+  options: { now?: number; ownerId?: string | null } = {},
+): Promise<StagedBundleImport> {
+  const ownerId = options.ownerId === undefined ? resolveOwnerId() : options.ownerId;
+  return stagePlannedAttachments(planBundle(parsed, existingNotes, options), ownerId);
+}
+
+/** Parses and plans a bundle import, writing nothing; see {@link stagePlannedAttachments}. */
 export async function planBundleImport(
   archive: Uint8Array,
   existingNotes: Note[],
   options: { now?: number; ownerId?: string | null } = {},
-): Promise<BundleImportPlan> {
-  return applyBundle(await parseBackupBundle(archive), existingNotes, options);
+): Promise<PlannedBundleImport> {
+  return planBundle(await parseBackupBundle(archive), existingNotes, options);
 }

@@ -50,6 +50,9 @@ class EditorLocalSaveTest {
         reminderManager = mockk(relaxed = true)
         staging = mockk(relaxed = true)
         every { repository.getLabels() } returns flowOf(emptyList())
+        // A relaxed mock would invent a row with a server stamp, which the editor rightly reads as
+        // "changed on another device". Unknown rows are absent unless a test says otherwise.
+        coEvery { repository.getNoteById(any()) } returns null
         coEvery {
             staging.stage(any(), any(), any(), any(), any())
         } answers {

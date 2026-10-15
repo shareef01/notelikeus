@@ -54,7 +54,7 @@ const USER_DATA_STORAGE_KEYS = [
   SESSION_HINT_STORAGE_KEY,
 ] as const;
 
-/** Tombstones. Cleared only alongside the notes themselves ÔÇö see clearPendingDeletions. */
+/** Tombstones. Cleared only alongside the notes themselves — see clearPendingDeletions. */
 const DELETED_NOTES_STORAGE_KEY = 'notelikeus-deleted-notes';
 
 const REHYDRATE_TIMEOUT_MS = 8_000;
@@ -63,7 +63,7 @@ const OPTIONAL_REHYDRATE_TIMEOUT_MS = 4_000;
 function withTimeout(promise: Promise<void>, ms: number, label: string): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const timeoutId = window.setTimeout(() => {
-        console.warn(`[Notelikeus] ${label} timed out after ${ms}ms ÔÇö continuing startup.`);
+        console.warn(`[Notelikeus] ${label} timed out after ${ms}ms — continuing startup.`);
         resolve();
     }, ms);
     promise.then(
@@ -147,7 +147,7 @@ export function clearPersistedAppData(): void {
  *
  * A note deleted while offline exists nowhere afterwards except as a tombstone: the local row is
  * already gone and the server copy is still live. Clearing this is therefore as destructive as
- * clearing the notes themselves, and belongs only where the notes are cleared too ÔÇö an account
+ * clearing the notes themselves, and belongs only where the notes are cleared too — an account
  * switch, or entering guest mode. See [clearLocalUserData], which deliberately does not.
  */
 export function clearPendingDeletions(): void {
@@ -163,7 +163,7 @@ export function clearPendingDeletions(): void {
  * Clears in-memory UI state and persisted labels.
  *
  * IndexedDB notes are intentionally preserved so offline edits survive sign-out and re-login
- * under the same account namespace ÔÇö and unsynced deletions are preserved for exactly the same
+ * under the same account namespace — and unsynced deletions are preserved for exactly the same
  * reason. Clearing tombstones here used to resurrect notes: deleting a note offline removes it
  * locally and records a tombstone, signing out destroyed that tombstone, and the next sign-in
  * hydrated the still-live server copy straight back.
@@ -190,7 +190,7 @@ export function clearLocalUserData(): void {
 
 /**
  * Account switch only: clear session state and wipe the prior account's IndexedDB namespace and
- * pending attachments so the next account cannot read it. Normal sign-out must NOT call this ÔÇö
+ * pending attachments so the next account cannot read it. Normal sign-out must NOT call this —
  * unsynced offline edits must remain in IndexedDB until the same account signs in again and syncs.
  *
  * The same holds across a switch (FU-1): while the prior account still has edits the cloud has not

@@ -12,6 +12,7 @@ import {
 import { ChecklistEditor } from '@/components/editor/ChecklistEditor';
 import { AttachmentImageStrip } from '@/components/editor/AttachmentImageStrip';
 import { EditorBottomBar } from '@/components/editor/EditorBottomBar';
+import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { EditorOptionsSheet } from '@/components/editor/EditorOptionsSheet';
 import { LinkDialog } from '@/components/editor/LinkDialog';
 import { MarkdownBody } from '@/components/editor/MarkdownPreview';
@@ -25,7 +26,7 @@ import { useCloudSync } from '@/hooks/useCloudSync';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
-import { useShortcuts } from '@/hooks/useShortcuts';
+import { isEditableTarget, useShortcuts } from '@/hooks/useShortcuts';
 import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import {
@@ -98,6 +99,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const editor = useNoteEditor(noteId);
   const { state } = editor;
   const hasPendingAttachments = state.attachments.some((a) => isPendingAttachment(a.storagePath));
+  const syncQueue = useSyncQueue();
+  const hasUnconfirmedEdit = state.id != null && syncQueue.pendingIds.includes(state.id);
 
   // Closing on a failed write would discard the only copy of the edit, so navigation is
   // conditional on the local save landing. The failure banner below is then the way out:
@@ -137,6 +140,12 @@ export function EditorScreen({ route }: EditorScreenProps) {
       key: 'Escape',
       allowInInputs: true,
       action: () => {
+        // Docked beside the list, the editor shares the keyboard with it: Escape in the search box
+        // is the search box's, not a request to close the note.
+        const active = document.activeElement;
+        if (dockRef.current && isEditableTarget(active) && !dockRef.current.contains(active)) {
+          return false;
+        }
         void handleBack();
       },
     },
@@ -176,6 +185,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showReminderPicker, setShowReminderPicker] = useState(false);
   const [contentFocused, setContentFocused] = useState(true);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectionRef = useRef({ start: 0, end: 0 });
@@ -214,6 +225,9 @@ export function EditorScreen({ route }: EditorScreenProps) {
     if (noteId !== 'new' || hasChecklist) return;
     setContentFocused(true);
     const id = requestAnimationFrame(() => {
+      // A user who already clicked into the title keeps it: moving focus here sent the rest of
+      // their title into the body (AU-20).
+      if (titleRef.current && document.activeElement === titleRef.current) return;
       contentRef.current?.focus();
     });
     return () => cancelAnimationFrame(id);
@@ -361,6 +375,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
     if (editorLayout === 'dock') {
       return (
         <div
+          ref={dockRef}
           className="relative flex h-full w-full flex-col"
           onPaste={handlePaste}
           onDragEnter={handleDragEnter}
@@ -576,6 +591,16 @@ export function EditorScreen({ route }: EditorScreenProps) {
         }}
       >
         <div className={['flex w-full flex-col', writingColumnClass].filter(Boolean).join(' ')}>
+          {state.conflictCopy ? (
+            <div
+              role="status"
+              className="mb-4 rounded-note border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+              style={{ color: contentColor }}
+            >
+              This note was changed on another device while you were editing. Your version is
+              saved as a separate copy, so neither version was lost.
+            </div>
+          ) : null}
           {state.saveFailed ? (
             <div
               role="alert"
@@ -606,6 +631,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             Note title
           </label>
           <input
+            ref={titleRef}
             id="note-title"
             type="text"
             value={state.title}
@@ -776,7 +802,9 @@ export function EditorScreen({ route }: EditorScreenProps) {
             isSavedLocally={state.lastSavedAt != null}
             isSignedIn={Boolean(userId) && !isGuest}
             isOnline={online}
-            hasPendingAttachments={hasPendingAttachments}
+            isPending={hasPendingAttachments || hasUnconfirmedEdit}
+            isFlushing={syncQueue.isFlushing}
+            flushFailed={syncQueue.flushFailed}
             contentColor={contentColor}
             reminderTimestamp={state.reminderTimestamp}
             onRetrySave={() => void handleRetrySave()}

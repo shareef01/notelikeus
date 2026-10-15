@@ -7,6 +7,9 @@ import {
   downloadBundle,
   planBundleImport,
   readBundleFile,
+  releaseStagedBundle,
+  stagePlannedAttachments,
+  type PlannedBundleImport,
 } from '@/lib/backup/bundle/bundleTransfer';
 import { formatUnknownError } from '@/lib/errors/formatUnknownError';
 import { useToastStore } from '@/store/toastStore';
@@ -42,6 +45,8 @@ export interface PendingImport {
   /** Images the file named but could not supply. Reported, never fatal. */
   attachmentsSkipped: number;
   warnings: string[];
+  /** A bundle's plan, whose images are only written once the user confirms. */
+  bundle?: PlannedBundleImport;
 }
 
 /**
@@ -133,6 +138,7 @@ export function useAccountActions({
           attachmentsImported: plan.attachmentsImported,
           attachmentsSkipped: plan.attachmentsSkipped,
           warnings: plan.warnings,
+          bundle: plan,
         });
         return;
       }
@@ -161,9 +167,15 @@ export function useAccountActions({
     const staged = pendingImport;
     if (!staged) return;
     setPendingImport(null);
+    // A bundle's images are written only now, after the user said yes; a preview that was
+    // cancelled or abandoned never wrote any.
+    const bundle = staged.bundle ? await stagePlannedAttachments(staged.bundle) : null;
+    const merged = bundle?.merged ?? staged.merged;
+    const attachmentsImported = bundle?.attachmentsImported ?? staged.attachmentsImported;
+    const attachmentsSkipped = bundle?.attachmentsSkipped ?? staged.attachmentsSkipped;
     try {
       const uploadedToCloud = await commitImportedNotes(
-        staged.merged,
+        merged,
         staged.result.notesImported,
         userId,
       );
@@ -175,8 +187,8 @@ export function useAccountActions({
       if (staged.result.labelsCreated > 0) {
         parts.push(plural(staged.result.labelsCreated, 'label'));
       }
-      if (staged.attachmentsImported > 0) {
-        parts.push(plural(staged.attachmentsImported, 'image'));
+      if (attachmentsImported > 0) {
+        parts.push(plural(attachmentsImported, 'image'));
       }
       const base =
         parts.length > 0 ? `Imported ${parts.join(' and ')}` : 'No notes found in backup';
@@ -184,11 +196,13 @@ export function useAccountActions({
       // A partial failure is named in the same breath as the success, so the count and the
       // caveat cannot be read separately.
       toast(
-        staged.attachmentsSkipped > 0
-          ? `${synced} — ${plural(staged.attachmentsSkipped, 'image')} could not be restored`
+        attachmentsSkipped > 0
+          ? `${synced} — ${plural(attachmentsSkipped, 'image')} could not be restored`
           : synced,
       );
     } catch (error) {
+      // No note was written, so nothing references the images just staged: take them back.
+      if (bundle) await releaseStagedBundle(bundle);
       toast(messageOf(error, 'Import failed'), 'error');
     }
   };

@@ -122,7 +122,7 @@ function BootError({
     <div className="flex min-h-screen flex-col items-center justify-center bg-true-surface px-6 text-center">
       <h1 className="text-lg font-semibold text-brand-primary">Could not start Notelikeus</h1>
       <p className="mt-2 max-w-sm text-sm text-brand-muted">{message}</p>
-      <p className="mt-2 max-w-md text-xs leading-5 text-brand-muted/90">{help}</p>
+      <p className="mt-2 max-w-md text-xs leading-5 text-brand-muted">{help}</p>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <button
           type="button"
