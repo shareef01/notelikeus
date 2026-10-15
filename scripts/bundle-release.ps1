@@ -26,7 +26,7 @@ if (Test-Path $Aab) {
     Write-Host "  $Aab"
     Write-Host ""
     Write-Host "Next: upload to Play Console (Production or Internal testing)."
-    Write-Host "Privacy policy URL: https://notelike.web.app/privacy.html"
+    Write-Host "Privacy policy URL: https://notelikeus.pages.dev/privacy.html"
 } else {
     Write-Error "AAB not found at expected path."
 }

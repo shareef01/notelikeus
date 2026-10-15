@@ -254,7 +254,17 @@ jobs:
         shell: pwsh
         run: choco install wixtoolset --no-progress -y
 
+      # The installed app has no environment variables and no local.properties, so the hosted
+      # backend is compiled in here (CompiledBackendConfig). packageMsi refuses to run without it
+      # (verifyReleaseBackendConfig) rather than ship an installer whose sign-in and sync are off.
+      # The same secrets the Pages build uses; the OAuth client secret is optional (without it only
+      # desktop Google sign-in is unavailable).
       - name: Build the app image and the MSI
+        env:
+          NOTELIKEUS_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          NOTELIKEUS_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          NOTELIKEUS_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
+          NOTELIKEUS_OAUTH_CLIENT_SECRET: ${{ secrets.NOTELIKEUS_OAUTH_CLIENT_SECRET }}
         run: |
           ./gradlew.bat :composeApp:createDistributable --stacktrace
           ./gradlew.bat :composeApp:packageMsi --stacktrace
