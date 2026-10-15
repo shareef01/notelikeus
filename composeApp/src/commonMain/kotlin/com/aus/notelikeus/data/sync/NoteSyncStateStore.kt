@@ -68,6 +68,21 @@ interface NoteSyncStateStore {
 
     fun clearPendingAttachmentGc(noteId: Long)
 
+    // ---- recommits ----
+
+    /**
+     * Notes whose row took an attachment upload after the push that carried them, so no commit has
+     * named that upload yet. Its server row stays provisional, and so out of hydration, until a push
+     * of the note names it; a download that ran first would let the `r2:` reference go and lose the
+     * image. Survives process death, so a sync cut off before that push makes it next time, ahead
+     * of any download.
+     */
+    fun markRecommitNeeded(noteId: Long)
+
+    fun recommitNeededIds(): Set<Long>
+
+    fun clearRecommitNeeded(ids: Collection<Long>)
+
     // ---- reconciliation ----
 
     /** High-water mark (note timestamp) for the last successful reconcile. */
