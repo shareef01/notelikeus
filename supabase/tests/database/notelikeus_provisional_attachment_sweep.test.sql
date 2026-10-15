@@ -4,7 +4,7 @@
 -- existing unconfirmed-delete sweep.
 
 begin;
-select plan(14);
+select plan(15);
 
 -- Moves a row's clocks into the past. Definer, and inside the sync-mutation guard, because both
 -- tables refuse direct writes otherwise.
@@ -115,17 +115,18 @@ select tests.upload_provisional('6', 'on-deleted');
 select public.apply_note_delete('6', (select revision from public.notes where note_id = '6'));
 
 select tests.clear_authentication();
-select tests.backdate_note_commit('1', 40);
-select tests.backdate_provisional('pending', 30);
-select tests.backdate_provisional('stale', 40);
-select tests.backdate_note_commit('2', 30);
-select tests.backdate_provisional('recent-commit', 40);
-select tests.backdate_note_commit('3', 2);
-select tests.backdate_provisional('young', 10);
-select tests.backdate_note_commit('4', 9);
-select tests.backdate_provisional('committed', 40);
-select tests.backdate_note_commit('5', 30);
-select tests.backdate_provisional('on-deleted', 40);
+select tests.backdate_note_commit('1', 130);
+select tests.backdate_provisional('pending', 120);
+select tests.backdate_provisional('stale', 130);
+select tests.backdate_note_commit('2', 120);
+-- The unnaming commit is 30 days old: past the old 14-day grace, inside the 90-day floor (N-01).
+select tests.backdate_provisional('recent-commit', 130);
+select tests.backdate_note_commit('3', 30);
+select tests.backdate_provisional('young', 60);
+select tests.backdate_note_commit('4', 59);
+select tests.backdate_provisional('committed', 130);
+select tests.backdate_note_commit('5', 120);
+select tests.backdate_provisional('on-deleted', 130);
 
 select tests.authenticate_as('prov_a@notelikeus.test');
 select throws_ok(
@@ -180,6 +181,11 @@ select is(
   public.claim_orphaned_provisional_attachments(),
   '[]'::jsonb,
   'F09-8 a second run claims nothing more'
+);
+select is(
+  public.claim_orphaned_provisional_attachments(50, interval '14 days'),
+  '[]'::jsonb,
+  'F09-8b a caller asking for 14 days still gets the 90-day floor: recent-commit (30 days) stays (N-01)'
 );
 
 -- The claim is terminal: neither a re-upload nor a note commit naming the id revives it.
