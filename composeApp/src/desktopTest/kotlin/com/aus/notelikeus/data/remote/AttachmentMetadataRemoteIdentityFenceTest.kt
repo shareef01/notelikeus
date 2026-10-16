@@ -256,7 +256,7 @@ class AttachmentMetadataRemoteIdentityFenceTest {
         }
 
     @Test
-    fun `AMRID-4b a refused capture performs no metadata RPC through the engine`() =
+    fun `AMRID-4b a signed-in session with no usable credential fails the download as an auth failure`() =
         runTest(timeout = TIMEOUT) {
             seedLocalNote()
             val engine = engine(
@@ -268,13 +268,30 @@ class AttachmentMetadataRemoteIdentityFenceTest {
 
             val result = engine.downloadAllNotes()
 
-            assertTrue(result.isSuccess, "the refusal surfaced as a failure: ${result.exceptionOrNull()}")
+            // A rejected refresh token used to read as a refusal, so the download stopped early and
+            // reported success: the device showed "Synced" while nothing reached the server.
+            val error = result.exceptionOrNull()
+            assertTrue(
+                error is SupabaseTransportException && error.isAuthFailure,
+                "a session that could not be refreshed did not surface as an auth failure: $error",
+            )
             assertTrue(
                 arrived.none { it.first == LIST_USER || it.first == LIST_PENDING },
-                "a refused identity still produced metadata traffic: $arrived",
+                "a capture without a credential still produced metadata traffic: $arrived",
             )
-            assertEquals(0, providerCalls, "a refused capture fell back to the live session")
+            assertEquals(0, providerCalls, "a capture without a credential fell back to the live session")
         }
+
+    @Test
+    fun `AMRID-4c a signed-out session is still refused without an error`() = runTest(timeout = TIMEOUT) {
+        val token = LocalCommitGate.capture(OWNER_A)
+        val provider = RemoteIdentityProvider(
+            accessTokenProvider = { error("a signed-out capture read the credential") },
+            sessionOwnerId = { null },
+        )
+
+        assertNull(provider.capture(token), "a signed-out capture produced an identity")
+    }
 
     // ---- AMRID-7: an expired A credential never becomes B ----
 
