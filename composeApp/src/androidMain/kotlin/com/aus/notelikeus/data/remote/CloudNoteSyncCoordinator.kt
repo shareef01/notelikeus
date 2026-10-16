@@ -169,7 +169,7 @@ class CloudNoteSyncCoordinator(
 
     private suspend fun flushPendingChanges() {
         if (!settingsRepository.isCloudAutoSyncEnabled.first()) return
-        if (!sessionManager.getCurrentAccount().isGoogleAccount) return
+        if (!sessionManager.getCurrentAccount().isSignedIn) return
 
         // Each kind is drained together with the epoch it was drained under. Reading the epoch after
         // the drain would label commands taken out under E1 with whatever epoch is current by then —

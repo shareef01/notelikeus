@@ -29,10 +29,10 @@ export function SignOutDialog({
       {!confirmDelete ? (
         <>
           <h2 id={titleId} className="text-lg font-semibold">
-            Sign out of Google?
+            Sign out?
           </h2>
           <p className="mt-2 text-sm text-brand-muted">
-            Your notes stay in your Google account and aren&apos;t affected by ordinary sign out.
+            Your notes stay in your Notelikeus cloud account and aren&apos;t affected by ordinary sign out.
             This only clears locally cached app data on this device, and you&apos;ll need to sign
             in again to keep using Notelikeus.
           </p>

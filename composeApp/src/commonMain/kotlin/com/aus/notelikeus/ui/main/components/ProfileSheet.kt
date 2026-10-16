@@ -106,14 +106,14 @@ fun ProfileSheet(
     onImportClick: () -> Unit,
     onCloudSyncClick: () -> Unit = {},
     onCloudRestoreClick: () -> Unit = {},
-    onGoogleSignInClick: () -> Unit = {},
-    onGoogleSignOutClick: () -> Unit = {},
+    onSignInClick: () -> Unit = {},
+    onSignOutClick: () -> Unit = {},
     onCloudAutoSyncChange: (Boolean) -> Unit = {},
     onDiagnosticsClick: () -> Unit = {},
 ) {
     val haptic = LocalHapticFeedback.current
     var showPrivacyPolicy by remember { mutableStateOf(false) }
-    val canSync = cloudAccount.isGoogleAccount && cloudSyncStatus != CloudSyncStatus.Syncing
+    val canSync = cloudAccount.isSignedIn && cloudSyncStatus != CloudSyncStatus.Syncing
 
     if (showPrivacyPolicy) {
         PrivacyPolicyDialog(onDismiss = { showPrivacyPolicy = false })
@@ -239,7 +239,7 @@ fun ProfileSheet(
                     CloudSyncStatus.Error, CloudSyncStatus.Offline -> Icons.Default.CloudOff
                     // Queued implies something is coming. Nothing is, without an account.
                     CloudSyncStatus.Unknown ->
-                        if (cloudAccount.isGoogleAccount) Icons.Default.CloudQueue
+                        if (cloudAccount.isSignedIn) Icons.Default.CloudQueue
                         else Icons.Default.CloudOff
                 },
                 title = stringResource(Res.string.cloud_sync),
@@ -257,7 +257,7 @@ fun ProfileSheet(
                 title = stringResource(Res.string.cloud_auto_sync),
                 subtitle = stringResource(Res.string.cloud_auto_sync_subtitle),
                 checked = isCloudAutoSyncEnabled,
-                enabled = cloudAccount.isGoogleAccount,
+                enabled = cloudAccount.isSignedIn,
                 onCheckedChange = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     onCloudAutoSyncChange(it)
@@ -328,7 +328,7 @@ fun ProfileSheet(
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(Res.string.section_account))
-            if (cloudAccount.isGoogleAccount && !cloudAccount.email.isNullOrBlank()) {
+            if (cloudAccount.isSignedIn && !cloudAccount.email.isNullOrBlank()) {
                 SettingsRow(
                     icon = Icons.Default.AccountCircle,
                     title = cloudAccount.email,
@@ -340,17 +340,17 @@ fun ProfileSheet(
                     subtitle = stringResource(Res.string.cloud_sign_out_subtitle),
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onGoogleSignOutClick()
+                        onSignOutClick()
                     }
                 )
             } else {
                 SettingsRow(
                     icon = Icons.AutoMirrored.Filled.Login,
-                    title = stringResource(Res.string.cloud_sign_in_google),
+                    title = stringResource(Res.string.cloud_sign_in),
                     subtitle = stringResource(Res.string.cloud_sign_in_subtitle),
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onGoogleSignInClick()
+                        onSignInClick()
                     }
                 )
             }
@@ -561,7 +561,7 @@ private fun cloudStatusLabel(
     syncedCount: Int,
     account: CloudAccount
 ): String {
-    if (account.isGoogleAccount && !account.email.isNullOrBlank()) {
+    if (account.isSignedIn && !account.email.isNullOrBlank()) {
         val localPart = account.email.substringBefore('@')
         if (localPart.length <= 12) return localPart
         return localPart.take(10) + "…"
@@ -569,7 +569,7 @@ private fun cloudStatusLabel(
     // Without an account there is nothing to check, so it must not say it is checking. The status
     // starts at Unknown and is only ever written *during* a sync, so anyone who chose "Continue
     // offline" sat under a permanent "…" -- a progress indicator for work that would never start.
-    if (!account.isGoogleAccount) return stringResource(Res.string.cloud_status_signed_out)
+    if (!account.isSignedIn) return stringResource(Res.string.cloud_status_signed_out)
     return when (status) {
         CloudSyncStatus.Unknown -> stringResource(Res.string.cloud_status_checking)
         CloudSyncStatus.Connected -> stringResource(Res.string.cloud_status_ready)

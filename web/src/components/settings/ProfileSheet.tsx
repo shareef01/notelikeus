@@ -121,7 +121,7 @@ interface ProfileSheetProps {
   onThemeBaseChange: (base: ThemeBase) => void;
   onAccentChange: (accent: AccentColor) => void;
   onAmoledChange: (amoled: boolean) => void;
-  isGoogleAccount: boolean;
+  isSignedIn: boolean;
   isGuest: boolean;
   userEmail: string | null;
   syncStatus: string;
@@ -147,7 +147,7 @@ export function ProfileSheet({
   onThemeBaseChange,
   onAccentChange,
   onAmoledChange,
-  isGoogleAccount,
+  isSignedIn,
   isGuest,
   userEmail,
   syncStatus,
@@ -202,7 +202,7 @@ export function ProfileSheet({
                   icon={<AccountIcon size={18} />}
                 />
               ) : null}
-              {isGoogleAccount && userEmail ? (
+              {isSignedIn && userEmail ? (
                 <>
                   <SettingsRow
                     title={userEmail}
@@ -275,14 +275,14 @@ export function ProfileSheet({
                     <span className="text-chrome-label">Cloud</span>
                   </div>
                   <p className="truncate text-base font-medium text-brand-primary sm:text-lg capitalize">
-                    {isGoogleAccount
+                    {isSignedIn
                       ? syncStatus
                       : isGuest
                         ? 'Guest session'
                         : 'Signed out'}
                   </p>
                   <p className="text-sm text-brand-muted">
-                    {isGoogleAccount
+                    {isSignedIn
                       ? syncStatus === 'online'
                         ? 'Connected to cloud'
                         : 'Working offline'

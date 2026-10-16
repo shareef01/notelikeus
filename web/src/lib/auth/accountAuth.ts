@@ -1,11 +1,21 @@
-import { signInWithGoogleSupabase, signOutSupabase } from '@/lib/auth/supabaseAuth';
+import {
+  sendEmailSignInCodeSupabase,
+  signOutSupabase,
+  verifyEmailSignInCodeSupabase,
+} from '@/lib/auth/supabaseAuth';
 import { clearOwner } from '@/lib/local/notesLocalRepository';
 import { clearPendingAttachmentsForOwner } from '@/lib/local/pendingAttachmentRepository';
 import { deleteAllSupabaseCloudData } from '@/lib/supabase/deleteAllUserCloudData';
 import { useAuthStore } from '@/store/authStore';
 
-export async function signInWithGoogle(): Promise<void> {
-  await signInWithGoogleSupabase();
+/** Step 1 of email sign-in: emails a one-time code (creating the account on first use). */
+export async function sendEmailSignInCode(email: string): Promise<void> {
+  await sendEmailSignInCodeSupabase(email);
+}
+
+/** Step 2 of email sign-in: exchanges the typed code for a session. */
+export async function verifyEmailSignInCode(email: string, code: string): Promise<void> {
+  await verifyEmailSignInCodeSupabase(email, code);
 }
 
 /**
@@ -20,7 +30,7 @@ export async function signInWithGoogle(): Promise<void> {
  *
  * An ordinary sign-out keeps the local copy, so offline edits upload at the next sign-in.
  */
-export async function signOutGoogle(options: { deleteCloudData?: boolean } = {}): Promise<void> {
+export async function signOutAccount(options: { deleteCloudData?: boolean } = {}): Promise<void> {
   if (options.deleteCloudData) {
     const ownerId = useAuthStore.getState().user?.uid;
     await deleteAllSupabaseCloudData();

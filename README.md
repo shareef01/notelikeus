@@ -40,7 +40,7 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 | Encrypted local database | SQLCipher | SQLCipher (DPAPI key) | WebCrypto (note bodies) |
 | Biometric app lock | ✓ | — | — |
 | Home-screen widget | Glance | — | — |
-| Google sign-in and cloud sync | Optional | Optional | Optional |
+| Email sign-in and cloud sync | Optional | Optional | Optional |
 | Usable with no account | ✓ | ✓ | ✓ |
 | JSON backup import / export | ✓ | ✓ | ✓ |
 | Backup with attachment bytes (`.nlkbak`) | ✓ | ✓ | ✓ |
@@ -106,7 +106,7 @@ npm run supabase:reset
 
 ### Android
 
-Google sign-in on a device needs a hosted Supabase URL compiled into the APK; debug builds do not fall back to localhost. `npm run setup:staging` writes the gitignored `web/.env.staging` that the next command reads.
+Signing in on a device needs a hosted Supabase URL compiled into the APK; debug builds do not fall back to localhost. `npm run setup:staging` writes the gitignored `web/.env.staging` that the next command reads.
 
 ```bash
 npm run kotlin:staging-properties

@@ -44,7 +44,7 @@ Links in notes
 Tapping a link opens your default browser. Notelikeus does not track link usage.
 
 Third parties
-We do not sell your data. We do not use analytics or advertising SDKs in this app. Cloud providers used when you enable sync are Supabase (auth and note data) and Cloudflare (web hosting and attachment objects).
+We do not sell your data. We do not use analytics or advertising SDKs in this app. Cloud providers used when you enable sync are Supabase (auth and note data; sign-in emails you a one-time code at the address you enter) and Cloudflare (web hosting and attachment objects).
 
 Contact
 For privacy questions, contact the app developer through the store listing or project repository.

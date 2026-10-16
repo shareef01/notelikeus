@@ -17,7 +17,6 @@ import com.aus.notelikeus.data.local.SETTINGS_DATASTORE_FILENAME
 import com.aus.notelikeus.data.local.createDataStore
 import com.aus.notelikeus.data.local.getDatabaseBuilder
 import com.aus.notelikeus.data.remote.BackendConfig
-import com.aus.notelikeus.util.readLocalProperty
 import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.remote.DesktopSupabaseRpcClient
 import com.aus.notelikeus.data.remote.DesktopSupabaseSessionPersistence
@@ -55,12 +54,10 @@ import com.aus.notelikeus.domain.platform.PlatformWidgetManager
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.domain.platform.SyncCoordinator
 import com.aus.notelikeus.domain.repository.SyncManager
-import com.aus.notelikeus.platform.DesktopGoogleSignInHelper
 import com.aus.notelikeus.platform.DesktopReminderManager
 import com.aus.notelikeus.platform.DesktopSyncCoordinator
 import com.aus.notelikeus.platform.DesktopSyncManager
 import com.aus.notelikeus.platform.DesktopWidgetManager
-import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.DesktopPathProvider
 import com.aus.notelikeus.util.SidebarCollapsedStore
@@ -350,56 +347,5 @@ actual val platformModule = module {
             get<LocalAccountIsolator>(),
             get<CloudWipeCoordinator>(),
         )
-    }
-
-    single<GoogleSignInHelper> {
-        DesktopGoogleSignInHelper(
-            oauthClientId = DesktopOAuthConfig.CLIENT_ID,
-            oauthClientSecret = DesktopOAuthConfig.clientSecret(),
-            supabaseAuthApi = get(),
-            supabaseSessionStore = get(),
-        )
-    }
-}
-
-/**
- * Google OAuth client configuration for the desktop build.
- *
- * The client ID identifies the project and is public by design.
- *
- * The OAuth client secret is different. Google classes installed-app secrets as non-confidential
- * (RFC 8252: PKCE is what actually secures this flow, and it is enabled above), but a secret
- * pasted into a source file lands in git history and stays there. So it is resolved at runtime,
- * in order:
- *
- *  1. the `NOTELIKEUS_OAUTH_CLIENT_SECRET` environment variable, for CI and one-off runs;
- *  2. `notelikeus.oauthClientSecret` in the repo's gitignored `local.properties`, which is the
- *     ergonomic path for day-to-day development — same pattern the project already uses for
- *     `signing.properties`.
- *  3. [DesktopSecrets], generated at build time from the same two sources.
- *
- * Empty means desktop sign-in is simply not configured.
- */
-private object DesktopOAuthConfig {
-    /**
-     * A dedicated **Desktop app** client, not the web client Android uses — those are
-     * `…-hgpicaqc…` (Android native) and `…-cpiu3nj2…` (Android ID tokens and web GIS), and
-     * neither ever sees a client secret. Only this client has one, so its secret can be rotated
-     * without touching the other platforms.
-     *
-     * Desktop-app clients are what RFC 8252 expects for the loopback flow: Google accepts a
-     * `http://127.0.0.1:<port>` redirect on whatever ephemeral port the local server binds, which
-     * is why no fixed port is registered.
-     */
-    const val CLIENT_ID =
-        "404285880902-o8gn7j5v211m7rvldo19v0eb93im8b7e.apps.googleusercontent.com"
-
-    private const val SECRET_ENV_VAR = "NOTELIKEUS_OAUTH_CLIENT_SECRET"
-    private const val SECRET_PROPERTY = "notelikeus.oauthClientSecret"
-
-    fun clientSecret(): String {
-        System.getenv(SECRET_ENV_VAR)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        readLocalProperty(SECRET_PROPERTY)?.let { return it }
-        return DesktopSecrets.OAUTH_CLIENT_SECRET
     }
 }

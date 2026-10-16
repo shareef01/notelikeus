@@ -18,18 +18,11 @@ interface SyncManager {
      */
     val pendingEvent: StateFlow<CloudSyncEvent?>
 
+    /** Emails a one-time sign-in code to [email]. */
+    suspend fun requestEmailCode(email: String): Result<Unit>
 
-    suspend fun signInWithGoogle(idToken: String): Result<Unit>
-
-    /**
-     * Finishes a sign-in a platform helper performed itself, without exchanging a token.
-     *
-     * The desktop Supabase flow signs in inside `DesktopGoogleSignInHelper` and saves the session
-     * there, so [signInWithGoogle] has nothing left to exchange — but the account state, uid
-     * linking and account isolation that normally run after a sign-in still have to happen, or the
-     * session exists while the UI stays on the sign-in gate.
-     */
-    suspend fun completeExternalSignIn(): Result<Unit>
+    /** Signs in with the emailed code, then runs everything that follows a sign-in. */
+    suspend fun signInWithEmailCode(email: String, code: String): Result<Unit>
     suspend fun signInWithEmail(email: String, password: String, create: Boolean): Result<Unit>
     suspend fun signOut(deleteCloudData: Boolean): Result<Unit>
     suspend fun syncNotes()

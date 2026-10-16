@@ -26,8 +26,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import com.aus.notelikeus.data.local.DatabaseRecoveryNotice
 import com.aus.notelikeus.domain.repository.SettingsRepository
-import com.aus.notelikeus.platform.ForegroundActivityTracker
-import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.ui.navigation.extractEditorNoteId
 import com.aus.notelikeus.ui.navigation.extractSharedText
 import com.aus.notelikeus.ui.navigation.intentRequestsNewNote
@@ -53,7 +51,6 @@ import androidx.compose.runtime.mutableLongStateOf
 
 class MainActivity : FragmentActivity() {
 
-    private val googleSignInHelper: GoogleSignInHelper by inject()
     private val settingsRepository: SettingsRepository by inject()
     private val sessionManager: CloudSessionManager by inject()
     private val imageIngestor: ExternalImageIngestor by inject()
@@ -84,9 +81,6 @@ class MainActivity : FragmentActivity() {
             handleIntent(intent)
         }
         enableEdgeToEdge()
-        // Credential Manager needs an Activity to host its sign-in sheet; the helper is a
-        // process-scoped singleton, so it looks the Activity up through this tracker.
-        ForegroundActivityTracker.register(this)
         applySecureFlagWhileAppLockEnabled()
         
         setContent {
@@ -227,17 +221,6 @@ class MainActivity : FragmentActivity() {
                     },
                     onShowBiometricPrompt = { title, onSuccess, onError ->
                         showBiometricPrompt(title, onSuccess, onError)
-                    },
-                    onGoogleSignInClick = { viewModel ->
-                        // Credential Manager presents its own UI from a coroutine, so there is no
-                        // Intent to launch and no ActivityResult to parse.
-                        scope.launch {
-                            googleSignInHelper.requestIdToken()
-                                .onSuccess { idToken -> viewModel.signInWithGoogleIdToken(idToken) }
-                                .onFailure { error ->
-                                    viewModel.reportGoogleSignInFailure(error)
-                                }
-                        }
                     },
                     pendingNoteId = pendingNoteId,
                     pendingCreateNote = pendingCreateNote,
@@ -392,11 +375,6 @@ class MainActivity : FragmentActivity() {
         if (noteId != null) pendingNoteId = noteId
         if (createNote) pendingCreateNote = true
         navigationRequest++
-    }
-
-    override fun onDestroy() {
-        ForegroundActivityTracker.unregister(this)
-        super.onDestroy()
     }
 
     private fun showBiometricPrompt(

@@ -73,7 +73,7 @@ fun MainScreen(
     onExportBackup: () -> Unit = {},
     onExportNotesOnly: () -> Unit = {},
     onImportBackup: () -> Unit = {},
-    onGoogleSignIn: () -> Unit = {},
+    onSignIn: () -> Unit = {},
     pendingFocusSearch: Boolean = false,
     pendingOpenSettings: Boolean = false
 ) {
@@ -599,11 +599,12 @@ fun MainScreen(
             onCloudRestoreClick = {
                 showCloudRestoreConfirm = true
             },
-            onGoogleSignInClick = {
+            onSignInClick = {
                 profileSignInError = null
-                onGoogleSignIn()
+                showProfileSheet = false
+                onSignIn()
             },
-            onGoogleSignOutClick = {
+            onSignOutClick = {
                 showCloudSignOutConfirm = true
             },
             onCloudAutoSyncChange = { viewModel.setCloudAutoSyncEnabled(it) },

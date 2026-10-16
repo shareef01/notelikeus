@@ -30,10 +30,10 @@ class DesktopSyncManager(
 
     private val _cloudAccount = MutableStateFlow(
         sessionManager.getCurrentAccount().let { account ->
-            if (account.isGoogleAccount && account.userId != null) {
+            if (account.isSignedIn && account.userId != null) {
                 CloudAccount(
                     email = account.email,
-                    isGoogleAccount = true,
+                    isSignedIn = true,
                     isAnonymous = false,
                 )
             } else {
@@ -46,12 +46,6 @@ class DesktopSyncManager(
     private val _pendingEvent = MutableStateFlow<CloudSyncEvent?>(null)
     override val pendingEvent: StateFlow<CloudSyncEvent?> = _pendingEvent.asStateFlow()
 
-    override suspend fun completeExternalSignIn(): Result<Unit> = runCatching {
-        // The helper already exchanged the Google token and saved the session; everything that
-        // normally follows a sign-in still has to run.
-        onSignedIn()
-    }
-
     private suspend fun onSignedIn() {
         refreshAccount()
         val uid = sessionManager.getCurrentAccount().userId ?: return
@@ -61,8 +55,11 @@ class DesktopSyncManager(
         cloudWipeCoordinator.resumeIfPending(uid) { syncEngine.deleteAllCloudData().getOrThrow() }
     }
 
-    override suspend fun signInWithGoogle(idToken: String): Result<Unit> {
-        return sessionManager.signInWithGoogle(idToken).onSuccess {
+    override suspend fun requestEmailCode(email: String): Result<Unit> =
+        sessionManager.requestEmailCode(email)
+
+    override suspend fun signInWithEmailCode(email: String, code: String): Result<Unit> {
+        return sessionManager.signInWithEmailCode(email, code).onSuccess {
             onSignedIn()
         }
     }
@@ -71,7 +68,13 @@ class DesktopSyncManager(
         email: String,
         password: String,
         create: Boolean
-    ): Result<Unit> = sessionManager.signInWithEmailPassword(email, password, create)
+    ): Result<Unit> {
+        // Every sign-in runs onSignedIn: without it the session is saved but the account state,
+        // account isolation and any owed cloud wipe never catch up, and the UI stays on the gate.
+        return sessionManager.signInWithEmailPassword(email, password, create).onSuccess {
+            onSignedIn()
+        }
+    }
 
     override suspend fun signOut(deleteCloudData: Boolean): Result<Unit> {
         if (deleteCloudData) {
@@ -137,7 +140,7 @@ class DesktopSyncManager(
         _cloudAccount.update {
             CloudAccount(
                 email = account.email,
-                isGoogleAccount = account.isGoogleAccount,
+                isSignedIn = account.isSignedIn,
                 isAnonymous = account.isAnonymous,
             )
         }

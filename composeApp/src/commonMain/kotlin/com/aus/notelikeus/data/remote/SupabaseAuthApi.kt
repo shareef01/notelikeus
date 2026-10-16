@@ -23,35 +23,33 @@ internal expect suspend fun supabaseAuthPost(
 class SupabaseAuthApi(
     private val supabaseUrl: String,
     private val anonKey: String,
+    /** The HTTP POST; a seam so tests can check request bodies without a server. */
+    private val post: suspend (path: String, body: String) -> String = { path, body ->
+        supabaseAuthPost(supabaseUrl, anonKey, path, body)
+    },
 ) {
     /**
-     * Exchanges a Google ID token for a Supabase session.
+     * Asks Supabase to email a one-time sign-in code to [email].
      *
-     * [nonce] must be the value sent as `nonce` in the Google authorization request that produced
-     * this token. GoTrue compares it against the token's `nonce` claim and answers
-     * `{"error_description":"Bad ID token"}` when a token carries a nonce it was not given, or
-     * when the project enforces the check and none is supplied. Pass null only for a flow that
-     * genuinely sends no nonce.
+     * `create_user` is true so the same call signs in an existing account and creates a new one:
+     * there is no separate sign-up step. The response carries no session; the session comes from
+     * [verifyEmailOtp] once the user types the code in.
      */
-    suspend fun signInWithGoogleIdToken(
-        idToken: String,
-        nonce: String? = null,
-    ): SupabaseAuthSession {
+    suspend fun requestEmailOtp(email: String) {
+        requireConfiguredSupabaseUrl(supabaseUrl)
+        post(
+            "/auth/v1/otp",
+            """{"email":${jsonString(email)},"create_user":true}""",
+        )
+    }
+
+    /** Exchanges the emailed one-time code for a session. */
+    suspend fun verifyEmailOtp(email: String, token: String): SupabaseAuthSession {
         requireConfiguredSupabaseUrl(supabaseUrl)
         return parseSession(
-            supabaseAuthPost(
-                supabaseUrl,
-                anonKey,
-                "/auth/v1/token?grant_type=id_token",
-                buildString {
-                    append("""{"provider":"google","id_token":""")
-                    append(jsonString(idToken))
-                    if (nonce != null) {
-                        append(""","nonce":""")
-                        append(jsonString(nonce))
-                    }
-                    append("}")
-                },
+            post(
+                "/auth/v1/verify",
+                """{"type":"email","email":${jsonString(email)},"token":${jsonString(token)}}""",
             ),
         )
     }
@@ -59,9 +57,7 @@ class SupabaseAuthApi(
     suspend fun signInWithPassword(email: String, password: String): SupabaseAuthSession {
         requireConfiguredSupabaseUrl(supabaseUrl)
         return parseSession(
-            supabaseAuthPost(
-                supabaseUrl,
-                anonKey,
+            post(
                 "/auth/v1/token?grant_type=password",
                 """{"email":${jsonString(email)},"password":${jsonString(password)}}""",
             ),
@@ -71,9 +67,7 @@ class SupabaseAuthApi(
     suspend fun signUp(email: String, password: String): SupabaseAuthSession {
         requireConfiguredSupabaseUrl(supabaseUrl)
         return parseSession(
-            supabaseAuthPost(
-                supabaseUrl,
-                anonKey,
+            post(
                 "/auth/v1/signup",
                 """{"email":${jsonString(email)},"password":${jsonString(password)}}""",
             ),
@@ -83,9 +77,7 @@ class SupabaseAuthApi(
     suspend fun refreshSession(refreshToken: String): SupabaseAuthSession {
         requireConfiguredSupabaseUrl(supabaseUrl)
         return parseSession(
-            supabaseAuthPost(
-                supabaseUrl,
-                anonKey,
+            post(
                 "/auth/v1/token?grant_type=refresh_token",
                 """{"refresh_token":${jsonString(refreshToken)}}""",
             ),

@@ -10,13 +10,13 @@ Cloudflare R2 behind an authenticated Worker; there is no Firebase or Firestore 
 
 | Question | Answer |
 |----------|--------|
-| Does your app collect or share any of the required user data types? | **Yes** — Google account identity and note content synced to Supabase |
+| Does your app collect or share any of the required user data types? | **Yes** — account email address and note content synced to Supabase |
 | Is all user data encrypted in transit? | **Yes** (TLS to Supabase and to the Cloudflare attachments Worker) |
 | Do you provide a way for users to request data deletion? | **Yes** — delete notes in-app, “Sign out and delete cloud data”, or uninstall |
 
 ## Sign-in and sync
 
-Google sign-in is **optional on Android**. Note content stays on device in an encrypted database by
+Sign-in is **optional on Android**, and is by email address with an emailed one-time code. Note content stays on device in an encrypted database by
 default; when the user signs in and enables sync, notes are uploaded to Supabase PostgreSQL under
 that user's Supabase account, isolated by row-level security.
 
@@ -29,7 +29,7 @@ records for that account).
 
 | Data type | Collected | Shared | Purpose | Optional |
 |-----------|-----------|--------|---------|----------|
-| Personal info (email / account id) | Yes | No (Supabase Auth, processor only) | Account authentication | Yes — only when the user chooses Google sign-in |
+| Personal info (email / account id) | Yes | No (Supabase Auth, processor only) | Account authentication | Yes — only when the user chooses to sign in |
 | User-generated content (notes) | Yes | No (stored under the user's own Supabase rows) | App functionality — sync across devices | Yes — sync of note bodies can be disabled via auto-sync |
 | Photos / images (note attachments) | Yes, when attachments are configured | No (stored under the user's own Cloudflare R2 prefix) | App functionality — images attached to notes | Yes — only when the user attaches an image |
 
