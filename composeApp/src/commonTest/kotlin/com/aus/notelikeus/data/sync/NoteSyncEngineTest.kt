@@ -146,6 +146,22 @@ class NoteSyncEngineTest {
     }
 
     @Test
+    fun `a single-note upload refused under a reused id keeps the words for the next download`() = runTest {
+        setup()
+        // The phone's edit path: uploadNote meets the old tombstone and records the deletion locally.
+        transport.tombstones[7L] = 50L
+        noteDao.insertNote(Note(id = 7L, title = "New on this phone", content = "words", timestamp = 100L, color = 0).toNoteEntity())
+
+        assertTrue(engine.uploadNote(7L).isSuccess)
+        val result = engine.downloadAllNotes()
+
+        assertTrue(result.isSuccess, "download failed: ${result.exceptionOrNull()}")
+        val survivor = noteDao.notes.values.singleOrNull { it.content == "words" }
+        assertTrue(survivor != null, "the note's words were lost: ${noteDao.notes.values}")
+        assertTrue(survivor.id in transport.notes, "the kept note was not uploaded")
+    }
+
+    @Test
     fun `a note the cloud never saw survives a tombstone left under its reused id`() = runTest {
         setup()
         // A note deleted long ago left its tombstone in the cloud. After a sign-out wipe, a new note on
