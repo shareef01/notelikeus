@@ -1,5 +1,7 @@
+import { TurnstileWidget } from '@/components/auth/TurnstileWidget';
 import { ensureSupabaseAuthStarted } from '@/hooks/useAuth';
 import { formatAuthError } from '@/lib/auth/authErrors';
+import { turnstileSiteKey } from '@/lib/auth/turnstile';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import { useEffect, useId, useRef, useState } from 'react';
 
@@ -36,6 +38,11 @@ export function EmailCodeSignIn({ submitLabel, onBusyChange }: EmailCodeSignInPr
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  // Null in builds without CAPTCHA; then no widget renders and no token is sent.
+  const [siteKey] = useState(turnstileSiteKey);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaFailed, setCaptchaFailed] = useState(false);
+  const [captchaReset, setCaptchaReset] = useState(0);
   const codeInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const moveFocusTo = useRef<'email' | 'code' | null>(null);
@@ -65,12 +72,20 @@ export function EmailCodeSignIn({ submitLabel, onBusyChange }: EmailCodeSignInPr
   }, [step]);
 
   const sendCode = async (address: string): Promise<boolean> => {
+    if (siteKey && !captchaToken) {
+      setError(
+        captchaFailed
+          ? 'The security check could not load. Check your connection and reload the page.'
+          : 'Wait for the security check below to finish, then try again.',
+      );
+      return false;
+    }
     setBusy('send');
     setError(null);
     try {
       await ensureSupabaseAuthStarted();
       const { sendEmailSignInCode } = await import('@/lib/auth/accountAuth');
-      await sendEmailSignInCode(address);
+      await sendEmailSignInCode(address, captchaToken ?? undefined);
       setCooldown(RESEND_COOLDOWN_SECONDS);
       return true;
     } catch (err) {
@@ -78,6 +93,8 @@ export function EmailCodeSignIn({ submitLabel, onBusyChange }: EmailCodeSignInPr
       return false;
     } finally {
       setBusy(null);
+      // A token is good for one request, accepted or not: run a new check for the next one.
+      if (siteKey) setCaptchaReset((value) => value + 1);
     }
   };
 
@@ -236,6 +253,18 @@ export function EmailCodeSignIn({ submitLabel, onBusyChange }: EmailCodeSignInPr
           </div>
         </form>
       )}
+
+      {siteKey ? (
+        <TurnstileWidget
+          siteKey={siteKey}
+          resetKey={captchaReset}
+          onToken={(token) => {
+            setCaptchaToken(token);
+            if (token) setCaptchaFailed(false);
+          }}
+          onLoadError={() => setCaptchaFailed(true)}
+        />
+      ) : null}
 
       <div aria-live="polite" aria-atomic="true" className="space-y-2">
         {error ? (

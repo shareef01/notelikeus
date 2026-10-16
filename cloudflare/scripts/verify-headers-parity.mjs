@@ -34,6 +34,9 @@ const requiredCspTokens = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "connect-src 'self'",
+  // Cloudflare Turnstile, the CAPTCHA on sign-in code requests (D30), and nothing else third-party.
+  "script-src 'self' https://challenges.cloudflare.com;",
+  'frame-src https://challenges.cloudflare.com;',
 ];
 
 for (const token of requiredCspTokens) {
@@ -55,6 +58,7 @@ const forbiddenCspTokens = [
   'accounts.google.com',
   'apis.google.com',
   'gstatic.com',
+  "'unsafe-eval'",
 ];
 
 for (const token of forbiddenCspTokens) {

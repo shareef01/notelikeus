@@ -2,6 +2,8 @@ name: Supabase Auth Config
 
 # Owner-operated. Sets only the hosted project's sign-in emails (the one-time-code templates in
 # supabase/templates) and, when the SMTP_* secrets exist, its email sender and hourly email limit.
+# When TURNSTILE_SECRET_KEY also exists, it turns on CAPTCHA for code requests (Cloudflare
+# Turnstile, D30) and raises the hourly email limit to the `email_limit_per_hour` input.
 #
 # `supabase config push` is not used: it pushes the whole [auth] section of config.toml, and that
 # file describes the *local* stack (site_url 127.0.0.1, the Google provider off), which would
@@ -13,6 +15,11 @@ on:
       confirm_project_ref:
         description: 'Type the Supabase project ref to confirm (must match SUPABASE_PROJECT_REF)'
         required: true
+        type: string
+      email_limit_per_hour:
+        description: 'Hourly auth email limit once CAPTCHA is on (keep within the SMTP plan). Without TURNSTILE_SECRET_KEY it stays 30.'
+        required: false
+        default: '100'
         type: string
 
 permissions:
@@ -37,6 +44,8 @@ jobs:
       SMTP_USER: ${{ secrets.SMTP_USER }}
       SMTP_PASS: ${{ secrets.SMTP_PASS }}
       SMTP_SENDER_EMAIL: ${{ secrets.SMTP_SENDER_EMAIL }}
+      TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+      EMAIL_LIMIT_PER_HOUR: ${{ inputs.email_limit_per_hour }}
 
     steps:
       - name: Checkout
@@ -53,12 +62,19 @@ jobs:
             echo "::error::confirm_project_ref does not match SUPABASE_PROJECT_REF"
             exit 1
           fi
+          if ! [[ "${EMAIL_LIMIT_PER_HOUR:-100}" =~ ^[1-9][0-9]{0,4}$ ]]; then
+            echo "::error::email_limit_per_hour must be a whole number from 1 to 99999"
+            exit 1
+          fi
 
       - name: Build the auth config patch
         # mailer_autoconfirm stays false: with it on, POST /auth/v1/signup with a password makes a
         # live account for any address, which the owner's later code sign-in would then share
         # (audit S-01). mailer_otp_exp is 10 minutes, not the default hour, so a 6-digit code has a
         # short window to be guessed in (S-03).
+        # The email limit is project-wide, so without CAPTCHA anyone could spend it on random
+        # addresses and lock every user out of sign-in (S-02). It is raised only together with
+        # Turnstile on `/otp`, and only with custom SMTP, which Supabase requires for any limit.
         run: |
           subject='Your Notelikeus sign-in code'
           jq -n \
@@ -94,10 +110,21 @@ jobs:
                 rate_limit_email_sent: 30
               }' patch.json > patch.tmp && mv patch.tmp patch.json
             echo "SMTP secrets found: the sender and a 30/hour email limit are included."
+            if [ -n "$TURNSTILE_SECRET_KEY" ]; then
+              jq                 --arg secret "$TURNSTILE_SECRET_KEY"                 --argjson limit "${EMAIL_LIMIT_PER_HOUR:-100}"                 '. + {
+                  security_captcha_enabled: true,
+                  security_captcha_provider: "turnstile",
+                  security_captcha_secret: $secret,
+                  rate_limit_email_sent: $limit
+                }' patch.json > patch.tmp && mv patch.tmp patch.json
+              echo "TURNSTILE_SECRET_KEY found: CAPTCHA on, email limit ${EMAIL_LIMIT_PER_HOUR:-100}/hour."
+            else
+              echo "::notice::TURNSTILE_SECRET_KEY not set: no CAPTCHA, and the email limit stays 30/hour."
+            fi
           else
             echo "::notice::SMTP_* secrets not set: only the code email templates are applied."
           fi
-          jq 'with_entries(if .key == "smtp_pass" then .value = "***" else . end)
+          jq 'with_entries(if .key == "smtp_pass" or .key == "security_captcha_secret" then .value = "***" else . end)
               | with_entries(if (.key | test("content$")) then .value = "(\(.value | length) chars)" else . end)' patch.json
 
       - name: Apply
@@ -118,5 +145,6 @@ jobs:
                mailer_subjects_magic_link, mailer_subjects_confirmation,
                magic_link_has_code: (.mailer_templates_magic_link_content // "" | contains("{{ .Token }}")),
                confirmation_has_code: (.mailer_templates_confirmation_content // "" | contains("{{ .Token }}")),
-               smtp_host, smtp_admin_email, rate_limit_email_sent, site_url}' response.json
+               smtp_host, smtp_admin_email, rate_limit_email_sent, site_url,
+               security_captcha_enabled, security_captcha_provider}' response.json
           rm -f patch.json response.json

@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
-const sendEmailSignInCode = vi.fn<(email: string) => Promise<void>>();
+const sendEmailSignInCode = vi.fn<(email: string, captchaToken?: string) => Promise<void>>();
 const verifyEmailSignInCode = vi.fn<(email: string, code: string) => Promise<void>>();
 const ensureSupabaseAuthStarted = vi.fn(async () => {});
 
 vi.mock('@/lib/auth/accountAuth', () => ({
-  sendEmailSignInCode: (email: string) => sendEmailSignInCode(email),
+  sendEmailSignInCode: (email: string, captchaToken?: string) =>
+    captchaToken === undefined
+      ? sendEmailSignInCode(email)
+      : sendEmailSignInCode(email, captchaToken),
   verifyEmailSignInCode: (email: string, code: string) => verifyEmailSignInCode(email, code),
 }));
 vi.mock('@/hooks/useAuth', () => ({
@@ -17,6 +20,7 @@ vi.mock('@/hooks/useAuth', () => ({
 
 import { AuthScreen } from '@/screens/AuthScreen';
 import { RESEND_COOLDOWN_SECONDS } from '@/components/auth/EmailCodeSignIn';
+import type { TurnstileApi } from '@/lib/auth/turnstile';
 
 function authError(message: string, status: number, code: string): Error {
   return Object.assign(new Error(message), { name: 'AuthError', status, code });
@@ -198,5 +202,80 @@ describe('AuthScreen email-code sign-in', () => {
     expect(emailInput.value).toBe('alice@example.com');
     expect(document.activeElement).toBe(emailInput);
     expect(() => inputLabelled('6-digit code')).toThrow();
+  });
+});
+
+/**
+ * With a Turnstile site key (hosted builds), every code request carries a fresh Turnstile token:
+ * the hosted project refuses `/auth/v1/otp` without one (audit S-02).
+ */
+describe('AuthScreen email-code sign-in with Turnstile', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let issueToken: ((token: string) => void) | null;
+  let render: ReturnType<typeof vi.fn>;
+  let reset: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'site-key');
+    sendEmailSignInCode.mockReset().mockResolvedValue(undefined);
+    issueToken = null;
+    render = vi.fn((_el: HTMLElement, options: { sitekey: string; callback?: (t: string) => void }) => {
+      issueToken = options.callback ?? null;
+      return 'widget-1';
+    });
+    reset = vi.fn();
+    window.turnstile = { render, reset, remove: vi.fn() } as unknown as TurnstileApi;
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root.render(createElement(AuthScreen, { mode: 'signin' }));
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    act(() => root.unmount());
+    container.remove();
+    delete window.turnstile;
+    vi.unstubAllEnvs();
+  });
+
+  it('renders the check with the build’s site key', () => {
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(render.mock.calls[0][1]).toMatchObject({ sitekey: 'site-key' });
+  });
+
+  it('does not request a code before the check has passed', async () => {
+    await sendCodeTo('alice@example.com');
+
+    expect(sendEmailSignInCode).not.toHaveBeenCalled();
+    expect(container.querySelector('[aria-live]')?.textContent).toContain(
+      'Wait for the security check below to finish',
+    );
+  });
+
+  it('sends the token with the code request, then runs a new check for the next one', async () => {
+    vi.useFakeTimers();
+    act(() => issueToken?.('token-1'));
+    await sendCodeTo('alice@example.com');
+
+    expect(sendEmailSignInCode).toHaveBeenCalledWith('alice@example.com', 'token-1');
+    expect(reset).toHaveBeenCalledWith('widget-1');
+
+    // The spent token is not reused for "Resend code".
+    for (let i = 0; i < RESEND_COOLDOWN_SECONDS; i += 1) {
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+    }
+    await click(buttonNamed('Resend code'));
+    expect(sendEmailSignInCode).toHaveBeenCalledTimes(1);
+
+    act(() => issueToken?.('token-2'));
+    await click(buttonNamed('Resend code'));
+    expect(sendEmailSignInCode).toHaveBeenLastCalledWith('alice@example.com', 'token-2');
   });
 });

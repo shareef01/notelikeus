@@ -19,7 +19,9 @@ describe('Cloudflare Pages static artifacts', () => {
     for (const host of ['accounts.google.com', 'apis.google.com', 'gstatic.com']) {
       expect(headers).not.toContain(host);
     }
-    expect(headers).not.toContain('frame-src');
+    // Cloudflare Turnstile (the CAPTCHA on code requests) is the only third-party script and frame.
+    expect(headers).toContain("script-src 'self' https://challenges.cloudflare.com;");
+    expect(headers).toContain('frame-src https://challenges.cloudflare.com;');
     expect(headers).not.toMatch(/https:\/\/[a-z0-9]+\.supabase\.co/);
     expect(headers).not.toContain('https://*.supabase.co');
     expect(headers).not.toContain('https://*.workers.dev');
