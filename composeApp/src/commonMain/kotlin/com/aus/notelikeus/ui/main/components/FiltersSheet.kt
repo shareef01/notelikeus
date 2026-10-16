@@ -621,6 +621,7 @@ private fun SavedFilterRow(
             modifier = Modifier
                 .weight(1f)
                 .clip(MaterialTheme.shapes.medium)
+                .semantics { this.selected = selected }
                 .clickable(onClick = onApply)
                 .padding(horizontal = Spacing.md, vertical = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically

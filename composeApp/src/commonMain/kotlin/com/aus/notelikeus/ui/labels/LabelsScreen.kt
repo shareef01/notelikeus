@@ -228,7 +228,7 @@ private fun LabelListItem(
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onEditClick)
+            .clickable(onClickLabel = stringResource(Res.string.rename_label), onClick = onEditClick)
     )
 }
 

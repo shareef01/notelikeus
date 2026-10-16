@@ -27,6 +27,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -105,7 +107,7 @@ fun NotesEmptyState(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.Add,
-                            contentDescription = buttonLabel,
+                            contentDescription = null,
                             modifier = Modifier.size(Size.iconMedium)
                         )
                         Spacer(modifier = Modifier.width(Spacing.sm))
@@ -122,7 +124,7 @@ fun NotesEmptyState(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.FilterAltOff,
-                            contentDescription = stringResource(Res.string.clear_filters),
+                            contentDescription = null,
                             modifier = Modifier.size(Size.iconMedium)
                         )
                         Spacer(modifier = Modifier.width(Spacing.sm))
@@ -150,7 +152,9 @@ fun NotesEmptyState(
                             onClick = { onRecentSearchClick(query) },
                             label = query,
                             compact = true,
-                            modifier = Modifier.padding(horizontal = Spacing.xs)
+                            modifier = Modifier
+                                .padding(horizontal = Spacing.xs)
+                                .semantics { role = Role.Button }
                         )
                     }
                 }
