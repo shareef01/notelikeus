@@ -4,6 +4,13 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.1.1] — 2026-10-16
+
+### Fixed
+- **Notes created on Android after signing out and back in could vanish.** The sign-out wipe reset the app's note numbering, so new notes took the ids of notes deleted earlier, and the cloud's record of those deletions removed them before they ever uploaded. New notes now get ids that are never reused, the same way the web app makes them, and a sync never deletes a note the cloud has not seen.
+- **An expired sign-in no longer shows as "Synced".** When the session can't be refreshed, Android and Windows now say to sign in again instead of quietly not uploading.
+- **Images are retried when the attachment service is busy**, instead of failing the sync.
+
 ## [2.1.0] — 2026-10-15
 
 ### Added
