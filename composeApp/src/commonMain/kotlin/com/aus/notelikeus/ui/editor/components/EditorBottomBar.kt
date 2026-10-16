@@ -28,6 +28,53 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import com.aus.notelikeus.ui.main.CloudSyncStatus
 
+/** The footer's status line. */
+internal enum class EditorSaveStatus {
+    SaveFailed, Saving, NotSaved, SavedLocally, SyncPending, Syncing, Offline, SyncFailed, Synced,
+}
+
+/**
+ * The cloud half of the footer, for a note already saved on this device. Pure so the precedence
+ * can be tested without composing.
+ *
+ * [noteUploadPending] is about this note and outranks [cloudSyncStatus], which is the last full
+ * sync's result: an edit queued behind an offline upload used to read "Synced" because the sync
+ * before it had succeeded.
+ */
+internal fun savedNoteSyncStatus(
+    cloudSyncStatus: CloudSyncStatus,
+    isGuest: Boolean,
+    attachmentSyncPending: Boolean,
+    noteUploadPending: Boolean,
+    isOnline: Boolean,
+): EditorSaveStatus = when {
+    isGuest -> EditorSaveStatus.SavedLocally
+    noteUploadPending -> when {
+        !isOnline -> EditorSaveStatus.Offline
+        cloudSyncStatus == CloudSyncStatus.Error -> EditorSaveStatus.SyncFailed
+        else -> EditorSaveStatus.SyncPending
+    }
+    cloudSyncStatus == CloudSyncStatus.Unknown -> EditorSaveStatus.SavedLocally
+    attachmentSyncPending -> EditorSaveStatus.SyncPending
+    cloudSyncStatus == CloudSyncStatus.Syncing -> EditorSaveStatus.Syncing
+    cloudSyncStatus == CloudSyncStatus.Offline -> EditorSaveStatus.Offline
+    cloudSyncStatus == CloudSyncStatus.Error -> EditorSaveStatus.SyncFailed
+    else -> EditorSaveStatus.Synced
+}
+
+@Composable
+private fun EditorSaveStatus.label(editedTime: String): String = when (this) {
+    EditorSaveStatus.SaveFailed -> stringResource(Res.string.local_save_failed)
+    EditorSaveStatus.Saving -> stringResource(Res.string.saving_locally)
+    EditorSaveStatus.NotSaved -> stringResource(Res.string.not_saved_yet)
+    EditorSaveStatus.SavedLocally -> stringResource(Res.string.saved_locally_edited, editedTime)
+    EditorSaveStatus.SyncPending -> stringResource(Res.string.saved_locally_sync_pending)
+    EditorSaveStatus.Syncing -> stringResource(Res.string.saved_locally_syncing)
+    EditorSaveStatus.Offline -> stringResource(Res.string.saved_locally_offline)
+    EditorSaveStatus.SyncFailed -> stringResource(Res.string.saved_locally_sync_failed)
+    EditorSaveStatus.Synced -> stringResource(Res.string.saved_locally_synced)
+}
+
 @Composable
 fun EditorBottomBar(
     timestamp: Long,
@@ -38,6 +85,8 @@ fun EditorBottomBar(
     cloudSyncStatus: CloudSyncStatus = CloudSyncStatus.Unknown,
     isGuest: Boolean = true,
     attachmentSyncPending: Boolean = false,
+    noteUploadPending: Boolean = false,
+    isOnline: Boolean = true,
     onRetrySave: (() -> Unit)? = null,
     onMoreClick: () -> Unit,
     contentColor: Color,
@@ -46,32 +95,21 @@ fun EditorBottomBar(
     val haptic = LocalHapticFeedback.current
     val editedTime = DateUtils.formatTime(timestamp)
     val statusText = when {
-        saveFailed -> stringResource(Res.string.local_save_failed)
-        isSaving -> stringResource(Res.string.saving_locally)
+        saveFailed -> EditorSaveStatus.SaveFailed
+        isSaving -> EditorSaveStatus.Saving
         // Every branch below claims the note is on disk, so the flag that says whether it
         // actually is has to be read before any of them. A new note sits here with nothing
         // saving and nothing failed, and reporting it as "Saved locally" was the editor
         // promising durability it did not have yet.
-        !isSavedLocally -> stringResource(Res.string.not_saved_yet)
-        isGuest || cloudSyncStatus == CloudSyncStatus.Unknown -> {
-            stringResource(Res.string.saved_locally_edited, editedTime)
-        }
-        attachmentSyncPending -> {
-            stringResource(Res.string.saved_locally_sync_pending)
-        }
-        cloudSyncStatus == CloudSyncStatus.Syncing -> {
-            stringResource(Res.string.saved_locally_syncing)
-        }
-        cloudSyncStatus == CloudSyncStatus.Offline -> {
-            stringResource(Res.string.saved_locally_offline)
-        }
-        cloudSyncStatus == CloudSyncStatus.Error -> {
-            stringResource(Res.string.saved_locally_sync_failed)
-        }
-        else -> {
-            stringResource(Res.string.saved_locally_synced)
-        }
-    }
+        !isSavedLocally -> EditorSaveStatus.NotSaved
+        else -> savedNoteSyncStatus(
+            cloudSyncStatus = cloudSyncStatus,
+            isGuest = isGuest,
+            attachmentSyncPending = attachmentSyncPending,
+            noteUploadPending = noteUploadPending,
+            isOnline = isOnline,
+        )
+    }.label(editedTime)
     val reminderLabel = reminderTimestamp?.let {
         stringResource(
             Res.string.reminder_at,

@@ -389,6 +389,8 @@ fun EditorScreen(
                     cloudSyncStatus = state.cloudSyncStatus,
                     isGuest = state.isGuest,
                     attachmentSyncPending = state.attachmentSyncPending,
+                    noteUploadPending = state.noteUploadPending,
+                    isOnline = state.isOnline,
                     onRetrySave = { viewModel.saveNote() },
                     onMoreClick = { showBottomSheet = true },
                     contentColor = contentColor

@@ -215,6 +215,44 @@ class EditorBottomBarTest {
     }
 
     @Test
+    fun `an edit not yet uploaded does not claim Synced while offline`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                EditorBottomBar(
+                    timestamp = timestamp,
+                    isSavedLocally = true,
+                    isGuest = false,
+                    // The last full sync succeeded; this note's edit came after it.
+                    cloudSyncStatus = com.aus.notelikeus.ui.main.CloudSyncStatus.Synced,
+                    noteUploadPending = true,
+                    isOnline = false,
+                    onMoreClick = {},
+                    contentColor = Color.White
+                )
+            }
+        }
+        onNodeWithText("Saved locally • Offline").assertExists()
+    }
+
+    @Test
+    fun `an edit not yet uploaded reads sync pending when online`() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                EditorBottomBar(
+                    timestamp = timestamp,
+                    isSavedLocally = true,
+                    isGuest = false,
+                    cloudSyncStatus = com.aus.notelikeus.ui.main.CloudSyncStatus.Synced,
+                    noteUploadPending = true,
+                    onMoreClick = {},
+                    contentColor = Color.White
+                )
+            }
+        }
+        onNodeWithText("Saved locally • Sync pending").assertExists()
+    }
+
+    @Test
     fun `an in-flight save outranks the unsaved state`() = runComposeUiTest {
         setContent {
             MaterialTheme {
