@@ -52,7 +52,7 @@ Severity and confidence follow the 10-15 audit: P0 irreversible loss or cross-ac
 
 ### S-04 (P3, Confirmed): the production approval gate is not switched on
 
-- **Status:** Open. These are owner settings in GitHub.
+- **Status:** Fixed 2026-10-17. `production` requires shareef01's approval and deploys only from `main`, which also gates the Supabase, Worker and auth-config deploys. `main` blocks force pushes and deletions and requires the `Web build` and `Web e2e` checks. Those jobs were renamed from `build` and `e2e`, which Android and Desktop CI also use. Admins can still bypass the required checks (`enforce_admins` is off).
 
 - **Where:** `0a9fc6cc` moved the Pages production deploy into the `production` environment so that "required reviewers set on it make every deploy wait". `gh api …/environments/production` returns `protection_rules: []` and no branch policy. `main` has no branch protection (HTTP 404), so a direct or force push to `main` that passes Web CI goes to production with no approval.
 - **Fix (owner settings, not code):** add yourself as a required reviewer on `production`, restrict it to `main`, and protect `main` (at minimum, block force pushes and require Web CI). The workflows already honor both.
