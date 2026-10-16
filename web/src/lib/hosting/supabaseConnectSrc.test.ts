@@ -6,7 +6,7 @@ import {
 } from '@/lib/hosting/supabaseConnectSrc';
 
 const BASE_HEADERS = `/*
-  Content-Security-Policy: default-src 'self'; connect-src 'self' https://accounts.google.com
+  Content-Security-Policy: default-src 'self'; connect-src 'self'; object-src 'none'
 `;
 
 describe('supabaseConnectSrcTokens', () => {
@@ -41,14 +41,14 @@ describe('applySupabaseConnectSrc', () => {
     const tokens = requireSupabaseConnectSrcTokens('https://abcd.supabase.co');
     const next = applySupabaseConnectSrc(BASE_HEADERS, tokens);
     expect(next).toContain(
-      "connect-src 'self' https://abcd.supabase.co wss://abcd.supabase.co https://accounts.google.com",
+      "connect-src 'self' https://abcd.supabase.co wss://abcd.supabase.co; object-src 'none'",
     );
     expect(next).not.toContain('[REDACTED]');
   });
 
   it('strips a previously shipped placeholder host', () => {
     const stale = `/*
-  Content-Security-Policy: default-src 'self'; connect-src 'self' https://[REDACTED].supabase.co wss://[REDACTED].supabase.co https://accounts.google.com
+  Content-Security-Policy: default-src 'self'; connect-src 'self' https://[REDACTED].supabase.co wss://[REDACTED].supabase.co; object-src 'none'
 `;
     const next = applySupabaseConnectSrc(
       stale,

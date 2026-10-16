@@ -1,6 +1,6 @@
 Notelikeus is a fast, private notes app inspired by Google Keep.
 
-Your notes live on your device in an encrypted database. Google sign-in is optional — turn on cloud sync when you want the same notes on the web app and your other devices.
+Your notes live on your device in an encrypted database. Signing in is optional — sign in with your email when you want the same notes on the web app and your other devices.
 
 CAPTURE IDEAS YOUR WAY
 • Write notes with titles, colors, and rich text (bold, italic, links)
@@ -23,7 +23,7 @@ PRIVATE BY DESIGN
 • No ads, no analytics
 
 CLOUD SYNC (OPTIONAL)
-• Sign in with Google to sync notes across your devices
+• Sign in with your email — no password — to sync notes across your devices
 • Auto-sync when signed in, or sync manually from Settings
 • Use the web app at notelikeus.pages.dev when signed in
 

@@ -1,6 +1,6 @@
 import { BrandMark } from '@/components/brand/BrandMark';
-import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import {
+  AccountIcon,
   ArchiveIcon,
   ChevronRightIcon,
   CloseIcon,
@@ -9,7 +9,6 @@ import {
   SettingsIcon,
   TrashIcon,
 } from '@/components/icons/Icons';
-import { GoogleIcon } from '@/components/icons/GoogleIcon';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
@@ -344,10 +343,14 @@ export function SideDrawer({
                 </button>
               </div>
             ) : (
-              <GoogleSignInButton
-                label="Sign in with Google"
+              <button
+                type="button"
                 onClick={onSignIn}
-              />
+                className={`flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-semibold text-true-surface transition-opacity hover:opacity-90 ${CHROME_FOCUS}`}
+              >
+                <AccountIcon size={18} />
+                <span>Sign in</span>
+              </button>
             )}
           </div>
         )}
@@ -367,11 +370,11 @@ export function SideDrawer({
             <button
               type="button"
               onClick={onSignIn}
-              className={`mx-auto flex size-8 items-center justify-center rounded-full border border-[#747775]/40 bg-white shadow-sm transition-opacity hover:opacity-90 ${CHROME_FOCUS}`}
-              aria-label="Sign in with Google"
-              title="Sign in with Google"
+              className={`mx-auto flex size-8 items-center justify-center rounded-full bg-brand-primary/10 text-brand-primary transition-colors hover:bg-brand-primary/20 ${CHROME_FOCUS}`}
+              aria-label="Sign in"
+              title="Sign in"
             >
-              <GoogleIcon size={16} />
+              <AccountIcon size={16} />
             </button>
           </div>
         ) : null}

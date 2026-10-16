@@ -70,20 +70,6 @@ updates:
       - dependency-name: "io.insert-koin:*"
         versions: [">= 4.2"]
 
-      # See docs/DECISIONS.md, D27. googleid 1.2.1 is compiled with Kotlin 2.4 metadata and this
-      # build's compiler (2.2.0, which reads up to 2.3) refuses it:
-      #   GoogleSignInHelper.kt: Class 'GetGoogleIdOption' was compiled with an incompatible
-      #   version of Kotlin. The actual metadata version is 2.4.0
-      # Dependency verification is not the obstacle -- checksums for it were added and passed -- so
-      # this fails at compile time, which is why it cannot land silently. The compiler's suggested
-      # -Xskip-metadata-version-check is not an answer: it silences the check without making the
-      # classes readable, and this is the Google sign-in path.
-      #
-      # REMOVE THIS ENTRY when Kotlin moves to 2.4 (it moves with Compose Multiplatform, as the
-      # lifecycle and Koin entries above).
-      - dependency-name: "com.google.android.libraries.identity.googleid:googleid"
-        versions: [">= 1.2.1"]
-
       # See docs/DECISIONS.md, D27. composeAdaptive >= 1.2 raises Compose UI, foundation and animation
       # on the desktop classpath from 1.8.2 to 1.9.0 while material3, material and ripple stay on the
       # 1.8.2 the CMP plugin targets -- the mixed-stack hazard of D18, which compiles and unit-tests

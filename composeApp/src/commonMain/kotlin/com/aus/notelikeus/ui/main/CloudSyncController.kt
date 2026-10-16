@@ -52,7 +52,7 @@ internal class CloudSyncController(
 
         // Only non-null events are adopted: the flow resets to null on acknowledgement, and
         // mirroring that would wipe a failure this controller set itself (see
-        // signInWithGoogleIdToken, which reports before any SyncManager call happens).
+        // signInWithEmailCode, which reports straight into state rather than through the flow).
         syncManager.pendingEvent.onEach { event ->
             if (event != null) {
                 state.update { current ->
@@ -104,7 +104,7 @@ internal class CloudSyncController(
             it.copy(
                 cloudAccount = CloudAccount(
                     email = null,
-                    isGoogleAccount = false,
+                    isSignedIn = false,
                     isAnonymous = false,
                     isOfflineMode = true
                 )
@@ -112,27 +112,29 @@ internal class CloudSyncController(
         }
     }
 
+    /** Shows the sign-in gate again for a user who earlier chose local-only use. */
+    fun requestSignIn() {
+        state.update { it.copy(isSignInRequested = true) }
+    }
+
+    /** Backs out of a [requestSignIn] gate, back to the app as it was. */
+    fun cancelSignInRequest() {
+        state.update { it.copy(isSignInRequested = false, emailCodeSentTo = null) }
+    }
+
     /**
-     * Finishes a sign-in that the platform helper already completed itself.
-     *
-     * The desktop Supabase path exchanges the Google ID token, saves the session and returns the
-     * resulting *Supabase* access token. Feeding that back through [signInWithGoogleIdToken] posted
-     * a Supabase JWT to `grant_type=id_token`, which Supabase rejected with `Bad ID token` — so a
-     * sign-in that had in fact succeeded surfaced as a failure and left the user on the gate.
-     *
-     * There is nothing left to exchange here: `cloudAccount` mirrors the SyncManager flow, so the
-     * saved session surfaces on its own once notes are pulled.
+     * Step one of email sign-in: asks for a one-time code. On success the gate moves to the code
+     * step for [email]; resending calls this again with the same address.
      */
-    fun completeExternalSignIn() {
+    fun requestEmailCode(email: String) {
         scope.launch {
             state.update { it.copy(isSigningIn = true) }
-            val result = syncManager.completeExternalSignIn()
-            if (result.isSuccess) {
-                syncManager.downloadNotes()
-            }
+            val trimmed = email.trim()
+            val result = syncManager.requestEmailCode(trimmed)
             state.update { currentState ->
                 currentState.copy(
                     isSigningIn = false,
+                    emailCodeSentTo = if (result.isSuccess) trimmed else currentState.emailCodeSentTo,
                     pendingCloudSyncEvent = result.exceptionOrNull()
                         ?.let { CloudSyncEvent.Failure(signInFailureMessage(it)) }
                         ?: currentState.pendingCloudSyncEvent,
@@ -141,10 +143,11 @@ internal class CloudSyncController(
         }
     }
 
-    fun signInWithGoogleIdToken(idToken: String) {
+    /** Step two: signs in with the code emailed to [email], then pulls the account's notes. */
+    fun signInWithEmailCode(email: String, code: String) {
         scope.launch {
             state.update { it.copy(isSigningIn = true) }
-            val result = syncManager.signInWithGoogle(idToken)
+            val result = syncManager.signInWithEmailCode(email.trim(), code.trim())
             if (result.isSuccess) {
                 // Immediately pull cloud notes after successful sign-in
                 syncManager.downloadNotes()
@@ -152,9 +155,10 @@ internal class CloudSyncController(
             state.update { currentState ->
                 currentState.copy(
                     isSigningIn = false,
-                    // Surfaced through pendingCloudSyncEvent, which SignInGate already renders as
-                    // externalError. This used to drop the Result on the floor, so a failed
-                    // sign-in just silently returned the user to the gate.
+                    emailCodeSentTo = if (result.isSuccess) null else currentState.emailCodeSentTo,
+                    isSignInRequested = if (result.isSuccess) false else currentState.isSignInRequested,
+                    // Surfaced through pendingCloudSyncEvent, which SignInGate renders as
+                    // externalError, so a wrong or expired code is said rather than swallowed.
                     pendingCloudSyncEvent = result.exceptionOrNull()
                         ?.let { CloudSyncEvent.Failure(signInFailureMessage(it)) }
                         ?: currentState.pendingCloudSyncEvent
@@ -163,21 +167,13 @@ internal class CloudSyncController(
         }
     }
 
-    /**
-     * Reports a failure from the platform sign-in UI itself (before any token exists) — user
-     * cancellation, no Google account on the device, no Play Services, and so on.
-     */
-    fun reportGoogleSignInFailure(error: Throwable) {
-        state.update {
-            it.copy(
-                isSigningIn = false,
-                pendingCloudSyncEvent = CloudSyncEvent.Failure(signInFailureMessage(error))
-            )
-        }
+    /** "Use a different email": back to the address step. */
+    fun resetEmailCode() {
+        state.update { it.copy(emailCodeSentTo = null) }
     }
 
     private fun signInFailureMessage(error: Throwable): String =
-        error.message?.takeIf { it.isNotBlank() } ?: "Google sign-in failed"
+        error.message?.takeIf { it.isNotBlank() } ?: "Sign-in failed"
 
     fun signInWithEmailPassword(email: String, password: String, createAccount: Boolean) {
         scope.launch {
@@ -186,6 +182,7 @@ internal class CloudSyncController(
             state.update { currentState ->
                 currentState.copy(
                     isSigningIn = false,
+                    isSignInRequested = if (result.isSuccess) false else currentState.isSignInRequested,
                     pendingCloudSyncEvent = result.exceptionOrNull()
                         ?.let { CloudSyncEvent.Failure(signInFailureMessage(it)) }
                         ?: currentState.pendingCloudSyncEvent
@@ -243,7 +240,7 @@ internal class CloudSyncController(
      */
     fun refreshFromCloud() {
         if (state.value.cloudSyncStatus == CloudSyncStatus.Syncing) return
-        if (!state.value.cloudAccount.isGoogleAccount) return
+        if (!state.value.cloudAccount.isSignedIn) return
         lastAutoPullElapsedMs = DateUtils.currentTimeMillis()
         downloadNotesFromCloud()
     }
@@ -274,7 +271,7 @@ internal class CloudSyncController(
     private fun canAutoPull(): Boolean {
         val current = state.value
         return current.cloudSyncStatus != CloudSyncStatus.Syncing &&
-            current.cloudAccount.isGoogleAccount &&
+            current.cloudAccount.isSignedIn &&
             current.isCloudAutoSyncEnabled
     }
 

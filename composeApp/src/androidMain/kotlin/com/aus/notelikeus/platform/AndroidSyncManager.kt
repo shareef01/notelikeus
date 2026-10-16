@@ -47,12 +47,11 @@ class AndroidSyncManager(
         cloudWipeCoordinator.resumeIfPending(uid) { syncEngine.deleteAllCloudData().getOrThrow() }
     }
 
-    /** Android exchanges its token through [signInWithGoogle]; nothing signs in outside it. */
-    override suspend fun completeExternalSignIn(): Result<Unit> =
-        Result.failure(UnsupportedOperationException("Android signs in via signInWithGoogle"))
+    override suspend fun requestEmailCode(email: String): Result<Unit> =
+        sessionManager.requestEmailCode(email)
 
-    override suspend fun signInWithGoogle(idToken: String): Result<Unit> {
-        return sessionManager.signInWithGoogle(idToken).onSuccess {
+    override suspend fun signInWithEmailCode(email: String, code: String): Result<Unit> {
+        return sessionManager.signInWithEmailCode(email, code).onSuccess {
             onSignedIn()
         }
     }
@@ -68,7 +67,7 @@ class AndroidSyncManager(
         _cloudAccount.update {
             CloudAccount(
                 email = account.email,
-                isGoogleAccount = account.isGoogleAccount,
+                isSignedIn = account.isSignedIn,
                 isAnonymous = account.isAnonymous
             )
         }

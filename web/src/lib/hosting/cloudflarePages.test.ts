@@ -15,7 +15,9 @@ describe('Cloudflare Pages static artifacts', () => {
     const headers = readFileSync(join(publicDir, '_headers'), 'utf8');
     expect(headers).toContain('X-Frame-Options: DENY');
     expect(headers).toContain("connect-src 'self'");
-    expect(headers).toContain('https://accounts.google.com');
+    // Sign-in is by emailed one-time code: no Google OAuth hosts in the CSP.
+    expect(headers).not.toMatch(/google\.com|gstatic\.com/);
+    expect(headers).not.toContain('frame-src');
     expect(headers).not.toMatch(/https:\/\/[a-z0-9]+\.supabase\.co/);
     expect(headers).not.toContain('https://*.supabase.co');
     expect(headers).not.toContain('https://*.workers.dev');

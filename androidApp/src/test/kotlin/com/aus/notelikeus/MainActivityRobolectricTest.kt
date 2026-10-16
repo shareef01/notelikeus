@@ -61,7 +61,6 @@ class MainActivityRobolectricTest {
         ingestorUnderTest = FakeShareIngestor(Dispatchers.Unconfined)
         initKoin {
             androidContext(InstrumentationRegistry.getInstrumentation().targetContext.applicationContext)
-            modules(androidAppModule)
         }
         // Loaded after the app graph rather than inside it: Koin only lets a later definition win
         // when the override is requested explicitly, and the test asserts that it did.
