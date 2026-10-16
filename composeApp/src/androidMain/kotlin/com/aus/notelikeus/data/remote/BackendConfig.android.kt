@@ -28,4 +28,10 @@ actual object BackendConfig {
             System.getenv("NOTELIKEUS_ATTACHMENTS_WORKER_URL"),
             BuildConfig.NOTELIKEUS_ATTACHMENTS_WORKER_URL,
         ).orEmpty()
+
+    actual val captchaPageUrl: String
+        get() = firstNonBlank(
+            System.getenv("NOTELIKEUS_CAPTCHA_PAGE_URL"),
+            BuildConfig.NOTELIKEUS_CAPTCHA_PAGE_URL,
+        ).orEmpty()
 }

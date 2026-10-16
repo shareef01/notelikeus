@@ -1027,3 +1027,56 @@ from the platform but a text field, and keeps the app free of third-party identi
 
 **Cost to reverse:** medium. The removed code is in git history, but bringing Google back means
 re-adding the per-platform helpers, the desktop client secret and the Android dependencies.
+
+## D30 — Turnstile CAPTCHA guards the sign-in code email. Native apps get the token from a hosted page.
+
+**Decided:** Every `POST /auth/v1/otp` carries a Cloudflare Turnstile token, and the hosted project
+refuses one without it (`security_captcha_enabled`, provider `turnstile`). That lets the project-wide
+email limit go above 30 an hour, which anyone could otherwise spend on random addresses to lock every
+user out (audit S-02).
+
+- **Web:** the sign-in screen renders Turnstile (`TurnstileWidget`) when the build has
+  `VITE_TURNSTILE_SITE_KEY`, and passes the token to `signInWithOtp` as `captchaToken`. A token is
+  single-use, so the widget runs a fresh check after every request, resends included. The CSP allows
+  `https://challenges.cloudflare.com` for `script-src` and `frame-src` only.
+- **Android and desktop** have no Turnstile SDK. Both open the web app's challenge page,
+  `web/captcha.html` (a second Vite entry, so it gets the same site key), set by
+  `NOTELIKEUS_CAPTCHA_PAGE_URL`. The page sends the token back and the app puts it in the `/otp` body
+  as `gotrue_meta_security.captcha_token`:
+  - Android: `CaptchaActivity` shows the page in a WebView with `?return=app&state=…`. The page
+    navigates to `notelikeus-captcha://token?state=…&token=…`. The top frame cannot leave the page's
+    origin, only Turnstile may load in a subframe, and JavaScript is on only while the top frame is
+    the page's origin (`CaptchaNavigationPolicy`).
+  - Desktop: `LoopbackCaptchaTokenProvider` listens on `127.0.0.1` on a port the OS picks, opens the
+    page in the system browser with `?port=…&state=…`, and takes one request to `/`. The state must
+    match, and it gives up after 5 minutes. This brings `jdk.httpserver` back into the jlink image
+    (D29 removed it), and Desktop CI checks it is in the runtime.
+  - The page builds the return address from a fixed host (`127.0.0.1`, a port from 1024 to 65535) or
+    the fixed scheme. Nothing taken from the query names a host, so the page is not an open redirect.
+- **Local stack:** `[auth.captcha]` stays off in `supabase/config.toml`. A build without the site key
+  or the page URL sends no token, so tests, e2e and debug builds are unchanged. Release builds
+  (`verifyReleaseBackendConfig`) refuse to build without the page URL.
+- **Switching it on** is an explicit `enable_captcha` input on the Supabase Auth Config workflow,
+  default off. It also needs the `TURNSTILE_SECRET_KEY` secret and custom SMTP. It raises
+  `rate_limit_email_sent` to `email_limit_per_hour` (default 100).
+
+**Why not a Worker that fronts `/otp`:** desktop still could not produce a Turnstile token for the
+Worker to check. The endpoint would either skip CAPTCHA for desktop, an unguarded side door to the
+same email budget, or need the `service_role` key in a public endpoint to get past GoTrue's own check.
+With the hosted page, all three clients pass the same check that GoTrue verifies itself, and the
+Worker does not change.
+
+**Consequences to remember:**
+
+- Turning CAPTCHA on stops code requests from every installed Android and desktop build older than
+  this decision. Ship web, Android and desktop with CAPTCHA first, then tick `enable_captcha`.
+- Native sign-in now depends on the web app being up: the challenge page is served from Pages.
+- The Turnstile site's allowed hostnames must include the Pages host (and `localhost` only if the
+  page is tested locally). The site key is public; the secret lives only in the
+  `TURNSTILE_SECRET_KEY` GitHub secret and the hosted auth config.
+- An unticked rerun of the workflow leaves the CAPTCHA setting alone but resets the email limit to
+  30. Tick `enable_captcha` on every run after the switch-over.
+
+**Cost to reverse:** low. Turn CAPTCHA off in the dashboard (Authentication > Attack Protection).
+The clients keep working: GoTrue ignores a token it does not ask for, and a build without the site key
+or page URL sends none.

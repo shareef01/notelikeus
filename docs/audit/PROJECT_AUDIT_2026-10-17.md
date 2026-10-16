@@ -36,7 +36,7 @@ Severity and confidence follow the 10-15 audit: P0 irreversible loss or cross-ac
 
 ### S-02 (P2, Confirmed): 30 emails an hour for the whole project lets anyone block all sign-ins
 
-- **Status:** Open. CAPTCHA is a separate piece of work across three clients.
+- **Status:** Fixed in code, waiting on owner steps (D30). Web, Android and desktop send a Cloudflare Turnstile token with every code request. `supabase-auth.yml` turns hosted CAPTCHA on and raises the limit (`email_limit_per_hour`, default 100) only when its `enable_captcha` input is ticked. Before ticking it, the owner creates the Turnstile site, adds the secrets, and ships builds that have CAPTCHA, because older installed builds cannot request codes once it is on.
 
 - **Where:** `supabase-auth.yml` sets `rate_limit_email_sent: 30` (applied in run 38921738705, 2026-10-16 15:10). That limit counts every email the project sends, not per user or per IP. Every sign-in now costs one email (D29).
 - **Effect:** about 30 `/auth/v1/otp` calls an hour for random addresses, spread across a few IPs to stay under `sign_in_sign_ups` (30 per 5 minutes per IP), exhaust the hour's budget. Real users then get "Too many attempts" (`describeEmailCodeFailure`, `authErrors.ts`) until the hour rolls over. It also lets a script make the project send mail to arbitrary addresses, which can hurt the SMTP sender's reputation.
@@ -44,7 +44,7 @@ Severity and confidence follow the 10-15 audit: P0 irreversible loss or cross-ac
 
 ### S-03 (P2, Confirmed in config): a 6-digit code is accepted for an hour, and nothing slows distributed guessing
 
-- **Status:** Partly fixed. `supabase-auth.yml` sets `mailer_otp_exp: 600` and `config.toml` matches. It takes effect on the next run of the Supabase Auth Config workflow. CAPTCHA is still open (S-02).
+- **Status:** Partly fixed. `supabase-auth.yml` sets `mailer_otp_exp: 600` and `config.toml` matches. It takes effect on the next run of the Supabase Auth Config workflow. CAPTCHA is in the clients and switched on by the same workflow (S-02, D30).
 
 - **Where:** `config.toml:232-234` (`otp_length = 6`, `otp_expiry = 3600`). The hosted job sets the length but not `mailer_otp_exp`, so hosted runs the default of 3600 s. `token_verifications` is 30 per 5 minutes **per IP**, with no per-account cap.
 - **Effect:** one IP gets 360 guesses an hour against 10⁶ codes. An attacker with many IPs who knows the victim's address can request a code, then guess for an hour. Each request replaces the code, but also restarts the hour.

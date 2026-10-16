@@ -17,6 +17,8 @@ import com.aus.notelikeus.data.local.SETTINGS_DATASTORE_FILENAME
 import com.aus.notelikeus.data.local.createDataStore
 import com.aus.notelikeus.data.local.getDatabaseBuilder
 import com.aus.notelikeus.data.remote.BackendConfig
+import com.aus.notelikeus.data.remote.CaptchaTokenProvider
+import com.aus.notelikeus.data.remote.LoopbackCaptchaTokenProvider
 import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.remote.DesktopSupabaseRpcClient
 import com.aus.notelikeus.data.remote.DesktopSupabaseSessionPersistence
@@ -166,7 +168,8 @@ actual val platformModule = module {
         )
     }
     single { SupabaseAuthApi(BackendConfig.supabaseUrl, BackendConfig.supabaseAnonKey) }
-    single { SupabaseSessionManager(get(), get()) }
+    single<CaptchaTokenProvider> { LoopbackCaptchaTokenProvider(BackendConfig.captchaPageUrl) }
+    single { SupabaseSessionManager(get(), get(), get()) }
     single<SupabaseAccessTokenProvider> { SupabaseSessionAccessTokenProvider(get(), get()) }
     single<CloudSessionManager> { get<SupabaseSessionManager>() }
 

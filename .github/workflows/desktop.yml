@@ -165,7 +165,9 @@ jobs:
           $release = "composeApp/build/compose/binaries/main/app/Notelikeus/runtime/release"
           if (-not (Test-Path $release)) { throw "No runtime image at $release" }
           $modules = (Get-Content $release | Select-String '^MODULES=').ToString()
-          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec', 'java.management') |
+          # jdk.httpserver: the loopback listener for the sign-in CAPTCHA token (D30). Startup never
+          # touches it, so the launch check below cannot catch its absence.
+          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec', 'java.management', 'jdk.httpserver') |
             Where-Object { $modules -notmatch [regex]::Escape($_) }
           if ($missing) { throw "jlink runtime is missing: $($missing -join ', ')" }
           Write-Host "All required modules present."
@@ -263,6 +265,8 @@ jobs:
           NOTELIKEUS_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           NOTELIKEUS_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           NOTELIKEUS_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
+          # The web app's Turnstile page, e.g. https://<pages host>/captcha.html (D30).
+          NOTELIKEUS_CAPTCHA_PAGE_URL: ${{ secrets.NOTELIKEUS_CAPTCHA_PAGE_URL }}
         run: |
           ./gradlew.bat :composeApp:createDistributable --stacktrace
           ./gradlew.bat :composeApp:packageMsi --stacktrace
@@ -273,7 +277,9 @@ jobs:
           $release = "composeApp/build/compose/binaries/main/app/Notelikeus/runtime/release"
           if (-not (Test-Path $release)) { throw "No runtime image at $release" }
           $modules = (Get-Content $release | Select-String '^MODULES=').ToString()
-          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec', 'java.management') |
+          # jdk.httpserver: the loopback listener for the sign-in CAPTCHA token (D30). Startup never
+          # touches it, so the launch check below cannot catch its absence.
+          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec', 'java.management', 'jdk.httpserver') |
             Where-Object { $modules -notmatch [regex]::Escape($_) }
           if ($missing) { throw "jlink runtime is missing: $($missing -join ', ')" }
           Write-Host "All required modules present."

@@ -135,6 +135,7 @@ Web:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY` (public anon JWT)
 - `VITE_ATTACHMENTS_WORKER_URL` (optional)
+- `VITE_TURNSTILE_SITE_KEY` (public; hosted builds, D30)
 - `VITE_E2E=1` (e2e production-mode builds only)
 
 Kotlin (`local.properties` / env):
@@ -142,6 +143,8 @@ Kotlin (`local.properties` / env):
 - `NOTELIKEUS_SUPABASE_URL` / `notelikeus.supabaseUrl`
 - `NOTELIKEUS_SUPABASE_ANON_KEY` / `notelikeus.supabaseAnonKey`
 - `NOTELIKEUS_ATTACHMENTS_WORKER_URL` / `notelikeus.attachmentsWorkerUrl`
+- `NOTELIKEUS_CAPTCHA_PAGE_URL` / `notelikeus.captchaPageUrl` (the web app's `captcha.html`; required
+  for release builds, D30)
 
 Worker:
 

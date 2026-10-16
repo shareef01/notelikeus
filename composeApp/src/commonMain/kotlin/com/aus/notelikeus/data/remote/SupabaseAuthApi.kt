@@ -34,12 +34,18 @@ class SupabaseAuthApi(
      * `create_user` is true so the same call signs in an existing account and creates a new one:
      * there is no separate sign-up step. The response carries no session; the session comes from
      * [verifyEmailOtp] once the user types the code in.
+     *
+     * [captchaToken] is the Turnstile token the hosted project requires (D30); GoTrue reads it from
+     * `gotrue_meta_security`. Builds without CAPTCHA pass null and send no such field.
      */
-    suspend fun requestEmailOtp(email: String) {
+    suspend fun requestEmailOtp(email: String, captchaToken: String? = null) {
         requireConfiguredSupabaseUrl(supabaseUrl)
+        val security = captchaToken
+            ?.let { ""","gotrue_meta_security":{"captcha_token":${jsonString(it)}}""" }
+            .orEmpty()
         post(
             "/auth/v1/otp",
-            """{"email":${jsonString(email)},"create_user":true}""",
+            """{"email":${jsonString(email)},"create_user":true$security}""",
         )
     }
 

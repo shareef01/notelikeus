@@ -44,6 +44,13 @@ val backendUrl: String = localOrEnv("NOTELIKEUS_SUPABASE_URL", "notelikeus.supab
 val backendAnonKey: String = localOrEnv("NOTELIKEUS_SUPABASE_ANON_KEY", "notelikeus.supabaseAnonKey")
 val backendWorkerUrl: String =
     localOrEnv("NOTELIKEUS_ATTACHMENTS_WORKER_URL", "notelikeus.attachmentsWorkerUrl")
+/**
+ * The web app's Turnstile challenge page (`web/captcha.html`, D30), e.g.
+ * `https://<pages host>/captcha.html`. Empty: sign-in asks for no CAPTCHA, as the local
+ * Supabase stack expects.
+ */
+val backendCaptchaPageUrl: String =
+    localOrEnv("NOTELIKEUS_CAPTCHA_PAGE_URL", "notelikeus.captchaPageUrl")
 
 /** Kotlin string literal body: no quote, backslash or `$` template can escape into code. */
 fun kotlinStringBody(value: String): String =
@@ -60,9 +67,11 @@ val generateDesktopBackendConfig by tasks.registering {
     val url = kotlinStringBody(backendUrl)
     val anonKey = kotlinStringBody(backendAnonKey)
     val workerUrl = kotlinStringBody(backendWorkerUrl)
+    val captchaPageUrl = kotlinStringBody(backendCaptchaPageUrl)
     inputs.property("supabaseUrl", url)
     inputs.property("supabaseAnonKey", anonKey)
     inputs.property("attachmentsWorkerUrl", workerUrl)
+    inputs.property("captchaPageUrl", captchaPageUrl)
     outputs.dir(outputDir)
     doLast {
         val file = outputDir.get().asFile.resolve("com/aus/notelikeus/data/remote/CompiledBackendConfig.kt")
@@ -76,6 +85,7 @@ val generateDesktopBackendConfig by tasks.registering {
                 const val SUPABASE_URL: String = "$url"
                 const val SUPABASE_ANON_KEY: String = "$anonKey"
                 const val ATTACHMENTS_WORKER_URL: String = "$workerUrl"
+                const val CAPTCHA_PAGE_URL: String = "$captchaPageUrl"
             }
 
             """.trimIndent()
@@ -92,14 +102,19 @@ val verifyReleaseBackendConfig by tasks.registering {
     val url = backendUrl
     val anonKey = backendAnonKey
     val workerUrl = backendWorkerUrl
+    val captchaPageUrl = backendCaptchaPageUrl
     inputs.property("supabaseUrl", url)
     inputs.property("supabaseAnonKey", anonKey)
     inputs.property("attachmentsWorkerUrl", workerUrl)
+    inputs.property("captchaPageUrl", captchaPageUrl)
     doLast {
         val problems = buildList {
             if (!url.startsWith("https://")) add("NOTELIKEUS_SUPABASE_URL must be a hosted https URL")
             if (!anonKey.startsWith("eyJ")) add("NOTELIKEUS_SUPABASE_ANON_KEY must be the public anon JWT (eyJ...)")
             if (!workerUrl.startsWith("https://")) add("NOTELIKEUS_ATTACHMENTS_WORKER_URL must be a hosted https URL")
+            // The hosted project requires Turnstile on code requests (D30); without the page a
+            // release could not sign anyone in once that is on.
+            if (!captchaPageUrl.startsWith("https://")) add("NOTELIKEUS_CAPTCHA_PAGE_URL must be the hosted https captcha page")
         }
         if (problems.isNotEmpty()) {
             throw GradleException(
@@ -272,6 +287,7 @@ android {
         buildConfigField("String", "NOTELIKEUS_SUPABASE_URL", "\"\"")
         buildConfigField("String", "NOTELIKEUS_SUPABASE_ANON_KEY", "\"\"")
         buildConfigField("String", "NOTELIKEUS_ATTACHMENTS_WORKER_URL", "\"\"")
+        buildConfigField("String", "NOTELIKEUS_CAPTCHA_PAGE_URL", "\"\"")
     }
     buildTypes {
         getByName("release") {
@@ -290,6 +306,11 @@ android {
                 "NOTELIKEUS_ATTACHMENTS_WORKER_URL",
                 quotedBuildConfig(backendWorkerUrl),
             )
+            buildConfigField(
+                "String",
+                "NOTELIKEUS_CAPTCHA_PAGE_URL",
+                quotedBuildConfig(backendCaptchaPageUrl),
+            )
         }
         getByName("debug") {
             buildConfigField(
@@ -306,6 +327,11 @@ android {
                 "String",
                 "NOTELIKEUS_ATTACHMENTS_WORKER_URL",
                 quotedBuildConfig(backendWorkerUrl),
+            )
+            buildConfigField(
+                "String",
+                "NOTELIKEUS_CAPTCHA_PAGE_URL",
+                quotedBuildConfig(backendCaptchaPageUrl),
             )
         }
     }
@@ -358,6 +384,10 @@ compose.desktop {
                 // NoClassDefFoundError(java/sql/Driver), so no note can be loaded or saved.
                 // `./gradlew run` cannot see it: the full JDK has the module.
                 "java.sql",
+                // com.sun.net.httpserver: the one-shot 127.0.0.1 listener that receives the
+                // Turnstile token from the browser (LoopbackCaptchaTokenProvider, D30). Without it
+                // every code request dies with NoClassDefFoundError in the MSI only.
+                "jdk.httpserver",
                 // Present by default on the current JDK, named anyway so a JDK change cannot
                 // silently drop EC and break the TLS handshake with Supabase.
                 "jdk.crypto.ec"

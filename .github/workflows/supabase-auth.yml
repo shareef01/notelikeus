@@ -2,8 +2,11 @@ name: Supabase Auth Config
 
 # Owner-operated. Sets only the hosted project's sign-in emails (the one-time-code templates in
 # supabase/templates) and, when the SMTP_* secrets exist, its email sender and hourly email limit.
-# When TURNSTILE_SECRET_KEY also exists, it turns on CAPTCHA for code requests (Cloudflare
-# Turnstile, D30) and raises the hourly email limit to the `email_limit_per_hour` input.
+# With the `enable_captcha` input ticked (and TURNSTILE_SECRET_KEY set), it turns on CAPTCHA for
+# code requests (Cloudflare Turnstile, D30) and raises the hourly email limit to the
+# `email_limit_per_hour` input. It is opt-in on every run: CAPTCHA on refuses code requests from any
+# installed Android or desktop build older than D30, so a routine rerun must not switch it on.
+# Unticked, the run leaves the hosted CAPTCHA setting as it is.
 #
 # `supabase config push` is not used: it pushes the whole [auth] section of config.toml, and that
 # file describes the *local* stack (site_url 127.0.0.1, the Google provider off), which would
@@ -16,8 +19,13 @@ on:
         description: 'Type the Supabase project ref to confirm (must match SUPABASE_PROJECT_REF)'
         required: true
         type: string
+      enable_captcha:
+        description: 'Turn on Turnstile CAPTCHA for code requests and raise the email limit. Only once web, Android and desktop builds with CAPTCHA are out (D30).'
+        required: false
+        default: false
+        type: boolean
       email_limit_per_hour:
-        description: 'Hourly auth email limit once CAPTCHA is on (keep within the SMTP plan). Without TURNSTILE_SECRET_KEY it stays 30.'
+        description: 'Hourly auth email limit when enable_captcha is ticked (keep within the SMTP plan). Otherwise it stays 30.'
         required: false
         default: '100'
         type: string
@@ -46,6 +54,7 @@ jobs:
       SMTP_SENDER_EMAIL: ${{ secrets.SMTP_SENDER_EMAIL }}
       TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
       EMAIL_LIMIT_PER_HOUR: ${{ inputs.email_limit_per_hour }}
+      ENABLE_CAPTCHA: ${{ inputs.enable_captcha }}
 
     steps:
       - name: Checkout
@@ -65,6 +74,11 @@ jobs:
           if ! [[ "${EMAIL_LIMIT_PER_HOUR:-100}" =~ ^[1-9][0-9]{0,4}$ ]]; then
             echo "::error::email_limit_per_hour must be a whole number from 1 to 99999"
             exit 1
+          fi
+          if [ "$ENABLE_CAPTCHA" = "true" ]; then
+            for name in TURNSTILE_SECRET_KEY SMTP_HOST SMTP_USER SMTP_PASS SMTP_SENDER_EMAIL; do
+              if [ -z "${!name}" ]; then echo "::error::enable_captcha needs the secret $name"; exit 1; fi
+            done
           fi
 
       - name: Build the auth config patch
@@ -110,16 +124,19 @@ jobs:
                 rate_limit_email_sent: 30
               }' patch.json > patch.tmp && mv patch.tmp patch.json
             echo "SMTP secrets found: the sender and a 30/hour email limit are included."
-            if [ -n "$TURNSTILE_SECRET_KEY" ]; then
-              jq                 --arg secret "$TURNSTILE_SECRET_KEY"                 --argjson limit "${EMAIL_LIMIT_PER_HOUR:-100}"                 '. + {
+            if [ "$ENABLE_CAPTCHA" = "true" ]; then
+              jq \
+                --arg secret "$TURNSTILE_SECRET_KEY" \
+                --argjson limit "${EMAIL_LIMIT_PER_HOUR:-100}" \
+                '. + {
                   security_captcha_enabled: true,
                   security_captcha_provider: "turnstile",
                   security_captcha_secret: $secret,
                   rate_limit_email_sent: $limit
                 }' patch.json > patch.tmp && mv patch.tmp patch.json
-              echo "TURNSTILE_SECRET_KEY found: CAPTCHA on, email limit ${EMAIL_LIMIT_PER_HOUR:-100}/hour."
+              echo "enable_captcha: CAPTCHA on, email limit ${EMAIL_LIMIT_PER_HOUR:-100}/hour."
             else
-              echo "::notice::TURNSTILE_SECRET_KEY not set: no CAPTCHA, and the email limit stays 30/hour."
+              echo "::notice::enable_captcha not ticked: CAPTCHA setting left as it is, email limit back to 30/hour."
             fi
           else
             echo "::notice::SMTP_* secrets not set: only the code email templates are applied."
