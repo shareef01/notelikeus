@@ -303,7 +303,7 @@ internal fun MainDrawerContent(
                             color = SignOutRose.copy(alpha = 0.25f),
                             shape = RoundedCornerShape(Spacing.md)
                         )
-                        .clickable {
+                        .clickable(role = Role.Button) {
                             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                             onCloudSignOut()
                         }
@@ -313,7 +313,7 @@ internal fun MainDrawerContent(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Logout,
-                        contentDescription = stringResource(Res.string.cloud_sign_out),
+                        contentDescription = null,
                         tint = SignOutRose,
                         modifier = Modifier.size(Size.iconMedium)
                     )

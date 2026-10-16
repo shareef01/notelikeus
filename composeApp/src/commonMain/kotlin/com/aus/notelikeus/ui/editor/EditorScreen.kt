@@ -4,7 +4,6 @@ import androidx.compose.animation.*
 import com.aus.notelikeus.util.PlatformBackHandler
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -70,6 +69,10 @@ import com.aus.notelikeus.util.AppConfig
 import androidx.compose.material3.ListItemDefaults
 import com.aus.notelikeus.domain.reminder.ReminderTime
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 
 private val EditorHorizontalPadding = Spacing.xl
 private val EditorVerticalPadding = Spacing.xl
@@ -114,7 +117,6 @@ fun EditorScreen(
     var showLinkDialog by remember { mutableStateOf(false) }
     val bodyFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
-    val editorTapInteraction = remember { MutableInteractionSource() }
 
     // Leaving the editor pops this destination, which clears the ViewModel and cancels the scope
     // saveNote() would have launched the write into. Await the local write first so navigating
@@ -309,14 +311,27 @@ fun EditorScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { showReminderDialog = true }) {
+                        val reminderState = stringResource(
+                            if (state.reminderTimestamp != null) {
+                                Res.string.cd_reminder_set
+                            } else {
+                                Res.string.state_no_reminder
+                            }
+                        )
+                        IconButton(
+                            onClick = { showReminderDialog = true },
+                            modifier = Modifier.semantics { stateDescription = reminderState }
+                        ) {
                             Icon(
                                 if (state.reminderTimestamp != null) Icons.Filled.Notifications else Icons.Outlined.Notifications,
                                 contentDescription = stringResource(Res.string.set_reminder),
                                 modifier = Modifier.size(Size.iconLarge)
                             )
                         }
-                        IconButton(onClick = {
+                        val pinState = stringResource(
+                            if (state.isPinned) Res.string.pinned_short else Res.string.state_not_pinned
+                        )
+                        IconButton(modifier = Modifier.semantics { stateDescription = pinState }, onClick = {
                             val willPin = !state.isPinned
                             viewModel.togglePin()
                             // Confirm the pin only once it is in the database. Announcing it off
@@ -384,12 +399,13 @@ fun EditorScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .clickable(
-                        interactionSource = editorTapInteraction,
-                        indication = null
-                    ) {
-                        bodyFocusRequester.requestFocus()
-                        keyboardController?.show()
+                    // A tap detector rather than clickable: the background tap only forwards focus to
+                    // the body, so it should not be a semantic click target or a tab stop.
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                            bodyFocusRequester.requestFocus()
+                            keyboardController?.show()
+                        }
                     }
             ) {
                 Column(

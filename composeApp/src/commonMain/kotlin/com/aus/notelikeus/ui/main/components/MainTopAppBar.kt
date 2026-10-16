@@ -72,6 +72,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -389,7 +391,7 @@ fun MainTopAppBar(
                                         shape = CircleShape
                                     )
                                     .semantics { contentDescription = settingsContentDescription }
-                                    .clickable {
+                                    .clickable(role = Role.Button) {
                                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                         onProfileClick()
                                     },
@@ -496,7 +498,8 @@ private fun RecentSearchRow(
                     selected = false,
                     onClick = { onSearchClick(query) },
                     label = query,
-                    compact = true
+                    compact = true,
+                    modifier = Modifier.semantics { role = Role.Button }
                 )
             }
         }

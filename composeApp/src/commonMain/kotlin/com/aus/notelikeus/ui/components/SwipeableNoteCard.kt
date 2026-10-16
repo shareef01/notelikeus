@@ -25,6 +25,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
@@ -60,6 +63,7 @@ fun SwipeableNoteCard(
 ) {
     val archiveLabel = stringResource(Res.string.cd_archive)
     val deleteLabel = stringResource(Res.string.cd_delete)
+    val trashActionLabel = stringResource(Res.string.nav_trash)
     val haptic = LocalHapticFeedback.current
     val isDark = isNoteColorDarkTheme()
     val archiveColor = if (isDark) SwipeArchiveDark else SwipeArchiveLight
@@ -92,9 +96,20 @@ fun SwipeableNoteCard(
             }
         )
 
+        // Swipes are not reachable from a screen reader or keyboard, so the same handlers are
+        // offered as accessibility actions.
         SwipeToDismissBox(
             state = dismissState,
-            modifier = modifier,
+            modifier = modifier.semantics {
+                customActions = buildList {
+                    if (canArchiveSwipe) {
+                        add(CustomAccessibilityAction(archiveLabel) { onSwipeToArchive(); true })
+                    }
+                    if (canTrashSwipe) {
+                        add(CustomAccessibilityAction(trashActionLabel) { onSwipeToTrash(); true })
+                    }
+                }
+            },
             enableDismissFromStartToEnd = canArchiveSwipe,
             enableDismissFromEndToStart = canTrashSwipe,
             backgroundContent = {
