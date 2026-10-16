@@ -4,6 +4,8 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.1.2] — 2026-10-16
+
 ### Changed
 - **Sign in with a code sent to your email instead of Google**, on Android, Windows and the web. Type your email, then the 6-digit code from the message. Signing in with the email your Google account used brings back the same notes. Google sign-in is removed.
 
