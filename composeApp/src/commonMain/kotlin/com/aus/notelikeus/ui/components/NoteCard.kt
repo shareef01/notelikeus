@@ -35,6 +35,7 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
@@ -156,6 +157,8 @@ private fun NoteCardLabelChips(
         note.labels.take(maxVisible).forEach { label ->
             val labelId = label.id
             val clickable = labelId != null && onLabelClick != null
+            // Semantics only: a 48dp minimum target would stretch these inline chips and the card.
+            val filterLabel = stringResource(Res.string.cd_filter_by_label, label.name)
             Text(
                 text = label.name.uppercase(),
                 style = chipStyle,
@@ -168,7 +171,9 @@ private fun NoteCardLabelChips(
                     .background(contentColor.copy(alpha = NoteEmphasis.Decorative))
                     .then(
                         if (clickable) {
-                            Modifier.clickable { onLabelClick.invoke(labelId) }
+                            Modifier.clickable(role = Role.Button, onClickLabel = filterLabel) {
+                                onLabelClick.invoke(labelId)
+                            }
                         } else Modifier
                     )
                     .padding(horizontal = chipHorizontalPadding, vertical = chipVerticalPadding)
@@ -327,6 +332,7 @@ fun NoteCard(
     val reminderLabel = stringResource(Res.string.cd_reminder_set)
     val hasImageLabel = stringResource(Res.string.cd_has_image)
     val untitledLabel = stringResource(Res.string.untitled)
+    val selectActionLabel = stringResource(Res.string.action_select)
     val noteDescription = when {
         note.title.isNotBlank() -> note.title
         note.content.isNotBlank() -> note.content.lineSequence().first()
@@ -383,6 +389,7 @@ fun NoteCard(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
+                onLongClickLabel = selectActionLabel,
                 onLongClick = onLongClick
             )
             .hoverable(interactionSource),

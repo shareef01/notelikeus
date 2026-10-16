@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +44,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -69,6 +74,12 @@ import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
 import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.util.AppLog
 import com.aus.notelikeus.ui.window.NativeCaptionDragSupport
+import notelikeus.composeapp.generated.resources.Res
+import notelikeus.composeapp.generated.resources.cd_window_close
+import notelikeus.composeapp.generated.resources.cd_window_maximize
+import notelikeus.composeapp.generated.resources.cd_window_minimize
+import notelikeus.composeapp.generated.resources.cd_window_restore
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.getKoin
 import org.koin.compose.koinInject
 import org.koin.core.qualifier.named
@@ -209,6 +220,10 @@ private fun EditorNoteWindow(
                 onDispose { viewModelStore.clear() }
             }
             val editorState by viewModel.state.collectAsState()
+            val windowTitle = editorState.title.ifBlank { "Notelikeus" }
+            // The window is undecorated, but the OS still shows its title in the taskbar,
+            // Alt+Tab and to screen readers; Window(title = ...) cannot see the note's state.
+            LaunchedEffect(windowTitle) { window.title = windowTitle }
 
             val isDarkPalette = isNoteColorDarkTheme()
             val displayArgb = noteColorForTheme(editorState.color, isDarkPalette)
@@ -271,7 +286,7 @@ private fun EditorNoteWindow(
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     NoteWindowTitleBar(
-                        title = editorState.title.ifBlank { "Notelikeus" },
+                        title = windowTitle,
                         contentColor = cardContent,
                         cornerRadius = cornerRadius,
                         isMaximized = isMaximized,
@@ -356,18 +371,23 @@ private fun FrameWindowScope.NoteWindowTitleBar(
         ) {
             NoteCaptionButton(
                 onClick = onMinimize,
+                contentDescription = stringResource(Res.string.cd_window_minimize),
                 hoverColor = contentColor.copy(alpha = 0.08f),
                 contentColor = contentColor
             ) { color -> DrawMinimizeGlyph(color) }
 
             NoteCaptionButton(
                 onClick = onToggleMaximize,
+                contentDescription = stringResource(
+                    if (isMaximized) Res.string.cd_window_restore else Res.string.cd_window_maximize
+                ),
                 hoverColor = contentColor.copy(alpha = 0.08f),
                 contentColor = contentColor
             ) { color -> if (isMaximized) DrawRestoreGlyph(color) else DrawMaximizeGlyph(color) }
 
             NoteCaptionButton(
                 onClick = onClose,
+                contentDescription = stringResource(Res.string.cd_window_close),
                 hoverColor = CloseHover,
                 contentColor = contentColor,
                 hoverContentColor = Color.White
@@ -384,6 +404,7 @@ private fun FrameWindowScope.NoteWindowTitleBar(
 @Composable
 private fun NoteCaptionButton(
     onClick: () -> Unit,
+    contentDescription: String,
     hoverColor: Color,
     contentColor: Color,
     hoverContentColor: Color? = null,
@@ -391,11 +412,17 @@ private fun NoteCaptionButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
+    val focused by interaction.collectIsFocusedAsState()
+    // Keyboard focus gets a lighter wash than hover, as in the main window's CaptionButton.
     val background by animateColorAsState(
-        targetValue = if (hovered) hoverColor else Color.Transparent,
+        targetValue = when {
+            hovered -> hoverColor
+            focused -> hoverColor.copy(alpha = 0.5f)
+            else -> Color.Transparent
+        },
         label = "noteCaptionHover"
     )
-    val tint = if (hovered && hoverContentColor != null) hoverContentColor else contentColor
+    val tint = if ((hovered || focused) && hoverContentColor != null) hoverContentColor else contentColor
 
     Box(
         modifier = Modifier
@@ -403,7 +430,11 @@ private fun NoteCaptionButton(
             .fillMaxHeight()
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .background(background),
+            .background(background)
+            .semantics {
+                this.contentDescription = contentDescription
+                role = Role.Button
+            },
         contentAlignment = Alignment.Center
     ) {
         content(tint)

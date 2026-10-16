@@ -21,6 +21,10 @@ import com.aus.notelikeus.ui.theme.NoteEmphasis
 import com.aus.notelikeus.ui.theme.Spacing
 
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import com.aus.notelikeus.ui.main.CloudSyncStatus
 
@@ -92,13 +96,15 @@ fun EditorBottomBar(
                 modifier = Modifier.align(Alignment.Center)
             ) {
                 if (saveFailed && onRetrySave != null) {
+                    val retryLabel = stringResource(Res.string.action_retry)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier.clickable { onRetrySave() }
+                        modifier = Modifier.clickable(role = Role.Button, onClickLabel = retryLabel) { onRetrySave() }
                     ) {
                         Text(
                             text = "$statusText • ",
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.error,
                             textAlign = TextAlign.Center
@@ -114,6 +120,11 @@ fun EditorBottomBar(
                 } else {
                     Text(
                         text = statusText,
+                        modifier = if (saveFailed) {
+                            Modifier.semantics { liveRegion = LiveRegionMode.Assertive }
+                        } else {
+                            Modifier
+                        },
                         style = MaterialTheme.typography.labelMedium,
                         color = if (saveFailed) MaterialTheme.colorScheme.error else contentColor.copy(alpha = NoteEmphasis.Secondary),
                         textAlign = TextAlign.Center

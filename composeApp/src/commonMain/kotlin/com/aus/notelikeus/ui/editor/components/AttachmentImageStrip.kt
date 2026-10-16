@@ -124,21 +124,27 @@ private fun AttachmentImagePreview(
                 }
             }
         }
-        Surface(
+        // 48dp touch target around the 32dp chip: centring the chip in it leaves the same 8dp
+        // (Spacing.sm) inset from the corner the chip had before.
+        IconButton(
+            onClick = onRemove,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(Spacing.sm)
-                .size(32.dp),
-            shape = MaterialTheme.shapes.small,
-            color = Color.Black.copy(alpha = 0.55f),
+                .size(48.dp),
         ) {
-            IconButton(onClick = onRemove) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = stringResource(Res.string.cd_remove_attachment),
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
-                )
+            Surface(
+                modifier = Modifier.size(32.dp),
+                shape = MaterialTheme.shapes.small,
+                color = Color.Black.copy(alpha = 0.55f),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = stringResource(Res.string.cd_remove_attachment),
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
     }
