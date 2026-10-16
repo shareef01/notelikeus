@@ -15,7 +15,8 @@ const distDir = join(root, 'web', 'dist');
  */
 const deployable = process.argv.includes('--deployable');
 
-const required = ['_headers', '_redirects', 'index.html'];
+// captcha.html: the Android and desktop apps open it to pass Turnstile before a code is sent (D30).
+const required = ['_headers', '_redirects', 'index.html', 'captcha.html'];
 
 for (const file of required) {
   const path = join(distDir, file);

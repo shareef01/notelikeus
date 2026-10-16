@@ -21,6 +21,8 @@ import com.aus.notelikeus.data.remote.SharedPrefsNoteSyncStateStore
 import com.aus.notelikeus.data.remote.AndroidSupabaseRpcClient
 import com.aus.notelikeus.data.remote.AndroidSupabaseSessionPersistence
 import com.aus.notelikeus.data.remote.BackendConfig
+import com.aus.notelikeus.data.remote.AndroidCaptchaTokenProvider
+import com.aus.notelikeus.data.remote.CaptchaTokenProvider
 import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.remote.RemoteIdentityProvider
 import com.aus.notelikeus.data.remote.SupabaseAccessTokenProvider
@@ -131,7 +133,10 @@ actual val platformModule = module {
 
     single { SupabaseSessionStore(AndroidSupabaseSessionPersistence(get())) }
     single { SupabaseAuthApi(BackendConfig.supabaseUrl, BackendConfig.supabaseAnonKey) }
-    single { SupabaseSessionManager(get(), get()) }
+    single<CaptchaTokenProvider> {
+        AndroidCaptchaTokenProvider(get<android.content.Context>(), BackendConfig.captchaPageUrl)
+    }
+    single { SupabaseSessionManager(get(), get(), get()) }
     single<SupabaseAccessTokenProvider> { SupabaseSessionAccessTokenProvider(get(), get()) }
     single<CloudSessionManager> { get<SupabaseSessionManager>() }
     single<AttachmentBytesProtector> { AndroidAttachmentBytesProtector() }

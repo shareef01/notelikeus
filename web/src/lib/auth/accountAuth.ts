@@ -8,9 +8,12 @@ import { clearPendingAttachmentsForOwner } from '@/lib/local/pendingAttachmentRe
 import { deleteAllSupabaseCloudData } from '@/lib/supabase/deleteAllUserCloudData';
 import { useAuthStore } from '@/store/authStore';
 
-/** Step 1 of email sign-in: emails a one-time code (creating the account on first use). */
-export async function sendEmailSignInCode(email: string): Promise<void> {
-  await sendEmailSignInCodeSupabase(email);
+/**
+ * Step 1 of email sign-in: emails a one-time code (creating the account on first use).
+ * [captchaToken] is the Turnstile token the hosted project requires; builds without CAPTCHA omit it.
+ */
+export async function sendEmailSignInCode(email: string, captchaToken?: string): Promise<void> {
+  await sendEmailSignInCodeSupabase(email, captchaToken);
 }
 
 /** Step 2 of email sign-in: exchanges the typed code for a session. */

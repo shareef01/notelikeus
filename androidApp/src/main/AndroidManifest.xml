@@ -72,6 +72,13 @@
             </intent-filter>
         </activity>
 
+        <!-- The Turnstile check before a sign-in code is emailed (D30). Opened only by the app. -->
+        <activity
+            android:name=".data.remote.CaptchaActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Notelikeus" />
+
         <receiver
             android:name=".data.remote.ReminderReceiver"
             android:enabled="true"

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- The Android and desktop apps open this page to pass Cloudflare Turnstile before a sign-in
+         code is emailed (D30). It hands the token back to the app; see src/lib/auth/captchaReturn.ts.
+         The CSP is the site's, from web/public/_headers. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Notelikeus security check</title>
+  </head>
+  <body
+    style="
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, sans-serif;
+      background: Canvas;
+      color: CanvasText;
+    "
+  >
+    <main style="max-width: 22rem; padding: 1.5rem; text-align: center">
+      <h1 style="font-size: 1.125rem; margin: 0 0 0.5rem">Quick security check</h1>
+      <p id="captcha-status" style="margin: 0 0 1rem; font-size: 0.875rem; opacity: 0.8" aria-live="polite">
+        This keeps automated requests from sending sign-in emails.
+      </p>
+      <div id="captcha-widget" style="display: flex; justify-content: center; min-height: 65px"></div>
+    </main>
+    <script type="module" src="/src/captcha.ts"></script>
+  </body>
+</html>

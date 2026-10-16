@@ -10,6 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_ANON_KEY?: string;
   /** Cloudflare Worker base URL for attachment blobs. */
   readonly VITE_ATTACHMENTS_WORKER_URL?: string;
+  /** Public Cloudflare Turnstile site key. Unset: no CAPTCHA on the sign-in code request. */
+  readonly VITE_TURNSTILE_SITE_KEY?: string;
 }
 
 interface ImportMeta {

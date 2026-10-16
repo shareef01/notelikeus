@@ -88,10 +88,13 @@ export async function completeSupabaseOAuthRedirect(): Promise<void> {
  * carry a link. The Supabase "Magic Link" and "Confirm signup" email templates must include
  * `{{ .Token }}` for the code to reach the user.
  */
-export async function sendEmailSignInCodeSupabase(email: string): Promise<void> {
+export async function sendEmailSignInCodeSupabase(
+  email: string,
+  captchaToken?: string,
+): Promise<void> {
   const { error } = await getSupabaseClient().auth.signInWithOtp({
     email: email.trim(),
-    options: { shouldCreateUser: true },
+    options: captchaToken ? { shouldCreateUser: true, captchaToken } : { shouldCreateUser: true },
   });
   if (error) throw error;
 }

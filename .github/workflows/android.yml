@@ -161,6 +161,8 @@ jobs:
           NOTELIKEUS_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           NOTELIKEUS_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           NOTELIKEUS_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
+          # The web app's Turnstile page, e.g. https://<pages host>/captcha.html (D30).
+          NOTELIKEUS_CAPTCHA_PAGE_URL: ${{ secrets.NOTELIKEUS_CAPTCHA_PAGE_URL }}
         run: ./gradlew :androidApp:assembleRelease :androidApp:bundleRelease --stacktrace
 
       # An unsigned or wrong-identity artifact must never reach the release. The APK has to verify

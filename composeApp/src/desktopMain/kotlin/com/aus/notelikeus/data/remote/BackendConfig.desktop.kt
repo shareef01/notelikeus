@@ -37,4 +37,11 @@ actual object BackendConfig {
             CompiledBackendConfig.ATTACHMENTS_WORKER_URL,
             readLocalProperty("notelikeus.attachmentsWorkerUrl"),
         ).orEmpty()
+
+    actual val captchaPageUrl: String
+        get() = firstNonBlank(
+            System.getenv("NOTELIKEUS_CAPTCHA_PAGE_URL"),
+            CompiledBackendConfig.CAPTCHA_PAGE_URL,
+            readLocalProperty("notelikeus.captchaPageUrl"),
+        ).orEmpty()
 }

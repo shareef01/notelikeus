@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** The request shapes GoTrue expects for email one-time-code sign-in. */
@@ -34,6 +35,52 @@ class SupabaseAuthApiEmailOtpTest {
         assertEquals("/auth/v1/otp", calls.single().first)
         assertEquals("a\"b@example.com", body()["email"]!!.jsonPrimitive.content)
         assertEquals(true, body()["create_user"]!!.jsonPrimitive.boolean)
+        // No CAPTCHA configured: the local stack has [auth.captcha] off.
+        assertFalse("gotrue_meta_security" in body())
+    }
+
+    @Test
+    fun requestEmailOtpSendsTheTurnstileTokenWhereGoTrueReadsIt() = runTest {
+        api().requestEmailOtp("a@example.com", captchaToken = "tok\"en")
+
+        val security = body()["gotrue_meta_security"]!!.jsonObject
+        assertEquals("tok\"en", security["captcha_token"]!!.jsonPrimitive.content)
+        assertEquals(true, body()["create_user"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test
+    fun theSessionManagerAsksForAFreshTokenForEveryCodeRequest() = runTest {
+        var issued = 0
+        val manager = SupabaseSessionManager(
+            authApi = api(),
+            sessionStore = SupabaseSessionStore(),
+            captcha = { "token-${++issued}" },
+        )
+
+        assertTrue(manager.requestEmailCode(" a@example.com ").isSuccess)
+        assertTrue(manager.requestEmailCode("a@example.com").isSuccess)
+
+        assertEquals(
+            listOf("token-1", "token-2"),
+            calls.indices.map {
+                body(it)["gotrue_meta_security"]!!.jsonObject["captcha_token"]!!.jsonPrimitive.content
+            },
+        )
+        assertEquals("a@example.com", body(0)["email"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun aCancelledSecurityCheckSendsNothingAndSaysWhy() = runTest {
+        val manager = SupabaseSessionManager(
+            authApi = api(),
+            sessionStore = SupabaseSessionStore(),
+            captcha = { throw CaptchaUnavailableException("Check cancelled.") },
+        )
+
+        val failure = manager.requestEmailCode("a@example.com").exceptionOrNull()
+
+        assertTrue(calls.isEmpty())
+        assertEquals("Check cancelled.", failure?.message)
     }
 
     @Test
@@ -81,5 +128,10 @@ class SupabaseAuthApiEmailOtpTest {
             ),
         )
         assertTrue("connection" in describeEmailCodeFailure(java.io.IOException("reset")))
+        assertTrue(
+            "security check" in describeEmailCodeFailure(
+                failure(400, """{"code":"captcha_failed","msg":"captcha protection: request disallowed"}"""),
+            ),
+        )
     }
 }

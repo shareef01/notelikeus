@@ -454,6 +454,15 @@ describe('F04 Stale-Intent Lifecycle & Failed/Cancelled Auth Invalidation', () =
     expect(hasGuestAdoptionIntent()).toBe(false);
   });
 
+  it('sendingAnEmailCodePassesTheTurnstileTokenToSupabase', async () => {
+    await sendEmailSignInCodeSupabase('alice@example.com', 'turnstile-token');
+
+    expect(mockSignInWithOtp).toHaveBeenCalledWith({
+      email: 'alice@example.com',
+      options: { shouldCreateUser: true, captchaToken: 'turnstile-token' },
+    });
+  });
+
   it('sendingAnEmailCodeSurfacesSupabaseErrors', async () => {
     const rateLimited = Object.assign(new Error('email rate limit exceeded'), { status: 429 });
     mockSignInWithOtp.mockResolvedValueOnce({ data: { user: null, session: null }, error: rateLimited });

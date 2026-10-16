@@ -211,6 +211,8 @@ token_verifications = 30
 web3 = 30
 
 # Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
+# Off locally on purpose: unit tests, e2e and debug builds request codes without a token. The hosted
+# project turns on Turnstile through .github/workflows/supabase-auth.yml (`enable_captcha`, D30).
 # [auth.captcha]
 # enabled = true
 # provider = "hcaptcha"
