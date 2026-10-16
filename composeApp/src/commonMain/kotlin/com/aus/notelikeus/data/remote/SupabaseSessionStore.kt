@@ -1,5 +1,7 @@
 package com.aus.notelikeus.data.remote
 
+import com.aus.notelikeus.util.AppLog
+
 class SupabaseSessionStore(
     private val persistence: SupabaseSessionPersistence = InMemorySupabaseSessionPersistence(),
 ) {
@@ -41,6 +43,9 @@ class SupabaseSessionStore(
             val refreshed = refresh(currentRefresh)
             save(refreshed)
             refreshed.accessToken
+        }.onFailure { error ->
+            // The only trace a rejected refresh token leaves on a release build.
+            AppLog.warn(TAG, "Session refresh failed: ${error.javaClass.simpleName} ${error.message?.take(200)}")
         }.getOrNull()
     }
 
@@ -63,5 +68,6 @@ class SupabaseSessionStore(
 
     private companion object {
         private const val EXPIRY_SKEW_MS = 60_000L
+        private const val TAG = "SupabaseSession"
     }
 }
