@@ -41,6 +41,14 @@ internal object ConflictResolution {
     }
 
     /**
+     * Whether [local] holds anything the cloud has not confirmed: an edit since the synced baseline
+     * ([isLocallyEdited]), or a note that has never been uploaded at all (no server stamp, no
+     * baseline). Drives the editor's "Sync pending" footer, not any sync decision.
+     */
+    fun awaitsUpload(local: Note, syncedTimestamp: Long?): Boolean =
+        (local.serverUpdatedAt == null && syncedTimestamp == null) || isLocallyEdited(local, syncedTimestamp)
+
+    /**
      * Same words: title, body, labels and checklist. Pin, colour, order, archive state and reminders
      * are not worth a duplicate note; attachments are not carried by a cloud record at all.
      */

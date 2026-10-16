@@ -7,6 +7,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.FilterAltOff
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
@@ -31,6 +33,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.pullToRefresh
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -353,7 +358,13 @@ internal fun MainScaffold(
                         }
                     )
                 }
-                BoxWithConstraints(
+                NotesPullToRefreshBox(
+                    // Signed in only: with no account there is nothing to pull. Not on desktop
+                    // either, where a wheel scroll at the top of the list would count as a pull;
+                    // the profile sheet's sync action covers it there.
+                    enabled = state.cloudAccount.isGoogleAccount && !AppConfig.isDesktop,
+                    isRefreshing = state.cloudSyncStatus == CloudSyncStatus.Syncing,
+                    onRefresh = viewModel::refreshFromCloud,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -451,6 +462,39 @@ internal fun MainScaffold(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * The grid's box, with pull-to-refresh re-running the profile sheet's cloud download. A plain
+ * [BoxWithConstraints] when [enabled] is false.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NotesPullToRefreshBox(
+    enabled: Boolean,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxWithConstraintsScope.() -> Unit,
+) {
+    val pullState = rememberPullToRefreshState()
+    BoxWithConstraints(
+        modifier = modifier.pullToRefresh(
+            isRefreshing = isRefreshing,
+            state = pullState,
+            enabled = enabled,
+            onRefresh = onRefresh,
+        )
+    ) {
+        content()
+        if (enabled) {
+            PullToRefreshDefaults.Indicator(
+                state = pullState,
+                isRefreshing = isRefreshing,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
     }
 }
