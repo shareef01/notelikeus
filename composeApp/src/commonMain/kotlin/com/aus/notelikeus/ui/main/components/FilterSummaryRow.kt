@@ -23,6 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.Label
@@ -100,6 +102,8 @@ fun FilterSummaryRow(
             onClick = onSortOrderCycle,
             label = stringResource(sortOrderLabelRes(query.sort)),
             compact = true,
+            // Never shown selected: it cycles the sort, so it is announced as a plain button.
+            modifier = Modifier.semantics { role = Role.Button },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Sort,

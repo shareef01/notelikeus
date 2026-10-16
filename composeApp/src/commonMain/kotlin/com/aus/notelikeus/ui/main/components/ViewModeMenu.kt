@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -21,6 +23,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
@@ -92,7 +96,8 @@ fun ViewModeMenu(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                     shape = CircleShape
                 )
-                .padding(Spacing.xxs),
+                .padding(Spacing.xxs)
+                .selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(Spacing.xxs),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -106,11 +111,8 @@ fun ViewModeMenu(
                         .background(
                             if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent
                         )
-                        .semantics {
-                            contentDescription = segmentLabel
-                            selected = isSelected
-                        }
-                        .clickable {
+                        .semantics { contentDescription = segmentLabel }
+                        .selectable(selected = isSelected, role = Role.RadioButton) {
                             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                             onViewModeChange(segment.mode)
                         },
@@ -138,6 +140,7 @@ fun ViewModeMenu(
     // so it reads as a control against the search bar background.
     Box(
         modifier = modifier
+            .minimumInteractiveComponentSize()
             .size(Size.controlHeight)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
@@ -146,7 +149,7 @@ fun ViewModeMenu(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                 shape = CircleShape
             )
-            .clickable {
+            .clickable(role = Role.Button) {
                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                 expanded = true
             },
@@ -213,7 +216,8 @@ fun ViewModeMenu(
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     onViewModeChange(segment.mode)
                     expanded = false
-                }
+                },
+                modifier = Modifier.semantics { selected = isSelected }
             )
         }
     }

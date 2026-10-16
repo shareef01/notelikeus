@@ -68,8 +68,10 @@ jobs:
       - name: Verify security headers
         run: node cloudflare/scripts/verify-headers-parity.mjs
 
-  # The staging site talks to the same Supabase project as production, so only reviewed code
-  # (main) may be deployed to it; a branch dispatch would run unreviewed code against real data.
+  # The staging site uses the STAGING_VITE_* secrets when they are set, and production's otherwise.
+  # Until a staging Supabase project exists it talks to production's, so only reviewed code (main)
+  # may be deployed to it; a branch dispatch would run unreviewed code against real data. Images on
+  # a staging project also need a staging attachments Worker (STAGING_VITE_ATTACHMENTS_WORKER_URL).
   deploy-preview:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: verify
@@ -85,9 +87,9 @@ jobs:
 
       - name: Require Pages secrets
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.STAGING_VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.STAGING_VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.STAGING_VITE_ATTACHMENTS_WORKER_URL || secrets.VITE_ATTACHMENTS_WORKER_URL }}
         run: |
           missing=0
           for name in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY; do
@@ -112,9 +114,9 @@ jobs:
         working-directory: web
         run: npm ci && npm run build
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.STAGING_VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.STAGING_VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_ATTACHMENTS_WORKER_URL: ${{ secrets.STAGING_VITE_ATTACHMENTS_WORKER_URL || secrets.VITE_ATTACHMENTS_WORKER_URL }}
 
       - name: Deploy to Cloudflare Pages (staging project)
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
@@ -130,6 +132,10 @@ jobs:
   # Order matters: migrations and the attachments Worker deploy by hand, and this deploy is
   # automatic. A web build that calls an RPC its database does not have yet fails for every user,
   # so the deploy first proves every committed migration is applied to the hosted project.
+  #
+  # `environment: production`, like the Supabase and Worker deploys: required reviewers set on that
+  # environment in the repository settings make this wait for an approval. Unconfigured, it deploys
+  # as before.
   deploy:
     if: >-
       github.event_name == 'workflow_run' &&
@@ -138,6 +144,7 @@ jobs:
       github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: production
     permissions:
       contents: read
       deployments: write

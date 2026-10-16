@@ -413,4 +413,12 @@ Sync diagnostics shows counts and version numbers only — never note text, toke
     <string name="image_load_failed">Image failed to load</string>
     <string name="link_dialog_title">Add link</string>
     <string name="link_url_hint">https://example.com</string>
+    <!-- Accessibility state descriptions and action labels -->
+    <string name="state_not_pinned">Not pinned</string>
+    <string name="state_no_reminder">No reminder</string>
+    <string name="action_select">Select</string>
+    <string name="cd_window_minimize">Minimize</string>
+    <string name="cd_window_maximize">Maximize</string>
+    <string name="cd_window_restore">Restore</string>
+    <string name="cd_window_close">Close</string>
 </resources>
