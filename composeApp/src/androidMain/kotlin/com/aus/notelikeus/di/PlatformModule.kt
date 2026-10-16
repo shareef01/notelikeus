@@ -308,6 +308,9 @@ actual val platformModule = module {
     }
 
     single<SyncManager> { AndroidSyncManager(get(), get(), get(), get()) }
+    single<com.aus.notelikeus.domain.platform.NetworkMonitor> {
+        com.aus.notelikeus.platform.AndroidNetworkMonitor(get())
+    }
 
     single<GoogleSignInHelper> {
         AndroidGoogleSignInHelper(
