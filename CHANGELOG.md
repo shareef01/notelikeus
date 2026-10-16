@@ -4,6 +4,13 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Pull down on the notes list to fetch changes from the cloud**, on Android, when signed in.
+
+### Fixed
+- **Android picks up edits from other devices when the network comes back**, instead of waiting for the app to be reopened. An offline edit to the same note is still kept as a conflicted copy.
+- **The editor no longer says "Synced" for an edit that hasn't uploaded yet.** It says "Sync pending", or "Offline" when there is no network.
+
 ## [2.1.1] — 2026-10-16
 
 ### Fixed

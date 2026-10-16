@@ -18,6 +18,8 @@ import com.aus.notelikeus.domain.model.ChecklistItem
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.data.sync.ConflictResolution
+import com.aus.notelikeus.data.sync.NoteSyncStateStore
+import com.aus.notelikeus.domain.platform.NetworkMonitor
 import com.aus.notelikeus.domain.repository.LocalCommitResult
 import com.aus.notelikeus.domain.repository.LocalCommitToken
 import com.aus.notelikeus.domain.repository.LocalCommitTokenProvider
@@ -30,6 +32,7 @@ import com.aus.notelikeus.ui.theme.NO_NOTE_COLOR
 import com.aus.notelikeus.util.AppLog
 import com.aus.notelikeus.util.DateUtils
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -71,6 +74,14 @@ data class EditorState(
     val cloudSyncStatus: CloudSyncStatus = CloudSyncStatus.Unknown,
     val isGuest: Boolean = true,
     /**
+     * The stored note holds an edit the cloud has not confirmed ([ConflictResolution.awaitsUpload]).
+     * [cloudSyncStatus] is the last full sync's result, so on its own it read "Synced" for an edit
+     * still queued behind an offline upload.
+     */
+    val noteUploadPending: Boolean = false,
+    /** From [NetworkMonitor]; true where the platform has none. */
+    val isOnline: Boolean = true,
+    /**
      * Another device changed the note while it was open here, so this editor's version was saved
      * as a separate "conflicted copy" and the editor now edits that copy.
      */
@@ -96,6 +107,9 @@ class EditorViewModel(
      * yet -- threading it through autosave is the next phase.
      */
     private val localCommitTokenProvider: LocalCommitTokenProvider,
+    /** Read for [EditorState.noteUploadPending]; without it the check falls back to the server stamp. */
+    private val syncStateStore: NoteSyncStateStore? = null,
+    private val networkMonitor: NetworkMonitor? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(EditorState())
@@ -138,19 +152,21 @@ class EditorViewModel(
      */
     private fun observeOpenNote(id: Long) {
         openNoteObserver?.cancel()
-        openNoteObserver = combine(
-            repository.getActiveNotes(),
-            repository.getArchivedNotes(),
-            repository.getTrashedNotes(),
-        ) { active, archived, trashed ->
-            active.firstOrNull { it.id == id }
-                ?: archived.firstOrNull { it.id == id }
-                ?: trashed.firstOrNull { it.id == id }
-        }
+        openNoteObserver = storedRow(id)
             .filterNotNull()
             .distinctUntilChanged()
             .onEach { stored -> refreshFromStoredRow(id, stored) }
             .launchIn(viewModelScope)
+    }
+
+    private fun storedRow(id: Long): Flow<Note?> = combine(
+        repository.getActiveNotes(),
+        repository.getArchivedNotes(),
+        repository.getTrashedNotes(),
+    ) { active, archived, trashed ->
+        active.firstOrNull { it.id == id }
+            ?: archived.firstOrNull { it.id == id }
+            ?: trashed.firstOrNull { it.id == id }
     }
 
     /**
@@ -228,6 +244,32 @@ class EditorViewModel(
         sync.cloudAccount.onEach { account ->
             _state.update { it.copy(isGuest = account.email.isNullOrBlank()) }
         }.launchIn(viewModelScope)
+        networkMonitor?.isOnline?.onEach { online ->
+            _state.update { it.copy(isOnline = online) }
+        }?.launchIn(viewModelScope)
+        observeUploadPending()
+    }
+
+    /**
+     * Follows whichever row the editor is on (a new note gets its id on first save, a conflict moves
+     * to the copy). The row re-emits on every save and when an upload stamps it, which is exactly
+     * when the answer can change. Guests have nothing to upload, so they do not pay for the query.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun observeUploadPending() {
+        _state.map { if (it.isGuest) null else it.id }
+            .distinctUntilChanged()
+            .flatMapLatest { id -> if (id == null) flowOf(null) else storedRow(id) }
+            .onEach { stored ->
+                val pending = stored?.id?.let { id ->
+                    // The desktop store is a plain map an upload may be writing; a failed read
+                    // degrades to the stamp-only check rather than to an error.
+                    val synced = runCatching { syncStateStore?.syncedTimestampById()?.get(id) }.getOrNull()
+                    ConflictResolution.awaitsUpload(stored, synced)
+                } ?: false
+                _state.update { it.copy(noteUploadPending = pending) }
+            }
+            .launchIn(viewModelScope)
     }
 
     fun setNoteId(id: Long?) = setRouteArgs(id, routedInitialColor)
@@ -360,6 +402,8 @@ class EditorViewModel(
                             isSavedLocally = true,
                             cloudSyncStatus = current.cloudSyncStatus,
                             isGuest = current.isGuest,
+                            noteUploadPending = current.noteUploadPending,
+                            isOnline = current.isOnline,
                         )
                         // The snapshot is the stored note, before any merge with what the user has
                         // already typed, so an edit made while loading still counts as a change.

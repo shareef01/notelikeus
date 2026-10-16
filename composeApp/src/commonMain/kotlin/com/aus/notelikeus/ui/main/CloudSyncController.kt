@@ -4,13 +4,26 @@ import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.util.DateUtils
 import com.aus.notelikeus.ui.components.clearAttachmentThumbnailCache
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val AUTO_PULL_MIN_INTERVAL_MS = 30_000L
+
+/**
+ * How long a reconnect waits before pulling. Uploads queued offline (SyncWorker, CONNECTED
+ * constraint) start on the same reconnect, and giving them a head start means the pull usually
+ * finds them already in the cloud. Order is not what keeps data safe — a pull that lands first
+ * keeps an unsynced local edit as a conflicted copy (see ConflictResolution) — it only saves a
+ * round trip. It also folds a flapping connection into one pull.
+ */
+internal const val RECONNECT_PULL_DELAY_MS = 5_000L
 
 /**
  * Cloud account and sync actions for the main screen. Everything sign-in, sign-out, sync, and
@@ -20,9 +33,12 @@ private const val AUTO_PULL_MIN_INTERVAL_MS = 30_000L
 internal class CloudSyncController(
     private val state: MutableStateFlow<MainState>,
     private val scope: CoroutineScope,
-    private val syncManager: SyncManager
+    private val syncManager: SyncManager,
+    /** Null where the platform has no [com.aus.notelikeus.domain.platform.NetworkMonitor]. */
+    private val isOnline: StateFlow<Boolean>? = null,
 ) {
     private var lastAutoPullElapsedMs = 0L
+    private var reconnectPull: Job? = null
 
     /** Mirrors the SyncManager flows into UI state. Call once from the ViewModel's init. */
     fun observe() {
@@ -54,6 +70,32 @@ internal class CloudSyncController(
                     )
                 }
             }
+        }.launchIn(scope)
+
+        isOnline?.let(::observeConnectivity)
+    }
+
+    /**
+     * Pulls when the network comes back. Before this, a device that edited offline uploaded on
+     * reconnect but showed nothing from other devices until the next foreground resume, which a
+     * user who never left the app does not do.
+     */
+    private fun observeConnectivity(online: StateFlow<Boolean>) {
+        var wasOnline = online.value
+        online.onEach { now ->
+            if (now && !wasOnline) {
+                reconnectPull?.cancel()
+                reconnectPull = scope.launch {
+                    delay(RECONNECT_PULL_DELAY_MS)
+                    // A sync already running started before the network was back, so it cannot
+                    // have seen what changed meanwhile: wait it out rather than drop this pull.
+                    state.first { it.cloudSyncStatus != CloudSyncStatus.Syncing }
+                    autoSyncOnReconnect()
+                }
+            } else if (!now) {
+                reconnectPull?.cancel()
+            }
+            wasOnline = now
         }.launchIn(scope)
     }
 
@@ -196,18 +238,44 @@ internal class CloudSyncController(
     }
 
     /**
+     * Pull-to-refresh on the notes list. An explicit request, so it ignores the auto-sync setting
+     * and the foreground throttle, but not a signed-out account or a sync already running.
+     */
+    fun refreshFromCloud() {
+        if (state.value.cloudSyncStatus == CloudSyncStatus.Syncing) return
+        if (!state.value.cloudAccount.isGoogleAccount) return
+        lastAutoPullElapsedMs = DateUtils.currentTimeMillis()
+        downloadNotesFromCloud()
+    }
+
+    /**
      * Best-effort pull when the app returns to the foreground.
      */
     fun autoSyncOnForeground() {
-        if (state.value.cloudSyncStatus == CloudSyncStatus.Syncing) return
-        if (!state.value.cloudAccount.isGoogleAccount) return
-        if (!state.value.isCloudAutoSyncEnabled) return
+        if (!canAutoPull()) return
         val now = DateUtils.currentTimeMillis()
         if (now - lastAutoPullElapsedMs < AUTO_PULL_MIN_INTERVAL_MS) return
         lastAutoPullElapsedMs = now
-        scope.launch {
-            syncManager.downloadNotes()
-        }
+        downloadNotesFromCloud()
+    }
+
+    /**
+     * The reconnect pull. It skips the foreground throttle on purpose: a resume a few seconds
+     * before the network came back pulled nothing, and throttling against it would push the first
+     * useful pull out by up to 30 seconds. It still stamps the throttle, so a resume right after
+     * does not pull a second time.
+     */
+    private fun autoSyncOnReconnect() {
+        if (!canAutoPull()) return
+        lastAutoPullElapsedMs = DateUtils.currentTimeMillis()
+        downloadNotesFromCloud()
+    }
+
+    private fun canAutoPull(): Boolean {
+        val current = state.value
+        return current.cloudSyncStatus != CloudSyncStatus.Syncing &&
+            current.cloudAccount.isGoogleAccount &&
+            current.isCloudAutoSyncEnabled
     }
 
     fun clearPendingCloudSyncEvent() {

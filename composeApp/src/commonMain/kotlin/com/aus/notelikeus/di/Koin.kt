@@ -46,13 +46,16 @@ val sharedModule = module {
             defaultDispatcher = get(),
             diagnostics = get(),
             bundleOperations = get(),
+            networkMonitor = getOrNull(),
         )
     }
     viewModel { params -> 
-        EditorViewModel(get(), get(), params.get(), get(), syncManager = getOrNull(), localCommitTokenProvider = get())
+        EditorViewModel(get(), get(), params.get(), get(), syncManager = getOrNull(),
+            localCommitTokenProvider = get(), syncStateStore = getOrNull(), networkMonitor = getOrNull())
     }
     factory(named("windowEditor")) {
-        EditorViewModel(get(), get(), SavedStateHandle(), get(), syncManager = getOrNull(), localCommitTokenProvider = get())
+        EditorViewModel(get(), get(), SavedStateHandle(), get(), syncManager = getOrNull(),
+            localCommitTokenProvider = get(), syncStateStore = getOrNull(), networkMonitor = getOrNull())
     }
     viewModel { LabelsViewModel(get(), get()) }
 }

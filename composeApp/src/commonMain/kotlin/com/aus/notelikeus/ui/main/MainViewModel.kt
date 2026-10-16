@@ -15,6 +15,7 @@ import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
+import com.aus.notelikeus.domain.platform.NetworkMonitor
 import com.aus.notelikeus.domain.repository.LocalCommitTokenProvider
 import com.aus.notelikeus.domain.repository.NoteRepository
 import com.aus.notelikeus.domain.repository.SettingsRepository
@@ -69,6 +70,8 @@ class MainViewModel(
     private val defaultDispatcher: CoroutineDispatcher,
     private val diagnostics: DiagnosticsCollector? = null,
     private val bundleOperations: BackupBundleOperations = NoopBackupBundleOperations,
+    /** Drives the reconnect pull; null where the platform has none (see [CloudSyncController]). */
+    networkMonitor: NetworkMonitor? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(MainState())
@@ -77,7 +80,7 @@ class MainViewModel(
     private val backupExporter = backupExporter
     private val backupImporter = backupImporter
 
-    private val cloudSync = CloudSyncController(_state, viewModelScope, syncManager)
+    private val cloudSync = CloudSyncController(_state, viewModelScope, syncManager, networkMonitor?.isOnline)
     private val noteActions = NoteActionsController(
         repository = repository,
         state = _state,
@@ -135,6 +138,8 @@ class MainViewModel(
     fun downloadNotesFromCloud() = cloudSync.downloadNotesFromCloud()
 
     fun autoSyncOnForeground() = cloudSync.autoSyncOnForeground()
+
+    fun refreshFromCloud() = cloudSync.refreshFromCloud()
 
     fun clearPendingCloudSyncEvent() = cloudSync.clearPendingCloudSyncEvent()
 
