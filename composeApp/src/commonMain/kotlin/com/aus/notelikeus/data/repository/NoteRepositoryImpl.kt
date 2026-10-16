@@ -3,6 +3,7 @@ package com.aus.notelikeus.data.repository
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import com.aus.notelikeus.data.sync.ConflictResolution
+import com.aus.notelikeus.data.local.NoteIdAllocator
 import com.aus.notelikeus.data.local.NotelikeusDatabase
 import com.aus.notelikeus.data.local.dao.LabelDao
 import com.aus.notelikeus.data.local.dao.NoteDao
@@ -199,7 +200,16 @@ class NoteRepositoryImpl(
     }
 
     private suspend fun insertNoteRows(note: Note, bindAttachmentIds: Boolean = false): Long {
-        val insertedId = noteDao.insertNote(note.toNoteEntity())
+        val entity = note.toNoteEntity()
+        val insertedId = noteDao.insertNote(
+            if (entity.id != 0L) {
+                entity
+            } else {
+                entity.copy(
+                    id = NoteIdAllocator.next(DateUtils.currentTimeMillis()) { id -> noteDao.getNoteById(id) != null },
+                )
+            },
+        )
 
         noteDao.deleteNoteLabelCrossRefs(insertedId)
         note.labels.forEach { label ->

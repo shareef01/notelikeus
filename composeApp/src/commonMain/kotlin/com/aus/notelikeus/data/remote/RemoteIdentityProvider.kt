@@ -54,7 +54,12 @@ class RemoteIdentityProvider(
 
     suspend fun capture(commitToken: LocalCommitToken): OperationRemoteIdentity? {
         val ownerBefore = sessionOwnerId() ?: return null
-        val token = accessTokenProvider.accessToken() ?: return null
+        // Signed in, but no usable credential: the session could not be refreshed. That is the
+        // authentication failure the header promises, not a refusal. Returning null here let every sync
+        // entry point stop early and report success, so a device whose refresh token had been rejected
+        // showed "Synced" while nothing it wrote ever reached the server.
+        val token = accessTokenProvider.accessToken()
+            ?: throw SupabaseTransportException("session", HTTP_UNAUTHORIZED, "no usable access token; sign in again")
         val ownerAfter = sessionOwnerId() ?: return null
         if (ownerBefore != ownerAfter) return null
 
@@ -69,3 +74,5 @@ class RemoteIdentityProvider(
         }
     }
 }
+
+private const val HTTP_UNAUTHORIZED = 401
