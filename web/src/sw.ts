@@ -24,7 +24,9 @@ async function cacheFirstFont(request: Request): Promise<Response> {
 
 const handler = createHandlerBoundToURL('/index.html');
 const navigationRoute = new NavigationRoute(handler, {
-  denylist: [/^\/_/, /\/[^/?]+\.[^/]+$/],
+  // /captcha is the native apps' Turnstile page (D30): Pages serves captcha.html there, and the
+  // app shell must not stand in for it in a browser that has the PWA installed.
+  denylist: [/^\/_/, /\/[^/?]+\.[^/]+$/, /^\/captcha\/?$/],
 });
 registerRoute(navigationRoute);
 

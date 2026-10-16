@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => {
       // Untested files are reported too, so the numbers reflect the whole app rather than
       // just the files a given run happened to import.
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.ts', 'src/test/**', 'src/main.tsx', 'src/sw.ts', 'src/vite-env.d.ts'],
+      exclude: ['src/**/*.test.ts', 'src/test/**', 'src/main.tsx', 'src/captcha.ts', 'src/sw.ts', 'src/vite-env.d.ts'],
       thresholds: {
         // Security-critical modules only — not a vanity global percentage.
         'src/lib/backup/bundle/zip.ts': {
@@ -135,6 +135,12 @@ export default defineConfig(({ mode }) => {
   },
   build: {
     rollupOptions: {
+      // captcha.html is the Turnstile page the Android and desktop apps open before a sign-in
+      // code is sent (D30). It is its own entry so it gets VITE_TURNSTILE_SITE_KEY too.
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        captcha: fileURLToPath(new URL('./captcha.html', import.meta.url)),
+      },
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
