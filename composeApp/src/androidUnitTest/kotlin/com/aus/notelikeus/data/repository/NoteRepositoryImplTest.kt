@@ -39,6 +39,8 @@ private fun Note.toNoteWithLabels(): NoteWithLabels =
     fun setup() {
         database = mockk()
         noteDao = mockk(relaxed = true)
+        // A relaxed mock would report every id as taken, so a new note's id would never be found.
+        coEvery { noteDao.getNoteById(any()) } returns null
         labelDao = mockk(relaxed = true)
         reminderManager = mockk(relaxed = true)
         widgetManager = mockk(relaxed = true)
