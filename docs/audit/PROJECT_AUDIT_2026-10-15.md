@@ -100,11 +100,11 @@ The Worker throttles at 120 requests per minute per user (`attachments-worker.ym
 | F-01 to F-04, F-06 to F-12 | Fixed (#316), with regression tests. F-08 and F-09 are deployed: Supabase run 131, Worker run 135. |
 | F-05 | Superseded by AU-07 (verified deletes): fixed on all clients. |
 | FU-1, FU-2 | Fixed. FU-3 withdrawn. |
-| FU-4 `begin_sync_mutation` granted to `authenticated` | **Still open** (P3, not exploitable). `20250904000000_mapping_and_attachment_guards.sql:511`. |
-| FU-5 deprecated `security-crypto` | **Still open** (P3). `gradle/libs.versions.toml:33`. |
+| FU-4 `begin_sync_mutation` granted to `authenticated` | **Accepted** (P3, not exploitable). The 17 `SECURITY INVOKER` sync RPCs call it as `authenticated`, so the grant cannot go; moving the guard to an unexposed schema means redefining all of them to close a flag that only lasts one request's transaction. |
+| FU-5 deprecated `security-crypto` | **Accepted** (P3). Since v1.0.3 both secrets live in Keystore-wrapped files; the library is kept only to read an older install's passphrase and session once, and as the passphrase fallback when a Keystore write fails. Removing it would lose the database on exactly those devices. 1.1.0 is its final release and OSV lists no vulnerabilities. |
 | FU-6 web refresh token in `localStorage` | Unchanged, accepted note. |
 | AU-01 to AU-30 | Fixed and tested, except AU-14 (accepted risk) and AU-18 (withdrawn). |
-| Not verified by #318 | Two-device conflict on real Android devices; a Gradle CVE scan; Android/desktop screen-reader and keyboard runs. All still open. |
+| Not verified by #318 | Dependency scan done 2026-10-15: the 330 resolved Android and desktop libraries have no OSV advisories, and `npm audit --omit=dev` is clean for web and the Worker. Still open: a two-device conflict on real Android devices, and Android/desktop screen-reader and keyboard runs. |
 
 Checked in this pass and found sound:
 - The web counterpart of the `e5c5762` bug: the web writes the uploaded `r2:` version through `putLocalEdit` (`noteActions.ts:20-33, 102`), so its pending-push marker protects it until a commit names it.
