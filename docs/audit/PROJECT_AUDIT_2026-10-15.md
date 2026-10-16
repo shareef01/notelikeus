@@ -93,6 +93,12 @@ The Worker throttles at 120 requests per minute per user (`attachments-worker.ym
 - `android.yml` publishes a GitHub Release with **unsigned** APK/AAB when signing secrets are missing (as v2.0.0 did). The certificate pin is skipped when `ANDROID_SIGNING_CERT_SHA256` is unset. Prefer failing the tag build.
 - `scripts/bundle-release.ps1:29` still prints the retired Firebase privacy URL (`notelike.web.app`). The store docs use `https://notelikeus.pages.dev/privacy.html`.
 
+### N-10 (P1, Confirmed and fixed in 2.1.1): notes created on Android after a sign-out wipe vanished without uploading
+
+Found by the two-device test. Signing out wipes local data, and the next download restores the account's notes under their cloud ids, so Room's autoincrement restarted at the largest of them. The first notes created afterwards took the ids of notes deleted earlier, which the cloud still held tombstones for. The server refused their uploads as `note_deleted`, the sync still reported success, and the next download's `purgeLocalTombstonedNotes` removed them, keeping no copy because a never-synced row did not count as edited. Two test notes were lost this way. A session whose refresh token was rejected also showed "Synced" while uploading nothing.
+
+Fixed in #325 and released as 2.1.1 (#326): new notes take ids by the web's rule (epoch millis × 1000 plus a random suffix, `NoteIdAllocator`), a purge keeps a never-synced row as a copy, and a signed-in session with no usable token fails the sync with a 401 ("sign in again"). Not fixed: a `note_deleted` refusal still only logs a warning, so a future refusal of that kind would again be silent.
+
 ## Status of the earlier audits' items
 
 | Item | Status now |
@@ -104,7 +110,7 @@ The Worker throttles at 120 requests per minute per user (`attachments-worker.ym
 | FU-5 deprecated `security-crypto` | **Accepted** (P3). Since v1.0.3 both secrets live in Keystore-wrapped files; the library is kept only to read an older install's passphrase and session once, and as the passphrase fallback when a Keystore write fails. Removing it would lose the database on exactly those devices. 1.1.0 is its final release and OSV lists no vulnerabilities. |
 | FU-6 web refresh token in `localStorage` | Unchanged, accepted note. |
 | AU-01 to AU-30 | Fixed and tested, except AU-14 (accepted risk) and AU-18 (withdrawn). |
-| Not verified by #318 | Dependency scan done 2026-10-15: the 330 resolved Android and desktop libraries have no OSV advisories, and `npm audit --omit=dev` is clean for web and the Worker. Still open: a two-device conflict on real Android devices, and Android/desktop screen-reader and keyboard runs. |
+| Not verified by #318 | Dependency scan done 2026-10-15: the 330 resolved Android and desktop libraries have no OSV advisories, and `npm audit --omit=dev` is clean for web and the Worker. Two-device conflict tested 2026-10-16 on a Pixel 7 against the web app: it found N-10 below, and passed on 2.1.1 (an offline phone edit and a web edit of the same note end with the web text and a conflicted copy of the phone text). Still open: Android/desktop screen-reader and keyboard runs. |
 
 Checked in this pass and found sound:
 - The web counterpart of the `e5c5762` bug: the web writes the uploaded `r2:` version through `putLocalEdit` (`noteActions.ts:20-33, 102`), so its pending-push marker protects it until a commit names it.
