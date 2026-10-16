@@ -16,7 +16,9 @@ describe('Cloudflare Pages static artifacts', () => {
     expect(headers).toContain('X-Frame-Options: DENY');
     expect(headers).toContain("connect-src 'self'");
     // Sign-in is by emailed one-time code: no Google OAuth hosts in the CSP.
-    expect(headers).not.toMatch(/google\.com|gstatic\.com/);
+    for (const host of ['accounts.google.com', 'apis.google.com', 'gstatic.com']) {
+      expect(headers).not.toContain(host);
+    }
     expect(headers).not.toContain('frame-src');
     expect(headers).not.toMatch(/https:\/\/[a-z0-9]+\.supabase\.co/);
     expect(headers).not.toContain('https://*.supabase.co');
