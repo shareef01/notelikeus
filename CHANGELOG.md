@@ -4,6 +4,9 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Sign in with a code sent to your email instead of Google**, on Android, Windows and the web. Type your email, then the 6-digit code from the message. Signing in with the email your Google account used brings back the same notes. Google sign-in is removed.
+
 ### Added
 - **Pull down on the notes list to fetch changes from the cloud**, on Android, when signed in.
 

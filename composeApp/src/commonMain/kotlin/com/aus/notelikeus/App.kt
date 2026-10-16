@@ -40,7 +40,6 @@ import org.koin.core.annotation.KoinExperimentalAPI
 fun App(
     windowSizeClass: WindowSizeClass,
     onShowBiometricPrompt: (title: String, onSuccess: () -> Unit, onError: () -> Unit) -> Unit,
-    onGoogleSignInClick: (MainViewModel) -> Unit,
     onExportBackup: (MainViewModel) -> Unit = {},
     onExportNotesOnly: (MainViewModel) -> Unit = {},
     onImportBackup: (MainViewModel) -> Unit = {},
@@ -120,7 +119,6 @@ fun App(
                             state = state,
                             windowSizeClass = windowSizeClass,
                             onShowBiometricPrompt = onShowBiometricPrompt,
-                            onGoogleSignInClick = onGoogleSignInClick,
                             onExportBackup = onExportBackup,
                             onExportNotesOnly = onExportNotesOnly,
                             onImportBackup = onImportBackup,
@@ -154,7 +152,6 @@ private fun AppContent(
     state: com.aus.notelikeus.ui.main.MainState,
     windowSizeClass: WindowSizeClass,
     onShowBiometricPrompt: (title: String, onSuccess: () -> Unit, onError: () -> Unit) -> Unit,
-    onGoogleSignInClick: (MainViewModel) -> Unit,
     onExportBackup: (MainViewModel) -> Unit,
     onExportNotesOnly: (MainViewModel) -> Unit,
     onImportBackup: (MainViewModel) -> Unit,
@@ -178,7 +175,9 @@ private fun AppContent(
 
         // Signing in is optional: the gate is shown until the user either signs in or explicitly
         // chooses local-only use, and that choice is persisted so it is asked once, not per launch.
-        val isSignInGateVisible = !state.cloudAccount.isGoogleAccount && !state.hasChosenOffline
+        // "Sign in" in settings brings it back for a local-only user without undoing the choice.
+        val isSignInGateVisible = !state.cloudAccount.isSignedIn &&
+            (!state.hasChosenOffline || state.isSignInRequested)
 
         // Only consumed while the gate is the thing on screen. MainScreen keys its own effect on
         // this same event and shows a snackbar, which suspends until the snackbar is dismissed
@@ -195,12 +194,28 @@ private fun AppContent(
 
         if (isSignInGateVisible) {
             SignInGate(
-                onGoogleSignInClick = { onGoogleSignInClick(viewModel) },
+                codeSentTo = state.emailCodeSentTo,
+                onRequestCode = { email ->
+                    gateError = null
+                    viewModel.requestEmailCode(email)
+                },
+                onSubmitCode = { email, code ->
+                    gateError = null
+                    viewModel.signInWithEmailCode(email, code)
+                },
+                onUseDifferentEmail = {
+                    gateError = null
+                    viewModel.resetEmailCode()
+                },
                 isSigningIn = state.isSigningIn,
                 onEmailPassword = { email, password, create ->
+                    gateError = null
                     viewModel.signInWithEmailPassword(email, password, create)
                 },
-                onSkip = { viewModel.continueOffline() },
+                onSkip = {
+                    gateError = null
+                    if (state.isSignInRequested) viewModel.cancelSignInRequest() else viewModel.continueOffline()
+                },
                 externalError = gateError
             )
         } else {
@@ -246,7 +261,7 @@ private fun AppContent(
                         onExportBackup = { onExportBackup(viewModel) },
                         onExportNotesOnly = { onExportNotesOnly(viewModel) },
                         onImportBackup = { onImportBackup(viewModel) },
-                        onGoogleSignIn = { onGoogleSignInClick(viewModel) },
+                        onSignIn = { viewModel.requestSignIn() },
                         pendingSharedTitle = pendingSharedTitle,
                         pendingSharedContent = pendingSharedContent,
                         onConsumeSharedContent = onConsumeSharedContent,

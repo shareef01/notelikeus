@@ -1,11 +1,24 @@
 export function formatAuthError(error: unknown): string {
   if (isAuthLikeError(error)) {
     const message = error.message.toLowerCase();
-    if (message.includes('popup') && message.includes('closed')) {
-      return 'Sign-in was cancelled.';
+    if (
+      error.code === 'otp_expired' ||
+      (message.includes('token') && (message.includes('expired') || message.includes('invalid')))
+    ) {
+      return 'That code is wrong or has expired. Check the latest email, or send a new code.';
     }
-    if (message.includes('popup') && message.includes('blocked')) {
-      return 'Pop-up blocked. Allow pop-ups for this site and try again.';
+    if (
+      error.code === 'over_email_send_rate_limit' ||
+      (message.includes('rate limit') && message.includes('email')) ||
+      message.includes('for security purposes')
+    ) {
+      return 'Too many codes requested. Wait a minute, then send a new code.';
+    }
+    if (error.code === 'over_request_rate_limit') {
+      return 'Too many attempts. Wait a moment and try again.';
+    }
+    if (error.code === 'otp_disabled' || error.code === 'signup_disabled') {
+      return 'Email sign-in is not available right now. Try again later.';
     }
     if (message.includes('network') || error.status === 0) {
       return 'Network error. Check your connection and try again.';

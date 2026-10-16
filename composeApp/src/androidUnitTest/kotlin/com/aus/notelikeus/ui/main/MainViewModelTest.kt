@@ -458,13 +458,14 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `signInWithGoogleIdToken calls syncManager`() = runTest {
-        coEvery { syncManager.signInWithGoogle(any()) } returns Result.success(Unit)
-        
-        viewModel.signInWithGoogleIdToken("token")
+    fun `signInWithEmailCode calls syncManager and pulls notes`() = runTest {
+        coEvery { syncManager.signInWithEmailCode(any(), any()) } returns Result.success(Unit)
+
+        viewModel.signInWithEmailCode("a@example.com", "123456")
         advanceUntilIdle()
-        
-        coVerify { syncManager.signInWithGoogle("token") }
+
+        coVerify { syncManager.signInWithEmailCode("a@example.com", "123456") }
+        coVerify { syncManager.downloadNotes() }
     }
 
     @Test
@@ -503,34 +504,39 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `a failed token exchange surfaces instead of silently returning to the gate`() = runTest {
-        coEvery { syncManager.signInWithGoogle(any()) } returns
-            Result.failure(IllegalStateException("bad token"))
+    fun `a rejected code surfaces instead of silently returning to the gate`() = runTest {
+        coEvery { syncManager.requestEmailCode(any()) } returns Result.success(Unit)
+        coEvery { syncManager.signInWithEmailCode(any(), any()) } returns
+            Result.failure(IllegalStateException("That code is wrong or has expired."))
 
-        viewModel.signInWithGoogleIdToken("token")
+        viewModel.requestEmailCode("a@example.com")
+        advanceUntilIdle()
+        viewModel.signInWithEmailCode("a@example.com", "000000")
         advanceUntilIdle()
 
         val state = viewModel.state.value
         assertEquals(false, state.isSigningIn)
+        assertEquals("a@example.com", state.emailCodeSentTo)
         assertEquals(
-            CloudSyncEvent.Failure("bad token"),
+            CloudSyncEvent.Failure("That code is wrong or has expired."),
             state.pendingCloudSyncEvent
         )
     }
 
     @Test
-    fun `reportGoogleSignInFailure surfaces platform sign-in errors and stops the spinner`() = runTest {
-        viewModel.signInWithGoogleIdToken("token")
-        viewModel.reportGoogleSignInFailure(IllegalStateException("user cancelled"))
+    fun `a code that could not be sent stays on the email step and says why`() = runTest {
+        coEvery { syncManager.requestEmailCode(any()) } returns
+            Result.failure(IllegalStateException("Too many attempts."))
+
+        viewModel.requestEmailCode("a@example.com")
         advanceUntilIdle()
 
         val state = viewModel.state.value
         assertEquals(false, state.isSigningIn)
-        assertEquals(
-            CloudSyncEvent.Failure("user cancelled"),
-            state.pendingCloudSyncEvent
-        )
+        assertEquals(null, state.emailCodeSentTo)
+        assertEquals(CloudSyncEvent.Failure("Too many attempts."), state.pendingCloudSyncEvent)
     }
+
     // ---- search operators ----
 
     /**

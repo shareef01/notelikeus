@@ -44,7 +44,7 @@ interface MainDialogsProps {
   onAccentChange: React.ComponentProps<typeof ProfileSheet>['onAccentChange'];
   onAmoledChange: React.ComponentProps<typeof ProfileSheet>['onAmoledChange'];
 
-  isGoogleAccount: boolean;
+  isSignedIn: boolean;
   isGuest: boolean;
   userEmail: string | null;
   syncStatus: React.ComponentProps<typeof ProfileSheet>['syncStatus'];
@@ -85,7 +85,7 @@ export function MainDialogs({
   onThemeBaseChange,
   onAccentChange,
   onAmoledChange,
-  isGoogleAccount,
+  isSignedIn,
   isGuest,
   userEmail,
   syncStatus,
@@ -113,7 +113,7 @@ export function MainDialogs({
         onThemeBaseChange={onThemeBaseChange}
         onAccentChange={onAccentChange}
         onAmoledChange={onAmoledChange}
-        isGoogleAccount={isGoogleAccount}
+        isSignedIn={isSignedIn}
         isGuest={isGuest}
         userEmail={userEmail}
         syncStatus={syncStatus}

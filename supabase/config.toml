@@ -194,7 +194,8 @@ password_requirements = ""
 # rp_origins = ["http://127.0.0.1:3000"]
 
 [auth.rate_limit]
-# Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
+# Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled. Every sign-in
+# sends one (the one-time code), so a hosted project with custom SMTP needs this well above 2.
 email_sent = 2
 # Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
 sms_sent = 30
@@ -241,6 +242,21 @@ otp_expiry = 3600
 # pass = "env(SENDGRID_API_KEY)"
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
+
+# Sign-in is by emailed one-time code: the clients call /auth/v1/otp, then /auth/v1/verify with
+# the code the user types in. Both templates carry {{ .Token }}, the code, rather than the default
+# magic link, which the apps have no way to open. An existing user gets magic_link; a new user
+# signing up through the same call gets confirmation while enable_confirmations is on, and
+# magic_link while it is off, so both are set and the switch cannot quietly send a link instead.
+# Locally the mail lands in the Mailpit inbox `supabase start` prints. The hosted project needs
+# the same two templates set in the dashboard (Authentication > Email Templates).
+[auth.email.template.magic_link]
+subject = "Your Notelikeus sign-in code"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.confirmation]
+subject = "Your Notelikeus sign-in code"
+content_path = "./supabase/templates/confirmation.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
@@ -333,12 +349,13 @@ skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
 
+# Off: every client signs in with an emailed one-time code ([auth.email] above), not Google.
 [auth.external.google]
-enabled = true
-client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
-secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+enabled = false
+client_id = ""
+secret = ""
 redirect_uri = ""
-skip_nonce_check = true
+skip_nonce_check = false
 email_optional = false
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.

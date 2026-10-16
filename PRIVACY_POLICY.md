@@ -1,6 +1,6 @@
 # Privacy Policy — Notelikeus
 
-**Last updated:** September 2026
+**Last updated:** October 2026
 
 Notelikeus is an offline-first notes application across Android, Windows (Desktop), and Web. You can use Notelikeus completely offline without creating an account or signing in. This policy describes how the app handles information locally on your device and when you optionally enable cloud sync.
 
@@ -28,6 +28,7 @@ Notelikeus is an offline-first notes application across Android, Windows (Deskto
 
 When you choose to sign in and use sync:
 
+- You sign in with your **email address**: Supabase Auth emails you a one-time code, and that address identifies your account. There is no password, and no third-party sign-in provider is involved
 - Note content is stored in **Supabase** under your account
 - Attachment binaries, when used, are stored in **Cloudflare R2** behind an authenticated Worker
 - Signing out **clears locally cached notes on this device** so the next account cannot inherit them; cloud data remains until you delete it (in-app “Sign out and delete cloud data”)
@@ -85,9 +86,8 @@ If you add links to notes, tapping them opens your default browser. Notelikeus d
 
 ## Third parties
 
-- **Supabase** — authentication and note data when you enable cloud sync
+- **Supabase** — authentication (including sending sign-in code emails) and note data when you enable cloud sync
 - **Cloudflare** — web hosting (Pages) and attachment objects (R2 / Worker) when those features are used
-- **Google** — optional Google sign-in identity; Google OAuth is not the note database
 - We do not sell your personal data or use analytics or advertising SDKs
 
 ## Children

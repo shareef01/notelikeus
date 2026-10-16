@@ -1,0 +1,115 @@
+name: Supabase Auth Config
+
+# Owner-operated. Sets only the hosted project's sign-in emails (the one-time-code templates in
+# supabase/templates) and, when the SMTP_* secrets exist, its email sender and hourly email limit.
+#
+# `supabase config push` is not used: it pushes the whole [auth] section of config.toml, and that
+# file describes the *local* stack (site_url 127.0.0.1, the Google provider off), which would
+# overwrite the production redirect URLs. This PATCHes the same Management API endpoint the CLI
+# uses, with only the fields named below.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_project_ref:
+        description: 'Type the Supabase project ref to confirm (must match SUPABASE_PROJECT_REF)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-auth-config
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      SMTP_SENDER_EMAIL: ${{ secrets.SMTP_SENDER_EMAIL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require secrets and a matching confirmation
+        env:
+          CONFIRM_PROJECT_REF: ${{ inputs.confirm_project_ref }}
+        run: |
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF; do
+            if [ -z "${!name}" ]; then echo "::error::Secret $name is not set"; exit 1; fi
+          done
+          if [ "$CONFIRM_PROJECT_REF" != "$SUPABASE_PROJECT_REF" ]; then
+            echo "::error::confirm_project_ref does not match SUPABASE_PROJECT_REF"
+            exit 1
+          fi
+
+      - name: Build the auth config patch
+        run: |
+          subject='Your Notelikeus sign-in code'
+          jq -n \
+            --arg subject "$subject" \
+            --rawfile magic supabase/templates/magic_link.html \
+            --rawfile confirm supabase/templates/confirmation.html \
+            '{
+              external_email_enabled: true,
+              mailer_otp_length: 6,
+              mailer_subjects_magic_link: $subject,
+              mailer_templates_magic_link_content: $magic,
+              mailer_subjects_confirmation: $subject,
+              mailer_templates_confirmation_content: $confirm
+            }' > patch.json
+          # The sender and the higher limit go together: Supabase ignores the email limit
+          # without custom SMTP, and its built-in sender only reaches the project's own team.
+          if [ -n "$SMTP_HOST" ] && [ -n "$SMTP_USER" ] && [ -n "$SMTP_PASS" ] && [ -n "$SMTP_SENDER_EMAIL" ]; then
+            jq \
+              --arg host "$SMTP_HOST" \
+              --arg port "${SMTP_PORT:-587}" \
+              --arg user "$SMTP_USER" \
+              --arg pass "$SMTP_PASS" \
+              --arg sender "$SMTP_SENDER_EMAIL" \
+              '. + {
+                smtp_host: $host,
+                smtp_port: $port,
+                smtp_user: $user,
+                smtp_pass: $pass,
+                smtp_admin_email: $sender,
+                smtp_sender_name: "Notelikeus",
+                rate_limit_email_sent: 30
+              }' patch.json > patch.tmp && mv patch.tmp patch.json
+            echo "SMTP secrets found: the sender and a 30/hour email limit are included."
+          else
+            echo "::notice::SMTP_* secrets not set: only the code email templates are applied."
+          fi
+          jq 'with_entries(if .key == "smtp_pass" then .value = "***" else . end)
+              | with_entries(if (.key | test("content$")) then .value = "(\(.value | length) chars)" else . end)' patch.json
+
+      - name: Apply
+        run: |
+          status=$(curl -sS -o response.json -w '%{http_code}' -X PATCH \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/config/auth" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data @patch.json)
+          echo "HTTP $status"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            jq . response.json || cat response.json
+            exit 1
+          fi
+          # A record of what the project now has, without template bodies or secrets.
+          jq '{external_email_enabled, external_google_enabled, mailer_otp_length,
+               mailer_subjects_magic_link, mailer_subjects_confirmation,
+               magic_link_has_code: (.mailer_templates_magic_link_content // "" | contains("{{ .Token }}")),
+               confirmation_has_code: (.mailer_templates_confirmation_content // "" | contains("{{ .Token }}")),
+               smtp_host, smtp_admin_email, rate_limit_email_sent, site_url}' response.json
+          rm -f patch.json response.json

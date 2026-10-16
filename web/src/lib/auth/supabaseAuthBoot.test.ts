@@ -11,7 +11,7 @@ describe('shouldStartSupabaseAuthOnBoot', () => {
     expect(shouldStartSupabaseAuthOnBoot(true, '')).toBe(true);
   });
 
-  it('loads supabase-js to finish a Google OAuth redirect', () => {
+  it('loads supabase-js to finish a PKCE redirect from an auth email link', () => {
     expect(shouldStartSupabaseAuthOnBoot(false, '?code=pkce-grant')).toBe(true);
   });
 });

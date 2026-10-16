@@ -12,8 +12,30 @@ function authError(message: string, status = 400, code?: string): Error {
 describe('formatAuthError', () => {
   it('maps known auth messages to actionable copy', () => {
     const cases: Array<[Error, string]> = [
-      [authError('Popup closed by user'), 'Sign-in was cancelled.'],
-      [authError('Popup blocked by browser'), 'Pop-up blocked. Allow pop-ups for this site and try again.'],
+      [
+        authError('Token has expired or is invalid', 403, 'otp_expired'),
+        'That code is wrong or has expired. Check the latest email, or send a new code.',
+      ],
+      [
+        authError('Token has expired or is invalid', 403),
+        'That code is wrong or has expired. Check the latest email, or send a new code.',
+      ],
+      [
+        authError('email rate limit exceeded', 429, 'over_email_send_rate_limit'),
+        'Too many codes requested. Wait a minute, then send a new code.',
+      ],
+      [
+        authError('For security purposes, you can only request this after 42 seconds.', 429),
+        'Too many codes requested. Wait a minute, then send a new code.',
+      ],
+      [
+        authError('Request rate limit reached', 429, 'over_request_rate_limit'),
+        'Too many attempts. Wait a moment and try again.',
+      ],
+      [
+        authError('Signups not allowed for otp', 422, 'otp_disabled'),
+        'Email sign-in is not available right now. Try again later.',
+      ],
       [authError('Network request failed', 0), 'Network error. Check your connection and try again.'],
       [authError('User already registered'), 'That email already has an account. Use Sign in instead.'],
       [authError('Invalid email', 400, 'email_address_invalid'), 'Enter a valid email address.'],

@@ -26,8 +26,8 @@ class CloudSyncControllerReconnectTest {
         override val pendingEvent = MutableStateFlow<CloudSyncEvent?>(null)
         var downloads = 0
 
-        override suspend fun signInWithGoogle(idToken: String) = Result.success(Unit)
-        override suspend fun completeExternalSignIn() = Result.success(Unit)
+        override suspend fun requestEmailCode(email: String) = Result.success(Unit)
+        override suspend fun signInWithEmailCode(email: String, code: String) = Result.success(Unit)
         override suspend fun signInWithEmail(email: String, password: String, create: Boolean) = Result.success(Unit)
         override suspend fun signOut(deleteCloudData: Boolean) = Result.success(Unit)
         override suspend fun syncNotes() = Unit
@@ -190,6 +190,6 @@ class CloudSyncControllerReconnectTest {
     }
 
     private companion object {
-        val SIGNED_IN = CloudAccount(email = "a@example.com", isGoogleAccount = true, isAnonymous = false)
+        val SIGNED_IN = CloudAccount(email = "a@example.com", isSignedIn = true, isAnonymous = false)
     }
 }

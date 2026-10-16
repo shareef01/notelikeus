@@ -41,7 +41,13 @@ export function initSupabaseAuthListener(
 import { markGuestAdoptionIntent, clearGuestAdoptionIntent } from '@/lib/local/guestAdoptionIntent';
 import { useAuthStore } from '@/store/authStore';
 
-/** Completes an OAuth redirect when the page reloads after Google sign-in. */
+/**
+ * Completes a PKCE `?code=` redirect when the page loads from a Supabase auth email link.
+ *
+ * Sign-in itself is by typed one-time code, but this stays: with `flowType: 'pkce'` any auth email
+ * that still carries a link (a template left at `{{ .ConfirmationURL }}`, a signup confirmation,
+ * an email change or recovery) lands back here with `?code=` and must be exchanged.
+ */
 export async function completeSupabaseOAuthRedirect(): Promise<void> {
   const client = getSupabaseClient();
   const url = new URL(window.location.href);
@@ -75,17 +81,32 @@ export async function completeSupabaseOAuthRedirect(): Promise<void> {
   }
 }
 
-export async function signInWithGoogleSupabase(): Promise<void> {
+/**
+ * Emails a one-time sign-in code. Creates the account on first use.
+ *
+ * No `emailRedirectTo`: the user types the code back into the app, so the email does not need to
+ * carry a link. The Supabase "Magic Link" and "Confirm signup" email templates must include
+ * `{{ .Token }}` for the code to reach the user.
+ */
+export async function sendEmailSignInCodeSupabase(email: string): Promise<void> {
+  const { error } = await getSupabaseClient().auth.signInWithOtp({
+    email: email.trim(),
+    options: { shouldCreateUser: true },
+  });
+  if (error) throw error;
+}
+
+/** Verifies the code sent by [sendEmailSignInCodeSupabase] and starts the session. */
+export async function verifyEmailSignInCodeSupabase(email: string, code: string): Promise<void> {
   const wasGuest = useAuthStore.getState().guestMode;
   if (wasGuest) {
-    markGuestAdoptionIntent('oauth');
+    markGuestAdoptionIntent('email-code');
   }
   try {
-    const { error } = await getSupabaseClient().auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-      },
+    const { error } = await getSupabaseClient().auth.verifyOtp({
+      email: email.trim(),
+      token: code.trim(),
+      type: 'email',
     });
     if (error) {
       if (wasGuest) clearGuestAdoptionIntent();

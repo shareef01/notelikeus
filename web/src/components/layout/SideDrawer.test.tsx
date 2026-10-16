@@ -12,7 +12,11 @@ vi.mock('@/hooks/useMediaQuery', () => ({
 
 import { SideDrawer } from '@/components/layout/SideDrawer';
 
-function render(open: boolean, tablet: boolean) {
+function render(
+  open: boolean,
+  tablet: boolean,
+  options: { collapsed?: boolean; onSignIn?: () => void } = {},
+) {
   isTabletUp.value = tablet;
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -21,13 +25,13 @@ function render(open: boolean, tablet: boolean) {
     root.render(
       createElement(SideDrawer, {
         open,
-        collapsed: false,
+        collapsed: options.collapsed ?? false,
         currentFilter: 'active',
         onClose: () => {},
         onToggleCollapse: () => {},
         onNavigate: () => {},
         userEmail: null,
-        onSignIn: () => {},
+        onSignIn: options.onSignIn ?? (() => {}),
         onSignOut: () => {},
       }),
     );
@@ -90,5 +94,32 @@ describe('SideDrawer', () => {
     open.cleanup();
 
     expect(document.body.style.overflow).not.toBe('hidden');
+  });
+
+  it('offers a plain Sign in button that opens the auth screen when signed out', () => {
+    const onSignIn = vi.fn();
+    const { aside, cleanup } = render(true, false, { onSignIn });
+
+    const buttons = Array.from(aside.querySelectorAll('button')).filter(
+      (button) => button.textContent?.trim() === 'Sign in',
+    );
+    expect(buttons).toHaveLength(1);
+    act(() => buttons[0]!.click());
+    expect(onSignIn).toHaveBeenCalledTimes(1);
+    expect(aside.textContent?.toLowerCase()).not.toContain('google');
+
+    cleanup();
+  });
+
+  it('keeps an accessible Sign in button on the collapsed tablet sidebar', () => {
+    const onSignIn = vi.fn();
+    const { aside, cleanup } = render(false, true, { collapsed: true, onSignIn });
+
+    const button = aside.querySelector('button[aria-label="Sign in"]') as HTMLButtonElement | null;
+    expect(button).not.toBeNull();
+    act(() => button!.click());
+    expect(onSignIn).toHaveBeenCalledTimes(1);
+
+    cleanup();
   });
 });

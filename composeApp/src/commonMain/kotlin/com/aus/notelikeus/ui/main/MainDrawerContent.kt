@@ -288,7 +288,7 @@ internal fun MainDrawerContent(
             )
             Spacer(modifier = Modifier.height(Spacing.md))
             val email = state.cloudAccount.email
-            if (state.cloudAccount.isGoogleAccount && !email.isNullOrBlank()) {
+            if (state.cloudAccount.isSignedIn && !email.isNullOrBlank()) {
                 SideDrawerAccountRow(email = email)
                 Spacer(modifier = Modifier.height(Spacing.md))
                 Row(

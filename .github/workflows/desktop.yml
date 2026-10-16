@@ -165,7 +165,7 @@ jobs:
           $release = "composeApp/build/compose/binaries/main/app/Notelikeus/runtime/release"
           if (-not (Test-Path $release)) { throw "No runtime image at $release" }
           $modules = (Get-Content $release | Select-String '^MODULES=').ToString()
-          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec', 'java.management', 'jdk.httpserver') |
+          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec', 'java.management') |
             Where-Object { $modules -notmatch [regex]::Escape($_) }
           if ($missing) { throw "jlink runtime is missing: $($missing -join ', ')" }
           Write-Host "All required modules present."
@@ -257,14 +257,12 @@ jobs:
       # The installed app has no environment variables and no local.properties, so the hosted
       # backend is compiled in here (CompiledBackendConfig). packageMsi refuses to run without it
       # (verifyReleaseBackendConfig) rather than ship an installer whose sign-in and sync are off.
-      # The same secrets the Pages build uses; the OAuth client secret is optional (without it only
-      # desktop Google sign-in is unavailable).
+      # The same secrets the Pages build uses.
       - name: Build the app image and the MSI
         env:
           NOTELIKEUS_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           NOTELIKEUS_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           NOTELIKEUS_ATTACHMENTS_WORKER_URL: ${{ secrets.VITE_ATTACHMENTS_WORKER_URL }}
-          NOTELIKEUS_OAUTH_CLIENT_SECRET: ${{ secrets.NOTELIKEUS_OAUTH_CLIENT_SECRET }}
         run: |
           ./gradlew.bat :composeApp:createDistributable --stacktrace
           ./gradlew.bat :composeApp:packageMsi --stacktrace
@@ -275,7 +273,7 @@ jobs:
           $release = "composeApp/build/compose/binaries/main/app/Notelikeus/runtime/release"
           if (-not (Test-Path $release)) { throw "No runtime image at $release" }
           $modules = (Get-Content $release | Select-String '^MODULES=').ToString()
-          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec', 'java.management', 'jdk.httpserver') |
+          $missing = @('java.net.http', 'jdk.unsupported', 'java.naming', 'jdk.crypto.ec', 'java.management') |
             Where-Object { $modules -notmatch [regex]::Escape($_) }
           if ($missing) { throw "jlink runtime is missing: $($missing -join ', ')" }
           Write-Host "All required modules present."

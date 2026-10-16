@@ -69,8 +69,8 @@ export function useAccountActions({
     closeProfile();
 
     try {
-      const { signOutGoogle } = await import('@/lib/auth/googleAuth');
-      await signOutGoogle({ deleteCloudData });
+      const { signOutAccount } = await import('@/lib/auth/accountAuth');
+      await signOutAccount({ deleteCloudData });
       toast(deleteCloudData ? 'Signed out and cloud data deleted' : 'Signed out');
     } catch (error) {
       toast(messageOf(error, 'Sign out failed'), 'error');

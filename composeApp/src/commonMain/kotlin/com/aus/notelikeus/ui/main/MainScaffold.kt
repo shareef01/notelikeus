@@ -362,7 +362,7 @@ internal fun MainScaffold(
                     // Signed in only: with no account there is nothing to pull. Not on desktop
                     // either, where a wheel scroll at the top of the list would count as a pull;
                     // the profile sheet's sync action covers it there.
-                    enabled = state.cloudAccount.isGoogleAccount && !AppConfig.isDesktop,
+                    enabled = state.cloudAccount.isSignedIn && !AppConfig.isDesktop,
                     isRefreshing = state.cloudSyncStatus == CloudSyncStatus.Syncing,
                     onRefresh = viewModel::refreshFromCloud,
                     modifier = Modifier

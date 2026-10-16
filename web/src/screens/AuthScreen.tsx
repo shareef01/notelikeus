@@ -1,7 +1,7 @@
 import { BrandMark } from '@/components/brand/BrandMark';
-import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
 import { CloseIcon } from '@/components/icons/Icons';
 import { CloudIcon, NotesIcon, SyncIcon } from '@/components/icons/Icons';
+import { EmailCodeSignIn } from '@/components/auth/EmailCodeSignIn';
 import { ensureSupabaseAuthStarted, useAuthListener } from '@/hooks/useAuth';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -15,20 +15,18 @@ import { useEffect, useState } from 'react';
 
 const COPY: Record<
   AuthMode,
-  { title: string; subtitle: string; googleLabel: string; switchPrompt: string; switchMode: AuthMode; switchLabel: string }
+  { title: string; subtitle: string; switchPrompt: string; switchMode: AuthMode; switchLabel: string }
 > = {
   signin: {
     title: 'Sign in to Notelikeus',
-    subtitle: 'Notes are saved locally on this device. Sign in to optionally sync across Android and the cloud.',
-    googleLabel: 'Continue with Google',
+    subtitle: 'Notes are saved locally on this device. Sign in with your email to optionally sync across Android and the cloud.',
     switchPrompt: "Don't have an account?",
     switchMode: 'signup',
     switchLabel: 'Create one',
   },
   signup: {
     title: 'Create your account',
-    subtitle: 'Notes are saved locally on this device. Connect your Google account to optionally sync across Android and the cloud.',
-    googleLabel: 'Continue with Google',
+    subtitle: 'Notes are saved locally on this device. Create an account with just your email to optionally sync across Android and the cloud.',
     switchPrompt: 'Already have an account?',
     switchMode: 'signin',
     switchLabel: 'Sign in',
@@ -36,7 +34,7 @@ const COPY: Record<
 };
 
 const FEATURES = [
-  { icon: CloudIcon, text: 'Cloud backup with your Google account' },
+  { icon: CloudIcon, text: 'Cloud backup with your Notelikeus account' },
   { icon: SyncIcon, text: 'Sync notes with the Android app' },
   { icon: NotesIcon, text: 'Notes sync automatically, even after a dropped connection' },
 ] as const;
@@ -52,6 +50,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
   const openAuthScreen = useUiStore((s) => s.openAuthScreen);
   const { user, isReady } = useAuthListener();
   const [loading, setLoading] = useState(false);
+  const [codeBusy, setCodeBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testEmail, setTestEmail] = useState(
     () => (testLoginBuildEnabled ? (import.meta.env.VITE_TEST_LOGIN_EMAIL?.trim() ?? '') : ''),
@@ -74,20 +73,6 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
       );
     }
   }, [isReady, user, closeAuthScreen, mode]);
-
-  const handleGoogle = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      await ensureSupabaseAuthStarted();
-      const { signInWithGoogle } = await import('@/lib/auth/googleAuth');
-      await signInWithGoogle();
-    } catch (err) {
-      setError(formatAuthError(err));
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleTestSignIn = async (create: boolean, email: string, password: string) => {
     const trimmedEmail = email.trim();
@@ -154,7 +139,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
             <h1 className="mt-5 text-2xl font-semibold text-brand-primary">{copy.title}</h1>
             <p className="mt-2 text-sm text-brand-muted">
               {mandatory
-                ? 'Notes are saved locally on this device. Sign in with Google to optionally sync them across Android, Windows and the web.'
+                ? 'Notes are saved locally on this device. Sign in with your email to optionally sync them across Android, Windows and the web.'
                 : copy.subtitle}
             </p>
           </div>
@@ -197,10 +182,9 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
           )}
 
           <div className="mt-6 space-y-4">
-            <GoogleSignInButton
-              label={copy.googleLabel}
-              onClick={() => void handleGoogle()}
-              loading={loading}
+            <EmailCodeSignIn
+              submitLabel={mode === 'signup' ? 'Create account' : 'Sign in'}
+              onBusyChange={setCodeBusy}
             />
 
             {mandatory ? (
@@ -214,7 +198,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
                   <button
                     type="button"
                     onClick={() => useAuthStore.getState().enterGuestMode()}
-                    disabled={loading}
+                    disabled={loading || codeBusy}
                     className="w-full rounded-note border border-brand-outline/50 px-4 py-3 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5 disabled:opacity-50"
                   >
                     Continue without an account
@@ -310,10 +294,6 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
                   ) : null}
                 </form>
               </>
-            ) : error ? (
-              <p className="rounded-note border border-red-900/50 bg-red-950/30 px-3 py-2 text-center text-sm text-red-200">
-                {error}
-              </p>
             ) : null}
 
             {mandatory ? null : (

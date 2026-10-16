@@ -38,7 +38,6 @@ import com.aus.notelikeus.data.local.UnreadableDatabaseKeyNotice
 import com.aus.notelikeus.util.AppLog
 import com.aus.notelikeus.util.DesktopPathProvider
 import kotlin.system.exitProcess
-import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.SidebarCollapsedStore
 import com.aus.notelikeus.util.WindowMetrics
@@ -157,7 +156,6 @@ private fun launchApp(
     // java.util.Timer schedules die with the process, so the reminder set has to be rebuilt from
     // the database at every launch or a reminder set for tomorrow silently never fires.
     val reminderManager = remember { GlobalContext.get().get<DesktopReminderManager>() }
-    val googleSignInHelper = remember { GlobalContext.get().get<GoogleSignInHelper>() }
     val coroutineScope = rememberCoroutineScope()
     // Side drawer collapse is a manual preference, so persist it the moment the user toggles it
     // (mirrors the web app's persisted `sidebarCollapsed`) rather than on some later settle.
@@ -271,17 +269,6 @@ private fun launchApp(
                 biometricTitle = title
                 biometricOnSuccess = onSuccess
                 biometricOnCancel = onCancel
-            },
-            onGoogleSignInClick = { viewModel ->
-                coroutineScope.launch {
-                    googleSignInHelper.requestIdToken()
-                        .onSuccess {
-                            // The helper already exchanged the Google token and saved the
-                            // Supabase session. completeExternalSignIn runs account isolation.
-                            viewModel.completeExternalSignIn()
-                        }
-                        .onFailure { error -> viewModel.reportGoogleSignInFailure(error) }
-                }
             },
             onExportBackup = { viewModel ->
                 coroutineScope.launch(Dispatchers.IO) {

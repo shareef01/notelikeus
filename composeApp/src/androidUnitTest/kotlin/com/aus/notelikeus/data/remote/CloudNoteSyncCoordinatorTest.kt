@@ -46,12 +46,12 @@ class CloudNoteSyncCoordinatorTest {
     }
 
     @Test
-    fun `flush enqueues upload work when auto sync and Google account are enabled`() = runTest {
+    fun `flush enqueues upload work when auto sync is on and an account is signed in`() = runTest {
         every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(true)
         every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "uid",
             email = "user@example.com",
-            isGoogleAccount = true,
+            isSignedIn = true,
             isAnonymous = false
         )
 
@@ -69,7 +69,7 @@ class CloudNoteSyncCoordinatorTest {
         every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "uid",
             email = "user@example.com",
-            isGoogleAccount = true,
+            isSignedIn = true,
             isAnonymous = false
         )
 
@@ -82,12 +82,12 @@ class CloudNoteSyncCoordinatorTest {
     }
 
     @Test
-    fun `flush skips enqueue when not signed in with Google`() = runTest {
+    fun `flush skips enqueue when not signed in`() = runTest {
         every { settingsRepository.isCloudAutoSyncEnabled } returns kotlinx.coroutines.flow.flowOf(true)
         every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "anon",
             email = null,
-            isGoogleAccount = false,
+            isSignedIn = false,
             isAnonymous = true
         )
 
@@ -105,7 +105,7 @@ class CloudNoteSyncCoordinatorTest {
         every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "uid",
             email = "user@example.com",
-            isGoogleAccount = true,
+            isSignedIn = true,
             isAnonymous = false
         )
 
@@ -123,7 +123,7 @@ class CloudNoteSyncCoordinatorTest {
         every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "uid",
             email = "user@example.com",
-            isGoogleAccount = true,
+            isSignedIn = true,
             isAnonymous = false
         )
         val request = slot<OneTimeWorkRequest>()
@@ -145,7 +145,7 @@ class CloudNoteSyncCoordinatorTest {
         every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "uid",
             email = "user@example.com",
-            isGoogleAccount = true,
+            isSignedIn = true,
             isAnonymous = false
         )
         val requests = mutableListOf<OneTimeWorkRequest>()
@@ -166,7 +166,7 @@ class CloudNoteSyncCoordinatorTest {
         every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "uid",
             email = "user@example.com",
-            isGoogleAccount = true,
+            isSignedIn = true,
             isAnonymous = false
         )
         val request = slot<OneTimeWorkRequest>()
@@ -188,7 +188,7 @@ class CloudNoteSyncCoordinatorTest {
         every { sessionManager.getCurrentAccount() } returns CloudSessionAccount(
             userId = "uid",
             email = "user@example.com",
-            isGoogleAccount = true,
+            isSignedIn = true,
             isAnonymous = false
         )
         coordinator.scheduleCurrentDatasetSync(PendingSyncKind.UPLOAD, 5L)

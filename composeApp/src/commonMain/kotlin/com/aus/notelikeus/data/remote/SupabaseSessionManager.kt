@@ -9,10 +9,14 @@ class SupabaseSessionManager(
 
     override fun getCurrentAccount(): CloudSessionAccount = sessionStore.account()
 
-    override suspend fun signInWithGoogle(idToken: String): Result<Unit> = runCatching {
-        val session = authApi.signInWithGoogleIdToken(idToken)
+    override suspend fun requestEmailCode(email: String): Result<Unit> = runCatching {
+        authApi.requestEmailOtp(email.trim())
+    }.recoverCatching { throw EmailCodeException(describeEmailCodeFailure(it), it) }
+
+    override suspend fun signInWithEmailCode(email: String, code: String): Result<Unit> = runCatching {
+        val session = authApi.verifyEmailOtp(email.trim(), code.trim())
         sessionStore.save(session)
-    }
+    }.recoverCatching { throw EmailCodeException(describeEmailCodeFailure(it), it) }
 
     override suspend fun signInWithEmailPassword(
         email: String,
@@ -39,7 +43,7 @@ class SupabaseSessionManager(
 
     override suspend fun ensureSignedIn(): Result<String> {
         val account = getCurrentAccount()
-        if (!account.isGoogleAccount || account.userId == null) {
+        if (!account.isSignedIn || account.userId == null) {
             return Result.failure(IllegalStateException("Sign-in required"))
         }
         return Result.success(account.userId)
@@ -54,3 +58,33 @@ class SupabaseSessionManager(
         }
     }
 }
+
+/** An email-code failure whose [message] is fit to show the user as is. */
+class EmailCodeException(message: String, cause: Throwable) : Exception(message, cause)
+
+/**
+ * GoTrue answers these calls with raw JSON errors ("HTTP 403 {"code":"otp_expired",...}") that
+ * mean nothing on a sign-in screen. Map the ones a user can act on; the rest get a generic line.
+ */
+internal fun describeEmailCodeFailure(error: Throwable): String {
+    val transport = error as? SupabaseTransportException
+        ?: return when (error) {
+            // A build with no backend configured says so (see requireConfiguredSupabaseUrl).
+            is IllegalStateException -> error.message ?: GENERIC_EMAIL_CODE_FAILURE
+            else -> "Couldn't reach the server. Check your connection and try again."
+        }
+    val body = transport.message.orEmpty()
+    return when {
+        transport.statusCode == 429 || "rate_limit" in body ->
+            "Too many attempts. Wait a minute, then try again."
+        "email_address_invalid" in body || "validation_failed" in body ->
+            "Enter a valid email address."
+        "otp_disabled" in body || "signup_disabled" in body ->
+            "Email sign-in isn't available right now."
+        "otp_expired" in body || transport.statusCode == 403 ->
+            "That code is wrong or has expired. Check it, or send a new one."
+        else -> GENERIC_EMAIL_CODE_FAILURE
+    }
+}
+
+private const val GENERIC_EMAIL_CODE_FAILURE = "Sign-in failed. Try again."

@@ -14,7 +14,7 @@
  * if expired (> 10 minutes) or malformed.
  */
 
-export type AdoptionFlow = 'oauth' | 'password' | 'signup' | 'auth-transition';
+export type AdoptionFlow = 'email-code' | 'password' | 'signup' | 'auth-transition';
 
 export interface GuestAdoptionIntent {
   nonce: string;
@@ -25,7 +25,7 @@ export interface GuestAdoptionIntent {
 const ADOPTION_INTENT_STORAGE_KEY = 'notelikeus-pending-guest-adoption';
 /**
  * Maximum lifetime for an adoption intent (10 minutes).
- * Sufficient for a user to complete an external OAuth consent screen,
+ * Sufficient for a user to fetch a one-time sign-in code from their inbox and type it in,
  * while preventing abandoned sessions from lingering indefinitely.
  */
 export const MAX_INTENT_AGE_MS = 10 * 60 * 1000;

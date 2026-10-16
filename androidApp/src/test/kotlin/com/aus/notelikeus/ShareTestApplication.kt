@@ -22,7 +22,6 @@ class ShareTestApplication : Application() {
         if (GlobalContext.getOrNull() == null) {
             initKoin {
                 androidContext(this@ShareTestApplication)
-                modules(androidAppModule)
             }
         }
     }

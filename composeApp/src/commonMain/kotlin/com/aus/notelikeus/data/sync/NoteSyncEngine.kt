@@ -69,7 +69,7 @@ class IncompleteCloudSnapshotException(
 )
 
 /**
- * Local sync state still belongs to a different Google account than the current session.
+ * Local sync state still belongs to a different account than the current session.
  *
  * Native note ids are small autoincrements and tombstones are keyed by those ids, so applying
  * leftover deletes or uploads under the new uid can erase or overwrite the wrong cloud notes.
