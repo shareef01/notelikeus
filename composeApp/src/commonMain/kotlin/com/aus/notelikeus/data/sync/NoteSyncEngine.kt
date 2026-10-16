@@ -773,8 +773,21 @@ class NoteSyncEngine(
     /** Returns, and resets, how many notes deleted here the last download had to restore. */
     fun takeDeletedNotesCameBack(): Int = deletedNotesCameBack.also { deletedNotesCameBack = 0 }
 
+    /**
+     * Notes the last download found deleted in the cloud while they held words the cloud never
+     * accepted, and kept as a copy: an edit here to a note deleted elsewhere, or a new note whose
+     * upload the server refused as `note_deleted` under a reused id (N-10). Without this the copy
+     * appeared with nothing said about why.
+     */
+    private var editsKeptFromDeletedNotes = 0
+
+    /** Returns, and resets, how many such copies the last download made. */
+    fun takeEditsKeptFromDeletedNotes(): Int =
+        editsKeptFromDeletedNotes.also { editsKeptFromDeletedNotes = 0 }
+
     suspend fun downloadAllNotes(): Result<Int> {
         deletedNotesCameBack = 0
+        editsKeptFromDeletedNotes = 0
         return runCatching {
             // Captured before the tombstone merge and the snapshot fetch: everything this run writes
             // locally afterwards is authorized by the generation it started in.
@@ -813,7 +826,7 @@ class NoteSyncEngine(
             val purgedIds = when (
                 val purge = purgeLocalTombstonedNotes(localNotesBeforePurge, commitToken, syncedTimestamps, purgeCopies)
             ) {
-                is LocalCommitResult.Applied -> purge.value
+                is LocalCommitResult.Applied -> purge.value.also { editsKeptFromDeletedNotes = purgeCopies.size }
                 // The dataset that decided is gone, so the run stops here. Everything after this point
                 // is either a write to that dataset or an account-owned remote mutation decided from its
                 // state — the record loop's server deletes and tombstones, putNotes, the sync-meta

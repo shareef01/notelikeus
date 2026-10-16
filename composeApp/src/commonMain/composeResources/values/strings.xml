@@ -336,6 +336,10 @@ Sync diagnostics shows counts and version numbers only — never note text, toke
         <item quantity="one">A note you deleted changed on another device, so it’s back</item>
         <item quantity="other">%1$d notes you deleted changed on another device, so they’re back</item>
     </plurals>
+    <plurals name="edits_kept_from_deleted_notes">
+        <item quantity="one">A note was deleted on another device before your changes synced, so they’re kept as a copy</item>
+        <item quantity="other">%1$d notes were deleted on another device before your changes synced, so they’re kept as copies</item>
+    </plurals>
     <plurals name="showing_all">
         <item quantity="one">%1$d note</item>
         <item quantity="other">%1$d notes</item>

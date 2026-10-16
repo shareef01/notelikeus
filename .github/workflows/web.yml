@@ -18,6 +18,9 @@ concurrency:
 
 jobs:
   build:
+    # Named apart from Android and Desktop CI's `build` jobs: branch protection on main requires
+    # these checks by name, and a shared name would let another workflow's job satisfy it.
+    name: Web build
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -65,6 +68,7 @@ jobs:
   # Playwright talks to local Supabase. The unit job above cannot see that stack, and
   # cloudflare-pages.yml is path-filtered, so this is the required E2E gate for PRs.
   e2e:
+    name: Web e2e
     runs-on: ubuntu-latest
     timeout-minutes: 35
 

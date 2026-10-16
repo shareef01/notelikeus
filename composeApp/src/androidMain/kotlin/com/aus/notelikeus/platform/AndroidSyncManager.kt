@@ -111,7 +111,13 @@ class AndroidSyncManager(
 
     override suspend fun downloadNotes() {
         isolateIncomingSession()
-        runSync({ CloudSyncEvent.Downloaded(it, syncEngine.takeDeletedNotesCameBack()) }) {
+        runSync({
+            CloudSyncEvent.Downloaded(
+                it,
+                syncEngine.takeDeletedNotesCameBack(),
+                syncEngine.takeEditsKeptFromDeletedNotes(),
+            )
+        }) {
             syncEngine.downloadAllNotes()
         }
     }

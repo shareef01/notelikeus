@@ -106,11 +106,13 @@ class DesktopSyncManager(
 
     override suspend fun downloadNotes() {
         sessionManager.getCurrentAccount().userId?.let { isolator.isolateIfAccountChanged(it) }
-        // Desktop downloads stay quiet, except to say a deleted note came back (AU-07).
+        // Desktop downloads stay quiet, except to say a deleted note came back (AU-07) or that
+        // words were kept from a note deleted elsewhere.
         runSync(
             successEvent = { count ->
-                syncEngine.takeDeletedNotesCameBack().takeIf { it > 0 }
-                    ?.let { back -> CloudSyncEvent.Downloaded(count, back) }
+                val back = syncEngine.takeDeletedNotesCameBack()
+                val kept = syncEngine.takeEditsKeptFromDeletedNotes()
+                if (back > 0 || kept > 0) CloudSyncEvent.Downloaded(count, back, kept) else null
             },
         ) { syncEngine.downloadAllNotes() }
     }

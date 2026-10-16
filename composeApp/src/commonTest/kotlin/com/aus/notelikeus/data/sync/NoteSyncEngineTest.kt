@@ -159,6 +159,18 @@ class NoteSyncEngineTest {
         val survivor = noteDao.notes.values.singleOrNull { it.content == "words" }
         assertTrue(survivor != null, "the note's words were lost: ${noteDao.notes.values}")
         assertTrue(survivor.id in transport.notes, "the kept note was not uploaded")
+        assertEquals(1, engine.takeEditsKeptFromDeletedNotes(), "the refused note's copy went unreported")
+        assertEquals(0, engine.takeEditsKeptFromDeletedNotes(), "taking the count resets it")
+    }
+
+    @Test
+    fun `a download that keeps no copy reports none`() = runTest {
+        setup()
+        noteDao.insertNote(Note(id = 8L, title = "t", content = "c", timestamp = 100L, color = 0).toNoteEntity())
+
+        assertTrue(engine.downloadAllNotes().isSuccess)
+
+        assertEquals(0, engine.takeEditsKeptFromDeletedNotes())
     }
 
     @Test
