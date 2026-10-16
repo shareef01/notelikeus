@@ -22,7 +22,7 @@ Severity and confidence follow the 10-15 audit: P0 irreversible loss or cross-ac
 
 ### S-01 (P1 if the check fails, Probable): password sign-up on the hosted project can pre-claim someone else's email
 
-- **Status:** Partly fixed. `supabase-auth.yml` now sets `mailer_autoconfirm: false` and prints it back, so a password sign-up stays unconfirmed. Still open: the hosted value must be read once (the check below), and a password set before the owner confirms by code may still work afterwards. Blocking password sign-in on the server is the remaining fix.
+- **Status:** Partly fixed. The hosted value was read on 2026-10-17 through the Management API: `mailer_autoconfirm` was already `false` ("Confirm email" on), so the P0 case never applied. `supabase-auth.yml` now pins it and prints it back (run 38976336455). Still open: a password set on an unconfirmed account before its owner confirms by code may still work afterwards, and nobody has counted the production accounts that have a password (the query was not run). Blocking password sign-in on the server is the remaining fix.
 
 - **Where:** `supabase/config.toml:175,221` (`enable_signup = true`, email provider on). `.github/workflows/supabase-auth.yml` patches only the templates, OTP length, SMTP and email limit. It never sets `mailer_autoconfirm`, and its readback does not print it. The clients gate the password form (`SignInGate.kt:92` on `AppConfig.isDebug`, `testLoginFlag.ts` on `DEV`/`VITE_E2E`), but that is UI only. GoTrue still serves `POST /auth/v1/signup` and `grant_type=password` to any caller with the anon key, which ships in every client.
 - **Sequence:** An attacker calls `/auth/v1/signup` with `victim@example.com` and a password they choose. Later the victim signs in with a code. GoTrue looks the user up by email (D29 relies on that for former Google users), so the victim lands in the account the attacker created.
@@ -44,7 +44,7 @@ Severity and confidence follow the 10-15 audit: P0 irreversible loss or cross-ac
 
 ### S-03 (P2, Confirmed in config): a 6-digit code is accepted for an hour, and nothing slows distributed guessing
 
-- **Status:** Partly fixed. `supabase-auth.yml` sets `mailer_otp_exp: 600` and `config.toml` matches. It takes effect on the next run of the Supabase Auth Config workflow. CAPTCHA is in the clients and switched on by the same workflow (S-02, D30).
+- **Status:** Partly fixed. `supabase-auth.yml` sets `mailer_otp_exp: 600` and `config.toml` matches. Applied to the hosted project on 2026-10-17 (run 38976336455), and read back as `mailer_otp_exp = 600`. CAPTCHA is in the clients and switched on by the same workflow (S-02, D30).
 
 - **Where:** `config.toml:232-234` (`otp_length = 6`, `otp_expiry = 3600`). The hosted job sets the length but not `mailer_otp_exp`, so hosted runs the default of 3600 s. `token_verifications` is 30 per 5 minutes **per IP**, with no per-account cap.
 - **Effect:** one IP gets 360 guesses an hour against 10⁶ codes. An attacker with many IPs who knows the victim's address can request a code, then guess for an hour. Each request replaces the code, but also restarts the hour.
