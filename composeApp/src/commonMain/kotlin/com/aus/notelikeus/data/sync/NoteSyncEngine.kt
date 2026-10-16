@@ -8,6 +8,7 @@ import com.aus.notelikeus.data.attachments.encodeAttachments
 import com.aus.notelikeus.data.attachments.isFileAttachment
 import com.aus.notelikeus.data.attachments.isPendingAttachment
 import com.aus.notelikeus.data.migration.AccountUidBridge
+import com.aus.notelikeus.data.local.NoteIdAllocator
 import com.aus.notelikeus.data.local.dao.LabelDao
 import com.aus.notelikeus.data.local.dao.NoteDao
 import com.aus.notelikeus.data.local.entity.NoteLabelCrossRef
@@ -1839,11 +1840,17 @@ class NoteSyncEngine(
         syncedTimestamps: Map<Long, Long> = emptyMap(),
         copies: MutableList<Note> = mutableListOf(),
     ): LocalCommitResult<Set<Long>> {
+        // A row the cloud has never seen is not the note the tombstone deleted: its id was reused (see
+        // NoteIdAllocator). Its words are kept like an unsynced edit, never purged with the old note.
+        val knownRevisions = syncStateStore.knownServerRevisionById()
+        fun keepsWords(note: Note, id: Long): Boolean =
+            ConflictResolution.isLocallyEdited(note, syncedTimestamps[id]) ||
+                (note.serverUpdatedAt == null && id !in syncedTimestamps && id !in knownRevisions)
         // Staging is file I/O, so it happens before the commit rather than inside it.
         val carried = localNotes
             .filter { note ->
                 val id = note.id ?: return@filter false
-                syncStateStore.isDeleted(id) && ConflictResolution.isLocallyEdited(note, syncedTimestamps[id])
+                syncStateStore.isDeleted(id) && keepsWords(note, id)
             }
             .associate { it.id to carriedAttachmentsFor(it) }
         return commitLocally(commitToken) {
@@ -1856,7 +1863,7 @@ class NoteSyncEngine(
                 if (!syncStateStore.isDeleted(id)) return@mapNotNull null
                 // A row still present under a tombstone was deleted on another device (a local
                 // permanent delete removes the row itself). If it was edited here, keep the words.
-                if (ConflictResolution.isLocallyEdited(note, syncedTimestamps[id])) {
+                if (keepsWords(note, id)) {
                     made += insertConflictedCopy(note, carried[id].orEmpty())
                 }
                 noteDao.deleteNote(note.toNoteEntity())
@@ -1982,7 +1989,14 @@ class NoteSyncEngine(
     private suspend fun innerInsert(note: Note): Long {
         var insertedId = note.id ?: 0L
         runInTransaction {
-            insertedId = noteDao.insertNote(note.toNoteEntity())
+            val entity = note.toNoteEntity()
+            insertedId = noteDao.insertNote(
+                if (entity.id != 0L) {
+                    entity
+                } else {
+                    entity.copy(id = NoteIdAllocator.next(now()) { id -> noteDao.getNoteById(id) != null })
+                },
+            )
             note.labels.forEach { label ->
                 label.id?.let { labelId ->
                     noteDao.insertNoteLabelCrossRef(NoteLabelCrossRef(insertedId, labelId))

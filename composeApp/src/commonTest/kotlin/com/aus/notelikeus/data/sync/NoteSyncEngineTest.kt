@@ -129,7 +129,11 @@ class NoteSyncEngineTest {
     fun `uploadAllNotes skips notes already deleted on another device`() = runTest {
         setup()
         stateStore.markDeleted(1L, 50L)
-        noteDao.insertNote(Note(id = 1L, title = "First", content = "", timestamp = 1L, color = 0).toNoteEntity())
+        // Note 1 was synced before the other device deleted it.
+        noteDao.insertNote(
+            Note(id = 1L, title = "First", content = "", timestamp = 1L, color = 0, serverUpdatedAt = 10L).toNoteEntity(),
+        )
+        stateStore.updateSyncedTimestamps(mapOf(1L to 1L))
         noteDao.insertNote(Note(id = 2L, title = "Second", content = "", timestamp = 2L, color = 0).toNoteEntity())
 
         val result = engine.uploadAllNotes()
@@ -139,6 +143,23 @@ class NoteSyncEngineTest {
         assertEquals(1, transport.notes.size)
         assertTrue(1L !in transport.notes)
         assertTrue(2L in transport.notes)
+    }
+
+    @Test
+    fun `a note the cloud never saw survives a tombstone left under its reused id`() = runTest {
+        setup()
+        // A note deleted long ago left its tombstone in the cloud. After a sign-out wipe, a new note on
+        // this device was given the same id. It used to be silently purged and never uploaded.
+        transport.tombstones[7L] = 50L
+        noteDao.insertNote(Note(id = 7L, title = "New on this phone", content = "words", timestamp = 100L, color = 0).toNoteEntity())
+
+        val result = engine.downloadAllNotes()
+
+        assertTrue(result.isSuccess, "download failed: ${result.exceptionOrNull()}")
+        assertTrue(7L !in noteDao.notes, "the tombstoned id was kept")
+        val survivor = noteDao.notes.values.singleOrNull { it.content == "words" }
+        assertTrue(survivor != null, "the note's words were lost: ${noteDao.notes.values}")
+        assertTrue(survivor.id in transport.notes, "the kept note was not uploaded")
     }
 
     // ---- uploadAllNotes: guarding against a fetch that failed open ----
