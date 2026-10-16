@@ -81,6 +81,27 @@ jobs:
             done
           fi
 
+      # The Custom Access Token hook below refuses password sign-in (audit S-01). Pointing the
+      # project at a function its database does not have would fail every sign-in, so the run stops
+      # until the migration that adds it (20261017000000_refuse_password_sign_in_hook.sql) is applied.
+      - name: Require the password sign-in hook function
+        run: |
+          jq -n '{query: "select to_regprocedure($$public.refuse_password_sign_in(jsonb)$$) is not null as present", read_only: true}' > query.json
+          status=$(curl -sS -o fn.json -w '%{http_code}' -X POST \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data @query.json)
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "::error::Could not check for public.refuse_password_sign_in (HTTP $status)"
+            cat fn.json; exit 1
+          fi
+          if [ "$(jq -r '.[0].present' fn.json)" != "true" ]; then
+            echo "::error::public.refuse_password_sign_in is missing. Deploy the Supabase migrations first (Supabase CI, deploy)."
+            exit 1
+          fi
+          rm -f fn.json query.json
+
       - name: Build the auth config patch
         # mailer_autoconfirm stays false: with it on, POST /auth/v1/signup with a password makes a
         # live account for any address, which the owner's later code sign-in would then share
@@ -97,6 +118,8 @@ jobs:
             --rawfile confirm supabase/templates/confirmation.html \
             '{
               external_email_enabled: true,
+              hook_custom_access_token_enabled: true,
+              hook_custom_access_token_uri: "pg-functions://postgres/public/refuse_password_sign_in",
               mailer_autoconfirm: false,
               mailer_otp_length: 6,
               mailer_otp_exp: 600,
@@ -163,5 +186,6 @@ jobs:
                magic_link_has_code: (.mailer_templates_magic_link_content // "" | contains("{{ .Token }}")),
                confirmation_has_code: (.mailer_templates_confirmation_content // "" | contains("{{ .Token }}")),
                smtp_host, smtp_admin_email, rate_limit_email_sent, site_url,
-               security_captcha_enabled, security_captcha_provider}' response.json
+               security_captcha_enabled, security_captcha_provider,
+               hook_custom_access_token_enabled, hook_custom_access_token_uri}' response.json
           rm -f patch.json response.json
