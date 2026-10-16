@@ -39,8 +39,9 @@ private fun Note.toNoteWithLabels(): NoteWithLabels =
     fun setup() {
         database = mockk()
         noteDao = mockk(relaxed = true)
-        // A relaxed mock would report every id as taken, so a new note's id would never be found.
-        coEvery { noteDao.getNoteById(any()) } returns null
+        // A relaxed mock would report every id a new note is offered as taken, so the id would never be
+        // found. Only those ids (epoch millis * 1000) are answered here; other reads keep the relaxed reply.
+        coEvery { noteDao.getNoteById(more(NEW_NOTE_IDS_FROM)) } returns null
         labelDao = mockk(relaxed = true)
         reminderManager = mockk(relaxed = true)
         widgetManager = mockk(relaxed = true)
@@ -176,3 +177,6 @@ private fun Note.toNoteWithLabels(): NoteWithLabels =
         coVerify { noteDao.deleteNote(any()) }
     }
 }
+
+/** The smallest id [com.aus.notelikeus.data.local.NoteIdAllocator] can hand out today. */
+private const val NEW_NOTE_IDS_FROM = 1_000_000_000_000_000L
