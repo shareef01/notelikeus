@@ -6,8 +6,8 @@ Canonical backend as of 2026-09-06. Firebase is not part of the runtime.
 
 Supabase Auth is the only cloud identity provider.
 
-- Web: `@supabase/supabase-js` PKCE session, Google OAuth via `signInWithOAuth`, optional email/password in dev/e2e only.
-- Android / Desktop: `SupabaseSessionManager` exchanging a Google ID token with GoTrue. Session persistence is platform-specific (EncryptedSharedPreferences / DPAPI file).
+- Web: `@supabase/supabase-js` PKCE session, email one-time-code sign-in, optional email/password in dev/e2e only.
+- Android / Desktop: `SupabaseSessionManager` signing in with an emailed one-time code: `POST /auth/v1/otp` (`create_user: true`, so the first sign-in creates the account), then `POST /auth/v1/verify` (`type: email`) with the code the user types in. Session persistence is platform-specific (EncryptedSharedPreferences / DPAPI file).
 - Guest mode remains local-only (`__guest__` namespace). No anonymous Supabase user is created.
 
 Cloud ownership is `auth.uid()` (Supabase UUID). There is no Firebase UID mapping.
@@ -179,7 +179,7 @@ Gradle:
 Owner-operated (credentials required):
 
 1. Create a fresh Supabase project, `supabase link`, `supabase db push`. Migrations go out **before** the Worker: a Worker calling an RPC its database does not have yet answers 503, and the older Worker's RPCs all still exist, so schema-first is the safe order in both directions.
-2. Enable Google provider; add redirect URLs for localhost, Pages preview, and the production domain.
+2. Keep the Email provider enabled and set the **Magic Link** and **Confirm signup** email templates to send the code (`{{ .Token }}`) rather than a link — `supabase/templates/` has the local versions. Google and other OAuth providers stay off. Configure custom SMTP and raise the email rate limit: every sign-in sends an email. Add redirect URLs for localhost, Pages preview, and the production domain.
 3. Enable Realtime on `notes` and `note_tombstones` (already published by migration).
 4. Create an R2 bucket, deploy `workers/attachments`. Optional: `wrangler secret put SUPABASE_SERVICE_ROLE_KEY` so the orphan-sweep cron can run.
 5. Create a Cloudflare Pages project with build `cd web && npm ci && npm run build`, output `web/dist`.

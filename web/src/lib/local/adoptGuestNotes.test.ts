@@ -20,7 +20,8 @@ import {
   MAX_INTENT_AGE_MS,
 } from '@/lib/local/guestAdoptionIntent';
 import {
-  signInWithGoogleSupabase,
+  sendEmailSignInCodeSupabase,
+  verifyEmailSignInCodeSupabase,
   signInWithEmailPasswordSupabase,
   createEmailPasswordAccountSupabase,
   completeSupabaseOAuthRedirect,
@@ -29,13 +30,15 @@ import {
 
 const {
   mockSignOut,
-  mockSignInWithOAuth,
+  mockSignInWithOtp,
+  mockVerifyOtp,
   mockSignInWithPassword,
   mockSignUp,
   mockExchangeCodeForSession,
 } = vi.hoisted(() => ({
   mockSignOut: vi.fn().mockResolvedValue({ error: null }),
-  mockSignInWithOAuth: vi.fn().mockResolvedValue({ error: null }),
+  mockSignInWithOtp: vi.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
+  mockVerifyOtp: vi.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
   mockSignInWithPassword: vi.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
   mockSignUp: vi.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
   mockExchangeCodeForSession: vi.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
@@ -45,7 +48,8 @@ vi.mock('@/lib/supabase/client', () => ({
   getSupabaseClient: () => ({
     auth: {
       signOut: mockSignOut,
-      signInWithOAuth: mockSignInWithOAuth,
+      signInWithOtp: mockSignInWithOtp,
+      verifyOtp: mockVerifyOtp,
       signInWithPassword: mockSignInWithPassword,
       signUp: mockSignUp,
       exchangeCodeForSession: mockExchangeCodeForSession,
@@ -394,21 +398,24 @@ describe('F04 Stale-Intent Lifecycle & Failed/Cancelled Auth Invalidation', () =
     vi.restoreAllMocks();
   });
 
-  // Test A — OAuth cancelled
-  it('oauthCancelledClearsAdoptionIntentAndPreservesGuestData', async () => {
+  // Test A — wrong or expired email code
+  it('rejectedEmailCodeClearsAdoptionIntentAndPreservesGuestData', async () => {
     useAuthStore.getState().enterGuestMode();
     const guestNote = createEmptyNote({
-      id: 'guest-note-oauth-cancel',
+      id: 'guest-note-code-rejected',
       localId: 501,
-      title: 'OAuth Cancel Note',
+      title: 'Rejected Code Note',
     });
     await putNote(GUEST_OWNER_ID, guestNote);
 
-    mockSignInWithOAuth.mockResolvedValueOnce({
-      error: new Error('User closed popup / cancelled OAuth flow'),
+    mockVerifyOtp.mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: new Error('Token has expired or is invalid'),
     });
 
-    await expect(signInWithGoogleSupabase()).rejects.toThrow('User closed popup');
+    await expect(verifyEmailSignInCodeSupabase('alice@example.com', '123456')).rejects.toThrow(
+      'Token has expired or is invalid',
+    );
 
     // Expected:
     // 1. Guest Note remains intact under __guest__
@@ -419,8 +426,43 @@ describe('F04 Stale-Intent Lifecycle & Failed/Cancelled Auth Invalidation', () =
     expect(sessionStorage.getItem('notelikeus-pending-guest-adoption')).toBeNull();
   });
 
-  // Test B — OAuth fails, later unrelated direct login
-  it('oauthFailureDoesNotAllowLaterUnrelatedLoginToAdoptGuestData', async () => {
+  it('emailCodeVerifyArmsAdoptionIntentForAGuest', async () => {
+    useAuthStore.getState().enterGuestMode();
+
+    await verifyEmailSignInCodeSupabase(' alice@example.com ', ' 123456 ');
+
+    expect(mockVerifyOtp).toHaveBeenCalledWith({
+      email: 'alice@example.com',
+      token: '123456',
+      type: 'email',
+    });
+    expect(hasGuestAdoptionIntent()).toBe(true);
+    expect(JSON.parse(sessionStorage.getItem('notelikeus-pending-guest-adoption') ?? '{}').flow).toBe(
+      'email-code',
+    );
+  });
+
+  it('sendingAnEmailCodeDoesNotArmAdoptionIntentAndAsksForACodeNotALink', async () => {
+    useAuthStore.getState().enterGuestMode();
+
+    await sendEmailSignInCodeSupabase(' alice@example.com ');
+
+    expect(mockSignInWithOtp).toHaveBeenCalledWith({
+      email: 'alice@example.com',
+      options: { shouldCreateUser: true },
+    });
+    expect(hasGuestAdoptionIntent()).toBe(false);
+  });
+
+  it('sendingAnEmailCodeSurfacesSupabaseErrors', async () => {
+    const rateLimited = Object.assign(new Error('email rate limit exceeded'), { status: 429 });
+    mockSignInWithOtp.mockResolvedValueOnce({ data: { user: null, session: null }, error: rateLimited });
+
+    await expect(sendEmailSignInCodeSupabase('alice@example.com')).rejects.toBe(rateLimited);
+  });
+
+  // Test B — an auth email link fails on redirect, later unrelated direct login
+  it('redirectFailureDoesNotAllowLaterUnrelatedLoginToAdoptGuestData', async () => {
     // 1. Alice uses Guest Mode
     useAuthStore.getState().enterGuestMode();
     const aliceGuestNote = createEmptyNote({
@@ -430,8 +472,8 @@ describe('F04 Stale-Intent Lifecycle & Failed/Cancelled Auth Invalidation', () =
     });
     await putNote(GUEST_OWNER_ID, aliceGuestNote);
 
-    // 2. Alice starts OAuth which fails on provider redirect callback
-    markGuestAdoptionIntent('oauth');
+    // 2. Alice's sign-in fails on the redirect back from an auth email link
+    markGuestAdoptionIntent('email-code');
     // Simulate browser redirect back with error parameter in URL
     window.history.replaceState(
       {},
@@ -587,7 +629,7 @@ describe('F04 Stale-Intent Lifecycle & Failed/Cancelled Auth Invalidation', () =
     const staleIntent = {
       nonce: 'stale-nonce-1234',
       startedAt: ELEVEN_MINUTES_AGO,
-      flow: 'oauth',
+      flow: 'email-code',
     };
 
     sessionStorage.setItem('notelikeus-pending-guest-adoption', JSON.stringify(staleIntent));

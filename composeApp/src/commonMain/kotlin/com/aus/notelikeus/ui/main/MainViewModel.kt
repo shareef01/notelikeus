@@ -120,12 +120,15 @@ class MainViewModel(
 
     fun enterOfflineMode() = cloudSync.enterOfflineMode()
 
-    fun signInWithGoogleIdToken(idToken: String) = cloudSync.signInWithGoogleIdToken(idToken)
+    fun requestSignIn() = cloudSync.requestSignIn()
 
-    /** The platform helper already signed in; just finish the UI and pull notes. */
-    fun completeExternalSignIn() = cloudSync.completeExternalSignIn()
+    fun cancelSignInRequest() = cloudSync.cancelSignInRequest()
 
-    fun reportGoogleSignInFailure(error: Throwable) = cloudSync.reportGoogleSignInFailure(error)
+    fun requestEmailCode(email: String) = cloudSync.requestEmailCode(email)
+
+    fun signInWithEmailCode(email: String, code: String) = cloudSync.signInWithEmailCode(email, code)
+
+    fun resetEmailCode() = cloudSync.resetEmailCode()
 
     fun signInWithEmailPassword(email: String, password: String, createAccount: Boolean) =
         cloudSync.signInWithEmailPassword(email, password, createAccount)

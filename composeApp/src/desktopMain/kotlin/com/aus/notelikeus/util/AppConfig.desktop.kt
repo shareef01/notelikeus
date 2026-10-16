@@ -16,7 +16,7 @@ actual object AppConfig {
     // App lock needs Windows Hello via JNA — not implemented yet.
     actual val supportsAppLock: Boolean = false
 
-    // Cloud sync uses OAuth 2.0 loopback + Supabase Auth.
+    // Cloud sync uses Supabase Auth email one-time codes.
     actual val supportsCloudSync: Boolean = true
 
     actual val isDesktop: Boolean = true

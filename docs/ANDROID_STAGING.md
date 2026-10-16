@@ -6,7 +6,7 @@ Clients use the same Supabase configuration keys in debug and release. There is 
 npm run kotlin:staging-properties
 ```
 
-That merges these keys into `local.properties` and leaves `notelikeus.oauthClientSecret` / `sdk.dir` alone:
+That merges these keys into `local.properties` and leaves other keys such as `sdk.dir` alone:
 
 | Key | Source |
 |-----|--------|
@@ -24,7 +24,7 @@ See `docs/BACKEND_ARCHITECTURE.md` for production env names (`NOTELIKEUS_SUPABAS
 
 1. Run `npm run kotlin:staging-properties`.
 2. Rebuild and install (`./gradlew :androidApp:installDebug` or `assembleRelease` with env keys).
-3. Sign in with Google (or a staging email user).
+3. Sign in with your email: enter the 6-digit code Supabase emails you (debug builds also offer the email/password test login).
 
 A properties change is compile-time for Android: rebuild after editing `local.properties`. `bundleRelease` refuses to build without a hosted URL, anon key and Worker URL, so a store bundle cannot ship with sync off.
 

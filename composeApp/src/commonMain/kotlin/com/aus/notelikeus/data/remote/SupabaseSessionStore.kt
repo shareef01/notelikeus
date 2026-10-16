@@ -24,7 +24,7 @@ class SupabaseSessionStore(
     fun account(): CloudSessionAccount = CloudSessionAccount(
         userId = userId,
         email = email,
-        isGoogleAccount = hasSession(),
+        isSignedIn = hasSession(),
         isAnonymous = !hasSession(),
     )
 

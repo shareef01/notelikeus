@@ -6,7 +6,7 @@ import com.aus.notelikeus.domain.repository.NoteRepository
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Wipes device-local notes, tombstones, and pending cloud work so a new Google account cannot
+ * Wipes device-local notes, tombstones, and pending cloud work so a new account cannot
  * inherit the previous one's library — or apply its leftover tombstones to colliding ids.
  *
  * Sign-out always isolates (privacy policy: the next person at this device must not see the

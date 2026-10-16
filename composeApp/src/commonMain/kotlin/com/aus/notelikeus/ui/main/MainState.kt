@@ -125,6 +125,16 @@ data class MainState(
     val isCloudAutoSyncEnabled: Boolean = true,
     val isSigningIn: Boolean = false,
     /**
+     * The address a sign-in code was emailed to, or null before one is sent. Non-null moves the
+     * sign-in gate to its second step, where the code is typed in.
+     */
+    val emailCodeSentTo: String? = null,
+    /**
+     * The user asked to sign in from settings after choosing local-only use. Shows the sign-in
+     * gate again without undoing that choice, so backing out returns to the app.
+     */
+    val isSignInRequested: Boolean = false,
+    /**
      * The user chose to use the app without an account. Persisted, so the sign-in gate asks once
      * rather than on every launch.
      */

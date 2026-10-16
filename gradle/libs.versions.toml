@@ -45,9 +45,6 @@ okio = "3.18.2"
 jna = "5.19.1"
 appcompat = "1.8.0"
 fragment = "1.9.1"
-credentials = "1.5.0"
-googleid = "1.2.0"
-playServicesBase = "18.11.0"
 windowSize = "1.3.1"
 compose-multiplatform = "1.8.2"
 # The four versions below must stay on the same Compose Multiplatform line (currently 1.8.x).
@@ -128,11 +125,6 @@ androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version
 androidx-fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragment" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 
-# Credential Manager — Google Sign-In for Android (not Firebase Auth).
-androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
-androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
-google-identity-googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
-play-services-base = { group = "com.google.android.gms", name = "play-services-base", version.ref = "playServicesBase" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

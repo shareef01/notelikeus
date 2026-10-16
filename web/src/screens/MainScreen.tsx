@@ -662,7 +662,7 @@ export function MainScreen() {
         onThemeBaseChange={setThemeBase}
         onAccentChange={setAccentColor}
         onAmoledChange={setAmoled}
-        isGoogleAccount={cloud.isGoogleAccount}
+        isSignedIn={cloud.isSignedIn}
         isGuest={cloud.isGuest}
         userEmail={cloud.userEmail}
         syncStatus={cloud.status}

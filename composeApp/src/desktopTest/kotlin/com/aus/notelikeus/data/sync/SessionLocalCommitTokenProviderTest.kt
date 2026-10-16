@@ -54,12 +54,15 @@ class SessionLocalCommitTokenProviderTest {
             return CloudSessionAccount(
                 userId = userId,
                 email = null,
-                isGoogleAccount = false,
+                isSignedIn = false,
                 isAnonymous = userId == null,
             )
         }
 
-        override suspend fun signInWithGoogle(idToken: String): Result<Unit> =
+        override suspend fun requestEmailCode(email: String): Result<Unit> =
+            Result.failure(UnsupportedOperationException("not used in this test"))
+
+        override suspend fun signInWithEmailCode(email: String, code: String): Result<Unit> =
             Result.failure(UnsupportedOperationException("not used in this test"))
 
         override suspend fun signInWithEmailPassword(

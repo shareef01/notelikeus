@@ -989,3 +989,41 @@ run the packaged desktop app.
 
 **Cost to reverse:** low to remove, high to satisfy: the same toolchain move as D18, D27 and the Koin hold.
 It comes out with them when Compose Multiplatform moves off 1.8.x.
+
+---
+
+## D29 — Sign-in is by emailed one-time code. Google sign-in is removed.
+
+**Decided:** Every client signs in with a Supabase Auth email one-time code: the user types an email
+address, Supabase emails a 6-digit code, the user types it in. On Android and desktop that is
+`POST /auth/v1/otp` with `create_user: true` (so the first sign-in creates the account; there is no
+separate sign-up) and then `POST /auth/v1/verify` with `type: email`. Google sign-in is gone from every
+client and the Google provider is off in `supabase/config.toml`. The debug-only email/password test
+login stays, because the tests and local development use it.
+
+With Google went everything that only existed for it: Credential Manager, `googleid` and
+`play-services-base` on Android (and `ForegroundActivityTracker`, which only lent Credential Manager an
+Activity), the desktop loopback OAuth flow with its client secret, the `generateDesktopSecrets` build
+step, the `jdk.httpserver` module in the jlink image, and D27's `googleid` hold. `isGoogleAccount` was
+renamed `isSignedIn`, which is what it always meant: "there is a Supabase session".
+
+**Why:** one sign-in path on three platforms instead of three. Google sign-in needed a different
+mechanism on each (Credential Manager, a desktop loopback redirect with a shipped client secret,
+`signInWithOAuth` on the web), each with its own failure modes — no Play Services, a cancelled sheet,
+`Bad ID token` from a nonce mismatch, a missing JDK module that killed the packaged desktop app — and a
+dependency (`googleid`) that was already blocking a toolchain-bound upgrade. An email code needs nothing
+from the platform but a text field, and keeps the app free of third-party identity SDKs.
+
+**Consequences to remember:**
+
+- An account is an email address. GoTrue looks the user up by email, so someone who signed in with
+  Google before gets the same Supabase user, and the same notes, back by entering that Google
+  account's address. Worth checking once against the hosted project before relying on it.
+- The hosted project must have custom SMTP and a raised `email_sent` rate limit: every sign-in is an
+  email, and the built-in sender allows only a handful an hour. Its Magic Link and Confirm signup
+  templates must send `{{ .Token }}`, not a link (local copies in `supabase/templates/`).
+- The code length is fixed at 6 in the clients (`EMAIL_CODE_LENGTH`), matching `otp_length`; change
+  both together.
+
+**Cost to reverse:** medium. The removed code is in git history, but bringing Google back means
+re-adding the per-platform helpers, the desktop client secret and the Android dependencies.

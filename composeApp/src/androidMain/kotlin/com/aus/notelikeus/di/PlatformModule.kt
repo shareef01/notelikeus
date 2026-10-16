@@ -15,7 +15,6 @@ import com.aus.notelikeus.domain.platform.PlatformWidgetManager
 import com.aus.notelikeus.domain.platform.ReminderManager
 import com.aus.notelikeus.domain.platform.SyncCoordinator
 import com.aus.notelikeus.platform.AndroidWidgetManager
-import com.aus.notelikeus.platform.ForegroundActivityTracker
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.data.remote.SharedPrefsNoteSyncStateStore
@@ -55,12 +54,9 @@ import com.aus.notelikeus.data.remote.DatasetScopedCloudRevisionState
 import com.aus.notelikeus.data.sync.IdentityBoundNoteTransport
 import com.aus.notelikeus.data.remote.CloudNoteSyncCoordinator
 import com.aus.notelikeus.data.remote.PendingCloudSyncStore
-import com.aus.notelikeus.data.remote.AndroidGoogleSignInHelper
 import com.aus.notelikeus.platform.AndroidSyncManager
 import com.aus.notelikeus.domain.repository.SyncManager
-import com.aus.notelikeus.ui.auth.GoogleSignInHelper
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
-import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
@@ -310,13 +306,5 @@ actual val platformModule = module {
     single<SyncManager> { AndroidSyncManager(get(), get(), get(), get()) }
     single<com.aus.notelikeus.domain.platform.NetworkMonitor> {
         com.aus.notelikeus.platform.AndroidNetworkMonitor(get())
-    }
-
-    single<GoogleSignInHelper> {
-        AndroidGoogleSignInHelper(
-            context = get(),
-            webClientId = get(named("webClientId")),
-            activityProvider = { ForegroundActivityTracker.current() }
-        )
     }
 }

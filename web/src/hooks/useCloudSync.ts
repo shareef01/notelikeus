@@ -16,7 +16,7 @@ export function useCloudSync() {
   return {
     userId,
     userEmail: user?.email ?? null,
-    isGoogleAccount: Boolean(userId),
+    isSignedIn: Boolean(userId),
     isGuest,
     status,
     online,

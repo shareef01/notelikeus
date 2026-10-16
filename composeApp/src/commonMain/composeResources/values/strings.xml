@@ -190,21 +190,33 @@
     <string name="cloud_status_offline">Offline</string>
     <string name="cloud_status_syncing">Syncing</string>
     <string name="cloud_status_error">Error</string>
-    <string name="cloud_sign_in_google">Sign in with Google</string>
+    <string name="cloud_sign_in">Sign in</string>
     <string name="cloud_sign_in_subtitle">Use the same account on all devices to sync notes</string>
-    <string name="cloud_sign_in_success">Signed in with Google</string>
-    <string name="cloud_sign_in_failed">Google sign-in failed</string>
-    <string name="cloud_sign_in_required">Sign in with Google to sync</string>
+    <string name="cloud_sign_in_success">Signed in</string>
+    <string name="cloud_sign_in_failed">Sign-in failed</string>
+    <string name="cloud_sign_in_required">Sign in to sync</string>
     <string name="cloud_sign_out">Sign out</string>
-    <string name="cloud_sign_out_subtitle">Stop using this Google account for cloud sync</string>
+    <string name="cloud_sign_out_subtitle">Stop using this account for cloud sync</string>
     <string name="cloud_sign_out_success">Signed out</string>
     <string name="cloud_sign_out_deleted_success">Signed out and cloud data deleted</string>
-    <string name="cloud_sign_out_confirm_title">Sign out of Google?</string>
-    <string name="cloud_sign_out_confirm_message">Signing out clears notes on this device so another Google account cannot inherit them. Cloud copies remain unless you delete them. You’ll need to sign in again to keep using Notelikeus.</string>
+    <string name="cloud_sign_out_confirm_title">Sign out?</string>
+    <string name="cloud_sign_out_confirm_message">Signing out clears notes on this device so another account cannot inherit them. Cloud copies remain unless you delete them. You’ll need to sign in again to keep using Notelikeus.</string>
     <string name="cloud_sign_out_delete_data">Sign out and delete cloud data</string>
     <string name="cloud_signed_in_as">Signed in</string>
     <string name="sign_in_gate_title">Sign in to continue</string>
-    <string name="sign_in_gate_subtitle">Sign in with Google to back up and sync your notes across devices, or continue offline with local-only notes.</string>
+    <string name="sign_in_gate_subtitle">Sign in with your email to back up and sync your notes across devices, or continue offline with local-only notes.</string>
+    <string name="sign_in_email_label">Email address</string>
+    <string name="sign_in_send_code">Send code</string>
+    <string name="sign_in_email_hint">We’ll email you a 6-digit code. No password needed.</string>
+    <string name="sign_in_invalid_email">Enter a valid email address.</string>
+    <string name="sign_in_code_sent">Enter the 6-digit code we emailed to %1$s.</string>
+    <string name="sign_in_code_label">6-digit code</string>
+    <string name="sign_in_invalid_code">Enter the 6-digit code from the email.</string>
+    <string name="sign_in_verify_code">Sign in</string>
+    <string name="sign_in_resend_code">Resend code</string>
+    <string name="sign_in_use_different_email">Use a different email</string>
+    <string name="sign_in_code_spam_hint">Not there? Check your spam folder, or resend the code.</string>
+    <string name="sign_in_busy">Signing in</string>
     <string name="sign_in_skip_offline">Continue offline</string>
     <string name="test_login_title">Test login (debug)</string>
     <string name="test_login_email">Email</string>
@@ -212,13 +224,12 @@
     <string name="test_login_sign_in">Sign in</string>
     <string name="test_login_create">Create</string>
     <string name="test_login_hint">Requires Email/Password enabled in Supabase Authentication.</string>
-    <string name="sign_in_no_play_services">Google Play Services isn’t available on this device, so sign-in isn’t possible right now.</string>
     <string name="sign_in_cancelled">Sign-in was cancelled.</string>
     <string name="sign_in_network_error">Network error. Check your connection and try again.</string>
     <string name="sign_in_in_progress">Sign-in is already in progress.</string>
     <string name="action_retry">Retry</string>
     <string name="cloud_auto_sync">Auto-sync</string>
-    <string name="cloud_auto_sync_subtitle">Upload note changes automatically when signed in with Google</string>
+    <string name="cloud_auto_sync_subtitle">Upload note changes automatically while signed in</string>
     <string name="coming_soon">Soon</string>
     <string name="coming_soon_detail">Coming soon</string>
     <string name="backup_export">Backup &amp; Export</string>
@@ -234,7 +245,7 @@
     <string name="diagnostics_unavailable">Diagnostics could not be collected.</string>
     <string name="privacy_policy_title">Privacy policy</string>
     <string name="app_version">Version %1$s</string>
-    <string name="privacy_policy_body">Notelikeus is offline-first. Notes stay on this device unless you sign in.\n\nWhen you enable cloud sync, note text is stored in Supabase (PostgreSQL) under your account. Attachments may be stored in Cloudflare R2. Synced notes are not end-to-end encrypted.\n\nOn Android, the local notes database uses SQLCipher (Keystore-backed). Attachment image files and staged pending bytes on Android are sealed with AES-GCM under a separate Keystore key. On Windows Desktop, the notes database uses SQLCipher under a DPAPI-sealed passphrase, and attachment files are sealed with AES-GCM under a separate DPAPI-protected key. On Web, note titles, bodies, and checklists in IndexedDB, and staged pending attachment blobs, are sealed with AES-GCM under non-extractable WebCrypto keys (profile-at-rest only; not an XSS control).\n\nGoogle sign-in is optional and is used only as an identity provider. The app does not include analytics or advertising SDKs.
+    <string name="privacy_policy_body">Notelikeus is offline-first. Notes stay on this device unless you sign in.\n\nWhen you enable cloud sync, note text is stored in Supabase (PostgreSQL) under your account. Attachments may be stored in Cloudflare R2. Synced notes are not end-to-end encrypted.\n\nOn Android, the local notes database uses SQLCipher (Keystore-backed). Attachment image files and staged pending bytes on Android are sealed with AES-GCM under a separate Keystore key. On Windows Desktop, the notes database uses SQLCipher under a DPAPI-sealed passphrase, and attachment files are sealed with AES-GCM under a separate DPAPI-protected key. On Web, note titles, bodies, and checklists in IndexedDB, and staged pending attachment blobs, are sealed with AES-GCM under non-extractable WebCrypto keys (profile-at-rest only; not an XSS control).\n\nSigning in is optional. It uses your email address: a one-time code is emailed to you, and the address identifies your account. The app does not include analytics or advertising SDKs.
 
 Sync diagnostics shows counts and version numbers only — never note text, tokens or your account id — and is never sent anywhere. Copying it is up to you.</string>
 

@@ -22,18 +22,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.koin.android.ext.koin.androidContext
-import org.koin.core.qualifier.named
-import org.koin.dsl.module
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-
-val androidAppModule = module {
-    single(named("webClientId")) { 
-        androidContext().getString(R.string.default_web_client_id) 
-    }
-}
 
 /**
  * Flips once the encrypted database has finished opening on the background startup thread.
@@ -110,7 +102,6 @@ class NotelikeusApp : Application(), Configuration.Provider, AppFunctionConfigur
 
         val koinApp = initKoin {
             androidContext(this@NotelikeusApp)
-            modules(androidAppModule)
         }
 
         // Creating the database singleton runs the key-manager decrypt (Keystore + file IO)

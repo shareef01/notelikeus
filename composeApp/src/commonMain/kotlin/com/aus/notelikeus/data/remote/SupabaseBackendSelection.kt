@@ -18,7 +18,8 @@ internal fun isLocalSupabaseUrl(url: String): Boolean {
 
 /**
  * Android blocks cleartext HTTP to 127.0.0.1. A debug APK with no baked URL used to fall back
- * there, so Google sign-in got an ID token and then died with CLEARTEXT communication not permitted.
+ * there, so sign-in got as far as the first auth request and died with CLEARTEXT communication not
+ * permitted.
  */
 internal fun requireConfiguredSupabaseUrl(url: String) {
     val trimmed = url.trim()

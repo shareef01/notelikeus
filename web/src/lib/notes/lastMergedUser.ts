@@ -3,7 +3,7 @@ const STORAGE_KEY = 'notelikeus-last-merged-user';
 /**
  * UID of the account this device last synced as, persisted across reloads — the web counterpart
  * of Android's `NoteSyncStateStore.lastMergedUserId()`. Used to tell a genuine account switch
- * (Google account A signs out, account B signs in, without ever going through `signOutGoogle()`
+ * (account A signs out, account B signs in, without ever going through `signOutAccount()`
  * — e.g. a second tab of the same browser profile) apart from an ordinary page reload or first
  * mount while still signed in as the same account.
  *

@@ -34,7 +34,6 @@ const requiredCspTokens = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "connect-src 'self'",
-  'https://accounts.google.com',
 ];
 
 for (const token of requiredCspTokens) {
@@ -52,6 +51,10 @@ const forbiddenCspTokens = [
   'https://*.workers.dev',
   'https://*.supabase.co',
   '[REDACTED]',
+  // Sign-in is by emailed one-time code; there is no Google OAuth / GIS script to allow.
+  'accounts.google.com',
+  'apis.google.com',
+  'gstatic.com',
 ];
 
 for (const token of forbiddenCspTokens) {
