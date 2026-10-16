@@ -55,6 +55,10 @@ jobs:
           fi
 
       - name: Build the auth config patch
+        # mailer_autoconfirm stays false: with it on, POST /auth/v1/signup with a password makes a
+        # live account for any address, which the owner's later code sign-in would then share
+        # (audit S-01). mailer_otp_exp is 10 minutes, not the default hour, so a 6-digit code has a
+        # short window to be guessed in (S-03).
         run: |
           subject='Your Notelikeus sign-in code'
           jq -n \
@@ -63,7 +67,9 @@ jobs:
             --rawfile confirm supabase/templates/confirmation.html \
             '{
               external_email_enabled: true,
+              mailer_autoconfirm: false,
               mailer_otp_length: 6,
+              mailer_otp_exp: 600,
               mailer_subjects_magic_link: $subject,
               mailer_templates_magic_link_content: $magic,
               mailer_subjects_confirmation: $subject,
@@ -107,7 +113,8 @@ jobs:
             exit 1
           fi
           # A record of what the project now has, without template bodies or secrets.
-          jq '{external_email_enabled, external_google_enabled, mailer_otp_length,
+          jq '{external_email_enabled, external_google_enabled, mailer_autoconfirm,
+               mailer_otp_length, mailer_otp_exp,
                mailer_subjects_magic_link, mailer_subjects_confirmation,
                magic_link_has_code: (.mailer_templates_magic_link_content // "" | contains("{{ .Token }}")),
                confirmation_has_code: (.mailer_templates_confirmation_content // "" | contains("{{ .Token }}")),

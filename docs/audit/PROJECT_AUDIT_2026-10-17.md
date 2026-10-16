@@ -22,6 +22,8 @@ Severity and confidence follow the 10-15 audit: P0 irreversible loss or cross-ac
 
 ### S-01 (P1 if the check fails, Probable): password sign-up on the hosted project can pre-claim someone else's email
 
+- **Status:** Partly fixed. `supabase-auth.yml` now sets `mailer_autoconfirm: false` and prints it back, so a password sign-up stays unconfirmed. Still open: the hosted value must be read once (the check below), and a password set before the owner confirms by code may still work afterwards. Blocking password sign-in on the server is the remaining fix.
+
 - **Where:** `supabase/config.toml:175,221` (`enable_signup = true`, email provider on). `.github/workflows/supabase-auth.yml` patches only the templates, OTP length, SMTP and email limit. It never sets `mailer_autoconfirm`, and its readback does not print it. The clients gate the password form (`SignInGate.kt:92` on `AppConfig.isDebug`, `testLoginFlag.ts` on `DEV`/`VITE_E2E`), but that is UI only. GoTrue still serves `POST /auth/v1/signup` and `grant_type=password` to any caller with the anon key, which ships in every client.
 - **Sequence:** An attacker calls `/auth/v1/signup` with `victim@example.com` and a password they choose. Later the victim signs in with a code. GoTrue looks the user up by email (D29 relies on that for former Google users), so the victim lands in the account the attacker created.
   - If the hosted project **auto-confirms** emails (`mailer_autoconfirm = true`, the local value), the attacker's account is live immediately, and the attacker can sign in with the password and read everything the victim syncs. That is a cross-account read: P0-class.
@@ -34,11 +36,15 @@ Severity and confidence follow the 10-15 audit: P0 irreversible loss or cross-ac
 
 ### S-02 (P2, Confirmed): 30 emails an hour for the whole project lets anyone block all sign-ins
 
+- **Status:** Open. CAPTCHA is a separate piece of work across three clients.
+
 - **Where:** `supabase-auth.yml` sets `rate_limit_email_sent: 30` (applied in run 38921738705, 2026-10-16 15:10). That limit counts every email the project sends, not per user or per IP. Every sign-in now costs one email (D29).
 - **Effect:** about 30 `/auth/v1/otp` calls an hour for random addresses, spread across a few IPs to stay under `sign_in_sign_ups` (30 per 5 minutes per IP), exhaust the hour's budget. Real users then get "Too many attempts" (`describeEmailCodeFailure`, `authErrors.ts`) until the hour rolls over. It also lets a script make the project send mail to arbitrary addresses, which can hurt the SMTP sender's reputation.
 - **Fix:** CAPTCHA on the OTP request (S-03), then raise the limit to what the SMTP plan allows. Cloudflare Turnstile fits, since the web is already on Pages. Native clients need either a Turnstile widget in a WebView or a small Worker endpoint that fronts `/otp`.
 
 ### S-03 (P2, Confirmed in config): a 6-digit code is accepted for an hour, and nothing slows distributed guessing
+
+- **Status:** Partly fixed. `supabase-auth.yml` sets `mailer_otp_exp: 600` and `config.toml` matches. It takes effect on the next run of the Supabase Auth Config workflow. CAPTCHA is still open (S-02).
 
 - **Where:** `config.toml:232-234` (`otp_length = 6`, `otp_expiry = 3600`). The hosted job sets the length but not `mailer_otp_exp`, so hosted runs the default of 3600 s. `token_verifications` is 30 per 5 minutes **per IP**, with no per-account cap.
 - **Effect:** one IP gets 360 guesses an hour against 10⁶ codes. An attacker with many IPs who knows the victim's address can request a code, then guess for an hour. Each request replaces the code, but also restarts the hour.
@@ -46,10 +52,14 @@ Severity and confidence follow the 10-15 audit: P0 irreversible loss or cross-ac
 
 ### S-04 (P3, Confirmed): the production approval gate is not switched on
 
+- **Status:** Open. These are owner settings in GitHub.
+
 - **Where:** `0a9fc6cc` moved the Pages production deploy into the `production` environment so that "required reviewers set on it make every deploy wait". `gh api …/environments/production` returns `protection_rules: []` and no branch policy. `main` has no branch protection (HTTP 404), so a direct or force push to `main` that passes Web CI goes to production with no approval.
 - **Fix (owner settings, not code):** add yourself as a required reviewer on `production`, restrict it to `main`, and protect `main` (at minimum, block force pushes and require Web CI). The workflows already honor both.
 
 ### S-05 (P3, Confirmed, carried from N-10): a `note_deleted` refusal is still silent on Android and desktop
+
+- **Status:** Fixed. A download that keeps a refused or deleted-elsewhere note as a copy now says so on Android and desktop (`takeEditsKeptFromDeletedNotes`, `edits_kept_from_deleted_notes`), tested in `NoteSyncEngineTest`.
 
 - `SupabaseNoteTransport.putNotes` (`:220-250`) handles `status = conflict` with only an `AppLog.warn`, whatever the `error` is. The web handles `note_deleted` explicitly (`supabaseSyncEngine.ts:144`). Since 2.1.1 the purge keeps a never-synced row as a copy, so no text is lost. But the user is still not told that the cloud refused the note, which is what made N-10 hard to see.
 - **Fix:** surface `note_deleted` as a sync event (the "deleted note came back" plumbing from AU-07 is the natural place).

@@ -182,6 +182,12 @@ fun MainScreen(
                             event.deletedNotesBack,
                             event.deletedNotesBack,
                         )
+                    } else if (event.editsKeptFromDeleted > 0) {
+                        getPluralString(
+                            Res.plurals.edits_kept_from_deleted_notes,
+                            event.editsKeptFromDeleted,
+                            event.editsKeptFromDeleted,
+                        )
                     } else {
                         getString(Res.string.cloud_download_success, event.noteCount)
                     }
