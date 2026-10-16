@@ -11,12 +11,13 @@ import com.aus.notelikeus.domain.platform.SyncCoordinator
 import com.aus.notelikeus.data.local.model.NoteWithLabels
 import com.aus.notelikeus.data.mapper.toNoteEntity
 import com.aus.notelikeus.domain.model.Note
-import kotlinx.coroutines.Dispatchers
 import io.mockk.*
 import androidx.room.Transactor
 import androidx.room.TransactionScope
 import androidx.room.useWriterConnection
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -63,7 +64,17 @@ private fun Note.toNoteWithLabels(): NoteWithLabels =
             block(transactor)
         }
 
-        repository = NoteRepositoryImpl(database, noteDao, labelDao, reminderManager, widgetManager, syncCoordinator, Dispatchers.Unconfined)
+        // The repository's only use of this dispatcher is the debounced widget refresh. On
+        // Dispatchers.Unconfined that refresh waited 250 ms of real time on a background thread and
+        // then ran during a later test, which kotlinx-coroutines-test reported against whichever
+        // test happened to be running (UncaughtExceptionsBeforeTest). A dispatcher nothing advances
+        // keeps the refresh from ever outliving the test that scheduled it.
+        repository = NoteRepositoryImpl(database, noteDao, labelDao, reminderManager, widgetManager, syncCoordinator, StandardTestDispatcher())
+    }
+
+    @After
+    fun tearDown() {
+        unmockkStatic("androidx.room.RoomDatabaseKt")
     }
 
     /**
