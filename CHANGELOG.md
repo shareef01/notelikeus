@@ -4,6 +4,22 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.2.1] — 2026-10-18
+
+### Changed
+- **The editor's save status uses the same words on every device**: "Saved on this device", "Synced", "Waiting to sync", "Offline — changes saved here" and "Couldn't sync — saved on this device". Android and Windows used to say "Saved locally" and "Local save failed".
+- **One tagline everywhere: "Capture what matters."** The Android and Windows drawer used to show just "Capture".
+- **Settings no longer shows a "Premium Subscription — Coming soon" row** on Android and Windows. It did nothing.
+
+### Fixed
+- **Sign-in errors are clearer and sit under the field they are about**, on Android, Windows and the web. A wrong or expired code now says so plainly instead of showing the server's raw message.
+- **Grid card titles no longer break mid-word** on narrow phones ("Grocerie / s"). The date moves above the title when the card is narrow.
+- **The note's colour is marked in the options sheet in dark themes** on Android and Windows. It showed no selected colour for a note coloured in light mode.
+- **Hard-to-read text is easier to read** in both themes: the selection bar, section headers, search hints, card dates, editor hints such as "Title" and "Start writing…", completed checklist items, and error and warning boxes on the web, which were pale pink on pink in the light theme.
+- **The sidebar's Collapse arrow points the way the sidebar moves**, and **the reminder time picker uses the app's colours** instead of pink, on Android and Windows.
+- **On the web, note text stays at the top of the editor** when you click away from it, and the search box shows one clear button instead of two.
+- **Screen readers hear "Select Groceries"** for a note card's selection checkbox, rather than just the note's title, and which note colour is selected.
+
 ## [2.2.0] — 2026-10-17
 
 ### Added
