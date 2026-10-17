@@ -583,7 +583,7 @@ fun NoteCard(
                         selectedLabel = selectedLabel,
                         statusIconSize = 15.dp,
                         timestampFontSize = 11.sp,
-                        timestampAlpha = 0.55f,
+                        timestampAlpha = NoteEmphasis.Secondary,
                         verticalSpacing = 6.dp
                     )
                 }
@@ -627,7 +627,7 @@ fun NoteCard(
                         selectedLabel = selectedLabel,
                         statusIconSize = if (compact) 13.dp else 14.dp,
                         timestampFontSize = if (compact) 10.sp else 11.sp,
-                        timestampAlpha = 0.6f,
+                        timestampAlpha = NoteEmphasis.Secondary,
                         verticalSpacing = Spacing.xs,
                         horizontal = horizontal
                     )
