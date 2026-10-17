@@ -4,6 +4,16 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-10-17
+
+### Added
+- **A security check before the sign-in code is emailed**, on Android, Windows and the web. It stops anyone from using up the app's sign-in emails so nobody else can sign in. On the web it is a small Cloudflare box on the sign-in screen; Android shows it in a short in-app screen, and Windows opens it in your browser. It is switched on for everyone once this version has had time to reach most devices.
+- **Android and Windows say when a note was deleted on another device before your changes synced**, and that your changes were kept as a copy, instead of the copy appearing without explanation.
+
+### Security
+- **Sign-in codes now expire after 10 minutes** instead of an hour.
+- **Signing in with a password is turned off on the server.** The apps only ever sign in with an emailed code; this closes a way for someone to set a password on an address before its owner signed in.
+
 ## [2.1.2] — 2026-10-16
 
 ### Changed
