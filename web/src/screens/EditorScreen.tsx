@@ -766,7 +766,9 @@ export function EditorScreen({ route }: EditorScreenProps) {
                     focusContentField();
                   }}
                   aria-label="Edit note body"
-                  className={`mt-4 w-full min-h-[min(60vh,32rem)] rounded-note text-left transition-opacity hover:opacity-95 ${CHROME_FOCUS}`}
+                  // flex + justify-start: a <button> centres its content vertically by default,
+                  // which dropped the text to mid-screen whenever the body lost focus.
+                  className={`mt-4 flex w-full min-h-[min(60vh,32rem)] flex-col justify-start rounded-note text-left transition-opacity hover:opacity-95 ${CHROME_FOCUS}`}
                 >
                   <MarkdownBody text={state.content} contentColor={contentColor} />
                 </button>
