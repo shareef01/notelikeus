@@ -265,7 +265,9 @@ internal fun MainDrawerContent(
                     tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                     modifier = Modifier
                         .size(Size.icon)
-                        .rotate(if (collapsed) 0f else 180f)
+                        // Points where the sidebar will go: left to collapse it, right to expand
+                        // it. The two were swapped, so "Collapse" pointed right; web shows "‹".
+                        .rotate(if (collapsed) 180f else 0f)
                 )
                 if (!collapsed) {
                     Spacer(modifier = Modifier.width(10.dp))

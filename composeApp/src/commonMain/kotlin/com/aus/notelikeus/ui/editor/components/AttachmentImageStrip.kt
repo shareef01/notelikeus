@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.Attachment
+import com.aus.notelikeus.ui.theme.NoteEmphasis
 import com.aus.notelikeus.ui.theme.Spacing
 import org.jetbrains.compose.resources.stringResource
 import notelikeus.composeapp.generated.resources.Res
@@ -105,7 +106,8 @@ private fun AttachmentImagePreview(
                     Icon(
                         Icons.Default.ImageNotSupported,
                         contentDescription = stringResource(Res.string.image_load_failed),
-                        tint = contentColor.copy(alpha = 0.4f),
+                        // It says the image failed, so it is meaningful: the icon tier, for 3:1.
+                        tint = contentColor.copy(alpha = NoteEmphasis.Icon),
                     )
                 }
             }

@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -50,7 +51,11 @@ fun NoteColorSwatch(
         modifier = modifier
             .size(touchSize)
             .clip(CircleShape)
-            .semantics { this.contentDescription = description }
+            .semantics {
+                this.contentDescription = description
+                // A named swatch ("Yellow") otherwise never says it is the chosen one.
+                selected = isSelected
+            }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {

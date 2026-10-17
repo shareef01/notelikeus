@@ -622,6 +622,19 @@ fun EditorScreen(
     }
 }
 
+/**
+ * The time picker's colours from the app's own palette. Material styles the AM/PM selector with
+ * the `tertiary` roles, which these themes do not define, so it fell back to Material's stock pink
+ * (light) and maroon (dark), the only such colour in the app. It now matches the hour and minute
+ * boxes beside it.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun reminderTimePickerColors() = TimePickerDefaults.colors(
+    periodSelectorSelectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+    periodSelectorSelectedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReminderDialog(
@@ -786,7 +799,7 @@ private fun ExactReminderDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    TimePicker(state = timePickerState)
+                    TimePicker(state = timePickerState, colors = reminderTimePickerColors())
                 }
             }
         },

@@ -69,7 +69,7 @@ function AttachmentPreview({
         />
       ) : (
         <div
-          className="flex min-h-28 items-center justify-center px-4 text-sm opacity-70"
+          className="flex min-h-28 items-center justify-center px-4 text-sm opacity-80"
           style={{ color: contentColor }}
         >
           {failed ? 'Could not load image' : 'Loading image…'}

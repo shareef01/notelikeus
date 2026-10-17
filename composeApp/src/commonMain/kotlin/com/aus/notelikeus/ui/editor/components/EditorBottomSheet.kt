@@ -25,6 +25,7 @@ import com.aus.notelikeus.ui.components.NoteColorSwatch
 import com.aus.notelikeus.ui.theme.noteColorName
 import com.aus.notelikeus.ui.main.components.SettingsSectionHeader
 import com.aus.notelikeus.ui.theme.isNoteColorDarkTheme
+import com.aus.notelikeus.ui.theme.noteColorForTheme
 import com.aus.notelikeus.ui.theme.noteColorsForTheme
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Size
@@ -106,7 +107,10 @@ fun EditorBottomSheet(
                     val colorArgb = color.toArgb()
                     NoteColorSwatch(
                         color = color,
-                        isSelected = selectedColor == colorArgb,
+                        // The note may store either half of a light/dark pair, and the row shows
+                        // the active theme's half, so compare palette entries, not raw ARGB: in dark
+                        // themes a light-stored colour used to show no selection at all.
+                        isSelected = noteColorForTheme(selectedColor, isDarkTheme) == colorArgb,
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                             onColorSelect(colorArgb)

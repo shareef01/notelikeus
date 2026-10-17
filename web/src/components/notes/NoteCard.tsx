@@ -397,7 +397,7 @@ function NoteCardImpl({
                   </div>
                 ))}
                 {note.checklist.length > 3 ? (
-                  <p className="text-[11px] font-medium tracking-wide opacity-60">
+                  <p className="text-[11px] font-medium tracking-wide opacity-80">
                     +{note.checklist.length - 3} more
                   </p>
                 ) : null}
