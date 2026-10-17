@@ -84,8 +84,8 @@ export function ChecklistEditor({
             onChange={(event) => onUpdate(item.id, event.target.value, item.isChecked)}
             onKeyDown={(event) => handleKeyDown(event, item, index)}
             placeholder="List item"
-            className={`min-w-0 flex-1 bg-transparent text-base leading-relaxed outline-none placeholder:opacity-40 ${
-              item.isChecked ? 'line-through opacity-60' : ''
+            className={`min-w-0 flex-1 bg-transparent text-base leading-relaxed outline-none placeholder:text-current placeholder:opacity-80 ${
+              item.isChecked ? 'line-through' : ''
             }`}
             style={{ color: contentColor }}
           />

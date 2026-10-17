@@ -249,8 +249,9 @@ function NoteCardImpl({
           type="button"
           role="checkbox"
           aria-checked={isSelected}
-          aria-labelledby={title ? titleId : undefined}
-          aria-label={title ? undefined : isSelected ? 'Deselect note' : 'Select note'}
+          // "Select Groceries", not just "Groceries": borrowing the title gave the checkbox the
+          // same name as the card's own open button. aria-checked carries the state.
+          aria-label={title ? `Select ${title}` : isSelected ? 'Deselect note' : 'Select note'}
           onClick={(event) => {
             event.stopPropagation();
             onToggleSelect();
@@ -388,8 +389,10 @@ function NoteCardImpl({
                       <CheckCircleOutlineIcon size={14} className="shrink-0 opacity-60" />
                     )}
                     <span
-                      className={`line-clamp-1 break-words text-note-body ${
-                        item.isChecked ? 'line-through opacity-50' : 'opacity-80'
+                      // Done items are struck through, not faded: text on a note stays on the
+                      // 0.80 tier (NOTE_EMPHASIS), and 0.50 fell below AA.
+                      className={`line-clamp-1 break-words text-note-body opacity-80 ${
+                        item.isChecked ? 'line-through' : ''
                       }`}
                     >
                       {highlight(stripMarkdownForPreview(item.text))}
