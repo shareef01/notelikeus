@@ -74,7 +74,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
               onChange={(e) => setNewLabelName(e.target.value)}
               placeholder="Create new label"
               aria-label="Create new label"
-              className="flex-1 bg-transparent text-lg outline-none placeholder:text-brand-muted/40"
+              className="flex-1 bg-transparent text-lg outline-none placeholder:text-brand-muted"
             />
             {newLabelName.trim() ? (
               <button

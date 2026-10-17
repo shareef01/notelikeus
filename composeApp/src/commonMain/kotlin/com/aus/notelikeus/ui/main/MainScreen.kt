@@ -492,14 +492,15 @@ fun MainScreen(
                                                     fontWeight = FontWeight.SemiBold,
                                                     letterSpacing = (-0.5).sp
                                                 ),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                // Full-strength muted text: at 50% and 35% these read at 1.7-2.4:1.
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 textAlign = TextAlign.Center
                                             )
                                             Spacer(modifier = Modifier.height(Spacing.sm))
                                             Text(
                                                 text = stringResource(Res.string.select_note_to_view_subtitle),
                                                 style = MaterialTheme.typography.bodyLarge,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 textAlign = TextAlign.Center
                                             )
                                         }

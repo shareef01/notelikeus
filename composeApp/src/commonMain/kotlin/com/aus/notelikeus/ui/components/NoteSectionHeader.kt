@@ -18,7 +18,9 @@ fun NoteSectionHeader(
     Text(
         text = title.uppercase(),
         style = AppType.chromeLabel,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+        // Full strength: the muted role is tuned to clear 4.5:1 and no more, so fading it
+        // (it was 75%) put these headers at about 3:1.
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier
             .fillMaxWidth()
             .padding(top = Spacing.md, bottom = Spacing.sm)
