@@ -284,14 +284,16 @@ internal fun MainScaffold(
                 }
                 state.currentFilter == NoteFilter.ARCHIVED -> {
                     message = stringResource(Res.string.no_archived_notes)
-                    subtitle = null
+                    subtitle = stringResource(Res.string.no_archived_notes_subtitle)
                     showCreate = false
                     showClear = false
                     emptyIcon = Icons.Outlined.Archive
                 }
                 state.currentFilter == NoteFilter.TRASHED -> {
                     message = stringResource(Res.string.no_trashed_notes)
-                    subtitle = stringResource(Res.string.empty_trash_subtitle)
+                    // Not empty_trash_subtitle: that one sits beside the Empty trash button and
+                    // describes emptying, which read here as if deleting a note were permanent.
+                    subtitle = stringResource(Res.string.no_trashed_notes_subtitle)
                     showCreate = false
                     showClear = false
                     emptyIcon = Icons.Outlined.DeleteOutline

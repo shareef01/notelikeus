@@ -13,7 +13,7 @@ export const SORT_OPTION_LABELS: Record<SortOrder, string> = {
 const SORT_OPTION_HINTS: Record<SortOrder, string> = {
   manual: 'Drag notes to arrange them yourself',
   newest: 'Most recently created first',
-  oldest: 'Oldest first',
+  oldest: 'Earliest created first',
 };
 
 /**

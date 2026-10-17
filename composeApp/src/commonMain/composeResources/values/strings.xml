@@ -15,6 +15,8 @@
     <string name="search_trash">Search trash</string>
     <string name="no_archived_notes">No archived notes</string>
     <string name="no_trashed_notes">No notes in trash</string>
+    <string name="no_archived_notes_subtitle">Archived notes stay here, out of your main list</string>
+    <string name="no_trashed_notes_subtitle">Deleted notes wait here until you empty the trash</string>
     <string name="empty_notes_hint">Notes you add appear here</string>
     <string name="empty_notes_subtitle">Capture ideas, lists, and reminders in one place</string>
     <string name="empty_search_subtitle">Try a different search term or clear filters</string>
