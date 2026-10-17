@@ -1,10 +1,5 @@
 package com.aus.notelikeus.ui.auth
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -152,7 +147,8 @@ fun SignInGate(
                 modifier = Modifier.widthIn(max = 400.dp).fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                GateError(externalErrorMessage, errorResource)
+                // Shown under the field it is about, in place of the field's hint.
+                val errorMessage = gateErrorMessage(externalErrorMessage, errorResource)
 
                 if (codeSentTo == null) {
                     EmailStep(
@@ -161,7 +157,7 @@ fun SignInGate(
                             email = it
                             errorResource = null
                         },
-                        isError = errorResource == Res.string.sign_in_invalid_email,
+                        errorMessage = errorMessage,
                         isSigningIn = isSigningIn,
                         onSend = ::sendCode
                     )
@@ -173,7 +169,7 @@ fun SignInGate(
                             code = it
                             errorResource = null
                         },
-                        isError = errorResource == Res.string.sign_in_invalid_code,
+                        errorMessage = errorMessage,
                         isSigningIn = isSigningIn,
                         focusRequester = codeFocus,
                         onSubmit = ::submitCode,
@@ -214,23 +210,23 @@ fun SignInGate(
     }
 }
 
-/** The gate's one error line, announced politely when it appears or changes. */
+/** The gate's one error: the server's message if there is one, else the local check's. */
 @Composable
-private fun GateError(serverMessage: String?, localError: StringResource?) {
-    val message = serverMessage ?: localError?.let { stringResource(it) }
-    AnimatedVisibility(
-        visible = message != null,
-        enter = expandVertically() + fadeIn(),
-        exit = shrinkVertically() + fadeOut()
-    ) {
+private fun gateErrorMessage(serverMessage: String?, localError: StringResource?): String? =
+    serverMessage ?: localError?.let { stringResource(it) }
+
+/**
+ * A field's supporting line: its [hint], or the gate's one error in its place, in the error colour
+ * and announced politely when it appears or changes.
+ */
+@Composable
+private fun SupportingLine(hint: String, errorMessage: String?) {
+    if (errorMessage == null) {
+        Text(hint)
+    } else {
         Text(
-            text = message.orEmpty(),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .padding(bottom = Spacing.lg)
-                .semantics { liveRegion = LiveRegionMode.Polite }
+            text = errorMessage,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
         )
     }
 }
@@ -268,7 +264,7 @@ private fun ProgressButton(
 private fun EmailStep(
     email: String,
     onEmailChange: (String) -> Unit,
-    isError: Boolean,
+    errorMessage: String?,
     isSigningIn: Boolean,
     onSend: () -> Unit,
 ) {
@@ -276,8 +272,8 @@ private fun EmailStep(
         value = email,
         onValueChange = onEmailChange,
         label = { Text(stringResource(Res.string.sign_in_email_label)) },
-        supportingText = { Text(stringResource(Res.string.sign_in_email_hint)) },
-        isError = isError,
+        supportingText = { SupportingLine(stringResource(Res.string.sign_in_email_hint), errorMessage) },
+        isError = errorMessage != null,
         singleLine = true,
         enabled = !isSigningIn,
         keyboardOptions = KeyboardOptions(
@@ -303,7 +299,7 @@ private fun CodeStep(
     sentTo: String,
     code: String,
     onCodeChange: (String) -> Unit,
-    isError: Boolean,
+    errorMessage: String?,
     isSigningIn: Boolean,
     focusRequester: FocusRequester,
     onSubmit: () -> Unit,
@@ -324,8 +320,8 @@ private fun CodeStep(
         value = code,
         onValueChange = { input -> onCodeChange(input.filter(Char::isDigit).take(EMAIL_CODE_LENGTH)) },
         label = { Text(stringResource(Res.string.sign_in_code_label)) },
-        supportingText = { Text(stringResource(Res.string.sign_in_code_spam_hint)) },
-        isError = isError,
+        supportingText = { SupportingLine(stringResource(Res.string.sign_in_code_spam_hint), errorMessage) },
+        isError = errorMessage != null,
         singleLine = true,
         enabled = !isSigningIn,
         keyboardOptions = KeyboardOptions(

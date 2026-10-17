@@ -106,7 +106,7 @@ class EditorBottomBarTest {
                 )
             }
         }
-        onNodeWithText("Saving locally…").assertExists()
+        onNodeWithText("Saving…").assertExists()
     }
 
     @Test
@@ -142,7 +142,7 @@ class EditorBottomBarTest {
                 )
             }
         }
-        onNodeWithText("Saved locally • Sync pending").assertExists()
+        onNodeWithText("Waiting to sync").assertExists()
     }
 
     @Test
@@ -159,7 +159,7 @@ class EditorBottomBarTest {
                 )
             }
         }
-        onNodeWithText("Saved locally • Offline").assertExists()
+        onNodeWithText("Offline — changes saved here").assertExists()
     }
 
     @Test
@@ -211,7 +211,8 @@ class EditorBottomBarTest {
                 )
             }
         }
-        onNodeWithText("Saved locally • Synced").assertExists()
+        // Synced carries the edit time, as on web: "Synced • 5:00 pm".
+        onNodeWithText("Synced • ", substring = true).assertExists()
     }
 
     @Test
@@ -231,7 +232,7 @@ class EditorBottomBarTest {
                 )
             }
         }
-        onNodeWithText("Saved locally • Offline").assertExists()
+        onNodeWithText("Offline — changes saved here").assertExists()
     }
 
     @Test
@@ -249,7 +250,7 @@ class EditorBottomBarTest {
                 )
             }
         }
-        onNodeWithText("Saved locally • Sync pending").assertExists()
+        onNodeWithText("Waiting to sync").assertExists()
     }
 
     @Test
@@ -265,6 +266,6 @@ class EditorBottomBarTest {
                 )
             }
         }
-        onNodeWithText("Saving locally…").assertExists()
+        onNodeWithText("Saving…").assertExists()
     }
 }

@@ -62,6 +62,7 @@ internal fun savedNoteSyncStatus(
     else -> EditorSaveStatus.Synced
 }
 
+/** Labels from DESIGN_SYSTEM §5.1, the vocabulary the web client's footer uses too. */
 @Composable
 private fun EditorSaveStatus.label(editedTime: String): String = when (this) {
     EditorSaveStatus.SaveFailed -> stringResource(Res.string.local_save_failed)
@@ -72,7 +73,7 @@ private fun EditorSaveStatus.label(editedTime: String): String = when (this) {
     EditorSaveStatus.Syncing -> stringResource(Res.string.saved_locally_syncing)
     EditorSaveStatus.Offline -> stringResource(Res.string.saved_locally_offline)
     EditorSaveStatus.SyncFailed -> stringResource(Res.string.saved_locally_sync_failed)
-    EditorSaveStatus.Synced -> stringResource(Res.string.saved_locally_synced)
+    EditorSaveStatus.Synced -> stringResource(Res.string.saved_locally_synced, editedTime)
 }
 
 @Composable
