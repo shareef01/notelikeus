@@ -7,7 +7,7 @@ describe('UX-D — Guest empty state truthfulness', () => {
     const guestState = getEmptyState('active', false, false, false);
     expect(guestState.message).toBe('Notes you add appear here');
     // Must NOT promise automatic sync to guests
-    expect(guestState.subtitle).not.toMatch(/Synced automatically with your Android device/i);
+    expect(guestState.subtitle).not.toMatch(/Synced automatically/i);
     expect(guestState.subtitle).toMatch(/browser|local/i);
   });
 
@@ -15,6 +15,22 @@ describe('UX-D — Guest empty state truthfulness', () => {
     // Calling getEmptyState with signedIn = true
     const signedInState = getEmptyState('active', false, false, true);
     expect(signedInState.message).toBe('Notes you add appear here');
-    expect(signedInState.subtitle).toMatch(/Synced automatically with your Android device/i);
+    // Android, Windows and the web all sync, so name none of them.
+    expect(signedInState.subtitle).toBe('Synced automatically across your devices');
+  });
+});
+
+describe('Archive and Trash empty states', () => {
+  it('explains what the archive is for', () => {
+    expect(getEmptyState('archived', false, false, false).subtitle).toBe(
+      'Archived notes stay here, out of your main list',
+    );
+  });
+
+  it('does not suggest that deleting a note is permanent', () => {
+    // Deleting moves a note to Trash; only emptying the trash removes it for good.
+    const trash = getEmptyState('trashed', false, false, false);
+    expect(trash.subtitle).toBe('Deleted notes wait here until you empty the trash');
+    expect(trash.subtitle).not.toMatch(/permanent/i);
   });
 });

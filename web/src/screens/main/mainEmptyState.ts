@@ -41,13 +41,17 @@ export function getEmptyState(
   }
 
   if (filter === 'archived') {
-    return { message: 'No archived notes', icon: 'archive' };
+    return {
+      message: 'No archived notes',
+      subtitle: 'Archived notes stay here, out of your main list',
+      icon: 'archive',
+    };
   }
 
   if (filter === 'trashed') {
     return {
       message: 'No notes in trash',
-      subtitle: 'Deleted notes are removed permanently',
+      subtitle: 'Deleted notes wait here until you empty the trash',
       icon: 'trash',
     };
   }
@@ -55,7 +59,7 @@ export function getEmptyState(
   return {
     message: 'Notes you add appear here',
     subtitle: isSignedIn
-      ? 'Synced automatically with your Android device'
+      ? 'Synced automatically across your devices'
       : 'Stored locally in this browser. Sign in anytime to sync across devices.',
     icon: 'brand',
     showCreate: true,

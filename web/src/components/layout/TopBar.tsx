@@ -155,7 +155,7 @@ export function TopBar({
                 onFocus={() => setIsSearchFocused(true)}
                 onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
                 placeholder={SEARCH_PLACEHOLDERS[currentFilter]}
-                className={`min-w-0 flex-1 bg-transparent px-3 text-base text-brand-primary outline-none placeholder:text-brand-muted/60 sm:px-4 ${CHROME_FOCUS} rounded-full`}
+                className={`min-w-0 flex-1 bg-transparent px-3 text-base text-brand-primary outline-none placeholder:text-brand-muted sm:px-4 ${CHROME_FOCUS} rounded-full`}
                 aria-label={SEARCH_PLACEHOLDERS[currentFilter]}
               />
 

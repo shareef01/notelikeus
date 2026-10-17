@@ -321,7 +321,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
             </p>
           )}
 
-          <p className="mt-6 pb-8 text-center text-xs leading-relaxed text-brand-muted/80">
+          <p className="mt-6 pb-8 text-center text-xs leading-relaxed text-brand-muted">
             By continuing, you agree that notes you choose to sync are stored in your{' '}
             Notelikeus cloud account under your
             signed-in identity.
