@@ -204,12 +204,10 @@ private fun NoteCardStatusColumn(
     statusIconSize: Dp,
     timestampFontSize: TextUnit,
     timestampAlpha: Float,
-    verticalSpacing: Dp
+    verticalSpacing: Dp,
+    horizontal: Boolean = false,
 ) {
-    Column(
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(verticalSpacing)
-    ) {
+    val items: @Composable () -> Unit = {
         if (isSelected) {
             Surface(
                 modifier = Modifier.size(Size.iconLarge),
@@ -255,6 +253,81 @@ private fun NoteCardStatusColumn(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+    if (horizontal) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(verticalSpacing),
+            verticalAlignment = Alignment.CenterVertically
+        ) { items() }
+    } else {
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(verticalSpacing)
+        ) { items() }
+    }
+}
+
+/**
+ * Below this width a title beside the status column is left about 80dp, too little for one
+ * ordinary word at title size, so "Groceries" broke as "Grocerie / s". A two-column grid on a
+ * 360dp phone lands here.
+ */
+private val NarrowTitleRowWidth = 180.dp
+
+/**
+ * The grid card's header: title on the left, status/selection + timestamp on the right, matching
+ * the web card's header block. On a narrow card the status moves to a line of its own above the
+ * title, as it already sits on an untitled card, so the title gets the full width.
+ */
+@Composable
+private fun NoteCardTitleRow(
+    title: AnnotatedString?,
+    compact: Boolean,
+    status: @Composable (horizontal: Boolean) -> Unit,
+) {
+    val titleText: @Composable (Modifier) -> Unit = { modifier ->
+        Text(
+            text = title ?: AnnotatedString(""),
+            style = if (compact) {
+                AppType.noteCardTitle.copy(fontSize = 15.sp, lineHeight = 20.sp)
+            } else {
+                AppType.noteCardTitle
+            },
+            maxLines = if (compact) 2 else 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = modifier
+        )
+    }
+    BoxWithConstraints {
+        if (title != null && maxWidth < NarrowTitleRowWidth) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    status(true)
+                }
+                titleText(Modifier.fillMaxWidth())
+            }
+        } else {
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+            ) {
+                // A note with no title gets no title line, rather than the word "Untitled"
+                // in the most prominent position on the card. The placeholder took the line
+                // the user's own words should lead with and pushed the content down to say
+                // nothing -- and the card's accessibility description had already decided
+                // otherwise, falling through to the first line of content. The eye and the
+                // screen reader were describing the same note two different ways, and the
+                // screen reader had the better of it.
+                //
+                // The row itself stays: it carries the timestamp and status icons.
+                if (title != null) {
+                    titleText(Modifier.weight(1f))
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                status(false)
+            }
+        }
     }
 }
 
@@ -539,41 +612,14 @@ fun NoteCard(
                     bottom = if (compact) Spacing.lg else NoteCardContentPadding
                 )
             ) {
-                // Title row: title on the left, status/selection + timestamp on the right,
-                // matching the web card's header block.
-                Row(
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
-                ) {
-                    // A note with no title gets no title line, rather than the word "Untitled"
-                    // in the most prominent position on the card. The placeholder took the line
-                    // the user's own words should lead with and pushed the content down to say
-                    // nothing -- and the card's accessibility description had already decided
-                    // otherwise, falling through to the first line of content. The eye and the
-                    // screen reader were describing the same note two different ways, and the
-                    // screen reader had the better of it.
-                    //
-                    // The row itself stays: it carries the timestamp and status icons.
-                    if (note.title.isNotEmpty()) {
-                        Text(
-                            text = buildHighlightedString(
-                                note.title,
-                                searchQuery,
-                                contentColor,
-                                highlightColor
-                            ),
-                            style = if (compact) {
-                                AppType.noteCardTitle.copy(fontSize = 15.sp, lineHeight = 20.sp)
-                            } else {
-                                AppType.noteCardTitle
-                            },
-                            maxLines = if (compact) 2 else 3,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
+                NoteCardTitleRow(
+                    title = if (note.title.isNotEmpty()) {
+                        buildHighlightedString(note.title, searchQuery, contentColor, highlightColor)
                     } else {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
+                        null
+                    },
+                    compact = compact,
+                ) { horizontal ->
                     NoteCardStatusColumn(
                         note = note,
                         isSelected = isSelected,
@@ -582,7 +628,8 @@ fun NoteCard(
                         statusIconSize = if (compact) 13.dp else 14.dp,
                         timestampFontSize = if (compact) 10.sp else 11.sp,
                         timestampAlpha = 0.6f,
-                        verticalSpacing = Spacing.xs
+                        verticalSpacing = Spacing.xs,
+                        horizontal = horizontal
                     )
                 }
                 if (note.content.isNotEmpty()) {
