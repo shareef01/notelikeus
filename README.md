@@ -18,6 +18,8 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 
 <img src="screenshots/web-notes.png" width="395" alt="Web note grid: a pinned image note shows its picture on the card, with colour and label filters" /> <img src="screenshots/web-editor.png" width="395" alt="Web note editor with an image attachment and the rich-text toolbar" />
 
+<img src="screenshots/web-sign-in.png" width="395" alt="Web sign-in: enter your email to get a 6-digit code, with the Cloudflare security check below the Send code button" />
+
 **Android**
 
 <img src="screenshots/android-notes.png" width="190" alt="Android notes grid with an image card, rich text, labels and a checklist" /> <img src="screenshots/android-editor.png" width="190" alt="Android note editor with an image attachment and the rich-text toolbar" /> <img src="screenshots/android-drawer.png" width="190" alt="Android navigation drawer with Notes, Archive, Trash and smart views" /> <img src="screenshots/android-settings.png" width="190" alt="Android settings: theme, accent, pure black, app lock" />
@@ -40,7 +42,8 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 | Encrypted local database | SQLCipher | SQLCipher (DPAPI key) | WebCrypto (note bodies) |
 | Biometric app lock | ✓ | — | — |
 | Home-screen widget | Glance | — | — |
-| Email sign-in and cloud sync | Optional | Optional | Optional |
+| Email code sign-in and cloud sync | Optional | Optional | Optional |
+| Security check before the sign-in email | In-app screen | In your browser | On the sign-in screen |
 | Usable with no account | ✓ | ✓ | ✓ |
 | JSON backup import / export | ✓ | ✓ | ✓ |
 | Backup with attachment bytes (`.nlkbak`) | ✓ | ✓ | ✓ |
@@ -63,6 +66,8 @@ Shortcuts on the note list stay out of the way while a dialog is open, and typin
 Notes are stored on the device. Android and Windows use Room with SQLCipher: Android seals the passphrase in the Android Keystore; Windows seals it with DPAPI. Attachment image bytes are AES-GCM sealed on both. The web client seals note titles, bodies, and checklists in IndexedDB (and staged pending attachment blobs) with WebCrypto AES-GCM — profile-at-rest only, not an XSS control. Nothing about the app requires an account.
 
 Sync sits above that. When you sign in, notes replicate through Supabase: Postgres RPCs for mutations, Realtime as a wake-up signal, row-level security for isolation.
+
+Signing in needs no password. You type your email, Supabase emails a 6-digit code, and you type the code in; the first sign-in creates the account. Before the code is sent, every client runs a Cloudflare Turnstile check, so a script cannot spend the project's sign-in emails and lock everyone else out. On the web the check sits on the sign-in screen, Android shows it in a short in-app screen, and Windows opens it in your browser and takes the answer back on a one-time local port. Codes expire after 10 minutes, and the hosted project refuses password sign-in outright, through a Custom Access Token hook, so nobody can set a password on an address before its owner signs in.
 
 Conflicts are detected on a server-assigned revision rather than a client clock, so a device with a skewed clock cannot overwrite a revision the server has already confirmed. When two devices edit the same note before either syncs, neither edit is thrown away: the note keeps the version that reached the cloud first, and the other becomes a new note titled "… (conflicted copy)", taking with it any image that had not uploaded yet. Its "Conflict copy" tag opens a side-by-side review, where keeping one version moves the other to Trash. The same applies to a note open in the editor when another device changes it, and to a note edited on one device while it is deleted on another.
 
@@ -113,7 +118,7 @@ npm run kotlin:staging-properties
 ./gradlew :androidApp:assembleDebug
 ```
 
-See [docs/ANDROID_STAGING.md](docs/ANDROID_STAGING.md) for the keys involved.
+See [docs/ANDROID_STAGING.md](docs/ANDROID_STAGING.md) for the keys involved. Release builds (the AAB and the MSI) refuse to build without the hosted Supabase URL, the anon key, the attachments Worker URL and `NOTELIKEUS_CAPTCHA_PAGE_URL`, the web app's security-check page.
 
 ### Windows
 
@@ -131,7 +136,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Production builds need a hosted `VITE_SUPABASE_URL` and the public `VITE_SUPABASE_ANON_KEY`.
+Production builds need a hosted `VITE_SUPABASE_URL` and the public `VITE_SUPABASE_ANON_KEY`. With `VITE_TURNSTILE_SITE_KEY` set, the sign-in screen and `captcha.html` run the Turnstile check; without it, as in local development and e2e, no check is shown and no token is sent.
 
 ## Testing
 
@@ -145,15 +150,17 @@ Production builds need a hosted `VITE_SUPABASE_URL` and the public `VITE_SUPABAS
 | Minified release | R8 and resource shrinking | `./gradlew :androidApp:assembleRelease` |
 | Web unit | Merge logic, conflict resolution and review, backup parsing, bundle archives, diagnostics redaction, search, theme contrast | `cd web && npm test` |
 | Web end-to-end | Built bundle in Chromium against local Supabase | `cd web && npm run test:e2e` |
-| Database | RLS, sync RPCs, tombstones, attachments (pgTAP) | `npm run supabase:test` |
+| Database | RLS, sync RPCs, tombstones, attachments, the password sign-in hook (pgTAP) | `npm run supabase:test` |
 | Attachments Worker | JWT auth, path isolation, size and MIME limits | `npm run test:attachments-worker` |
 | Pages artifacts | `_headers` and `_redirects` in `web/dist` | `npm run pages:verify` |
 
 The instrumented suite needs a connected device or emulator; the database and end-to-end suites need a running local Supabase (`npm run supabase:start`), which needs Docker.
 
 The cross-client fixtures live in [`contracts/`](contracts/) and are read by both test suites, so a
-field renamed or defaulted differently on one client fails on both. `contracts/sync/` pins the rules for what an incoming cloud version may do to a local note. The most recent audit of the
-whole system is [`docs/audit/COMPREHENSIVE_AUDIT.md`](docs/audit/COMPREHENSIVE_AUDIT.md), with its findings in [`docs/audit/FINDINGS.md`](docs/audit/FINDINGS.md); the earlier [`docs/AUDIT_2026.md`](docs/AUDIT_2026.md) and the design system in [`docs/design/`](docs/design/) sit alongside it.
+field renamed or defaulted differently on one client fails on both. `contracts/sync/` pins the rules for what an incoming cloud version may do to a local note. The most recent audit is
+[`docs/audit/PROJECT_AUDIT_2026-10-17.md`](docs/audit/PROJECT_AUDIT_2026-10-17.md) (sign-in and deploy hardening), which builds on
+[`docs/audit/PROJECT_AUDIT_2026-10-15.md`](docs/audit/PROJECT_AUDIT_2026-10-15.md) and [`AUDIT_REPORT.md`](AUDIT_REPORT.md). Each records the status of every finding. The earlier
+[`docs/audit/COMPREHENSIVE_AUDIT.md`](docs/audit/COMPREHENSIVE_AUDIT.md) with [`docs/audit/FINDINGS.md`](docs/audit/FINDINGS.md), and the design system in [`docs/design/`](docs/design/), sit alongside them.
 
 ## Repository layout
 
