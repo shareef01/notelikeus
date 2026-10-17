@@ -29,7 +29,6 @@ import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.PrivacyTip
-import androidx.compose.material.icons.filled.Stars
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.ViewModule
@@ -365,11 +364,6 @@ fun ProfileSheet(
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(Res.string.section_about))
-            SettingsRow(
-                icon = Icons.Default.Stars,
-                title = stringResource(Res.string.premium_subscription),
-                subtitle = stringResource(Res.string.coming_soon_detail)
-            )
             SettingsRow(
                 icon = Icons.Default.PrivacyTip,
                 title = stringResource(Res.string.privacy_policy),

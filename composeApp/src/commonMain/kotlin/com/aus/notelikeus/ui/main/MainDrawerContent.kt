@@ -27,6 +27,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aus.notelikeus.ui.main.components.SideDrawerAccountRow
@@ -116,10 +117,13 @@ internal fun MainDrawerContent(
                                 ),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
+                            // The same line as web's drawer. It used to be a one-word "Capture".
                             Text(
-                                stringResource(Res.string.drawer_tagline_short),
+                                stringResource(Res.string.drawer_tagline),
                                 style = AppType.chromeLabel,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }

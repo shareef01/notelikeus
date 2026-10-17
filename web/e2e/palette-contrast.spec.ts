@@ -103,6 +103,49 @@ for (const [name, theme] of Object.entries(THEMES)) {
     expect(scan.violations.flatMap((v) => v.nodes.map((n) => n.failureSummary))).toEqual([]);
   });
 
+  // axe does not measure ::placeholder, so this composites it by hand: the placeholder is the
+  // note's text colour at its ::placeholder opacity, over the note. They were 0.30, about 1.6:1.
+  test(`the editor's placeholders clear AA on an amber note in the ${name} theme`, async ({ page }) => {
+    await page.addInitScript((t) => {
+      localStorage.setItem('notelikeus-settings', JSON.stringify({ state: { theme: t }, version: 1 }));
+    }, theme as unknown as object);
+    await page.goto('/');
+    await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
+    await page.getByRole('button', { name: 'Continue without an account' }).click();
+    await page.addStyleTag({
+      content: '*,*::before,*::after{animation:none !important;transition:none !important}',
+    });
+    const newNote = page.getByRole('button', { name: 'New note' }).filter({ visible: true }).first();
+    await expect(newNote).toBeVisible({ timeout: 20_000 });
+    await newNote.click();
+    await page.getByRole('button', { name: 'More options' }).click();
+    await page.getByRole('dialog').last().getByRole('button', { name: /Amber/ }).click();
+    await page.keyboard.press('Escape');
+
+    for (const field of ['Note title', 'Note body']) {
+      const painted = await page.getByRole('textbox', { name: field }).first().evaluate((el) => {
+        const placeholder = getComputedStyle(el, '::placeholder');
+        let surface = el.parentElement;
+        while (surface && /rgba\(0, 0, 0, 0\)|transparent/.test(getComputedStyle(surface).backgroundColor)) {
+          surface = surface.parentElement;
+        }
+        return {
+          color: placeholder.color,
+          opacity: Number(placeholder.opacity),
+          background: surface ? getComputedStyle(surface).backgroundColor : 'rgb(255, 255, 255)',
+        };
+      });
+      // Tailwind's base styles give ::placeholder a half-transparent currentColor, so the colour's
+      // own alpha counts as well as the opacity.
+      expect(painted.color, `${field} placeholder colour`).toMatch(/^rgba?\(/);
+      const [r, g, b, a = 1] = (painted.color.match(/[\d.]+/g) ?? []).map(Number);
+      const alpha = a * painted.opacity;
+      const bg = rgbOf(painted.background);
+      const drawn = [r, g, b].map((c, i) => c * alpha + bg[i] * (1 - alpha));
+      expect(contrastRatio(drawn, bg), `${field} placeholder in ${name}`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   test(`swatch outlines stay visible in the ${name} theme`, async ({ page }) => {
     const painted = await swatchesIn(page, theme);
     const pageBg = rgbOf(painted.page);

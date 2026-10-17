@@ -86,7 +86,8 @@ describe('NoteCard', () => {
     );
 
     expect(firstTaskSpan?.className).toContain('line-through');
-    expect(firstTaskSpan?.className).toContain('opacity-50');
+    // Struck through, not faded below the 0.80 text tier.
+    expect(firstTaskSpan?.className).toContain('opacity-80');
     expect(secondTaskSpan?.className).not.toContain('line-through');
     expect(secondTaskSpan?.className).toContain('opacity-80');
     cleanup();
@@ -148,6 +149,9 @@ describe('NoteCard', () => {
 
     const selectCheckbox = container.querySelector('button[role="checkbox"]');
     expect(selectCheckbox).not.toBeNull();
+    // Named for what it does, not just the title: the card's open button is already "Test Note Title".
+    expect(selectCheckbox?.getAttribute('aria-label')).toBe('Select Test Note Title');
+    expect(selectCheckbox?.hasAttribute('aria-labelledby')).toBe(false);
     act(() => {
       selectCheckbox?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });

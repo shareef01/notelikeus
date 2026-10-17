@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Notelikeus</string>
-    <string name="tagline">Capture everything.</string>
+    <string name="tagline">Capture what matters</string>
     <string name="app_functions_description">Capture ideas, lists, and reminders in one place.</string>
 
     <!-- Navigation -->
@@ -118,8 +118,7 @@
     <string name="empty_trash_message">All notes in trash will be permanently deleted.</string>
 
     <!-- Drawer -->
-    <string name="drawer_tagline">Capture everything.</string>
-    <string name="drawer_tagline_short">Capture</string>
+    <string name="drawer_tagline">Capture what matters</string>
     <string name="nav_section_manage">Manage</string>
     <string name="clear_filters_short">Clear</string>
     <string name="title_hint">Title</string>
@@ -232,10 +231,7 @@
     <string name="action_retry">Retry</string>
     <string name="cloud_auto_sync">Auto-sync</string>
     <string name="cloud_auto_sync_subtitle">Upload note changes automatically while signed in</string>
-    <string name="coming_soon">Soon</string>
-    <string name="coming_soon_detail">Coming soon</string>
     <string name="backup_export">Backup &amp; Export</string>
-    <string name="premium_subscription">Premium Subscription</string>
 
     <string name="section_about">About</string>
     <string name="privacy_policy">Privacy policy</string>

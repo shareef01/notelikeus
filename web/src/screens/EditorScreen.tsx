@@ -638,7 +638,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             onChange={(event) => editor.setTitle(event.target.value)}
             placeholder="Title"
             maxLength={MAX_NOTE_TITLE_CHARS}
-            className="w-full bg-transparent text-[24px] font-semibold leading-tight tracking-[-0.03em] outline-none placeholder:opacity-30 sm:text-[26px]"
+            className="w-full bg-transparent text-[24px] font-semibold leading-tight tracking-[-0.03em] outline-none placeholder:text-current placeholder:opacity-80 sm:text-[26px]"
             style={{ color: contentColor }}
           />
 
@@ -756,7 +756,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
                   placeholder="Start writing…"
                   rows={1}
                   maxLength={MAX_NOTE_CONTENT_CHARS}
-                  className="mt-4 w-full min-h-[min(60vh,32rem)] resize-none overflow-hidden bg-transparent text-[17px] leading-[1.65] tracking-[0.005em] outline-none placeholder:opacity-30 sm:text-[18px]"
+                  className="mt-4 w-full min-h-[min(60vh,32rem)] resize-none overflow-hidden bg-transparent text-[17px] leading-[1.65] tracking-[0.005em] outline-none placeholder:text-current placeholder:opacity-80 sm:text-[18px]"
                   style={{ color: contentColor }}
                 />
               ) : (
