@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
 /**
@@ -70,6 +71,38 @@ async function swatchesIn(page: Page, theme: (typeof THEMES)[keyof typeof THEMES
 }
 
 for (const [name, theme] of Object.entries(THEMES)) {
+  // Text on a coloured note is the note's text colour at an opacity, so it has to stay on the
+  // 0.80 "secondary" tier (NOTE_EMPHASIS). The editor's "Convert to checklist" link sat at 0.60:
+  // 3.54:1 on a dark-theme amber note.
+  test(`text in an amber note's editor clears AA in the ${name} theme`, async ({ page }) => {
+    await page.addInitScript((t) => {
+      localStorage.setItem('notelikeus-settings', JSON.stringify({ state: { theme: t }, version: 1 }));
+    }, theme as unknown as object);
+    await page.goto('/');
+    await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
+    await page.getByRole('button', { name: 'Continue without an account' }).click();
+    // Before the colour changes: a scan that lands mid-fade measures a background that is not
+    // the note's yet.
+    await page.addStyleTag({
+      content: '*,*::before,*::after{animation:none !important;transition:none !important}',
+    });
+    const newNote = page.getByRole('button', { name: 'New note' }).filter({ visible: true }).first();
+    await expect(newNote).toBeVisible({ timeout: 20_000 });
+    await newNote.click();
+    await page.getByRole('textbox', { name: 'Note body' }).fill('Some text to convert');
+    await page.getByRole('button', { name: 'More options' }).click();
+    await page.getByRole('dialog').last().getByRole('button', { name: /Amber/ }).click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('textbox', { name: 'Note title' }).first().focus();
+    // axe skips what is scrolled out of view, and at 720px the link sits below the editor's fold.
+    const convert = page.getByRole('button', { name: 'Convert to checklist' });
+    await convert.scrollIntoViewIfNeeded();
+    await expect(convert).toBeInViewport();
+
+    const scan = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze();
+    expect(scan.violations.flatMap((v) => v.nodes.map((n) => n.failureSummary))).toEqual([]);
+  });
+
   test(`swatch outlines stay visible in the ${name} theme`, async ({ page }) => {
     const painted = await swatchesIn(page, theme);
     const pageBg = rgbOf(painted.page);
