@@ -53,6 +53,29 @@ test('the formatting toolbar writes markdown into the plain-text body', async ({
   expect(await bodyValue(page)).toBe('**_alpha beta gamma_**');
 });
 
+test('the body keeps its place and size when it loses focus', async ({ page }) => {
+  const { title, body } = await openEditor(page);
+  await body.fill('Stays at the top');
+  const typed = await body.evaluate((field) => ({
+    top: field.getBoundingClientRect().top,
+    fontSize: getComputedStyle(field).fontSize,
+  }));
+
+  // Blurring swaps the textarea for a tappable preview button.
+  await title.focus();
+  const preview = page.getByRole('button', { name: 'Edit note body' });
+  await expect(preview).toBeVisible();
+  const text = preview.getByText('Stays at the top', { exact: true });
+  const shown = await text.evaluate((line) => ({
+    top: line.getBoundingClientRect().top,
+    fontSize: getComputedStyle(line).fontSize,
+  }));
+
+  // A <button> centres its content by default, which once dropped the text ~250px down.
+  expect(Math.abs(shown.top - typed.top)).toBeLessThan(8);
+  expect(shown.fontSize).toBe(typed.fontSize);
+});
+
 test('a guest note survives a reload, even though the session does not', async ({ page }) => {
   const { title, body } = await openEditor(page);
   await title.fill('Persistence check');

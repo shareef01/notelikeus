@@ -57,13 +57,16 @@ function renderInline(text: string, contentColor: string, keyPrefix: string): Re
   return nodes.length > 0 ? nodes : [text];
 }
 
-/** Lightweight markdown preview matching Android RichTextParser styling. */
+/**
+ * Lightweight markdown preview matching Android RichTextParser styling. Its type matches the
+ * editor's body textarea, so the text keeps its size and place when the field loses focus.
+ */
 export function MarkdownBody({ text, contentColor, className = '' }: MarkdownBodyProps) {
   if (!text.trim()) return null;
 
   return (
     <div
-      className={`whitespace-pre-wrap break-words text-[16px] leading-[1.55] tracking-[0.01em] ${className}`}
+      className={`whitespace-pre-wrap break-words text-[17px] leading-[1.65] tracking-[0.005em] sm:text-[18px] ${className}`}
       style={{ color: contentColor }}
     >
       {text.split('\n').map((line, lineIndex) => {

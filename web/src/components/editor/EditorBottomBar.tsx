@@ -1,5 +1,9 @@
 import { NOTE_SYNC_LABELS, noteSyncStatus, showsEditedTime } from '@/lib/sync/noteSyncStatus';
 
+/** The footer sits on the note's own colour, so its focus ring follows the text colour. */
+const FOOTER_FOCUS =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current';
+
 interface EditorBottomBarProps {
   timestamp: number;
   isSaving: boolean;
@@ -79,7 +83,7 @@ export function EditorBottomBar({
               <button
                 type="button"
                 onClick={onRetrySave}
-                className="underline underline-offset-2 hover:opacity-80 font-semibold ml-1 cursor-pointer"
+                className={`-my-2 ml-1 min-h-10 cursor-pointer rounded px-2 font-semibold underline underline-offset-2 hover:opacity-80 ${FOOTER_FOCUS}`}
               >
                 Retry
               </button>
@@ -98,7 +102,7 @@ export function EditorBottomBar({
         <button
           type="button"
           onClick={onMoreClick}
-          className="flex size-10 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
+          className={`flex size-10 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] ${FOOTER_FOCUS}`}
           aria-label="More options"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>

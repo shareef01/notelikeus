@@ -108,7 +108,19 @@ describe('AuthScreen email-code sign-in', () => {
     expect(codeInput.autocomplete).toBe('one-time-code');
     expect(codeInput.maxLength).toBe(6);
     expect(document.activeElement).toBe(codeInput);
-    expect(container.textContent).toContain('We sent a 6-digit code to alice@example.com.');
+    // Said once, in the hint the code field is described by, not again in a notice below it.
+    const hint = document.getElementById(codeInput.getAttribute('aria-describedby') ?? '');
+    expect(hint?.textContent).toContain('Sent to alice@example.com.');
+    expect(container.textContent).not.toContain('We sent a 6-digit code');
+  });
+
+  it('shows an error right under the field it is about', async () => {
+    await sendCodeTo('not-an-email');
+
+    const emailInput = inputLabelled('Email');
+    const error = document.getElementById(emailInput.getAttribute('aria-describedby') ?? '');
+    expect(error?.textContent).toBe('Enter a valid email address.');
+    expect(emailInput.nextElementSibling?.contains(error)).toBe(true);
   });
 
   it('rejects an invalid email without calling Supabase', async () => {

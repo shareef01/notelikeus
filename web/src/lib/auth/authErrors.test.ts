@@ -58,6 +58,26 @@ describe('formatAuthError', () => {
     );
   });
 
+  it('recognises the SDK subclasses the server actually returns', () => {
+    // Supabase reports a wrong or expired code as an AuthApiError, not a plain AuthError.
+    const apiError = Object.assign(new Error('Token has expired or is invalid'), {
+      name: 'AuthApiError',
+      status: 403,
+      code: 'otp_expired',
+    });
+    expect(formatAuthError(apiError)).toBe(
+      'That code is wrong or has expired. Check the latest email, or send a new code.',
+    );
+    const branded = Object.assign(new Error('email rate limit exceeded'), {
+      name: 'SomethingElse',
+      __isAuthError: true,
+      status: 429,
+    });
+    expect(formatAuthError(branded)).toBe(
+      'Too many codes requested. Wait a minute, then send a new code.',
+    );
+  });
+
   it('falls back to the raw message for unknown auth errors', () => {
     expect(formatAuthError(authError('boom'))).toContain('boom');
   });

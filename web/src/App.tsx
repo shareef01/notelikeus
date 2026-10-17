@@ -10,6 +10,7 @@ import { useUiStore } from '@/store/uiStore';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { hadSessionLastLoad } from '@/lib/auth/sessionHint';
 import { lazy, Suspense, useEffect, useState } from 'react';
+import { WARNING_ALERT } from '@/lib/ui/alertStyles';
 
 const AUTH_READY_TIMEOUT_MS = 8_000;
 
@@ -92,7 +93,7 @@ export default function App() {
     return (
       <div className="flex min-h-full items-center justify-center bg-true-surface p-6">
         {themeApplier}
-        <p className="max-w-md rounded-note border border-amber-900/50 bg-amber-950/30 px-4 py-3 text-center text-sm text-amber-200">
+        <p className={`${WARNING_ALERT} max-w-md px-4 py-3 text-center text-sm`}>
           Copy web/.env.example to web/.env and set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
         </p>
       </div>
