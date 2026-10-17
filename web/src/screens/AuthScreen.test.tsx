@@ -19,7 +19,7 @@ vi.mock('@/hooks/useAuth', () => ({
 }));
 
 import { AuthScreen } from '@/screens/AuthScreen';
-import { RESEND_COOLDOWN_SECONDS } from '@/components/auth/EmailCodeSignIn';
+import { CAPTCHA_REJECTED_MESSAGE, RESEND_COOLDOWN_SECONDS } from '@/components/auth/EmailCodeSignIn';
 import type { TurnstileApi } from '@/lib/auth/turnstile';
 
 function authError(message: string, status: number, code: string): Error {
@@ -213,6 +213,7 @@ describe('AuthScreen email-code sign-in with Turnstile', () => {
   let container: HTMLDivElement;
   let root: Root;
   let issueToken: ((token: string) => void) | null;
+  let failCheck: (() => void) | null;
   let render: ReturnType<typeof vi.fn>;
   let reset: ReturnType<typeof vi.fn>;
 
@@ -221,10 +222,17 @@ describe('AuthScreen email-code sign-in with Turnstile', () => {
     vi.stubEnv('VITE_TURNSTILE_SITE_KEY', 'site-key');
     sendEmailSignInCode.mockReset().mockResolvedValue(undefined);
     issueToken = null;
-    render = vi.fn((_el: HTMLElement, options: { sitekey: string; callback?: (t: string) => void }) => {
-      issueToken = options.callback ?? null;
-      return 'widget-1';
-    });
+    failCheck = null;
+    render = vi.fn(
+      (
+        _el: HTMLElement,
+        options: { sitekey: string; callback?: (t: string) => void; 'error-callback'?: () => void },
+      ) => {
+        issueToken = options.callback ?? null;
+        failCheck = options['error-callback'] ?? null;
+        return 'widget-1';
+      },
+    );
     reset = vi.fn();
     window.turnstile = { render, reset, remove: vi.fn() } as unknown as TurnstileApi;
     container = document.createElement('div');
@@ -255,6 +263,20 @@ describe('AuthScreen email-code sign-in with Turnstile', () => {
     expect(container.querySelector('[aria-live]')?.textContent).toContain(
       'Wait for the security check below to finish',
     );
+  });
+
+  it('says what to try when the check does not pass, and clears it once a retry passes', async () => {
+    act(() => failCheck?.());
+    expect(container.querySelector('[aria-live]')?.textContent).toContain(CAPTCHA_REJECTED_MESSAGE);
+
+    await sendCodeTo('alice@example.com');
+    expect(sendEmailSignInCode).not.toHaveBeenCalled();
+    expect(container.querySelector('[aria-live]')?.textContent).toContain(CAPTCHA_REJECTED_MESSAGE);
+
+    act(() => issueToken?.('token-1'));
+    expect(container.querySelector('[aria-live]')?.textContent).not.toContain(CAPTCHA_REJECTED_MESSAGE);
+    await sendCodeTo('alice@example.com');
+    expect(sendEmailSignInCode).toHaveBeenCalledWith('alice@example.com', 'token-1');
   });
 
   it('sends the token with the code request, then runs a new check for the next one', async () => {
