@@ -1,5 +1,8 @@
 package com.aus.notelikeus.ui.main.components
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.material3.ColorScheme
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -96,6 +99,15 @@ import com.aus.notelikeus.domain.model.NoteQuery
 
 private val TopBarRowHeight = 56.dp
 
+/**
+ * The selection bar's fill: the theme's own `primaryContainer` tint laid over the header, read
+ * with `onPrimaryContainer`. It used to be `primaryContainer.copy(alpha = 0.55f)`, and `copy`
+ * replaces alpha rather than scaling it: the token's faint 10-15% tint became a 55% wash, a solid
+ * mid-grey under dark-theme text at about 2.8:1.
+ */
+internal fun selectionBarContainer(scheme: ColorScheme): Color =
+    scheme.primaryContainer.compositeOver(scheme.surface)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainTopAppBar(
@@ -189,7 +201,8 @@ fun MainTopAppBar(
                             .padding(horizontal = Spacing.lg, vertical = Spacing.xs)
                             .border(Spacing.hairline, searchBorderColor, CircleShape),
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = searchFillAlpha),
+                        color = selectionBarContainer(MaterialTheme.colorScheme),
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                         tonalElevation = Elevation.none,
                         shadowElevation = Elevation.none
                     ) {
