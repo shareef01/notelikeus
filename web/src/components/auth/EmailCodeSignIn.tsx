@@ -10,6 +10,13 @@ export const EMAIL_CODE_LENGTH = 6;
 /** Seconds before "Resend code" is offered again (Supabase's default minimum gap is 60 s). */
 export const RESEND_COOLDOWN_SECONDS = 60;
 
+/**
+ * Turnstile ran and did not pass. Waiting does not help, so say what usually does: Cloudflare
+ * distrusts some browser sessions, most often behind a VPN, strict privacy settings or a blocker.
+ */
+export const CAPTCHA_REJECTED_MESSAGE =
+  "The security check didn't pass in this browser. Turn off a VPN or ad blocker for this site, or try another browser.";
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const INPUT_CLASS =
@@ -42,6 +49,7 @@ export function EmailCodeSignIn({ submitLabel, onBusyChange }: EmailCodeSignInPr
   const [siteKey] = useState(turnstileSiteKey);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaFailed, setCaptchaFailed] = useState(false);
+  const [captchaRejected, setCaptchaRejected] = useState(false);
   const [captchaReset, setCaptchaReset] = useState(0);
   const codeInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
@@ -76,7 +84,9 @@ export function EmailCodeSignIn({ submitLabel, onBusyChange }: EmailCodeSignInPr
       setError(
         captchaFailed
           ? 'The security check could not load. Check your connection and reload the page.'
-          : 'Wait for the security check below to finish, then try again.',
+          : captchaRejected
+            ? CAPTCHA_REJECTED_MESSAGE
+            : 'Wait for the security check below to finish, then try again.',
       );
       return false;
     }
@@ -260,9 +270,17 @@ export function EmailCodeSignIn({ submitLabel, onBusyChange }: EmailCodeSignInPr
           resetKey={captchaReset}
           onToken={(token) => {
             setCaptchaToken(token);
-            if (token) setCaptchaFailed(false);
+            if (token) {
+              setCaptchaFailed(false);
+              setCaptchaRejected(false);
+              setError((current) => (current === CAPTCHA_REJECTED_MESSAGE ? null : current));
+            }
           }}
           onLoadError={() => setCaptchaFailed(true)}
+          onChallengeError={() => {
+            setCaptchaRejected(true);
+            setError(CAPTCHA_REJECTED_MESSAGE);
+          }}
         />
       ) : null}
 

@@ -8,6 +8,12 @@ interface TurnstileWidgetProps {
   /** Called when Cloudflare's script cannot be loaded at all. */
   onLoadError: () => void;
   /**
+   * Called when the check ran and did not pass: Cloudflare did not trust this browser session
+   * (often a VPN, a strict privacy setting or a blocking extension). Turnstile retries on its own,
+   * and a later pass arrives through [onToken].
+   */
+  onChallengeError?: () => void;
+  /**
    * Bumped by the parent after each code request: a token is single-use, so the widget runs a new
    * check for the next request.
    */
@@ -15,13 +21,19 @@ interface TurnstileWidgetProps {
 }
 
 /** Cloudflare Turnstile's check, rendered explicitly so it can be reset between code requests. */
-export function TurnstileWidget({ siteKey, onToken, onLoadError, resetKey }: TurnstileWidgetProps) {
+export function TurnstileWidget({
+  siteKey,
+  onToken,
+  onLoadError,
+  onChallengeError,
+  resetKey,
+}: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widget = useRef<{ api: TurnstileApi; id: string } | null>(null);
   // Latest callbacks, so the render effect below runs once per site key, not per parent render.
-  const callbacks = useRef({ onToken, onLoadError });
+  const callbacks = useRef({ onToken, onLoadError, onChallengeError });
   useLayoutEffect(() => {
-    callbacks.current = { onToken, onLoadError };
+    callbacks.current = { onToken, onLoadError, onChallengeError };
   });
 
   useEffect(() => {
@@ -36,7 +48,10 @@ export function TurnstileWidget({ siteKey, onToken, onLoadError, resetKey }: Tur
           theme: 'auto',
           callback: (token) => callbacks.current.onToken(token),
           'expired-callback': () => callbacks.current.onToken(null),
-          'error-callback': () => callbacks.current.onToken(null),
+          'error-callback': () => {
+            callbacks.current.onToken(null);
+            callbacks.current.onChallengeError?.();
+          },
         });
         if (id !== undefined) widget.current = { api, id };
       })
