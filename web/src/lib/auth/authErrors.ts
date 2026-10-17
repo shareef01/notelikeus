@@ -50,12 +50,18 @@ export function formatAuthError(error: unknown): string {
 
 /**
  * Supabase `AuthError` without importing `@supabase/supabase-js` on the auth-gate path.
- * The SDK sets `name` to `AuthError` and optional `status` / `code`.
+ * The SDK's subclasses rename themselves (`AuthApiError`, `AuthRetryableFetchError`, ...), and
+ * the server's own errors arrive as `AuthApiError`, so match the SDK's `__isAuthError` brand or
+ * any `Auth…Error` name rather than `AuthError` alone.
  */
 function isAuthLikeError(
   error: unknown,
 ): error is { message: string; status?: number; code?: string } {
   if (typeof error !== 'object' || error === null) return false;
   const candidate = error as { name?: unknown; message?: unknown };
-  return candidate.name === 'AuthError' && typeof candidate.message === 'string';
+  if (typeof candidate.message !== 'string') return false;
+  return (
+    Reflect.get(error, '__isAuthError') === true ||
+    (typeof candidate.name === 'string' && /^Auth\w*Error$/.test(candidate.name))
+  );
 }

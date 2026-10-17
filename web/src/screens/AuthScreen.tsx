@@ -12,6 +12,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
 import { useUiStore, type AuthMode } from '@/store/uiStore';
 import { useEffect, useState } from 'react';
+import { ERROR_ALERT } from '@/lib/ui/alertStyles';
 
 const COPY: Record<
   AuthMode,
@@ -288,7 +289,7 @@ export function AuthScreen({ mode, mandatory = false }: AuthScreenProps) {
                     </button>
                   </div>
                   {error ? (
-                    <p className="rounded-note border border-red-900/50 bg-red-950/30 px-3 py-2 text-center text-sm text-red-200">
+                    <p className={`${ERROR_ALERT} px-3 py-2 text-center text-sm`}>
                       {error}
                     </p>
                   ) : null}

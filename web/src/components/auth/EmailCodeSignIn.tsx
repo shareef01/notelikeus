@@ -2,6 +2,7 @@ import { TurnstileWidget } from '@/components/auth/TurnstileWidget';
 import { ensureSupabaseAuthStarted } from '@/hooks/useAuth';
 import { formatAuthError } from '@/lib/auth/authErrors';
 import { turnstileSiteKey } from '@/lib/auth/turnstile';
+import { ERROR_ALERT } from '@/lib/ui/alertStyles';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import { useEffect, useId, useRef, useState } from 'react';
 
@@ -117,7 +118,8 @@ export function EmailCodeSignIn({ submitLabel, onBusyChange }: EmailCodeSignInPr
     setEmail(trimmed);
     if (await sendCode(trimmed)) {
       setCode('');
-      setNotice(`We sent a ${EMAIL_CODE_LENGTH}-digit code to ${trimmed}.`);
+      // No notice here: the hint under the code field, read with it on focus, says where it went.
+      setNotice(null);
       moveFocusTo.current = 'code';
       setStep('code');
     }
@@ -161,6 +163,20 @@ export function EmailCodeSignIn({ submitLabel, onBusyChange }: EmailCodeSignInPr
     setStep('email');
   };
 
+  // Rendered inside each step's form, right under its field, so an error sits next to what it is
+  // about instead of below the links and the security check.
+  const messages = (
+    <div aria-live="polite" aria-atomic="true">
+      {error ? (
+        <p id={errorId} className={`${ERROR_ALERT} px-3 py-2 text-center text-sm`}>
+          {error}
+        </p>
+      ) : notice ? (
+        <p className="text-center text-sm text-brand-secondary">{notice}</p>
+      ) : null}
+    </div>
+  );
+
   return (
     <div className="space-y-3" data-testid="email-code-sign-in">
       {step === 'email' ? (
@@ -193,6 +209,7 @@ export function EmailCodeSignIn({ submitLabel, onBusyChange }: EmailCodeSignInPr
             aria-describedby={error ? errorId : undefined}
             className={INPUT_CLASS}
           />
+          {messages}
           <button type="submit" disabled={busy !== null} className={PRIMARY_BUTTON_CLASS}>
             {busy === 'send' ? 'Sending code…' : 'Send code'}
           </button>
@@ -230,12 +247,13 @@ export function EmailCodeSignIn({ submitLabel, onBusyChange }: EmailCodeSignInPr
             required
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${codeHintId} ${errorId}` : codeHintId}
-            className={`${INPUT_CLASS} text-center font-mono text-lg tracking-[0.5em]`}
+            className={`${INPUT_CLASS} text-center font-mono text-lg tracking-[0.5em] indent-[0.5em]`}
           />
           <p id={codeHintId} className="text-center text-xs leading-relaxed text-brand-muted">
             Sent to <span className="font-semibold text-brand-secondary">{email}</span>. Check spam
             if it hasn&apos;t arrived.
           </p>
+          {messages}
           <button type="submit" disabled={busy !== null} className={PRIMARY_BUTTON_CLASS}>
             {busy === 'verify' ? 'Checking code…' : submitLabel}
           </button>
@@ -283,19 +301,6 @@ export function EmailCodeSignIn({ submitLabel, onBusyChange }: EmailCodeSignInPr
           }}
         />
       ) : null}
-
-      <div aria-live="polite" aria-atomic="true" className="space-y-2">
-        {error ? (
-          <p
-            id={errorId}
-            className="rounded-note border border-red-900/50 bg-red-950/30 px-3 py-2 text-center text-sm text-red-200"
-          >
-            {error}
-          </p>
-        ) : notice ? (
-          <p className="text-center text-sm text-brand-secondary">{notice}</p>
-        ) : null}
-      </div>
     </div>
   );
 }
