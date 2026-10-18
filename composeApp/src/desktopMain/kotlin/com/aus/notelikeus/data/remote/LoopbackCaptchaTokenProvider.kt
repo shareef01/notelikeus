@@ -11,6 +11,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -19,10 +20,12 @@ import kotlin.time.Duration.Companion.minutes
  * web app's challenge page with `?port=<n>&state=<s>`, and the page sends the token to
  * `http://127.0.0.1:<n>/?state=<s>&token=<t>`.
  *
- * The listener binds to 127.0.0.1 only, on a port the OS picks. It answers one request to `/`:
- * a matching state yields the token, anything else fails the check, and either way it stops
- * listening. It gives up after [timeout]. A page that is not the one this app opened cannot know
- * the state, so it cannot hand the app a token of its choosing.
+ * The listener binds to 127.0.0.1 only, on a port the OS picks. The first request to `/` with a
+ * matching state yields the token and uses the listener up. A request with a wrong or missing state
+ * gets a 400 and the listener keeps waiting, so a stray visit to the port does not spoil the check,
+ * but after [MAX_BAD_ATTEMPTS] of them the check fails. It gives up after [timeout]. A page that
+ * is not the one this app opened cannot know the state, so it cannot hand the app a token of its
+ * choosing.
  */
 class LoopbackCaptchaTokenProvider(
     private val pageUrl: String,
@@ -35,9 +38,10 @@ class LoopbackCaptchaTokenProvider(
         val state = newCaptchaState()
         val result = CompletableDeferred<String>()
         val answered = AtomicBoolean(false)
+        val badAttempts = AtomicInteger(0)
         val server = HttpServer.create(InetSocketAddress(InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)), 0), 0)
         server.createContext("/") { exchange ->
-            exchange.use { handle(it, state, answered, result) }
+            exchange.use { handle(it, state, answered, badAttempts, result) }
         }
         server.start()
         try {
@@ -64,6 +68,7 @@ class LoopbackCaptchaTokenProvider(
         exchange: HttpExchange,
         state: String,
         answered: AtomicBoolean,
+        badAttempts: AtomicInteger,
         result: CompletableDeferred<String>,
     ) {
         // The browser may also ask for /favicon.ico; only the page's redirect to / counts.
@@ -71,8 +76,8 @@ class LoopbackCaptchaTokenProvider(
             respond(exchange, 404, "Not found.")
             return
         }
-        if (!answered.compareAndSet(false, true)) {
-            respond(exchange, 409, "This security check has already been used. Return to Notelikeus.")
+        if (answered.get()) {
+            respond(exchange, 409, USED_MESSAGE)
             return
         }
         val token = captchaTokenFromReturnQuery(exchange.requestURI.rawQuery, state)
@@ -82,12 +87,16 @@ class LoopbackCaptchaTokenProvider(
                 400,
                 "This security check is not the one Notelikeus started. Return to the app and try again.",
             )
-            result.completeExceptionally(
-                CaptchaUnavailableException("The security check didn't go through. Try again."),
-            )
-        } else {
+            if (badAttempts.incrementAndGet() >= MAX_BAD_ATTEMPTS && answered.compareAndSet(false, true)) {
+                result.completeExceptionally(
+                    CaptchaUnavailableException("The security check didn't go through. Try again."),
+                )
+            }
+        } else if (answered.compareAndSet(false, true)) {
             respond(exchange, 200, "Done. You can close this tab and return to Notelikeus.")
             result.complete(token)
+        } else {
+            respond(exchange, 409, USED_MESSAGE)
         }
     }
 
@@ -105,5 +114,11 @@ class LoopbackCaptchaTokenProvider(
         }
         exchange.sendResponseHeaders(status, body.size.toLong())
         exchange.responseBody.use { it.write(body) }
+    }
+
+    private companion object {
+        /** Requests with a wrong or missing state the listener tolerates before failing the check. */
+        const val MAX_BAD_ATTEMPTS = 5
+        const val USED_MESSAGE = "This security check has already been used. Return to Notelikeus."
     }
 }

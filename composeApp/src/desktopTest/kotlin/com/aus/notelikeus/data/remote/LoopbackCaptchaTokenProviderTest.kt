@@ -54,14 +54,33 @@ class LoopbackCaptchaTokenProviderTest {
     }
 
     @Test
-    fun aRequestWithAnotherStateFailsTheCheck() = runBlocking<Unit> {
-        var status = 0
+    fun aStrayRequestDoesNotSpoilTheCheck() = runBlocking<Unit> {
+        val statuses = mutableListOf<Int>()
+        val token = LoopbackCaptchaTokenProvider(page, openBrowser = { uri ->
+            val params = query(uri)
+            val port = params.getValue("port")
+            statuses += get("http://127.0.0.1:$port/")
+            statuses += get("http://127.0.0.1:$port/?state=guessed-state-0000&token=forged")
+            statuses += get("http://127.0.0.1:$port/?state=${params.getValue("state")}&token=real")
+        }).obtainToken()
+
+        assertEquals("real", token)
+        assertEquals(listOf(400, 400, 200), statuses)
+    }
+
+    @Test
+    fun repeatedRequestsWithAnotherStateFailTheCheck() = runBlocking<Unit> {
+        val statuses = mutableListOf<Int>()
         val failure = assertFailsWith<CaptchaUnavailableException> {
             LoopbackCaptchaTokenProvider(page, openBrowser = { uri ->
-                status = get("http://127.0.0.1:${query(uri).getValue("port")}/?state=guessed-state-0000&token=t")
+                val params = query(uri)
+                val port = params.getValue("port")
+                repeat(5) { statuses += get("http://127.0.0.1:$port/?state=guessed-state-000$it&token=t") }
+                // Too late: the check has already failed.
+                statuses += get("http://127.0.0.1:$port/?state=${params.getValue("state")}&token=real")
             }).obtainToken()
         }
-        assertEquals(400, status)
+        assertEquals(listOf(400, 400, 400, 400, 400, 409), statuses)
         assertTrue("security check" in failure.message.orEmpty())
     }
 
