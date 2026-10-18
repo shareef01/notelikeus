@@ -55,12 +55,14 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 - **Where:** `LoopbackCaptchaTokenProvider.handle` marks the listener as answered before it checks `state`.
 - **Effect:** any `GET /` to the port before the browser's redirect fails the check: another local process, or a web page probing loopback ports. The user sees "didn't go through" and has to try again. The attacker cannot get a token in, since that needs the state. It is a nuisance, not a breach.
 - **Fix:** answer a wrong state with 400 without ending the check, and keep the single use for the first matching request. If the concern is someone guessing the state, a cap of a few bad attempts is enough, because the state has 192 bits.
+- **Status:** Fixed in #346. A wrong or missing state gets a 400 and the listener keeps waiting; the first matching request completes the check, and 5 bad attempts fail it.
 
 ### R-05 (P3, Confirmed): the service worker denylist also skips some query strings
 
 - **Where:** `NAVIGATION_DENYLIST` in `web/src/lib/hosting/navigationDenylist.ts`. The "last segment with a dot" pattern runs on `pathname + search`, so a `/` inside the query counts as a segment. For example, `/?u=https://x.example/a.b` is denied.
 - **Effect:** such a navigation goes to the network instead of the app shell, so it fails offline. Today the app has no share target or other entry point that puts URLs in the query, so nothing reaches it.
 - **Fix:** test the dot pattern against `url.pathname` only, or stop it at `?`.
+- **Status:** Fixed in #346. The pattern now stops at the first `?`, so only the pathname counts.
 
 ## Still open from earlier audits
 
@@ -103,4 +105,4 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 1. **R-01:** delete the OAuth client and restrict or delete the keys, then close the alerts.
 2. **R-02:** switch on hosted CAPTCHA once 2.2.x adoption is high enough.
 3. **R-03:** dismiss the CodeQL false positives.
-4. **R-04 and R-05:** small code fixes, whenever convenient.
+4. ~~**R-04 and R-05:** small code fixes, whenever convenient.~~ Done in #346.
