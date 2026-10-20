@@ -31,6 +31,7 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 - **Effect:** the desktop OAuth client is unused since the move to email codes (D29), but while it exists anyone can use its secret to run consent screens under the app's name. Firebase API keys are meant to be public, but only with API and app restrictions.
 - **Fix (owner, in consoles):** delete the desktop OAuth client in Google Cloud, which the 10-17 audit already asked for. Delete or restrict the API keys, or delete the Firebase project if nothing uses it. Then close the four alerts as "revoked". Rewriting history is not needed once the credentials are dead.
 - **Correction:** `PROJECT_AUDIT_2026-10-17.md`, "Removed Google surface", says the secret "was in a generated source, not in git". The alert shows it was committed.
+- **Status:** Done 2026-10-21. The owner deleted the desktop OAuth client and both Firebase API keys in Google Cloud project `notelikeus`, and removed the unused `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` and `_SECRET` repository secrets. Alerts #1 to #4 are resolved as revoked.
 
 ### R-02 (P2, Confirmed): hosted CAPTCHA is still not switched on
 
@@ -103,7 +104,7 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 
 ## Suggested order
 
-1. **R-01:** delete the OAuth client and restrict or delete the keys, then close the alerts.
+1. ~~**R-01:** delete the OAuth client and restrict or delete the keys, then close the alerts.~~ Done 2026-10-21.
 2. **R-02:** switch on hosted CAPTCHA once 2.2.x adoption is high enough.
 3. ~~**R-03:** dismiss the CodeQL false positives.~~ Done 2026-10-19.
 4. ~~**R-04 and R-05:** small code fixes, whenever convenient.~~ Done in #346.
