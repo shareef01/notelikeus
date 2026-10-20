@@ -49,6 +49,7 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 | 3, 4 | `js/file-system-race` | `pinAttachmentsCspPlugin.ts:42`, `write-kotlin-staging-properties.mjs:129` | Build and ops scripts on the developer's machine, not shipped code. |
 
 - **Fix (owner):** dismiss each one with its reason ("false positive" or "used in tests"), so a new alert stands out.
+- **Status:** Done 2026-10-19. All 7 were dismissed as "false positive", each with the reason above in its comment. No code-scanning alerts are open.
 
 ### R-04 (P3, Confirmed): any local request can fail the desktop security check
 
@@ -104,5 +105,5 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 
 1. **R-01:** delete the OAuth client and restrict or delete the keys, then close the alerts.
 2. **R-02:** switch on hosted CAPTCHA once 2.2.x adoption is high enough.
-3. **R-03:** dismiss the CodeQL false positives.
+3. ~~**R-03:** dismiss the CodeQL false positives.~~ Done 2026-10-19.
 4. ~~**R-04 and R-05:** small code fixes, whenever convenient.~~ Done in #346.
