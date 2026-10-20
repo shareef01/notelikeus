@@ -38,6 +38,7 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 - **Where:** the last Supabase Auth Config run (2026-10-17 00:10, before the 2.2.0 release) logged `ENABLE_CAPTCHA: false` and `rate_limit_email_sent: 30`. No run since.
 - **Effect:** S-02 is still live: about 30 code requests an hour from a few IPs stop every user from signing in until the hour rolls over. S-03's guessing window is shorter (10 minutes) but has no CAPTCHA.
 - **Fix (owner):** 2.2.0 and later send a token on every client. Once enough installs have updated, run `supabase-auth.yml` with `enable_captcha` ticked. Installs older than 2.2.0 cannot request codes after that.
+- **Status:** Done 2026-10-21 (Supabase Auth Config run 39507953820). Supabase's response reads back `security_captcha_enabled: true`, provider `turnstile`, and `rate_limit_email_sent: 100`. This also closes S-02 and the CAPTCHA part of S-03. Every later run of the workflow must tick `enable_captcha` again, or the email limit goes back to 30.
 
 ### R-03 (P3, Confirmed): 7 open CodeQL alerts, all false positives
 
@@ -72,7 +73,7 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 |---|---|
 | F-05 web remote delete with no base revision | Design decision pending (rule DEL-6). |
 | N-04 one environment | Partly fixed. A separate staging Supabase project is an owner decision. |
-| S-02 / S-03 | Code done. Hosted switch-on is R-02. |
+| S-02 / S-03 | Done: hosted CAPTCHA on since 2026-10-21 (R-02). |
 | S-04 | `enforce_admins` is still off, so an admin push can skip the required checks. |
 | FU-5 `security-crypto` deprecated, FU-6 web session in `localStorage` | Accepted. |
 | Hosted Google provider off | Not visible from the repo; check it with R-01. |
@@ -105,6 +106,6 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 ## Suggested order
 
 1. ~~**R-01:** delete the OAuth client and restrict or delete the keys, then close the alerts.~~ Done 2026-10-21.
-2. **R-02:** switch on hosted CAPTCHA once 2.2.x adoption is high enough.
+2. ~~**R-02:** switch on hosted CAPTCHA once 2.2.x adoption is high enough.~~ Done 2026-10-21.
 3. ~~**R-03:** dismiss the CodeQL false positives.~~ Done 2026-10-19.
 4. ~~**R-04 and R-05:** small code fixes, whenever convenient.~~ Done in #346.
