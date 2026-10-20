@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -127,6 +129,19 @@ val verifyReleaseBackendConfig by tasks.registering {
 
 tasks.matching { it.name.startsWith("package") && it.name.endsWith("Msi") }.configureEach {
     dependsOn(verifyReleaseBackendConfig)
+}
+
+// Gradle's default failure line is the exception's class name and one frame. That hides exactly what a
+// flaky UncaughtExceptionsBeforeTest needs: the leaked exception from an earlier test rides along as a
+// suppressed exception, and only the full format with causes prints it.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events(TestLogEvent.FAILED)
+        exceptionFormat = TestExceptionFormat.FULL
+        showExceptions = true
+        showCauses = true
+        showStackTraces = true
+    }
 }
 
 /**
