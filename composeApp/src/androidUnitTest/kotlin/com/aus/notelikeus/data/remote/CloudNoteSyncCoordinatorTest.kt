@@ -13,6 +13,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -41,7 +42,10 @@ class CloudNoteSyncCoordinatorTest {
             sessionManager,
             settingsRepository,
             workManager,
-            epochAuthority
+            epochAuthority,
+            // Nothing advances this dispatcher, so neither the startup check nor the debounced flush can
+            // outlive the test; the cases drive the flush themselves through flushNowForTest.
+            StandardTestDispatcher(),
         )
     }
 

@@ -112,6 +112,20 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # A flaky unit test is gone by the rerun, so its stack trace has to be kept from the run it failed in.
+      # UncaughtExceptionsBeforeTest in particular names the test that was running, not the one that leaked;
+      # the culprit is in the suppressed exception the XML results carry.
+      - name: Upload unit test results on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unit-test-results
+          path: |
+            composeApp/build/test-results/
+            composeApp/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14
+
       # Release signing material, materialized from GitHub secrets. Gated the same way as the
       # release artifacts: a pull request or branch build never reaches this step, so production
       # signing material is unavailable to them by construction. Absent secrets, the step reports

@@ -10,6 +10,7 @@ import com.aus.notelikeus.data.sync.DatasetEpochAuthority
 import com.aus.notelikeus.data.sync.LocalCommitGate
 import com.aus.notelikeus.data.sync.PendingSyncCommand
 import androidx.work.*
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,8 +41,13 @@ class CloudNoteSyncCoordinator(
     private val settingsRepository: SettingsRepository,
     private val workManager: WorkManager,
     private val epochAuthority: DatasetEpochAuthority,
+    // Injectable for tests only. On Dispatchers.IO, the startup check in init could see a test's
+    // queued command, re-arm the 2 s flush after the test had already flushed or cleared it, and run
+    // that flush against mocks a later test no longer stubbed; kotlinx-coroutines-test then reported
+    // the leaked exception against whichever test was running (UncaughtExceptionsBeforeTest).
+    dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : SyncCoordinator {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private var flushJob: Job? = null
 
     init {
