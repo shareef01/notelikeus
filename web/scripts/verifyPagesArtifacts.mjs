@@ -1,13 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findSecretsInDir } from './bundleSecrets.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const distDir = join(root, 'web', 'dist');
 
 /**
  * `--deployable` additionally rejects artifacts that are fine to build but must never be
- * published: a CSP pinned to loopback or to a stand-in host.
+ * published: a CSP pinned to loopback or to a stand-in host, or a backend secret key inlined into
+ * the bundle.
  *
  * Off by default because CI's verify job deliberately builds with `placeholder.supabase.co` so
  * pull requests need no secrets, and that artifact is thrown away rather than deployed. Anything
@@ -66,6 +68,20 @@ if (deployable) {
     console.error(
       `web/dist/_headers pins connect-src to ${names}, so the deployed site could not reach ` +
         'Supabase. Rebuild with the production VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.',
+    );
+    process.exit(1);
+  }
+
+  // A secret key in VITE_SUPABASE_ANON_KEY is inlined into the bundle, and the deploy would put it
+  // on a public URL (audit T-01). Only the file and the kind are printed, never the value.
+  const secrets = findSecretsInDir(distDir);
+  if (secrets.length > 0) {
+    for (const { file, kinds } of secrets) {
+      console.error(`web/dist/${file} contains a backend secret: ${kinds.join(', ')}`);
+    }
+    console.error(
+      'Nothing was deployed. VITE_SUPABASE_ANON_KEY must be the publishable key (sb_publishable_…) ' +
+        'or the legacy anon JWT. Fix the secret, and rotate the key if this build was ever published.',
     );
     process.exit(1);
   }
