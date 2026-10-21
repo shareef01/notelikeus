@@ -928,6 +928,9 @@ class AttachmentSyncService(
      * names it, and the push that took this note up named nothing: its upload was still deferred
      * then (refused until the server held the note). Left unpushed, the row never commits, the next
      * download finds no metadata for the `r2:` reference and lets it go, and the image is lost.
+     * [onResumed] gets the note as it was read here and as the upload rewrote it, so the caller can
+     * hand both to [confirmCommittedAttachments] once that push is accepted: nothing here releases
+     * the staged bytes of an upload whose row is still provisional.
      *
      * [commitToken] is the **enclosing download's** generation, threaded in rather than captured here
      * for the same reason [hydrateAllNotes]'s is: this reconciliation belongs to the run that asked
@@ -952,7 +955,7 @@ class AttachmentSyncService(
     suspend fun reconcileStagedAttachments(
         commitToken: LocalCommitToken,
         onMissingBytes: (Note, Attachment) -> Unit = { _, _ -> },
-        onResumed: (Note) -> Unit = {},
+        onResumed: (before: Note, after: Note) -> Unit = { _, _ -> },
     ): LocalCommitResult<Int> {
         val owner = ownerId()
         val notes = runCatching { noteDao.getAllNotesForBackup().map { it.toNote() } }.getOrNull()
@@ -970,7 +973,7 @@ class AttachmentSyncService(
             when (val outcome = resumeStagedUploadsFor(note, commitToken, owner, referenced, onMissingBytes)) {
                 is LocalCommitResult.Applied -> if (outcome.value != null) {
                     resumed++
-                    onResumed(outcome.value)
+                    onResumed(note, outcome.value)
                 }
                 // The reconciliation's dataset is gone, so no later note is processed either.
                 LocalCommitResult.StaleGeneration -> return LocalCommitResult.StaleGeneration
