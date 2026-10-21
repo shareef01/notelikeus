@@ -252,6 +252,13 @@
 }
 
 @layer utilities {
+  /* A card's quick actions step aside while notes are being selected (NoteStaggeredGrid). In this
+     layer so it outranks the toolbar's own `sm:flex`; display: none also takes them out of the
+     tab order and the accessibility tree, as unmounting them did. */
+  [data-selecting] [data-quick-actions] {
+    display: none;
+  }
+
   .scrollbar-none {
     -ms-overflow-style: none;
     scrollbar-width: none;
