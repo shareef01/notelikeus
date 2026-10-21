@@ -102,11 +102,14 @@ No schema, sync protocol, storage format or dependency changed.
 | `npm --prefix web test` | 136 files, 1000 tests, all pass (new: `ToastHost.test.tsx` ×8, `RichTextToolbar.test.tsx` ×4; `SyncStatusBanner.test.tsx` extended), rerun after every edit |
 | `gradlew :composeApp:desktopTest :composeApp:testDebugUnitTest` | pass (new: `RichTextToolbarKeyboardTest` ×3) |
 | Playwright, chromium, e2e build: `rich-text`, `toast-undo` (new), `focus-after-removal` (new), `dialog-a11y`, `card-actions`, `journey-f-actions`, `labels-journey`, `keyboard-scope`, `reflow`, `touch-targets`, `sync-status` | 45 passed, 1 failed. The failure is `sync-status`, at its `signUp()` step: it needs local Supabase, which was not running here. It never reached the banner. |
-| `accessibility.spec.ts` | Guest-only test passed; the 7 tests that `signUp()` failed at sign-up for the same reason (no local Supabase). **Not** a verification of this change — rerun with `npm run supabase:start` then `npm run test:e2e`. |
+| `accessibility.spec.ts` | Locally, the guest-only test passed and the 7 tests that `signUp()` stopped at sign-up (no local Supabase). Verified in CI instead (next row). |
+| CI, PR #352 — Web e2e (full suite, local Supabase, chromium + mobile-chrome), [run 39528102740](https://github.com/shareef01/notelikeus/actions/runs/39528102740) at `6440a9db` | **205 passed, 0 failed**, 5 skipped. Includes every Supabase-backed spec not runnable here: `sync-status`, `save-failure`, `accessibility` (sign-up tests), `account-switch`. |
+| CI, PR #352 — Android instrumented tests, API 30 and API 36 ([run 39528102977](https://github.com/shareef01/notelikeus/actions/runs/39528102977)) | pass |
+| First CI run, at `595d5520` | Web e2e failed 10 tests: `save-failure` (an idle toast region carried `role="alert"`, so the spec found two alerts) and `focus-after-removal` (archived the wrong card). Both fixed in `6440a9db`; the error region is now `aria-live="assertive"` without the alert role. |
 | Browser probe after the fix | Bold focused + Enter → `hello **world**`, focus back on the body, selection kept; axe still 0 on every screen probed; reflow unchanged; no console errors |
 
-Not executed: Android instrumented tests, an Android device, the Windows app by hand, a screen
-reader, Safari/Firefox, the `mobile-chrome` Playwright project.
+Not executed: an Android device, the Windows app by hand, a screen reader, Safari/Firefox.
+(Android instrumented tests and the `mobile-chrome` Playwright project ran in CI; see above.)
 
 Screenshot: [`design/screenshots/a11y-2026-10-21/undo-toast-focus-light-1280.png`](design/screenshots/a11y-2026-10-21/undo-toast-focus-light-1280.png).
 
