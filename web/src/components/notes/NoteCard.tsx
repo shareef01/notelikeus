@@ -424,6 +424,7 @@ function NoteCardImpl({
           className="absolute right-2 bottom-2 z-10 hidden sm:flex items-center gap-0.5 rounded-full bg-true-surface/90 backdrop-blur-sm border border-brand-outline/30 p-0.5 shadow-sm opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-auto"
           role="toolbar"
           aria-label="Note quick actions"
+          data-quick-actions=""
         >
           {onPinToggle ? (
             <button

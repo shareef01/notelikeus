@@ -52,6 +52,16 @@ const DENSITY: Record<ViewColumns, NoteCardDensity> = {
 
 const REORDER_THRESHOLD_PX = 72;
 
+interface NoteHandlers {
+  open: () => void;
+  longPress: () => void;
+  pin: () => void;
+  archive: () => void;
+  restore: () => void;
+  trash: () => void;
+  permanentDelete: () => void;
+}
+
 type BoardItem =
   | { type: 'header'; key: string; title: string }
   | { type: 'note'; key: string; note: Note; index: number };
@@ -137,13 +147,6 @@ export function NoteStaggeredGrid({
   // top of the page (WCAG 2.4.3). Focus moves to the card that now holds its place instead.
   const gridRef = useRef<HTMLDivElement>(null);
   const refocusIndexRef = useRef<number | null>(null);
-  const leavingList = (note: Note, action: () => void) => () => {
-    if (gridRef.current?.contains(document.activeElement)) {
-      refocusIndexRef.current = notes.findIndex((entry) => entry.id === note.id);
-    }
-    action();
-  };
-
   useEffect(() => {
     const index = refocusIndexRef.current;
     const grid = gridRef.current;
@@ -155,32 +158,73 @@ export function NoteStaggeredGrid({
     cards[Math.min(index, cards.length - 1)]?.focus();
   }, [notes]);
 
-  const cardProps = (note: Note) => ({
-    note,
-    density,
-    onClick: () => onNoteClick(note),
-    onLongPress: () => onNoteLongPress(note),
-    onToggleSelect: () => onNoteLongPress(note),
-    onLabelClick,
-    searchQuery,
-    isSelected: selectedSet.has(note.id),
-    onPinToggle: !selectionMode && listActions?.onPinToggle ? () => listActions.onPinToggle!(note) : undefined,
-    onArchive:
-      !selectionMode && listActions?.onArchive && filter === 'active'
-        ? leavingList(note, () => listActions.onArchive(note))
-        : undefined,
-    onRestore:
-      !selectionMode && listActions?.onRestore && (filter === 'archived' || filter === 'trashed')
-        ? leavingList(note, () => listActions.onRestore(note))
-        : undefined,
-    onTrash:
-      !selectionMode && listActions?.onTrash && (filter === 'active' || filter === 'archived')
-        ? leavingList(note, () => listActions.onTrash(note))
-        : !selectionMode && listActions?.onPermanentDelete && filter === 'trashed'
-          ? leavingList(note, () => listActions.onPermanentDelete(note))
+  // Stable callbacks per note (A13). NoteCard is memoised, but every render handed each card new
+  // closures, so the memo never held: ticking one checkbox re-rendered all 500 cards of a large
+  // list, measured at 0.9 s on a 4x-throttled CPU. Each note now keeps one set of handlers for its
+  // lifetime, and they call whatever the latest props are, so a card re-renders only when its own
+  // note or its own state changes.
+  const latest = useRef({ notes, onNoteClick, onNoteLongPress, onLabelClick, listActions });
+  latest.current = { notes, onNoteClick, onNoteLongPress, onLabelClick, listActions };
+  const handlerCache = useRef(new Map<string, NoteHandlers>());
+  const handlersFor = (noteId: string): NoteHandlers => {
+    const cached = handlerCache.current.get(noteId);
+    if (cached) return cached;
+    const withNote = (run: (note: Note) => void) => () => {
+      const note = latest.current.notes.find((entry) => entry.id === noteId);
+      if (note) run(note);
+    };
+    // A card that leaves the list takes focus with it; see refocusIndexRef.
+    const leavingList = (run: (note: Note) => void) =>
+      withNote((note) => {
+        if (gridRef.current?.contains(document.activeElement)) {
+          refocusIndexRef.current = latest.current.notes.findIndex((entry) => entry.id === noteId);
+        }
+        run(note);
+      });
+    const created: NoteHandlers = {
+      open: withNote((note) => latest.current.onNoteClick(note)),
+      longPress: withNote((note) => latest.current.onNoteLongPress(note)),
+      pin: withNote((note) => latest.current.listActions?.onPinToggle?.(note)),
+      archive: leavingList((note) => latest.current.listActions?.onArchive(note)),
+      restore: leavingList((note) => latest.current.listActions?.onRestore(note)),
+      trash: leavingList((note) => latest.current.listActions?.onTrash(note)),
+      permanentDelete: leavingList((note) => latest.current.listActions?.onPermanentDelete(note)),
+    };
+    handlerCache.current.set(noteId, created);
+    return created;
+  };
+  const labelClick = useRef((name: string) => latest.current.onLabelClick?.(name)).current;
+
+  // Quick actions are hidden in selection mode by the grid's data-selecting attribute (see
+  // globals.css), not by withdrawing them from every card: that changed all 500 cards' props, so
+  // ticking the first checkbox or clearing the selection still re-rendered the whole list.
+  const cardProps = (note: Note) => {
+    const handlers = handlersFor(note.id);
+    return {
+      note,
+      density,
+      onClick: handlers.open,
+      onLongPress: handlers.longPress,
+      onToggleSelect: handlers.longPress,
+      onLabelClick: onLabelClick ? labelClick : undefined,
+      searchQuery,
+      isSelected: selectedSet.has(note.id),
+      onPinToggle: listActions?.onPinToggle ? handlers.pin : undefined,
+      onArchive:
+        listActions?.onArchive && filter === 'active' ? handlers.archive : undefined,
+      onRestore:
+        listActions?.onRestore && (filter === 'archived' || filter === 'trashed')
+          ? handlers.restore
           : undefined,
-    isPermanentDelete: filter === 'trashed',
-  });
+      onTrash:
+        listActions?.onTrash && (filter === 'active' || filter === 'archived')
+          ? handlers.trash
+          : listActions?.onPermanentDelete && filter === 'trashed'
+            ? handlers.permanentDelete
+            : undefined,
+      isPermanentDelete: filter === 'trashed',
+    };
+  };
 
   const renderCard = (note: Note, reorder?: NoteReorderHandleProps) => {
     const reorderProps = {
@@ -197,8 +241,8 @@ export function NoteStaggeredGrid({
         <SwipeableNoteCard
           {...cardProps(note)}
           {...reorderProps}
-          onArchive={() => listActions.onArchive(note)}
-          onTrash={() => listActions.onTrash(note)}
+          onArchive={handlersFor(note.id).archive}
+          onTrash={handlersFor(note.id).trash}
         />
       );
     }
@@ -208,8 +252,8 @@ export function NoteStaggeredGrid({
         <SwipeableNoteCard
           {...cardProps(note)}
           {...reorderProps}
-          onRestore={() => listActions.onRestore(note)}
-          onTrash={() => listActions.onTrash(note)}
+          onRestore={handlersFor(note.id).restore}
+          onTrash={handlersFor(note.id).trash}
         />
       );
     }
@@ -219,8 +263,8 @@ export function NoteStaggeredGrid({
         <SwipeableNoteCard
           {...cardProps(note)}
           {...reorderProps}
-          onRestore={() => listActions.onRestore(note)}
-          onTrash={() => listActions.onPermanentDelete(note)}
+          onRestore={handlersFor(note.id).restore}
+          onTrash={handlersFor(note.id).permanentDelete}
         />
       );
     }
@@ -270,6 +314,7 @@ export function NoteStaggeredGrid({
   return (
     <div
       ref={gridRef}
+      data-selecting={selectionMode || undefined}
       className={`w-full px-shell pb-24 pt-2 ${
         isList
           ? `mx-auto grid max-w-content grid-cols-1 ${gapClass}`

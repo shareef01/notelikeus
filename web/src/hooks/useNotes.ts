@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useDeferredValue, useMemo } from 'react';
 import { saveNote, removeNote } from '@/lib/notes/noteActions';
 import { useNotesStore } from '@/store/notesStore';
 import type { NoteQueryFilters } from '@/types/note';
@@ -17,10 +17,16 @@ export function useNotes() {
   const unreadableNoteIds = useNotesStore((state) => state.unreadableNoteIds);
   const filters = useNotesStore((state) => state.filters);
 
+  // The list follows the filters a beat behind the search box (A13). Filtering and re-rendering a
+  // large list on every keystroke blocked the keystroke itself from appearing: about 1 s per key
+  // with 500 notes on a 4x-throttled CPU. Deferred, the field updates at once and React renders the
+  // list in the background, dropping any render a newer keystroke has made stale.
+  const listFilters = useDeferredValue(filters);
+
   const { filteredNotes, isFuzzyResult } = useMemo(() => {
-    const result = searchNotes(notes, filters);
+    const result = searchNotes(notes, listFilters);
     return { filteredNotes: result.notes, isFuzzyResult: result.isFuzzy };
-  }, [notes, filters]);
+  }, [notes, listFilters]);
 
   const registeredLabels = useLabelRegistryStore((state) => state.labels);
 
@@ -64,6 +70,8 @@ export function useNotes() {
     authReady,
     notes,
     filteredNotes,
+    /** The filters `filteredNotes` was computed from; trails `filters` while the user types. */
+    listFilters,
     isFuzzyResult,
     labels,
     status,

@@ -123,6 +123,8 @@ export function MainScreen() {
 
     filteredNotes,
 
+    listFilters,
+
     isFuzzyResult,
 
     labels,
@@ -550,13 +552,15 @@ export function MainScreen() {
                   ) : (
                     <>
                       {isFuzzyResult ? (
-                        <SearchNotice query={filters.searchQuery ?? ''} />
+                        <SearchNotice query={listFilters.searchQuery ?? ''} />
                       ) : null}
                       <NoteStaggeredGrid
+                        // Everything that describes the list comes from the filters it was computed
+                        // from, which trail the search box while the user types.
                         notes={filteredNotes}
                         viewPreference={viewColumns}
-                        filter={filters.filter}
-                        sortOrder={filters.sortOrder ?? 'manual'}
+                        filter={listFilters.filter}
+                        sortOrder={listFilters.sortOrder ?? 'manual'}
                         onNoteClick={handleNoteClick}
                         onNoteLongPress={handleNoteLongPress}
                         selectedNoteIds={selectedNoteIds}
@@ -572,7 +576,7 @@ export function MainScreen() {
                           onPermanentDelete: (note) => void permanentlyDeleteNote(note),
                           onPinToggle: (note) => void togglePinNote(note),
                         }}
-                        searchQuery={filters.searchQuery ?? ''}
+                        searchQuery={listFilters.searchQuery ?? ''}
                         allowReorder={allowReorder}
                         onMoveNote={moveNote}
                         onReorderComplete={reorderComplete}

@@ -52,7 +52,8 @@ test, **S** = source inspection only.
 | A10 | Web — dialog footer buttons, checklist remove/add/convert, image remove, toast action | No explicit focus style; relied on the UA default ring, which on a coloured note or the dark image scrim can be faint. | Focus hard to track in the editor. | P2 | **S** | `CHROME_FOCUS` in the shared dialog button classes; `outline-current` on note-coloured controls; white ring on the image scrim. | Fixed |
 | A11 | Web — card quick actions | Pin/Archive/Delete were 24 px. | Under the design system's own 32 px pointer minimum (§5). | P3 | **S** | 32 px buttons, 16 px icons. | Fixed |
 | A12 | Web — main screen | After trashing or archiving from a card's quick actions, the card disappears and focus falls to `<body>`. | A keyboard user starts again from the top of the page. WCAG 2.4.3. | P2 | **S** | Focus moves to the card that takes the removed one's place (or the new last card). | Fixed |
-| A13 | Web — `NoteCard` memo | `noteCardPropsAreEqual` compares callbacks that `NoteStaggeredGrid` recreates on every render, so the memo never holds. | Every card re-renders on any main-screen render. | P3 | **S** — *potential*; not profiled. | Stable per-note callbacks, or compare by note id. Profile first. | **Open** |
+| A13 | Web — notes grid with many notes | `NoteCard`'s memo never held (the grid rebuilt every card's callbacks each render, and `onLabelClick` arrived as a fresh closure), so any change re-rendered every card; each card also built new `Intl` formatters for its timestamp and date heading; and every search keystroke filtered and re-rendered the list before the letter appeared. | With 500 notes on a 4x-throttled CPU (≈ a mid-range phone): 1.7 s per search keystroke, 4.7 s to clear a search, 0.9 s to tick one checkbox. | **P1** (measured) | **R**: Event Timing (INP) in a production build, 500 imported notes; CPU profile on the dev build for the causes. Table under *Performance* below. | Stable per-note callbacks that call the latest props; cached `Intl.DateTimeFormat`s with numeric day comparison; the list follows a `useDeferredValue` copy of the filters; quick actions hidden in selection mode by CSS (`data-selecting`) instead of per-card props. | Fixed (follow-up PR) |
+| A17 | Web — view size switch (List / Grid / Compact) with many notes | Every card's layout changes, so all re-render and re-lay out. | About 1 s at 4x CPU with 500 notes; 0.2 s unthrottled. | P3 | **R** (same harness) | List virtualisation; only worth it if people keep hundreds of notes in one view. | Open |
 | A14 | Web — `SyncStatusBanner.tsx` | `role="status"` element mounts with its message. | Offline / failed-sync banner may not be announced. | P3 | **S** | Region kept mounted; only its content changes (as for toasts). | Fixed |
 | A15 | Web — editor toolbar | `role="toolbar"` with every button a separate Tab stop. | Allowed, but the ARIA toolbar pattern expects one stop with arrow keys. | P3 | **S** — subjective. | Roving tabindex, if the team wants the pattern. | Not done (judgement call) |
 | A16 | Compose editor — body selection when focus moves to the toolbar | Introduced by A2's fix. Compose collapses a text field's selection as it loses focus, so with the toolbar in the focus order, reaching Bold by Shift+Tab — or clicking it with a mouse on desktop, which focuses the button — formatted an empty caret instead of the selection. | Bold inserted `****` instead of bolding the selected words, for keyboard users everywhere and for mouse users on Windows. | **P1** (regression) | **R** on a Pixel 7: select `beta`, Shift+Tab to Bold, Enter → `alpha beta****`. **T**: both desktop UI tests fail with the fix disabled. | `BlurSelectionKeeper` (`FormattingShortcuts.kt`) undoes the collapse whichever order Compose reports it and the focus loss in; logged on the device, the collapse arrives first and the screen's state is still stale when focus-loss runs. | Fixed (follow-up PR) |
@@ -127,11 +128,32 @@ Not executed: the Windows app by hand, a screen reader, Safari/Firefox.
 
 Screenshot: [`design/screenshots/a11y-2026-10-21/undo-toast-focus-light-1280.png`](design/screenshots/a11y-2026-10-21/undo-toast-focus-light-1280.png).
 
+### Performance — 500 notes, production build, guest mode
+
+Interaction-to-next-paint (the Event Timing figure INP is built from), worst interaction per
+action. Script: 500 notes imported from a JSON backup, then each action driven by Playwright.
+
+| Action | 1x before | 1x after | 4x CPU before | 4x CPU after |
+|---|---|---|---|---|
+| Type in search (per key) | 192 ms | 56 ms | 1680 ms | 224 ms |
+| Clear search | 240 ms | < 16 ms | 4712 ms | 24 ms |
+| Tick one card's checkbox | 104 ms | 56 ms | 920 ms | 240 ms |
+| Clear selection | 144 ms | 56 ms | 808 ms | 264 ms |
+| Open a note | 96 ms | 40 ms | 528 ms | 248 ms |
+| Type in the note body | 16 ms | 16 ms | 40 ms | 48 ms |
+| Switch view size (A17, open) | 248 ms | 192 ms | 1312 ms | 1016 ms |
+
+Profile of the causes (dev build, 500 notes): `formatListTimestamp` ~90 ms and `getDateHeader`
+~66 ms per list render; every card re-rendering on a one-card change.
+`useOverflowHint`'s ~73 ms is a forced layout the browser would do before painting anyway, so it
+was left alone.
+
 ## Deliverable F — remaining roadmap (impact ÷ effort, highest first)
 
 1. **Screen-reader pass** (NVDA + Chrome, TalkBack): the live-region changes in A3 are built to the
    pattern that works, but no one has listened to them yet.
 2. ~~**Android device check of A2**~~ — done on a Pixel 7 (above); it found A16, now fixed. Still
    worth a run with a physical keyboard and with TalkBack.
-3. **A13**, profile the notes grid with a few hundred notes before changing the memo (P3).
+3. ~~**A13**~~ — measured and fixed (above). **A17**, view-size switch with hundreds of notes,
+   is what remains; virtualise the list only if that is a real use.
 4. **A15**, toolbar roving tabindex (P3, judgement call).
