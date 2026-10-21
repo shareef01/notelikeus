@@ -46,14 +46,20 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 - **Fix:** prune ids not in `notes` in an effect keyed on `notes`, or key the cache with a `WeakMap` on something that dies with the note.
 - **Status:** Fixed in #359. An effect keyed on `notes` drops the handlers of every note that left the list.
 
+### T-05 (P2, Confirmed, found after the audit): Android drops a just-picked image
+
+- **Where:** `reconcileStagedAttachments` in `AttachmentSyncService.kt`, run by every download.
+- **Effect:** found on a Pixel 7 while checking sync after the legacy keys were disabled. Returning from the photo picker resumes the app, and `autoSyncOnForeground()` starts a download (at most once per 30 s). Its reconciliation released every staged image no saved note referenced, including the one just picked, because the editor writes the note a second after staging. The next push then dropped the image ("staged bytes are gone"). Present since v2.0.0, and not caused by the key change.
+- **Status:** Fixed in #360, shipped in 2.3.1. Unreferenced staged bytes are released only once they are older than an hour.
+
 ## Owner items (not code)
 
 | Item | State |
 |---|---|
-| D31 step 6: disable the legacy JWT keys | Planned from about 2026-11-04, once most installs run 2.3.0. This is what finally revokes the legacy `service_role` JWT exposed on 2026-09-04. |
-| Probe user `nlu-audit-probe-…@notelikeus.dev` | Deletion not confirmed. Check Authentication → Users. |
-| S-04 `enforce_admins` | Still off (checked today). An admin push can skip `Web build` and `Web e2e`, and no Android, Desktop or CodeQL check is required. |
-| Secret scanning extras | `secret_scanning_validity_checks` and `secret_scanning_non_provider_patterns` are off. Both are free on a public repository, and validity checks would have answered R-01's "validity unknown". |
+| D31 step 6: disable the legacy JWT keys | **Done 2026-10-21**, ahead of the planned 2026-11-04. The legacy `service_role` JWT exposed on 2026-09-04 is dead. Checked the same night: the publishable key works, a legacy-shaped JWT gets 401, and Android 2.3.0 synced a note and uploaded and deleted an image. Installs older than 2.3.0 can no longer sync or sign in. |
+| Probe user `nlu-audit-probe-…@notelikeus.dev` | **Done:** a search under Authentication → Users found no such user on 2026-10-21. |
+| S-04 `enforce_admins` | **Done 2026-10-21:** on for `main`, so every push to `main`, an admin's included, needs `Web build` and `Web e2e`. |
+| Secret scanning extras | **Dropped:** not offered for this repository. The API accepted the change and left both off, and the settings page shows only push protection under Secret Protection. Secret scanning and push protection are on. |
 | F-05, N-04 | Unchanged: F-05 is a pending design decision, N-04 a separate staging project. |
 
 ## Checked and found sound
@@ -85,3 +91,5 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 2. **T-02:** flip the `enable_captcha` default, or stop writing the limit when it is unticked.
 3. **T-03, T-04:** whenever convenient.
 4. **Owner:** disable the legacy keys from about 2026-11-04, delete the probe user, and consider `enforce_admins` and the two secret-scanning extras.
+
+All of the above is done (T-01 to T-04 in #358 and #359, the owner items on 2026-10-21), and T-05 is fixed in #360.
