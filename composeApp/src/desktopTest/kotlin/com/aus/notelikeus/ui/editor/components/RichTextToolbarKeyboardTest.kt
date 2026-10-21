@@ -26,8 +26,16 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.withKeyDown
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.performTextInputSelection
+import com.aus.notelikeus.ui.editor.BlurSelectionKeeper
+import com.aus.notelikeus.ui.editor.TextFormatting
 import com.aus.notelikeus.ui.editor.formattingShortcuts
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -119,5 +127,59 @@ class RichTextToolbarKeyboardTest {
         onNodeWithContentDescription("Bold").performMouseInput { click() }
         assertEquals(1, bold)
         onNodeWithTag("body").assertIsFocused()
+    }
+
+    /** The body and toolbar wired as EditorScreen wires them, selection keeper included. */
+    private fun androidx.compose.ui.test.ComposeUiTest.editorWithSelection() {
+        setContent {
+            MaterialTheme {
+                val focus = remember { FocusRequester() }
+                val keeper = remember { BlurSelectionKeeper() }
+                var value by remember { mutableStateOf(TextFieldValue("alpha beta")) }
+                Column {
+                    BasicTextField(
+                        value = value,
+                        onValueChange = { if (keeper.accept(value, it)) value = it },
+                        modifier = Modifier
+                            .testTag("body")
+                            .focusRequester(focus)
+                            .onFocusChanged { state ->
+                                keeper.onFocusChanged(state.isFocused, value)?.let { value = it }
+                            },
+                    )
+                    RichTextToolbar(
+                        onBoldClick = { value = TextFormatting.wrapSelection(value, "**") },
+                        onItalicClick = {},
+                        onListClick = {},
+                        onChecklistClick = {},
+                        onLinkClick = {},
+                        contentColor = Color.Black,
+                        returnFocusTo = focus,
+                    )
+                }
+                LaunchedEffect(Unit) { focus.requestFocus() }
+            }
+        }
+        onNodeWithTag("body").performTextInputSelection(TextRange(6, 10))
+    }
+
+    // Compose collapses a text field's selection as it loses focus. Measured on a Pixel 7 before
+    // the keeper: selection, Shift+Tab to Bold, Enter inserted an empty `****` at the caret.
+    @Test
+    fun `clicking Bold wraps the selected words`() = runComposeUiTest {
+        editorWithSelection()
+        onNodeWithContentDescription("Bold").performMouseInput { click() }
+        onNodeWithTag("body").assertTextEquals("alpha **beta**")
+    }
+
+    @Test
+    fun `moving focus to Bold and pressing Enter wraps the selected words`() = runComposeUiTest {
+        editorWithSelection()
+        // Focus moves to the button as Shift+Tab moves it in the editor (verified on a Pixel 7);
+        // what matters here is that the body loses focus before Bold runs.
+        onNodeWithContentDescription("Bold").requestFocus()
+        onNodeWithContentDescription("Bold").assertIsFocused()
+        onNodeWithContentDescription("Bold").performKeyInput { pressKey(Key.Enter) }
+        onNodeWithTag("body").assertTextEquals("alpha **beta**")
     }
 }

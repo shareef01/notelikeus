@@ -55,6 +55,7 @@ test, **S** = source inspection only.
 | A13 | Web — `NoteCard` memo | `noteCardPropsAreEqual` compares callbacks that `NoteStaggeredGrid` recreates on every render, so the memo never holds. | Every card re-renders on any main-screen render. | P3 | **S** — *potential*; not profiled. | Stable per-note callbacks, or compare by note id. Profile first. | **Open** |
 | A14 | Web — `SyncStatusBanner.tsx` | `role="status"` element mounts with its message. | Offline / failed-sync banner may not be announced. | P3 | **S** | Region kept mounted; only its content changes (as for toasts). | Fixed |
 | A15 | Web — editor toolbar | `role="toolbar"` with every button a separate Tab stop. | Allowed, but the ARIA toolbar pattern expects one stop with arrow keys. | P3 | **S** — subjective. | Roving tabindex, if the team wants the pattern. | Not done (judgement call) |
+| A16 | Compose editor — body selection when focus moves to the toolbar | Introduced by A2's fix. Compose collapses a text field's selection as it loses focus, so with the toolbar in the focus order, reaching Bold by Shift+Tab — or clicking it with a mouse on desktop, which focuses the button — formatted an empty caret instead of the selection. | Bold inserted `****` instead of bolding the selected words, for keyboard users everywhere and for mouse users on Windows. | **P1** (regression) | **R** on a Pixel 7: select `beta`, Shift+Tab to Bold, Enter → `alpha beta****`. **T**: both desktop UI tests fail with the fix disabled. | `BlurSelectionKeeper` (`FormattingShortcuts.kt`) undoes the collapse whichever order Compose reports it and the focus loss in; logged on the device, the collapse arrives first and the screen's state is still stale when focus-loss runs. | Fixed (follow-up PR) |
 
 Things checked and **not** found defective this pass: dialog focus trapping and nested Escape
 ownership (`useFocusTrap`), layout radiogroup arrow keys, checklist Enter/Backspace, selection
@@ -81,9 +82,9 @@ pass added the rules that were implicit and enforced them where it touched code:
 | Change | Why | Files | Risk left |
 |---|---|---|---|
 | Toolbar acts on click; Ctrl+B/I | A1 | `web/src/components/editor/RichTextToolbar.tsx`, `web/src/screens/EditorScreen.tsx` | Mobile Safari focus behaviour on cancelled `mousedown` is not device-tested; it is the same cancel the old code relied on, plus `mousedown`. |
-| Compose toolbar focusable; focus returned to body; shortcuts | A2 | `composeApp/.../editor/components/RichTextToolbar.kt`, `.../editor/FormattingShortcuts.kt` (new), `.../editor/EditorScreen.kt` | Not seen on an Android device: a tap in touch mode does not focus a button, so `returnFocusTo` should be a no-op there — verify the IME does not flicker. |
+| Compose toolbar focusable; focus returned to body; shortcuts | A2 | `composeApp/.../editor/components/RichTextToolbar.kt`, `.../editor/FormattingShortcuts.kt` (new), `.../editor/EditorScreen.kt` | Checked on a Pixel 7 (Android 16): tapping Bold/Italic with the keyboard open keeps it open and formats the selection. The focus change exposed A16, fixed in a follow-up. |
 | Toasts | A3 | `web/src/components/feedback/ToastHost.tsx` | Ctrl+Z is ignored while any dialog/sheet/overlay editor holds focus (by design, so text fields keep their own undo). |
-| Compose undo duration | A4 | `composeApp/.../ui/main/MainScreen.kt` | None known. |
+| Compose undo duration | A4 | `composeApp/.../ui/main/MainScreen.kt` | None known. Measured on the Pixel 7: Undo stays about 10 s. |
 | Focus after a card leaves the list | A12 | `web/src/components/notes/NoteStaggeredGrid.tsx`, `NoteCard.tsx` (`data-note-open`) | Swipe actions on phones are not covered (touch, no keyboard focus to keep). |
 | Sync banner live region | A14 | `web/src/components/layout/SyncStatusBanner.tsx` | None known. |
 | Dialog consolidation and forms | A5, A6, A9, A10 | `LinkDialog.tsx`, `EditorOptionsSheet.tsx`, `ModalDialog.tsx`, `focusStyles.ts`, `ChecklistEditor.tsx`, `AttachmentImageStrip.tsx` | `ConfirmDialog` sits at `z-[60]` like the copy it replaces. |
@@ -108,7 +109,20 @@ No schema, sync protocol, storage format or dependency changed.
 | First CI run, at `595d5520` | Web e2e failed 10 tests: `save-failure` (an idle toast region carried `role="alert"`, so the spec found two alerts) and `focus-after-removal` (archived the wrong card). Both fixed in `6440a9db`; the error region is now `aria-live="assertive"` without the alert role. |
 | Browser probe after the fix | Bold focused + Enter → `hello **world**`, focus back on the body, selection kept; axe still 0 on every screen probed; reflow unchanged; no console errors |
 
-Not executed: an Android device, the Windows app by hand, a screen reader, Safari/Firefox.
+### Pixel 7 (Android 16), debug build over wireless adb, guest mode
+
+Key events were injected with `adb shell input keycombination`, which Android delivers as a
+hardware keyboard; state was read from `uiautomator` dumps and `dumpsys input_method`.
+
+| Check | Before the A16 fix | After |
+|---|---|---|
+| Ctrl+A, Ctrl+B / Ctrl+I in the body | `**hello**`, then `_**hello**_` | same |
+| Shift+Tab from the body | focus walks Add image → Checklist → List → Link → Italic → Bold | same |
+| Select `beta`, Shift+Tab to Bold, Enter | **`alpha beta****`** (A16) | `alpha **beta**`; focus back in the body; keyboard stays up |
+| Select all, tap Bold, tap Italic, keyboard open | — | `**_alpha **beta**_**`; keyboard stays up (`mInputShown=true`) |
+| Delete a note (after confirming), Undo snackbar | — | visible about 10 s; no accessibility service running |
+
+Not executed: the Windows app by hand, a screen reader, Safari/Firefox.
 (Android instrumented tests and the `mobile-chrome` Playwright project ran in CI; see above.)
 
 Screenshot: [`design/screenshots/a11y-2026-10-21/undo-toast-focus-light-1280.png`](design/screenshots/a11y-2026-10-21/undo-toast-focus-light-1280.png).
@@ -117,7 +131,7 @@ Screenshot: [`design/screenshots/a11y-2026-10-21/undo-toast-focus-light-1280.png
 
 1. **Screen-reader pass** (NVDA + Chrome, TalkBack): the live-region changes in A3 are built to the
    pattern that works, but no one has listened to them yet.
-2. **Android device check of A2**: Tab through the toolbar with a hardware keyboard; tap Bold with
-   the IME open and confirm it stays open.
+2. ~~**Android device check of A2**~~ — done on a Pixel 7 (above); it found A16, now fixed. Still
+   worth a run with a physical keyboard and with TalkBack.
 3. **A13**, profile the notes grid with a few hundred notes before changing the memo (P3).
 4. **A15**, toolbar roving tabindex (P3, judgement call).
