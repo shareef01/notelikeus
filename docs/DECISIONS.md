@@ -1058,7 +1058,8 @@ user out (audit S-02).
   (`verifyReleaseBackendConfig`) refuse to build without the page URL.
 - **Switching it on** is an explicit `enable_captcha` input on the Supabase Auth Config workflow,
   default off. It also needs the `TURNSTILE_SECRET_KEY` secret and custom SMTP. It raises
-  `rate_limit_email_sent` to `email_limit_per_hour` (default 100).
+  `rate_limit_email_sent` to `email_limit_per_hour` (default 100). A run without it leaves the
+  hosted CAPTCHA setting and email limit as they are (audit T-02).
 
 **Why not a Worker that fronts `/otp`:** desktop still could not produce a Turnstile token for the
 Worker to check. The endpoint would either skip CAPTCHA for desktop, an unguarded side door to the

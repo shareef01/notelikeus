@@ -150,11 +150,15 @@ jobs:
             exit 1
           fi
           # The public client key is the publishable key (sb_publishable_…) or the legacy anon
-          # JWT (eyJ…), D31. A secret API key here would hand a live privileged credential to
-          # the Worker's callers.
+          # JWT (eyJ…), D31. A secret API key, or the legacy service_role JWT, here would hand a
+          # live privileged credential to the Worker's callers.
           case "$SUPABASE_ANON_KEY" in
             sb_publishable_?*) ;;
-            eyJ*) ;;
+            eyJ*)
+              role=$(node -e 'try { const p = process.env.SUPABASE_ANON_KEY.split(".")[1]; console.log(JSON.parse(Buffer.from(p, "base64url")).role ?? "") } catch {}')
+              if [ "$role" = "service_role" ]; then
+                echo "VITE_SUPABASE_ANON_KEY is the service_role JWT, a backend secret. Use the publishable key."; exit 1
+              fi ;;
             sb_*) echo "VITE_SUPABASE_ANON_KEY looks like a secret API key. Use the publishable key."; exit 1 ;;
             *) echo "VITE_SUPABASE_ANON_KEY is neither a publishable key nor the legacy anon JWT."; exit 1 ;;
           esac

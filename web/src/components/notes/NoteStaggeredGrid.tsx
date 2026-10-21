@@ -195,6 +195,15 @@ export function NoteStaggeredGrid({
   };
   const labelClick = useRef((name: string) => latest.current.onLabelClick?.(name)).current;
 
+  // A note that leaves the list drops its handlers, or the cache would keep one set for every note
+  // ever shown (audit T-04). Its card has unmounted, so one that comes back gets a fresh set.
+  useEffect(() => {
+    const ids = new Set(notes.map((note) => note.id));
+    for (const id of handlerCache.current.keys()) {
+      if (!ids.has(id)) handlerCache.current.delete(id);
+    }
+  }, [notes]);
+
   // Quick actions are hidden in selection mode by the grid's data-selecting attribute (see
   // globals.css), not by withdrawing them from every card: that changed all 500 cards' props, so
   // ticking the first checkbox or clearing the selection still re-rendered the whole list.

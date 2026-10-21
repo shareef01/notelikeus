@@ -25,7 +25,8 @@ export const FORBIDDEN_PROPERTY_KEYS = [
 /**
  * Why `key` must not be a client key, or `null` when it may ship. The publishable key
  * (`sb_publishable_…`) and the legacy anon JWT (`eyJ…`) are public; every other `sb_…` key is a
- * secret API key (D31). Mirrors `isBrowserSafeSupabaseKey` in web/src/lib/supabase/backendFlag.ts.
+ * secret API key, and so is a legacy JWT whose payload says `service_role` (D31). Mirrors
+ * `isBrowserSafeSupabaseKey` in web/src/lib/supabase/backendFlag.ts.
  */
 export function clientKeyProblem(key) {
   if (key.startsWith('sb_publishable_') && key.length > 'sb_publishable_'.length) return null;
@@ -35,7 +36,20 @@ export function clientKeyProblem(key) {
   if (!key.startsWith('eyJ')) {
     return 'VITE_SUPABASE_ANON_KEY is neither a publishable key (sb_publishable_…) nor the legacy anon JWT (eyJ…).';
   }
+  if (legacyJwtRole(key) === 'service_role') {
+    return 'VITE_SUPABASE_ANON_KEY is the service_role JWT, a backend secret. Use the publishable key (sb_publishable_…).';
+  }
   return null;
+}
+
+/** Role claimed by a legacy JWT key, or `null` when the payload cannot be read. The signature is not checked. */
+function legacyJwtRole(key) {
+  try {
+    const claims = JSON.parse(Buffer.from(key.split('.')[1] ?? '', 'base64url').toString('utf8'));
+    return claims && typeof claims.role === 'string' ? claims.role : null;
+  } catch {
+    return null;
+  }
 }
 
 export function parseDotEnv(text) {

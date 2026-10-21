@@ -30,18 +30,21 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 - **Where:** `.github/workflows/supabase-auth.yml`. With SMTP secrets set, the patch always includes `rate_limit_email_sent: 30`, and raises it only when `enable_captcha` is ticked. `enable_captcha` defaults to `false`.
 - **Effect:** hosted CAPTCHA has been on since 2026-10-21 (R-02). The next person who reruns the workflow for a template change, without knowing to tick the box, cuts the limit from 100 to 30 an hour. CAPTCHA stays on, so this is a capacity regression, not a reopening of S-02.
 - **Fix:** now that CAPTCHA is on, default `enable_captcha` to `true`, or leave `rate_limit_email_sent` out of the patch when the box is unticked so the hosted value stays as it is. The header comment's reason for opt-in ("must not switch it on") no longer applies.
+- **Status:** Fixed in #359. The patch no longer sets `rate_limit_email_sent` unless `enable_captcha` is ticked, so an unticked run leaves both the CAPTCHA setting and the limit as they are. `enable_captcha` stays opt-in.
 
 ### T-03 (P3, Confirmed): two of the four key checks accept a `service_role` JWT
 
 - **Where:** `clientKeyProblem` in `scripts/ops/write-kotlin-staging-properties.mjs` and the `case` in `attachments-worker.yml` accept any `eyJ…` value. The web check (`supabaseClientKeyKind`) and the Gradle check decode the payload and refuse `role: service_role`. The `.mjs` doc comment says it "Mirrors `isBrowserSafeSupabaseKey`", which is no longer true.
 - **Effect:** the legacy `service_role` JWT pasted into `web/.env.staging` would pass `deploy-staging-pages.mjs` and be written into the Kotlin `local.properties`. In the Worker the impact is small, since `auth.ts` always sends the caller's own bearer. Once legacy keys are disabled (D31 step 6) the JWT is dead anyway.
 - **Fix:** add the same payload check to the `.mjs` helper (and reuse it from T-01's fix). Optional for the Worker.
+- **Status:** Fixed in #359. `clientKeyProblem` and the Worker deploy check both decode the payload and refuse `role: service_role`, so all four checks now agree. T-01's bundle scan has its own copy of the check, since it runs on the output rather than the env.
 
 ### T-04 (P3, Confirmed): the web grid's handler cache never drops a note
 
 - **Where:** `handlerCache` in `web/src/components/notes/NoteStaggeredGrid.tsx`.
 - **Effect:** one small object per note id ever shown in that grid instance, kept until the grid unmounts. Deleted and filtered-out notes stay. Harmless at today's sizes; it grows over a long session with many imports or deletes.
 - **Fix:** prune ids not in `notes` in an effect keyed on `notes`, or key the cache with a `WeakMap` on something that dies with the note.
+- **Status:** Fixed in #359. An effect keyed on `notes` drops the handlers of every note that left the list.
 
 ## Owner items (not code)
 

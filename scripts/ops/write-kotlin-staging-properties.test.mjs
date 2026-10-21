@@ -73,6 +73,22 @@ test('accepts a publishable key and the legacy anon JWT', () => {
   assert.match(clientKeyProblem('plain'), /neither/);
 });
 
+test('refuses a legacy service_role JWT and passes the anon JWT', () => {
+  const part = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const jwt = (role) => `${part({ alg: 'HS256', typ: 'JWT' })}.${part({ iss: 'supabase', role })}.c2ln`;
+  assert.match(clientKeyProblem(jwt('service_role')), /service_role JWT/);
+  assert.equal(clientKeyProblem(jwt('anon')), null);
+  assert.throws(
+    () =>
+      stagingPropertiesFromEnv({
+        VITE_SUPABASE_URL: 'https://example.supabase.co',
+        VITE_SUPABASE_ANON_KEY: jwt('service_role'),
+        VITE_ATTACHMENTS_WORKER_URL: 'https://worker.example',
+      }),
+    /service_role JWT/,
+  );
+});
+
 test('merges without dropping oauth secret or adding allow-production', () => {
   const existing = [
     'sdk.dir=/opt/android-sdk',
