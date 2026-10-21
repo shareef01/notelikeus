@@ -5,7 +5,7 @@
  * or Cloudflare Pages CI on push to main.
  *
  * Requires gitignored env files:
- *   web/.env.staging  — hosted Supabase URL, anon JWT, optional attachments worker
+ *   web/.env.staging  — hosted Supabase URL, publishable key (or legacy anon JWT), optional attachments worker
  *
  * Usage:
  *   npm run deploy:staging-pages
@@ -14,6 +14,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { clientKeyProblem } from './write-kotlin-staging-properties.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const WEB = resolve(ROOT, 'web');
@@ -54,8 +55,9 @@ function run(command, args, extraEnv) {
 function main() {
   const staging = parseEnvFile(STAGING_FILE);
   requireKeys(staging, ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'], 'web/.env.staging');
-  if (staging.VITE_SUPABASE_ANON_KEY.startsWith('sb_')) {
-    throw new Error('VITE_SUPABASE_ANON_KEY looks like a secret API key (sb_…). Use the public anon JWT (eyJ…).');
+  const keyProblem = clientKeyProblem(staging.VITE_SUPABASE_ANON_KEY);
+  if (keyProblem) {
+    throw new Error(keyProblem);
   }
 
   const buildEnv = { ...staging };

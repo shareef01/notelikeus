@@ -18,8 +18,8 @@ internal actual suspend fun supabaseAuthPost(
         .uri(URI("$supabaseUrl$path"))
         .timeout(Duration.ofSeconds(30))
         .header("apikey", anonKey)
-        .header("Authorization", "Bearer $anonKey")
         .header("Content-Type", "application/json")
+        .apply { clientKeyBearer(anonKey)?.let { header("Authorization", it) } }
         .POST(HttpRequest.BodyPublishers.ofString(body))
         .build()
 

@@ -5,7 +5,8 @@
 #   SUPABASE_ACCESS_TOKEN   — personal access token (Account → Access Tokens)
 #   SUPABASE_PROJECT_REF    — staging project ref (subdomain before .supabase.co)
 #   SUPABASE_ANON_KEY       — optional if SUPABASE_ACCESS_TOKEN can list keys;
-#                             must be the anon *public* JWT (eyJ…), never sb_secret_…
+#                             must be a public client key: the publishable key
+#                             (sb_publishable_…) or the legacy anon JWT (eyJ…), never sb_secret_…
 #   CLOUDFLARE_API_TOKEN    — Workers + R2 edit (or run `wrangler login` first)
 #   CLOUDFLARE_ACCOUNT_ID   — Cloudflare dashboard → account id
 #
@@ -64,14 +65,15 @@ run_logged() {
   fi
 }
 
-# Resolves a browser-safe anon JWT (role=anon, eyJ…). The Cursor/env secret named
+# Resolves a browser-safe client key: the project's publishable key (sb_publishable_…) when it
+# has one, else the legacy anon JWT (role=anon, eyJ…) (D31). The Cursor/env secret named
 # SUPABASE_ANON_KEY is often a new sb_secret_ key, which GoTrue rejects in the browser
 # with "Forbidden use of secret API key in browser".
 resolve_browser_anon_key() {
   require_env SUPABASE_ACCESS_TOKEN
   require_env SUPABASE_PROJECT_REF
   if [[ "${DRY_RUN:-}" == "1" ]]; then
-    info "[dry-run] resolve browser-safe anon JWT from Management API"
+    info "[dry-run] resolve browser-safe client key from Management API"
     return
   fi
   local json resolved
@@ -85,28 +87,34 @@ resolve_browser_anon_key() {
   set -e
   if [[ "$curl_status" -eq 0 ]]; then
     resolved="$(printf '%s' "$json" | python3 -c '
-import json, sys
+import json, re, sys
 keys = json.load(sys.stdin)
 if not isinstance(keys, list):
     raise SystemExit("unexpected api-keys payload")
+publishable = next((v for k in keys
+                    for v in [k.get("api_key") or k.get("key") or ""]
+                    if k.get("type") == "publishable" and re.fullmatch(r"sb_publishable_[A-Za-z0-9_-]+", v)), "")
 anon = next((k.get("api_key") or k.get("key") or "" for k in keys if k.get("name") == "anon"), "")
-if not anon.startswith("eyJ"):
-    raise SystemExit("Management API did not return a JWT anon public key")
-print(anon)
+if publishable:
+    print(publishable)
+elif anon.startswith("eyJ"):
+    print(anon)
+else:
+    raise SystemExit("Management API returned neither a publishable key nor a JWT anon public key")
 ')"
   fi
-  if [[ -z "${resolved:-}" && "${SUPABASE_ANON_KEY:-}" == eyJ* ]]; then
-    info "Management API key lookup failed; using SUPABASE_ANON_KEY (JWT)"
+  if [[ -z "${resolved:-}" && ( "${SUPABASE_ANON_KEY:-}" == eyJ* || "${SUPABASE_ANON_KEY:-}" == sb_publishable_?* ) ]]; then
+    info "Management API key lookup failed; using SUPABASE_ANON_KEY (public client key)"
     return
   fi
   if [[ -z "${resolved:-}" ]]; then
-    red "Could not resolve a browser-safe anon JWT. Set SUPABASE_ANON_KEY to the Project Settings → API anon public key (eyJ…), not a secret key."
+    red "Could not resolve a browser-safe client key. Set SUPABASE_ANON_KEY to the Project Settings → API Keys publishable key (sb_publishable_…) or legacy anon key (eyJ…), not a secret key."
     exit 1
   fi
   if [[ -n "${SUPABASE_ANON_KEY:-}" && "${SUPABASE_ANON_KEY}" != "${resolved}" ]]; then
-    info "Using Management API anon JWT (len=${#resolved}); ignoring SUPABASE_ANON_KEY (not browser-safe)"
+    info "Using Management API client key (len=${#resolved}); ignoring SUPABASE_ANON_KEY"
   else
-    info "Resolved browser-safe anon JWT (len=${#resolved})"
+    info "Resolved browser-safe client key (len=${#resolved})"
   fi
   SUPABASE_ANON_KEY="$resolved"
 }

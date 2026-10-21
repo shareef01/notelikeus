@@ -4,6 +4,7 @@ import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 // `java` in a Kotlin build script resolves to the Gradle extension, not the package.
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -96,6 +97,30 @@ val generateDesktopBackendConfig by tasks.registering {
 }
 
 /**
+ * Why [key] cannot ship as the client key, or null when it can. Accepted: the publishable key
+ * (`sb_publishable_...`) and, until it is retired, the legacy anon JWT (`eyJ...`), D31. Refused:
+ * every other `sb_...` key (secret API keys) and a legacy JWT whose payload says `service_role`.
+ * Mirrors `isBrowserSafeSupabaseKey` in web/src/lib/supabase/backendFlag.ts.
+ */
+fun clientKeyProblem(key: String): String? {
+    val publishablePrefix = "sb_publishable_"
+    if (key.startsWith(publishablePrefix) && key.length > publishablePrefix.length) return null
+    if (key.lowercase().startsWith("sb_")) {
+        return "NOTELIKEUS_SUPABASE_ANON_KEY looks like a secret API key; use the publishable key (sb_publishable_...)"
+    }
+    if (!key.startsWith("eyJ")) {
+        return "NOTELIKEUS_SUPABASE_ANON_KEY must be the publishable key (sb_publishable_...) or the legacy anon JWT (eyJ...)"
+    }
+    val payload = runCatching {
+        String(Base64.getUrlDecoder().decode(key.split('.')[1].trimEnd('=')), Charsets.UTF_8)
+    }.getOrNull()
+    if (payload != null && Regex(""""role"\s*:\s*"service_role"""").containsMatchIn(payload)) {
+        return "NOTELIKEUS_SUPABASE_ANON_KEY is the service_role JWT, a backend secret"
+    }
+    return null
+}
+
+/**
  * Fails a store or installer build that has no hosted backend. Debug, test and CI branch builds stay
  * free to build without one; only the artifacts users install (the Android App Bundle and the MSI)
  * depend on this check, so a missing secret stops the release instead of shipping it without sync.
@@ -103,6 +128,8 @@ val generateDesktopBackendConfig by tasks.registering {
 val verifyReleaseBackendConfig by tasks.registering {
     val url = backendUrl
     val anonKey = backendAnonKey
+    // Checked here, at configuration time: the task action may not call back into this script.
+    val anonKeyProblem = clientKeyProblem(anonKey)
     val workerUrl = backendWorkerUrl
     val captchaPageUrl = backendCaptchaPageUrl
     inputs.property("supabaseUrl", url)
@@ -112,7 +139,7 @@ val verifyReleaseBackendConfig by tasks.registering {
     doLast {
         val problems = buildList {
             if (!url.startsWith("https://")) add("NOTELIKEUS_SUPABASE_URL must be a hosted https URL")
-            if (!anonKey.startsWith("eyJ")) add("NOTELIKEUS_SUPABASE_ANON_KEY must be the public anon JWT (eyJ...)")
+            anonKeyProblem?.let(::add)
             if (!workerUrl.startsWith("https://")) add("NOTELIKEUS_ATTACHMENTS_WORKER_URL must be a hosted https URL")
             // The hosted project requires Turnstile on code requests (D30); without the page a
             // release could not sign anyone in once that is on.

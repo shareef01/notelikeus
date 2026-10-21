@@ -69,4 +69,18 @@ class SupabaseBackendSelectionTest {
         assertEquals(anon, resolveSupabaseAnonKey(anon, allowLocalFallback = false))
         assertEquals(anon, resolveSupabaseAnonKey(anon, allowLocalFallback = true))
     }
+
+    @Test
+    fun publishableKeyResolvesLikeTheLegacyAnonJwt() {
+        val publishable = "sb_publishable_abc123"
+        assertEquals(publishable, resolveSupabaseAnonKey(publishable, allowLocalFallback = false))
+        assertEquals(publishable, resolveSupabaseAnonKey(" $publishable ", allowLocalFallback = true))
+    }
+
+    @Test
+    fun onlyTheLegacyAnonJwtIsSentAsABearer() {
+        val anon = "eyJhbGciOiJIUzI1NiJ9.payload.signature"
+        assertEquals("Bearer $anon", clientKeyBearer(anon))
+        assertNull(clientKeyBearer("sb_publishable_abc123"))
+    }
 }

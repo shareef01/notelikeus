@@ -1080,3 +1080,87 @@ Worker does not change.
 **Cost to reverse:** low. Turn CAPTCHA off in the dashboard (Authentication > Attack Protection).
 The clients keep working: GoTrue ignores a token it does not ask for, and a build without the site key
 or page URL sends none.
+
+## D31 — Clients move to Supabase's publishable key, so the legacy JWT keys can be switched off.
+
+**Decided:** every client and every check accepts a publishable key (`sb_publishable_…`) as well
+as the legacy anon JWT (`eyJ…`) in the existing `VITE_SUPABASE_ANON_KEY` /
+`NOTELIKEUS_SUPABASE_ANON_KEY` slot. Once installs carry the publishable key, the owner disables the
+project's legacy API keys. That is the only way to kill the legacy `service_role` JWT, which was
+briefly exposed on 2026-09-04: Supabase cannot revoke it alone. Disabling legacy keys, or rotating
+the legacy JWT secret, also kills the legacy anon key that installed apps still send.
+
+- **Accepted as a client key:** `sb_publishable_` followed by at least one character, or a value
+  starting `eyJ`. **Refused:** any other `sb_…` value (secret API keys) and a legacy JWT whose
+  payload claims `role: service_role`. The same rule is in `isBrowserSafeSupabaseKey` (web),
+  `clientKeyProblem` in `composeApp/build.gradle.kts` (`verifyReleaseBackendConfig`),
+  `clientKeyProblem` in `scripts/ops/write-kotlin-staging-properties.mjs` (also used by
+  `deploy-staging-pages.mjs`), and the key check in `attachments-worker.yml`. The JWT payload is
+  read, never verified: the check only stops a backend secret from being shipped by mistake.
+- **Headers:** a publishable key is not a JWT. Supabase wants it in `apikey` only, never in
+  `Authorization: Bearer`. The Kotlin auth calls (`supabaseAuthPost`, which carry no user session)
+  send `Authorization: Bearer <key>` only for the legacy JWT (`clientKeyBearer`). RPC calls and the
+  Worker always send the user's own access token as the bearer and the client key as `apikey`, so
+  they need no change. supabase-js 2.117 handles both key kinds itself.
+- **Not affected:** Realtime (the web subscribes after sign-in, with the user's token; Supabase's
+  24-hour limit applies only to connections with no user), Storage (attachments live in R2 behind
+  the Worker, not Supabase Storage), the CSP (it lists hosts, not keys), and the Worker's
+  `auth.ts`, which forwards `SUPABASE_ANON_KEY` as `apikey` next to the caller's bearer. The
+  Worker's cron already uses an `sb_secret_` key (2026-10-21).
+- **Names stay.** The GitHub secret, the Vite variable, the Gradle property and the Worker secret
+  keep their `ANON_KEY` names. Renaming them would touch five workflows and every developer's
+  `local.properties` without changing what any of them holds.
+- **`setup-staging.sh`** now prefers the project's publishable key from the Management API and
+  falls back to the legacy anon JWT, so a rerun after step 1 below writes the publishable key into
+  `web/.env.staging` and the Worker secret.
+- **Local stack:** the `supabase start` demo anon JWT stays the default for dev, tests and e2e.
+  Disabling legacy keys on the hosted project does not touch it.
+
+**Rollout (owner steps).** Staging and production are the same project, `ddxmubeaeeomureolvbu`, so
+each step is live for real users. Steps 1 to 4 change nothing for installed apps: legacy and new
+keys work side by side until step 6. Times are German local time; summer time ends on 25 October
+2026, so after that it is CET (UTC+1).
+
+1. **Create the publishable key.** Supabase dashboard → Project Settings → API Keys → create a
+   publishable key (the project may already show a `default` one). Copy it. It is public, like the
+   anon key.
+2. **Swap the secret.** In GitHub → Settings → Secrets and variables → Actions, set
+   `VITE_SUPABASE_ANON_KEY` to the `sb_publishable_…` value, and `STAGING_VITE_SUPABASE_ANON_KEY` too
+   if it exists. Update your own `web/.env.staging` and `local.properties`
+   (`npm run kotlin:staging-properties`).
+3. **Web and Worker.** Run Cloudflare Pages CI by hand (or let the next `web/` change on `main`
+   deploy) so the web bundle carries the new key, and dispatch Attachments Worker CI (confirm
+   `notelikeus-attachments`, the production bucket) so its `SUPABASE_ANON_KEY` secret is the new
+   key. Check: sign in on the web, open a note with an attachment, and in devtools
+   the requests to `*.supabase.co` carry `apikey: sb_publishable_…`.
+4. **Ship a release.** Tag the next release (`v*`) with this change in it, and dispatch Desktop CI
+   with that tag for the MSI. The AAB and MSI builds read the swapped secret, and `verifyReleaseBackendConfig` accepts it. Check on one
+   device each: sign in with an emailed code, then edit a note on one client and watch it sync to
+   another.
+5. **Wait for adoption.** As with CAPTCHA (D30), the switch-off is what strands old installs, so
+   it waits for them. It is harsher this time: old installs stop *syncing* entirely, not only stop
+   requesting codes. Wait until the Play Console shows nearly all active installs on the new release
+   (and desktop users have had the MSI), and at least 14 days after it reached Play production. In
+   Supabase's Logs Explorer the API gateway logs show which key each request carried; wait until
+   legacy-key requests have dropped to a trickle. Web tabs pick up the new bundle on their next load.
+6. **Disable legacy keys.** Dashboard → Project Settings → API Keys → Legacy API keys → disable.
+   Pick a weekday morning, for example 10:00 CET, and watch the logs and the clients for an hour.
+   The exposed `service_role` JWT, and the legacy anon key, stop working from that moment.
+   Disabling is reversible: if something important breaks, re-enable, fix it, and try again. Record
+   the date here and in the audit.
+7. **Optional, later:** to make it permanent rather than a switch, move the project to JWT signing
+   keys and revoke the legacy JWT secret. That also ends every session signed with the old secret,
+   so every user signs in again once. Do it only after step 6 has held for a while.
+
+**Consequences to remember:**
+
+- Do not reject the legacy anon JWT in code until step 6 is done: until then, a rebuild without
+  the new secret would otherwise fail.
+- After step 6, a build that still carries an `eyJ…` key builds but cannot sync. Removing the
+  `eyJ` branch from the checks is then a small follow-up.
+- Re-enabling legacy keys also revives the exposed `service_role` JWT. Treat step 6 as done only
+  while they stay off.
+
+**Cost to reverse:** low until step 6: set the secret back to the anon JWT and redeploy; the code
+accepts both. After step 6, re-enabling legacy keys in the dashboard restores old installs at once,
+at the price of the `service_role` exposure coming back.
