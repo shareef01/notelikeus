@@ -22,6 +22,22 @@ export const FORBIDDEN_PROPERTY_KEYS = [
   'NOTELIKEUS_ALLOW_SUPABASE_PRODUCTION',
 ];
 
+/**
+ * Why `key` must not be a client key, or `null` when it may ship. The publishable key
+ * (`sb_publishable_…`) and the legacy anon JWT (`eyJ…`) are public; every other `sb_…` key is a
+ * secret API key (D31). Mirrors `isBrowserSafeSupabaseKey` in web/src/lib/supabase/backendFlag.ts.
+ */
+export function clientKeyProblem(key) {
+  if (key.startsWith('sb_publishable_') && key.length > 'sb_publishable_'.length) return null;
+  if (key.toLowerCase().startsWith('sb_')) {
+    return 'VITE_SUPABASE_ANON_KEY looks like a secret API key (sb_…). Use the publishable key (sb_publishable_…).';
+  }
+  if (!key.startsWith('eyJ')) {
+    return 'VITE_SUPABASE_ANON_KEY is neither a publishable key (sb_publishable_…) nor the legacy anon JWT (eyJ…).';
+  }
+  return null;
+}
+
 export function parseDotEnv(text) {
   const out = {};
   for (const rawLine of text.split(/\r?\n/)) {
@@ -53,10 +69,9 @@ export function stagingPropertiesFromEnv(env) {
   if (!anon) {
     throw new Error('web/.env.staging is missing VITE_SUPABASE_ANON_KEY');
   }
-  if (anon.startsWith('sb_')) {
-    throw new Error(
-      'VITE_SUPABASE_ANON_KEY looks like a secret API key (sb_…). Use the public anon JWT (eyJ…).',
-    );
+  const problem = clientKeyProblem(anon);
+  if (problem) {
+    throw new Error(problem);
   }
   if (!worker) {
     throw new Error('web/.env.staging is missing VITE_ATTACHMENTS_WORKER_URL');

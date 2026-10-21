@@ -50,6 +50,17 @@ internal fun resolveSupabaseUrl(configured: String?, allowLocalFallback: Boolean
     return resolved
 }
 
+/** Prefix of Supabase's publishable client key, the replacement for the legacy anon JWT (D31). */
+internal const val SUPABASE_PUBLISHABLE_KEY_PREFIX = "sb_publishable_"
+
+/**
+ * `Authorization` value for a request that carries only the client key, no user session. The
+ * legacy anon JWT doubles as a bearer, as it always has. A publishable key is not a JWT and belongs
+ * in `apikey` alone, so it gets no `Authorization` header (null).
+ */
+internal fun clientKeyBearer(clientKey: String): String? =
+    if (clientKey.startsWith(SUPABASE_PUBLISHABLE_KEY_PREFIX)) null else "Bearer $clientKey"
+
 internal fun resolveSupabaseAnonKey(configured: String?, allowLocalFallback: Boolean): String {
     val resolved = firstNonBlank(configured)
     if (resolved != null) return resolved

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isLocalSupabaseUrl,
   isBrowserSafeSupabaseKey,
+  supabaseClientKeyKind,
   isSupabaseConfigured,
 } from '@/lib/supabase/backendFlag';
 
@@ -91,13 +92,47 @@ describe('isSupabaseConfigured', () => {
 });
 
 describe('isBrowserSafeSupabaseKey', () => {
+  const jwt = (claims: object) =>
+    `eyJhbGciOiJIUzI1NiJ9.${btoa(JSON.stringify(claims)).replace(/=+$/, '')}.signature`;
+
   it('accepts a JWT-shaped anon key', () => {
     expect(isBrowserSafeSupabaseKey('eyJhbGciOiJIUzI1NiJ9.payload.signature')).toBe(true);
+    expect(isBrowserSafeSupabaseKey(jwt({ role: 'anon' }))).toBe(true);
   });
 
-  it('rejects secret and empty keys', () => {
+  it('accepts a publishable key', () => {
+    expect(isBrowserSafeSupabaseKey('sb_publishable_abc123')).toBe(true);
+    expect(isBrowserSafeSupabaseKey('  sb_publishable_abc123  ')).toBe(true);
+  });
+
+  it('rejects secret, service_role and empty keys', () => {
     expect(isBrowserSafeSupabaseKey('sb_secret_x')).toBe(false);
-    expect(isBrowserSafeSupabaseKey('sb_publishable_x')).toBe(false);
+    expect(isBrowserSafeSupabaseKey('SB_SECRET_x')).toBe(false);
+    expect(isBrowserSafeSupabaseKey('sb_publishable_')).toBe(false);
+    expect(isBrowserSafeSupabaseKey('sb_publishablex')).toBe(false);
+    expect(isBrowserSafeSupabaseKey(jwt({ role: 'service_role' }))).toBe(false);
+    expect(isBrowserSafeSupabaseKey('not-a-key')).toBe(false);
     expect(isBrowserSafeSupabaseKey('')).toBe(false);
+  });
+});
+
+describe('supabaseClientKeyKind', () => {
+  it('names the kind of each client key', () => {
+    expect(supabaseClientKeyKind('sb_publishable_abc123')).toBe('publishable');
+    expect(supabaseClientKeyKind('eyJhbGciOiJIUzI1NiJ9.payload.signature')).toBe('legacy-anon-jwt');
+    expect(supabaseClientKeyKind('sb_secret_x')).toBeNull();
+  });
+});
+
+describe('isSupabaseConfigured with a publishable key', () => {
+  it('enables a hosted production build', () => {
+    expect(
+      isSupabaseConfigured({
+        isProd: true,
+        isE2e: false,
+        supabaseUrl: 'https://abc.supabase.co',
+        anonKey: 'sb_publishable_abc123',
+      }),
+    ).toBe(true);
   });
 });

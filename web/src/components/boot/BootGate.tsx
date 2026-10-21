@@ -26,7 +26,7 @@ function describeBootError(error: unknown): BootErrorDetails {
       case 'supabase-config':
         return {
           message: error.message,
-          help: 'Check the Supabase values for this build. Production needs VITE_SUPABASE_URL pointing at a hosted project and a public VITE_SUPABASE_ANON_KEY (the eyJ… anon JWT, never an sb_… secret key).',
+          help: 'Check the Supabase values for this build. Production needs VITE_SUPABASE_URL pointing at a hosted project and a public VITE_SUPABASE_ANON_KEY (the sb_publishable_… key or the legacy eyJ… anon JWT, never an sb_secret_… or service_role key).',
           canClearData: false,
         };
       default:

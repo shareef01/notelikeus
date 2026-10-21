@@ -17,7 +17,7 @@ internal actual suspend fun supabaseAuthPost(
         readTimeout = REQUEST_TIMEOUT_MS
         doOutput = true
         setRequestProperty("apikey", anonKey)
-        setRequestProperty("Authorization", "Bearer $anonKey")
+        clientKeyBearer(anonKey)?.let { setRequestProperty("Authorization", it) }
         setRequestProperty("Content-Type", "application/json")
     }
 

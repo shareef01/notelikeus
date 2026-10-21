@@ -18,7 +18,7 @@ cp .env.example .env
 ```
 
 `web/.env` is gitignored. Local `npm run dev` can use the default demo project from `supabase start`.
-A production build needs a hosted `VITE_SUPABASE_URL` and a public `VITE_SUPABASE_ANON_KEY` (the `eyJ…` anon JWT, never a `service_role` or `sb_secret_…` key).
+A production build needs a hosted `VITE_SUPABASE_URL` and a public `VITE_SUPABASE_ANON_KEY`: the `sb_publishable_…` key, or the legacy `eyJ…` anon JWT until it is retired (D31). Never a `service_role` or `sb_secret_…` key.
 
 ## Everyday commands
 

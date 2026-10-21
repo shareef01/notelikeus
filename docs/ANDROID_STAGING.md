@@ -11,7 +11,7 @@ That merges these keys into `local.properties` and leaves other keys such as `sd
 | Key | Source |
 |-----|--------|
 | `notelikeus.supabaseUrl` | `VITE_SUPABASE_URL` |
-| `notelikeus.supabaseAnonKey` | public anon JWT (`eyJ…`, never `sb_…`) |
+| `notelikeus.supabaseAnonKey` | public client key: `sb_publishable_…`, or the legacy anon JWT `eyJ…` (D31); never `sb_secret_…` |
 | `notelikeus.attachmentsWorkerUrl` | `VITE_ATTACHMENTS_WORKER_URL` |
 
 The writer refuses secret API keys.

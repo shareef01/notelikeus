@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   FORBIDDEN_PROPERTY_KEYS,
+  clientKeyProblem,
   parseDotEnv,
   stagingPropertiesFromEnv,
   mergeLocalProperties,
@@ -55,6 +56,21 @@ test('rejects secret API keys and missing fields', () => {
       }),
     /ATTACHMENTS_WORKER_URL/,
   );
+});
+
+test('accepts a publishable key and the legacy anon JWT', () => {
+  for (const key of ['sb_publishable_abc123', 'eyJhbGciOiJIUzI1NiJ9.payload.signature']) {
+    assert.equal(clientKeyProblem(key), null);
+    const updates = stagingPropertiesFromEnv({
+      VITE_SUPABASE_URL: 'https://example.supabase.co',
+      VITE_SUPABASE_ANON_KEY: key,
+      VITE_ATTACHMENTS_WORKER_URL: 'https://worker.example',
+    });
+    assert.equal(updates['notelikeus.supabaseAnonKey'], key);
+  }
+  assert.match(clientKeyProblem('sb_secret_x'), /secret API key/);
+  assert.match(clientKeyProblem('sb_publishable_'), /secret API key/);
+  assert.match(clientKeyProblem('plain'), /neither/);
 });
 
 test('merges without dropping oauth secret or adding allow-production', () => {
