@@ -1134,7 +1134,11 @@ keys work side by side until step 6. Times are German local time; summer time en
    Then dispatch Attachments Worker CI with the inputs of its last deploy (2026-10-21:
    `notelikeus-attachments`, bucket `notelikeus-attachments-dev`, 600 per 60 s) and approve it, so
    its `SUPABASE_ANON_KEY` secret is the new key. Check the live bundle's `client-*.js` no longer
-   holds an `eyJ…` key. Check: sign in on the web, open a note with an attachment, and in devtools
+   holds an `eyJ…` key.
+   **Before dispatching:** the run also re-uploads `SUPABASE_SERVICE_ROLE_KEY` from the GitHub
+   secret of that name, overwriting any key set with `wrangler secret put`. Make sure the GitHub
+   secret holds the Worker's `sb_secret_` key first. On 2026-10-21 it did not, and the dispatch put
+   the older key back until the owner set both again. Check: sign in on the web, open a note with an attachment, and in devtools
    the requests to `*.supabase.co` carry `apikey: sb_publishable_…`.
 4. **Ship a release.** Tag the next release (`v*`) with this change in it, and dispatch Desktop CI
    with that tag for the MSI. The AAB and MSI builds read the swapped secret, and `verifyReleaseBackendConfig` accepts it. Check on one
