@@ -16,8 +16,10 @@ test('focus moves to the next card when a card leaves the list', async ({ page }
     await page.getByRole('button', { name: 'Back' }).click();
   }
 
-  // The newest note is the first card, so the first Archive button is "First"'s.
-  const archive = page.getByRole('button', { name: 'Archive note' }).first();
+  const archive = page
+    .locator('article')
+    .filter({ has: page.getByRole('button', { name: /^First/ }) })
+    .getByRole('button', { name: 'Archive note' });
   await archive.focus();
   await page.keyboard.press('Enter');
 

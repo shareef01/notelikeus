@@ -22,8 +22,8 @@ export function toastDurationMs(message: Pick<ToastMessage, 'tone' | 'onAction'>
  *   hovering mouse.
  * - Ctrl/Cmd+Z runs a toast's Undo from anywhere outside a text field, so undoing never depends
  *   on reaching the toast at all.
- * - Both live regions are always in the document, and only their content changes: a region that
- *   mounts together with its text is not reliably announced.
+ * - Both live regions (polite, and assertive for errors) are always in the document, and only
+ *   their content changes: a region that mounts together with its text is not reliably announced.
  */
 export function ToastHost() {
   const message = useToastStore((s) => s.message);
@@ -121,7 +121,11 @@ export function ToastHost() {
       <div role="status" aria-live="polite">
         {message && message.tone !== 'error' ? toast : null}
       </div>
-      <div role="alert">{message?.tone === 'error' ? toast : null}</div>
+      {/* Assertive, without role="alert": an empty alert region on every screen would be found by
+          anything asking "is an alert showing?", such as the editor's save-failure banner checks. */}
+      <div aria-live="assertive" aria-atomic="true">
+        {message?.tone === 'error' ? toast : null}
+      </div>
     </>
   );
 }

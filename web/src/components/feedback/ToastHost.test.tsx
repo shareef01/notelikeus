@@ -40,13 +40,15 @@ describe('ToastHost', () => {
   it('keeps both live regions in the document before any toast is shown', () => {
     // A live region that mounts together with its text is not reliably announced.
     expect(container.querySelector('[role="status"][aria-live="polite"]')).not.toBeNull();
-    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    expect(container.querySelector('[aria-live="assertive"]')).not.toBeNull();
+    // Not role="alert": an idle alert region would read as an alert on every screen.
+    expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(toastText()).toBe('');
   });
 
-  it('announces errors through the alert region', () => {
+  it('announces errors through the assertive region', () => {
     show('Could not save', 'error');
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Could not save');
+    expect(container.querySelector('[aria-live="assertive"]')?.textContent).toContain('Could not save');
     expect(container.querySelector('[role="status"]')?.textContent).toBe('');
   });
 
