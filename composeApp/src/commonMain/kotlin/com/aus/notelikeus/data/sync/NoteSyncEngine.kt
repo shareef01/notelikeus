@@ -1176,12 +1176,13 @@ class NoteSyncEngine(
             // it means this download's dataset is gone, so the run stops before the attachment GC,
             // the end-of-run bookkeeping, the prune, the sync-meta write and the merged-user marker,
             // all of which would be new work for a dataset that no longer exists.
-            val resumedNoteIds = mutableListOf<Long>()
+            val resumedUploads = mutableListOf<Pair<Note, Note>>()
             val stagedReconciliation = runCatching {
-                attachmentSync?.reconcileStagedAttachments(commitToken) { note ->
-                    note.id?.let(resumedNoteIds::add)
+                attachmentSync?.reconcileStagedAttachments(commitToken) { before, after ->
+                    resumedUploads += before to after
                 }
             }.getOrNull() ?: LocalCommitResult.Applied(0)
+            val resumedNoteIds = resumedUploads.mapNotNull { (_, after) -> after.id }
             when (stagedReconciliation) {
                 is LocalCommitResult.Applied -> Unit
                 LocalCommitResult.StaleGeneration -> return@runCatching changes
@@ -1195,6 +1196,13 @@ class NoteSyncEngine(
                 LocalCommitResult.StaleGeneration -> return@runCatching changes
             }
             when (pushPendingRecommits(commitToken, remoteIdentity)) {
+                is LocalCommitResult.Applied -> Unit
+                LocalCommitResult.StaleGeneration -> return@runCatching changes
+            }
+            // A recommit the server accepted has cleared its mark, so those uploads are committed and
+            // their staged bytes are no longer the only copy. Nothing else releases them: the push
+            // above read rows that already carry `r2:` paths, and the unreferenced sweep waits an hour.
+            when (releaseCommittedResumedUploads(resumedUploads, commitToken)) {
                 is LocalCommitResult.Applied -> Unit
                 LocalCommitResult.StaleGeneration -> return@runCatching changes
             }
@@ -1594,6 +1602,26 @@ class NoteSyncEngine(
             if (result == LocalCommitResult.StaleGeneration) return LocalCommitResult.StaleGeneration
         }
         return LocalCommitResult.Applied(Unit)
+    }
+
+    /**
+     * Releases the staged bytes of the [resumedUploads] whose recommit the server accepted, which
+     * [putNotes] records by clearing the note's mark. A note still marked keeps its bytes for the next
+     * run's retry. Staged bytes are account-owned local state, so the release runs under [commitToken].
+     */
+    private suspend fun releaseCommittedResumedUploads(
+        resumedUploads: List<Pair<Note, Note>>,
+        commitToken: LocalCommitToken,
+    ): LocalCommitResult<Unit> {
+        if (resumedUploads.isEmpty()) return LocalCommitResult.Applied(Unit)
+        val stillMarked = syncStateStore.recommitNeededIds()
+        val committed = resumedUploads.filter { (_, after) -> after.id != null && after.id !in stillMarked }
+        if (committed.isEmpty()) return LocalCommitResult.Applied(Unit)
+        return commitLocally(commitToken) {
+            for ((before, after) in committed) {
+                attachmentSync?.confirmCommittedAttachments(before, after)
+            }
+        }
     }
 
     /**

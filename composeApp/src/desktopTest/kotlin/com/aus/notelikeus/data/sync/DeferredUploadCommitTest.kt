@@ -29,6 +29,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -272,6 +273,21 @@ class DeferredUploadCommitTest {
     }
 
     @Test
+    fun `a resumed upload's staged copy is released as soon as its recommit is accepted`() = runTest {
+        seedNewNoteWithStagedImage()
+
+        // One run: the push defers the upload, reconciliation resumes it, and the recommit lands.
+        engine.downloadAllNotes().getOrThrow()
+
+        assertEquals(listOf("att-imp"), committedRows.map { it.attachmentId })
+        assertTrue(stateStore.recommitNeededIds().isEmpty())
+        // The committed object is the copy now. Left to the unreferenced sweep, these bytes would
+        // stay staged for its hour's grace; seen on a Pixel 7 as a picture's size of storage held
+        // after its upload.
+        assertNull(staging.readBytes("att-imp", UID))
+    }
+
+    @Test
     fun `a recommit cut off by a dropped connection is made by the next sync, and the image is kept`() = runTest {
         seedNewNoteWithStagedImage()
         dropNextRecommit = true
@@ -301,6 +317,8 @@ class DeferredUploadCommitTest {
 
         assertEquals(listOf("att-imp"), noteDao.notes.getValue(1L).toNote().attachments.map { it.id })
         assertEquals(setOf(1L), stateStore.recommitNeededIds())
+        // Uncommitted, the upload's server row is still provisional: the staged bytes stay.
+        assertContentEquals("photo".encodeToByteArray(), staging.readBytes("att-imp", UID))
     }
 
     @Test
