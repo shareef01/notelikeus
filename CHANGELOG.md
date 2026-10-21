@@ -4,6 +4,14 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.3.1] — 2026-10-22
+
+### Fixed
+- **A picture you add on Android stays on the note.** Coming back from the photo picker started a sync, and that sync could clear away the new picture before the note had saved it, so the picture vanished a moment later. It happened when you had not opened the app for half a minute or more.
+
+### Security
+- **The web app can no longer be published with a secret server key in it.** The deploy checks the built site and stops if it finds one.
+
 ## [2.3.0] — 2026-10-21
 
 Includes the changes prepared as 2.2.1, which was never tagged or released.
