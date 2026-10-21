@@ -43,6 +43,9 @@ import {
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { useUiStore, type EditorLayout, type EditorRoute } from '@/store/uiStore';
 import { useToastStore } from '@/store/toastStore';
+import { useNotesStore } from '@/store/notesStore';
+import { saveNote } from '@/lib/notes/noteActions';
+import { showUndoToast } from '@/lib/notes/showUndoToast';
 import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
@@ -303,6 +306,15 @@ export function EditorScreen({ route }: EditorScreenProps) {
     if (result.status === 'failed') {
       useToastStore.getState().show('Could not move this note to trash', 'error');
       return;
+    }
+    // Trashing from a card offers Undo; trashing from the editor has to as well, or the same
+    // action is reversible in one place and not the other.
+    const trashed = useNotesStore.getState().notes.find((note) => note.id === state.id);
+    if (trashed) {
+      showUndoToast({
+        message: 'Note moved to trash',
+        revert: () => saveNote({ ...trashed, isTrashed: false }),
+      });
     }
     closeEditor();
   };
@@ -732,6 +744,14 @@ export function EditorScreen({ route }: EditorScreenProps) {
                     }, 0);
                   }}
                   onSelect={rememberSelection}
+                  onKeyDown={(event) => {
+                    // The toolbar's Bold and Italic, from the keyboard, as in every other editor.
+                    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+                    const marker = { b: '**', i: '_' }[event.key.toLowerCase()];
+                    if (!marker) return;
+                    event.preventDefault();
+                    applyFormatting((text, start, end) => wrapSelection(text, start, end, marker));
+                  }}
                   onKeyUp={rememberSelection}
                   onMouseUp={rememberSelection}
                   onChange={(event) => {

@@ -1,10 +1,11 @@
 import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
 import { ResponsiveSheet } from '@/components/layout/ResponsiveSheet';
 import { TrashIcon, AddIcon, ShareIcon, DownloadIcon } from '@/components/icons/Icons';
-import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { ConfirmDialog } from '@/components/ui/ModalDialog';
+import { CHROME_FOCUS, INPUT_FOCUS } from '@/lib/ui/focusStyles';
 import { reminderPresets } from '@/lib/reminders/reminderTime';
 import type { Label } from '@/types/label';
-import { useState, useId } from 'react';
+import { useState } from 'react';
 
 function formatReminderInputValue(timestamp: number | null): string {
   if (timestamp == null) return '';
@@ -55,8 +56,6 @@ export function EditorOptionsSheet({
 }: EditorOptionsSheetProps) {
   const [newLabel, setNewLabel] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const confirmDeleteTitleId = useId();
-  const confirmDeletePanelRef = useFocusTrap<HTMLDivElement>(confirmDelete, () => setConfirmDelete(false));
 
   if (!open) return null;
 
@@ -106,28 +105,33 @@ export function EditorOptionsSheet({
               );
             })}
           </ul>
-          <div className="mt-2 flex gap-2">
+          {/* A form, so Enter in the field adds the label as the button does. */}
+          <form
+            className="mt-2 flex gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!newLabel.trim()) return;
+              onCreateLabel(newLabel);
+              setNewLabel('');
+            }}
+          >
             <input
               type="text"
               value={newLabel}
               onChange={(event) => setNewLabel(event.target.value)}
               placeholder="New label"
               aria-label="New label name"
-              className="min-w-0 flex-1 rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
+              className={`min-w-0 flex-1 rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm ${INPUT_FOCUS}`}
             />
             <button
-              type="button"
+              type="submit"
               disabled={!newLabel.trim()}
-              onClick={() => {
-                onCreateLabel(newLabel);
-                setNewLabel('');
-              }}
-              className="flex items-center gap-1 rounded-note bg-brand-primary px-4 py-2 text-sm font-bold text-true-surface disabled:opacity-40"
+              className={`flex items-center gap-1 rounded-note bg-brand-primary px-4 py-2 text-sm font-bold text-true-surface disabled:opacity-40 ${CHROME_FOCUS}`}
             >
               <AddIcon size={18} />
               Add
             </button>
-          </div>
+          </form>
         </section>
 
         <section className="mt-4 border-t border-brand-outline/60 px-4 py-4">
@@ -159,7 +163,7 @@ export function EditorOptionsSheet({
             value={formatReminderInputValue(reminderTimestamp)}
             onChange={(event) => handleReminderInput(event.target.value)}
             aria-label="Reminder date and time"
-            className="tap-target tap-target-y mt-4 w-full rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm outline-none focus:border-brand-primary/40"
+            className={`tap-target tap-target-y mt-4 w-full rounded-note border border-brand-outline bg-true-surface-variant px-3 py-2 text-sm ${INPUT_FOCUS}`}
           />
           {reminderTimestamp != null ? (
             <button
@@ -208,44 +212,18 @@ export function EditorOptionsSheet({
         <div className="h-8" />
       </ResponsiveSheet>
 
-      {confirmDelete ? (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 animate-in fade-in duration-200 sm:items-center sm:p-6">
-          <div
-            ref={confirmDeletePanelRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={confirmDeleteTitleId}
-            className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl animate-in zoom-in-95 duration-200"
-          >
-            <h2 id={confirmDeleteTitleId} className="text-lg font-semibold">
-              Delete note?
-            </h2>
-            <p className="mt-2 text-sm text-brand-muted">
-              This note will be moved to trash on your synced devices.
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(false)}
-                className="rounded-note px-4 py-2 text-sm text-brand-muted transition-colors hover:text-brand-primary"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmDelete(false);
-                  onDeleteNote();
-                  onClose();
-                }}
-                className="rounded-note bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete note?"
+        description="This note will be moved to trash on your synced devices."
+        confirmLabel="Delete"
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          setConfirmDelete(false);
+          onDeleteNote();
+          onClose();
+        }}
+      />
     </>
   );
 }

@@ -92,7 +92,7 @@ export function ChecklistEditor({
           <button
             type="button"
             onClick={() => onRemove(item.id)}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full opacity-60 transition-[opacity,background-color] hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] hover:opacity-100"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full opacity-60 transition-[opacity,background-color] hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
             style={{ color: contentColor }}
             aria-label={item.text.trim() ? `Remove ${item.text.trim()}` : 'Remove empty item'}
           >
@@ -104,7 +104,7 @@ export function ChecklistEditor({
       <button
         type="button"
         onClick={onAdd}
-        className="mt-2 flex items-center gap-2 rounded-note px-2 py-2 text-base font-medium opacity-90 transition-opacity hover:opacity-100"
+        className="mt-2 flex items-center gap-2 rounded-note px-2 py-2 text-base font-medium opacity-90 transition-opacity hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
         style={{ color: contentColor }}
       >
         <span className="text-xl leading-none">+</span>
@@ -115,7 +115,7 @@ export function ChecklistEditor({
         <button
           type="button"
           onClick={onConvertToText}
-          className="mt-1 px-2 py-2 text-sm font-medium opacity-75 transition-opacity hover:opacity-100"
+          className="mt-1 rounded-note px-2 py-2 text-sm font-medium opacity-75 transition-opacity hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
           style={{ color: contentColor }}
         >
           Convert to text

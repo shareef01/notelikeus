@@ -94,3 +94,42 @@ test('a guest note survives a reload, even though the session does not', async (
   // The data is not.
   await expect(page.getByText('Persistence check').first()).toBeVisible({ timeout: 20_000 });
 });
+
+// The toolbar used to act on pointerdown alone, so Enter and Space on a focused button — and a
+// screen reader's activation, which is a click — did nothing. Measured on main: Bold focused,
+// Enter pressed, body unchanged.
+test('the formatting toolbar works from the keyboard', async ({ page }) => {
+  const { body } = await openEditor(page);
+  const toolbar = page.getByRole('toolbar', { name: 'Text formatting' });
+  await body.click();
+  await body.fill('alpha beta');
+  // The body re-applies the caret a frame after each input; let that land before selecting.
+  await page.waitForTimeout(300);
+  await body.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(6, 10));
+
+  const bold = toolbar.getByRole('button', { name: 'Bold' });
+  await bold.focus();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => bodyValue(page)).toBe('alpha **beta**');
+
+  // Formatting hands the caret back to the body, so typing carries on where it was.
+  await expect(body).toBeFocused();
+
+  await toolbar.getByRole('button', { name: 'Italic' }).focus();
+  await page.keyboard.press('Space');
+  await expect.poll(() => bodyValue(page)).toBe('alpha **_beta_**');
+});
+
+test('Ctrl+B and Ctrl+I format the selection in the body', async ({ page }) => {
+  const { body } = await openEditor(page);
+  await body.click();
+  await body.fill('one two');
+  await page.waitForTimeout(300);
+  await body.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(0, 3));
+  await page.keyboard.press('Control+b');
+  await expect.poll(() => bodyValue(page)).toBe('**one** two');
+  await page.waitForTimeout(300);
+  await body.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(field.value.length - 3, field.value.length));
+  await page.keyboard.press('Control+i');
+  await expect.poll(() => bodyValue(page)).toBe('**one** _two_');
+});

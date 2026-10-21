@@ -9,7 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
@@ -30,6 +30,8 @@ fun RichTextToolbar(
     onAddImageClick: (() -> Unit)? = null,
     contentColor: Color,
     surfaceColor: Color = MaterialTheme.colorScheme.surfaceVariant,
+    /** The note body. Bold, Italic and List hand focus back to it, so typing carries on. */
+    returnFocusTo: FocusRequester? = null,
     modifier: Modifier = Modifier
 ) {
     // The surface is used exactly as given. It used to be `surfaceColor.copy(alpha = 0.95f)`,
@@ -41,6 +43,12 @@ fun RichTextToolbar(
     // rendering as a mid-grey slab: measured 189 on white, where the tint alone is about 239.
     // That is the same "panel floating over the note" the wash exists to avoid, arriving by a
     // different route than the alpha did.
+    //
+    // The buttons are in the focus order. They were taken out of it (`canFocus = false`), which
+    // left a keyboard user no way to reach Link, List, Checklist or Image at all. That had been
+    // done because on desktop a mouse click focuses the button and takes the caret out of the
+    // body; the edits that stay in the body now return focus to it instead
+    // (RichTextToolbarKeyboardTest). The selection is held in state, so it survives the round trip.
     val isTranslucent = surfaceColor.alpha < 1f
     Surface(
         modifier = modifier,
@@ -58,45 +66,27 @@ fun RichTextToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
-            IconButton(
-                onClick = onBoldClick,
-                modifier = Modifier.focusProperties { canFocus = false },
-            ) {
+            IconButton(onClick = { onBoldClick(); returnFocusTo?.requestFocus() }) {
                 Icon(Icons.Default.FormatBold, contentDescription = stringResource(Res.string.format_bold), tint = contentColor)
             }
-            IconButton(
-                onClick = onItalicClick,
-                modifier = Modifier.focusProperties { canFocus = false },
-            ) {
+            IconButton(onClick = { onItalicClick(); returnFocusTo?.requestFocus() }) {
                 Icon(Icons.Default.FormatItalic, contentDescription = stringResource(Res.string.format_italic), tint = contentColor)
             }
-            IconButton(
-                onClick = onLinkClick,
-                modifier = Modifier.focusProperties { canFocus = false },
-            ) {
+            IconButton(onClick = onLinkClick) {
                 Icon(Icons.Default.Link, contentDescription = stringResource(Res.string.format_link), tint = contentColor)
             }
             VerticalDivider(
                 modifier = Modifier.height(Size.iconLarge).padding(horizontal = Spacing.xs),
                 color = contentColor.copy(alpha = NoteEmphasis.Decorative)
             )
-            IconButton(
-                onClick = onListClick,
-                modifier = Modifier.focusProperties { canFocus = false },
-            ) {
+            IconButton(onClick = { onListClick(); returnFocusTo?.requestFocus() }) {
                 Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = stringResource(Res.string.format_list), tint = contentColor)
             }
-            IconButton(
-                onClick = onChecklistClick,
-                modifier = Modifier.focusProperties { canFocus = false },
-            ) {
+            IconButton(onClick = onChecklistClick) {
                 Icon(Icons.Default.Checklist, contentDescription = stringResource(Res.string.format_checklist), tint = contentColor)
             }
             if (onAddImageClick != null) {
-                IconButton(
-                    onClick = onAddImageClick,
-                    modifier = Modifier.focusProperties { canFocus = false },
-                ) {
+                IconButton(onClick = onAddImageClick) {
                     Icon(Icons.Default.Image, contentDescription = stringResource(Res.string.format_image), tint = contentColor)
                 }
             }

@@ -21,7 +21,7 @@ import type { Note } from '@/types/note';
 import { noteSurfaceStyle } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
 import { argbToCssAlpha } from '@/theme/colors';
-import { useId, memo, type PointerEventHandler, type ReactNode } from 'react';
+import { useId, memo, type KeyboardEventHandler, type PointerEventHandler, type ReactNode } from 'react';
 import { NoteCardThumbnail } from '@/components/notes/NoteCardThumbnail';
 
 export interface NoteReorderHandleProps {
@@ -29,6 +29,8 @@ export interface NoteReorderHandleProps {
   onPointerMove: PointerEventHandler<HTMLButtonElement>;
   onPointerUp: PointerEventHandler<HTMLButtonElement>;
   onPointerCancel: PointerEventHandler<HTMLButtonElement>;
+  /** Arrow Up / Down move the note one place: the handle's route for keyboard users. */
+  onKeyDown: KeyboardEventHandler<HTMLButtonElement>;
 }
 
 export type NoteCardDensity = 'list' | 'grid' | 'dense';
@@ -237,6 +239,7 @@ function NoteCardImpl({
       <button
         type="button"
         className="absolute inset-0 z-0 cursor-pointer rounded-note focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+        data-note-open=""
         onClick={handleClick}
         aria-pressed={isSelected || undefined}
         aria-label={openLabel}
@@ -277,6 +280,8 @@ function NoteCardImpl({
         <button
           type="button"
           aria-label="Reorder note"
+          aria-description="Drag, or press the up and down arrow keys, to move this note"
+          title="Drag or use the arrow keys to reorder"
           className={`absolute left-0 top-1/2 z-10 flex -translate-y-1/2 cursor-grab touch-none items-center justify-center text-brand-muted/40 pointer-events-auto active:cursor-grabbing focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
             isList ? 'size-8' : 'size-10'
           }`}
@@ -413,7 +418,7 @@ function NoteCardImpl({
       )}
       </div>
 
-      {/* Desktop hover/focus quick actions (UX-05) */}
+      {/* Desktop hover/focus quick actions (UX-05). 32px each: the design system's pointer minimum (§5). */}
       {!isSelected && (onPinToggle || onArchive || onRestore || onTrash) ? (
         <div
           className="absolute right-2 bottom-2 z-10 hidden sm:flex items-center gap-0.5 rounded-full bg-true-surface/90 backdrop-blur-sm border border-brand-outline/30 p-0.5 shadow-sm opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-auto"
@@ -429,9 +434,9 @@ function NoteCardImpl({
               }}
               aria-label={note.isPinned ? 'Unpin note' : 'Pin note'}
               title={note.isPinned ? 'Unpin note' : 'Pin note'}
-              className={`flex size-6 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+              className={`flex size-8 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
             >
-              {note.isPinned ? <PinOffIcon size={14} /> : <PinIcon size={14} />}
+              {note.isPinned ? <PinOffIcon size={16} /> : <PinIcon size={16} />}
             </button>
           ) : null}
           {onArchive ? (
@@ -443,9 +448,9 @@ function NoteCardImpl({
               }}
               aria-label="Archive note"
               title="Archive note"
-              className={`flex size-6 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+              className={`flex size-8 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
             >
-              <ArchiveIcon size={14} />
+              <ArchiveIcon size={16} />
             </button>
           ) : null}
           {onRestore ? (
@@ -457,9 +462,9 @@ function NoteCardImpl({
               }}
               aria-label="Restore note"
               title="Restore note"
-              className={`flex size-6 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+              className={`flex size-8 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
             >
-              <NotesIcon size={14} />
+              <NotesIcon size={16} />
             </button>
           ) : null}
           {onTrash ? (
@@ -471,9 +476,9 @@ function NoteCardImpl({
               }}
               aria-label={isPermanentDelete ? 'Delete permanently' : 'Delete note'}
               title={isPermanentDelete ? 'Delete permanently' : 'Delete note'}
-              className={`flex size-6 items-center justify-center rounded-full text-brand-muted hover:text-red-500 hover:bg-red-500/10 transition-colors ${CHROME_FOCUS}`}
+              className={`flex size-8 items-center justify-center rounded-full text-brand-muted hover:text-red-500 hover:bg-red-500/10 transition-colors ${CHROME_FOCUS}`}
             >
-              <TrashIcon size={14} />
+              <TrashIcon size={16} />
             </button>
           ) : null}
         </div>
