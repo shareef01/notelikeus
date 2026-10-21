@@ -21,7 +21,8 @@
     "test:attachments-worker": "npm --prefix workers/attachments test",
     "test:attachments-worker-deploy": "node --test scripts/ops/attachments-worker-deploy.test.mjs",
     "check:unreferenced-kotlin": "node scripts/ops/unreferenced-kotlin.mjs",
-    "pages:verify": "node scripts/ops/verify-pages.mjs"
+    "pages:verify": "node scripts/ops/verify-pages.mjs",
+    "test:pages-bundle-secrets": "node --test web/scripts/bundleSecrets.test.mjs"
   },
   "devDependencies": {
     "supabase": "^2.120.0"

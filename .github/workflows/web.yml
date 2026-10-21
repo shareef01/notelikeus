@@ -61,6 +61,10 @@ jobs:
         working-directory: .
         run: node web/scripts/verifyPagesArtifacts.mjs
 
+      - name: Test the bundle secret scan
+        working-directory: .
+        run: node --test web/scripts/bundleSecrets.test.mjs
+
       - name: Verify security headers
         working-directory: .
         run: node cloudflare/scripts/verify-headers-parity.mjs
