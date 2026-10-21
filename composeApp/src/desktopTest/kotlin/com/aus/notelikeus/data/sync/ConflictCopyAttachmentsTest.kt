@@ -59,6 +59,9 @@ class ConflictCopyAttachmentsTest {
         staging = FileAttachmentStagingStore(
             root = File(tempDir, "staging").absolutePath.toPath(),
             ioDispatcher = Dispatchers.Unconfined,
+            // Staged two hours ago: the offline edit these tests seed is long past, and
+            // reconciliation only releases unclaimed bytes once they are older than its grace period.
+            now = { System.currentTimeMillis() - 2 * 60 * 60 * 1000L },
         )
         attachments = AttachmentSyncService(
             blobTransport = NoopAttachmentBlobTransport(),

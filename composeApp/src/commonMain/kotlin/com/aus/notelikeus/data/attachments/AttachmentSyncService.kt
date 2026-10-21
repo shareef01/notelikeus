@@ -16,6 +16,7 @@ import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.LocalCommitResult
 import com.aus.notelikeus.domain.repository.LocalCommitToken
 import com.aus.notelikeus.util.AppLog
+import com.aus.notelikeus.util.DateUtils
 
 class AttachmentSyncService(
     private val blobTransport: AttachmentBlobTransport,
@@ -912,9 +913,15 @@ class AttachmentSyncService(
      * references any more.
      *
      * Staged bytes are only released when no note claims them: ageing them out would delete the
-     * only copy of an image belonging to a note the user can still see. Bytes referenced by a note
-     * whose staging is gone (older builds staged in memory) are reported through [onMissingBytes]
-     * so the caller can surface a recoverable broken attachment instead of silently erasing it.
+     * only copy of an image belonging to a note the user can still see. Nor are they released while
+     * they are younger than [FRESH_STAGING_GRACE_MS]: the editor stages a picked image first and
+     * writes the note that references it a second later, and returning from the photo picker
+     * resumes the app, which starts a download and with it this reconciliation. Released in that
+     * gap, the new picture lost its only copy and the next push dropped it from the note.
+     *
+     * Bytes referenced by a note whose staging is gone (older builds staged in memory) are reported
+     * through [onMissingBytes] so the caller can surface a recoverable broken attachment instead of
+     * silently erasing it.
      *
      * Each note whose row now carries an upload made here is reported through [onResumed], and the
      * caller must push that note again. The upload's server row is provisional until a note commit
@@ -974,8 +981,7 @@ class AttachmentSyncService(
         // attachment removed while the release did not land. The listing suspends and the release is
         // destructive local state, so the read is taken first, the token decides, and only then are
         // the deletions committed under it.
-        val staged = staging.list(owner)
-        val unreferenced = staged.filterNot { it.attachmentId in referenced }
+        val unreferenced = releasableUnreferenced(staging.list(owner), referenced)
         if (validateGeneration(commitToken) is LocalCommitResult.StaleGeneration) {
             return LocalCommitResult.StaleGeneration
         }
@@ -997,6 +1003,19 @@ class AttachmentSyncService(
             is LocalCommitResult.Applied -> LocalCommitResult.Applied(resumed)
             LocalCommitResult.StaleGeneration -> LocalCommitResult.StaleGeneration
         }
+    }
+
+    /**
+     * The staged entries [reconcileStagedAttachments] may release: claimed by no note, and older
+     * than [FRESH_STAGING_GRACE_MS], since fresh bytes may belong to a note whose save has not
+     * landed yet.
+     */
+    private fun releasableUnreferenced(
+        staged: List<StagedAttachment>,
+        referenced: Set<String>,
+    ): List<StagedAttachment> {
+        val releasableBefore = DateUtils.currentTimeMillis() - FRESH_STAGING_GRACE_MS
+        return staged.filter { it.attachmentId !in referenced && it.createdAt <= releasableBefore }
     }
 
     /**
@@ -1064,5 +1083,8 @@ class AttachmentSyncService(
     private companion object {
         const val TAG = "AttachmentSync"
         const val HTTP_FORBIDDEN = 403
+
+        /** How long unreferenced staged bytes are kept before reconciliation may release them. */
+        const val FRESH_STAGING_GRACE_MS = 60 * 60 * 1000L
     }
 }
