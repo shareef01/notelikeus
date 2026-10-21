@@ -4,9 +4,21 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
-## [2.2.1] — 2026-10-18
+## [2.3.0] — 2026-10-21
+
+Includes the changes prepared as 2.2.1, which was never tagged or released.
+
+### Added
+- **The formatting toolbar works from the keyboard** on every device. On the web, Bold, Italic, List and Link used to respond to the mouse only, so Enter, Space and screen readers did nothing. On Android and Windows the buttons were out of the Tab order. Ctrl/⌘+B and Ctrl/⌘+I now format the note text everywhere.
+- **The Undo toast stays while you need it.** It pauses while the pointer is on it or it has focus, lasts 8 seconds (error messages 7), and has a Dismiss button. On the web, Ctrl/⌘+Z undoes. On Android and Windows the Undo bar stays up longer.
+- **Notes can be reordered with the arrow keys** using a card's drag handle.
 
 ### Changed
+- **The note list stays fast with hundreds of notes** on the web. With 500 notes on a slow device, a search keystroke used to take 1.7 seconds to show and ticking a checkbox almost a second.
+- **Deleting a note from the editor** asks in the same dialog as everywhere else, and offers Undo.
+- **Enter submits** the link dialog and the new-label field.
+- **When a card leaves the list** (archived, deleted, moved), focus moves to the next card instead of the top of the page. Focus rings on fields and buttons are clearer, and a card's quick-action buttons are larger.
+- **Ready for Supabase's new API keys.** The apps accept the new publishable key as well as the old one. Once enough installs have this version, the project's old keys can be switched off (D31).
 - **The editor's save status uses the same words on every device**: "Saved on this device", "Synced", "Waiting to sync", "Offline — changes saved here" and "Couldn't sync — saved on this device". Android and Windows used to say "Saved locally" and "Local save failed".
 - **One tagline everywhere: "Capture what matters."** The Android and Windows drawer used to show just "Capture".
 - **Settings no longer shows a "Premium Subscription — Coming soon" row** on Android and Windows. It did nothing.
@@ -19,6 +31,12 @@ All notable changes to Notelikeus are documented here.
 - **The sidebar's Collapse arrow points the way the sidebar moves**, and **the reminder time picker uses the app's colours** instead of pink, on Android and Windows.
 - **On the web, note text stays at the top of the editor** when you click away from it, and the search box shows one clear button instead of two.
 - **Screen readers hear "Select Groceries"** for a note card's selection checkbox, rather than just the note's title, and which note colour is selected.
+- **Bold and Italic format the selected text** on Android and Windows when you reach them with Shift+Tab or click them with the mouse. Moving focus to the toolbar used to drop the selection, so the formatting landed on an empty spot.
+- **Error messages are announced to screen readers** without leaving an empty alert on the page, and the sync banner announces changes reliably.
+
+### Security
+- **The Windows security check before a sign-in email can't be spoiled by a stray request.** A request to the app's local listener that doesn't carry the right code is turned away, and the check keeps waiting. Before, any such request failed the check.
+- **On the web, links with a URL in the query string open the app offline** instead of going to the network.
 
 ## [2.2.0] — 2026-10-17
 
