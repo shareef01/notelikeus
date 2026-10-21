@@ -6,7 +6,8 @@ name: Supabase Auth Config
 # code requests (Cloudflare Turnstile, D30) and raises the hourly email limit to the
 # `email_limit_per_hour` input. It is opt-in on every run: CAPTCHA on refuses code requests from any
 # installed Android or desktop build older than D30, so a routine rerun must not switch it on.
-# Unticked, the run leaves the hosted CAPTCHA setting as it is.
+# Unticked, the run leaves both the hosted CAPTCHA setting and the hourly email limit as they are:
+# CAPTCHA has been on since 2026-10-21, and an unticked rerun used to cut the limit back to 30.
 #
 # `supabase config push` is not used: it pushes the whole [auth] section of config.toml, and that
 # file describes the *local* stack (site_url 127.0.0.1, the Google provider off), which would
@@ -25,7 +26,7 @@ on:
         default: false
         type: boolean
       email_limit_per_hour:
-        description: 'Hourly auth email limit when enable_captcha is ticked (keep within the SMTP plan). Otherwise it stays 30.'
+        description: 'Hourly auth email limit when enable_captcha is ticked (keep within the SMTP plan). Unticked, the hosted limit is left as it is.'
         required: false
         default: '100'
         type: string
@@ -143,10 +144,9 @@ jobs:
                 smtp_user: $user,
                 smtp_pass: $pass,
                 smtp_admin_email: $sender,
-                smtp_sender_name: "Notelikeus",
-                rate_limit_email_sent: 30
+                smtp_sender_name: "Notelikeus"
               }' patch.json > patch.tmp && mv patch.tmp patch.json
-            echo "SMTP secrets found: the sender and a 30/hour email limit are included."
+            echo "SMTP secrets found: the sender is included."
             if [ "$ENABLE_CAPTCHA" = "true" ]; then
               jq \
                 --arg secret "$TURNSTILE_SECRET_KEY" \
@@ -159,7 +159,7 @@ jobs:
                 }' patch.json > patch.tmp && mv patch.tmp patch.json
               echo "enable_captcha: CAPTCHA on, email limit ${EMAIL_LIMIT_PER_HOUR:-100}/hour."
             else
-              echo "::notice::enable_captcha not ticked: CAPTCHA setting left as it is, email limit back to 30/hour."
+              echo "::notice::enable_captcha not ticked: the CAPTCHA setting and the email limit are left as they are."
             fi
           else
             echo "::notice::SMTP_* secrets not set: only the code email templates are applied."
