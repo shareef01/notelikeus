@@ -102,7 +102,9 @@ fun MainScreen(
         val result = snackbarHostState.showSnackbar(
             message = message,
             actionLabel = undoLabel,
-            duration = SnackbarDuration.Short
+            // Long, not Short: Undo is the only way back from a permanent delete or an emptied
+            // trash, and four seconds is not enough to reach it by keyboard (WCAG 2.2.1).
+            duration = SnackbarDuration.Long
         )
         if (result == SnackbarResult.ActionPerformed) {
             viewModel.undoLastAction()

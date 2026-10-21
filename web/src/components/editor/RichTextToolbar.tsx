@@ -1,5 +1,5 @@
 import { BoldIcon, BulletListIcon, ChecklistIcon, ImageIcon, ItalicIcon, LinkIcon } from '@/components/icons/Icons';
-import type { PointerEventHandler, ReactNode } from 'react';
+import type { ReactNode, SyntheticEvent } from 'react';
 
 interface RichTextToolbarProps {
   contentColor: string;
@@ -23,23 +23,24 @@ export function RichTextToolbar({
   const buttonClass =
     'flex size-9 items-center justify-center rounded-full transition-colors hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)] active:bg-[color-mix(in_srgb,currentColor_18%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current';
 
-  // Run on pointerdown with preventDefault so mobile taps do not blur the textarea
-  // before formatting runs — and so marker-only content (e.g. ****) does not flip the
-  // editor into markdown preview, where an empty bold span is invisible.
-  const onFormatPointerDown =
-    (action: () => void): PointerEventHandler<HTMLButtonElement> =>
-    (event) => {
-      event.preventDefault();
-      action();
-    };
+  // The action runs on click, which a mouse, a tap, Enter, Space and a screen reader all fire.
+  // It used to run on pointerdown alone, which made every button here dead to the keyboard.
+  // Pointerdown and mousedown are still cancelled so a click or a tap does not take focus from the
+  // note body, which keeps the caret and the selection where they were, and keeps marker-only
+  // content (e.g. ****) from flipping the editor into markdown preview, where an empty bold span
+  // is invisible.
+  const keepBodyFocus = (event: SyntheticEvent) => event.preventDefault();
 
-  const formatButton = (label: string, icon: ReactNode, action: () => void) => (
+  const formatButton = (label: string, icon: ReactNode, action: () => void, shortcut?: string) => (
     <button
       type="button"
       className={buttonClass}
-      onPointerDown={onFormatPointerDown(action)}
+      onPointerDown={keepBodyFocus}
+      onMouseDown={keepBodyFocus}
+      onClick={action}
       aria-label={label}
-      title={label}
+      aria-keyshortcuts={shortcut}
+      title={shortcut ? `${label} (${shortcut.replace('Control', 'Ctrl')})` : label}
     >
       {icon}
     </button>
@@ -52,8 +53,8 @@ export function RichTextToolbar({
       role="toolbar"
       aria-label="Text formatting"
     >
-      {formatButton('Bold', <BoldIcon size={18} />, onBold)}
-      {formatButton('Italic', <ItalicIcon size={18} />, onItalic)}
+      {formatButton('Bold', <BoldIcon size={18} />, onBold, 'Control+B')}
+      {formatButton('Italic', <ItalicIcon size={18} />, onItalic, 'Control+I')}
       {formatButton('Link', <LinkIcon size={18} />, onLink)}
       <span className="mx-1 h-4 w-px shrink-0 bg-current opacity-20" aria-hidden />
       {formatButton('Bullet list', <BulletListIcon size={18} />, onBullet)}

@@ -263,6 +263,7 @@ describe('NoteCard', () => {
             onPointerMove: vi.fn(),
             onPointerUp: vi.fn(),
             onPointerCancel: vi.fn(),
+            onKeyDown: vi.fn(),
           },
         }),
       ];

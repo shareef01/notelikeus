@@ -48,6 +48,8 @@ describe('SyncStatusBanner', () => {
   it('shows nothing when online and everything has reached the cloud', () => {
     const { container, unmount } = render();
     expect(container.textContent).toBe('');
+    // The live region is already there, so the message is announced when it arrives.
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
     unmount();
   });
 

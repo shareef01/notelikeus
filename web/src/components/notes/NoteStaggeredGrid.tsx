@@ -5,7 +5,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { getDateHeader } from '@/lib/text/dateTime';
 import type { ViewColumns } from '@/store/uiStore';
 import type { Note, NoteFilter } from '@/types/note';
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 interface NoteListActions {
   onArchive: (note: Note) => void;
@@ -132,6 +132,29 @@ export function NoteStaggeredGrid({
   const [draggingIndex, setDraggingIndex] = useState(-1);
   const dragOffsetRef = useRef(0);
 
+  // A card that leaves the list — archived, trashed, restored or deleted from its quick actions —
+  // took keyboard focus with it, and focus fell to <body>: a keyboard user started again from the
+  // top of the page (WCAG 2.4.3). Focus moves to the card that now holds its place instead.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const refocusIndexRef = useRef<number | null>(null);
+  const leavingList = (note: Note, action: () => void) => () => {
+    if (gridRef.current?.contains(document.activeElement)) {
+      refocusIndexRef.current = notes.findIndex((entry) => entry.id === note.id);
+    }
+    action();
+  };
+
+  useEffect(() => {
+    const index = refocusIndexRef.current;
+    const grid = gridRef.current;
+    if (index == null || index < 0 || !grid) return;
+    refocusIndexRef.current = null;
+    // The action failed and the card is still here, holding focus: leave it there.
+    if (grid.contains(document.activeElement)) return;
+    const cards = grid.querySelectorAll<HTMLElement>('[data-note-open]');
+    cards[Math.min(index, cards.length - 1)]?.focus();
+  }, [notes]);
+
   const cardProps = (note: Note) => ({
     note,
     density,
@@ -144,17 +167,17 @@ export function NoteStaggeredGrid({
     onPinToggle: !selectionMode && listActions?.onPinToggle ? () => listActions.onPinToggle!(note) : undefined,
     onArchive:
       !selectionMode && listActions?.onArchive && filter === 'active'
-        ? () => listActions.onArchive(note)
+        ? leavingList(note, () => listActions.onArchive(note))
         : undefined,
     onRestore:
       !selectionMode && listActions?.onRestore && (filter === 'archived' || filter === 'trashed')
-        ? () => listActions.onRestore(note)
+        ? leavingList(note, () => listActions.onRestore(note))
         : undefined,
     onTrash:
       !selectionMode && listActions?.onTrash && (filter === 'active' || filter === 'archived')
-        ? () => listActions.onTrash(note)
+        ? leavingList(note, () => listActions.onTrash(note))
         : !selectionMode && listActions?.onPermanentDelete && filter === 'trashed'
-          ? () => listActions.onPermanentDelete(note)
+          ? leavingList(note, () => listActions.onPermanentDelete(note))
           : undefined,
     isPermanentDelete: filter === 'trashed',
   });
@@ -246,6 +269,7 @@ export function NoteStaggeredGrid({
 
   return (
     <div
+      ref={gridRef}
       className={`w-full px-shell pb-24 pt-2 ${
         isList
           ? `mx-auto grid max-w-content grid-cols-1 ${gapClass}`
@@ -283,6 +307,12 @@ export function NoteStaggeredGrid({
               onDragStart={handleDragStart}
               onDragMove={handleDragMove}
               onDragEnd={handleDragEnd}
+              onKeyboardMove={(delta) => {
+                const target = index + delta;
+                if (!onMoveNote || target < 0 || target >= notes.length) return;
+                onMoveNote(index, target);
+                onReorderComplete?.();
+              }}
               render={(reorderHandleProps) => renderCard(note, reorderHandleProps)}
             />
           );
@@ -313,6 +343,7 @@ function ReorderRow({
   onDragStart,
   onDragMove,
   onDragEnd,
+  onKeyboardMove,
   render,
 }: {
   index: number;
@@ -320,6 +351,7 @@ function ReorderRow({
   onDragStart: (index: number) => void;
   onDragMove: (deltaY: number) => void;
   onDragEnd: () => void;
+  onKeyboardMove: (delta: -1 | 1) => void;
   render: (reorderHandleProps: NoteReorderHandleProps) => ReactNode;
 }) {
   const reorderHandleProps: NoteReorderHandleProps = {
@@ -333,6 +365,12 @@ function ReorderRow({
     },
     onPointerUp: onDragEnd,
     onPointerCancel: onDragEnd,
+    // WCAG 2.1.1 / 2.5.7: dragging was the only way to reorder.
+    onKeyDown: (event) => {
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+      event.preventDefault();
+      onKeyboardMove(event.key === 'ArrowUp' ? -1 : 1);
+    },
   };
 
   return (

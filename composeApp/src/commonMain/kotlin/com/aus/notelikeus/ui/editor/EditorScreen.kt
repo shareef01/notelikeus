@@ -497,6 +497,7 @@ fun EditorScreen(
                             // A wash of the note's own content colour, so the toolbar reads as
                             // part of the note rather than a panel floating over it.
                             surfaceColor = contentColor.copy(alpha = NoteEmphasis.Wash),
+                            returnFocusTo = bodyFocusRequester,
                             modifier = Modifier
                                 .padding(bottom = Spacing.md)
                                 .align(Alignment.Start)
@@ -519,7 +520,11 @@ fun EditorScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = EditorBodyMinHeight)
-                                .focusRequester(bodyFocusRequester),
+                                .focusRequester(bodyFocusRequester)
+                                .formattingShortcuts(
+                                    onBold = { viewModel.applyBoldToSelection() },
+                                    onItalic = { viewModel.applyItalicToSelection() },
+                                ),
                             textStyle = AppType.editorBody.copy(color = contentColor),
                             cursorBrush = SolidColor(contentColor),
                             decorationBox = { innerTextField ->

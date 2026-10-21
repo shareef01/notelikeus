@@ -2,14 +2,12 @@ import type { ReactNode } from 'react';
 import { useId } from 'react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 
 /** Shared button styling for dialog footers. */
-export const dialogCancelButtonClass =
-  'rounded-note px-4 py-2 text-sm text-brand-muted transition-colors hover:text-brand-primary';
-export const dialogDangerButtonClass =
-  'rounded-note bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-40 disabled:hover:bg-red-600';
-export const dialogPrimaryButtonClass =
-  'rounded-note bg-brand-primary px-4 py-2 text-sm font-semibold text-true-surface transition-transform active:scale-95';
+export const dialogCancelButtonClass = `rounded-note px-4 py-2 text-sm text-brand-muted transition-colors hover:text-brand-primary ${CHROME_FOCUS}`;
+export const dialogDangerButtonClass = `rounded-note bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-40 disabled:hover:bg-red-600 ${CHROME_FOCUS}`;
+export const dialogPrimaryButtonClass = `rounded-note bg-brand-primary px-4 py-2 text-sm font-semibold text-true-surface transition-transform active:scale-95 disabled:opacity-40 ${CHROME_FOCUS}`;
 
 interface ModalDialogProps {
   open: boolean;

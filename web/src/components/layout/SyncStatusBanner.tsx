@@ -34,19 +34,23 @@ export function SyncStatusBanner() {
     retry = true;
   }
 
-  if (!message) return null;
-
+  // The region stays mounted and only its content changes: a live region that mounts together
+  // with its text is not reliably announced, and going offline is exactly what has to be heard.
   return (
-    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-amber-700/30 bg-amber-500/10 px-shell py-2 text-center text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
-      <p role="status">{message}</p>
-      {retry ? (
-        <button
-          type="button"
-          onClick={() => void retryNotesLoad()}
-          className="inline-flex min-h-10 items-center rounded-full px-3 font-semibold underline underline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
-        >
-          Retry
-        </button>
+    <div role="status">
+      {message ? (
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-amber-700/30 bg-amber-500/10 px-shell py-2 text-center text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+          <p>{message}</p>
+          {retry ? (
+            <button
+              type="button"
+              onClick={() => void retryNotesLoad()}
+              className="inline-flex min-h-10 items-center rounded-full px-3 font-semibold underline underline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
+            >
+              Retry
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
