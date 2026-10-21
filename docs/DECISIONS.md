@@ -1128,10 +1128,13 @@ keys work side by side until step 6. Times are German local time; summer time en
    `VITE_SUPABASE_ANON_KEY` to the `sb_publishable_…` value, and `STAGING_VITE_SUPABASE_ANON_KEY` too
    if it exists. Update your own `web/.env.staging` and `local.properties`
    (`npm run kotlin:staging-properties`).
-3. **Web and Worker.** Run Cloudflare Pages CI by hand (or let the next `web/` change on `main`
-   deploy) so the web bundle carries the new key, and dispatch Attachments Worker CI (confirm
-   `notelikeus-attachments`, the production bucket) so its `SUPABASE_ANON_KEY` secret is the new
-   key. Check: sign in on the web, open a note with an attachment, and in devtools
+3. **Web and Worker.** Production Pages deploys only when Web CI passes on a push to `main`,
+   for the tip commit; a manual Cloudflare Pages CI run builds a preview only. So rerun the latest
+   Web CI push run on `main` (or push a `web/` change) and approve the `production` deployment.
+   Then dispatch Attachments Worker CI with the inputs of its last deploy (2026-10-21:
+   `notelikeus-attachments`, bucket `notelikeus-attachments-dev`, 600 per 60 s) and approve it, so
+   its `SUPABASE_ANON_KEY` secret is the new key. Check the live bundle's `client-*.js` no longer
+   holds an `eyJ…` key. Check: sign in on the web, open a note with an attachment, and in devtools
    the requests to `*.supabase.co` carry `apikey: sb_publishable_…`.
 4. **Ship a release.** Tag the next release (`v*`) with this change in it, and dispatch Desktop CI
    with that tag for the MSI. The AAB and MSI builds read the swapped secret, and `verifyReleaseBackendConfig` accepts it. Check on one
