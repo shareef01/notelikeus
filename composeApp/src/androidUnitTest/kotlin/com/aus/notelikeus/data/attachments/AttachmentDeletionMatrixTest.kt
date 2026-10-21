@@ -64,9 +64,11 @@ class AttachmentDeletionMatrixTest {
         }
     }
 
-    private fun staging() = FileAttachmentStagingStore(
+    /** [stagedAgoMs] back-dates what is staged, for reconciliation's grace period. */
+    private fun staging(stagedAgoMs: Long = 0L) = FileAttachmentStagingStore(
         root = temp.root.absolutePath.toPath(),
         ioDispatcher = Dispatchers.Unconfined,
+        now = { System.currentTimeMillis() - stagedAgoMs },
     )
 
     private fun service(
@@ -151,9 +153,10 @@ class AttachmentDeletionMatrixTest {
 
     @Test
     fun `staged bytes no live note references are released on reconciliation`() = runTest {
-        val staging = staging()
+        val staging = staging(stagedAgoMs = 2 * HOUR_MS)
         // Stands in for a note discarded, or deleted, before its attachment ever uploaded: the
-        // bytes are staged but nothing in the database claims them any more.
+        // bytes are staged but nothing in the database claims them any more, and have not for
+        // longer than any save could take.
         staging.stage("orphan", "owner-1", 1L, byteArrayOf(1, 2, 3), "image/png")
         assertEquals(1, staging.list("owner-1").size)
 
@@ -164,5 +167,28 @@ class AttachmentDeletionMatrixTest {
 
         assertTrue(staging.list("owner-1").isEmpty())
         assertNull(staging.readBytes("orphan", "owner-1"))
+    }
+
+    @Test
+    fun `a just-picked image survives the reconciliation that returning from the picker starts`() = runTest {
+        // The editor has staged the picked image, but its autosave has not yet written the note
+        // that references it: to the database, nothing claims these bytes. Measured on a Pixel 7,
+        // the download started by returning from the photo picker ran in exactly this gap, and
+        // the image vanished from the note on the next push.
+        staging().stage("just-picked", "owner-1", 1L, byteArrayOf(1, 2, 3), "image/png")
+        // Same scenario, an hour on: still unclaimed long after any save could have landed, so a
+        // genuine orphan.
+        val staging = staging(stagedAgoMs = HOUR_MS + 60_000)
+        staging.stage("long-orphaned", "owner-1", 2L, byteArrayOf(4, 5), "image/png")
+
+        val reconciled = service(staging).reconcileStagedAttachments(LocalCommitGate.capture(null))
+        assertEquals(LocalCommitResult.Applied(0), reconciled)
+
+        assertEquals(3, staging.readBytes("just-picked", "owner-1")?.size)
+        assertNull(staging.readBytes("long-orphaned", "owner-1"))
+    }
+
+    private companion object {
+        const val HOUR_MS = 60 * 60 * 1000L
     }
 }
