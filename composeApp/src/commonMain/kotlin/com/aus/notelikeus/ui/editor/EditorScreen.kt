@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -116,6 +117,7 @@ fun EditorScreen(
     var showReminderDialog by remember { mutableStateOf(false) }
     var showLinkDialog by remember { mutableStateOf(false) }
     val bodyFocusRequester = remember { FocusRequester() }
+    val selectionKeeper = remember { BlurSelectionKeeper() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
     // Leaving the editor pops this destination, which clears the ViewModel and cancels the scope
@@ -516,11 +518,19 @@ fun EditorScreen(
                     } else {
                         BasicTextField(
                             value = state.contentValue,
-                            onValueChange = { viewModel.onContentValueChange(it) },
+                            onValueChange = {
+                                if (selectionKeeper.accept(state.contentValue, it)) {
+                                    viewModel.onContentValueChange(it)
+                                }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = EditorBodyMinHeight)
                                 .focusRequester(bodyFocusRequester)
+                                .onFocusChanged { focus ->
+                                    selectionKeeper.onFocusChanged(focus.isFocused, state.contentValue)
+                                        ?.let(viewModel::onContentValueChange)
+                                }
                                 .formattingShortcuts(
                                     onBold = { viewModel.applyBoldToSelection() },
                                     onItalic = { viewModel.applyItalicToSelection() },
