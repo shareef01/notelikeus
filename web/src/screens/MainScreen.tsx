@@ -1,5 +1,3 @@
-import { DiagnosticsDialog } from '@/components/settings/DiagnosticsDialog';
-import { ConflictReviewDialog } from '@/components/notes/ConflictReviewDialog';
 import { version as appVersion } from '../../package.json';
 import { AddIcon } from '@/components/icons/Icons';
 
@@ -50,6 +48,18 @@ import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 
 const EditorScreen = lazy(() =>
   import('@/screens/EditorScreen').then((module) => ({ default: module.EditorScreen })),
+);
+
+const ConflictReviewDialog = lazy(() =>
+  import('@/components/notes/ConflictReviewDialog').then((module) => ({
+    default: module.ConflictReviewDialog,
+  })),
+);
+
+const DiagnosticsDialog = lazy(() =>
+  import('@/components/settings/DiagnosticsDialog').then((module) => ({
+    default: module.DiagnosticsDialog,
+  })),
 );
 
 
@@ -681,12 +691,16 @@ export function MainScreen() {
         onBulkPermanentDelete={() => void bulkPermanentDelete()}
       />
 
-      <ConflictReviewDialog />
-      <DiagnosticsDialog
-        open={showDiagnostics}
-        appVersion={appVersion}
-        onClose={() => setShowDiagnostics(false)}
-      />
+      <Suspense fallback={null}>
+        <ConflictReviewDialog />
+        {showDiagnostics ? (
+          <DiagnosticsDialog
+            open={showDiagnostics}
+            appVersion={appVersion}
+            onClose={() => setShowDiagnostics(false)}
+          />
+        ) : null}
+      </Suspense>
 
       <ToastHost />
 

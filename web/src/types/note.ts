@@ -3,7 +3,7 @@ import type { Label } from './label';
 import type { Attachment } from './attachment';
 import { noteColorsMatch } from '@/theme/colors';
 import { byRelevance, fuzzyMatches } from '@/lib/text/noteSearchRanking';
-import { buildSearchText, memoFolded, noteMatchesSearchQuery, searchTokens } from '@/lib/text/searchText';
+import { buildSearchText, memoFolded, noteMatchesSearchTokens, searchTokens } from '@/lib/text/searchText';
 
 /**
  * Canonical note model — field names match Android Room and the cloud map.
@@ -161,13 +161,13 @@ export function searchNotes(notes: Note[], filters: NoteQueryFilters): NoteSearc
     return { notes: sortWithoutSearch(scoped, filters.sortOrder), isFuzzy: false };
   }
 
-  const strict = scoped.filter((note) => noteMatchesSearchQuery(noteHaystack(note), query));
+  const strict = scoped.filter((note) => noteMatchesSearchTokens(noteHaystack(note), needles));
   if (strict.length > 0) {
-    return { notes: byRelevance(strict, query), isFuzzy: false };
+    return { notes: byRelevance(strict, needles), isFuzzy: false };
   }
 
-  const fuzzy = fuzzyMatches(scoped, query);
-  return { notes: byRelevance(fuzzy, query), isFuzzy: fuzzy.length > 0 };
+  const fuzzy = fuzzyMatches(scoped, needles);
+  return { notes: byRelevance(fuzzy, needles), isFuzzy: fuzzy.length > 0 };
 }
 
 export function filterNotes(notes: Note[], filters: NoteQueryFilters): Note[] {

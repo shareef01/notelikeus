@@ -88,8 +88,8 @@ function compareScored(a: { note: Note; score: number }, b: { note: Note; score:
  * Pinned notes still lead: that is what pinning means, and a pinned note dropping below an
  * unpinned one because it scored lower would read as the pin having been ignored.
  */
-export function byRelevance(notes: Note[], text: string): Note[] {
-  const needles = searchTokens(text);
+export function byRelevance(notes: Note[], textOrTokens: string | string[]): Note[] {
+  const needles = Array.isArray(textOrTokens) ? textOrTokens : searchTokens(textOrTokens);
   if (needles.length === 0) return notes;
 
   const scored = notes.map((note) => ({ note, score: scoreNote(note, needles) }));
@@ -106,8 +106,8 @@ export function byRelevance(notes: Note[], text: string): Note[] {
  * Tokens under MIN_FUZZY_LENGTH must match as a prefix. At three characters almost everything
  * is within two edits of almost everything else.
  */
-export function fuzzyMatches(notes: Note[], text: string): Note[] {
-  const needles = searchTokens(text);
+export function fuzzyMatches(notes: Note[], textOrTokens: string | string[]): Note[] {
+  const needles = Array.isArray(textOrTokens) ? textOrTokens : searchTokens(textOrTokens);
   if (needles.length === 0) return [];
   return notes.filter((note) => {
     const haystack = searchTokens(searchableText(note));

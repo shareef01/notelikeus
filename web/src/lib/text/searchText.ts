@@ -134,15 +134,22 @@ export function buildSearchText(
   return foldForSearch(parts.join(' '));
 }
 
+export function noteMatchesSearchTokens(
+  haystack: string,
+  needles: string[],
+): boolean {
+  if (needles.length === 0) return true;
+  return needles.every((token) => haystack.startsWith(token) || haystack.includes(` ${token}`));
+}
+
 /**
  * Every query token must be a word-prefix somewhere in the note, in any order.
  * Mirrors Kotlin `NoteQueryMatcher.matchesText`.
  */
 export function noteMatchesSearchQuery(
   haystack: string,
-  query: string,
+  query: string | string[],
 ): boolean {
-  const needles = searchTokens(query);
-  if (needles.length === 0) return true;
-  return needles.every((token) => haystack.startsWith(token) || haystack.includes(` ${token}`));
+  const needles = Array.isArray(query) ? query : searchTokens(query);
+  return noteMatchesSearchTokens(haystack, needles);
 }

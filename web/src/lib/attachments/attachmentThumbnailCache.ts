@@ -25,6 +25,8 @@ const THUMB_QUALITY = 0.8;
 const MAX_CONCURRENT_LOADS = 3;
 /** How long a failed load is remembered, so scrolling a broken image in and out of view does not retry each time. */
 const FAILURE_MEMORY_MS = 60_000;
+/** Maximum active thumbnail Object URLs to retain in memory across long browsing sessions. */
+const MAX_CACHED_THUMBNAILS = 128;
 
 const thumbnailUrls = new Map<string, string>();
 const inFlight = new Map<string, Promise<string | null>>();
@@ -111,7 +113,13 @@ async function downscale(source: Blob): Promise<Blob> {
 
 /** The cached thumbnail URL for an attachment, if one has already been made. */
 export function peekAttachmentThumbnailUrl(noteId: string, attachmentId: string): string | null {
-  return thumbnailUrls.get(cacheKey(noteId, attachmentId)) ?? null;
+  const key = cacheKey(noteId, attachmentId);
+  const url = thumbnailUrls.get(key);
+  if (!url) return null;
+  // Mark as recently accessed
+  thumbnailUrls.delete(key);
+  thumbnailUrls.set(key, url);
+  return url;
 }
 
 export function resolveAttachmentThumbnailUrl(
@@ -120,7 +128,11 @@ export function resolveAttachmentThumbnailUrl(
 ): Promise<string | null> {
   const key = cacheKey(noteId, attachment.id);
   const cached = thumbnailUrls.get(key);
-  if (cached) return Promise.resolve(cached);
+  if (cached) {
+    thumbnailUrls.delete(key);
+    thumbnailUrls.set(key, cached);
+    return Promise.resolve(cached);
+  }
 
   const failed = failedAt.get(key);
   if (failed !== undefined && Date.now() - failed < FAILURE_MEMORY_MS) return Promise.resolve(null);
@@ -140,6 +152,17 @@ export function resolveAttachmentThumbnailUrl(
       // The session's data was cleared while this was loading: the picture belongs to an account
       // that is no longer signed in, so it is dropped rather than cached.
       if (startedIn !== generation) return null;
+
+      // Evict oldest thumbnail Object URL if cache exceeds bounded capacity
+      if (thumbnailUrls.size >= MAX_CACHED_THUMBNAILS) {
+        const oldestKey = thumbnailUrls.keys().next().value;
+        if (oldestKey) {
+          const oldestUrl = thumbnailUrls.get(oldestKey);
+          if (oldestUrl) URL.revokeObjectURL(oldestUrl);
+          thumbnailUrls.delete(oldestKey);
+        }
+      }
+
       const url = URL.createObjectURL(thumbnail);
       thumbnailUrls.set(key, url);
       failedAt.delete(key);

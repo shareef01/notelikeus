@@ -109,6 +109,15 @@ function buildBoardItems(
   return items;
 }
 
+const INITIAL_RENDER_COUNT = 80;
+const CHUNK_RENDER_COUNT = 60;
+
+const CARD_CONTENT_VISIBILITY_STYLE: Record<ViewColumns, React.CSSProperties> = {
+  1: { contentVisibility: 'auto', containIntrinsicSize: 'auto 110px' },
+  2: { contentVisibility: 'auto', containIntrinsicSize: 'auto 180px' },
+  3: { contentVisibility: 'auto', containIntrinsicSize: 'auto 140px' },
+};
+
 export function NoteStaggeredGrid({
   notes,
   viewPreference,
@@ -138,6 +147,32 @@ export function NoteStaggeredGrid({
     () => buildBoardItems(notes, sortOrder, searchQuery),
     [notes, sortOrder, searchQuery],
   );
+
+  const [visibleCount, setVisibleCount] = useState(INITIAL_RENDER_COUNT);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_RENDER_COUNT);
+  }, [notes, searchQuery, sortOrder]);
+
+  useEffect(() => {
+    if (visibleCount >= boardItems.length) return undefined;
+    const sentinel = sentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver === 'undefined') {
+      setVisibleCount(boardItems.length);
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleCount((prev) => Math.min(prev + CHUNK_RENDER_COUNT, boardItems.length));
+        }
+      },
+      { rootMargin: '600px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [visibleCount, boardItems.length]);
 
   const [draggingIndex, setDraggingIndex] = useState(-1);
   const dragOffsetRef = useRef(0);
@@ -320,6 +355,9 @@ export function NoteStaggeredGrid({
         : 'gap-3.5 sm:gap-4';
   const columnGapPx = viewPreference === 3 ? 12 : 16;
 
+  const visibleItems =
+    boardItems.length > INITIAL_RENDER_COUNT ? boardItems.slice(0, visibleCount) : boardItems;
+
   return (
     <div
       ref={gridRef}
@@ -338,7 +376,7 @@ export function NoteStaggeredGrid({
             }
       }
     >
-      {boardItems.map((item) => {
+      {visibleItems.map((item) => {
         if (item.type === 'header') {
           return (
             <div
@@ -382,11 +420,20 @@ export function NoteStaggeredGrid({
                   ? 'mb-2 break-inside-avoid'
                   : 'mb-3 break-inside-avoid sm:mb-3.5'
             }`}
+            style={CARD_CONTENT_VISIBILITY_STYLE[viewPreference]}
           >
             {renderCard(note)}
           </div>
         );
       })}
+      {visibleCount < boardItems.length ? (
+        <div
+          ref={sentinelRef}
+          className={isList ? 'col-span-full h-8 w-full' : 'h-8 w-full break-inside-avoid'}
+          style={isList ? undefined : { columnSpan: 'all' }}
+          aria-hidden="true"
+        />
+      ) : null}
     </div>
   );
 }
