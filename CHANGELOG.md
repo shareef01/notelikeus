@@ -4,6 +4,14 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.3.2] — 2026-10-22
+
+### Changed
+- **The Windows app has the Notelikeus icon** in its window, the taskbar, the tray, the Start menu and the desktop shortcut, and on the installer. It used to show a generic picture in the window and the standard Java icon everywhere else.
+
+### Fixed
+- **A picture's spare copy is cleared as soon as it has uploaded**, on Android and Windows. Since 2.3.1 it was kept for up to an hour, using storage for nothing.
+
 ## [2.3.1] — 2026-10-22
 
 ### Fixed
