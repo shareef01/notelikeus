@@ -95,4 +95,107 @@ describe('NoteStaggeredGrid card callbacks', () => {
 
     act(() => root.unmount());
   });
+
+  it('bounds initial rendering for large note lists and incrementally expands', () => {
+    const observeFn = vi.fn();
+    const disconnectFn = vi.fn();
+    let intersectCallback: IntersectionObserverCallback | null = null;
+    const OriginalObserver = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver = class MockIntersectionObserver implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = '';
+      readonly scrollMargin = '';
+      readonly thresholds = [];
+      constructor(callback: IntersectionObserverCallback) {
+        intersectCallback = callback;
+      }
+      observe = observeFn;
+      unobserve = vi.fn();
+      disconnect = disconnectFn;
+      takeRecords = () => [];
+    } as unknown as typeof IntersectionObserver;
+
+    try {
+      rendered.length = 0;
+      const manyNotes = Array.from({ length: 150 }, (_, i) => note(`n-${i}`));
+      const container = document.createElement('div');
+      const root = createRoot(container);
+
+      act(() => {
+        root.render(
+          createElement(NoteStaggeredGrid, {
+            notes: manyNotes,
+            viewPreference: 2,
+            filter: 'active',
+            onNoteClick: vi.fn(),
+            onNoteLongPress: vi.fn(),
+            selectedNoteIds: [],
+            selectionMode: false,
+          }),
+        );
+      });
+
+      // Initial chunk renders first 80 notes
+      expect(rendered.length).toBe(80);
+      expect(observeFn).toHaveBeenCalled();
+
+      // Trigger intersection on sentinel
+      act(() => {
+        intersectCallback?.(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      });
+
+      // Expands by CHUNK_RENDER_COUNT (60), now rendering 140
+      const lastRenderedBatch = rendered.slice(-140);
+      expect(lastRenderedBatch.length).toBe(140);
+
+      // Now simulate an ordinary update to a note (e.g. background sync or checkbox update)
+      rendered.length = 0;
+      const updatedNotes = manyNotes.map((n, idx) =>
+        idx === 10 ? { ...n, title: 'Updated Note 10' } : n,
+      );
+
+      act(() => {
+        root.render(
+          createElement(NoteStaggeredGrid, {
+            notes: updatedNotes,
+            viewPreference: 2,
+            filter: 'active',
+            onNoteClick: vi.fn(),
+            onNoteLongPress: vi.fn(),
+            selectedNoteIds: [],
+            selectionMode: false,
+          }),
+        );
+      });
+
+      // CRITICAL: Must PRESERVE progressive render count (140) and NOT reset to 80!
+      expect(rendered.length).toBe(140);
+
+      // But when filter or search changes, it MUST reset to INITIAL_RENDER_COUNT (80)
+      rendered.length = 0;
+      act(() => {
+        root.render(
+          createElement(NoteStaggeredGrid, {
+            notes: updatedNotes,
+            viewPreference: 2,
+            filter: 'archived',
+            onNoteClick: vi.fn(),
+            onNoteLongPress: vi.fn(),
+            selectedNoteIds: [],
+            selectionMode: false,
+          }),
+        );
+      });
+
+      expect(rendered.length).toBe(80);
+
+      act(() => root.unmount());
+    } finally {
+      globalThis.IntersectionObserver = OriginalObserver;
+    }
+  });
 });
+

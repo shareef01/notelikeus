@@ -7,6 +7,11 @@ import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 import './styles/globals.css';
 import { whenEditorSavesSettled } from '@/lib/notes/pendingEditorSaves';
+import { useNotesStore } from '@/store/notesStore';
+
+if (import.meta.env.MODE === 'e2e' || import.meta.env.DEV) {
+  (window as unknown as { __NOTELIKEUS_NOTES_STORE__?: typeof useNotesStore }).__NOTELIKEUS_NOTES_STORE__ = useNotesStore;
+}
 
 const root = document.getElementById('root')!;
 

@@ -127,11 +127,24 @@ export function memoFolded(note: object, field: string, compute: () => string): 
 export function buildSearchText(
   title: string,
   content: string,
-  checklistTexts: string[],
-  labelNames: string[],
+  checklistTexts: string[] = [],
+  labelNames: string[] = [],
 ): string {
+  if (checklistTexts.length === 0 && labelNames.length === 0) {
+    if (!title) return foldForSearch(content);
+    if (!content) return foldForSearch(title);
+    return foldForSearch(`${title} ${content}`);
+  }
   const parts = [title, content, ...checklistTexts, ...labelNames].filter((part) => part.trim());
   return foldForSearch(parts.join(' '));
+}
+
+export function noteMatchesSearchTokens(
+  haystack: string,
+  needles: string[],
+): boolean {
+  if (needles.length === 0) return true;
+  return needles.every((token) => haystack.startsWith(token) || haystack.includes(` ${token}`));
 }
 
 /**
@@ -140,9 +153,8 @@ export function buildSearchText(
  */
 export function noteMatchesSearchQuery(
   haystack: string,
-  query: string,
+  query: string | string[],
 ): boolean {
-  const needles = searchTokens(query);
-  if (needles.length === 0) return true;
-  return needles.every((token) => haystack.startsWith(token) || haystack.includes(` ${token}`));
+  const needles = Array.isArray(query) ? query : searchTokens(query);
+  return noteMatchesSearchTokens(haystack, needles);
 }

@@ -128,30 +128,46 @@ async function readOwnerRecords(ownerId: string): Promise<StoredNoteRecord[]> {
  * Failure is still closed per row: an unopenable body is reported, never rendered as blank and
  * never re-sealed. The ciphertext stays on disk exactly as it was.
  */
+/** Batch size for parallel note decryption on cold start without unbounded memory spikes. */
+const DECRYPTION_BATCH_SIZE = 32;
+
 export async function listStoredNotes(ownerId: string): Promise<StoredNotesReadResult> {
   const records = await readOwnerRecords(ownerId);
 
   const notes: Note[] = [];
   const unreadable: UnreadableNoteRef[] = [];
-  for (const record of records) {
-    let opened: Note;
-    try {
-      // eslint-disable-next-line no-await-in-loop -- one row at a time; the store is the bottleneck
-      opened = await openStoredNote(ownerId, record.note);
-    } catch (error: unknown) {
-      if (error instanceof NoteDecryptionError) {
-        unreadable.push({ id: error.noteId, reason: error.reason });
-        continue;
+
+  for (let i = 0; i < records.length; i += DECRYPTION_BATCH_SIZE) {
+    const chunk = records.slice(i, i + DECRYPTION_BATCH_SIZE);
+    // eslint-disable-next-line no-await-in-loop -- controlled batching bounds concurrent crypto tasks and memory
+    const batchResults = await Promise.all(
+      chunk.map(async (record) => {
+        try {
+          const opened = await openStoredNote(ownerId, record.note);
+          if (!isSealedStoredNote(record.note)) {
+            void maybeMigrateStoredNote(ownerId, record.note, (next) =>
+              replaceIfUnchanged(ownerId, record.id, record.note, next),
+            );
+          }
+          return { ok: true as const, note: opened };
+        } catch (error: unknown) {
+          if (error instanceof NoteDecryptionError) {
+            return { ok: false as const, ref: { id: error.noteId || record.id, reason: error.reason } };
+          }
+          throw error;
+        }
+      }),
+    );
+
+    for (const result of batchResults) {
+      if (result.ok) {
+        notes.push(result.note);
+      } else {
+        unreadable.push(result.ref);
       }
-      throw error;
-    }
-    notes.push(opened);
-    if (!isSealedStoredNote(record.note)) {
-      void maybeMigrateStoredNote(ownerId, record.note, (next) =>
-        replaceIfUnchanged(ownerId, record.id, record.note, next),
-      );
     }
   }
+
   return { notes, unreadable };
 }
 

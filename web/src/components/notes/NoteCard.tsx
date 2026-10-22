@@ -220,6 +220,7 @@ function NoteCardImpl({
 
   return (
     <article
+      data-note-id={note.id}
       className={`group relative flex h-auto w-full overflow-hidden rounded-note text-left transition-all duration-200 hover:shadow-lg ${
         isList
           ? 'flex-row items-stretch gap-0'
@@ -239,7 +240,7 @@ function NoteCardImpl({
       <button
         type="button"
         className="absolute inset-0 z-0 cursor-pointer rounded-note focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-        data-note-open=""
+        data-note-open={note.id}
         onClick={handleClick}
         aria-pressed={isSelected || undefined}
         aria-label={openLabel}

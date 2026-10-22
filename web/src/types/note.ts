@@ -3,7 +3,7 @@ import type { Label } from './label';
 import type { Attachment } from './attachment';
 import { noteColorsMatch } from '@/theme/colors';
 import { byRelevance, fuzzyMatches } from '@/lib/text/noteSearchRanking';
-import { buildSearchText, memoFolded, noteMatchesSearchQuery, searchTokens } from '@/lib/text/searchText';
+import { buildSearchText, memoFolded, noteMatchesSearchTokens, searchTokens } from '@/lib/text/searchText';
 
 /**
  * Canonical note model — field names match Android Room and the cloud map.
@@ -108,15 +108,16 @@ function matchesScopeAndFacets(note: Note, filters: NoteQueryFilters): boolean {
   return true;
 }
 
+const EMPTY_STR_ARRAY: string[] = [];
+
 function noteHaystack(note: Note): string {
-  return memoFolded(note, 'haystack', () =>
-    buildSearchText(
-      note.title,
-      note.content,
-      note.checklist.map((item) => item.text),
-      note.labels.map((label) => label.name),
-    ),
-  );
+  return memoFolded(note, 'haystack', () => {
+    const checklistTexts =
+      note.checklist.length > 0 ? note.checklist.map((item) => item.text) : EMPTY_STR_ARRAY;
+    const labelNames =
+      note.labels.length > 0 ? note.labels.map((label) => label.name) : EMPTY_STR_ARRAY;
+    return buildSearchText(note.title, note.content, checklistTexts, labelNames);
+  });
 }
 
 function sortWithoutSearch(notes: Note[], sortOrder: NoteQueryFilters['sortOrder']): Note[] {
@@ -161,13 +162,13 @@ export function searchNotes(notes: Note[], filters: NoteQueryFilters): NoteSearc
     return { notes: sortWithoutSearch(scoped, filters.sortOrder), isFuzzy: false };
   }
 
-  const strict = scoped.filter((note) => noteMatchesSearchQuery(noteHaystack(note), query));
+  const strict = scoped.filter((note) => noteMatchesSearchTokens(noteHaystack(note), needles));
   if (strict.length > 0) {
-    return { notes: byRelevance(strict, query), isFuzzy: false };
+    return { notes: byRelevance(strict, needles), isFuzzy: false };
   }
 
-  const fuzzy = fuzzyMatches(scoped, query);
-  return { notes: byRelevance(fuzzy, query), isFuzzy: fuzzy.length > 0 };
+  const fuzzy = fuzzyMatches(scoped, needles);
+  return { notes: byRelevance(fuzzy, needles), isFuzzy: fuzzy.length > 0 };
 }
 
 export function filterNotes(notes: Note[], filters: NoteQueryFilters): Note[] {

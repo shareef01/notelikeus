@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   peekAttachmentThumbnailUrl,
+  releaseAttachmentThumbnail,
   resolveAttachmentThumbnailUrl,
+  retainAttachmentThumbnail,
 } from '@/lib/attachments/attachmentThumbnailCache';
 import type { Attachment } from '@/types/attachment';
 
@@ -41,6 +43,16 @@ export function NoteCardThumbnail({
     () => url !== null || typeof IntersectionObserver === 'undefined',
   );
   const [failed, setFailed] = useState(false);
+  const isMountedRef = useRef(true);
+  const currentKeyRef = useRef(`${noteId}:${attachment.id}`);
+  currentKeyRef.current = `${noteId}:${attachment.id}`;
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (near) return undefined;
@@ -62,16 +74,24 @@ export function NoteCardThumbnail({
   useEffect(() => {
     if (!near) return undefined;
     let active = true;
+    const currentNoteId = noteId;
+    const currentAttachmentId = attachment.id;
+
+    // Retain active consumer ref so cache won't evict/revoke our URL while mounted
+    retainAttachmentThumbnail(currentNoteId, currentAttachmentId);
     setFailed(false);
-    void resolveAttachmentThumbnailUrl(noteId, attachment).then((resolved) => {
-      if (!active) return;
+
+    void resolveAttachmentThumbnailUrl(currentNoteId, attachment).then((resolved) => {
+      if (!active || !isMountedRef.current) return;
       setUrl(resolved);
       setFailed(resolved === null);
     });
+
     return () => {
       active = false;
+      releaseAttachmentThumbnail(currentNoteId, currentAttachmentId);
     };
-  }, [near, noteId, attachment]);
+  }, [near, noteId, attachment.id, attachment]);
 
   if (failed) return null;
 
@@ -89,6 +109,14 @@ export function NoteCardThumbnail({
           decoding="async"
           draggable={false}
           className="size-full object-cover"
+          onError={() => {
+            const errorKey = `${noteId}:${attachment.id}`;
+            void resolveAttachmentThumbnailUrl(noteId, attachment).then((resolved) => {
+              if (!isMountedRef.current || currentKeyRef.current !== errorKey) return;
+              if (resolved && resolved !== url) setUrl(resolved);
+              else setFailed(true);
+            });
+          }}
         />
       ) : null}
     </div>
