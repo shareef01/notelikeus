@@ -31,6 +31,7 @@ const MAX_CACHED_THUMBNAILS = 128;
 const thumbnailUrls = new Map<string, string>();
 const inFlight = new Map<string, Promise<string | null>>();
 const failedAt = new Map<string, number>();
+const activeRefs = new Map<string, number>();
 
 /** Bumped by every clear, so a load that started before one cannot repopulate the cache after it. */
 let generation = 0;
@@ -39,6 +40,54 @@ const waiting: Array<() => void> = [];
 
 function cacheKey(noteId: string, attachmentId: string): string {
   return `${noteId}:${attachmentId}`;
+}
+
+/**
+ * Retains an active consumer reference to a thumbnail, preventing its Object URL from being evicted
+ * while the image component remains mounted or in view.
+ */
+export function retainAttachmentThumbnail(noteId: string, attachmentId: string): void {
+  const key = cacheKey(noteId, attachmentId);
+  activeRefs.set(key, (activeRefs.get(key) ?? 0) + 1);
+}
+
+/**
+ * Releases a consumer reference when the image card unmounts or changes its attachment.
+ * When the reference count drops to zero, the thumbnail becomes eligible for LRU eviction if cache capacity is exceeded.
+ */
+export function releaseAttachmentThumbnail(noteId: string, attachmentId: string): void {
+  const key = cacheKey(noteId, attachmentId);
+  const current = (activeRefs.get(key) ?? 0) - 1;
+  if (current <= 0) {
+    activeRefs.delete(key);
+  } else {
+    activeRefs.set(key, current);
+  }
+}
+
+/** Returns the number of active consumers currently retaining this thumbnail (useful for tests and inspection). */
+export function getAttachmentThumbnailActiveRefCount(noteId: string, attachmentId: string): number {
+  return activeRefs.get(cacheKey(noteId, attachmentId)) ?? 0;
+}
+
+function evictUnreferencedLru(): void {
+  while (thumbnailUrls.size >= MAX_CACHED_THUMBNAILS) {
+    let evictedKey: string | null = null;
+    for (const candidateKey of thumbnailUrls.keys()) {
+      if ((activeRefs.get(candidateKey) ?? 0) === 0) {
+        evictedKey = candidateKey;
+        break;
+      }
+    }
+    if (!evictedKey) {
+      // All cached thumbnails currently have active mounted consumers.
+      // Retain them to avoid revoking active URLs and causing broken images/repeated decode thrashing.
+      break;
+    }
+    const urlToRevoke = thumbnailUrls.get(evictedKey);
+    if (urlToRevoke) URL.revokeObjectURL(urlToRevoke);
+    thumbnailUrls.delete(evictedKey);
+  }
 }
 
 async function withLoadSlot<T>(work: () => Promise<T>): Promise<T> {
@@ -153,15 +202,8 @@ export function resolveAttachmentThumbnailUrl(
       // that is no longer signed in, so it is dropped rather than cached.
       if (startedIn !== generation) return null;
 
-      // Evict oldest thumbnail Object URL if cache exceeds bounded capacity
-      if (thumbnailUrls.size >= MAX_CACHED_THUMBNAILS) {
-        const oldestKey = thumbnailUrls.keys().next().value;
-        if (oldestKey) {
-          const oldestUrl = thumbnailUrls.get(oldestKey);
-          if (oldestUrl) URL.revokeObjectURL(oldestUrl);
-          thumbnailUrls.delete(oldestKey);
-        }
-      }
+      // Evict oldest unreferenced thumbnail Object URL if cache exceeds bounded capacity
+      evictUnreferencedLru();
 
       const url = URL.createObjectURL(thumbnail);
       thumbnailUrls.set(key, url);
@@ -186,5 +228,6 @@ export function clearAttachmentThumbnailCache(): void {
   generation += 1;
   for (const url of thumbnailUrls.values()) URL.revokeObjectURL(url);
   thumbnailUrls.clear();
+  activeRefs.clear();
   failedAt.clear();
 }

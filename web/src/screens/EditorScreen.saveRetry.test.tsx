@@ -243,7 +243,7 @@ describe('UX-A — EditorScreen save failure retry banner', () => {
   it('renders conflict copy banner and opens conflict review on click', async () => {
     const openConflictReviewSpy = vi.spyOn(useUiStore.getState(), 'openConflictReview');
 
-    const flushSaveMock = vi.fn().mockResolvedValue({ status: 'saved' });
+    const flushSaveMock = vi.fn().mockResolvedValue({ status: 'saved', noteId: 'note-conflict-1' });
 
     vi.spyOn(noteEditorHook, 'useNoteEditor').mockReturnValue({
       state: {
@@ -315,4 +315,319 @@ describe('UX-A — EditorScreen save failure retry banner', () => {
     });
     container.remove();
   });
+
+  it('conflict comparison: never opens comparison when flushSave fails, preserving editor state', async () => {
+    const openConflictReviewSpy = vi.spyOn(useUiStore.getState(), 'openConflictReview');
+    const flushSaveMock = vi.fn().mockResolvedValue({ status: 'failed', error: new Error('IndexedDB full') });
+
+    vi.spyOn(noteEditorHook, 'useNoteEditor').mockReturnValue({
+      state: {
+        id: 'note-conflict-failed',
+        title: 'Meeting Notes (conflicted copy)',
+        content: 'Draft that cannot land',
+        checklist: [],
+        attachments: [],
+        labels: [],
+        color: 0,
+        isPinned: false,
+        isArchived: false,
+        isTrashed: false,
+        reminderTimestamp: null,
+        timestamp: 1700000000000,
+        lastSavedAt: null,
+        isSaving: false,
+        saveFailed: false,
+        conflictCopy: true,
+      },
+      setTitle: vi.fn(),
+      setContent: vi.fn(),
+      applyContentFormatting: vi.fn(),
+      setChecklist: vi.fn(),
+      addChecklistItem: vi.fn(),
+      updateChecklistItem: vi.fn(),
+      removeChecklistItem: vi.fn(),
+      convertChecklistToContent: vi.fn(),
+      addAttachment: vi.fn(),
+      removeAttachment: vi.fn(),
+      setColor: vi.fn(),
+      togglePinned: vi.fn(),
+      setArchived: vi.fn(),
+      trashNote: vi.fn(),
+      setReminder: vi.fn(),
+      addLabel: vi.fn(),
+      removeLabel: vi.fn(),
+      flushSave: flushSaveMock,
+      discardChanges: vi.fn(),
+    } as any);
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(
+        createElement(EditorScreen, {
+          route: { mode: 'edit', noteId: 'note-conflict-failed' },
+        }),
+      );
+    });
+
+    const compareBtn = container.querySelector(
+      'button[aria-label="Compare with the current note"]',
+    ) as HTMLButtonElement | null;
+    expect(compareBtn).not.toBeNull();
+
+    await act(async () => {
+      compareBtn?.click();
+    });
+
+    expect(flushSaveMock).toHaveBeenCalledTimes(1);
+    // CRITICAL: openConflictReview must NEVER be called when flushSave fails!
+    expect(openConflictReviewSpy).not.toHaveBeenCalled();
+
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it('conflict comparison: opens comparison with unchanged draft using editor state id', async () => {
+    const openConflictReviewSpy = vi.spyOn(useUiStore.getState(), 'openConflictReview');
+    const flushSaveMock = vi.fn().mockResolvedValue({ status: 'unchanged' });
+
+    vi.spyOn(noteEditorHook, 'useNoteEditor').mockReturnValue({
+      state: {
+        id: 'note-conflict-unchanged',
+        title: 'Meeting Notes (conflicted copy)',
+        content: 'No modifications',
+        checklist: [],
+        attachments: [],
+        labels: [],
+        color: 0,
+        isPinned: false,
+        isArchived: false,
+        isTrashed: false,
+        reminderTimestamp: null,
+        timestamp: 1700000000000,
+        lastSavedAt: 1700000000000,
+        isSaving: false,
+        saveFailed: false,
+        conflictCopy: true,
+      },
+      setTitle: vi.fn(),
+      setContent: vi.fn(),
+      applyContentFormatting: vi.fn(),
+      setChecklist: vi.fn(),
+      addChecklistItem: vi.fn(),
+      updateChecklistItem: vi.fn(),
+      removeChecklistItem: vi.fn(),
+      convertChecklistToContent: vi.fn(),
+      addAttachment: vi.fn(),
+      removeAttachment: vi.fn(),
+      setColor: vi.fn(),
+      togglePinned: vi.fn(),
+      setArchived: vi.fn(),
+      trashNote: vi.fn(),
+      setReminder: vi.fn(),
+      addLabel: vi.fn(),
+      removeLabel: vi.fn(),
+      flushSave: flushSaveMock,
+      discardChanges: vi.fn(),
+    } as any);
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(
+        createElement(EditorScreen, {
+          route: { mode: 'edit', noteId: 'note-conflict-unchanged' },
+        }),
+      );
+    });
+
+    const compareBtn = container.querySelector(
+      'button[aria-label="Compare with the current note"]',
+    ) as HTMLButtonElement | null;
+    expect(compareBtn).not.toBeNull();
+
+    await act(async () => {
+      compareBtn?.click();
+    });
+
+    expect(flushSaveMock).toHaveBeenCalledTimes(1);
+    expect(openConflictReviewSpy).toHaveBeenCalledWith('note-conflict-unchanged');
+
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it('conflict comparison: uses actual forked noteId when save forks the draft', async () => {
+    const openConflictReviewSpy = vi.spyOn(useUiStore.getState(), 'openConflictReview');
+    // Save succeeds but forked to a new note id
+    const flushSaveMock = vi.fn().mockResolvedValue({ status: 'saved', noteId: 'forked-new-note-id' });
+
+    vi.spyOn(noteEditorHook, 'useNoteEditor').mockReturnValue({
+      state: {
+        id: 'initial-stale-id',
+        title: 'Conflicted Draft',
+        content: 'Forking content',
+        checklist: [],
+        attachments: [],
+        labels: [],
+        color: 0,
+        isPinned: false,
+        isArchived: false,
+        isTrashed: false,
+        reminderTimestamp: null,
+        timestamp: 1700000000000,
+        lastSavedAt: 1700000000000,
+        isSaving: false,
+        saveFailed: false,
+        conflictCopy: true,
+      },
+      setTitle: vi.fn(),
+      setContent: vi.fn(),
+      applyContentFormatting: vi.fn(),
+      setChecklist: vi.fn(),
+      addChecklistItem: vi.fn(),
+      updateChecklistItem: vi.fn(),
+      removeChecklistItem: vi.fn(),
+      convertChecklistToContent: vi.fn(),
+      addAttachment: vi.fn(),
+      removeAttachment: vi.fn(),
+      setColor: vi.fn(),
+      togglePinned: vi.fn(),
+      setArchived: vi.fn(),
+      trashNote: vi.fn(),
+      setReminder: vi.fn(),
+      addLabel: vi.fn(),
+      removeLabel: vi.fn(),
+      flushSave: flushSaveMock,
+      discardChanges: vi.fn(),
+    } as any);
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(
+        createElement(EditorScreen, {
+          route: { mode: 'edit', noteId: 'initial-stale-id' },
+        }),
+      );
+    });
+
+    const compareBtn = container.querySelector(
+      'button[aria-label="Compare with the current note"]',
+    ) as HTMLButtonElement | null;
+    expect(compareBtn).not.toBeNull();
+
+    await act(async () => {
+      compareBtn?.click();
+    });
+
+    expect(flushSaveMock).toHaveBeenCalledTimes(1);
+    // CRITICAL: Must use the forked noteId from flushSave result, not the stale initial-stale-id!
+    expect(openConflictReviewSpy).toHaveBeenCalledWith('forked-new-note-id');
+
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it('conflict comparison: ignores repeated rapid clicks while flushSave is in flight', async () => {
+    const openConflictReviewSpy = vi.spyOn(useUiStore.getState(), 'openConflictReview');
+    let resolveSave!: (res: { status: 'saved'; noteId: string }) => void;
+    const flushSaveMock = vi.fn().mockReturnValue(
+      new Promise((res) => {
+        resolveSave = res;
+      }),
+    );
+
+    vi.spyOn(noteEditorHook, 'useNoteEditor').mockReturnValue({
+      state: {
+        id: 'note-rapid-clicks',
+        title: 'Rapid Click Note',
+        content: 'Rapid clicks',
+        checklist: [],
+        attachments: [],
+        labels: [],
+        color: 0,
+        isPinned: false,
+        isArchived: false,
+        isTrashed: false,
+        reminderTimestamp: null,
+        timestamp: 1700000000000,
+        lastSavedAt: 1700000000000,
+        isSaving: false,
+        saveFailed: false,
+        conflictCopy: true,
+      },
+      setTitle: vi.fn(),
+      setContent: vi.fn(),
+      applyContentFormatting: vi.fn(),
+      setChecklist: vi.fn(),
+      addChecklistItem: vi.fn(),
+      updateChecklistItem: vi.fn(),
+      removeChecklistItem: vi.fn(),
+      convertChecklistToContent: vi.fn(),
+      addAttachment: vi.fn(),
+      removeAttachment: vi.fn(),
+      setColor: vi.fn(),
+      togglePinned: vi.fn(),
+      setArchived: vi.fn(),
+      trashNote: vi.fn(),
+      setReminder: vi.fn(),
+      addLabel: vi.fn(),
+      removeLabel: vi.fn(),
+      flushSave: flushSaveMock,
+      discardChanges: vi.fn(),
+    } as any);
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(
+        createElement(EditorScreen, {
+          route: { mode: 'edit', noteId: 'note-rapid-clicks' },
+        }),
+      );
+    });
+
+    const compareBtn = container.querySelector(
+      'button[aria-label="Compare with the current note"]',
+    ) as HTMLButtonElement | null;
+    expect(compareBtn).not.toBeNull();
+
+    // Trigger multiple rapid clicks while the first save is in flight
+    act(() => {
+      compareBtn?.click();
+      compareBtn?.click();
+      compareBtn?.click();
+    });
+
+    expect(flushSaveMock).toHaveBeenCalledTimes(1);
+
+    // Resolve the in-flight save
+    await act(async () => {
+      resolveSave({ status: 'saved', noteId: 'note-rapid-clicks' });
+    });
+
+    expect(openConflictReviewSpy).toHaveBeenCalledTimes(1);
+    expect(openConflictReviewSpy).toHaveBeenCalledWith('note-rapid-clicks');
+
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
 });
+

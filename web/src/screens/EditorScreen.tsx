@@ -139,6 +139,29 @@ export function EditorScreen({ route }: EditorScreenProps) {
     }
   }, [editor]);
 
+  const comparingRef = useRef(false);
+
+  const handleCompareVersions = useCallback(async () => {
+    if (comparingRef.current) return;
+    comparingRef.current = true;
+    try {
+      const result = await editor.flushSave();
+      if (result.status === 'failed') {
+        useToastStore
+          .getState()
+          .show('Could not save this note — your changes are still here', 'error');
+        return;
+      }
+      const targetId =
+        (result.status === 'saved' ? result.noteId : undefined) ?? editor.state.id ?? state.id;
+      if (targetId) {
+        useUiStore.getState().openConflictReview(targetId);
+      }
+    } finally {
+      comparingRef.current = false;
+    }
+  }, [editor, state.id]);
+
   useShortcuts([
     {
       key: 'Escape',
@@ -616,10 +639,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
               {state.id ? (
                 <button
                   type="button"
-                  onClick={async () => {
-                    await editor.flushSave();
-                    useUiStore.getState().openConflictReview(state.id!);
-                  }}
+                  onClick={() => void handleCompareVersions()}
                   className={`shrink-0 rounded-full border border-amber-500/50 bg-amber-500/20 px-3 py-1.5 text-xs font-semibold tracking-wide hover:bg-amber-500/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${CHROME_FOCUS}`}
                   aria-label="Compare with the current note"
                 >

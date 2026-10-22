@@ -151,6 +151,47 @@ describe('NoteStaggeredGrid card callbacks', () => {
       const lastRenderedBatch = rendered.slice(-140);
       expect(lastRenderedBatch.length).toBe(140);
 
+      // Now simulate an ordinary update to a note (e.g. background sync or checkbox update)
+      rendered.length = 0;
+      const updatedNotes = manyNotes.map((n, idx) =>
+        idx === 10 ? { ...n, title: 'Updated Note 10' } : n,
+      );
+
+      act(() => {
+        root.render(
+          createElement(NoteStaggeredGrid, {
+            notes: updatedNotes,
+            viewPreference: 2,
+            filter: 'active',
+            onNoteClick: vi.fn(),
+            onNoteLongPress: vi.fn(),
+            selectedNoteIds: [],
+            selectionMode: false,
+          }),
+        );
+      });
+
+      // CRITICAL: Must PRESERVE progressive render count (140) and NOT reset to 80!
+      expect(rendered.length).toBe(140);
+
+      // But when filter or search changes, it MUST reset to INITIAL_RENDER_COUNT (80)
+      rendered.length = 0;
+      act(() => {
+        root.render(
+          createElement(NoteStaggeredGrid, {
+            notes: updatedNotes,
+            viewPreference: 2,
+            filter: 'archived',
+            onNoteClick: vi.fn(),
+            onNoteLongPress: vi.fn(),
+            selectedNoteIds: [],
+            selectionMode: false,
+          }),
+        );
+      });
+
+      expect(rendered.length).toBe(80);
+
       act(() => root.unmount());
     } finally {
       globalThis.IntersectionObserver = OriginalObserver;

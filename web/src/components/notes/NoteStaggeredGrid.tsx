@@ -148,12 +148,21 @@ export function NoteStaggeredGrid({
     [notes, sortOrder, searchQuery],
   );
 
+  const queryKey = `${filter}:${searchQuery}:${sortOrder}:${viewPreference}`;
+  const [prevQueryKey, setPrevQueryKey] = useState(queryKey);
   const [visibleCount, setVisibleCount] = useState(INITIAL_RENDER_COUNT);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  if (prevQueryKey !== queryKey) {
+    setPrevQueryKey(queryKey);
     setVisibleCount(INITIAL_RENDER_COUNT);
-  }, [notes, searchQuery, sortOrder, filter, viewPreference]);
+  }
+
+  useEffect(() => {
+    setVisibleCount((prev) =>
+      boardItems.length > 0 ? Math.min(prev, boardItems.length) : INITIAL_RENDER_COUNT,
+    );
+  }, [boardItems.length]);
 
   useEffect(() => {
     if (visibleCount >= boardItems.length) return undefined;

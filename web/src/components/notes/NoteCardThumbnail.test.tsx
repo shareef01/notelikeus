@@ -7,9 +7,13 @@ import type { Attachment } from '@/types/attachment';
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const resolveThumbnail = vi.fn();
+const retainThumbnail = vi.fn();
+const releaseThumbnail = vi.fn();
 vi.mock('@/lib/attachments/attachmentThumbnailCache', () => ({
   peekAttachmentThumbnailUrl: () => null,
   resolveAttachmentThumbnailUrl: (...args: unknown[]) => resolveThumbnail(...args),
+  retainAttachmentThumbnail: (...args: unknown[]) => retainThumbnail(...args),
+  releaseAttachmentThumbnail: (...args: unknown[]) => releaseThumbnail(...args),
 }));
 
 import { NoteCard } from '@/components/notes/NoteCard';
@@ -107,6 +111,8 @@ describe('NoteCard thumbnail', () => {
 
   afterEach(() => {
     resolveThumbnail.mockReset();
+    retainThumbnail.mockReset();
+    releaseThumbnail.mockReset();
     vi.unstubAllGlobals();
   });
 
@@ -194,5 +200,17 @@ describe('NoteCard thumbnail', () => {
     // The card itself, and its "has image" status, are unaffected.
     expect(container.textContent).toContain('Receipts');
     cleanup();
+  });
+
+  it('retains the thumbnail while mounted on screen and releases it when unmounted', async () => {
+    resolveThumbnail.mockResolvedValue('blob:thumb');
+    const { cleanup } = await renderCard(note([attachment({ id: 'att-lifecycle' })]), 'grid', { onScreen: true });
+
+    expect(retainThumbnail).toHaveBeenCalledWith('note-1', 'att-lifecycle');
+    expect(releaseThumbnail).not.toHaveBeenCalled();
+
+    cleanup();
+
+    expect(releaseThumbnail).toHaveBeenCalledWith('note-1', 'att-lifecycle');
   });
 });
