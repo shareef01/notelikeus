@@ -436,6 +436,10 @@ compose.desktop {
             )
 
             windows {
+                // The .exe, the MSI and its Start menu and desktop shortcuts. Without it jpackage
+                // falls back to its stock Java icon. Built from web/public/favicon.svg by
+                // scripts/ops/make-desktop-icons.mjs, as is the window's ic_launcher.png.
+                iconFile.set(project.file("icons/notelikeus.ico"))
                 shortcut = true
                 menu = true
                 upgradeUuid = "d738f712-4217-485c-9c71-0816999b7082"
