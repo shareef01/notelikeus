@@ -12,7 +12,7 @@ Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web
 
 **Windows**
 
-<img src="screenshots/windows-notes.png" width="800" alt="Notelikeus on Windows: pinned notes, label and colour filters, collapsible side rail" />
+<img src="screenshots/windows-notes.png" width="800" alt="Notelikeus on Windows: a pinned image note and coloured notes with labels, the Filters button, and the collapsible side rail with smart views" />
 
 **Web**
 
