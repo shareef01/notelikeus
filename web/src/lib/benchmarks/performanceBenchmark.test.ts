@@ -28,23 +28,36 @@ function generateBenchNotes(count: number): Note[] {
 describe('Phase 2 Benchmarks — Performance Baseline', () => {
   it('benchmarks search performance across 100, 1k, 5k, 10k notes', () => {
     const counts = [100, 1000, 5000, 10000];
-    const results: Record<number, number> = {};
+    const coldResults: Record<number, number> = {};
+    const warmResults: Record<number, number> = {};
 
     for (const count of counts) {
       const dataset = generateBenchNotes(count);
-      const start = performance.now();
-      const result = searchNotes(dataset, {
+      // Cold query (first time folding 10k note haystacks)
+      const coldStart = performance.now();
+      const coldResult = searchNotes(dataset, {
         searchQuery: 'urgent project',
         filter: 'active',
         sortOrder: 'manual',
       });
-      const elapsed = performance.now() - start;
-      results[count] = elapsed;
-      expect(result.notes.length).toBeGreaterThan(0);
+      coldResults[count] = performance.now() - coldStart;
+      expect(coldResult.notes.length).toBeGreaterThan(0);
+
+      // Warm query (subsequent keystroke on the same note library, using memoized haystacks)
+      const warmStart = performance.now();
+      const warmResult = searchNotes(dataset, {
+        searchQuery: 'urgent project alpha',
+        filter: 'active',
+        sortOrder: 'manual',
+      });
+      warmResults[count] = performance.now() - warmStart;
+      expect(warmResult.notes.length).toBeGreaterThan(0);
     }
 
-    console.log('[Benchmark Search Results (ms)]:', results);
-    expect(results[10000]).toBeLessThan(300); // Target: < 300ms baseline in test runner
+    console.log('[Benchmark Search Cold (ms)]:', coldResults);
+    console.log('[Benchmark Search Warm Keystroke (ms)]:', warmResults);
+    expect(coldResults[10000]).toBeLessThan(300);
+    expect(warmResults[10000]).toBeLessThan(50); // Target: < 50ms warm search processing on 10k notes!
   });
 
   it('benchmarks IndexedDB decryption throughput for 100 and 500 notes', async () => {

@@ -243,6 +243,8 @@ describe('UX-A — EditorScreen save failure retry banner', () => {
   it('renders conflict copy banner and opens conflict review on click', async () => {
     const openConflictReviewSpy = vi.spyOn(useUiStore.getState(), 'openConflictReview');
 
+    const flushSaveMock = vi.fn().mockResolvedValue({ status: 'saved' });
+
     vi.spyOn(noteEditorHook, 'useNoteEditor').mockReturnValue({
       state: {
         id: 'note-conflict-1',
@@ -279,7 +281,7 @@ describe('UX-A — EditorScreen save failure retry banner', () => {
       setReminder: vi.fn(),
       addLabel: vi.fn(),
       removeLabel: vi.fn(),
-      flushSave: vi.fn().mockResolvedValue({ status: 'saved' }),
+      flushSave: flushSaveMock,
       discardChanges: vi.fn(),
     } as any);
 
@@ -305,6 +307,7 @@ describe('UX-A — EditorScreen save failure retry banner', () => {
       compareBtn?.click();
     });
 
+    expect(flushSaveMock).toHaveBeenCalledTimes(1);
     expect(openConflictReviewSpy).toHaveBeenCalledWith('note-conflict-1');
 
     act(() => {

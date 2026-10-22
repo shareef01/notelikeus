@@ -108,15 +108,16 @@ function matchesScopeAndFacets(note: Note, filters: NoteQueryFilters): boolean {
   return true;
 }
 
+const EMPTY_STR_ARRAY: string[] = [];
+
 function noteHaystack(note: Note): string {
-  return memoFolded(note, 'haystack', () =>
-    buildSearchText(
-      note.title,
-      note.content,
-      note.checklist.map((item) => item.text),
-      note.labels.map((label) => label.name),
-    ),
-  );
+  return memoFolded(note, 'haystack', () => {
+    const checklistTexts =
+      note.checklist.length > 0 ? note.checklist.map((item) => item.text) : EMPTY_STR_ARRAY;
+    const labelNames =
+      note.labels.length > 0 ? note.labels.map((label) => label.name) : EMPTY_STR_ARRAY;
+    return buildSearchText(note.title, note.content, checklistTexts, labelNames);
+  });
 }
 
 function sortWithoutSearch(notes: Note[], sortOrder: NoteQueryFilters['sortOrder']): Note[] {

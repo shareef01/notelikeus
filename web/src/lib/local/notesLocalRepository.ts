@@ -152,7 +152,7 @@ export async function listStoredNotes(ownerId: string): Promise<StoredNotesReadR
           return { ok: true as const, note: opened };
         } catch (error: unknown) {
           if (error instanceof NoteDecryptionError) {
-            return { ok: false as const, ref: { id: error.noteId, reason: error.reason } };
+            return { ok: false as const, ref: { id: error.noteId || record.id, reason: error.reason } };
           }
           throw error;
         }

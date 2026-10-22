@@ -127,9 +127,14 @@ export function memoFolded(note: object, field: string, compute: () => string): 
 export function buildSearchText(
   title: string,
   content: string,
-  checklistTexts: string[],
-  labelNames: string[],
+  checklistTexts: string[] = [],
+  labelNames: string[] = [],
 ): string {
+  if (checklistTexts.length === 0 && labelNames.length === 0) {
+    if (!title) return foldForSearch(content);
+    if (!content) return foldForSearch(title);
+    return foldForSearch(`${title} ${content}`);
+  }
   const parts = [title, content, ...checklistTexts, ...labelNames].filter((part) => part.trim());
   return foldForSearch(parts.join(' '));
 }

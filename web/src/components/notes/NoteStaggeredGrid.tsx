@@ -153,7 +153,7 @@ export function NoteStaggeredGrid({
 
   useEffect(() => {
     setVisibleCount(INITIAL_RENDER_COUNT);
-  }, [notes, searchQuery, sortOrder]);
+  }, [notes, searchQuery, sortOrder, filter, viewPreference]);
 
   useEffect(() => {
     if (visibleCount >= boardItems.length) return undefined;

@@ -89,6 +89,12 @@ export function NoteCardThumbnail({
           decoding="async"
           draggable={false}
           className="size-full object-cover"
+          onError={() => {
+            void resolveAttachmentThumbnailUrl(noteId, attachment).then((resolved) => {
+              if (resolved && resolved !== url) setUrl(resolved);
+              else setFailed(true);
+            });
+          }}
         />
       ) : null}
     </div>

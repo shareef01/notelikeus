@@ -616,7 +616,8 @@ export function EditorScreen({ route }: EditorScreenProps) {
               {state.id ? (
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
+                    await editor.flushSave();
                     useUiStore.getState().openConflictReview(state.id!);
                   }}
                   className={`shrink-0 rounded-full border border-amber-500/50 bg-amber-500/20 px-3 py-1.5 text-xs font-semibold tracking-wide hover:bg-amber-500/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${CHROME_FOCUS}`}
