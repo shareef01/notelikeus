@@ -5,7 +5,7 @@ A Keep-style notes app for Android, Windows and the browser. Notes are written t
 Android and Windows share a Kotlin Multiplatform core with a Compose UI. The web client is a separate React PWA that talks to the same Supabase schema.
 
 - Web app: <https://notelikeus.pages.dev>
-- Current version: [2.3.1](https://github.com/shareef01/notelikeus/releases/tag/v2.3.1)
+- Current version: [2.3.2](https://github.com/shareef01/notelikeus/releases/tag/v2.3.2)
 - Backend details: [docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md)
 
 ## Screenshots
