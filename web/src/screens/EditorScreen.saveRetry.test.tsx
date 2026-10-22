@@ -239,4 +239,77 @@ describe('UX-A — EditorScreen save failure retry banner', () => {
     });
     container.remove();
   });
+
+  it('renders conflict copy banner and opens conflict review on click', async () => {
+    const openConflictReviewSpy = vi.spyOn(useUiStore.getState(), 'openConflictReview');
+
+    vi.spyOn(noteEditorHook, 'useNoteEditor').mockReturnValue({
+      state: {
+        id: 'note-conflict-1',
+        title: 'Meeting Notes (conflicted copy)',
+        content: 'Different changes',
+        checklist: [],
+        attachments: [],
+        labels: [],
+        color: 0,
+        isPinned: false,
+        isArchived: false,
+        isTrashed: false,
+        reminderTimestamp: null,
+        timestamp: 1700000000000,
+        lastSavedAt: 1700000000000,
+        isSaving: false,
+        saveFailed: false,
+        conflictCopy: true,
+      },
+      setTitle: vi.fn(),
+      setContent: vi.fn(),
+      applyContentFormatting: vi.fn(),
+      setChecklist: vi.fn(),
+      addChecklistItem: vi.fn(),
+      updateChecklistItem: vi.fn(),
+      removeChecklistItem: vi.fn(),
+      convertChecklistToContent: vi.fn(),
+      addAttachment: vi.fn(),
+      removeAttachment: vi.fn(),
+      setColor: vi.fn(),
+      togglePinned: vi.fn(),
+      setArchived: vi.fn(),
+      trashNote: vi.fn(),
+      setReminder: vi.fn(),
+      addLabel: vi.fn(),
+      removeLabel: vi.fn(),
+      flushSave: vi.fn().mockResolvedValue({ status: 'saved' }),
+      discardChanges: vi.fn(),
+    } as any);
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    act(() => {
+      root.render(
+        createElement(EditorScreen, {
+          route: { mode: 'edit', noteId: 'note-conflict-1' },
+        }),
+      );
+    });
+
+    const compareBtn = container.querySelector(
+      'button[aria-label="Compare with the current note"]',
+    ) as HTMLButtonElement | null;
+    expect(compareBtn).not.toBeNull();
+    expect(compareBtn?.textContent).toContain('Compare versions');
+
+    await act(async () => {
+      compareBtn?.click();
+    });
+
+    expect(openConflictReviewSpy).toHaveBeenCalledWith('note-conflict-1');
+
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
 });

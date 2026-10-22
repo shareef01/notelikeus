@@ -22,6 +22,7 @@ import { useNoteEditor } from '@/hooks/useNoteEditor';
 import { useImagePasteAndDrop } from '@/hooks/useImagePasteAndDrop';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
+import { isConflictedCopyTitle } from '@/lib/notes/conflictResolution';
 import { useCloudSync } from '@/hooks/useCloudSync';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -603,14 +604,27 @@ export function EditorScreen({ route }: EditorScreenProps) {
         }}
       >
         <div className={['flex w-full flex-col', writingColumnClass].filter(Boolean).join(' ')}>
-          {state.conflictCopy ? (
+          {state.conflictCopy || isConflictedCopyTitle(state.title) ? (
             <div
               role="status"
-              className="mb-4 rounded-note border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+              className="mb-4 flex flex-col gap-2 rounded-note border border-amber-500/40 bg-amber-500/10 p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
               style={{ color: contentColor }}
             >
-              This note was changed on another device while you were editing. Your version is
-              saved as a separate copy, so neither version was lost.
+              <span>
+                This note was kept from a sync conflict so neither version was lost.
+              </span>
+              {state.id ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    useUiStore.getState().openConflictReview(state.id!);
+                  }}
+                  className={`shrink-0 rounded-full border border-amber-500/50 bg-amber-500/20 px-3 py-1.5 text-xs font-semibold tracking-wide hover:bg-amber-500/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${CHROME_FOCUS}`}
+                  aria-label="Compare with the current note"
+                >
+                  Compare versions
+                </button>
+              ) : null}
             </div>
           ) : null}
           {state.saveFailed ? (
