@@ -56,7 +56,10 @@ Web keyboard shortcuts:
 |---|---|---|
 | `/`, Ctrl/⌘+K, Ctrl/⌘+F | Note list | Focus search. With a note open, Ctrl/⌘+F is the browser's find. |
 | N | Note list | New note |
+| ↑ / ↓ | A card's drag handle | Move the note one place, in manual sort |
+| Ctrl/⌘+B, Ctrl/⌘+I | Editor | Bold, italic (also on Android and Windows) |
 | Ctrl/⌘+Enter | Editor | Save now |
+| Ctrl/⌘+Z | Outside a text field | Undo, while the Undo toast is up |
 | Escape | Anywhere | Close the innermost dialog, then the note, then leave selection |
 
 Shortcuts on the note list stay out of the way while a dialog is open, and typing in a text field never triggers them.
@@ -94,7 +97,7 @@ Something not syncing has a settings screen for it. Sync diagnostics shows count
 | Local data | Room + SQLCipher (Keystore / DPAPI) | IndexedDB (notes + pending attachments sealed) |
 | Cloud | Supabase Auth, Postgres RPC, Realtime | Supabase Auth, Postgres RPC, Realtime |
 | Attachments | Cloudflare Worker and R2 | Cloudflare Worker and R2 |
-| Hosting | MSI installer | Cloudflare Pages |
+| Distribution | APK and MSI on [GitHub Releases](https://github.com/shareef01/notelikeus/releases) | Cloudflare Pages |
 | Tooling | Koin, Coroutines, Flow | Vite, Vitest, Playwright |
 
 ## Getting started
@@ -118,7 +121,9 @@ npm run kotlin:staging-properties
 ./gradlew :androidApp:assembleDebug
 ```
 
-See [docs/ANDROID_STAGING.md](docs/ANDROID_STAGING.md) for the keys involved. Release builds (the AAB and the MSI) refuse to build without the hosted Supabase URL, the anon key, the attachments Worker URL and `NOTELIKEUS_CAPTCHA_PAGE_URL`, the web app's security-check page.
+See [docs/ANDROID_STAGING.md](docs/ANDROID_STAGING.md) for the keys involved. Release builds (the AAB and the MSI) refuse to build without the hosted Supabase URL, the public client key, the attachments Worker URL and `NOTELIKEUS_CAPTCHA_PAGE_URL`, the web app's security-check page.
+
+The public client key is the project's publishable key (`sb_publishable_…`). Builds still accept a legacy anon JWT (`eyJ…`) and refuse any secret key, but the hosted project has had its legacy JWT keys disabled since 2026-10-21, so a build carrying one cannot reach it (D31 in [docs/DECISIONS.md](docs/DECISIONS.md)). The variables keep their `ANON_KEY` names.
 
 ### Windows
 
@@ -136,7 +141,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Production builds need a hosted `VITE_SUPABASE_URL` and the public `VITE_SUPABASE_ANON_KEY`. With `VITE_TURNSTILE_SITE_KEY` set, the sign-in screen and `captcha.html` run the Turnstile check; without it, as in local development and e2e, no check is shown and no token is sent.
+Production builds need a hosted `VITE_SUPABASE_URL`, and the publishable key in `VITE_SUPABASE_ANON_KEY`. A deploy refuses a build that contains a secret key. With `VITE_TURNSTILE_SITE_KEY` set, the sign-in screen and `captcha.html` run the Turnstile check; without it, as in local development and e2e, no check is shown and no token is sent.
 
 ## Testing
 
@@ -152,14 +157,15 @@ Production builds need a hosted `VITE_SUPABASE_URL` and the public `VITE_SUPABAS
 | Web end-to-end | Built bundle in Chromium against local Supabase | `cd web && npm run test:e2e` |
 | Database | RLS, sync RPCs, tombstones, attachments, the password sign-in hook (pgTAP) | `npm run supabase:test` |
 | Attachments Worker | JWT auth, path isolation, size and MIME limits | `npm run test:attachments-worker` |
-| Pages artifacts | `_headers` and `_redirects` in `web/dist` | `npm run pages:verify` |
+| Pages artifacts | `_headers` and `_redirects` in `web/dist`; before a deploy, also that no secret key is in the bundle | `npm run pages:verify` |
+| Ops scripts | The bundle secret scan, the client-key checks for staging builds, the Worker's generated deploy config | `npm run test:pages-bundle-secrets`, `npm run test:kotlin-staging-properties`, `npm run test:attachments-worker-deploy` |
 
 The instrumented suite needs a connected device or emulator; the database and end-to-end suites need a running local Supabase (`npm run supabase:start`), which needs Docker.
 
 The cross-client fixtures live in [`contracts/`](contracts/) and are read by both test suites, so a
 field renamed or defaulted differently on one client fails on both. `contracts/sync/` pins the rules for what an incoming cloud version may do to a local note. The most recent audit is
-[`docs/audit/PROJECT_AUDIT_2026-10-17.md`](docs/audit/PROJECT_AUDIT_2026-10-17.md) (sign-in and deploy hardening), which builds on
-[`docs/audit/PROJECT_AUDIT_2026-10-15.md`](docs/audit/PROJECT_AUDIT_2026-10-15.md) and [`AUDIT_REPORT.md`](AUDIT_REPORT.md). Each records the status of every finding. The earlier
+[`docs/audit/PROJECT_AUDIT_2026-10-21.md`](docs/audit/PROJECT_AUDIT_2026-10-21.md) (publishable keys, deploy checks, and an Android image fix), which builds on
+[`2026-10-19`](docs/audit/PROJECT_AUDIT_2026-10-19.md), [`2026-10-17`](docs/audit/PROJECT_AUDIT_2026-10-17.md), [`2026-10-15`](docs/audit/PROJECT_AUDIT_2026-10-15.md) and [`AUDIT_REPORT.md`](AUDIT_REPORT.md). Each records the status of every finding. The earlier
 [`docs/audit/COMPREHENSIVE_AUDIT.md`](docs/audit/COMPREHENSIVE_AUDIT.md) with [`docs/audit/FINDINGS.md`](docs/audit/FINDINGS.md), and the design system in [`docs/design/`](docs/design/), sit alongside them.
 
 ## Repository layout
@@ -174,7 +180,7 @@ field renamed or defaulted differently on one client fails on both. `contracts/s
 | `cloudflare/` | Pages header parity check |
 | `contracts/` | Canonical JSON fixtures both clients are tested against |
 | `docs/` | Architecture, design decisions, known defects, audits, device QA |
-| `store/` | Play Store listing copy and publishing notes |
+| `store/` | Play Store listing copy and publishing notes, kept for a future Play release; releases currently ship on GitHub only |
 
 ## Privacy
 
