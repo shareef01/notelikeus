@@ -52,7 +52,7 @@ export function retainAttachmentThumbnail(noteId: string, attachmentId: string):
 }
 
 /**
- * Releases a consumer reference when the image card unmounts or changes its attachment.
+ * Releases a consumer reference when the image card unmounts, deactivates, or changes its attachment.
  * When the reference count drops to zero, the thumbnail becomes eligible for LRU eviction if cache capacity is exceeded.
  */
 export function releaseAttachmentThumbnail(noteId: string, attachmentId: string): void {
@@ -63,6 +63,9 @@ export function releaseAttachmentThumbnail(noteId: string, attachmentId: string)
   } else {
     activeRefs.set(key, current);
   }
+  if (thumbnailUrls.size > MAX_CACHED_THUMBNAILS) {
+    evictUnreferencedLru();
+  }
 }
 
 /** Returns the number of active consumers currently retaining this thumbnail (useful for tests and inspection). */
@@ -70,8 +73,20 @@ export function getAttachmentThumbnailActiveRefCount(noteId: string, attachmentI
   return activeRefs.get(cacheKey(noteId, attachmentId)) ?? 0;
 }
 
-function evictUnreferencedLru(): void {
-  while (thumbnailUrls.size >= MAX_CACHED_THUMBNAILS) {
+/** Returns the total number of Object URLs currently held in memory by the thumbnail cache. */
+export function getCachedThumbnailCount(): number {
+  return thumbnailUrls.size;
+}
+
+/** Returns the total count of active references across all thumbnails. */
+export function getTotalActiveThumbnailRefCount(): number {
+  let total = 0;
+  for (const count of activeRefs.values()) total += count;
+  return total;
+}
+
+function evictUnreferencedLru(targetSize = MAX_CACHED_THUMBNAILS): void {
+  while (thumbnailUrls.size > targetSize) {
     let evictedKey: string | null = null;
     for (const candidateKey of thumbnailUrls.keys()) {
       if ((activeRefs.get(candidateKey) ?? 0) === 0) {
@@ -203,7 +218,7 @@ export function resolveAttachmentThumbnailUrl(
       if (startedIn !== generation) return null;
 
       // Evict oldest unreferenced thumbnail Object URL if cache exceeds bounded capacity
-      evictUnreferencedLru();
+      evictUnreferencedLru(MAX_CACHED_THUMBNAILS - 1);
 
       const url = URL.createObjectURL(thumbnail);
       thumbnailUrls.set(key, url);

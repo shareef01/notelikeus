@@ -56,8 +56,18 @@ describe('Phase 2 Benchmarks — Performance Baseline', () => {
 
     console.log('[Benchmark Search Cold (ms)]:', coldResults);
     console.log('[Benchmark Search Warm Keystroke (ms)]:', warmResults);
-    expect(coldResults[10000]).toBeLessThan(300);
-    expect(warmResults[10000]).toBeLessThan(50); // Target: < 50ms warm search processing on 10k notes!
+    // Under V8 code-coverage instrumentation (e.g. `npm run test:coverage` in CI),
+    // AST block/branch tracking intercepts every comparison in the 10,000-note relevance loop.
+    const isCoverage =
+      typeof process !== 'undefined' &&
+      (Boolean(process.env.NODE_V8_COVERAGE) ||
+        Boolean(process.env.VITEST_COVERAGE) ||
+        Boolean(process.env.npm_lifecycle_event?.includes('coverage')));
+    const coldLimitMs = isCoverage ? 1000 : 300;
+    const warmLimitMs = isCoverage ? 100 : 50;
+
+    expect(coldResults[10000]).toBeLessThan(coldLimitMs);
+    expect(warmResults[10000]).toBeLessThan(warmLimitMs); // Target: < 50ms warm search processing on 10k notes!
   });
 
   it('benchmarks IndexedDB decryption throughput for 100 and 500 notes', async () => {
