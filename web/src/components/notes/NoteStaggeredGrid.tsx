@@ -438,6 +438,7 @@ export function NoteStaggeredGrid({
       {visibleCount < boardItems.length ? (
         <div
           ref={sentinelRef}
+          data-sentinel="notes-grid"
           className={isList ? 'col-span-full h-8 w-full' : 'h-8 w-full break-inside-avoid'}
           style={isList ? undefined : { columnSpan: 'all' }}
           aria-hidden="true"

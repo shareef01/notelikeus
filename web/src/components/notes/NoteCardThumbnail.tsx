@@ -19,7 +19,9 @@ interface NoteCardThumbnailProps {
 }
 
 /** Start loading a little before the card scrolls into view, so the picture is usually there when it arrives. */
-const LOAD_AHEAD_MARGIN = '240px';
+const LOAD_AHEAD_MARGIN = '600px';
+/** Deactivate only when the card has scrolled well outside the viewport to prevent thrashing. */
+const EXIT_MARGIN = '1200px';
 
 /**
  * The first image of a note, on its card.
@@ -36,12 +38,10 @@ export function NoteCardThumbnail({
   bleedClassName = '',
 }: NoteCardThumbnailProps) {
   const frameRef = useRef<HTMLDivElement>(null);
-  const [url, setUrl] = useState<string | null>(() =>
-    peekAttachmentThumbnailUrl(noteId, attachment.id),
+  const [isActive, setIsActive] = useState(
+    () => typeof IntersectionObserver === 'undefined',
   );
-  const [near, setNear] = useState(
-    () => url !== null || typeof IntersectionObserver === 'undefined',
-  );
+  const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const isMountedRef = useRef(true);
   const currentKeyRef = useRef(`${noteId}:${attachment.id}`);
@@ -54,35 +54,62 @@ export function NoteCardThumbnail({
     };
   }, []);
 
+  // Viewport-aware activation and deactivation with hysteresis:
+  // - Enters active state when within LOAD_AHEAD_MARGIN (600px) of viewport
+  // - Exits active state only when moved beyond EXIT_MARGIN (1200px) from viewport
   useEffect(() => {
-    if (near) return undefined;
     const frame = frameRef.current;
-    if (!frame) return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setNear(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: LOAD_AHEAD_MARGIN },
-    );
-    observer.observe(frame);
-    return () => observer.disconnect();
-  }, [near]);
+    if (!frame || typeof IntersectionObserver === 'undefined') return undefined;
+
+    if (!isActive) {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            setIsActive(true);
+          }
+        },
+        { rootMargin: LOAD_AHEAD_MARGIN },
+      );
+      observer.observe(frame);
+      return () => observer.disconnect();
+    } else {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[0];
+          if (entry && !entry.isIntersecting) {
+            setIsActive(false);
+          }
+        },
+        { rootMargin: EXIT_MARGIN },
+      );
+      observer.observe(frame);
+      return () => observer.disconnect();
+    }
+  }, [isActive]);
 
   useEffect(() => {
-    if (!near) return undefined;
+    if (!isActive) {
+      setUrl(null);
+      return undefined;
+    }
+
     let active = true;
     const currentNoteId = noteId;
     const currentAttachmentId = attachment.id;
+    const currentKey = `${currentNoteId}:${currentAttachmentId}`;
 
-    // Retain active consumer ref so cache won't evict/revoke our URL while mounted
+    // Retain active consumer ref so cache won't evict/revoke our URL while active
     retainAttachmentThumbnail(currentNoteId, currentAttachmentId);
     setFailed(false);
 
+    // Fast-path: peek cached URL immediately to avoid any blink if already in memory
+    const cached = peekAttachmentThumbnailUrl(currentNoteId, currentAttachmentId);
+    if (cached) {
+      setUrl(cached);
+    }
+
     void resolveAttachmentThumbnailUrl(currentNoteId, attachment).then((resolved) => {
-      if (!active || !isMountedRef.current) return;
+      if (!active || !isMountedRef.current || currentKeyRef.current !== currentKey) return;
       setUrl(resolved);
       setFailed(resolved === null);
     });
@@ -91,7 +118,7 @@ export function NoteCardThumbnail({
       active = false;
       releaseAttachmentThumbnail(currentNoteId, currentAttachmentId);
     };
-  }, [near, noteId, attachment.id, attachment]);
+  }, [isActive, noteId, attachment.id, attachment]);
 
   if (failed) return null;
 

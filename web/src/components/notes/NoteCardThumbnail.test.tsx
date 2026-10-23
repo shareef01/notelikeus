@@ -45,6 +45,15 @@ function scrollIntoView() {
   }
 }
 
+function scrollOutOfView() {
+  for (const record of observers.filter((o) => !o.disconnected)) {
+    record.callback(
+      [{ isIntersecting: false } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+  }
+}
+
 const attachment = (overrides: Partial<Attachment> = {}): Attachment => ({
   id: 'att-1',
   noteId: 1,
@@ -212,5 +221,45 @@ describe('NoteCard thumbnail', () => {
     cleanup();
 
     expect(releaseThumbnail).toHaveBeenCalledWith('note-1', 'att-lifecycle');
+  });
+
+  it('deactivates and releases thumbnail when scrolled out of view, and reactivates when scrolled back', async () => {
+    resolveThumbnail.mockResolvedValue('blob:thumb');
+    const { container, cleanup } = await renderCard(
+      note([attachment({ id: 'att-hysteresis' })]),
+      'grid',
+      { onScreen: true },
+    );
+
+    // Actively on screen: image loaded, thumbnail ref retained
+    expect(retainThumbnail).toHaveBeenCalledTimes(1);
+    expect(retainThumbnail).toHaveBeenCalledWith('note-1', 'att-hysteresis');
+    expect(releaseThumbnail).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="note-card-thumbnail"] img')?.getAttribute('src')).toBe('blob:thumb');
+
+    // Scrolls out of view beyond exit margin
+    await act(async () => {
+      scrollOutOfView();
+    });
+
+    // Reference was released, and img tag removed to free bitmap memory
+    expect(releaseThumbnail).toHaveBeenCalledTimes(1);
+    expect(releaseThumbnail).toHaveBeenCalledWith('note-1', 'att-hysteresis');
+    expect(container.querySelector('[data-testid="note-card-thumbnail"] img')).toBeNull();
+
+    // Scrolls back into view
+    await act(async () => {
+      scrollIntoView();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Re-retains reference and restores image
+    expect(retainThumbnail).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('[data-testid="note-card-thumbnail"] img')?.getAttribute('src')).toBe('blob:thumb');
+
+    cleanup();
+    expect(releaseThumbnail).toHaveBeenCalledTimes(2);
   });
 });

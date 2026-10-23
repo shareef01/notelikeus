@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findSecretsInDir } from './bundleSecrets.mjs';
@@ -83,6 +83,24 @@ if (deployable) {
       'Nothing was deployed. VITE_SUPABASE_ANON_KEY must be the publishable key (sb_publishable_…) ' +
         'or the legacy anon JWT. Fix the secret, and rotate the key if this build was ever published.',
     );
+    process.exit(1);
+  }
+
+  // Ensure test-hooks like __NOTELIKEUS_NOTES_STORE__ are never present in production dist
+  const distAssetsDir = join(distDir, 'assets');
+  try {
+    const assetFiles = readdirSync(distAssetsDir);
+    for (const file of assetFiles) {
+      if (file.endsWith('.js')) {
+        const content = readFileSync(join(distAssetsDir, file), 'utf8');
+        if (content.includes('__NOTELIKEUS_NOTES_STORE__')) {
+          console.error(`web/dist/assets/${file} contains E2E test-hook __NOTELIKEUS_NOTES_STORE__!`);
+          process.exit(1);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Failed to read dist/assets for test-hook verification:', err);
     process.exit(1);
   }
 }
