@@ -18,6 +18,10 @@
   --color-brand-secondary: rgb(var(--secondary-rgb));
   --color-brand-muted: rgb(var(--muted-rgb));
   --color-brand-outline: rgb(var(--outline-rgb));
+  --color-text-primary: rgb(var(--text-primary-rgb, var(--primary-rgb)));
+  --color-text-secondary: rgb(var(--secondary-rgb));
+  --color-text-muted: rgb(var(--muted-rgb));
+  --color-brand-accent: rgb(var(--primary-rgb));
 
   --shadow-header-scroll: 0 1px 0 0 rgb(var(--outline-rgb) / 0.4);
 }
@@ -74,7 +78,9 @@
   --container-editor: 48rem;
 
   --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.12), 0 1px 2px -1px rgb(0 0 0 / 0.12);
+  --shadow-card-hover: 0 3px 8px -1px rgb(0 0 0 / 0.09), 0 1px 4px -1px rgb(0 0 0 / 0.06);
   --shadow-card-lg: 0 4px 12px -2px rgb(0 0 0 / 0.18), 0 2px 6px -2px rgb(0 0 0 / 0.12);
+  --shadow-elevated: 0 10px 25px -4px rgb(0 0 0 / 0.18), 0 4px 10px -2px rgb(0 0 0 / 0.10);
 }
 
 /* darkMode: 'class' equivalent — v4 needs the custom-variant declaration. */
@@ -103,6 +109,7 @@
   --surface-rgb: 27 27 27;
   --surface-variant-rgb: 39 39 39;
   --primary-rgb: 237 237 237;
+  --text-primary-rgb: 237 237 237;
   --secondary-rgb: 176 176 176;
   --muted-rgb: 148 148 148;
   --outline-rgb: 50 50 50;
@@ -116,6 +123,7 @@
     --surface-rgb: 255 255 255;
     --surface-variant-rgb: 236 236 234;
     --primary-rgb: 21 21 21;
+    --text-primary-rgb: 21 21 21;
     --secondary-rgb: 77 77 75;
     --muted-rgb: 102 102 99;
     --outline-rgb: 214 214 211;
@@ -131,6 +139,7 @@
   --surface-rgb: 255 255 255;
   --surface-variant-rgb: 236 236 234;
   --primary-rgb: 21 21 21;
+  --text-primary-rgb: 21 21 21;
   --secondary-rgb: 77 77 75;
   --muted-rgb: 102 102 99;
   --outline-rgb: 214 214 211;
@@ -140,10 +149,12 @@
    Theme.kt, which copies the light scheme and changes only `primary` and its container. */
 .theme-light.accent-blue {
   --primary-rgb: 11 87 208;
+  --text-primary-rgb: 21 21 21;
 }
 
 .theme-light.accent-green {
   --primary-rgb: 27 107 46;
+  --text-primary-rgb: 21 21 21;
 }
 
 .theme-dark {
@@ -235,12 +246,12 @@
 
   body {
     background-color: rgb(var(--background-rgb));
-    color: rgb(var(--primary-rgb));
+    color: rgb(var(--text-primary-rgb, var(--primary-rgb)));
     @apply font-sans antialiased;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
     letter-spacing: -0.011em;
     text-rendering: optimizeLegibility;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    transition: background-color 0.15s cubic-bezier(0.2, 0, 0, 1), color 0.15s cubic-bezier(0.2, 0, 0, 1);
   }
 
   h1,

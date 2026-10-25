@@ -36,6 +36,7 @@ import type { Note, NoteFilter } from '@/types/note';
 import { MainDialogs, NO_DIALOGS_OPEN, type MainDialogState } from '@/screens/main/MainDialogs';
 import { getEmptyState } from '@/screens/main/mainEmptyState';
 import { ConfirmDialog } from '@/components/ui/ModalDialog';
+import { Button } from '@/components/ui/Button';
 import { useAccountActions } from '@/screens/main/useAccountActions';
 import { useNoteActions } from '@/screens/main/useNoteActions';
 import { formatUnknownError } from '@/lib/errors/formatUnknownError';
@@ -44,6 +45,7 @@ import { resolveNotesViewState } from '@/screens/main/notesViewState';
 
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { useShortcuts } from '@/hooks/useShortcuts';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 
 const EditorScreen = lazy(() =>
@@ -541,21 +543,19 @@ export function MainScreen() {
                       }}
                       action={
                         emptyState.showClearFilters ? (
-                          <button
-                            type="button"
+                          <Button
+                            variant="secondary"
                             onClick={clearFilters}
-                            className="min-h-11 rounded-note border border-brand-outline/50 px-5 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5"
                           >
                             Clear filters
-                          </button>
+                          </Button>
                         ) : emptyState.showCreate ? (
-                          <button
-                            type="button"
+                          <Button
+                            variant="primary"
                             onClick={openNewNote}
-                            className="min-h-11 rounded-note bg-brand-primary px-5 py-2.5 text-sm font-semibold text-true-surface transition-transform active:scale-95"
                           >
                             New note
-                          </button>
+                          </Button>
                         ) : undefined
                       }
                     />
@@ -603,21 +603,13 @@ export function MainScreen() {
 
 
         {filters.filter === 'active' && !selectionMode ? (
-
           <button
-
             type="button"
-
             onClick={openNewNote}
-
-            className="fixed z-20 flex size-14 items-center justify-center rounded-note bg-brand-primary text-true-surface shadow-lg transition-transform hover:scale-105 active:scale-95 bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] right-[calc(1.5rem+env(safe-area-inset-right,0px))] md:hidden"
-
+            className={`fixed z-20 flex size-14 items-center justify-center rounded-2xl bg-brand-primary text-true-surface shadow-elevated transition-all duration-150 hover:opacity-95 active:scale-95 bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] right-[calc(1.5rem+env(safe-area-inset-right,0px))] md:hidden ${CHROME_FOCUS}`}
             aria-label="Add note"
-
           >
-
             <AddIcon size={28} />
-
           </button>
         ) : null}
         </div>

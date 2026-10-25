@@ -69,6 +69,28 @@ describe('RichTextToolbar', () => {
     expect(container.querySelector('button[aria-label="Italic"]')?.getAttribute('aria-keyshortcuts')).toBe('Control+I');
     cleanup();
   });
+
+  it('supports roving tabindex with Arrow keys', () => {
+    const { container, cleanup } = render(
+      createElement(RichTextToolbar, { contentColor: '#000', ...handlers() }),
+    );
+    const buttons = container.querySelectorAll<HTMLButtonElement>('button');
+    expect(buttons[0]?.tabIndex).toBe(0);
+    expect(buttons[1]?.tabIndex).toBe(-1);
+
+    const toolbar = container.querySelector('[role="toolbar"]')!;
+    act(() => {
+      toolbar.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    });
+    expect(buttons[1]?.tabIndex).toBe(0);
+    expect(buttons[0]?.tabIndex).toBe(-1);
+
+    act(() => {
+      toolbar.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    });
+    expect(buttons[0]?.tabIndex).toBe(0);
+    cleanup();
+  });
 });
 
 describe('LinkDialog', () => {

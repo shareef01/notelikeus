@@ -7,6 +7,9 @@ import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import { useState } from 'react';
 import type { Label } from '@/types/label';
 
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Button } from '@/components/ui/Button';
+
 interface LabelsScreenProps {
   onClose: () => void;
 }
@@ -46,9 +49,9 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
       role="dialog"
       aria-modal="true"
       aria-label="Edit labels"
-      className="fixed inset-0 z-50 flex flex-col bg-true-surface animate-in fade-in duration-300"
+      className="fixed inset-0 z-50 flex flex-col bg-true-surface animate-in fade-in duration-200"
     >
-      <header className="border-b border-transparent lg:border-brand-outline/40">
+      <header className="border-b border-brand-outline/30">
         <div className="mx-auto flex w-full max-w-2xl items-center justify-between px-shell py-4 pt-safe">
           <h2 className="text-xl font-bold tracking-tight text-brand-primary">Edit labels</h2>
           <button
@@ -64,9 +67,9 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
 
       <div className="flex-1 overflow-y-auto px-shell pb-24">
         <div className="mx-auto w-full max-w-2xl">
-          <form onSubmit={handleCreate} className="mb-8 flex items-center gap-3 border-b border-brand-outline pb-6 pt-6">
-            <div className="flex size-10 items-center justify-center text-brand-primary/40">
-              <AddIcon size={24} />
+          <form onSubmit={handleCreate} className="mb-6 flex items-center gap-3 border-b border-brand-outline/35 pb-5 pt-5">
+            <div className="flex size-10 shrink-0 items-center justify-center text-brand-muted">
+              <AddIcon size={22} />
             </div>
             <input
               type="text"
@@ -74,26 +77,22 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
               onChange={(e) => setNewLabelName(e.target.value)}
               placeholder="Create new label"
               aria-label="Create new label"
-              className="flex-1 bg-transparent text-lg outline-none placeholder:text-brand-muted"
+              className="flex-1 bg-transparent text-base font-medium outline-none placeholder:text-brand-muted"
             />
             {newLabelName.trim() ? (
-              <button
-                type="submit"
-                className="rounded-note px-4 py-2 text-sm font-bold text-brand-primary transition-colors hover:bg-brand-primary/5"
-              >
+              <Button type="submit" size="sm">
                 Create
-              </button>
+              </Button>
             ) : null}
           </form>
 
           {labels.length === 0 ? (
-            <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-              <p className="text-[18px] font-bold tracking-tight text-brand-primary opacity-80">
-                No labels yet
-              </p>
-              <p className="mt-2 text-[14px] font-medium leading-[1.4em] text-brand-muted">
-                Create labels to organize your notes
-              </p>
+            <div className="py-12">
+              <EmptyState
+                icon={<LabelIcon size={32} />}
+                title="No labels yet"
+                description="Create labels to organize and quickly filter your notes."
+              />
             </div>
           ) : (
             <div className="space-y-0">
