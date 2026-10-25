@@ -221,7 +221,7 @@ function NoteCardImpl({
   return (
     <article
       data-note-id={note.id}
-      className={`group relative flex h-auto w-full overflow-hidden rounded-note text-left transition-all duration-200 hover:shadow-lg ${
+      className={`group relative flex h-auto w-full overflow-hidden rounded-note text-left transition-all duration-150 hover:shadow-card-hover ${
         isList
           ? 'flex-row items-stretch gap-0'
           : isDense
@@ -231,7 +231,7 @@ function NoteCardImpl({
         isSelected
           ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-true-surface'
           : note.color === 0
-            ? 'border border-brand-outline/40 hover:border-brand-outline/70'
+            ? 'border border-brand-outline/35 hover:border-brand-outline/75'
             : ''
       }`}
       style={surface}
@@ -422,7 +422,7 @@ function NoteCardImpl({
       {/* Desktop hover/focus quick actions (UX-05). 32px each: the design system's pointer minimum (§5). */}
       {!isSelected && (onPinToggle || onArchive || onRestore || onTrash) ? (
         <div
-          className="absolute right-2 bottom-2 z-10 hidden sm:flex items-center gap-0.5 rounded-full bg-true-surface/90 backdrop-blur-sm border border-brand-outline/30 p-0.5 shadow-sm opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-auto"
+          className="absolute right-2 bottom-2 z-10 hidden sm:flex items-center gap-0.5 rounded-full bg-true-surface border border-brand-outline/35 p-0.5 shadow-sm opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 pointer-events-auto"
           role="toolbar"
           aria-label="Note quick actions"
           data-quick-actions=""

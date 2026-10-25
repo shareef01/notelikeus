@@ -13,6 +13,7 @@ import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
+import { Badge } from '@/components/ui/Badge';
 import type { NoteFilter } from '@/types/note';
 import type { ReactNode } from 'react';
 
@@ -65,19 +66,19 @@ function NavButton({
       aria-current={ariaCurrent}
       aria-label={collapsed ? label : undefined}
       title={collapsed ? label : undefined}
-      className={`group relative flex w-full items-center gap-3 rounded-xl text-left text-sm leading-5 tracking-tight transition-colors ${CHROME_FOCUS} ${
+      className={`group relative flex w-full items-center gap-3 rounded-xl text-left text-sm leading-5 tracking-tight transition-all duration-150 ${CHROME_FOCUS} ${
         collapsed
           ? 'min-h-11 justify-center px-0 py-2.5'
           : 'min-h-11 py-2.5 pl-3 pr-2.5'
       } ${
         active
-          ? 'bg-brand-primary/[0.08] font-semibold text-brand-primary'
-          : 'font-medium text-brand-secondary hover:bg-brand-primary/[0.06] hover:text-brand-primary'
+          ? 'bg-brand-primary/[0.09] font-semibold text-brand-primary'
+          : 'font-medium text-brand-secondary hover:bg-brand-primary/[0.05] hover:text-brand-primary'
       }`}
     >
       {!collapsed && active ? (
         <span
-          className="absolute inset-y-2.5 left-0 w-0.5 rounded-full bg-brand-primary"
+          className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-brand-primary"
           aria-hidden
         />
       ) : null}
@@ -126,15 +127,13 @@ function NavSection({
 
 function CountBadge({ count, active }: { count: number; active: boolean }) {
   return (
-    <span
-      className={`inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${
-        active
-          ? 'bg-brand-primary/20 text-brand-primary'
-          : 'bg-brand-primary/[0.08] text-brand-secondary'
-      }`}
+    <Badge
+      variant={active ? 'accent' : 'neutral'}
+      size="sm"
+      className={active ? '' : 'group-hover:text-brand-secondary'}
     >
       {count}
-    </span>
+    </Badge>
   );
 }
 

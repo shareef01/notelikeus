@@ -53,4 +53,13 @@ describe('contracts/design/theme-colors.json (web)', () => {
       contract.lightAccentPrimary.green,
     );
   });
+
+  it('light accents keep text-primary-rgb neutral', () => {
+    expect(rgbChannelsToHex(resolveThemeVars(blocks, ['theme-light', 'accent-blue'])['text-primary-rgb'] ?? '')).toBe(
+      '#151515',
+    );
+    expect(rgbChannelsToHex(resolveThemeVars(blocks, ['theme-light', 'accent-green'])['text-primary-rgb'] ?? '')).toBe(
+      '#151515',
+    );
+  });
 });

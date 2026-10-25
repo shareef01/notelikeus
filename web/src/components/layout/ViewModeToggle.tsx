@@ -49,7 +49,7 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
       </button>
 
       <div
-        className="hidden shrink-0 items-center md:flex"
+        className="hidden shrink-0 items-center rounded-xl border border-brand-outline/25 bg-true-surface-variant/40 p-0.5 md:flex"
         role="radiogroup"
         aria-label="Notes view size"
         {...getContainerProps()}
@@ -66,13 +66,13 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
               title={label}
               onClick={() => onChange(mode)}
               {...getRadioProps(mode)}
-              className={`flex size-9 items-center justify-center rounded-full transition-colors ${CHROME_FOCUS} ${
+              className={`flex size-8 items-center justify-center rounded-lg transition-all duration-150 ${CHROME_FOCUS} ${
                 selected
-                  ? 'text-brand-primary'
-                  : 'text-brand-muted hover:bg-brand-primary/5 hover:text-brand-primary'
+                  ? 'bg-true-surface text-brand-primary shadow-xs font-semibold'
+                  : 'text-brand-muted hover:text-brand-primary'
               }`}
             >
-              <Icon size={20} />
+              <Icon size={18} />
             </button>
           );
         })}

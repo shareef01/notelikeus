@@ -145,7 +145,7 @@ export function TopBar({
 
             <form
               onSubmit={handleSearchSubmit}
-              className="relative flex h-11 min-w-0 flex-1 items-center rounded-full border border-brand-outline/20 bg-true-surface-variant/60 px-1 shadow-sm transition-colors focus-within:border-brand-outline/50 focus-within:bg-true-surface-variant/80 sm:h-12"
+              className="relative flex h-11 min-w-0 flex-1 items-center rounded-full border border-brand-outline/25 bg-true-surface-variant/60 px-1 shadow-sm transition-all duration-150 focus-within:border-brand-primary/60 focus-within:bg-true-surface focus-within:ring-2 focus-within:ring-brand-primary/25 sm:h-12"
             >
               <input
                 ref={searchInputRef}
@@ -155,7 +155,7 @@ export function TopBar({
                 onFocus={() => setIsSearchFocused(true)}
                 onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
                 placeholder={SEARCH_PLACEHOLDERS[currentFilter]}
-                className={`min-w-0 flex-1 bg-transparent px-3 text-base text-brand-primary outline-none placeholder:text-brand-muted sm:px-4 ${CHROME_FOCUS} rounded-full`}
+                className="min-w-0 flex-1 bg-transparent px-3 text-base text-brand-primary outline-none placeholder:text-brand-muted focus:outline-none focus:ring-0 sm:px-4"
                 aria-label={SEARCH_PLACEHOLDERS[currentFilter]}
               />
 
@@ -163,7 +163,7 @@ export function TopBar({
                 <button
                   type="button"
                   onClick={() => onSearchQueryChange('')}
-                  className={`tap-target mr-0.5 flex size-10 sm:size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
+                  className={`tap-target mr-0.5 flex size-10 sm:size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 hover:text-brand-primary transition-colors ${CHROME_FOCUS}`}
                   aria-label="Clear search"
                 >
                   <CloseIcon size={18} />
@@ -179,7 +179,7 @@ export function TopBar({
 
               {showRecent ? (
                 <div
-                  className="absolute left-0 right-0 top-full z-50 mt-1.5 rounded-2xl border border-brand-outline/40 bg-true-surface p-3 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-1 duration-150"
+                  className="absolute left-0 right-0 top-full z-50 mt-2 rounded-2xl border border-brand-outline/40 bg-true-surface p-3 shadow-elevated animate-in fade-in slide-in-from-top-1 duration-150"
                   role="region"
                   aria-label="Recent searches"
                 >
@@ -238,7 +238,7 @@ export function TopBar({
               <button
                 type="button"
                 onClick={onNewNote}
-                className={`tap-target hidden size-10 shrink-0 items-center justify-center rounded-full bg-brand-primary text-true-surface shadow-sm transition-all duration-150 hover:opacity-90 active:scale-[0.97] md:inline-flex ${CHROME_FOCUS}`}
+                className={`tap-target hidden size-10 shrink-0 items-center justify-center rounded-full bg-brand-primary text-true-surface shadow-sm transition-all duration-150 hover:opacity-95 hover:shadow-card-hover active:scale-[0.97] md:inline-flex ${CHROME_FOCUS}`}
                 aria-label="New note"
                 title="New note"
               >
