@@ -5,7 +5,9 @@ import com.aus.notelikeus.data.attachments.ATTACHMENT_R2_PREFIX
 import com.aus.notelikeus.data.sync.CloudNoteRecord
 import com.aus.notelikeus.data.sync.CloudNoteSnapshot
 import com.aus.notelikeus.data.sync.CloudNoteTransport
+import com.aus.notelikeus.data.sync.CloudWipedElsewhereException
 import com.aus.notelikeus.data.sync.IdentityBoundNoteTransport
+import com.aus.notelikeus.data.sync.RestoreRefusedException
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.util.AppLog
 import kotlinx.serialization.json.JsonArray
@@ -141,6 +143,8 @@ class SupabaseNoteTransport internal constructor(
         val tombstones: List<JsonElement>,
         /** The server's own COUNT(*), already checked against [notes]. */
         val noteCount: Int,
+        /** The account's cloud wipe generation, 0 when the server does not report one. */
+        val wipeGeneration: Long,
     )
 
     private fun parsedSnapshot(snapshot: JsonObject): SnapshotPayload {
@@ -156,6 +160,9 @@ class SupabaseNoteTransport internal constructor(
             notes = notes,
             tombstones = snapshot["tombstones"]?.jsonArray.orEmpty(),
             noteCount = expectedCount.toInt(),
+            // Absent on an older database; 0 then reads as "never wiped", which is what every guard
+            // already assumed.
+            wipeGeneration = snapshot["wipe_generation"]?.jsonPrimitive?.longOrNull ?: 0L,
         )
     }
 
@@ -194,7 +201,38 @@ class SupabaseNoteTransport internal constructor(
         // One publication: a concurrent reader sees the previous revision set or this one, never a
         // half-applied mixture, and an operation from a replaced dataset changes nothing at all.
         revisionState.replace(datasetEpoch, uid, learned)
-        return CloudNoteSnapshot(records = records, authoritativeNoteCount = snapshot.noteCount)
+        // Learned here, and carried on the snapshot as well: the engine decides from the returned
+        // value, the write paths present the stored one. Both must be the same number.
+        revisionState.recordWipeGeneration(datasetEpoch, uid, snapshot.wipeGeneration)
+        return CloudNoteSnapshot(
+            records = records,
+            authoritativeNoteCount = snapshot.noteCount,
+            wipeGeneration = snapshot.wipeGeneration,
+        )
+    }
+
+    /**
+     * The generation to present on a note mutation: what this client last learned for [uid].
+     *
+     * Read under the operation's own generation, so a replaced dataset cannot hand an old wipe
+     * number to a new account's write.
+     */
+    private suspend fun presentedWipeGeneration(epoch: Long, uid: String): Long =
+        revisionState.readWipeGeneration(epoch, uid)
+
+    /**
+     * Rethrows a wipe-generation refusal as [CloudWipedElsewhereException], and anything else as
+     * itself.
+     *
+     * The refusal is definite and has to be distinguished from a transport failure: a network error
+     * is worth retrying, while re-sending the same write can only be refused again, and re-sending it
+     * with a fresher number without the user asking is the silent re-upload the protocol forbids.
+     */
+    private fun rethrowWipeRefusal(failure: SupabaseTransportException): Nothing {
+        if (failure.wipeGenerationRefusal != null) {
+            throw CloudWipedElsewhereException()
+        }
+        throw failure
     }
 
     override suspend fun fetchNote(uid: String, noteId: Long): CloudNoteRecord? =
@@ -207,7 +245,13 @@ class SupabaseNoteTransport internal constructor(
             val noteId = note.id ?: continue
             val baseRevision = revisionState.read(epoch, uid, noteId)
             val response = try {
-                rpc.callRpc("apply_note_change", note.toRpcArgs(baseRevision))
+                rpc.callRpc(
+                    "apply_note_change",
+                    note.toRpcArgs(
+                        baseRevision,
+                        wipeGeneration = presentedWipeGeneration(epoch, uid),
+                    ),
+                )
             } catch (failure: SupabaseTransportException) {
                 // Note id, HTTP status and the server's reply only — never note content.
                 AppLog.warn(
@@ -215,7 +259,7 @@ class SupabaseNoteTransport internal constructor(
                     "apply_note_change failed for note $noteId (baseRevision=$baseRevision, " +
                         "attachments=${note.attachments.size}): ${failure.message}",
                 )
-                throw failure
+                rethrowWipeRefusal(failure)
             }
             when (val status = response.stringField("status")) {
                 "applied" -> {
@@ -273,13 +317,18 @@ class SupabaseNoteTransport internal constructor(
             // tombstone. apply_note_delete would answer note_not_found.
             if (baseRevision == null) continue
 
-            val response = rpc.callRpc(
-                "apply_note_delete",
-                buildJsonObject {
-                    put("p_note_id", JsonPrimitive(noteId.toString()))
-                    put("p_base_revision", JsonPrimitive(baseRevision))
-                },
-            )
+            val response = try {
+                rpc.callRpc(
+                    "apply_note_delete",
+                    buildJsonObject {
+                        put("p_note_id", JsonPrimitive(noteId.toString()))
+                        put("p_base_revision", JsonPrimitive(baseRevision))
+                        put("p_wipe_generation", JsonPrimitive(presentedWipeGeneration(epoch, uid)))
+                    },
+                )
+            } catch (failure: SupabaseTransportException) {
+                rethrowWipeRefusal(failure)
+            }
             when (response.stringField("status")) {
                 // Covers the idempotent answer too, which carries no revision — keying the cleanup
                 // on `revision` left a stale entry behind for an already-tombstoned note.
@@ -298,13 +347,19 @@ class SupabaseNoteTransport internal constructor(
     }
 
     override suspend fun deleteNote(uid: String, noteId: Long, baseRevision: Long): CloudNoteTransport.DeleteResult {
-        val response = rpc.callRpc(
-            "apply_note_delete",
-            buildJsonObject {
-                put("p_note_id", JsonPrimitive(noteId.toString()))
-                put("p_base_revision", JsonPrimitive(baseRevision))
-            },
-        )
+        val epoch = datasetEpoch()
+        val response = try {
+            rpc.callRpc(
+                "apply_note_delete",
+                buildJsonObject {
+                    put("p_note_id", JsonPrimitive(noteId.toString()))
+                    put("p_base_revision", JsonPrimitive(baseRevision))
+                    put("p_wipe_generation", JsonPrimitive(presentedWipeGeneration(epoch, uid)))
+                },
+            )
+        } catch (failure: SupabaseTransportException) {
+            rethrowWipeRefusal(failure)
+        }
         return when (response.stringField("status")) {
             "applied" -> CloudNoteTransport.DeleteResult.Success
             "conflict" -> CloudNoteTransport.DeleteResult.Conflict
@@ -336,10 +391,20 @@ class SupabaseNoteTransport internal constructor(
         val epoch = datasetEpoch()
         // `restore_note` has no attachment-id parameter, and PostgREST matches overloads by argument
         // names, so sending one makes the call unresolvable (PGRST202). See RpcSignatureContractTest.
-        val response = rpc.callRpc(
-            "restore_note",
-            note.toRpcArgs(revisionState.read(epoch, uid, noteId), includeAttachmentIds = false),
-        )
+        // A restore is also what puts a deleted note back, so it is exactly what a wipe refusal must
+        // stop — hence the generation, which that overload does take.
+        val response = try {
+            rpc.callRpc(
+                "restore_note",
+                note.toRpcArgs(
+                    revisionState.read(epoch, uid, noteId),
+                    includeAttachmentIds = false,
+                    wipeGeneration = presentedWipeGeneration(epoch, uid),
+                ),
+            )
+        } catch (failure: SupabaseTransportException) {
+            rethrowWipeRefusal(failure)
+        }
         return when (response.stringField("status")) {
             "applied" -> {
                 val revision = response.longId("revision") ?: error("Missing required revision in successful restore_note")
@@ -348,9 +413,14 @@ class SupabaseNoteTransport internal constructor(
                 mapOf(noteId to CloudNoteTransport.PutResult(revision, serverUpdatedAt))
             }
             "conflict" -> {
-                val current = response["current"]?.jsonObject?.longId("revision")
-                if (current != null) revisionState.write(epoch, uid, noteId, current)
-                emptyMap()
+                // F-14: the live row moved on, so the undo is refused rather than overwriting it.
+                // The revision the server actually has is recorded first, so the merge that follows
+                // is not deciding from one this device has just been told is wrong — then the
+                // refusal is raised, because it is not the same as "nothing to record".
+                response["current"]?.jsonObject?.longId("revision")?.let { current ->
+                    revisionState.write(epoch, uid, noteId, current)
+                }
+                throw RestoreRefusedException(noteId)
             }
             else -> emptyMap()
         }
@@ -365,13 +435,22 @@ class SupabaseNoteTransport internal constructor(
     }
 
     override suspend fun deleteAllOwnedCloudData(uid: String) {
-        rpc.callRpc("delete_all_user_cloud_data", buildJsonObject { })
+        val epoch = datasetEpoch()
+        val response = rpc.callRpc("delete_all_user_cloud_data", buildJsonObject { })
+        // The wipe publishes the generation it committed under. Recording it here is what stops the
+        // *wiping* device from treating its own remaining local notes as "missing from the cloud"
+        // and re-uploading them on the next sync — the wipe would otherwise undo itself within one
+        // cycle, without another device being involved at all.
+        response["wipe_generation"]?.jsonPrimitive?.longOrNull?.let { generation ->
+            revisionState.recordWipeGeneration(epoch, uid, generation)
+        }
         revisionState.forget(uid)
     }
 
     private fun Note.toRpcArgs(
         baseRevision: Long?,
         includeAttachmentIds: Boolean = true,
+        wipeGeneration: Long = 0L,
     ): JsonObject = buildJsonObject {
         val noteId = id ?: return@buildJsonObject
         put("p_note_id", JsonPrimitive(noteId.toString()))
@@ -410,6 +489,10 @@ class SupabaseNoteTransport internal constructor(
                     .forEach { add(JsonPrimitive(it.id)) }
             },
         )
+        // The account's cloud wipe generation, always sent: the server refuses a write that presents
+        // nothing once the account has been wiped (`NL001`), so omitting it would turn every future
+        // write into a definite refusal. 0 is the honest value for an account never wiped.
+        put("p_wipe_generation", JsonPrimitive(wipeGeneration))
     }
 
     private fun labelsToJsonArray(labels: List<com.aus.notelikeus.domain.model.Label>): JsonArray =

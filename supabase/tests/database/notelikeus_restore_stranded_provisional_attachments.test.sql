@@ -14,11 +14,11 @@ security definer
 set search_path = public
 as $$
 begin
-  perform public.begin_sync_mutation();
+  perform notelikeus_internal.begin_sync_mutation();
   update public.note_attachments
   set created_at = timezone('utc', now()) - make_interval(days => p_days)
   where attachment_id = p_attachment_id;
-  perform public.end_sync_mutation();
+  perform notelikeus_internal.end_sync_mutation();
 end;
 $$;
 

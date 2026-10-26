@@ -27,5 +27,17 @@ interface SyncManager {
     suspend fun signOut(deleteCloudData: Boolean): Result<Unit>
     suspend fun syncNotes()
     suspend fun downloadNotes()
+
+    /**
+     * The user's answer to "your cloud notes were deleted from another device": put this device's
+     * notes back.
+     *
+     * A wipe deliberately does not upload the local copies — the server cannot tell that apart from
+     * a stale device undoing the wipe — so the decision has to come from here, and this is the only
+     * caller of the engine's cloud-wipe override. Implementations upload immediately after lifting
+     * the block, because that is what the user just asked for.
+     */
+    suspend fun allowUploadAfterCloudWipe(): Result<Unit>
+
     fun clearPendingEvent()
 }

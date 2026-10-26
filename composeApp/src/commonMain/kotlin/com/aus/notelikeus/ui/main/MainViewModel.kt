@@ -140,6 +140,8 @@ class MainViewModel(
 
     fun downloadNotesFromCloud() = cloudSync.downloadNotesFromCloud()
 
+    fun allowUploadAfterCloudWipe() = cloudSync.allowUploadAfterCloudWipe()
+
     fun autoSyncOnForeground() = cloudSync.autoSyncOnForeground()
 
     fun refreshFromCloud() = cloudSync.refreshFromCloud()

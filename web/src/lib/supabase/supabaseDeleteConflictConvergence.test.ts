@@ -54,6 +54,7 @@ describe('F05: Web Delete-Conflict Convergence', () => {
     expect(rpcMock).toHaveBeenNthCalledWith(1, 'apply_note_delete', {
       p_note_id: '1',
       p_base_revision: 2,
+      p_wipe_generation: 0,
     });
 
     // Local tombstone remains

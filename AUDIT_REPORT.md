@@ -321,3 +321,326 @@ Scope: the deployed `SECURITY DEFINER` surface; Android exported components (App
 
 ### Still not covered
 Runtime screen-reader traversal and font scaling on Android and desktop; desktop keyboard-only navigation; performance profiling (cold start, large libraries, recomposition); a Gradle CVE scan (for example OWASP Dependency-Check).
+
+---
+
+## 13. Third pass — cloud-wipe generation, deployment verification, hardening (2026-10-13)
+
+Audited ref | `main` at `08eb7f9c` (the `#316` merge) plus the open `#317` branch
+Branch under review | `fix/wipe-generation-and-hardening` (this pass)
+Method | Source reading, `supabase db reset` + `supabase test db` against a local Docker stack, the repository's own test/lint/typecheck commands, and the GitHub API for CI and deployment state. No production system was touched.
+
+### 13.1 Deployment status, verified against the GitHub API (not inferred from a green build)
+
+The ordered plan for closing the gap below — with the verification and rollback for each step — is in [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md). None of it has been executed.
+
+`supabase.yml` and `attachments-worker.yml` both gate their `deploy` job on `github.event_name == 'workflow_dispatch'`. The successful runs on `08eb7f9c` were `push` events, so they ran `database-tests` / `verify` and **skipped** `deploy`. Queried 2026-10-13:
+
+| Artifact | Evidence | Verdict |
+|---|---|---|
+| F-01–F-12, FU-1, FU-2 merged | `08eb7f9c` is an ancestor of `main` | **MERGED** |
+| Gate coverage on `main` | `supabase.yml` run `38296652949`: `preflight` success, `database-tests` success, `deploy` **skipped**; `attachments-worker.yml` run `38296653024`: `verify` success, `deploy` **skipped**; `android.yml` `38296653063` and `desktop.yml` `38296653155`: `build`/`package`/`instrumented` success, `release`/`msi-release` **skipped** | **CI VALIDATED, NOT DEPLOYED** |
+| Supabase migrations | Last `workflow_dispatch` run of `supabase.yml`: 2026-09-09 (`34300509280`), before `20261012000000`/`20261012010000` existed | **NOT DEPLOYED** |
+| Attachments Worker | Last `workflow_dispatch` run: 2026-09-10 (`34486228437`), before the F-08 change | **NOT DEPLOYED** |
+| Web (Cloudflare Pages) | `cloudflare-pages.yml` run `38296653011` on the `08eb7f9c` push: success | **DEPLOYED** |
+| Android / Windows releases | No `workflow_dispatch` release runs recorded | **NOT RELEASED** |
+| PR `#317` | Open, `MERGEABLE`, `mergeStateStatus: CLEAN`, 17 checks; `release`, `deploy`, `deploy-preview`, `msi-release` are the only non-pass entries and are all `skipping` | **READY, NOT MERGED** |
+
+`#317` was reviewed line by line: `signOutGoogle({deleteCloudData: true})` wipes the cloud first and throws on failure *before* touching anything local, then clears the account's notes, meta row and pending attachments, then signs out; an ordinary sign-out keeps the local copy. It is correct as written.
+
+### 13.2 New work in this pass
+
+| ID | Severity | What | Status |
+|---|---|---|---|
+| **F-13** (new) | **P1** | A device that was offline across "delete cloud data" could not tell an intentional wipe from a truncated read, so the cloud could be repopulated with the notes the user had just deleted. `delete_all_user_cloud_data()` recorded nothing durable. | Fixed on the server, on web and on Android/Windows | **Verified** on all three |
+| **F-13b** (new) | **P1** | Found while implementing F-13: on Android and Windows the wipe undid *itself*, with no other device involved. `deleteAllCloudData()` clears only the sync-state store, so the next sync saw an empty cloud, found no known-id explanation and uploaded every local note straight back. | Fixed with F-13 | **Verified** |
+| F-05 | P2 | A delete with no captured baseline answered success while the cloud row stayed live. Rule DEL-6 kept; the failure is now reported. | **Fixed, Option B** |
+| FU-7 | P3 | Gradle libraries were absent from GitHub's dependency graph, so Dependabot could never raise an advisory for Android or Windows dependencies. | **Fixed** (`gradle/actions/dependency-submission`, pinned to `v6.4.0`) |
+| FU-8 | P3 | Multi-select starts only on long-press; `combinedClickable` binds Enter to `onClick` and has no Space binding, so a keyboard user cannot toggle selection. | **Fixed and verified** — key-injection test; the two Space cases fail without the binding |
+| FU-4 | P3 | `begin_sync_mutation()` is REST-callable by `authenticated`. | **Fixed** — helpers moved to `notelikeus_internal`, exposure pinned by a test |
+| FU-5 | P3 | `EncryptedSharedPreferences`/`MasterKey` are deprecated and hold the database passphrase. | **Already implemented — corrected**, see below |
+| **F-14** (new) | **P2** | `public.restore_note` accepted `p_base_revision` and never read it — one return path, `applied` — so a restore was the only mutation with no optimistic-concurrency fence: it deleted the tombstone and unconditionally upserted, and an offline device's undo could put its older copy on top of a newer edit elsewhere, silently. | **Fixed** on the server and in both clients (F-14, below) |
+
+#### F-13 — the wipe protocol, as implemented
+
+`supabase/migrations/20261018000000_account_wipe_generation.sql` adds a durable per-account `wipe_generation` that `delete_all_user_cloud_data()` increments in the same transaction as the deletes. `fetch_full_snapshot()`, `pull_changes()` and a new `get_sync_generation()` publish it.
+
+Enforcement is a `BEFORE INSERT OR UPDATE OR DELETE` trigger on `notes` and `note_tombstones`, not a check inside each RPC. That is the load-bearing choice: it is the one place every write already passes through, so a future RPC, a direct PostgREST table write, or any *older arity* of every mutation RPC is covered by construction. The mutation wrappers copy the presented generation into a transaction-local setting; the trigger compares it against the durable value:
+
+- generation `0` (never wiped) — every write allowed, with or without a generation. Accounts that were never wiped, and every deployed client, are untouched.
+- generation `> 0` — a write presenting nothing is refused (`NL001`), one presenting a stale value is refused (`NL002`).
+
+`assert_live_owned_note()` already requires a live note row for every attachment upload and finalization, so the attachment path is fenced behind the note path: after a wipe no attachment row can be recreated for that account. That is why no separate attachment enforcement was added.
+
+The **invariant**: after a wipe, no note or tombstone can be created, updated or deleted by a writer that cannot prove it knows the wipe happened. A stale device therefore cannot silently reverse it.
+
+Web behaviour: pushes present the generation; a refusal records a block, so nothing is attempted again — a retry loop cannot wear the protocol down. Local notes are kept, nothing is deleted, and `CloudWipeNotice` tells the user the cloud data was erased from another device and offers "Upload my notes again". That action is the *only* thing that clears the block, and it clears `knownCloudIds`/`noteRevisions` at the same time so the re-upload lands as new notes rather than reading their absence from the cloud as a deletion. The server cannot distinguish that decision from a stale arrival, which is why it is the user's to make.
+
+#### F-13, Android and Windows
+
+The transport learns the generation from every snapshot and presents it on `apply_note_change`, `apply_note_delete` and `restore_note`; `SupabaseTransportException` recognises `NL001`/`NL002` and the transport raises `CloudWipedElsewhereException` instead of a generic failure. It also reads the generation out of the wipe's own response, which is what closes F-13b.
+
+The engine is where the invariant is enforced, because that is where the destructive decision lives:
+
+- `downloadAllNotes` compares the snapshot's generation with the one this device acknowledged. If it is newer **and** there are local notes whose ids the last download recorded as present in the cloud, it records the generation, sets a durable block and refuses — *before* the loop that treats every absent known id as a deletion. Without that ordering the wipe would delete the user's local library on every device that had ever synced it.
+- `uploadAllNotes` and `reconcileUploads` refuse while the block is set, so nothing is sent. A refused write also sets the block (`noteWipeRefusal`), so the block survives a transport-level refusal too.
+- A device holding nothing — a fresh install on a wiped account — adopts the generation and syncs normally instead of failing forever.
+- `NoteSyncEngine.allowUploadAfterCloudWipe()` is the user's answer: it lifts the block and clears `knownCloudIds`, so the local notes upload as ones the cloud has never seen. It is reached from `SyncManager.allowUploadAfterCloudWipe()` → `CloudSyncController` → `MainViewModel`, and the affordance is a button in the existing cloud dialog next to "Restore" (`MainDialogs`, strings `cloud_upload_after_wipe_*`). The repository's `unreferenced-kotlin` reachability check is what forced that wiring rather than a test-only entry point, and it passes.
+- Accounts that were never wiped are untouched: generation 0 short-circuits every one of these paths, and a transport that cannot report a generation leaves it at 0.
+
+### 13.3 Test execution (commands actually run, 2026-10-13)
+
+| Command | Result |
+|---|---|
+| `npx supabase start` + `npx supabase db reset --yes` | exit 0 — all 28 migrations apply to a fresh database, including `20261018000000` |
+| `npx supabase test db` | **PASS — 31 files, 350 assertions, 0 failures.** 35 assertions are new (`notelikeus_account_wipe_generation.test.sql`), 15 more are new (`notelikeus_internal_guard_schema.test.sql`). All 29 pre-existing files still pass, which is itself the backward-compatibility evidence for generation `0` and for the FU-4 move. |
+| `web: npx vitest run` | **PASS — 117 files, 855 tests** (113 files / 833 tests at the branch point: 7 new in `wipeGenerationProtocol.test.ts`, 7 in `restoreRevisionFence.test.ts`, 6 in `CloudWipeNotice.test.tsx`, 2 in `supabaseExposure.test.ts`) |
+| `web: npx tsc -b --noEmit` | exit 0 |
+| `web: npx oxlint` | 0 errors, 83 warnings (pre-existing class: `no-array-sort`, `consistent-function-scoping`) |
+| `web: npm run test:e2e` (Playwright, against local Supabase) | **PASS — 171 passed, 1 skipped, 0 failed, 8.3 min** across `chromium` and a Pixel 5 viewport. See §13.3.3. |
+| `npm run pages:verify` | **PASS — "Cloudflare Pages artifacts verified in web/dist", "Cloudflare Pages security headers verified".** Builds the bundle and checks the artifact's shape and headers, so the CSP and redirect claims are verified against what the deploy would ship rather than against the source that generates it. |
+| `node --test scripts/ops/attachments-worker-deploy.test.mjs` / `write-kotlin-staging-properties.test.mjs` | **PASS — 7 pass, 0 fail** / **PASS — 0 fail** (CI-parity checks, run locally here) |
+| `npx supabase db lint --local --level warning --fail-on error` | **PASS — exit 0, zero errors.** Three advisory warnings only: two in `public.restore_note` (see F-14) and one in the pgTAP helper `tests.authenticate_as`. It lints `notelikeus_internal` and `public` clean, which independently type-checks the 1269-line generated FU-4 migration and the wipe-generation migration — analysis no test in this repository performs. |
+| `npx supabase db diff --local --schema public` and `--schema notelikeus_internal` | **PASS — "No schema changes found"** for both. `db diff` replays every migration into a shadow database and compares, so this says the committed migrations *determine* the schema: nothing was created outside them, and `20261019000000` is complete rather than merely accepted. |
+| `npx supabase migration list --local` | **PASS** — all 34 migrations applied, including `20261012000000`, `20261012010000`, `20261018000000`, `20261019000000`. |
+| `npx supabase projects list`, `supabase db push` | **NOT RUN — no credentials.** The CLI is not linked and has no access token (`SUPABASE_ACCESS_TOKEN` is unset and the token is a GitHub secret, which cannot be read back). The remote state therefore stays API-verified (§13.1) and `db push` stays the owner's action. |
+| `workers/attachments: npx vitest run` | **PASS — 6 files, 137 tests** |
+| `workers/attachments: npx tsc --noEmit` | exit 0 |
+| `gradlew :composeApp:desktopTest --no-daemon --rerun` | **PASS — 101 suites, 768 tests, 0 failures, 0 errors**, re-executed after the contract fixture and migration changes so the contract tests really ran (782 by the end of the pass, once FU-8's key-injection tests and the `MainDialogs` dialog tests landed) |
+| `gradlew :composeApp:desktopTest :composeApp:testDebugUnitTest :androidApp:testDebugUnitTest :composeApp:compileDebugAndroidTestSources :androidApp:compileDebugAndroidTestSources --no-daemon --rerun-tasks` | **PASS — 177 suites, 1427 tests, 0 failures, 0 errors** (desktop 105/784, composeApp unit 70/617, androidApp unit 2/26), instrumented sources compile, with `-Djava.io.tmpdir` shortened; see §13.3.1 |
+| `gradlew :composeApp:connectedDebugAndroidTest` on a **real Pixel 7 (Android 16) over wireless ADB** | **5 tests, 0 failures — but the task still failed**, on a non-zero device instrumentation exit code. See §13.3.2. |
+| `node scripts/ops/unreferenced-kotlin.mjs` | **PASS** — 0 unreferenced declarations (§13.4) |
+
+New assertions that matter most, in `notelikeus_account_wipe_generation.test.sql`:
+
+1. A raw `INSERT INTO public.notes` performed **after** `begin_sync_mutation()` is still refused — the exact bypass an older endpoint or a direct Data-API write would attempt.
+2. Each legacy arity (14-argument `apply_note_change`, 15-argument with attachment ids, 2-argument `apply_note_delete`, 14-argument `restore_note`) is refused with `NL001`, which is what protects the installed Android and Windows builds.
+3. A delete for a note that is not on the server touches no row, so it returns `conflict / note_not_found` rather than an error — and still cannot resurrect anything.
+4. The generation never decreases, and the value the first wipe published is stale after the second.
+
+The client half is covered by `CloudWipeGenerationFenceTest` (desktop, 6 tests, all passing), which is where the destructive decision lives:
+
+1. A snapshot at a generation this device has not seen, with a local note the last download recorded as being in the cloud: the download fails with `CloudWipedElsewhereException`, **the local note is still in the database**, nothing was uploaded, the generation is recorded and uploads are blocked.
+2. A queued upload is refused while the block stands, and the note is still present.
+3. `allowUploadAfterCloudWipe()` lifts the block and clears the known cloud ids, after which the same note uploads as new (`p_base_revision` null) instead of being deleted.
+4. A device holding nothing adopts the generation and syncs — a fresh install on a wiped account is not left permanently broken.
+5. An account that was never wiped (generation 0) syncs exactly as before, including the ordinary cloud-wins path.
+6. The same generation is only news once, so answering the prompt is what lets the sync through.
+
+#### 13.3.1 Kotlin tests on this machine
+
+The Android and JVM suites were run in full, not skipped. Two environment problems had to be worked around, and both were reproduced rather than assumed:
+
+1. `gradlew` with a **daemon** cannot start its test-worker JVM here: `java.io.IOException: Unable to establish loopback connection` at `sun.nio.ch.UnixDomainSockets.connect`. `--no-daemon` succeeds. This is the failure the first pass recorded as "the Gradle test executor JVM exits at launch", and it is why that pass reported `:composeApp:testDebugUnitTest` as never having run. It is an environment problem, not a source defect: `:composeApp:desktopTest` (778 tests by the end of this pass) and `:composeApp:testDebugUnitTest` + `:androidApp:testDebugUnitTest` (643 tests) both pass with `--no-daemon`.
+2. Two Robolectric tests in `DatabaseMigrationSchemaTest` fail with `SQLiteCantOpenDatabaseException: ... doesn't exist and CREATE_IF_NECESSARY is set, check directory permissions` because the sandbox temp path is too long for Robolectric to create its database directory. With `-Djava.io.tmpdir` pointed at a short path they pass, and they were the only two failures — 615 of 617 passed without the workaround.
+
+So every Kotlin suite that this machine can run was run, and is green. What remains unverified on a device is listed in §13.4.
+
+#### FU-8, verified by pressing the keys
+`NoteCard` handles `Key.Spacebar` on key-**up** on the focused card and runs the same callback the long press runs, so mouse, touch and keyboard cannot drift apart and a key repeat cannot toggle selection back and forth. It is dispatched on the card rather than at screen level, because the screen's handler already owns Ctrl-key shortcuts, Delete and Escape and does not see a focused card's Space.
+
+`NoteCardKeyboardSelectionTest` exercises it the way a user would, by focusing the card and injecting the key: Space starts a selection, Space on an already-selected card still answers (so a selection can be undone from the keyboard, not only added to), Enter still opens the note instead of selecting it, and a click still opens it. **Both Space cases fail with the binding removed and the Enter and click cases pass either way** — checked, not assumed, so the tests are evidence rather than decoration. That is a stronger position than the previous pass, which could only read the modifier.
+
+What is still not verified is the *app*: nobody has walked the Compose UI with a keyboard, and the new cloud-wipe dialog (`MainDialogs`) has only compile-plus-reachability behind it.
+
+#### FU-4, in full
+
+`begin_sync_mutation()` and `end_sync_mutation()` were never exploitable — the flag they set is transaction-local and PostgREST gives each request its own transaction, so a caller could not pair one with a table write. But a helper whose only job is to open a write gate has no business being addressable from outside the database, and it was, because `public` is exposed and the SECURITY INVOKER RPCs need EXECUTE on it.
+
+They now live in `notelikeus_internal`, which `supabase/config.toml` does not list in `[api] schemas`, together with `sync_mutation_guard()`. The 16 RPCs that called them were recreated with a qualified reference — generated from each caller's own latest definition rather than retyped, so no body changed apart from the three references — and the four guard triggers were repointed before the `public` originals were dropped, so a missed dependency would fail the drop loudly instead of leaving a dangling trigger. Grants are unchanged for every RPC; `authenticated` and `service_role` keep USAGE on the schema and EXECUTE on the helpers, and `anon` gets neither.
+
+Two things surfaced while doing it, both handled:
+
+- The pgTAP suites were themselves calling `public.begin_sync_mutation()` to open the guard for their own direct table writes. They now call the internal one — which is what an in-database caller does, and is the honest way to read the change: the *Data API* surface closed, the in-database contract did not.
+- `migrations()` extraction over-read function bodies: several migrations terminate with `$function$;`, and the single-line `AS $$ SELECT ...; $$;` bodies end their dollar-quote without a preceding newline. Both are worth knowing for anyone parsing these files; the generated migration was rebuilt from scratch twice as a result, and the `db reset` plus 348 assertions are what caught it.
+
+Two new assertions pin the property so it cannot silently reopen: `notelikeus_internal_guard_schema.test.sql` (15 assertions — the helpers are absent from `public`, present in the new schema, executable by exactly the right roles, and a direct write is still refused while the guard is closed) and `web/src/lib/contract/supabaseExposure.test.ts` (the `[api] schemas` list is exactly `public` and `graphql_public`, and the last definition of each helper is in the internal schema).
+
+#### 13.3.2 Instrumented tests on a real device
+
+> **Operational warning, learned the hard way.** Do not run the instrumented suites against a device
+> that already has a *differently signed* build of the app installed. This pass ran
+> `:androidApp:connectedDebugAndroidTest` against a Pixel 7 that carried a release-signed
+> `com.aus.notelikeus`, and the package — **with its local data** — was gone afterwards:
+> `pm list packages -u` shows nothing, and `/data/data/com.aus.notelikeus` no longer exists. The
+> run reported `INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.aus.notelikeus signatures
+> do not match newer version` and a failed `DELETE_FAILED_INTERNAL_ERROR` uninstall of the test
+> APK. Use a clean emulator (what CI does) or a device where nothing local matters. Nothing in the
+> repository or in CI is affected — this is a property of the instrumented-test runner meeting a
+> personal device.
+
+A Pixel 7 (Android 16, API 36) was reachable over wireless ADB, so the instrumented suite was run on it rather than left as "needs an emulator". `composeApp` has exactly one instrumented class, `PlaintextDatabaseMigratorTest`, and **all five of its tests ran and passed** on the device — the JUnit XML the run wrote records `tests="5" failures="0" errors="0"` against `device=192.168.2.223_35271`, the HTML report says 100%, and the device log shows each test finishing:
+
+- `aPlaintextDatabaseIsMigratedToEncryptedWithItsRowsIntact`
+- `aFailedExportKeepsThePlaintextDatabaseInPlace` — the test the first pass recorded as "compiles; needs a device"
+- `anUnopenableDatabaseIsQuarantinedRatherThanDeleted`
+- `aDatabaseThatOpensWithTheCurrentKeyIsLeftAlone`
+- `quarantiningLeavesANoticeForTheUser`
+
+That is **new evidence for F-10**: the quarantine-never-delete behaviour on a failed encryption export is now device-verified, not source-verified.
+
+The task itself, however, still reports failure: `:composeApp:connectedDebugAndroidTest` fails with "There were failing tests" while its own report shows none, because the Android Gradle Plugin decides from the device instrumentation's exit code and `build/outputs/androidTest-results/connected/debug/test-result-exit-code.txt` contains `1`.
+
+Running the same instrumentation directly settles what that code is not:
+
+```
+adb shell am instrument -w -e class com.aus.notelikeus.data.local.PlaintextDatabaseMigratorTest \
+  com.aus.notelikeus.shared.test/androidx.test.runner.AndroidJUnitRunner
+  → OK (5 tests)            adb exit code: 0
+```
+
+So the tests pass, the device agrees, and the non-zero code belongs to the Gradle plugin's own orchestration. `:androidApp:connectedDebugAndroidTest` — run afterwards on the same device — fails earlier and more bluntly, and explains the family this belongs to: it could not install its debug APK at all over a differently-signed `com.aus.notelikeus` (`INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match`), and its teardown could not uninstall `com.aus.notelikeus.test` (`DELETE_FAILED_INTERNAL_ERROR`). CI runs the identical command on API 30 and 36 emulators, which are clean, and passes.
+
+**The instrumented suite is therefore not claimed green through Gradle.** The tests passed on the device; the task did not report success; the cause is the device's package state, not the product or the repository, and the same device-run hazard is called out at the top of this section.
+
+#### A label bug in this pass's own Compose work, found by writing the test
+
+`MainDialogsCloudWipeTest` was written to close the last source-only claim about the new dialog, and it found a defect in it immediately: the button read `Upload this device's notes` **with a visible backslash**.
+
+The cause: the three strings this pass added to `composeResources/values/strings.xml` were the only ones in the file written with an Android-style `\'`, and this Compose resource loader does not unescape it. The file's other eleven apostrophes are typographic (`’`, U+2019) and need no escaping at all — the repo's convention was there to copy and this pass did not. Both affected labels now use `’`, and the test keeps a guard that fails if any user-facing string in the dialog contains a backslash.
+
+Worth recording because of what it says about the previous pass's evidence: this shipped nowhere (the branch is unmerged) but it would have reached every Android and Windows user of the wipe notice, and no amount of source reading had noticed it — the fix was only visible by asserting the rendered text. That is the same reason FU-8 needed key injection rather than a modifier to look at.
+
+#### 13.3.3 Playwright, finally run
+
+The first pass listed the end-to-end suite as **not run** — "needs local Supabase and a browser build". Both became available in this pass, so it was run rather than left as a caveat: `npm run test:e2e` asserts the Supabase URL is loopback, builds for the e2e mode, serves it, and drives it with Playwright.
+
+**171 passed, 1 skipped, 0 failed** in 8.3 minutes, across `chromium` and a Pixel 5 viewport. `test-results/.last-run.json` records `"status": "passed"` with an empty `failedTests`. The single skip is project-conditional and deliberate: the layout controls only render on tablet width and up, so the mobile project skips that one assertion rather than passing it vacuously.
+
+That closes a gap this audit has carried since its first pass, and it covers ground no unit test reaches: axe accessibility checks, dialog focus containment and start-focus, reflow with no sideways scrolling at 320/360/390/768/1024/1440px, swatch contrast in the light, dark and amoled themes, the 24px and 44px touch-target floors, `Ctrl+K` reaching the search field as the hint claims, and the note, label, reminder, filter, sort, search, save-failure, image-ingestion and backup journeys. It also exercises account isolation directly: `switching accounts does not leak the previous account notes` runs and passes, which is adjacent to FU-1 and FU-6.
+
+It does **not** exercise the cloud-wipe paths — those need the Attachments Worker and a second device, which the browser harness does not have. The wipe protocol's verification therefore stays where §13.3 put it: pgTAP on the server, and unit-level on the clients.
+
+#### F-14 — a restore ignored the revision it was given, and now does not
+
+Found with `npx supabase db lint`, which this pass ran for the first time; it is the only tool in the project that inspects plpgsql bodies rather than behaviour.
+
+`public.restore_note` takes `p_base_revision` and **never reads it**. In the final body the parameter appears once, in the signature; the body locks the tombstone and the note with `FOR UPDATE`, branches on `FOUND`, and then unconditionally `UPDATE`s or `INSERT`s. Every other mutation (`apply_note_change`, `apply_note_delete`) compares `p_base_revision` with the stored revision and answers `conflict` when they disagree; restore is the exception, so it is un-fenced optimistic concurrency in the one direction that writes content. It is not merely that the parameter is unused: the function has exactly **one** return path, `'status': 'applied'`, so it cannot answer anything else. The conflict branch both clients carry for restore — `SupabaseNoteTransport.restoreNote`'s `"conflict" ->` and the web's `if (result.status !== 'applied')` — is unreachable code that documents a belief the server does not hold.
+
+- Device A edits a note, syncs, then goes offline.
+- Device B edits the same note and syncs; the cloud holds B's newer version.
+- On A the user undoes a delete (or a queued restore marker replays) and A's restore runs — B's version is overwritten with A's older copy, with no conflict and nothing reported.
+
+The trigger is narrow: it needs a restore marker and a newer edit elsewhere. It is not the F-01 defect (that was the argument *name* making the RPC unresolvable) and it is not fixed by F-13 (the wipe generation fences wiped accounts, not stale edits on a live one) — the two are orthogonal.
+
+It is fixed, on the owner's decision, and the fix is small because the fence was the missing piece rather than a design:
+
+- **Server** (`20261020000000_restore_revision_fence.sql`): when the note is live, the restore must present its current revision, and `NULL` is refused too — "I do not know the baseline" is not a licence to overwrite what is there, which is what `apply_note_change` already answers for a null base against an existing row. A refusal carries `current`, so the caller can learn the revision. When there is **no** live row the restore applies whatever baseline was claimed: nothing is being overwritten, so there is nothing for a fence to protect, and that is the ordinary undo path.
+  - A stricter version — refusing a claimed-but-absent baseline as well — was written, tried against the suite, and **reverted**: it refused a legitimate undo purely for presenting a baseline, which two pgTAP files caught.
+  - An "identical payload means idempotent success" exemption was considered and dropped: once both clients present the revision they hold, the benign case passes the fence on its own, and the exemption would have added a comparison to reason about for no user-visible gain.
+- **Web**: `restoreCloudNote` now presents the revision this browser holds instead of a hard-coded `null`, and turns a refusal into a typed `RestoreRefusedError` after recording the revision the server actually has. `restorePermanentlyDeletedNote` and `retryPendingCloudRestores` treat that as **terminal** — the marker goes, so no reconcile retries a request that can only be refused again — while a transient failure still keeps it. The user is told the note changed on another device and that the version there was kept.
+- **Android/Windows**: the transport raises `RestoreRefusedException` on the conflict instead of returning an empty map (which read as "nothing to record"), after recording the server's revision; the engine clears the restore marker and lets the failure surface, in both the direct restore path and the merge-time one.
+- **Evidence**: two pgTAP assertions in `notelikeus_restore_note.test.sql` were rewritten deliberately — the old ones asserted exactly the value the fence now refuses — and the suite is 350 assertions green. Seven new web tests in `restoreRevisionFence.test.ts` (the revision presented, the typed refusal, the recorded revision, terminal versus transient, and the user-facing message) and two Kotlin tests in `RestoreRevisionFenceTest` (the refusal fails and leaves no marker; a transient failure keeps it).
+
+What it deliberately does not change: a restore can still consume a tombstone another device wrote, so undoing a delete that happened elsewhere still succeeds locally. That is a cross-device disagreement about a *delete*, pre-existing and separate from a stale copy overwriting a live row; it is recorded here rather than folded in silently.
+
+The lint's other advisory — `v_existing` assigned and never read — is benign: the `SELECT ... FOR UPDATE` is load-bearing for the row lock and for `FOUND`, not for the variable.
+
+#### 13.3.4 The app, launched on a real device
+
+With the owner's authorization, the debug build was installed on the Pixel 7 (Android 16, API 36) and driven over ADB. This is the first time in this audit that the Android app has been *run* rather than read, and it covers three of the items the first pass listed as never verified.
+
+- **It launches and renders.** Sign-in gate first (`Sign in with Google`, `Continue offline`, the debug email/password form), then the notes screen after `Continue offline`: search field, `Filters`, the sort chip, the layout toggle, the empty-state illustration, the compose button. Dark theme throughout, no crash, process alive throughout.
+- **The encrypted local database works end to end on the device.** Created a note through the UI, `am force-stop`, relaunched: the note was still there. That exercises the whole chain the F-10/FU-5 work protects — AndroidKeyStore-backed passphrase, SQLCipher database open, Room persistence across process death — on real hardware rather than in Robolectric.
+- **Large font does not break the layout.** At `font_scale 1.5` the app relaunched, the note card reflowed its title onto a second line instead of clipping, and every control stayed reachable. The one crash in the log during that check was `com.android.launcher3` — the *system* launcher, on its own taskbar recreation — not the app.
+
+Two things this did **not** establish, and they stay on the not-run list:
+
+- **Keyboard navigation on Android.** `adb shell input keyevent TAB/SPACE` on this device did not reach the app's focus system: the presses landed in system UI and raised a clipboard overlay instead of moving or selecting anything. Nothing about the Android focus model is claimed from that attempt. FU-8's evidence remains the Compose key-injection test (§13.2), which is a real check of the modifier but not a walkthrough of the running app.
+- **TalkBack.** Not exercised at all. Turning a screen reader on and traversing the UI is not something `adb` can assert.
+
+The device was left as the owner asked: the debug build installed with its data cleared (`pm clear`), `font_scale` and display density restored to their original values, and the screenshots this pass took removed from `/sdcard`.
+
+#### 13.3.5 Cold start, memory, and the accessibility tree
+
+Three numbers this audit previously declined to guess at, measured on the Pixel 7 (Android 16) with the **debug** build, plus the first look at what a screen reader would actually be given.
+
+**Cold start** — `am force-stop`, then `am start -W`, three times:
+
+| Run | TotalTime |
+|---|---|
+| 1 | 1774 ms |
+| 2 | 1769 ms |
+| 3 | 1758 ms |
+
+**Memory after launch** — `dumpsys meminfo`: TOTAL PSS 174,100 KB (≈170 MB), TOTAL RSS ≈293 MB, Java heap 21.5 MB, native heap 9.5 MB.
+
+Both carry the same caveats, and they are not small: this is a debug build (no R8, no minification, extra instrumentation), on one device, with no release-build comparison and no baseline from before this pass. They are data points, not a regression check, and nothing here should be quoted as the app's production cost.
+
+**The accessibility tree** — `uiautomator dump` on the notes screen gives 44 nodes, and every `clickable="true"` container has its label inside its own subtree:
+
+| Container | Label announced |
+|---|---|
+| note card | the note title, plus its timestamp as a sibling node |
+| drawer | `Menu` |
+| search field | `Search your notes` |
+| profile | `Open settings` |
+| filter chip | `Filters` |
+| sort chip | `Manual (drag to reorder)` |
+| view toggle | `Change view mode` |
+| compose button | `Add note` |
+
+The editor's icon-only controls are all described too — `Bold`, `Italic`, `Link`, `List`, `Checklist`, `Add image`, `Back`, `Set reminder`, `Pin note`, `Archive note`, `More options` — and the save state is a labelled line (`Saved locally • 05:14`). This is stronger than the previous pass's source heuristic ("the 30 `contentDescription = null` icons sit beside text labels"): it is the tree TalkBack is handed, and it shows no actionable control without a name.
+
+What it still does not show is **spoken traversal** — the order a screen reader walks those nodes, and whether the card's merged description reads well out loud. That needs a person with TalkBack on, and it stays on the not-run list.
+
+#### 13.3.6 The Windows desktop app, started for the first time in this audit
+
+`gradlew :composeApp:run` was launched with `APPDATA` pointed at an isolated directory, so the app could not open, migrate or sync the owner's real library. It created its own database there, came up **signed out**, and rendered its sign-in gate — brand mark, `Sign in to continue`, `Sign in with Google`, `Continue offline` — in the dark theme at 1000×800.
+
+The check that the isolation actually held: `%APPDATA%\Notelikeus` and `~/.notelikeus/notes-db.key` were byte-for-byte the same before and after, same sizes and same timestamps. So the app was genuinely exercised without touching the library, the session or the DPAPI key that were already on this machine.
+
+The window was captured with `PrintWindow` against its handle rather than a screen grab, deliberately: a screen grab of a 1920×1080 desktop shows whatever else is open, and this one would have. `PrintWindow` asks the window for its own surface, which is both the honest evidence and none of anything else.
+
+**The keyboard walkthrough did not happen, and could not.** `SetForegroundWindow` is refused for a background process — Windows' focus-stealing protection — so the app cannot be given focus, and the first probe showed the foreground window was the owner's browser. Sending keys then would have typed into that browser. Posting synthetic `WM_KEYDOWN` messages into a Compose/Skia window was not tried as a workaround, because a result from it would not be evidence about real keyboard use. FU-8's Windows half therefore stays verified by the Compose key-injection test, and the walkthrough stays outstanding with a reason rather than a shrug.
+
+#### FU-5 was already fixed, and the finding was stale
+
+The second pass recorded FU-5 as "`DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` store their secrets in `EncryptedSharedPreferences`/`MasterKey`… they work today" and left the replacement as scheduled work. That is no longer true of the code, and this pass verified it rather than inheriting the claim:
+
+- **`DatabaseKeyManager`** stores the SQLCipher passphrase as an AES-GCM file under `filesDir`, with the key in AndroidKeyStore — the replacement FU-5 asked for. The legacy ESP is read **once**, copied in, and only then cleared; a file whose key can no longer decrypt it is renamed aside (`unrecoverable-<timestamp>`), never deleted; the payload is published by rename so a crash cannot leave a truncated file that reads back as corrupt and costs the database; a Keystore write failure falls back to the legacy ESP so the database still opens. The alias is deleted in exactly one case — an encrypt failure, where it protects nothing — and the decrypt path deliberately keeps it.
+- **`AndroidSupabaseSessionPersistence`** has the same shape for the session, including the plaintext fallback preferences the previous pass did not mention: read once, migrated into the Keystore file, then cleared. An undecryptable session file is treated as signed out and left on disk.
+- Both are what production DI constructs (`PlatformModule`: `single { DatabaseKeyManager(get()) }`, `single { SupabaseStore(AndroidSupabaseSessionPersistence(get())) }`), not test-only paths.
+- The behaviour is executed, not merely read: `DatabaseKeyManagerRecoveryTest` covers a key that cannot encrypt being replaced with the passphrase re-persisted under the new one, a healthy key never being deleted, and an undeletable key not being retried into a loop; `DatabaseKeyManagerTest` covers the codec (fresh IV per encryption, tamper and magic rejection) and the swap's failure branches; `AndroidSupabaseSessionPersistenceTest` covers the plaintext-fallback migration and the undecryptable-file case. All of them ran green in this pass's `:composeApp:testDebugUnitTest` sweep.
+
+What remains is not a defect but a support decision: the legacy ESP **read** path has to stay until the project is willing to drop installs old enough to still hold secrets there. It is the only remaining `EncryptedSharedPreferences` reference in the Android sources, it is annotated as legacy, and removing it early would strand exactly the users FU-5 set out to protect.
+
+#### 13.3.7 The instrumented suites on a clean emulator
+
+The Pixel could not run them (§13.3.2), so one was provisioned: a dedicated AVD (`nlu-instrumented`, API 35, `google_apis`) created from the system image already on this machine. The owner's own AVDs (`deutschflow-test`, `test-tabakpp`) were not touched, and the AVD was deleted afterwards along with the emulator.
+
+| Module | Result |
+|---|---|
+| `:composeApp:connectedDebugAndroidTest` | **5 tests, 0 failures** |
+| `:androidApp:connectedDebugAndroidTest` | **14 tests, 12 passed, 2 failed** |
+
+The `composeApp` result is the confirmation the Pixel could not give: the same suite passes on a clean device, so the non-zero exit code there was that device's package state and not the tests, the product or the repository.
+
+The `androidApp` run is the first device-level evidence this audit has for two paths it had only compiled:
+
+- `BackupDocumentIoTest` — 6/6, including the import size limit, non-ASCII content surviving a round trip, and an unreadable or unwritable document failing rather than throwing.
+- `MainActivityShareInstrumentationTest` — 6/6, cold and warm image-share delivery, rotation without duplicating or crashing, rapid successive shares being rejected rather than merged, and an external share intent that must not target an existing note.
+
+**Two failures, recorded as an open question rather than a verdict.** Both are in `PredictiveBackTest`, with the assertion "a back press did not reach `OnBackPressedDispatcher`; BackHandler in EditorScreen would not fire, so backing out of the editor would not save" (and its sibling, that the system does not drive `OnBackInvokedDispatcher`, so the manifest opt-in is not in effect for the running app). CI runs this suite on **API 30** (where it self-skips below 33) and **API 36** (where it passes), so an API 35 device failing it is either version- or image-specific — this was a headless emulator with no GPU acceleration — or a gap in what CI covers. A reproduction on an API 36 image was attempted here and failed at *install* (`Failure calling service package: Broken pipe (32)`; the `google_apis_playstore` image is too heavy for this machine), so it is **not settled**, and nothing is claimed about whether the app's predictive-back opt-in works on API 35. The way to settle it is CI's own API 36 leg with this class selected.
+
+### 13.4 What this pass did not do
+
+It did not merge, deploy or release anything, and it did not touch the hosted Supabase project: no credential for it was available from this machine, so remote state is the GitHub-API read in §13.1 and never a query of the database. The plan for the owner to close that is in [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md).
+
+- **TalkBack and Narrator.** The accessibility *tree* was inspected on the device and every actionable control is named (§13.3.5), but spoken traversal — order, phrasing — needs a person with a screen reader on, on both Android and Windows.
+- **Keyboard navigation of the Compose UI.** FU-8's modifier is verified by key injection, but neither running app has been walked by keyboard: the Android attempt was inconclusive (§13.3.4) and the Windows one cannot be given focus at all (§13.3.6).
+- **Performance beyond the two numbers in §13.3.5.** Cold start and post-launch memory are now measured, on a debug build. A library of thousands of notes, recomposition counts, sync latency and Worker duration are all still unmeasured, and no number is claimed for them.
+- **The new cloud-wipe dialog** in `MainDialogs` is now covered by `MainDialogsCloudWipeTest` — four Compose tests that press its button and assert its label, its explanation, its callback and the absence of an escape leak (§13.3.2). It was **not** opened on the device: by the time the fixed build was installed the phone had locked, and unlocking it is the owner's to do. `Profile → Restore from cloud` is the path someone should look at.
+- **Cloud paths end to end.** The wipe protocol has no browser-level test (the e2e harness has no Worker and no second device), so its verification stays at pgTAP and unit level.
+- **Anything from §13.1.** The deployments, the `#317` merge and the client releases are all still outstanding and need the owner.
+
+### 13.5 Remaining risks
+
+| Class | Item |
+|---|---|
+| P1 | `supabase.yml` (`20261012000000`, `20261012010000`, `20261018000000`, `20261019000000`) and `attachments-worker.yml` are still undeployed — verified, not inferred. The F-08, F-09 and F-13 fixes exist only in source. |
+| P1 | Android and Windows releases still do not carry F-01, F-07, F-10, FU-2 or F-13/F-13b. |
+| P2 | The Kotlin block is only lifted through the new button; until it ships, a wiped account's Android or Windows device reports the wipe and uploads nothing, which is safe but requires the user to reach that dialog. |
+| P3 | A restore still succeeds against a tombstone another device wrote, so undoing a delete that happened elsewhere is not refused — F-14's residual, out of its scope, pre-existing, and recorded rather than folded in (see the F-14 section). |
+| P3 | `PredictiveBackTest` fails on an API 35 `google_apis` emulator while CI passes the same suite on API 36 (§13.3.7). Not settled: either version/image-specific or a CI version gap. |
+| P3 | The legacy `EncryptedSharedPreferences` read path in `DatabaseKeyManager` and `AndroidSupabaseSessionPersistence` (FU-5's residual) — remove when the support window allows, not before. |

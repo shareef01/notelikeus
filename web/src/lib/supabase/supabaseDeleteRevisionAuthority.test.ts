@@ -49,9 +49,13 @@ describe('F05: delete authority is bound to the action-time revision', () => {
 
   // DEL-6: nothing may ask the server what the revision is now and adopt that answer as authority.
   // An implementation that looked the current revision up and used it would call the lookup RPC
-  // here, which is exactly the laundering this guards against.
+  // here, which is exactly the laundering this guards against. F-05 (Option B) changed only what the
+  // caller is told: the delete is still refused remotely, but it now reports that instead of
+  // answering success while the cloud row stays live for every other device.
   it('a delete with no captured baseline never recaptures a revision from the server', async () => {
-    await supabaseRemoteNotesDataSource.deleteNote(USER, '1', undefined);
+    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1', undefined)).rejects.toThrow(
+      /still on your other devices/,
+    );
 
     expect(rpcMock).not.toHaveBeenCalledWith('lookup_note_revision', expect.anything());
     expect(rpcMock).not.toHaveBeenCalledWith('apply_note_delete', expect.anything());
@@ -79,6 +83,7 @@ describe('F05: delete authority is bound to the action-time revision', () => {
     expect(rpcMock).toHaveBeenCalledWith('apply_note_delete', {
       p_note_id: '1',
       p_base_revision: 10,
+      p_wipe_generation: 0,
     });
   });
 });

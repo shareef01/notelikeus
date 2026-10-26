@@ -35,6 +35,15 @@ interface NotesState {
    * broken one.
    */
   unreadableNoteIds: string[];
+  /**
+   * The account's cloud notes were deleted from another device, and this browser is holding local
+   * notes it has not been allowed to upload.
+   *
+   * Distinct from {@link syncError}: this is not a failure to fix by retrying, it is a decision the
+   * user has to make, and while it is set nothing is pushed. See
+   * `lib/supabase/wipeGeneration.ts`.
+   */
+  cloudWipeNotice: { generation: number; localNoteCount: number } | null;
   filters: NoteQueryFilters;
   setNotes: (notes: Note[]) => void;
   setUnreadableNoteIds: (ids: string[]) => void;
@@ -45,6 +54,8 @@ interface NotesState {
   clearError: () => void;
   setSyncError: (error: string) => void;
   clearSyncError: () => void;
+  setCloudWipeNotice: (notice: { generation: number; localNoteCount: number }) => void;
+  clearCloudWipeNotice: () => void;
   setFilters: (patch: Partial<NoteQueryFilters>) => void;
   reset: () => void;
 }
@@ -71,6 +82,7 @@ export const useNotesStore = create<NotesState>()(
       error: null,
       syncError: null,
       unreadableNoteIds: [],
+      cloudWipeNotice: null,
       filters: defaultFilters,
       setUnreadableNoteIds: (ids) =>
         set((state) => {
@@ -135,6 +147,19 @@ export const useNotesStore = create<NotesState>()(
         set((state) => (state.syncError === syncError ? state : { syncError })),
       clearSyncError: () =>
         set((state) => (state.syncError == null ? state : { syncError: null })),
+      setCloudWipeNotice: (notice) =>
+        set((state) => {
+          const current = state.cloudWipeNotice;
+          if (
+            current?.generation === notice.generation &&
+            current.localNoteCount === notice.localNoteCount
+          ) {
+            return state;
+          }
+          return { cloudWipeNotice: notice };
+        }),
+      clearCloudWipeNotice: () =>
+        set((state) => (state.cloudWipeNotice == null ? state : { cloudWipeNotice: null })),
       setFilters: (patch) => {
         const next = { ...get().filters, ...patch };
         const current = get().filters;
@@ -154,6 +179,7 @@ export const useNotesStore = create<NotesState>()(
           error: null,
           syncError: null,
           unreadableNoteIds: [],
+          cloudWipeNotice: null,
           filters: defaultFilters,
         }),
     }),

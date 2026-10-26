@@ -35,6 +35,15 @@ internal class RevisionStateStore {
     private val byUid = mutableMapOf<String, MutableMap<Long, Long>>()
 
     /**
+     * Only ever touched under [lock]; uid -> the account's last learned cloud wipe generation.
+     *
+     * It lives here rather than on the transport because every identity-bound call goes through a
+     * fresh scoped view: per-instance state would be lost between the snapshot that learned the
+     * generation and the write that has to present it, which is exactly the pair that must agree.
+     */
+    private val wipeGenerationByUid = mutableMapOf<String, Long>()
+
+    /**
      * The dataset generation an operation belongs to, captured once when that operation starts.
      *
      * Called before any suspension, so an operation cannot ask "which dataset is current now?" after
@@ -50,6 +59,10 @@ internal class RevisionStateStore {
     suspend fun resetDataset(): Long = lock.withLock {
         activeEpoch += 1
         byUid.clear()
+        // A generation belongs to the account that reported it. Carrying it into a replacement
+        // dataset would let a wiped account's number authorize — or refuse — writes for a different
+        // one, so it goes with the revisions.
+        wipeGenerationByUid.clear()
         activeEpoch
     }
 
@@ -84,7 +97,34 @@ internal class RevisionStateStore {
      * snapshot, which is the cheap direction to be wrong in.
      */
     suspend fun forget(uid: String) {
-        lock.withLock { byUid.remove(uid) }
+        lock.withLock {
+            byUid.remove(uid)
+            wipeGenerationByUid.remove(uid)
+        }
+    }
+
+    /**
+     * The cloud wipe generation this client learned for [uid] in [epoch], or 0 when unknown.
+     *
+     * 0 is the honest answer for "never wiped" *and* for "not learned yet", and the two only need
+     * telling apart on an account that has actually been wiped. There the value was learned from the
+     * snapshot that precedes every write in the same sync cycle; where it was not, the server
+     * refuses the write and the client fails closed, which is the safe direction.
+     */
+    suspend fun readWipeGeneration(epoch: Long, uid: String): Long = lock.withLock {
+        if (epoch != activeEpoch) return@withLock 0L
+        wipeGenerationByUid[uid] ?: 0L
+    }
+
+    /** Records [generation] for [uid] — only when [epoch] is still the active dataset, never lowered. */
+    suspend fun recordWipeGeneration(epoch: Long, uid: String, generation: Long) {
+        lock.withLock {
+            if (epoch != activeEpoch) return@withLock
+            if (generation < 0) return@withLock
+            if (generation > (wipeGenerationByUid[uid] ?: 0L)) {
+                wipeGenerationByUid[uid] = generation
+            }
+        }
     }
 
     /**

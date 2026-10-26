@@ -35,6 +35,7 @@ internal fun MainDialogs(
     onCloudSignOut: (deleteCloudData: Boolean) -> Unit,
     onCloudRestoreConfirmDismiss: () -> Unit,
     onConfirmCloudRestore: () -> Unit,
+    onUploadLocalNotesAfterWipe: () -> Unit,
     onEmptyTrashConfirmDismiss: () -> Unit,
     onConfirmEmptyTrash: () -> Unit,
     onDeleteConfirmDismiss: () -> Unit,
@@ -80,7 +81,23 @@ internal fun MainDialogs(
             confirmLabel = stringResource(Res.string.cloud_restore_confirm_action),
             destructive = true,
             onConfirm = onConfirmCloudRestore,
-            onDismiss = onCloudRestoreConfirmDismiss
+            onDismiss = onCloudRestoreConfirmDismiss,
+            // The other direction, and the answer to a wipe this device was offline for: its notes
+            // are not uploaded on their own, and this is the only place the user can say to. It
+            // lives here because this is the cloud-notes dialog, not because it mirrors Restore.
+            extraContent = {
+                Column {
+                    Text(
+                        text = stringResource(Res.string.cloud_upload_after_wipe_message),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(Spacing.xs))
+                    TextButton(onClick = onUploadLocalNotesAfterWipe) {
+                        Text(stringResource(Res.string.cloud_upload_after_wipe_action))
+                    }
+                }
+            }
         )
     }
 

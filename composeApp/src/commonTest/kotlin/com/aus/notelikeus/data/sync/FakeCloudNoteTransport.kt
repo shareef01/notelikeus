@@ -51,7 +51,13 @@ open class FakeCloudNoteTransport : TestIdentityBoundNoteTransportAdapter() {
      */
     var reportsAuthoritativeCount: Boolean = true
 
+    /** The account's cloud wipe generation, as the server would publish it. 0 = never wiped. */
+    var wipeGeneration: Long = 0L
+
     var fetchNotesSnapshotCalls = 0
+
+    /** How many times the engine asked for notes to be written. */
+    var putNotesCalls = 0
 
     override suspend fun fetchNotes(uid: String): List<CloudNoteRecord> =
         notes.values.toList()
@@ -63,6 +69,7 @@ open class FakeCloudNoteTransport : TestIdentityBoundNoteTransportAdapter() {
         return CloudNoteSnapshot(
             records = delivered,
             authoritativeNoteCount = if (reportsAuthoritativeCount) all.size else null,
+            wipeGeneration = wipeGeneration,
         )
     }
 
@@ -70,6 +77,7 @@ open class FakeCloudNoteTransport : TestIdentityBoundNoteTransportAdapter() {
         notes[noteId]
 
     override suspend fun putNotes(uid: String, notes: List<Note>): Map<Long, CloudNoteTransport.PutResult> {
+        putNotesCalls++
         return notes.mapNotNull { note ->
             val noteId = note.id ?: return@mapNotNull null
             this.notes[noteId] = CloudNoteRecord(

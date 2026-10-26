@@ -228,6 +228,21 @@ internal class CloudSyncController(
         }
     }
 
+    /**
+     * "Upload this device's notes again", after a wipe this device has not acknowledged.
+     *
+     * Surfaces a failure rather than swallowing it: the notes are still on the device either way,
+     * but a user who pressed this button needs to know whether anything was sent.
+     */
+    fun allowUploadAfterCloudWipe() {
+        scope.launch {
+            val result = syncManager.allowUploadAfterCloudWipe()
+            result.exceptionOrNull()?.let { failure ->
+                state.update { it.copy(pendingCloudSyncEvent = CloudSyncEvent.Failure(signInFailureMessage(failure))) }
+            }
+        }
+    }
+
     fun downloadNotesFromCloud() {
         scope.launch {
             syncManager.downloadNotes()

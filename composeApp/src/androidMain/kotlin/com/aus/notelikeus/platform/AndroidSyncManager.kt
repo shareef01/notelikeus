@@ -122,6 +122,17 @@ class AndroidSyncManager(
         }
     }
 
+    /**
+     * Lifts the cloud-wipe block and uploads, in that order: the block is what has been stopping
+     * every upload, so it has to go first, and the upload is the whole point of asking.
+     */
+    override suspend fun allowUploadAfterCloudWipe(): Result<Unit> {
+        isolateIncomingSession()
+        val lifted = syncEngine.allowUploadAfterCloudWipe()
+        if (lifted.isSuccess) syncNotes()
+        return lifted
+    }
+
     private suspend fun isolateIncomingSession() {
         sessionManager.getCurrentAccount().userId?.let { isolator.isolateIfAccountChanged(it) }
     }

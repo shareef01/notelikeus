@@ -36,9 +36,10 @@ describe('supabaseNoteMapper', () => {
 
   it('builds apply_note_change RPC args with null base revision for creates', () => {
     const note = createEmptyNote({ id: '7', localId: 7, title: 'T' });
-    const args = noteToSupabaseRpcArgs(note, null);
+    const args = noteToSupabaseRpcArgs(note, null, 0);
     expect(args.p_note_id).toBe('7');
     expect(args.p_base_revision).toBeNull();
     expect(args.p_labels).toEqual([]);
+    expect(args.p_wipe_generation).toBe(0);
   });
 });

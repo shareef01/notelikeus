@@ -35,6 +35,11 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -465,6 +470,29 @@ fun NoteCard(
                 onLongClickLabel = selectActionLabel,
                 onLongClick = onLongClick
             )
+            /*
+             * Space toggles selection on the focused card.
+             *
+             * `combinedClickable` binds Enter to `onClick` and exposes long-press only through the
+             * semantics action, so without this the only way to start a multi-selection is a
+             * long-press — which a keyboard user cannot perform at all, and which nothing tells them
+             * to hold. Space is what every other multi-select list on both platforms uses, and it is
+             * dispatched on key-up so a key-repeat cannot toggle the selection back and forth.
+             *
+             * It runs the same callback as the long press rather than a second selection path, so
+             * mouse, touch and keyboard cannot drift apart.
+             *
+             * Verified by NoteCardKeyboardSelectionTest, which presses the keys: both Space cases fail
+             * with this block removed and the Enter and click cases pass either way.
+             */
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyUp && event.key == Key.Spacebar) {
+                    onLongClick()
+                    true
+                } else {
+                    false
+                }
+            }
             .hoverable(interactionSource),
         shape = RoundedCornerShape(Radius.lg), // Web cards use rounded-note = 18px corners
         colors = CardDefaults.cardColors(

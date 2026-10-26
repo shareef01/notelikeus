@@ -1,4 +1,4 @@
-import { restoreCloudNote } from '@/lib/notes/tombstones';
+import { restoreCloudNote, RestoreRefusedError } from '@/lib/notes/tombstones';
 import { authoredContentDigest } from '@/lib/notes/conflictResolution';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
@@ -222,7 +222,18 @@ export async function restorePermanentlyDeletedNote(note: Note): Promise<void> {
   useTombstoneStore.getState().clearIds([note.id]);
   useNotesStore.getState().upsertLocalNote(note);
   if (userId) {
-    await restoreCloudNote(userId, note);
+    try {
+      await restoreCloudNote(userId, note);
+    } catch (error) {
+      // A refusal is terminal (F-14): the cloud row is live and this baseline cannot overwrite it,
+      // so the marker must not stay set — every later reconcile would retry a call that can only be
+      // refused again. The local undo stands and the next snapshot reconciles the live row. Rethrown
+      // either way, because the user asked for this and needs to hear that it did not happen.
+      if (error instanceof RestoreRefusedError) {
+        useTombstoneStore.getState().clearRestored([note.id]);
+      }
+      throw error;
+    }
   }
   useTombstoneStore.getState().clearRestored([note.id]);
 }

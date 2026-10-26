@@ -151,6 +151,45 @@ interface NoteSyncStateStore {
 
     fun setLastMergedUserId(userId: String)
 
+    // ---- cloud wipe generation ----
+
+    /**
+     * The account's cloud wipe generation that this device has acknowledged. 0 = never wiped.
+     *
+     * The server increments it inside `delete_all_user_cloud_data()` and refuses any note or
+     * tombstone write that does not present the current value, so a device that was offline across
+     * a wipe cannot put the deleted notes back. This is the value the transport presents; it is
+     * durable because a process restart must not make the device forget what it already knew.
+     */
+    fun wipeGeneration(): Long
+
+    fun setWipeGeneration(generation: Long)
+
+    /**
+     * True while this device must not upload its local notes: the account's cloud data was deleted
+     * and the user has not yet decided whether these notes go up again.
+     *
+     * Uploading before that decision is indistinguishable, server-side, from a stale device undoing
+     * the wipe — which is why the block exists and why only
+     * [allowUploadsAfterCloudWipe] lifts it.
+     */
+    fun uploadsBlockedAfterCloudWipe(): Boolean
+
+    /**
+     * Records a wipe this device has not acknowledged. Nothing is uploaded and nothing is deleted
+     * until the user decides, so this is where a wipe stops being able to reverse itself.
+     */
+    fun blockUploadsAfterCloudWipe()
+
+    /**
+     * The user's decision to upload these notes into the now-empty cloud.
+     *
+     * Clears the block *and* [setKnownCloudIds] is expected to be cleared by the caller: while the
+     * ids are recorded as known, their absence from the cloud is read as "deleted elsewhere" and
+     * the notes would be removed instead of recreated.
+     */
+    fun allowUploadsAfterCloudWipe()
+
     /** Wipes all stored state (used on sign-out). */
     fun clear()
 

@@ -2,6 +2,7 @@ package com.aus.notelikeus.di
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -32,6 +33,8 @@ class DesktopNoteSyncStateStore(
     private val deletedDigestsMap: MutableMap<Long, String>
     private var reconciledAt: Long
     private var mergedUserId: String?
+    private var wipeGenerationValue: Long
+    private var wipeUploadsBlockedValue: Boolean
 
     init {
         val prefs = runBlocking { dataStore.data.firstOrNull() }
@@ -52,6 +55,8 @@ class DesktopNoteSyncStateStore(
         }.orEmpty().toMutableMap()
         reconciledAt = prefs?.get(KEY_LAST_RECONCILED) ?: 0L
         mergedUserId = prefs?.get(KEY_LAST_MERGED_USER_ID)
+        wipeGenerationValue = prefs?.get(KEY_WIPE_GENERATION) ?: 0L
+        wipeUploadsBlockedValue = prefs?.get(KEY_WIPE_UPLOADS_BLOCKED) ?: false
     }
 
     override fun markDeleted(noteId: Long, deletedAt: Long, baselineRevision: Long?) {
@@ -247,6 +252,25 @@ class DesktopNoteSyncStateStore(
         runBlocking { dataStore.edit { it[KEY_LAST_MERGED_USER_ID] = userId } }
     }
 
+    override fun wipeGeneration(): Long = wipeGenerationValue
+
+    override fun setWipeGeneration(generation: Long) {
+        wipeGenerationValue = generation
+        runBlocking { dataStore.edit { it[KEY_WIPE_GENERATION] = generation } }
+    }
+
+    override fun uploadsBlockedAfterCloudWipe(): Boolean = wipeUploadsBlockedValue
+
+    override fun blockUploadsAfterCloudWipe() {
+        wipeUploadsBlockedValue = true
+        runBlocking { dataStore.edit { it[KEY_WIPE_UPLOADS_BLOCKED] = true } }
+    }
+
+    override fun allowUploadsAfterCloudWipe() {
+        wipeUploadsBlockedValue = false
+        runBlocking { dataStore.edit { it[KEY_WIPE_UPLOADS_BLOCKED] = false } }
+    }
+
     override fun clear() {
         deletedMap.clear()
         restoredSet.clear()
@@ -259,6 +283,8 @@ class DesktopNoteSyncStateStore(
         deletedDigestsMap.clear()
         reconciledAt = 0L
         mergedUserId = null
+        wipeGenerationValue = 0L
+        wipeUploadsBlockedValue = false
         runBlocking { dataStore.edit { it.clear() } }
     }
 
@@ -366,5 +392,7 @@ class DesktopNoteSyncStateStore(
         private val KEY_DELETED_DIGESTS = stringPreferencesKey("sync_deleted_digests")
         private val KEY_LAST_RECONCILED = longPreferencesKey("sync_last_reconciled")
         private val KEY_LAST_MERGED_USER_ID = stringPreferencesKey("sync_last_merged_user_id")
+        private val KEY_WIPE_GENERATION = longPreferencesKey("sync_wipe_generation")
+        private val KEY_WIPE_UPLOADS_BLOCKED = booleanPreferencesKey("sync_wipe_uploads_blocked")
     }
 }

@@ -14,6 +14,58 @@ import com.aus.notelikeus.domain.model.Note
 data class CloudNoteSnapshot(
     val records: List<CloudNoteRecord>,
     val authoritativeNoteCount: Int? = null,
+    /**
+     * The account's cloud wipe generation at the moment the snapshot was read. 0 = never wiped.
+     *
+     * Published alongside the rows on purpose: an empty snapshot is otherwise indistinguishable
+     * from one that failed open, and this is the only thing the server can say that tells "these
+     * notes were deliberately deleted" apart from "these notes did not arrive". A transport that
+     * cannot report it leaves it at 0, which reads as "never wiped" and leaves every existing
+     * guard behaving exactly as it did before.
+     */
+    val wipeGeneration: Long = 0L,
+)
+
+/**
+ * The account's cloud data was deleted from another device, and this client cannot prove it knows.
+ *
+ * Thrown when the server refuses a note or tombstone write because the generation presented is
+ * stale (`NL002`) or missing (`NL001`), and when a snapshot carries a generation this device has
+ * not acknowledged. Both cases stop the sync instead of resolving it: uploading anyway is the exact
+ * reversal the wipe generation exists to prevent, and reading the missing rows as deletions would
+ * remove the local copies the user still has.
+ *
+ * The local library is untouched by this happening — that is why it stops.
+ */
+class CloudWipedElsewhereException(
+    /** The generation the server reported, which this device has not accepted yet. 0 when unknown. */
+    val wipeGeneration: Long = 0L,
+    /** How many notes this device is holding back. Null when the caller cannot count them. */
+    val localNoteCount: Int? = null,
+) : Exception(
+    "This account's cloud data was deleted. Nothing was uploaded and nothing was deleted on this " +
+        "device." +
+        (localNoteCount?.let { " Your $it note(s) are still here." } ?: "") +
+        " Uploading them again is a deliberate step, so it has not been done automatically."
+)
+
+/**
+ * The server refused to undo a delete because the note moved on since this device last saw it.
+ *
+ * `restore_note` is fenced on the revision it is presented, exactly as `apply_note_change` and
+ * `apply_note_delete` are. Without that fence an offline device's undo could put its older copy on
+ * top of an edit made elsewhere, silently (F-14).
+ *
+ * The refusal is **terminal**: the same baseline can only be refused again, so callers clear the
+ * restore marker that would retry it rather than looping, and the user hears about it. The local
+ * undo itself stands — the next snapshot reconciles the cloud row.
+ */
+class RestoreRefusedException(
+    /** The note whose restore was refused. */
+    val noteId: Long? = null,
+) : Exception(
+    "Couldn't undo the delete for note $noteId: it changed on another device, so the version " +
+        "there has been kept."
 )
 
 /**

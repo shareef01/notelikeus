@@ -1,4 +1,4 @@
-import 'fake-indexeddb/auto';
+﻿import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/supabase/client', () => ({
@@ -30,7 +30,7 @@ function note(partial: Partial<Note> & Pick<Note, 'id' | 'localId'>): Note {
 }
 
 function emptySnapshot() {
-  return { notes: [] as Note[], tombstones: {}, noteRevisions: {}, maxRevision: 0 };
+  return { notes: [] as Note[], tombstones: {}, noteRevisions: {}, maxRevision: 0, wipeGeneration: 0 };
 }
 
 describe('supabaseRemoteNotesDataSource.uploadAllNotes', () => {
@@ -73,6 +73,7 @@ describe('supabaseRemoteNotesDataSource.uploadAllNotes', () => {
       tombstones: {},
       noteRevisions: { '1': 10_042 },
       maxRevision: 10_042,
+      wipeGeneration: 0,
     });
 
     const uploaded = await supabaseRemoteNotesDataSource.uploadAllNotes(USER, [staleLocal]);
@@ -102,6 +103,7 @@ describe('supabaseRemoteNotesDataSource.uploadAllNotes', () => {
       tombstones: {},
       noteRevisions: { '1': 10_042 },
       maxRevision: 10_042,
+      wipeGeneration: 0,
     });
 
     const uploaded = await supabaseRemoteNotesDataSource.uploadAllNotes(USER, [
@@ -143,6 +145,7 @@ describe('supabaseRemoteNotesDataSource.uploadAllNotes', () => {
       tombstones: { '1': 1_700_000_000_000 },
       noteRevisions: {},
       maxRevision: 10_001,
+      wipeGeneration: 0,
     });
 
     const uploaded = await supabaseRemoteNotesDataSource.uploadAllNotes(USER, [
@@ -166,6 +169,7 @@ describe('supabaseRemoteNotesDataSource.uploadAllNotes', () => {
       },
       noteRevisions: {},
       maxRevision: 10_002,
+      wipeGeneration: 0,
     });
 
     const validNewNote = note({ id: 'note-C', localId: 3, title: 'New Valid Note' });
@@ -185,6 +189,7 @@ describe('supabaseRemoteNotesDataSource.uploadAllNotes', () => {
       tombstones: {},
       noteRevisions: {},
       maxRevision: 0,
+      wipeGeneration: 0,
     });
 
     const validNewNote = note({ id: 'note-C', localId: 3, title: 'New Valid Note' });
@@ -208,6 +213,7 @@ describe('supabaseRemoteNotesDataSource.uploadAllNotes', () => {
       },
       noteRevisions: {},
       maxRevision: 10_001,
+      wipeGeneration: 0,
     });
 
     const validNewNote = note({ id: 'note-C', localId: 3, title: 'New Valid Note' });
@@ -231,6 +237,7 @@ describe('supabaseRemoteNotesDataSource.uploadAllNotes', () => {
       },
       noteRevisions: { 'note-A': 10_001 },
       maxRevision: 10_002,
+      wipeGeneration: 0,
     });
 
     const validNewNote = note({ id: 'note-C', localId: 3, title: 'New Valid Note' });
@@ -255,6 +262,7 @@ describe('supabaseRemoteNotesDataSource.uploadAllNotes', () => {
       },
       noteRevisions: {},
       maxRevision: 10_002,
+      wipeGeneration: 0,
     });
 
     const validNewNote = note({ id: 'note-C', localId: 3, title: 'New Valid Note' });

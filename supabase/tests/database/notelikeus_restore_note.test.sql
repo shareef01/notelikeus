@@ -1,5 +1,5 @@
 begin;
-select plan(10);
+select plan(12);
 
 select setval('public.sync_revision_seq', 20000, true);
 select tests.create_supabase_user('restore_a@notelikeus.test');
@@ -56,21 +56,41 @@ select results_eq(
 );
 
 select tests.authenticate_as('restore_a@notelikeus.test');
+-- F-14: the note is now live, so the restore must present the revision it believes is there. A
+-- restore without one is refused rather than overwriting whatever the live row holds — which is
+-- what makes an offline device's undo unable to discard an edit made elsewhere.
 select results_eq(
   $$ select (public.restore_note(
       '1', 1::bigint, null::bigint,
       'again', 'body', 102::bigint, 0, false, false, false, 0, null::bigint,
       '[]'::jsonb, '[]'::jsonb
+    )->>'error') $$,
+  ARRAY['note_changed'],
+  'a repeated restore without a baseline is refused'
+);
+select results_eq(
+  $$ select title from public.notes
+     where note_id = '1'
+       and owner_id = tests.get_supabase_uid('restore_a@notelikeus.test') $$,
+  ARRAY['restored'::text],
+  'the refused restore left the live note alone'
+);
+select results_eq(
+  $$ select (public.restore_note(
+      '1', 1::bigint,
+      (select revision from public.notes where note_id = '1'),
+      'again', 'body', 102::bigint, 0, false, false, false, 0, null::bigint,
+      '[]'::jsonb, '[]'::jsonb
     )->>'status') $$,
   ARRAY['applied'],
-  'repeated restore is idempotent applied'
+  'a restore presenting the live revision is applied'
 );
 select results_eq(
   $$ select title from public.notes
      where note_id = '1'
        and owner_id = tests.get_supabase_uid('restore_a@notelikeus.test') $$,
   ARRAY['again'::text],
-  'repeated restore updates the live note'
+  'the accepted restore updated the live note'
 );
 
 select throws_ok(

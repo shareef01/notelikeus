@@ -97,6 +97,7 @@ describe('F05: Web Delete-Conflict Safety (Fail-Before)', () => {
     expect(rpcMock).toHaveBeenCalledWith('apply_note_delete', {
       p_note_id: '1',
       p_base_revision: 10,
+      p_wipe_generation: 0,
     });
   });
 
@@ -105,7 +106,12 @@ describe('F05: Web Delete-Conflict Safety (Fail-Before)', () => {
     useTombstoneStore.getState().markDeleted('1');
     // Store has no baseline for '1'.
 
-    await supabaseRemoteNotesDataSource.deleteNote(USER, '1', undefined);
+    // F-05 Option B: DEL-6 is unchanged — no lookup, no adopted revision, no remote delete — but
+    // the caller is no longer told it succeeded. The cloud row is still live, so this is a failure
+    // to report, not a success to swallow.
+    await expect(supabaseRemoteNotesDataSource.deleteNote(USER, '1', undefined)).rejects.toThrow(
+      /still on your other devices/,
+    );
 
     // Expected correct behavior: apply_note_delete is never called because baseline is missing
     expect(rpcMock).not.toHaveBeenCalled();

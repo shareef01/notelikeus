@@ -14,6 +14,8 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
     private val baselineDeleteRevisions = mutableMapOf<Long, Long>()
     private var reconciledAt: Long = 0L
     private var mergedUserId: String? = null
+    private var wipeGenerationValue: Long = 0L
+    private var wipeUploadsBlocked: Boolean = false
     var currentTime: Long = 1_000_000L
 
     override fun markDeleted(noteId: Long, deletedAt: Long, baselineRevision: Long?) {
@@ -149,6 +151,22 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
         mergedUserId = userId
     }
 
+    override fun wipeGeneration(): Long = wipeGenerationValue
+
+    override fun setWipeGeneration(generation: Long) {
+        wipeGenerationValue = generation
+    }
+
+    override fun uploadsBlockedAfterCloudWipe(): Boolean = wipeUploadsBlocked
+
+    override fun blockUploadsAfterCloudWipe() {
+        wipeUploadsBlocked = true
+    }
+
+    override fun allowUploadsAfterCloudWipe() {
+        wipeUploadsBlocked = false
+    }
+
     override fun clear() {
         deleted.clear()
         restored.clear()
@@ -161,6 +179,8 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
         deletedDigests.clear()
         reconciledAt = 0L
         mergedUserId = null
+        wipeGenerationValue = 0L
+        wipeUploadsBlocked = false
     }
 
     override fun currentTimeMillis(): Long = currentTime
