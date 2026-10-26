@@ -5,7 +5,7 @@ import { getOwnerMeta, updateOwnerMeta } from '@/lib/local/notesLocalRepository'
  *
  * Server-side, `delete_all_user_cloud_data()` increments the account's durable wipe generation and
  * every note or tombstone write must present it (see
- * `supabase/migrations/20261013000000_account_wipe_generation.sql`). These are the SQLSTATEs the
+ * `supabase/migrations/20261018000000_account_wipe_generation.sql`). These are the SQLSTATEs the
  * guard raises, and the whole reason a stale device cannot put the deleted notes back.
  */
 export const WIPE_GENERATION_REQUIRED = 'NL001';

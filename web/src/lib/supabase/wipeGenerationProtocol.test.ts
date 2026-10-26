@@ -76,7 +76,7 @@ function staleGenerationError() {
  * A stale device must not be able to put a deliberately deleted account's notes back, and no part
  * of the fix may be automatic: the server refuses, this browser stops pushing, the local notes
  * survive, and only the user can decide to upload them again.
- * See supabase/migrations/20261013000000_account_wipe_generation.sql.
+ * See supabase/migrations/20261018000000_account_wipe_generation.sql.
  */
 describe('wipe generation protocol', () => {
   beforeEach(async () => {

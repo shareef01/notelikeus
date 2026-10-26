@@ -363,7 +363,7 @@ The ordered plan for closing the gap below — with the verification and rollbac
 
 #### F-13 — the wipe protocol, as implemented
 
-`supabase/migrations/20261013000000_account_wipe_generation.sql` adds a durable per-account `wipe_generation` that `delete_all_user_cloud_data()` increments in the same transaction as the deletes. `fetch_full_snapshot()`, `pull_changes()` and a new `get_sync_generation()` publish it.
+`supabase/migrations/20261018000000_account_wipe_generation.sql` adds a durable per-account `wipe_generation` that `delete_all_user_cloud_data()` increments in the same transaction as the deletes. `fetch_full_snapshot()`, `pull_changes()` and a new `get_sync_generation()` publish it.
 
 Enforcement is a `BEFORE INSERT OR UPDATE OR DELETE` trigger on `notes` and `note_tombstones`, not a check inside each RPC. That is the load-bearing choice: it is the one place every write already passes through, so a future RPC, a direct PostgREST table write, or any *older arity* of every mutation RPC is covered by construction. The mutation wrappers copy the presented generation into a transaction-local setting; the trigger compares it against the durable value:
 
@@ -392,7 +392,7 @@ The engine is where the invariant is enforced, because that is where the destruc
 
 | Command | Result |
 |---|---|
-| `npx supabase start` + `npx supabase db reset --yes` | exit 0 — all 28 migrations apply to a fresh database, including `20261013000000` |
+| `npx supabase start` + `npx supabase db reset --yes` | exit 0 — all 28 migrations apply to a fresh database, including `20261018000000` |
 | `npx supabase test db` | **PASS — 31 files, 350 assertions, 0 failures.** 35 assertions are new (`notelikeus_account_wipe_generation.test.sql`), 15 more are new (`notelikeus_internal_guard_schema.test.sql`). All 29 pre-existing files still pass, which is itself the backward-compatibility evidence for generation `0` and for the FU-4 move. |
 | `web: npx vitest run` | **PASS — 117 files, 855 tests** (113 files / 833 tests at the branch point: 7 new in `wipeGenerationProtocol.test.ts`, 7 in `restoreRevisionFence.test.ts`, 6 in `CloudWipeNotice.test.tsx`, 2 in `supabaseExposure.test.ts`) |
 | `web: npx tsc -b --noEmit` | exit 0 |
@@ -401,8 +401,8 @@ The engine is where the invariant is enforced, because that is where the destruc
 | `npm run pages:verify` | **PASS — "Cloudflare Pages artifacts verified in web/dist", "Cloudflare Pages security headers verified".** Builds the bundle and checks the artifact's shape and headers, so the CSP and redirect claims are verified against what the deploy would ship rather than against the source that generates it. |
 | `node --test scripts/ops/attachments-worker-deploy.test.mjs` / `write-kotlin-staging-properties.test.mjs` | **PASS — 7 pass, 0 fail** / **PASS — 0 fail** (CI-parity checks, run locally here) |
 | `npx supabase db lint --local --level warning --fail-on error` | **PASS — exit 0, zero errors.** Three advisory warnings only: two in `public.restore_note` (see F-14) and one in the pgTAP helper `tests.authenticate_as`. It lints `notelikeus_internal` and `public` clean, which independently type-checks the 1269-line generated FU-4 migration and the wipe-generation migration — analysis no test in this repository performs. |
-| `npx supabase db diff --local --schema public` and `--schema notelikeus_internal` | **PASS — "No schema changes found"** for both. `db diff` replays every migration into a shadow database and compares, so this says the committed migrations *determine* the schema: nothing was created outside them, and `20261014000000` is complete rather than merely accepted. |
-| `npx supabase migration list --local` | **PASS** — all 34 migrations applied, including `20261012000000`, `20261012010000`, `20261013000000`, `20261014000000`. |
+| `npx supabase db diff --local --schema public` and `--schema notelikeus_internal` | **PASS — "No schema changes found"** for both. `db diff` replays every migration into a shadow database and compares, so this says the committed migrations *determine* the schema: nothing was created outside them, and `20261019000000` is complete rather than merely accepted. |
+| `npx supabase migration list --local` | **PASS** — all 34 migrations applied, including `20261012000000`, `20261012010000`, `20261018000000`, `20261019000000`. |
 | `npx supabase projects list`, `supabase db push` | **NOT RUN — no credentials.** The CLI is not linked and has no access token (`SUPABASE_ACCESS_TOKEN` is unset and the token is a GitHub secret, which cannot be read back). The remote state therefore stays API-verified (§13.1) and `db push` stays the owner's action. |
 | `workers/attachments: npx vitest run` | **PASS — 6 files, 137 tests** |
 | `workers/attachments: npx tsc --noEmit` | exit 0 |
@@ -525,7 +525,7 @@ The trigger is narrow: it needs a restore marker and a newer edit elsewhere. It 
 
 It is fixed, on the owner's decision, and the fix is small because the fence was the missing piece rather than a design:
 
-- **Server** (`20261015000000_restore_revision_fence.sql`): when the note is live, the restore must present its current revision, and `NULL` is refused too — "I do not know the baseline" is not a licence to overwrite what is there, which is what `apply_note_change` already answers for a null base against an existing row. A refusal carries `current`, so the caller can learn the revision. When there is **no** live row the restore applies whatever baseline was claimed: nothing is being overwritten, so there is nothing for a fence to protect, and that is the ordinary undo path.
+- **Server** (`20261020000000_restore_revision_fence.sql`): when the note is live, the restore must present its current revision, and `NULL` is refused too — "I do not know the baseline" is not a licence to overwrite what is there, which is what `apply_note_change` already answers for a null base against an existing row. A refusal carries `current`, so the caller can learn the revision. When there is **no** live row the restore applies whatever baseline was claimed: nothing is being overwritten, so there is nothing for a fence to protect, and that is the ordinary undo path.
   - A stricter version — refusing a claimed-but-absent baseline as well — was written, tried against the suite, and **reverted**: it refused a legitimate undo purely for presenting a baseline, which two pgTAP files caught.
   - An "identical payload means idempotent success" exemption was considered and dropped: once both clients present the revision they hold, the benign case passes the fence on its own, and the exemption would have added a comparison to reason about for no user-visible gain.
 - **Web**: `restoreCloudNote` now presents the revision this browser holds instead of a hard-coded `null`, and turns a refusal into a typed `RestoreRefusedError` after recording the revision the server actually has. `restorePermanentlyDeletedNote` and `retryPendingCloudRestores` treat that as **terminal** — the marker goes, so no reconcile retries a request that can only be refused again — while a transient failure still keeps it. The user is told the note changed on another device and that the version there was kept.
@@ -638,7 +638,7 @@ It did not merge, deploy or release anything, and it did not touch the hosted Su
 
 | Class | Item |
 |---|---|
-| P1 | `supabase.yml` (`20261012000000`, `20261012010000`, `20261013000000`, `20261014000000`) and `attachments-worker.yml` are still undeployed — verified, not inferred. The F-08, F-09 and F-13 fixes exist only in source. |
+| P1 | `supabase.yml` (`20261012000000`, `20261012010000`, `20261018000000`, `20261019000000`) and `attachments-worker.yml` are still undeployed — verified, not inferred. The F-08, F-09 and F-13 fixes exist only in source. |
 | P1 | Android and Windows releases still do not carry F-01, F-07, F-10, FU-2 or F-13/F-13b. |
 | P2 | The Kotlin block is only lifted through the new button; until it ships, a wiped account's Android or Windows device reports the wipe and uploads nothing, which is safe but requires the user to reach that dialog. |
 | P3 | A restore still succeeds against a tombstone another device wrote, so undoing a delete that happened elsewhere is not refused — F-14's residual, out of its scope, pre-existing, and recorded rather than folded in (see the F-14 section). |

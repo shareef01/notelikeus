@@ -3,6 +3,11 @@
 How the audit's changes reach production, in the order they must go, with the verification and the
 rollback for each step.
 
+**Written on 2026-10-13, before 2.1.0.** The work it covers was rebased onto `main` on 2026-10-26.
+Its three migrations were renumbered to `20261018000000` … `20261020000000` so they run after the
+ones `main` gained in the meantime, and the release steps below (PR numbers, the version to tag)
+need re-reading against the current state before use.
+
 **Nothing in this file was executed during the audit.** No migration was pushed, no Worker was
 deployed, no release was cut, and no pull request was merged. This is the plan for the owner to
 execute, and every command in it was read out of the repository rather than recalled.
@@ -16,7 +21,7 @@ the code is ready to deploy is in §13.3.
 
 | Artifact | Source | Trigger |
 |---|---|---|
-| Five SQL migrations | `supabase/migrations/20261012000000_*` … `20261015000000_restore_revision_fence.sql` | Manual dispatch of `.github/workflows/supabase.yml` |
+| Three SQL migrations | `supabase/migrations/20261018000000_account_wipe_generation.sql` … `20261020000000_restore_revision_fence.sql` | Manual dispatch of `.github/workflows/supabase.yml` |
 | Attachments Worker | `workers/attachments/` | Manual dispatch of `.github/workflows/attachments-worker.yml` |
 | Web client | `web/` | Automatic on push to `main` (`.github/workflows/cloudflare-pages.yml`) |
 | Android | `androidApp/` | Push a `v*` tag (`.github/workflows/android.yml`) |
@@ -130,9 +135,9 @@ project ref.
 |---|---|
 | `20261012000000_provisional_attachment_sweep.sql` | F-09: reclaims provisional attachment rows that no note commit will ever promote, which otherwise count against the owner's quota forever. |
 | `20261012010000_unreferenced_attachment_report.sql` | Read-only: reports R2 objects no attachment row references, so the F-08 leak can be measured before anyone decides on a deleting sweep. |
-| `20261013000000_account_wipe_generation.sql` | Per-account `wipe_generation`, enforced by triggers on `notes` and `note_tombstones`, published by the snapshot and pull RPCs, bumped by `delete_all_user_cloud_data()`. Adds 15- and 16-argument `apply_note_change`, 3-argument `apply_note_delete` and 15-argument `restore_note`; every older arity is retained. |
-| `20261014000000_internal_guard_schema.sql` | Moves the sync guard helpers to the non-exposed `notelikeus_internal` schema, recreates the 16 in-database callers, and drops the three public wrappers. |
-| `20261015000000_restore_revision_fence.sql` | Fences `restore_note` on the revision the caller presents (F-14). |
+| `20261018000000_account_wipe_generation.sql` | Per-account `wipe_generation`, enforced by triggers on `notes` and `note_tombstones`, published by the snapshot and pull RPCs, bumped by `delete_all_user_cloud_data()`. Adds 15- and 16-argument `apply_note_change`, 3-argument `apply_note_delete` and 15-argument `restore_note`; every older arity is retained. |
+| `20261019000000_internal_guard_schema.sql` | Moves the sync guard helpers to the non-exposed `notelikeus_internal` schema, recreates the 17 in-database callers, and drops the three public wrappers. |
+| `20261020000000_restore_revision_fence.sql` | Fences `restore_note` on the revision the caller presents (F-14). |
 
 `supabase db lint --local --level warning --fail-on error` exits 0 on all of this, with three
 advisories and no errors.
@@ -209,7 +214,7 @@ need two clients signed into the same account.
 | Android | Halt the staged rollout. |
 | Windows | Replace or withdraw the release asset. |
 
-The one migration with a real blast radius is `20261014000000` (it drops three public functions).
+The one migration with a real blast radius is `20261019000000` (it drops three public functions).
 The check in §4 is what establishes that nothing outside the database called them. If that check
 ever comes back non-empty, stop and do not dispatch.
 

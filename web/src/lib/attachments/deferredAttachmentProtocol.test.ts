@@ -87,8 +87,8 @@ describe('deferred attachment protocol (web)', () => {
   it('names exactly the uploaded attachments in the commit, and none for restore_note', () => {
     const version = note([uploaded('att-up'), staged('att-local')]);
 
-    expect(noteToSupabaseRpcArgs(version, 3)).toHaveProperty('p_attachment_ids', ['att-up']);
-    expect(noteToSupabaseRpcArgs(version, 3, { attachmentIds: false })).not.toHaveProperty('p_attachment_ids');
+    expect(noteToSupabaseRpcArgs(version, 3, 0)).toHaveProperty('p_attachment_ids', ['att-up']);
+    expect(noteToSupabaseRpcArgs(version, 3, 0, { attachmentIds: false })).not.toHaveProperty('p_attachment_ids');
   });
 
   it("keeps a queued note's own uploads through hydration, which lists committed rows only", () => {

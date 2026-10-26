@@ -25,7 +25,7 @@ import kotlin.time.Duration.Companion.seconds
  * pay for that with its own notes.
  *
  * Server-side, `delete_all_user_cloud_data()` bumps a durable generation and every note or tombstone
- * write has to present it (`supabase/migrations/20261013000000_account_wipe_generation.sql`). This
+ * write has to present it (`supabase/migrations/20261018000000_account_wipe_generation.sql`). This
  * covers the client half: a snapshot carrying a generation this device has not acknowledged stops
  * the sync *before* the delete-on-absence loop, because otherwise an emptied cloud reads as "every
  * note you knew about was deleted elsewhere" and the local copies are removed — the opposite of what

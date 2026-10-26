@@ -1,6 +1,6 @@
 -- Account wipe generation: a device that was offline across "delete cloud data" must not be able to
 -- put the deleted notes back, and no write path may bypass that.
--- See supabase/migrations/20261013000000_account_wipe_generation.sql.
+-- See supabase/migrations/20261018000000_account_wipe_generation.sql.
 
 begin;
 select plan(35);

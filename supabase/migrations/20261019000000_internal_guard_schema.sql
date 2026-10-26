@@ -479,10 +479,10 @@ BEGIN
 END;
 $$;
 
--- Unchanged apart from the helper reference (last defined in 20261012000000_provisional_attachment_sweep.sql).
+-- Unchanged apart from the helper reference (last defined in 20261015000000_provisional_sweep_longer_grace.sql).
 CREATE OR REPLACE FUNCTION public.claim_orphaned_provisional_attachments(
     p_limit INTEGER DEFAULT 50,
-    p_min_age INTERVAL DEFAULT interval '14 days'
+    p_min_age INTERVAL DEFAULT interval '90 days'
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -491,8 +491,9 @@ SET search_path = public
 AS $$
 DECLARE
     v_limit INTEGER := GREATEST(1, LEAST(COALESCE(p_limit, 50), 100));
-    -- Never shorter than a day, whatever the caller asks: this deletes user data.
-    v_min_age INTERVAL := GREATEST(COALESCE(p_min_age, interval '14 days'), interval '1 day');
+    -- Never shorter than 90 days, whatever the caller asks: this deletes user data, and the R2 object
+    -- may be the only copy of the image (see 20261015000000_provisional_sweep_longer_grace.sql).
+    v_min_age INTERVAL := GREATEST(COALESCE(p_min_age, interval '90 days'), interval '90 days');
     v_now TIMESTAMPTZ := timezone('utc', now());
     v_claimed jsonb;
 BEGIN
@@ -615,7 +616,7 @@ BEGIN
 END;
 $$;
 
--- Unchanged apart from the helper reference (last defined in 20261013000000_account_wipe_generation.sql).
+-- Unchanged apart from the helper reference (last defined in 20261018000000_account_wipe_generation.sql).
 CREATE OR REPLACE FUNCTION public.delete_all_user_cloud_data()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1232,6 +1233,36 @@ BEGIN
         'revision', v_new_revision,
         'server_updated_at', (extract(epoch FROM v_server_updated_at) * 1000)::bigint
     );
+END;
+$$;
+
+-- Unchanged apart from the helper references (last defined in
+-- 20261016000000_restore_stranded_provisional_attachments.sql). The migration that defined it has
+-- already run it; it is recreated so it still works if the database owner runs it again.
+CREATE OR REPLACE FUNCTION public.restore_stranded_provisional_attachments(p_uploaded_before TIMESTAMPTZ)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+    v_restored INTEGER;
+BEGIN
+    PERFORM notelikeus_internal.begin_sync_mutation();
+    UPDATE public.note_attachments a
+    SET committed_at = a.created_at
+    WHERE a.committed_at IS NULL
+      AND a.deleted_at IS NULL
+      AND a.delete_claimed_at IS NULL
+      AND a.purge_claimed_at IS NULL
+      AND a.created_at < p_uploaded_before
+      AND EXISTS (
+          SELECT 1 FROM public.notes n
+          WHERE n.owner_id = a.owner_id
+            AND n.note_id = a.note_id
+      );
+    GET DIAGNOSTICS v_restored = ROW_COUNT;
+    PERFORM notelikeus_internal.end_sync_mutation();
+    RETURN v_restored;
 END;
 $$;
 
