@@ -54,7 +54,7 @@ android {
         applicationId = "com.aus.notelikeus"
         minSdk = 26
         targetSdk = 37
-        versionCode = 14
+        versionCode = 15
         // Same gradle.properties value composeApp compiles into AppConfig.versionName, so the
         // number stamped on the APK and the number the UI shows are the same number.
         versionName = providers.gradleProperty("notelikeus.versionName").get()

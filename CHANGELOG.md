@@ -4,6 +4,23 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-10-26
+
+### Added
+- **Deleting your cloud data now holds on every device.** A phone or computer that was offline when you deleted it can no longer quietly upload its old notes again. It tells you the cloud was cleared and uploads only if you choose "Upload this device’s notes". The notes on that device are kept either way, where before the delete could also remove them. The web app has had this since 2026-10-26; this release brings it to Android and Windows.
+- **A conflicted copy can be compared with the current note** on the web, with a "Compare versions" button in the editor.
+- **Space selects a note on Windows.** With a note card focused, Space adds it to the selection or removes it, so you can select several notes without a mouse.
+
+### Changed
+- **The web app has a refreshed look**: the search field, the grid and list switch, the note cards and the side menu counts. The formatting toolbar moves between its buttons with the arrow keys.
+- **The web app stays fast with very large libraries.** Search, opening the app and scrolling were tuned for 10,000 notes, and pictures load as they come into view.
+
+### Fixed
+- **Undoing a delete no longer overwrites a newer edit.** If the note was changed on another device after you deleted it, the undo keeps that newer version and tells you, instead of replacing it with the older copy.
+
+### Security
+- **Internal sync helpers in the database are no longer reachable from outside it.** They were never usable to change data, but they did not need to be reachable at all.
+
 ## [2.3.2] — 2026-10-22
 
 ### Changed
