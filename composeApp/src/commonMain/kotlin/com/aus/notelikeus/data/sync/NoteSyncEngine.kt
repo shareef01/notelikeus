@@ -315,6 +315,21 @@ class NoteSyncEngine(
         }.onFailure { failure -> noteWipeRefusal(failure) }
     }
 
+    /**
+     * The live notes edited after [since]. Same rule as uploadAllNotes: a wipe this device has not
+     * answered for stops the run before any note is sent.
+     */
+    private suspend fun notesChangedSince(localNotes: List<Note>, since: Long): List<Note> {
+        val changed = localNotes.filter { note ->
+            val id = note.id ?: return@filter false
+            note.timestamp > since && !syncStateStore.isDeleted(id)
+        }
+        if (changed.isNotEmpty()) {
+            requireNotBlockedAfterCloudWipe()
+        }
+        return changed
+    }
+
     suspend fun reconcileUploads(): Result<Int> {
         return runCatching {
             // Captured before the snapshot, the tombstone merge and the uploads below.
@@ -351,16 +366,7 @@ class NoteSyncEngine(
                 LocalCommitResult.StaleGeneration -> return@runCatching 0
             }
 
-            val changed = localNotes.filter { note ->
-                val id = note.id ?: return@filter false
-                note.timestamp > since && !syncStateStore.isDeleted(id)
-            }
-
-            // Same rule as uploadAllNotes: a wipe this device has not answered for stops the run
-            // before any note is sent.
-            if (changed.isNotEmpty()) {
-                requireNotBlockedAfterCloudWipe()
-            }
+            val changed = notesChangedSince(localNotes, since)
 
             // Belongs to this account: the lastMergedUserId check above already returned otherwise.
             val knownCloudIds = syncStateStore.knownCloudIds()

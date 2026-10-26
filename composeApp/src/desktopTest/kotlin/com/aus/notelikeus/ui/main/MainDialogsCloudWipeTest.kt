@@ -27,7 +27,7 @@ import kotlin.test.assertEquals
 class MainDialogsCloudWipeTest {
 
     /** As rendered, including the typographic apostrophe the resource file uses. */
-    private fun label() = "Upload this device\u2019s notes"
+    private val label = "Upload this device\u2019s notes"
 
     /** Every callback is required, so the ones a case does not care about are no-ops. */
     private fun dialogs(
@@ -60,7 +60,7 @@ class MainDialogsCloudWipeTest {
     fun `the cloud dialog offers the wipe answer next to restore`() = runComposeUiTest {
         setContent(dialogs())
 
-        onNodeWithText(label()).assertExists()
+        onNodeWithText(label).assertExists()
         onNodeWithText("Restore").assertExists()
     }
 
@@ -97,7 +97,7 @@ class MainDialogsCloudWipeTest {
             ),
         )
 
-        onNodeWithText(label()).performClick()
+        onNodeWithText(label).performClick()
 
         assertEquals(1, uploads, "the button did not reach the wipe answer")
         assertEquals(0, restores, "the button ran a cloud restore instead")
