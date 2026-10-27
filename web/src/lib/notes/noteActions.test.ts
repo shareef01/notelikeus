@@ -54,6 +54,7 @@ import { CloudDeleteUnconfirmedError } from "@/lib/remote/remoteNotesDataSource"
 import { deleteNote, putLocalEdit, putNote } from "@/lib/local/notesLocalRepository";
 import {
   removeNote,
+  removeNotes,
   restorePermanentlyDeletedNote,
   saveNote,
 } from "@/lib/notes/noteActions";
@@ -564,7 +565,13 @@ describe("emptyTrash", () => {
       if (id === "D") throw new CloudDeleteUnconfirmedError("D");
     });
 
-    await expect(emptyTrash()).rejects.toThrow("Delete conflict");
+    // B's cloud delete failed, but B is gone here and its tombstone retries the delete, so the
+    // batch still settles: one note's failure no longer reports every other note as not deleted.
+    await expect(emptyTrash()).resolves.toEqual({
+      removedIds: ["A", "B", "C", "D"],
+      pendingInCloud: 1,
+      failedIds: [],
+    });
 
     expect(remoteMocks.deleteNote).toHaveBeenCalledWith("user-1", "A", 10);
     expect(remoteMocks.deleteNote).toHaveBeenCalledWith("user-1", "B", 10);
@@ -684,9 +691,61 @@ describe("removeNote without a known cloud revision", () => {
       createEmptyNote({ id: "D", localId: 4, title: "D", isTrashed: false }),
     ]);
 
-    await expect(emptyTrash()).resolves.toEqual({ deleted: 3, cloudDeleteUnconfirmed: 2 });
+    await expect(emptyTrash()).resolves.toEqual({
+      removedIds: ["A", "B", "C"],
+      pendingInCloud: 2,
+      failedIds: [],
+    });
 
     expect(remoteMocks.deleteNote).toHaveBeenCalledWith("user-1", "A", 10);
     expect(useNotesStore.getState().notes.map((n) => n.id)).toEqual(["D"]);
+  });
+});
+
+describe("removeNotes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(deleteNote).mockResolvedValue(undefined);
+    remoteMocks.deleteNote.mockResolvedValue(undefined);
+    attachmentMocks.isR2AttachmentsEnabled.mockReturnValue(false);
+    ownerMeta(["A", "B", "C"], { A: 10, B: 10, C: 10 });
+    useNotesStore.getState().reset();
+    useAuthStore.getState().reset();
+    useTombstoneStore.getState().reset();
+    useAuthStore
+      .getState()
+      .setUser({ uid: "user-1", email: null, displayName: null });
+    useNotesStore.getState().setNotes([
+      createEmptyNote({ id: "A", localId: 1, title: "A" }),
+      createEmptyNote({ id: "B", localId: 2, title: "B" }),
+      createEmptyNote({ id: "C", localId: 3, title: "C" }),
+    ]);
+  });
+
+  it("settles every note when one local delete fails", async () => {
+    vi.mocked(deleteNote).mockImplementation(async (_ownerId, id) => {
+      if (id === "B") throw new Error("IndexedDB delete failed");
+    });
+
+    await expect(removeNotes(["A", "B", "C"])).resolves.toEqual({
+      removedIds: ["A", "C"],
+      pendingInCloud: 0,
+      failedIds: ["B"],
+    });
+    expect(useNotesStore.getState().notes.map((n) => n.id)).toEqual(["B"]);
+    expect(remoteMocks.deleteNote).toHaveBeenCalledWith("user-1", "C", 10);
+  });
+
+  it("counts a cloud-only failure as removed and still pending in the cloud", async () => {
+    remoteMocks.deleteNote.mockImplementation(async (_userId, id) => {
+      if (id === "A") throw new Error("Supabase network timeout");
+    });
+
+    await expect(removeNotes(["A", "B"])).resolves.toEqual({
+      removedIds: ["A", "B"],
+      pendingInCloud: 1,
+      failedIds: [],
+    });
+    expect(useTombstoneStore.getState().isDeleted("A")).toBe(true);
   });
 });
