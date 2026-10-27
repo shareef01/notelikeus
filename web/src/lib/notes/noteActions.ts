@@ -203,12 +203,46 @@ export async function removeNote(noteId: string): Promise<RemoveNoteOutcome> {
   return 'deleted';
 }
 
-/** {@link removeNote} for several notes. Resolves to how many are still live on other devices. */
-export async function removeNotes(noteIds: string[]): Promise<{ cloudDeleteUnconfirmed: number }> {
-  const outcomes = await Promise.all(noteIds.map((noteId) => removeNote(noteId)));
-  return {
-    cloudDeleteUnconfirmed: outcomes.filter((outcome) => outcome === 'cloudDeleteUnconfirmed').length,
-  };
+/** What a batch of permanent deletes achieved, note by note. */
+export interface RemoveNotesResult {
+  /** Gone from this browser, so an Undo can put them back. */
+  removedIds: string[];
+  /**
+   * Of [removedIds], how many may still be on other devices: the cloud delete was unconfirmed
+   * (F-05) or failed. Both are finished from the tombstone by a later sync.
+   */
+  pendingInCloud: number;
+  /** Still in this browser: the local delete itself failed. */
+  failedIds: string[];
+}
+
+/**
+ * {@link removeNote} for several notes, settling every one.
+ *
+ * `Promise.all` rejected on the first failure, so the caller reported the whole batch as failed and
+ * offered no Undo, while every other note in it had been deleted. A rejected remove whose note is
+ * no longer here failed only in the cloud: the local delete and its tombstone are committed, and
+ * the tombstone retries the cloud delete, so that note counts as removed.
+ */
+export async function removeNotes(noteIds: string[]): Promise<RemoveNotesResult> {
+  const settled = await Promise.allSettled(noteIds.map((noteId) => removeNote(noteId)));
+  const result: RemoveNotesResult = { removedIds: [], pendingInCloud: 0, failedIds: [] };
+  settled.forEach((outcome, index) => {
+    const noteId = noteIds[index]!;
+    if (outcome.status === 'fulfilled') {
+      result.removedIds.push(noteId);
+      if (outcome.value === 'cloudDeleteUnconfirmed') result.pendingInCloud += 1;
+      return;
+    }
+    console.warn(`[Notelikeus] Delete of note ${noteId} failed:`, outcome.reason);
+    if (getNote(noteId)) {
+      result.failedIds.push(noteId);
+    } else {
+      result.removedIds.push(noteId);
+      result.pendingInCloud += 1;
+    }
+  });
+  return result;
 }
 
 export async function trashNoteById(noteId: string): Promise<Note | null> {
@@ -235,10 +269,9 @@ export async function archiveNoteById(noteId: string): Promise<Note | null> {
   return updated;
 }
 
-export async function emptyTrash(): Promise<{ deleted: number; cloudDeleteUnconfirmed: number }> {
+export async function emptyTrash(): Promise<RemoveNotesResult> {
   const trashed = useNotesStore.getState().notes.filter((note) => note.isTrashed);
-  const { cloudDeleteUnconfirmed } = await removeNotes(trashed.map((note) => note.id));
-  return { deleted: trashed.length, cloudDeleteUnconfirmed };
+  return removeNotes(trashed.map((note) => note.id));
 }
 
 /** Reverse a permanent delete within the undo window. Clears both tombstones so the
