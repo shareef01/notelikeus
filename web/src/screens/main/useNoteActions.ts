@@ -3,6 +3,7 @@ import {
   archiveNoteById,
   emptyTrash,
   removeNote,
+  removeNotes,
   restoreNoteById,
   restorePermanentlyDeletedNote,
   saveNote,
@@ -18,6 +19,20 @@ import type { Note } from '@/types/note';
 /** `n note` / `n notes`, which every message below needs. */
 function plural(count: number, word = 'note'): string {
   return `${count} ${word}${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * A permanent-delete toast that says where the notes still are (F-05).
+ *
+ * [unconfirmed] notes were deleted here, but this browser never learned their cloud revision, so
+ * their cloud copies stay on other devices until a later sync finishes the delete. That is not a
+ * failure, and reporting it as one hid the Undo for a delete that had happened.
+ */
+export function permanentDeleteMessage(message: string, total: number, unconfirmed: number): string {
+  if (unconfirmed === 0) return message;
+  const subject =
+    total === 1 ? 'It stays' : unconfirmed === 1 ? '1 stays' : `${unconfirmed} stay`;
+  return `${message}. ${subject} on your other devices until the next sync.`;
 }
 
 interface NoteActionsDeps {
@@ -90,9 +105,13 @@ export function useNoteActions({
     (note: Note) =>
       runNoteAction('Delete', async () => {
         const previous = { ...note };
-        await removeNote(note.id);
+        const outcome = await removeNote(note.id);
         showUndoToast({
-          message: 'Note deleted permanently',
+          message: permanentDeleteMessage(
+            'Note deleted permanently',
+            1,
+            outcome === 'cloudDeleteUnconfirmed' ? 1 : 0,
+          ),
           revert: () => restorePermanentlyDeletedNote(previous),
         });
       }),
@@ -104,13 +123,17 @@ export function useNoteActions({
       runNoteAction('Empty trash', async () => {
         closeEmptyTrashConfirm();
         const trashedSnapshots = notes.filter((note) => note.isTrashed).map((note) => ({ ...note }));
-        const count = await emptyTrash();
-        if (count === 0) {
+        const { deleted, cloudDeleteUnconfirmed } = await emptyTrash();
+        if (deleted === 0) {
           useToastStore.getState().show('Trash is already empty');
           return;
         }
         showUndoToast({
-          message: `Deleted ${plural(count)} permanently`,
+          message: permanentDeleteMessage(
+            `Deleted ${plural(deleted)} permanently`,
+            deleted,
+            cloudDeleteUnconfirmed,
+          ),
           revert: async () => {
             await Promise.all(trashedSnapshots.map((note) => restorePermanentlyDeletedNote(note)));
           },
@@ -198,10 +221,14 @@ export function useNoteActions({
         closeBulkDeleteConfirm();
         const snapshots = getSelectedSnapshots();
         if (snapshots.length === 0) return;
-        await Promise.all(snapshots.map((note) => removeNote(note.id)));
+        const { cloudDeleteUnconfirmed } = await removeNotes(snapshots.map((note) => note.id));
         clearSelection();
         showUndoToast({
-          message: `${plural(snapshots.length)} deleted permanently`,
+          message: permanentDeleteMessage(
+            `${plural(snapshots.length)} deleted permanently`,
+            snapshots.length,
+            cloudDeleteUnconfirmed,
+          ),
           revert: async () => {
             await Promise.all(snapshots.map((note) => restorePermanentlyDeletedNote(note)));
           },

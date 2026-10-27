@@ -5,6 +5,7 @@ import { resetNotesDatabaseForTests } from '@/lib/local/idb';
 import { rememberNoteRevision } from '@/lib/supabase/revisionStore';
 import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNotesDataSource';
 import { useTombstoneStore } from '@/store/tombstoneStore';
+import { createEmptyNote } from '@/types/note';
 
 const USER = '11111111-1111-4111-8111-111111111111';
 
@@ -117,5 +118,23 @@ describe('F05: Web Delete-Conflict Safety (Fail-Before)', () => {
     expect(rpcMock).not.toHaveBeenCalled();
     // The tombstone remains in the store (failed closed)
     expect(useTombstoneStore.getState().isDeleted('1')).toBe(true);
+  });
+
+  // An upsert that races a delete is turned into that delete. It used to drop the tombstone's
+  // baseline, so it always took the MISSING BASELINE branch above, even with the revision in hand.
+  it('upsert of a tombstoned note deletes against the tombstone baseline', async () => {
+    useTombstoneStore.getState().markDeleted('1', 10);
+    rpcMock.mockResolvedValueOnce({ data: { status: 'applied', revision: 11 }, error: null });
+
+    await supabaseRemoteNotesDataSource.upsertNote(USER, {
+      ...createEmptyNote({ id: '1', localId: 1, timestamp: 1 }),
+    });
+
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+    expect(rpcMock).toHaveBeenCalledWith('apply_note_delete', {
+      p_note_id: '1',
+      p_base_revision: 10,
+      p_wipe_generation: 0,
+    });
   });
 });

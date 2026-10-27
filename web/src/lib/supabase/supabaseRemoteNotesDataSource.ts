@@ -41,7 +41,10 @@ import {
   retryPendingCloudRestores,
   withoutRestoredDeletes,
 } from "@/lib/notes/restoreRetry";
-import type { RemoteNotesDataSource } from "@/lib/remote/remoteNotesDataSource";
+import {
+  CloudDeleteUnconfirmedError,
+  type RemoteNotesDataSource,
+} from "@/lib/remote/remoteNotesDataSource";
 import { useNotesStore } from "@/store/notesStore";
 import { unexplainedMissingCloudIds } from "@/lib/notes/unexplainedMissingCloudIds";
 import { useTombstoneStore } from "@/store/tombstoneStore";
@@ -63,27 +66,7 @@ interface ApplyNoteResult {
   };
 }
 
-/**
- * F-05: the note was suppressed locally, but the cloud row could not be deleted because this
- * browser never learned its revision.
- *
- * Raised instead of returning success, which is what it used to do. The cloud copy is live on every
- * other device, so the user has to be told — and the safe retry is to learn the revision on
- * purpose (a snapshot the retry itself triggers) rather than to adopt whatever the failed delete
- * answered with, which is what DEL-6 forbids.
- */
-export class CloudDeleteUnconfirmedError extends Error {
-  readonly noteId: string;
-
-  constructor(noteId: string) {
-    super(
-      `Couldn’t delete note ${noteId} from the cloud: this browser no longer knows its revision. ` +
-        "It is hidden here, but still on your other devices. Try again.",
-    );
-    this.name = "CloudDeleteUnconfirmedError";
-    this.noteId = noteId;
-  }
-}
+export { CloudDeleteUnconfirmedError };
 
 /** [notes] with a flush's local rewrites applied, so a caller's copy matches what is on disk. */
 function withFlushApplied(notes: Note[], flushed: PendingFlushResult): Note[] {
@@ -298,7 +281,11 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
   async upsertNote(userId, note) {
     await ensureSupabaseAuthenticated();
     if (useTombstoneStore.getState().isDeleted(note.id)) {
-      await this.deleteNote(userId, note.id);
+      // The tombstone's recorded baseline is the revision the user deleted against. Without it
+      // every such upsert raised CloudDeleteUnconfirmedError, even for a delete this browser
+      // could have completed.
+      const baseline = useTombstoneStore.getState().baselineRevisionById[note.id];
+      await this.deleteNote(userId, note.id, baseline ?? undefined);
       return;
     }
     if (note.id in (await listPendingPushes(userId))) {
