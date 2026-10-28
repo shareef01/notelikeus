@@ -2,6 +2,7 @@ import { isPendingAttachment, ATTACHMENT_PENDING_PREFIX } from '@/lib/attachment
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { getAttachmentBlobStore } from '@/lib/attachments/attachmentBlobStoreRegistry';
 import { getPendingAttachmentBlob, peekPendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
+import { createImageObjectUrl } from '@/lib/attachments/imageObjectUrl';
 import type { Attachment } from '@/types/attachment';
 
 /**
@@ -102,7 +103,7 @@ export function resolveAttachmentPreviewUrl(
       // Cleared while loading: the picture belongs to a session that has ended, so it is not kept.
       if (!blob || startedIn !== generation) return null;
       evictUnreferencedLru(MAX_CACHED_PREVIEWS - 1);
-      const url = URL.createObjectURL(blob);
+      const url = createImageObjectUrl(blob);
       previewUrls.set(key, url);
       return url;
     } catch {

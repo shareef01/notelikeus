@@ -2,6 +2,7 @@ import { isPendingAttachment, ATTACHMENT_PENDING_PREFIX } from '@/lib/attachment
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { getAttachmentBlobStore } from '@/lib/attachments/attachmentBlobStoreRegistry';
 import { getPendingAttachmentBlob, peekPendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
+import { createImageObjectUrl } from '@/lib/attachments/imageObjectUrl';
 import type { Attachment } from '@/types/attachment';
 
 /**
@@ -220,7 +221,7 @@ export function resolveAttachmentThumbnailUrl(
       // Evict oldest unreferenced thumbnail Object URL if cache exceeds bounded capacity
       evictUnreferencedLru(MAX_CACHED_THUMBNAILS - 1);
 
-      const url = URL.createObjectURL(thumbnail);
+      const url = createImageObjectUrl(thumbnail);
       thumbnailUrls.set(key, url);
       failedAt.delete(key);
       return url;
