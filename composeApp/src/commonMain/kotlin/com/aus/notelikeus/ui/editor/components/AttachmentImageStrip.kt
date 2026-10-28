@@ -29,8 +29,13 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.Attachment
+import com.aus.notelikeus.ui.components.AttachmentThumbnailCache
+import com.aus.notelikeus.ui.components.SharedThumbnailCache
+import com.aus.notelikeus.ui.components.attachmentImageKey
 import com.aus.notelikeus.ui.theme.NoteEmphasis
 import com.aus.notelikeus.ui.theme.Spacing
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.cd_attachment
@@ -65,18 +70,27 @@ private fun AttachmentImagePreview(
     loadPreviewBytes: suspend (Attachment) -> ByteArray?,
     onRemove: () -> Unit,
 ) {
-    var bitmap by remember(attachment.id, attachment.storagePath) { mutableStateOf<ImageBitmap?>(null) }
-    var failed by remember(attachment.id, attachment.storagePath) { mutableStateOf(false) }
+    val key = attachmentImageKey(attachment)
+    // Opened earlier this session: the decoded preview is still held, and nothing is fetched again.
+    val cached = remember(key) { SharedPreviewCache.get(key) }
+    // Otherwise the note's card has almost always decoded its thumbnail already. It stands in at once,
+    // instead of a spinner, until the sharper picture is ready.
+    var bitmap by remember(key) { mutableStateOf(cached ?: SharedThumbnailCache.get(key)) }
+    var failed by remember(key) { mutableStateOf(false) }
 
-    LaunchedEffect(attachment.id, attachment.storagePath) {
-        failed = false
-        bitmap = null
-        val bytes = loadPreviewBytes(attachment) ?: run {
-            failed = true
-            return@LaunchedEffect
+    LaunchedEffect(key) {
+        if (cached != null) return@LaunchedEffect
+        val startedIn = SharedPreviewCache.currentGeneration
+        // Decoding a photo takes long enough to drop frames, so it never runs on the main thread.
+        val decoded = loadPreviewBytes(attachment)?.let { bytes ->
+            withContext(Dispatchers.Default) { decodeAttachmentPreview(bytes, AttachmentPreviewMaxWidthPx) }
         }
-        bitmap = decodeAttachmentImageBitmap(bytes)
-        if (bitmap == null) failed = true
+        when {
+            // Refused only if the account's data was cleared while this loaded: not this library's picture.
+            decoded != null -> if (SharedPreviewCache.put(key, decoded, startedIn)) bitmap = decoded
+            // A thumbnail already showing is better than the failure icon.
+            bitmap == null -> failed = true
+        }
     }
 
     Box(
@@ -152,4 +166,20 @@ private fun AttachmentImagePreview(
     }
 }
 
-expect fun decodeAttachmentImageBitmap(bytes: ByteArray): ImageBitmap?
+/**
+ * Widest the editor decodes a picture. The editor is never wider than a phone or a desktop column, so
+ * the pixels of a 4000 px photo beyond this would only cost memory and decode time.
+ */
+internal const val AttachmentPreviewMaxWidthPx = 1280
+
+/**
+ * Pictures already decoded for the editor, so reopening a note shows them at once. Few entries: each is
+ * far larger than a card thumbnail. Cleared with the thumbnails when the signed-in account changes.
+ */
+internal val SharedPreviewCache = AttachmentThumbnailCache(maxEntries = 6)
+
+/**
+ * Decodes [bytes] to roughly [maxWidthPx] wide (never narrower than the picture allows) without first
+ * holding the full-size bitmap of a large photo. Keeps the picture's own aspect. `null` for non-images.
+ */
+expect fun decodeAttachmentPreview(bytes: ByteArray, maxWidthPx: Int): ImageBitmap?

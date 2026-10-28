@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import com.aus.notelikeus.domain.model.Attachment
+import com.aus.notelikeus.ui.editor.components.SharedPreviewCache
 import com.aus.notelikeus.util.AppLog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -158,16 +159,20 @@ internal class AttachmentThumbnailCache(private val maxEntries: Int = DefaultMax
 internal val SharedThumbnailCache = AttachmentThumbnailCache()
 
 /**
- * Forgets every decoded thumbnail. Called when the signed-in account changes: thumbnails are decoded
- * copies of a library's pictures, and one account's must not stay reachable for the next. Safe to call
- * from any thread.
+ * Forgets every decoded thumbnail, and every picture decoded for the editor. Called when the signed-in
+ * account changes: both are decoded copies of a library's pictures, and one account's must not stay
+ * reachable for the next. Safe to call from any thread.
  */
-fun clearAttachmentThumbnailCache() = SharedThumbnailCache.clear()
+fun clearAttachmentThumbnailCache() {
+    SharedThumbnailCache.clear()
+    SharedPreviewCache.clear()
+}
 
 /** Loads at most this many pictures at once, so a screen of image notes does not open dozens of downloads. */
 private val LoadSlots = Semaphore(permits = 3)
 
-private fun thumbnailKey(attachment: Attachment) = "${attachment.id}|${attachment.storagePath}"
+/** Identifies one version of an attachment's picture, in both the card and the editor caches. */
+internal fun attachmentImageKey(attachment: Attachment) ="${attachment.id}|${attachment.storagePath}"
 
 /**
  * The picture for one card.
@@ -181,7 +186,7 @@ private fun thumbnailKey(attachment: Attachment) = "${attachment.id}|${attachmen
 @Composable
 fun NoteCardThumbnail(attachment: Attachment, modifier: Modifier = Modifier) {
     val loader = LocalAttachmentThumbnailLoader.current ?: return
-    val key = thumbnailKey(attachment)
+    val key = attachmentImageKey(attachment)
     var bitmap by remember(key) { mutableStateOf(SharedThumbnailCache.get(key)) }
     var failed by remember(key) { mutableStateOf(SharedThumbnailCache.recentlyFailed(key)) }
 
