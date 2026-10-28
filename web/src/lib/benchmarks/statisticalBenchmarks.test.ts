@@ -38,6 +38,12 @@ function stats(values: number[]) {
   return { min, max, mean, median, stdDev };
 }
 
+/**
+ * These only log timings and assert nothing about speed. About 2s locally, but a slow or busy CI
+ * runner took the search one past Vitest's 5s default, failing a build that changed nothing it measures.
+ */
+const BENCHMARK_TIMEOUT_MS = 60_000;
+
 describe('Statistical Performance Benchmarking (5 Repeat Runs)', () => {
   it('measures search performance statistics across 100, 1k, 5k, 10k notes', () => {
     const RUNS = 5;
@@ -78,7 +84,7 @@ describe('Statistical Performance Benchmarking (5 Repeat Runs)', () => {
       console.log(`[${count} notes] Cold: median=${c.median.toFixed(2)}ms (min=${c.min.toFixed(2)}, max=${c.max.toFixed(2)}, stdDev=±${c.stdDev.toFixed(2)}) | runs: [${coldRuns[count].map(v => v.toFixed(2)).join(', ')}]`);
       console.log(`[${count} notes] Warm: median=${w.median.toFixed(2)}ms (min=${w.min.toFixed(2)}, max=${w.max.toFixed(2)}, stdDev=±${w.stdDev.toFixed(2)}) | runs: [${warmRuns[count].map(v => v.toFixed(2)).join(', ')}]`);
     }
-  });
+  }, BENCHMARK_TIMEOUT_MS);
 
   it('measures IndexedDB decryption throughput statistics (5 Repeat Runs)', async () => {
     const RUNS = 5;
@@ -112,5 +118,5 @@ describe('Statistical Performance Benchmarking (5 Repeat Runs)', () => {
     console.log('\n================ DECRYPTION THROUGHPUT (5 RUNS) ================');
     console.log(`[${count} notes] Decryption: median=${s.median.toFixed(2)}ms (min=${s.min.toFixed(2)}, max=${s.max.toFixed(2)}, stdDev=±${s.stdDev.toFixed(2)}) | runs: [${runs.map(v => v.toFixed(2)).join(', ')}]`);
     console.log(`Equivalent throughput: ${(count / (s.median / 1000)).toFixed(0)} notes/second`);
-  });
+  }, BENCHMARK_TIMEOUT_MS);
 });
