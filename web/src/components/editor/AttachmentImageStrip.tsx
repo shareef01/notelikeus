@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
-import { resolveAttachmentPreviewUrl, revokeAttachmentPreviewUrl } from '@/lib/attachments/attachmentPreviewCache';
+import {
+  peekAttachmentPreviewUrl,
+  releaseAttachmentPreview,
+  resolveAttachmentPreviewUrl,
+  retainAttachmentPreview,
+} from '@/lib/attachments/attachmentPreviewCache';
+import {
+  peekAttachmentThumbnailUrl,
+  releaseAttachmentThumbnail,
+  retainAttachmentThumbnail,
+} from '@/lib/attachments/attachmentThumbnailCache';
 import type { Attachment } from '@/types/attachment';
 
 interface AttachmentImageStripProps {
@@ -21,7 +31,8 @@ export function AttachmentImageStrip({
     <div className="mb-4 flex flex-col gap-3">
       {attachments.map((attachment) => (
         <AttachmentPreview
-          key={attachment.id}
+          // Keyed by note too, so the state below starts over for a different note's picture.
+          key={`${noteId}:${attachment.id}`}
           noteId={noteId}
           attachment={attachment}
           contentColor={contentColor}
@@ -43,28 +54,51 @@ function AttachmentPreview({
   contentColor: string;
   onRemove: () => void;
 }) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // Opened before: the full picture is still cached, and nothing is fetched again.
+  const [previewUrl, setPreviewUrl] = useState(() => peekAttachmentPreviewUrl(noteId, attachment.id));
+  // Otherwise the note's card has usually made its thumbnail already. It stands in at once, instead
+  // of a loading message, until the full picture is ready.
+  const [placeholderUrl] = useState(() =>
+    previewUrl ? null : peekAttachmentThumbnailUrl(noteId, attachment.id),
+  );
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
-    void resolveAttachmentPreviewUrl(noteId, attachment).then((url) => {
+    retainAttachmentPreview(noteId, attachment.id);
+    if (placeholderUrl) retainAttachmentThumbnail(noteId, attachment.id);
+    void resolveAttachmentPreviewUrl(noteId, attachment).then(async (url) => {
       if (!active) return;
-      setPreviewUrl(url);
-      setFailed(url == null);
+      // A thumbnail already showing is better than the failure message.
+      if (url == null) {
+        if (!placeholderUrl) setFailed(true);
+        return;
+      }
+      // Decode before swapping, so the full picture replaces the placeholder in one frame rather
+      // than painting in over it.
+      if (placeholderUrl) {
+        const image = new Image();
+        image.src = url;
+        await image.decode().catch(() => {});
+      }
+      if (active) setPreviewUrl(url);
     });
     return () => {
       active = false;
-      revokeAttachmentPreviewUrl(noteId, attachment.id);
+      releaseAttachmentPreview(noteId, attachment.id);
+      if (placeholderUrl) releaseAttachmentThumbnail(noteId, attachment.id);
     };
-  }, [attachment, noteId]);
+  }, [attachment, noteId, placeholderUrl]);
+
+  const shownUrl = previewUrl ?? placeholderUrl;
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-[color-mix(in_srgb,currentColor_12%,transparent)]">
-      {previewUrl && !failed ? (
+      {shownUrl ? (
         <img
-          src={previewUrl}
+          src={shownUrl}
           alt="Note attachment"
+          decoding="async"
           className="max-h-72 w-full object-cover"
         />
       ) : (
