@@ -60,7 +60,7 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 | Probe user `nlu-audit-probe-…@notelikeus.dev` | **Done:** a search under Authentication → Users found no such user on 2026-10-21. |
 | S-04 `enforce_admins` | **Done 2026-10-21:** on for `main`, so every push to `main`, an admin's included, needs `Web build` and `Web e2e`. |
 | Secret scanning extras | **Dropped:** not offered for this repository. The API accepted the change and left both off, and the settings page shows only push protection under Secret Protection. Secret scanning and push protection are on. |
-| F-05, N-04 | Unchanged: F-05 is a pending design decision, N-04 a separate staging project. |
+| F-05, N-04 | F-05: corrected 2026-10-26, fixed (Option B, `AUDIT_REPORT.md` §13.2), not pending. N-04: unchanged, a separate staging project. |
 
 ## Checked and found sound
 

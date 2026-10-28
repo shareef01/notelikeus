@@ -71,7 +71,7 @@ Severity follows the earlier audits: P0 irreversible loss or cross-account breac
 
 | Item | State |
 |---|---|
-| F-05 web remote delete with no base revision | Design decision pending (rule DEL-6). |
+| F-05 web remote delete with no base revision | Corrected 2026-10-26: fixed, Option B (`AUDIT_REPORT.md` §13.2). DEL-6 kept; the delete is reported as unconfirmed and a later snapshot finishes it. |
 | N-04 one environment | Partly fixed. A separate staging Supabase project is an owner decision. |
 | S-02 / S-03 | Done: hosted CAPTCHA on since 2026-10-21 (R-02). |
 | S-04 | `enforce_admins` is still off, so an admin push can skip the required checks. |

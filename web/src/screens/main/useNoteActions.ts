@@ -2,11 +2,12 @@ import { useCallback } from 'react';
 import {
   archiveNoteById,
   emptyTrash,
-  removeNote,
+  removeNotes,
   restoreNoteById,
   restorePermanentlyDeletedNote,
   saveNote,
   trashNoteById,
+  type RemoveNotesResult,
 } from '@/lib/notes/noteActions';
 import { commitNotePositions, previewMoveNote } from '@/lib/notes/noteOrder';
 import { runNoteAction } from '@/lib/notes/runNoteAction';
@@ -18,6 +19,63 @@ import type { Note } from '@/types/note';
 /** `n note` / `n notes`, which every message below needs. */
 function plural(count: number, word = 'note'): string {
   return `${count} ${word}${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * A permanent-delete toast that says where the notes still are.
+ *
+ * [unconfirmed] of the [total] deleted notes are gone here, but their cloud copies stay on other
+ * devices until a later sync finishes the delete (F-05, or a cloud delete that failed). That is
+ * not a failure, and reporting it as one hid the Undo for a delete that had happened. [failed]
+ * notes were not deleted at all and are still in the list.
+ */
+export function permanentDeleteMessage(
+  message: string,
+  total: number,
+  unconfirmed: number,
+  failed = 0,
+): string {
+  const sentences = [message];
+  if (unconfirmed > 0) {
+    const subject =
+      total === 1 ? 'It stays' : unconfirmed === 1 ? '1 stays' : `${unconfirmed} stay`;
+    sentences.push(`${subject} on your other devices until the next sync`);
+  }
+  if (failed > 0) {
+    sentences.push(`${plural(failed)} couldn't be deleted. Try again`);
+  }
+  return sentences.length === 1 ? message : `${sentences.join('. ')}.`;
+}
+
+/**
+ * Reports a batch of permanent deletes: one toast, with an Undo for exactly the notes that went.
+ *
+ * Throws when nothing was deleted, so {@link runNoteAction} reports it as the failure it is. A
+ * partial failure is not one: the deleted notes need their Undo, and the rest are named instead.
+ */
+export function reportPermanentDelete(
+  result: RemoveNotesResult,
+  snapshots: Note[],
+  message: (deleted: number) => string,
+): void {
+  const { removedIds, pendingInCloud, failedIds } = result;
+  if (removedIds.length === 0) {
+    throw new Error(`${plural(failedIds.length)} could not be deleted`);
+  }
+  const removed = new Set(removedIds);
+  const restorable = snapshots.filter((note) => removed.has(note.id));
+  showUndoToast({
+    message: permanentDeleteMessage(
+      message(removedIds.length),
+      removedIds.length,
+      pendingInCloud,
+      failedIds.length,
+    ),
+    tone: failedIds.length > 0 ? 'error' : 'default',
+    revert: async () => {
+      await Promise.all(restorable.map((note) => restorePermanentlyDeletedNote(note)));
+    },
+  });
 }
 
 interface NoteActionsDeps {
@@ -90,11 +148,8 @@ export function useNoteActions({
     (note: Note) =>
       runNoteAction('Delete', async () => {
         const previous = { ...note };
-        await removeNote(note.id);
-        showUndoToast({
-          message: 'Note deleted permanently',
-          revert: () => restorePermanentlyDeletedNote(previous),
-        });
+        const result = await removeNotes([note.id]);
+        reportPermanentDelete(result, [previous], () => 'Note deleted permanently');
       }),
     [],
   );
@@ -104,17 +159,12 @@ export function useNoteActions({
       runNoteAction('Empty trash', async () => {
         closeEmptyTrashConfirm();
         const trashedSnapshots = notes.filter((note) => note.isTrashed).map((note) => ({ ...note }));
-        const count = await emptyTrash();
-        if (count === 0) {
+        const result = await emptyTrash();
+        if (result.removedIds.length === 0 && result.failedIds.length === 0) {
           useToastStore.getState().show('Trash is already empty');
           return;
         }
-        showUndoToast({
-          message: `Deleted ${plural(count)} permanently`,
-          revert: async () => {
-            await Promise.all(trashedSnapshots.map((note) => restorePermanentlyDeletedNote(note)));
-          },
-        });
+        reportPermanentDelete(result, trashedSnapshots, (deleted) => `Deleted ${plural(deleted)} permanently`);
       }),
     [closeEmptyTrashConfirm, notes],
   );
@@ -198,14 +248,9 @@ export function useNoteActions({
         closeBulkDeleteConfirm();
         const snapshots = getSelectedSnapshots();
         if (snapshots.length === 0) return;
-        await Promise.all(snapshots.map((note) => removeNote(note.id)));
+        const result = await removeNotes(snapshots.map((note) => note.id));
         clearSelection();
-        showUndoToast({
-          message: `${plural(snapshots.length)} deleted permanently`,
-          revert: async () => {
-            await Promise.all(snapshots.map((note) => restorePermanentlyDeletedNote(note)));
-          },
-        });
+        reportPermanentDelete(result, snapshots, (deleted) => `${plural(deleted)} deleted permanently`);
       }),
     [clearSelection, closeBulkDeleteConfirm, getSelectedSnapshots],
   );
