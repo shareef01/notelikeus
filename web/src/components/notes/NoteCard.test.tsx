@@ -273,4 +273,45 @@ describe('NoteCard', () => {
       }
     });
   });
+
+  describe('labels and untitled notes', () => {
+    const labels = ['iPhone backup', 'ToDo', 'Q4', 'garden'].map((name, index) => ({
+      id: `label-${index}`,
+      name,
+    }));
+
+    it('shows label names as written, not uppercased', () => {
+      const { container, cleanup } = renderCard(createTestNote({ labels: labels.slice(0, 2) }));
+      const chip = Array.from(container.querySelectorAll('span')).find(
+        (el) => el.textContent === 'iPhone backup' && el.closest('[title]'),
+      );
+      expect(chip).toBeTruthy();
+      expect(chip!.closest('[title]')!.className).not.toContain('uppercase');
+      cleanup();
+    });
+
+    it('names the labels hidden behind the overflow count', () => {
+      const { container, cleanup } = renderCard(createTestNote({ labels }), { density: 'grid' });
+      const overflow = container.querySelector('[title="Q4, garden"]');
+      expect(overflow?.querySelector('[aria-hidden]')?.textContent).toBe('+2');
+      expect(overflow?.querySelector('.sr-only')?.textContent).toBe('2 more labels: Q4, garden');
+      cleanup();
+    });
+
+    it('starts an untitled grid card with its text, not an empty title row', () => {
+      const { container, cleanup } = renderCard(
+        createTestNote({ title: '', content: 'Call the dentist' }),
+        { density: 'grid' },
+      );
+      const paragraphs = Array.from(container.querySelectorAll('p')).filter(
+        (p) => p.textContent === 'Call the dentist',
+      );
+      expect(paragraphs).toHaveLength(1);
+      // Same row as the timestamp.
+      expect(paragraphs[0].parentElement?.querySelector('time')).toBeTruthy();
+      expect(container.querySelector('h2')).toBeNull();
+      cleanup();
+    });
+  });
 });
+

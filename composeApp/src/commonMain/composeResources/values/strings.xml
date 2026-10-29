@@ -310,6 +310,7 @@ Sync diagnostics shows counts and version numbers only — never note text, toke
     <string name="reminder_at">Reminder %1$s %2$s</string>
     <string name="cd_selected">Selected</string>
     <string name="cd_filter_by_label">Filter by %1$s</string>
+    <string name="cd_more_labels">%1$d more labels: %2$s</string>
     <string name="cd_back">Back</string>
     <string name="cd_archive_note">Archive note</string>
     <string name="cd_more_options">More options</string>
