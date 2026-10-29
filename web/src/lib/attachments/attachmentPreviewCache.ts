@@ -108,10 +108,11 @@ export function resolveAttachmentPreviewUrl(
       return url;
     } catch {
       return null;
-    } finally {
-      inFlight.delete(key);
     }
-  })();
+  })().finally(() => {
+    // A clear may have dropped this entry and a newer load taken its place; leave that one alone.
+    if (inFlight.get(key) === task) inFlight.delete(key);
+  });
   inFlight.set(key, task);
   return task;
 }
@@ -135,6 +136,8 @@ export function clearAttachmentPreviewCache(): void {
   for (const url of previewUrls.values()) URL.revokeObjectURL(url);
   previewUrls.clear();
   activeRefs.clear();
+  // A load still running answers null now; one asked for after this clear must start afresh, not share it.
+  inFlight.clear();
 }
 
 /** Test hook — revokes and clears all preview URLs. */

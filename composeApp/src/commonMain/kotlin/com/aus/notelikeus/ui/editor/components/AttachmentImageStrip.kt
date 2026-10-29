@@ -179,7 +179,7 @@ internal const val AttachmentPreviewMaxWidthPx = 1280
 internal val SharedPreviewCache = AttachmentThumbnailCache(maxEntries = 6)
 
 /**
- * Decodes [bytes] to roughly [maxWidthPx] wide (never narrower than the picture allows) without first
+ * Decodes [bytes] to at most [maxWidthPx] wide (a narrower picture keeps its own width) without first
  * holding the full-size bitmap of a large photo. Keeps the picture's own aspect. `null` for non-images.
  */
 expect fun decodeAttachmentPreview(bytes: ByteArray, maxWidthPx: Int): ImageBitmap?

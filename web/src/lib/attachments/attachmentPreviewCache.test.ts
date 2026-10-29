@@ -113,6 +113,22 @@ describe('attachmentPreviewCache', () => {
     expect(peekAttachmentPreviewUrl('n', 'a')).toBeNull();
   });
 
+  it('loads afresh for a request made after a clear, while the old load is still running', async () => {
+    const stale = deferred<Blob>();
+    download.mockReturnValueOnce(stale.promise);
+
+    const before = resolveAttachmentPreviewUrl('n', remoteAttachment('a'));
+    clearAttachmentPreviewCache();
+    // Signed back in and reopened the note before the old download finished.
+    const after = resolveAttachmentPreviewUrl('n', remoteAttachment('a'));
+    stale.resolve(new Blob(['x']));
+
+    expect(await before).toBeNull();
+    expect(await after).toBe('blob:preview-1');
+    expect(download).toHaveBeenCalledTimes(2);
+    expect(peekAttachmentPreviewUrl('n', 'a')).toBe('blob:preview-1');
+  });
+
   it('revokes every preview on clear', async () => {
     const url = await resolveAttachmentPreviewUrl('n', remoteAttachment('a'));
     clearAttachmentPreviewCache();
