@@ -79,6 +79,26 @@ including the Compose build and tests that could not run here).
 Screenshots: `docs/design/screenshots/2026-10-29-followups/{before,after}/`, same script and seed,
 plus `empty-{1280,390}-light.png` for a fresh workspace.
 
+## Secondary pass: conflict review, reminders, settings, sign-in, editor layouts
+
+Branch `design/ui-ux-audit-secondary`, from `main` after #382 (all 14 CI checks passed).
+
+| Check | Result |
+|---|---|
+| typecheck, lint | pass |
+| `npm --prefix web test` | 147 files, 1087 tests, all pass (new: `ReminderPickerDialog.test.tsx` ×2, `ConflictReviewDialog.test.tsx` +2) |
+| Playwright, chromium + mobile-chrome, `dist-e2e` rebuilt | 16 guest specs: 129 passed, 3 skipped, 2 failed on the first run. Both failures were `grid-scroll-stability` "scroll position and card count stability" (chromium and mobile-chrome; both run at 1280 px): after pinning a note, `scrollY` moved 32 px against a 15 px limit. Bisected to the sticky sidebar (U-15). Measured the card in the middle of the screen: on `main` it **jumped 32 px** while `scrollY` held; on this branch it moves **0 px** and `scrollY` absorbs the new "Pinned" group (the browser's scroll anchoring now picks a card, not the stretched sidebar). The step now asserts the visible card stays within 5 px, as the same test's sync step already did; `grid-scroll-stability` then passed 8 of 8. The other 15 specs were not rerun after that spec-only change |
+| Docked editor, 14 notes, 1280×800, measured | Before: More options at 2574 px, Back at −1500 px after scrolling. After: More options 744–784 px and Back 0–44 px, before and after scrolling 1500 px. Search field 43 → 211 px |
+
+Screenshots: `docs/design/screenshots/2026-10-29-secondary/{before,after}/` from
+[`web/scripts/captureSecondaryScreens.mjs`](../../web/scripts/captureSecondaryScreens.mjs):
+sign-in, conflict review (light and dark, 1280 and 390), editor float/dock/full screen and the
+docked editor after scrolling, the reminder picker with a past time, settings.
+
+Not done in this pass: Android/Windows equivalents of these screens, a screen reader, a real
+notification permission prompt (headless Chromium), a conflict created by two real devices (the
+copy is seeded through import).
+
 ## Known limitations and remaining issues
 
 See the register's open rows: U-11 (Compose untitled card), U-12 (benchmark flake). Native rendering, screen
