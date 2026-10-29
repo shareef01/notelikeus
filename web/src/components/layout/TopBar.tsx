@@ -50,6 +50,8 @@ interface TopBarProps {
   recentSearches?: string[];
   onRecentSearchClick?: (query: string) => void;
   onClearRecentSearches?: () => void;
+  /** Sort and filter chips; hidden when the view has no notes to sort or filter. */
+  showFilterRow?: boolean;
   /** Optional external ref for the search input (e.g. for keyboard shortcuts). */
   searchInputRef?: RefObject<HTMLInputElement | null>;
 }
@@ -90,6 +92,7 @@ export function TopBar({
   onRecentSearchClick,
   onClearRecentSearches,
   searchInputRef: searchInputRefProp,
+  showFilterRow = true,
 }: TopBarProps) {
   // True while focus is anywhere in the search form: the field or the recent-searches panel under
   // it. It used to follow the field alone, closed 200 ms after the field blurred, so Tab from the
@@ -272,7 +275,7 @@ export function TopBar({
         )}
       </div>
 
-      {!selectionMode ? (
+      {!selectionMode && showFilterRow ? (
         <div className="mx-auto w-full max-w-content overflow-hidden">
           <FilterRow
             sortOrder={sortOrder}

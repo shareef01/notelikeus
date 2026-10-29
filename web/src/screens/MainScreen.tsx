@@ -187,6 +187,11 @@ export function MainScreen() {
 
     filters.labelName != null;
 
+  // Sort, colour and label filters have nothing to act on in a view without notes; on first run
+  // they were nine coloured circles above "Notes you add appear here" (U-08). Kept while loading,
+  // so nothing shifts when the notes arrive, and whenever a filter is set, so it can be cleared.
+  const showFilterRow = isLoading || navCounts[filters.filter] > 0 || hasActiveFilters;
+
   const filteredNoteIds = useMemo(() => filteredNotes.map((note) => note.id), [filteredNotes]);
 
   const allFilteredSelected =
@@ -376,6 +381,7 @@ export function MainScreen() {
         >
           <TopBar
             searchQuery={filters.searchQuery ?? ''}
+            showFilterRow={showFilterRow}
 
           onSearchQueryChange={setSearchQuery}
 

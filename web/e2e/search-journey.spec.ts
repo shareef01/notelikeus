@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { createNoteWithTitle } from './helpers/newNote';
 
 /**
  * Journey E — search and smart views, and the chrome states around it.
@@ -20,6 +21,8 @@ const sortChip = (page: Page) => page.getByRole('button', { name: /^Sort/ });
 
 test('the sort control locks to relevance while searching, and says why', async ({ page }) => {
   await enterNotes(page);
+  // The sort chip is in the filter row, which only appears once the view holds a note (U-08).
+  await createNoteWithTitle(page, 'Filter row seed');
   const search = page.getByRole('searchbox').first();
 
   await expect(sortChip(page)).toHaveAttribute('aria-label', /Choose sort order/);

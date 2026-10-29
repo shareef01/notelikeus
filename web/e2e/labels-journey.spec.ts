@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { createNoteWithTitle } from './helpers/newNote';
 
 /**
  * Journey G — labels: create, filter, and the consequence of deleting.
@@ -29,6 +30,9 @@ async function guestWithLabel(context: BrowserContext): Promise<Page> {
   await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
   await page.getByRole('button', { name: 'Continue without an account' }).click();
   await expect(page.getByRole('button', { name: 'New note' }).first()).toBeVisible({ timeout: 20_000 });
+  // A note that does not use the label: the filter row only appears once the view holds a note
+  // (U-08), and the label must still be offered before any note carries it (F15).
+  await createNoteWithTitle(page, 'Unlabelled note');
 
   await openLabels(page);
   await page.getByRole('textbox', { name: 'Create new label' }).fill('groceries');
