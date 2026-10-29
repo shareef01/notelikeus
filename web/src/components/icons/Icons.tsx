@@ -361,10 +361,12 @@ export function CheckCircleOutlineIcon({ className, size = 24 }: IconProps) {
   );
 }
 
+// Material "checklist", the glyph Compose's toolbar shows. This used to be "article" (a page of
+// lines), which read as a document rather than as a checklist.
 export function ChecklistIcon({ className, size = 24 }: IconProps) {
   return (
     <FilledIcon
-      path="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"
+      path="M22 7h-9v2h9V7zm0 8h-9v2h9v-2zM5.54 11 2 7.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L5.54 11zm0 8L2 15.46l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41L5.54 19z"
       className={className}
       size={size}
     />

@@ -20,7 +20,6 @@ import { useUiStore } from '@/store/uiStore';
 import type { Note } from '@/types/note';
 import { noteSurfaceStyle } from '@/theme/contrast';
 import { useNotePaletteDark } from '@/theme/useNotePaletteDark';
-import { argbToCssAlpha } from '@/theme/colors';
 import { useId, memo, type KeyboardEventHandler, type PointerEventHandler, type ReactNode } from 'react';
 import { NoteCardThumbnail } from '@/components/notes/NoteCardThumbnail';
 
@@ -34,6 +33,16 @@ export interface NoteReorderHandleProps {
 }
 
 export type NoteCardDensity = 'list' | 'grid' | 'dense';
+
+/**
+ * Label chips use the metadata size (12 px; 11 in compact) and the label as the user typed it.
+ * They were 9–10 px uppercase, which made similar custom names hard to tell apart.
+ */
+const LABEL_CHIP_TEXT: Record<NoteCardDensity, string> = {
+  list: 'px-2 py-0.5 text-[12px]',
+  grid: 'px-2.5 py-0.5 text-[12px]',
+  dense: 'px-2 py-px text-[11px]',
+};
 
 export interface NoteCardProps {
   note: Note;
@@ -80,10 +89,13 @@ function NoteCardImpl({
 
   const surface = noteSurfaceStyle(note.color, { isDarkPalette });
   const contentColor = note.color === 0 ? 'rgb(var(--primary-rgb))' : surface.color;
-  const labelChipStyle =
-    note.color === 0
-      ? { backgroundColor: 'rgba(255,255,255,0.12)', color: contentColor }
-      : { backgroundColor: argbToCssAlpha(note.color, 0.1), color: contentColor };
+  // The chip is tinted with the card's text colour, as on Compose (NoteEmphasis.Decorative). It
+  // used white at 12 % on default cards and the note's own colour on coloured ones, both
+  // invisible on the card they sat on, so a chip read as stray indented text.
+  const labelChipStyle = {
+    backgroundColor: `color-mix(in srgb, ${contentColor} 14%, transparent)`,
+    color: contentColor,
+  };
   const showBody = note.content.length > 0;
   const previewBody = stripMarkdownForPreview(note.content);
   // D15: don't render "Untitled" in the card — an empty-title note leads with
@@ -97,6 +109,11 @@ function NoteCardImpl({
   const thumbnailAttachment = attachments.find(
     (attachment) => !attachment.mimeType || attachment.mimeType.startsWith('image/'),
   );
+  // Grid and compact cards without a title put the preview in the title's place.
+  const bodyLeads = !isList && !title && showBody;
+  const bodyPreviewClass = isDense
+    ? 'line-clamp-5 text-[13px] leading-relaxed'
+    : 'line-clamp-7 text-note-body leading-relaxed';
   const showStatusCluster = !isSelected && (note.isPinned || hasReminder || showAttachments);
   const checklist = note.checklist ?? [];
   const labels = note.labels ?? [];
@@ -107,6 +124,7 @@ function NoteCardImpl({
   const isConflictedCopy = isConflictedCopyTitle(note.title);
   const showLabels = labels.length > 0 || isConflictedCopy;
   const labelLimit = isDense ? 1 : isList ? 3 : 2;
+  const hiddenLabels = labels.slice(labelLimit).map((label) => label.name);
   const timeLabel = formatListTimestamp(note.timestamp);
 
   // On touch the selection circle is always shown, over the card's top-left corner, where the first
@@ -154,7 +172,7 @@ function NoteCardImpl({
           >
             <ImageIcon size={size} />
             {attachments.length > 1 ? (
-              <span className="text-[10px] font-bold">{attachments.length}</span>
+              <span className="text-[11px] font-semibold tabular-nums">{attachments.length}</span>
             ) : null}
           </span>
         ) : null}
@@ -172,7 +190,7 @@ function NoteCardImpl({
             useUiStore.getState().openConflictReview(note.id);
           }}
           className={`pointer-events-auto inline-flex min-h-[24px] items-center rounded-full border border-amber-500/50 bg-amber-500/15 font-semibold tracking-wide hover:bg-amber-500/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
-            isDense || isList ? 'px-1.5 py-px text-[10px]' : 'px-2 py-0.5 text-[11px]'
+            isDense ? 'px-2 py-px text-[11px]' : 'px-2 py-0.5 text-[12px]'
           }`}
           title="Another device changed this note at the same time. Compare the two versions."
           aria-label="Conflict copy: compare with the current note"
@@ -189,28 +207,34 @@ function NoteCardImpl({
               event.stopPropagation();
               onLabelClick(label.name);
             }}
-            className={`inline-flex min-h-[24px] items-center rounded-full font-semibold uppercase tracking-wider hover:opacity-80 pointer-events-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${
-              isDense || isList ? 'px-2 py-0.5 text-[9px]' : 'px-2.5 py-0.5 text-[10px]'
-            }`}
+            className={`inline-flex min-h-[24px] max-w-[12rem] items-center rounded-full font-medium hover:opacity-80 pointer-events-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${LABEL_CHIP_TEXT[density]}`}
             style={labelChipStyle}
+            title={label.name}
           >
-            {label.name}
+            <span className="truncate">{label.name}</span>
           </button>
         ) : (
           <span
             key={label.id}
-            className={`inline-flex min-h-[20px] items-center rounded-full font-semibold uppercase tracking-wider ${
-              isDense || isList ? 'px-1.5 py-px text-[9px]' : 'px-2 py-0.5 text-[10px]'
-            }`}
+            className={`inline-flex min-h-[20px] max-w-[12rem] items-center rounded-full font-medium ${LABEL_CHIP_TEXT[density]}`}
             style={labelChipStyle}
+            title={label.name}
           >
-            {label.name}
+            <span className="truncate">{label.name}</span>
           </span>
         ),
       )}
-      {labels.length > labelLimit ? (
-        <span className="self-center text-[10px] font-semibold uppercase tracking-wider opacity-80">
-          +{labels.length - labelLimit}
+      {hiddenLabels.length > 0 ? (
+        // Names the labels it stands for, so "+2" is not a dead end for a screen reader or a hover.
+        // A generic span cannot carry an aria-label, so the spoken form is its own hidden text.
+        <span
+          className="self-center text-[12px] font-medium opacity-80"
+          title={hiddenLabels.join(', ')}
+        >
+          <span aria-hidden>+{hiddenLabels.length}</span>
+          <span className="sr-only">
+            {`${hiddenLabels.length} more label${hiddenLabels.length > 1 ? 's' : ''}: ${hiddenLabels.join(', ')}`}
+          </span>
         </span>
       ) : null}
     </div>
@@ -312,7 +336,7 @@ function NoteCardImpl({
               </p>
             ) : null}
             {showChecklist ? (
-              <p className="mt-1.5 text-[11px] font-medium tracking-wide opacity-80">
+              <p className="mt-1.5 text-[12px] font-medium tabular-nums opacity-80">
                 {checkedCount}/{note.checklist.length} checked
               </p>
             ) : null}
@@ -323,7 +347,7 @@ function NoteCardImpl({
             {statusIcons(15)}
             <time
               dateTime={new Date(note.timestamp).toISOString()}
-              className="text-[11px] font-medium tabular-nums tracking-wide opacity-80 sm:text-[12px]"
+              className="text-[12px] font-medium tabular-nums opacity-80"
             >
               {timeLabel}
             </time>
@@ -351,6 +375,12 @@ function NoteCardImpl({
               >
                 {highlight(title)}
               </h2>
+            ) : bodyLeads ? (
+              // D15: an untitled note leads with its text, level with the timestamp. Under an empty
+              // title row it started a line and a half down, which read as a missing title.
+              <p className={`min-w-0 flex-1 whitespace-pre-line break-words opacity-80 ${clearsSelectionCircle} ${bodyPreviewClass}`}>
+                {highlight(previewBody)}
+              </p>
             ) : (
               // Without a title the status cluster still needs a flex sibling to push it right
               <span className="min-w-0 flex-1" aria-hidden />
@@ -359,8 +389,8 @@ function NoteCardImpl({
               {statusIcons(isDense ? 13 : 14)}
               <time
                 dateTime={new Date(note.timestamp).toISOString()}
-                className={`font-medium tabular-nums tracking-wide opacity-80 ${
-                  isDense ? 'text-[10px]' : 'text-[11px]'
+                className={`font-medium tabular-nums opacity-80 ${
+                  isDense ? 'text-[11px]' : 'text-[12px]'
                 }`}
               >
                 {timeLabel}
@@ -368,13 +398,9 @@ function NoteCardImpl({
             </div>
           </div>
 
-          {showBody ? (
+          {showBody && !bodyLeads ? (
             <p
-              className={
-                isDense
-                  ? 'mt-2 line-clamp-5 whitespace-pre-line break-words text-[13px] leading-relaxed opacity-80'
-                  : 'mt-3 line-clamp-7 whitespace-pre-line break-words text-note-body leading-relaxed opacity-80'
-              }
+              className={`whitespace-pre-line break-words opacity-80 ${isDense ? 'mt-2' : 'mt-3'} ${bodyPreviewClass}`}
             >
               {highlight(previewBody)}
             </p>
@@ -382,7 +408,7 @@ function NoteCardImpl({
 
           {showChecklist ? (
             isDense ? (
-              <p className="mt-1.5 text-[11px] font-medium tracking-wide opacity-80">
+              <p className="mt-1.5 text-[12px] font-medium tabular-nums opacity-80">
                 {checkedCount}/{note.checklist.length} checked
               </p>
             ) : (
@@ -406,7 +432,7 @@ function NoteCardImpl({
                   </div>
                 ))}
                 {note.checklist.length > 3 ? (
-                  <p className="text-[11px] font-medium tracking-wide opacity-80">
+                  <p className="text-[12px] font-medium opacity-80">
                     +{note.checklist.length - 3} more
                   </p>
                 ) : null}

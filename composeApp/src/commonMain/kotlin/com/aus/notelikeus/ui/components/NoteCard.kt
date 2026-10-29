@@ -74,15 +74,18 @@ import com.aus.notelikeus.ui.theme.Spacing
 
 private val NoteCardContentPadding = Spacing.xl
 
-/** Compact uppercase label pill, matching the web card's chip typography. */
 /** Amber-500, the same hue the web chip uses; a fixed caution colour, not a theme role. */
 private val ConflictChipAmber = Color(0xFFF59E0B)
 
+/**
+ * Label pill text: the metadata size (12sp) and the label as the user typed it, matching the web
+ * card. It was 9–10sp uppercase, which made similar custom names hard to tell apart.
+ */
 private val NoteCardLabelChipStyle = TextStyle(
-    fontWeight = FontWeight.SemiBold,
-    fontSize = 10.sp,
-    lineHeight = 14.sp,
-    letterSpacing = 0.5.sp
+    fontWeight = FontWeight.Medium,
+    fontSize = 12.sp,
+    lineHeight = 16.sp,
+    letterSpacing = 0.sp
 )
 
 /**
@@ -116,7 +119,7 @@ private fun ChecklistProgressText(note: Note, contentColor: Color) {
 }
 
 /**
- * Row of up to [maxVisible] uppercase label pills plus an "+N" overflow count, matching the web
+ * Row of up to [maxVisible] label pills plus an "+N" overflow count, matching the web
  * card's chips. The list and grid layouts differ only in how many chips fit and how tight the
  * pills are, hence [maxVisible], [chipStyle] and the padding parameters.
  */
@@ -165,13 +168,15 @@ private fun NoteCardLabelChips(
             // Semantics only: a 48dp minimum target would stretch these inline chips and the card.
             val filterLabel = stringResource(Res.string.cd_filter_by_label, label.name)
             Text(
-                text = label.name.uppercase(),
+                text = label.name,
                 style = chipStyle,
                 color = contentColor,
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
+                    // A long name ellipsizes instead of pushing the other chips off the card.
+                    .widthIn(max = 192.dp)
                     .clip(CircleShape)
                     .background(contentColor.copy(alpha = NoteEmphasis.Decorative))
                     .then(
@@ -186,10 +191,17 @@ private fun NoteCardLabelChips(
         }
         val overflowCount = note.labels.size - maxVisible
         if (overflowCount > 0) {
+            // Names the labels it stands for, so "+2" is not a dead end for TalkBack or Narrator.
+            val hiddenLabels = stringResource(
+                Res.string.cd_more_labels,
+                overflowCount,
+                note.labels.drop(maxVisible).joinToString { it.name }
+            )
             Text(
                 text = stringResource(Res.string.labels_more, overflowCount),
                 style = chipStyle,
-                color = contentColor.copy(alpha = NoteEmphasis.Secondary)
+                color = contentColor.copy(alpha = NoteEmphasis.Secondary),
+                modifier = Modifier.semantics { contentDescription = hiddenLabels }
             )
         }
     }
@@ -595,7 +607,7 @@ fun NoteCard(
                                 note = note,
                                 maxVisible = 3,
                                 contentColor = contentColor,
-                                chipStyle = NoteCardLabelChipStyle.copy(fontSize = 9.sp),
+                                chipStyle = NoteCardLabelChipStyle,
                                 chipHorizontalPadding = 6.dp,
                                 chipVerticalPadding = Spacing.xxs,
                                 onLabelClick = onLabelClick,
@@ -610,7 +622,7 @@ fun NoteCard(
                         contentColor = contentColor,
                         selectedLabel = selectedLabel,
                         statusIconSize = 15.dp,
-                        timestampFontSize = 11.sp,
+                        timestampFontSize = 12.sp,
                         timestampAlpha = NoteEmphasis.Secondary,
                         verticalSpacing = 6.dp
                     )
@@ -654,7 +666,7 @@ fun NoteCard(
                         contentColor = contentColor,
                         selectedLabel = selectedLabel,
                         statusIconSize = if (compact) 13.dp else 14.dp,
-                        timestampFontSize = if (compact) 10.sp else 11.sp,
+                        timestampFontSize = if (compact) 11.sp else 12.sp,
                         timestampAlpha = NoteEmphasis.Secondary,
                         verticalSpacing = Spacing.xs,
                         horizontal = horizontal

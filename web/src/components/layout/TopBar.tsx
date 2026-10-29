@@ -6,7 +6,7 @@ import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import type { ViewColumns } from '@/store/uiStore';
 import type { Label } from '@/types/label';
 import type { NoteFilter } from '@/types/note';
-import { useState, useRef, type RefObject } from 'react';
+import { useState, useRef, type FocusEvent, type RefObject } from 'react';
 
 const SEARCH_PLACEHOLDERS: Record<NoteFilter, string> = {
   active: 'Search notes',
@@ -91,12 +91,19 @@ export function TopBar({
   onClearRecentSearches,
   searchInputRef: searchInputRefProp,
 }: TopBarProps) {
+  // True while focus is anywhere in the search form: the field or the recent-searches panel under
+  // it. It used to follow the field alone, closed 200 ms after the field blurred, so Tab from the
+  // field into the panel unmounted the button that had just taken focus and dropped focus on
+  // <body>: the history was unreachable from the keyboard.
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const internalSearchRef = useRef<HTMLInputElement>(null);
   const searchInputRef = searchInputRefProp ?? internalSearchRef;
 
   const showRecent =
     !selectionMode && isSearchFocused && recentSearches.length > 0 && !searchQuery;
+
+  const focusStaysInForm = (event: FocusEvent<HTMLFormElement>) =>
+    event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -145,6 +152,20 @@ export function TopBar({
 
             <form
               onSubmit={handleSearchSubmit}
+              onFocus={(event) => {
+                // Moves inside the form keep whatever Escape decided; only entering it opens.
+                if (!focusStaysInForm(event)) setIsSearchFocused(true);
+              }}
+              onBlur={(event) => {
+                if (!focusStaysInForm(event)) setIsSearchFocused(false);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Escape' || !showRecent) return;
+                // Close the history and stay in the field; a second Escape reaches the page.
+                event.stopPropagation();
+                setIsSearchFocused(false);
+                searchInputRef.current?.focus();
+              }}
               className="relative flex h-11 min-w-0 flex-1 items-center rounded-full border border-brand-outline/25 bg-true-surface-variant/60 px-1 shadow-sm transition-all duration-150 focus-within:border-brand-primary/60 focus-within:bg-true-surface focus-within:ring-2 focus-within:ring-brand-primary/25 sm:h-12"
             >
               <input
@@ -152,8 +173,6 @@ export function TopBar({
                 type="search"
                 value={searchQuery}
                 onChange={(event) => onSearchQueryChange(event.target.value)}
-                onFocus={() => setIsSearchFocused(true)}
-                onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
                 placeholder={SEARCH_PLACEHOLDERS[currentFilter]}
                 className="min-w-0 flex-1 bg-transparent px-3 text-base text-brand-primary outline-none placeholder:text-brand-muted focus:outline-none focus:ring-0 sm:px-4"
                 aria-label={SEARCH_PLACEHOLDERS[currentFilter]}
@@ -189,8 +208,12 @@ export function TopBar({
                       <button
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
-                        onClick={onClearRecentSearches}
-                        className="text-xs font-semibold text-brand-primary/80 hover:text-brand-primary transition-colors"
+                        onClick={() => {
+                          onClearRecentSearches();
+                          // The panel unmounts with the list; keep focus in the field, not <body>.
+                          searchInputRef.current?.focus();
+                        }}
+                        className={`-my-1 rounded-full px-2 py-1 text-xs font-semibold text-brand-primary/80 transition-colors hover:text-brand-primary ${CHROME_FOCUS}`}
                       >
                         Clear
                       </button>
@@ -206,7 +229,7 @@ export function TopBar({
                           onRecentSearchClick?.(query);
                           searchInputRef.current?.blur();
                         }}
-                        className="rounded-full border border-brand-outline/50 bg-true-surface-variant/40 px-3 py-1 text-xs font-medium text-brand-secondary transition-colors hover:border-brand-primary/40 hover:bg-brand-primary/10 hover:text-brand-primary"
+                        className={`min-h-8 rounded-full border border-brand-outline/50 bg-true-surface-variant/40 px-3 py-1 text-[13px] font-medium text-brand-secondary transition-colors hover:border-brand-primary/40 hover:bg-brand-primary/10 hover:text-brand-primary ${CHROME_FOCUS}`}
                       >
                         {query}
                       </button>

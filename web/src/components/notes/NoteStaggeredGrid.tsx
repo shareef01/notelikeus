@@ -388,9 +388,14 @@ export function NoteStaggeredGrid({
       {visibleItems.map((item) => {
         if (item.type === 'header') {
           return (
+            // Space above every group but the first. The header used to carry `first:pt-0`, but it
+            // is always its wrapper's first child, so no header had space above it and "Today" sat
+            // against the last pinned card.
             <div
               key={item.key}
-              className={isList ? 'col-span-full' : 'mb-1.5 w-full break-inside-avoid'}
+              className={`[&:not(:first-child)]:pt-4 ${
+                isList ? 'col-span-full' : 'mb-1.5 w-full break-inside-avoid'
+              }`}
               style={isList ? undefined : { columnSpan: 'all' }}
             >
               <NoteSectionHeader title={item.title} />
