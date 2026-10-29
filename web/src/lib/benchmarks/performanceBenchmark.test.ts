@@ -31,27 +31,36 @@ describe('Phase 2 Benchmarks — Performance Baseline', () => {
     const coldResults: Record<number, number> = {};
     const warmResults: Record<number, number> = {};
 
+    // Best of three trials, each on a freshly generated library: the folded-text cache is keyed
+    // by note object, so a new dataset is a true cold start. A single wall-clock sample failed
+    // whenever another process shared the CPU (it failed once beside a Playwright run and passed
+    // alone at about half its limit); a genuine slowdown still fails all three trials.
+    const TRIALS = 3;
     for (const count of counts) {
-      const dataset = generateBenchNotes(count);
-      // Cold query (first time folding 10k note haystacks)
-      const coldStart = performance.now();
-      const coldResult = searchNotes(dataset, {
-        searchQuery: 'urgent project',
-        filter: 'active',
-        sortOrder: 'manual',
-      });
-      coldResults[count] = performance.now() - coldStart;
-      expect(coldResult.notes.length).toBeGreaterThan(0);
+      coldResults[count] = Number.POSITIVE_INFINITY;
+      warmResults[count] = Number.POSITIVE_INFINITY;
+      for (let trial = 0; trial < TRIALS; trial++) {
+        const dataset = generateBenchNotes(count);
+        // Cold query (first time folding the note haystacks)
+        const coldStart = performance.now();
+        const coldResult = searchNotes(dataset, {
+          searchQuery: 'urgent project',
+          filter: 'active',
+          sortOrder: 'manual',
+        });
+        coldResults[count] = Math.min(coldResults[count], performance.now() - coldStart);
+        expect(coldResult.notes.length).toBeGreaterThan(0);
 
-      // Warm query (subsequent keystroke on the same note library, using memoized haystacks)
-      const warmStart = performance.now();
-      const warmResult = searchNotes(dataset, {
-        searchQuery: 'urgent project alpha',
-        filter: 'active',
-        sortOrder: 'manual',
-      });
-      warmResults[count] = performance.now() - warmStart;
-      expect(warmResult.notes.length).toBeGreaterThan(0);
+        // Warm query (subsequent keystroke on the same note library, using memoized haystacks)
+        const warmStart = performance.now();
+        const warmResult = searchNotes(dataset, {
+          searchQuery: 'urgent project alpha',
+          filter: 'active',
+          sortOrder: 'manual',
+        });
+        warmResults[count] = Math.min(warmResults[count], performance.now() - warmStart);
+        expect(warmResult.notes.length).toBeGreaterThan(0);
+      }
     }
 
     console.log('[Benchmark Search Cold (ms)]:', coldResults);
