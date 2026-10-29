@@ -34,6 +34,10 @@ export function ReminderPickerDialog({
   if (!open) return null;
 
   const parsed = fromLocalDateTimeInputValue(value);
+  // A past time used to enable Set; the editor then refused it in a toast after this dialog had
+  // closed, so the user lost what they typed. Say so here, where it can still be changed.
+  const isPast = parsed != null && parsed <= Date.now();
+  const pastHintId = `${titleId}-past`;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 animate-in fade-in duration-200 sm:items-center sm:p-6">
@@ -83,8 +87,16 @@ export function ReminderPickerDialog({
           type="datetime-local"
           value={value}
           onChange={(event) => setValue(event.target.value)}
+          aria-invalid={isPast || undefined}
+          aria-describedby={isPast ? pastHintId : undefined}
           className={`mt-1.5 w-full rounded-note border border-brand-outline/50 bg-transparent px-4 py-3 text-sm text-brand-primary outline-none focus:border-brand-primary/50 ${CHROME_FOCUS}`}
         />
+
+        {isPast ? (
+          <p id={pastHintId} role="alert" className="mt-2 text-xs font-medium text-red-700 dark:text-red-400">
+            That time has passed. Choose a time in the future.
+          </p>
+        ) : null}
 
         <div className="mt-5 flex justify-end gap-2">
           {initialTimestamp != null ? (
@@ -108,8 +120,8 @@ export function ReminderPickerDialog({
             // Disabled on an unparseable value rather than on an empty string: a half-typed
             // datetime-local reads as a non-empty value that `new Date` answers NaN for, and
             // confirming that used to set `reminderTimestamp` to NaN.
-            onClick={() => parsed != null && onConfirm(parsed)}
-            disabled={parsed == null}
+            onClick={() => parsed != null && !isPast && onConfirm(parsed)}
+            disabled={parsed == null || isPast}
             className={`rounded-note bg-brand-primary px-4 py-2 text-sm font-semibold text-true-surface transition-transform disabled:opacity-40 active:scale-95 ${CHROME_FOCUS}`}
           >
             Set
