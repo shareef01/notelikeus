@@ -382,6 +382,7 @@ export function MainScreen() {
           <TopBar
             searchQuery={filters.searchQuery ?? ''}
             showFilterRow={showFilterRow}
+            narrow={Boolean(dockedEditor)}
 
           onSearchQueryChange={setSearchQuery}
 
@@ -629,7 +630,11 @@ export function MainScreen() {
           // shared `enter` keyframe always applies a transform — even for plain fade-in —
           // which would make this non-fixed wrapper a containing block for those fixed
           // descendants for the animation's duration, mispositioning them if opened mid-animation.
-          <div className="relative flex-1 bg-true-surface">
+          // Sticky and one viewport tall, so the editor scrolls inside itself. As a plain flex item
+          // it grew to the height of the note list beside it: the page scrolled both together, and
+          // with a dozen notes the save status and More options sat thousands of pixels down while
+          // scrolling to them took Back and the layout switch off screen.
+          <div className="sticky top-0 h-dvh min-w-0 flex-1 self-start bg-true-surface">
             <ErrorBoundary
               variant="overlay"
               allowClearData={false}

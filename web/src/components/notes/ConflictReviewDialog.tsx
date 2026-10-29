@@ -12,13 +12,15 @@ import {
   keepOriginal,
   type ReviewLine,
 } from '@/lib/notes/conflictReview';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import { useNotesStore } from '@/store/notesStore';
 import { useToastStore } from '@/store/toastStore';
 import { useUiStore } from '@/store/uiStore';
 import type { Note } from '@/types/note';
 
-const secondaryButtonClass =
-  'rounded-note border border-brand-outline/40 px-4 py-2 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5';
+// The same focus ring and disabled state as the dialog's other buttons; these had neither, so
+// keyboard focus was invisible on the two choices that move a version to Trash.
+const secondaryButtonClass = `rounded-note border border-brand-outline/40 px-4 py-2 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary/5 disabled:opacity-40 ${CHROME_FOCUS}`;
 
 function editedAt(note: Note): string {
   return new Date(note.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -29,6 +31,12 @@ function Version({ heading, note, lines }: { heading: string; note: Note; lines:
     <section className="min-w-0 flex-1 rounded-note border border-brand-outline/30 p-3">
       <h3 className="text-xs font-semibold uppercase tracking-wider text-brand-secondary">{heading}</h3>
       <p className="mt-0.5 text-xs text-brand-muted">Edited {editedAt(note)}</p>
+      {/* Pictures are not compared line by line; at least say each version has them. */}
+      {note.attachments?.length ? (
+        <p className="mt-0.5 text-xs text-brand-muted">
+          {note.attachments.length} picture{note.attachments.length > 1 ? 's' : ''}
+        </p>
+      ) : null}
       {note.title ? <p className="mt-2 break-words font-semibold">{note.title}</p> : null}
       <ul className="mt-1 space-y-0.5 text-sm">
         {lines.length === 0 ? <li className="text-brand-muted">(empty)</li> : null}
@@ -92,10 +100,17 @@ export function ConflictReviewDialog() {
       </p>
 
       {original && compared ? (
-        <div className="mt-4 flex max-h-[55vh] flex-col gap-3 overflow-y-auto sm:flex-row">
-          <Version heading="Current note" note={original} lines={compared.a} />
-          <Version heading="Conflicted copy" note={copy} lines={compared.b} />
-        </div>
+        <>
+          <div className="mt-4 flex max-h-[55vh] flex-col gap-3 overflow-y-auto sm:flex-row">
+            <Version heading="Current note" note={original} lines={compared.a} />
+            <Version heading="Conflicted copy" note={copy} lines={compared.b} />
+          </div>
+          {/* The highlight had no key on screen, only screen-reader text on each line. */}
+          <p className="mt-2 flex items-center gap-2 text-xs text-brand-muted">
+            <span className="inline-block h-3 w-5 shrink-0 rounded-sm bg-amber-500/20" aria-hidden />
+            Highlighted lines appear in only one version.
+          </p>
+        </>
       ) : (
         <>
           <p className="mt-4 rounded-note bg-brand-primary/5 p-3 text-sm">

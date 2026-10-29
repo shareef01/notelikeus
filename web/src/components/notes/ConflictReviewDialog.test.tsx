@@ -118,4 +118,25 @@ describe('ConflictReviewDialog', () => {
     expect(trashNoteById).toHaveBeenCalledWith('2');
     view.unmount();
   });
+
+  it('explains the highlight and says which version has pictures', () => {
+    const withPicture = {
+      ...copy,
+      attachments: [{ id: 'a1', storagePath: 'p/a1', mimeType: 'image/png' }],
+    } as Note;
+    const view = renderDialog([original, withPicture], '2');
+    expect(view.text()).toContain('Highlighted lines appear in only one version.');
+    expect(view.text()).toContain('1 picture');
+    view.unmount();
+  });
+
+  it('shows a focus ring on every choice', () => {
+    const view = renderDialog([original, copy], '2');
+    for (const name of ['Keep current note', 'Keep conflicted copy', 'Keep both', 'Decide later']) {
+      const button = [...document.querySelectorAll('button')].find((b) => b.textContent === name);
+      expect(button?.className, name).toContain('focus-visible:outline');
+    }
+    view.unmount();
+  });
 });
+

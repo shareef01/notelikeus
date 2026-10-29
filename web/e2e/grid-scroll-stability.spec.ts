@@ -214,8 +214,16 @@ test.describe('Scalability & Progressive Grid Validation', () => {
     const countAfterPin = await page.locator('[data-note-open]').count();
     expect(countAfterPin).toBeGreaterThan(300);
     expect(Math.abs(countAfterPin - mountedCards)).toBeLessThanOrEqual(5);
-    const scrollAfterPin = await page.evaluate(() => window.scrollY);
-    expect(Math.abs(scrollAfterPin - beforeScrollY)).toBeLessThanOrEqual(15);
+    // Pinning adds a "Pinned" group above the reader. What must not move is the card they are
+    // looking at; scrollY may change so that it doesn't. (Measured: with the sidebar static,
+    // scrollY held still and the card jumped 32 px; with the sticky sidebar, the browser's scroll
+    // anchoring keeps the card in place and moves scrollY by the group's height.)
+    const anchorAfterPin = await page.evaluate((id) => {
+      const el = document.querySelector<HTMLElement>(`[data-note-open="${id}"]`);
+      return el ? el.getBoundingClientRect().top : null;
+    }, anchorId);
+    expect(anchorAfterPin).not.toBeNull();
+    expect(Math.abs(anchorAfterPin! - anchor!.top)).toBeLessThanOrEqual(5);
   });
 
   test('structural scroll regression tests: insertion, deletion, archiving, pinning, and reordering above viewport', async ({

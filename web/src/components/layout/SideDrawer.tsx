@@ -170,9 +170,12 @@ export function SideDrawer({
         aria-hidden={!open}
       />
 
+      {/* From md up the sidebar is sticky and one viewport tall. It was static, so it stretched to
+          the height of the note list: navigation scrolled away with the notes, and Collapse and
+          Sign in sat at the very bottom of the page. */}
       <aside
         ref={panelRef}
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-true-surface transition-[width,transform,box-shadow] duration-300 ease-out md:static md:z-auto md:shrink-0 md:translate-x-0 md:border-r md:border-brand-outline/50 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-true-surface transition-[width,transform,box-shadow] duration-300 ease-out md:sticky md:top-0 md:h-dvh md:self-start md:z-auto md:shrink-0 md:translate-x-0 md:border-r md:border-brand-outline/50 ${
           showCollapsed
             ? 'w-[min(300px,88vw)] md:w-14'
             : 'w-[min(300px,88vw)] md:w-52 lg:w-56 xl:w-60'

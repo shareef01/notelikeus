@@ -50,6 +50,11 @@ interface TopBarProps {
   recentSearches?: string[];
   onRecentSearchClick?: (query: string) => void;
   onClearRecentSearches?: () => void;
+  /**
+   * The note list shares the window with a docked editor. The view size switch and the shortcut
+   * hint are left out so the search field keeps a usable width; with them, it was 43 px.
+   */
+  narrow?: boolean;
   /** Sort and filter chips; hidden when the view has no notes to sort or filter. */
   showFilterRow?: boolean;
   /** Optional external ref for the search input (e.g. for keyboard shortcuts). */
@@ -93,6 +98,7 @@ export function TopBar({
   onClearRecentSearches,
   searchInputRef: searchInputRefProp,
   showFilterRow = true,
+  narrow = false,
 }: TopBarProps) {
   // True while focus is anywhere in the search form: the field or the recent-searches panel under
   // it. It used to follow the field alone, closed 200 ms after the field blurred, so Tab from the
@@ -190,7 +196,7 @@ export function TopBar({
                 >
                   <CloseIcon size={18} />
                 </button>
-              ) : (
+              ) : narrow ? null : (
                 <kbd
                   className="mr-2 hidden select-none rounded border border-brand-outline/25 bg-brand-primary/5 px-1.5 py-0.5 text-[10px] font-semibold text-brand-secondary md:inline-flex"
                   aria-hidden
@@ -242,7 +248,7 @@ export function TopBar({
               ) : null}
             </form>
 
-            <ViewModeToggle value={viewColumns} onChange={onViewColumnsChange} />
+            {narrow ? null : <ViewModeToggle value={viewColumns} onChange={onViewColumnsChange} />}
 
             <button
               type="button"

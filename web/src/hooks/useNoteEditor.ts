@@ -474,7 +474,14 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       }
       const granted = await requestNotificationPermission();
       if (!granted) {
-        useToastStore.getState().show('Enable notifications to use reminders', 'error');
+        // Says where the switch is: once denied, the browser never asks again, so a bare
+        // "enable notifications" left people with nothing to press.
+        useToastStore
+          .getState()
+          .show(
+            'Notifications are blocked for this site. Allow them in your browser’s site settings, then set the reminder again.',
+            'error',
+          );
         return;
       }
       patch((s) => ({ ...s, reminderTimestamp }));
