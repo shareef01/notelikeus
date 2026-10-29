@@ -9,6 +9,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import com.aus.notelikeus.domain.model.ThemeBase
 import com.aus.notelikeus.domain.model.ThemePreference
+import com.aus.notelikeus.domain.reminder.ReminderTime
 import com.aus.notelikeus.ui.theme.NotelikeusTheme
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -21,6 +22,10 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalTestApi::class)
 class ReminderTimePickerPaletteTest {
 
+    private val farFuture = requireNotNull(
+        ReminderTime.exactReminder(ReminderTime.civilDateToUtcMillis(2099, 4, 17), 16, 42)
+    )
+
     /** HSV-style saturation of the most colourful pixel, 0 for pure greys. */
     private fun maxSaturation(dark: Boolean): Float {
         var max = 0f
@@ -31,7 +36,8 @@ class ReminderTimePickerPaletteTest {
                     darkTheme = dark
                 ) {
                     ReminderDialog(
-                        initialTimestamp = 1_791_990_000_000L,
+                        // In the future, or the time step shows its red past-time message (U-20).
+                        initialTimestamp = farFuture,
                         onConfirm = {},
                         onRemove = {},
                         onDismiss = {},

@@ -70,7 +70,9 @@ import com.aus.notelikeus.util.AppConfig
 import androidx.compose.material3.ListItemDefaults
 import com.aus.notelikeus.domain.reminder.ReminderTime
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -793,65 +795,77 @@ private fun ExactReminderDialog(
     onDismiss: () -> Unit,
 ) {
     val selectedDate = datePickerState.selectedDateMillis
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                stringResource(
-                    if (step == ReminderDialogStep.DATE) {
-                        Res.string.reminder_pick_date
-                    } else {
-                        Res.string.reminder_pick_time
-                    }
-                )
-            )
-        },
-        text = {
-            if (step == ReminderDialogStep.DATE) {
-                DatePicker(state = datePickerState, title = null, headline = null, showModeToggle = true)
-            } else {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    TimePicker(state = timePickerState, colors = reminderTimePickerColors())
-                }
-            }
-        },
-        confirmButton = {
-            if (step == ReminderDialogStep.DATE) {
+    if (step == ReminderDialogStep.DATE) {
+        // DatePickerDialog, not AlertDialog: the calendar needs about 360dp, and AlertDialog's
+        // platform width less its 24dp padding is narrower than that on a 411dp phone, which
+        // squeezed Friday and Saturday into slivers and cut off the 30th and 31st (U-21).
+        DatePickerDialog(
+            onDismissRequest = onDismiss,
+            confirmButton = {
                 TextButton(
                     // Material lets a date picker hold no selection at all; advancing from one
                     // would leave the time step with no day to attach itself to.
                     enabled = selectedDate != null,
                     onClick = { onStep(ReminderDialogStep.TIME) },
                 ) { Text(stringResource(Res.string.reminder_pick_next)) }
-            } else {
-                TextButton(
-                    enabled = selectedDate != null,
-                    onClick = { selectedDate?.let(onConfirm) },
-                ) { Text(stringResource(Res.string.action_ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
+            },
+        ) {
+            DatePicker(
+                state = datePickerState,
+                title = {
+                    Text(
+                        stringResource(Res.string.reminder_pick_date),
+                        modifier = Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp),
+                    )
+                },
+                headline = null,
+                showModeToggle = true,
+            )
+        }
+        return
+    }
+
+    // Said inside the dialog, with OK disabled, as on the web (U-16). The editor's snackbar used to
+    // carry this message, but it sits under the dialog's scrim, so OK looked like it did nothing
+    // (U-20). The editor still refuses a past time on confirm, for a minute that passes while the
+    // picker is open.
+    val picked = selectedDate?.let {
+        ReminderTime.exactReminder(it, timePickerState.hour, timePickerState.minute)
+    }
+    val isPast = picked != null && picked <= DateUtils.currentTimeMillis()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(Res.string.reminder_pick_time)) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                TimePicker(state = timePickerState, colors = reminderTimePickerColors())
+                if (isPast) {
+                    Text(
+                        text = stringResource(Res.string.reminder_must_be_future),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .padding(top = Spacing.sm)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                }
             }
         },
-        dismissButton = {
+        confirmButton = {
             TextButton(
-                onClick = {
-                    if (step == ReminderDialogStep.TIME) {
-                        onStep(ReminderDialogStep.DATE)
-                    } else {
-                        onDismiss()
-                    }
-                }
-            ) {
-                Text(
-                    stringResource(
-                        if (step == ReminderDialogStep.TIME) {
-                            Res.string.reminder_pick_back
-                        } else {
-                            Res.string.action_cancel
-                        }
-                    )
-                )
+                enabled = selectedDate != null && !isPast,
+                onClick = { selectedDate?.let(onConfirm) },
+            ) { Text(stringResource(Res.string.action_ok)) }
+        },
+        dismissButton = {
+            TextButton(onClick = { onStep(ReminderDialogStep.DATE) }) {
+                Text(stringResource(Res.string.reminder_pick_back))
             }
         },
     )

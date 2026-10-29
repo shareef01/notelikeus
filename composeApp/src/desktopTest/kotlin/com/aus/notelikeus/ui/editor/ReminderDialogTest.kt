@@ -7,6 +7,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -183,5 +184,33 @@ class ReminderDialogTest {
             confirmed,
             "editing an existing reminder and confirming it unchanged must be a no-op",
         )
+    }
+
+    @Test
+    fun `a time in the past is explained inside the dialog and cannot be confirmed`() = runComposeUiTest {
+        var confirmed: Long? = null
+        // An existing reminder that has already fired opens the picker on a past moment. The
+        // editor's snackbar used to carry the message, behind the dialog's scrim (U-20).
+        val past = assertNotNull(
+            ReminderTime.exactReminder(ReminderTime.civilDateToUtcMillis(2020, 1, 1), 9, 0),
+        )
+        setContent {
+            MaterialTheme {
+                ReminderDialog(
+                    initialTimestamp = past,
+                    onConfirm = { confirmed = it },
+                    onRemove = {},
+                    onDismiss = {},
+                )
+            }
+        }
+
+        onNodeWithText("Choose date & time").performClick()
+        onNodeWithText("Next").performClick()
+
+        onNodeWithText("Choose a date and time in the future").assertIsDisplayed()
+        onNodeWithText("OK").assertIsNotEnabled().performClick()
+        assertEquals(null, confirmed, "a past time must not be confirmed")
+        onNodeWithText("Pick a time").assertIsDisplayed()
     }
 }
