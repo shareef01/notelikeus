@@ -18,10 +18,16 @@ async function enterNotes(page: Page, width = 390): Promise<void> {
   await expect(page.getByRole('button', { name: 'New note' }).first()).toBeVisible({ timeout: 20_000 });
 }
 
+/** The sort chip is part of the filter row, which only appears once there is a note (U-08). */
+async function enterNotesWithANote(page: Page): Promise<void> {
+  await enterNotes(page);
+  await createNoteWithTitle(page, 'Sort seed');
+}
+
 const sortChip = (page: Page) => page.getByRole('button', { name: /^Sort: / });
 
 test('the sort chip offers every destination instead of cycling through them', async ({ page }) => {
-  await enterNotes(page);
+  await enterNotesWithANote(page);
   await expect(sortChip(page)).toHaveAttribute('aria-label', /Sort: Newest/);
 
   await sortChip(page).click();
@@ -34,7 +40,7 @@ test('the sort chip offers every destination instead of cycling through them', a
 });
 
 test('choosing a destination applies it and closes the chooser', async ({ page }) => {
-  await enterNotes(page);
+  await enterNotesWithANote(page);
   await sortChip(page).click();
   await page.getByRole('button', { name: /^Oldest first/ }).click();
 
@@ -81,7 +87,7 @@ test('the order of the notes themselves follows the choice', async ({ page }) =>
 });
 
 test('the settings group and the toolbar chip are one state, not two', async ({ page }) => {
-  await enterNotes(page);
+  await enterNotesWithANote(page);
 
   // The settings row used to cycle on tap while the toolbar opened a chooser. Both choose now, from
   // the same store, so a change made in one has to be visible in the other.

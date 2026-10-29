@@ -829,14 +829,19 @@ export function EditorScreen({ route }: EditorScreenProps) {
                 </button>
               )}
 
-              <button
-                type="button"
-                onClick={editor.convertContentToChecklist}
-                className={`tap-target mt-10 self-start text-left text-sm font-medium opacity-80 transition-opacity hover:opacity-100 ${CHROME_FOCUS}`}
-                style={{ color: contentColor }}
-              >
-                {state.content.trim() ? 'Convert to checklist' : '+ Add checklist'}
-              </button>
+              {/* A cue for starting a list in an empty note. Once the note has text, the toolbar's
+                  Checklist button converts it; a second "Convert to checklist" here repeated that
+                  button below the fold, under the footer (U-10). */}
+              {!state.content.trim() ? (
+                <button
+                  type="button"
+                  onClick={editor.convertContentToChecklist}
+                  className={`tap-target mt-10 self-start text-left text-sm font-medium opacity-80 transition-opacity hover:opacity-100 ${CHROME_FOCUS}`}
+                  style={{ color: contentColor }}
+                >
+                  + Add checklist
+                </button>
+              ) : null}
             </>
           )}
         </div>

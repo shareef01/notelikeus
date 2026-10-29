@@ -171,4 +171,11 @@ describe('TopBar - UX-E Search Header Stability', () => {
     expect(document.activeElement).toBe(input);
     cleanup();
   });
+
+  it('leaves out the sort and filter row when the view has nothing to filter', () => {
+    const { container, cleanup } = renderTopBar({ showFilterRow: false });
+    expect(container.querySelector('[role="group"][aria-label="Filters"]')).toBeNull();
+    expect(container.querySelector('input[type="search"]')).toBeTruthy();
+    cleanup();
+  });
 });

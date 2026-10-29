@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { createNoteWithTitle } from './helpers/newNote';
 
 /**
  * The filter rows scroll sideways with their scrollbar hidden. On a phone the colour swatches were
@@ -17,6 +18,8 @@ async function enterNotes(page: Page, width = 390): Promise<void> {
   await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
   await page.getByRole('button', { name: 'Continue without an account' }).click();
   await expect(page.getByRole('button', { name: 'New note' }).first()).toBeVisible({ timeout: 20_000 });
+  // The filter row only appears once the view holds a note (U-08).
+  await createNoteWithTitle(page, 'Filter row seed');
 }
 
 async function scrollFiltersTo(page: Page, position: 'start' | 'end'): Promise<void> {

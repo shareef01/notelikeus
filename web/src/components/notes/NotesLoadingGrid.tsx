@@ -1,13 +1,9 @@
+import { CARD_MIN_PX, MAX_COLUMNS } from '@/components/notes/NoteStaggeredGrid';
 import type { ViewColumns } from '@/store/uiStore';
 
 interface NotesLoadingGridProps {
   viewPreference: ViewColumns;
 }
-
-const CARD_MIN_PX: Record<2 | 3, number> = {
-  2: 260,
-  3: 152,
-};
 
 const SKELETON_HEIGHT: Record<ViewColumns, number> = {
   1: 56,
@@ -25,7 +21,7 @@ export function NotesLoadingGrid({ viewPreference }: NotesLoadingGridProps) {
         ? 'gap-1.5'
         : 'gap-2 sm:gap-2.5';
   const cardMin = isList ? 0 : CARD_MIN_PX[viewPreference as 2 | 3];
-  const columnGapPx = viewPreference === 3 ? 8 : 10;
+  const columnGapPx = viewPreference === 3 ? 12 : 16;
 
   return (
     <div
@@ -39,6 +35,7 @@ export function NotesLoadingGrid({ viewPreference }: NotesLoadingGridProps) {
           ? undefined
           : {
               columnWidth: cardMin,
+              columnCount: MAX_COLUMNS[viewPreference as 2 | 3],
               columnGap: columnGapPx,
             }
       }

@@ -74,6 +74,16 @@ const WIDTHS = [
 
 const browser = await chromium.launch();
 try {
+  // First run: no notes yet.
+  for (const [name, width, height] of [['1280', 1280, 800], ['390', 390, 844]]) {
+    const empty = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' });
+    const emptyPage = await empty.newPage();
+    await enter(emptyPage);
+    await emptyPage.waitForTimeout(400);
+    await emptyPage.screenshot({ path: join(outDir, `empty-${name}-light.png`) });
+    await empty.close();
+  }
+
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
   const page = await ctx.newPage();
   await enter(page);

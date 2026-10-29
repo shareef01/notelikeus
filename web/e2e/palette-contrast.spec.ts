@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { createNoteWithTitle } from './helpers/newNote';
 
 /**
  * The palette check the hardening phase asks for: dark, AMOLED and note colours, measured as painted
@@ -51,6 +52,8 @@ async function swatchesIn(page: Page, theme: (typeof THEMES)[keyof typeof THEMES
   await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
   await page.getByRole('button', { name: 'Continue without an account' }).click();
   await expect(page.getByRole('button', { name: 'New note' }).first()).toBeVisible({ timeout: 20_000 });
+  // The colour filter is part of the filter row, which appears once the view holds a note (U-08).
+  await createNoteWithTitle(page, 'Palette seed');
 
   return page.evaluate(() => {
     const group = document.querySelector('[role="group"][aria-label="Color filter"]');
@@ -72,8 +75,8 @@ async function swatchesIn(page: Page, theme: (typeof THEMES)[keyof typeof THEMES
 
 for (const [name, theme] of Object.entries(THEMES)) {
   // Text on a coloured note is the note's text colour at an opacity, so it has to stay on the
-  // 0.80 "secondary" tier (NOTE_EMPHASIS). The editor's "Convert to checklist" link sat at 0.60:
-  // 3.54:1 on a dark-theme amber note.
+  // 0.80 "secondary" tier (NOTE_EMPHASIS). The editor's checklist link sat at 0.60: 3.54:1 on a
+  // dark-theme amber note. It now shows only on an empty note, as "+ Add checklist" (U-10).
   test(`text in an amber note's editor clears AA in the ${name} theme`, async ({ page }) => {
     await page.addInitScript((t) => {
       localStorage.setItem('notelikeus-settings', JSON.stringify({ state: { theme: t }, version: 1 }));
@@ -89,13 +92,12 @@ for (const [name, theme] of Object.entries(THEMES)) {
     const newNote = page.getByRole('button', { name: 'New note' }).filter({ visible: true }).first();
     await expect(newNote).toBeVisible({ timeout: 20_000 });
     await newNote.click();
-    await page.getByRole('textbox', { name: 'Note body' }).fill('Some text to convert');
     await page.getByRole('button', { name: 'More options' }).click();
     await page.getByRole('dialog').last().getByRole('button', { name: /Amber/ }).click();
     await page.keyboard.press('Escape');
     await page.getByRole('textbox', { name: 'Note title' }).first().focus();
     // axe skips what is scrolled out of view, and at 720px the link sits below the editor's fold.
-    const convert = page.getByRole('button', { name: 'Convert to checklist' });
+    const convert = page.getByRole('button', { name: '+ Add checklist' });
     await convert.scrollIntoViewIfNeeded();
     await expect(convert).toBeInViewport();
 
