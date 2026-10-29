@@ -64,8 +64,22 @@ None this pass. No emulator was started and the Windows desktop app could not be
   existing text colour; the hidden-label list is a slice of the labels already in hand. `NoteCard`'s
   memo comparator is unchanged.
 
+## Follow-up: U-08, U-09, U-10
+
+Branch `design/ui-ux-audit-followups`, from `main` after #381 (which passed all 14 CI checks,
+including the Compose build and tests that could not run here).
+
+| Check | Result |
+|---|---|
+| typecheck, lint | pass |
+| `npm --prefix web test` | 146 files, 1083 tests, all pass |
+| Playwright, chromium + mobile-chrome, `dist-e2e` rebuilt | 18 guest specs: 145 passed, 3 skipped, 2 failed on the first run. Both failures were `search-journey` "searching does not push the page sideways" (chromium and mobile-chrome): the new seed note sat in a helper that test calls three times in one page. The seed moved into the one test that needs it; `search-journey` then passed 8 of 8 |
+| Grid columns, measured in Chromium (6 notes) | 390: 1 · 600: 2 (280 px) · 768: 2 (256) · 840: 2 (292) · 1024: 2 (368) · 1280: 3 (320) · 1440 and 1920: 3 (357) |
+
+Screenshots: `docs/design/screenshots/2026-10-29-followups/{before,after}/`, same script and seed,
+plus `empty-{1280,390}-light.png` for a fresh workspace.
+
 ## Known limitations and remaining issues
 
-See the register's open rows: U-08 (empty-view filter row), U-09 (tablet columns), U-10 (duplicate
-checklist control), U-11 (Compose untitled card), U-12 (benchmark flake). Native rendering, screen
+See the register's open rows: U-11 (Compose untitled card), U-12 (benchmark flake). Native rendering, screen
 readers, Safari/Firefox and Supabase-backed journeys were not exercised here.
