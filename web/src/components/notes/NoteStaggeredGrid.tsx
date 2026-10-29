@@ -36,12 +36,22 @@ interface NoteStaggeredGridProps {
 /**
  * Grid/dense pack with CSS columns (masonry-like). List is a single readable column.
  * Column widths differ enough that List / Grid / Compact feel like real size options.
+ *
+ * Grid is at least 256 px and at most three columns. At 300 px it gave one column up to a
+ * 1024 px window: a tablet, or a desktop window beside another, showed a single column of
+ * cards up to 600 px wide (U-09). The cap keeps 1280–1920 px at the three columns it had.
+ * The loading skeleton uses the same values so nothing reflows when the notes arrive.
  */
-const CARD_MIN_PX: Record<2 | 3, number> = {
+export const CARD_MIN_PX: Record<2 | 3, number> = {
   /** Comfortable Keep-style cards */
-  2: 300,
+  2: 256,
   /** Compact multi-column board */
   3: 200,
+};
+
+export const MAX_COLUMNS: Record<2 | 3, number | undefined> = {
+  2: 3,
+  3: undefined,
 };
 
 const DENSITY: Record<ViewColumns, NoteCardDensity> = {
@@ -381,6 +391,7 @@ export function NoteStaggeredGrid({
           ? undefined
           : {
               columnWidth: cardMin,
+              columnCount: MAX_COLUMNS[viewPreference as 2 | 3],
               columnGap: columnGapPx,
             }
       }
