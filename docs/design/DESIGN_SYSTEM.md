@@ -74,7 +74,7 @@ Inter everywhere (bundled on both clients), system UI fallback.
 | Card body | 15 / 24 | 400 | 0.005em | `text-note-body` | `AppType.noteCardBody` |
 | Editor title | 22 / 28 | 600 | −0.03em | — | `AppType.editorTitle` |
 | Editor body | 16 / 25 | 400 | 0.01em | — | `AppType.editorBody` |
-| Metadata | 12 / 16 | 500 | tabular numerals | — | — |
+| Metadata (time, label chips, checklist progress, "+N") | 12 / 16 (11 in compact) | 500 | tabular numerals; user text keeps its own case | `text-[12px]` in `NoteCard` | `NoteCardLabelChipStyle`, `timestampFontSize` |
 
 Readability rules: editor measure ≤ 48 rem (~70 characters); body never below 15 px; titles clamp at
 2–3 lines on cards, never in the editor; untitled notes show no title line (D15).
@@ -95,6 +95,7 @@ Readability rules: editor measure ≤ 48 rem (~70 characters); body never below 
 |---|---|---|---|
 | App shell | Rail/sidebar ≥ 840 px, drawer below; top bar holds search, layout, settings, new note | `SideDrawer`, `TopBar` | `MainScreen`, drawer |
 | Note card | Title, ≤ 7 preview lines keeping line breaks, ☐/☑ for task syntax, chips, status cluster, relative time | `NoteCard` | `NoteCard` |
+| Label chip | Card text colour at 14 % fill (`NoteEmphasis.Decorative`), label as typed, long names truncate with the full name as tooltip; "+N" names the hidden labels to assistive technology | `NoteCard` | `NoteCardLabelChips` |
 | Conflict chip | Caution fill, "Conflict copy", tooltip/description explains; accessible status "Kept from a sync conflict" | `NoteCard` | `NoteCardLabelChips` |
 | Editor | Float / dock / full-screen on web; full-screen on phone; save state line at the bottom | `EditorScreen` | `EditorScreen` |
 | Save & sync status | §5.1 | `EditorBottomBar`, sync banner | `CloudSyncStatus` |
