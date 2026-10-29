@@ -80,4 +80,95 @@ describe('TopBar - UX-E Search Header Stability', () => {
 
     cleanup();
   });
+
+  const recentPanel = (container: HTMLElement) =>
+    container.querySelector('[aria-label="Recent searches"]');
+
+  const recentChip = (container: HTMLElement, name: string) =>
+    Array.from(recentPanel(container)?.querySelectorAll('button') ?? []).find(
+      (b) => b.textContent === name,
+    ) as HTMLButtonElement | undefined;
+
+  it('keeps the recent searches open while Tab moves focus into them', async () => {
+    const { container, cleanup } = renderTopBar();
+    const input = container.querySelector('input[type="search"]') as HTMLInputElement;
+
+    act(() => input.focus());
+    const chip = recentChip(container, 'groceries');
+    expect(chip).toBeTruthy();
+
+    // What Tab does: the field blurs and the chip takes focus in the same task.
+    act(() => chip!.focus());
+    // The old field-only blur handler closed the panel 200 ms later.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 260));
+    });
+
+    expect(recentPanel(container)).toBeTruthy();
+    expect(document.activeElement).toBe(recentChip(container, 'groceries'));
+    cleanup();
+  });
+
+  it('runs a recent search chosen from the keyboard', async () => {
+    const onRecentSearchClick = vi.fn();
+    const { container, cleanup } = renderTopBar({ onRecentSearchClick });
+    const input = container.querySelector('input[type="search"]') as HTMLInputElement;
+
+    act(() => input.focus());
+    act(() => recentChip(container, 'project roadmap')!.focus());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 260));
+    });
+    act(() => recentChip(container, 'project roadmap')!.click());
+
+    expect(onRecentSearchClick).toHaveBeenCalledWith('project roadmap');
+    cleanup();
+  });
+
+  it('closes the recent searches when focus leaves the search form', () => {
+    const { container, cleanup } = renderTopBar();
+    const input = container.querySelector('input[type="search"]') as HTMLInputElement;
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+
+    act(() => input.focus());
+    expect(recentPanel(container)).toBeTruthy();
+    act(() => outside.focus());
+    expect(recentPanel(container)).toBeNull();
+
+    outside.remove();
+    cleanup();
+  });
+
+  it('closes the recent searches on Escape and keeps focus in the field', () => {
+    const { container, cleanup } = renderTopBar();
+    const input = container.querySelector('input[type="search"]') as HTMLInputElement;
+
+    act(() => input.focus());
+    act(() => recentChip(container, 'groceries')!.focus());
+    act(() => {
+      document.activeElement!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+
+    expect(recentPanel(container)).toBeNull();
+    expect(document.activeElement).toBe(input);
+    cleanup();
+  });
+
+  it('keeps focus in the field after clearing the history', () => {
+    const { container, cleanup } = renderTopBar();
+    const input = container.querySelector('input[type="search"]') as HTMLInputElement;
+
+    act(() => input.focus());
+    const clear = Array.from(recentPanel(container)!.querySelectorAll('button')).find(
+      (b) => b.textContent === 'Clear',
+    ) as HTMLButtonElement;
+    act(() => clear.focus());
+    act(() => clear.click());
+
+    expect(document.activeElement).toBe(input);
+    cleanup();
+  });
 });
