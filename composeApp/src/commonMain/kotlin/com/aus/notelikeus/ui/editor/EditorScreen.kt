@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,7 +30,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalWindowInfo
 import org.jetbrains.compose.resources.stringResource
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
@@ -115,9 +118,11 @@ fun EditorScreen(
     } else {
         noteColor.getContentColor(fallback = MaterialTheme.colorScheme.onSurface)
     }
-    var showBottomSheet by remember { mutableStateOf(false) }
-    var showReminderDialog by remember { mutableStateOf(false) }
-    var showLinkDialog by remember { mutableStateOf(false) }
+    // Saveable, so rotating the phone does not close a dialog the user is half way through:
+    // the activity is recreated on a configuration change and plain remember starts over (U-23).
+    var showBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var showReminderDialog by rememberSaveable { mutableStateOf(false) }
+    var showLinkDialog by rememberSaveable { mutableStateOf(false) }
     val bodyFocusRequester = remember { FocusRequester() }
     val selectionKeeper = remember { BlurSelectionKeeper() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -662,7 +667,7 @@ fun ReminderDialog(
 ) {
     // The exact picker is a second step rather than a fourth row, so the quick choices stay one
     // tap and the calendar does not push them off a phone screen.
-    var step by remember { mutableStateOf(ReminderDialogStep.CHOICES) }
+    var step by rememberSaveable { mutableStateOf(ReminderDialogStep.CHOICES) }
     val existingReminder = initialTimestamp.takeIf { onRemove != null }
     val start = remember(existingReminder) { ReminderTime.initialPickerState(existingReminder) }
     val datePickerState = rememberDatePickerState(initialSelectedDateMillis = start.dateUtcMillis)
@@ -698,7 +703,9 @@ fun ReminderDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(Res.string.set_reminder)) },
         text = {
-            Column {
+            // Scrollable: a landscape phone leaves the dialog too little height for four rows, and
+            // the last one, the only way to an exact time, was squeezed to nothing (U-22).
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 // initialTimestamp used to be computed by the caller and then ignored entirely,
                 // so the dialog took the one fact it needed and threw it away. It is the real
                 // reminder exactly when there is one to remove, which is when it is worth saying.
@@ -773,6 +780,9 @@ fun ReminderDialog(
 /** Which half of the exact picker is on screen. */
 enum class ReminderDialogStep { CHOICES, DATE, TIME }
 
+/** Below this window height neither the calendar nor the clock dial fits in its dialog. */
+private val PICKER_MIN_WINDOW_HEIGHT = 560.dp
+
 /**
  * The exact date and time step, as two dialogs rather than one scrolling sheet.
  *
@@ -795,7 +805,20 @@ private fun ExactReminderDialog(
     onDismiss: () -> Unit,
 ) {
     val selectedDate = datePickerState.selectedDateMillis
+    // The calendar and the clock dial each need about 560dp of height. A landscape phone has about
+    // 400: the date dialog's buttons were drawn over the last week, and the dial switched to its
+    // side-by-side layout inside a dialog too narrow for it (U-22). A short window gets Material's
+    // text entry for both instead.
+    val windowHeight = with(LocalDensity.current) {
+        LocalWindowInfo.current.containerSize.height.toDp()
+    }
+    val shortWindow = windowHeight < PICKER_MIN_WINDOW_HEIGHT
     if (step == ReminderDialogStep.DATE) {
+        // When the step opens and when the window changes, so the mode toggle still decides in
+        // between, and rotating back to portrait brings the calendar back.
+        LaunchedEffect(shortWindow) {
+            datePickerState.displayMode = if (shortWindow) DisplayMode.Input else DisplayMode.Picker
+        }
         // DatePickerDialog, not AlertDialog: the calendar needs about 360dp, and AlertDialog's
         // platform width less its 24dp padding is narrower than that on a 411dp phone, which
         // squeezed Friday and Saturday into slivers and cut off the 30th and 31st (U-21).
@@ -844,7 +867,11 @@ private fun ExactReminderDialog(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                TimePicker(state = timePickerState, colors = reminderTimePickerColors())
+                if (shortWindow) {
+                    TimeInput(state = timePickerState, colors = reminderTimePickerColors())
+                } else {
+                    TimePicker(state = timePickerState, colors = reminderTimePickerColors())
+                }
                 if (isPast) {
                     Text(
                         text = stringResource(Res.string.reminder_must_be_future),
@@ -876,7 +903,7 @@ fun LinkDialog(
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var url by remember { mutableStateOf("") }
+    var url by rememberSaveable { mutableStateOf("") }
     ConfirmDialog(
         title = stringResource(Res.string.link_dialog_title),
         message = "",

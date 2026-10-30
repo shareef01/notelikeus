@@ -118,8 +118,23 @@ the new red message tripped its no-colour check; its fixture moved to 2099.
 
 Not checked: Windows desktop, TalkBack, landscape, font scaling, a 360 dp phone.
 
+## Layout pass — 2026-10-30
+
+`main` at `758f989d`, then branch `fix/reminder-dialog-landscape`. API 36 emulator, guest mode.
+
+| Check | Result |
+|---|---|
+| 360 dp wide (`wm density 480`) | Date step: all seven columns inside the screen, 30 and 31 tappable. Time step with yesterday: message shown, OK greyed |
+| 200 % font size (`font_scale 2.0`), portrait | Choices, date and time steps all fit; nothing clipped |
+| Landscape | **U-22**: "Choose date & time" squeezed to 4 px; calendar's last week under the buttons; dial crushed. **U-23**: rotating closed the dialog. **U-24**: a note open in the two-pane layout closes on rotation to portrait |
+| After the fix, landscape | The choices scroll; date step opens as a text field and time step as hour and minute fields, both with Back/OK clear; 3:00 AM today shows the past-time message |
+| After the fix, rotation | Date step open in portrait survives a rotation to landscape (switches to the text field) and back (calendar again) |
+| `:composeApp:desktopTest` | 903 tests, all pass |
+| Desktop renderer | The dialog rendered with Compose Desktop's renderer in a throwaway test (1024×768, default Material theme, not committed): full calendar; time step with the side-by-side dial, the message and OK greyed. The packaged Windows app was not run: this machine's copy has a signed-in session |
+| TalkBack | Turned on in the emulator with its speech logged. The dialog announces "Dialog, Set reminder". Driving it further over adb was unreliable (gestures dismissed the dialog; keyboard commands gave partial output), so the live-region message was not heard. TalkBack was turned off again and its settings restored |
+
 ## Known limitations and remaining issues
 
-See the register: U-12 (benchmark flake, hardened) is the only row left open; U-20 and U-21
-are fixed on Android with Windows unchecked. Windows rendering, screen readers, Safari/Firefox and Supabase-backed journeys were not
-exercised here.
+See the register: U-12 (benchmark flake, hardened) and U-24 (open note lost when the two-pane
+layout gives way to the phone layout) are open. The packaged Windows app, screen readers,
+Safari/Firefox and Supabase-backed journeys were not exercised here.
