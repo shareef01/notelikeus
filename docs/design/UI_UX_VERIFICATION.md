@@ -99,7 +99,27 @@ Not done in this pass: Android/Windows equivalents of these screens, a screen re
 notification permission prompt (headless Chromium), a conflict created by two real devices (the
 copy is seeded through import).
 
+## Device pass — 2026-10-29
+
+`main` at `abfe4aef`, debug build. Gradle runs locally once Java's Unix-socket temp folder is
+moved to a short path (`JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=C:/nlk-tmp`); the
+"Unable to establish loopback connection" failure above came from the default temp folder.
+
+| Device | What was checked | Result |
+|---|---|---|
+| Pixel 7, Android 16, 1080×2400 at 420 dpi (the owner's phone, signed in) | Installed over the existing debug build with `adb install -r` (data kept). Notes grid only, read-only: no note was opened or changed | U-11 not a defect: every card puts the time above its text, titled or not |
+| API 36 emulator, same size and density, guest mode | Label chips on an untitled card; reminder dialog with yesterday's date | Chips: 12 sp, user casing ("iPhone backup"), tinted fill, long name ends in "…". **U-20 confirmed**: the past-time snackbar sits behind the dialog's scrim. **U-21 found**: the date picker's last two columns are clipped |
+
+After the fix (same emulator): the date step shows all seven columns and the 30th and 31st;
+yesterday on the time step shows "Choose a date and time in the future" in the dialog with OK
+disabled, and the 31st clears it. `:composeApp:desktopTest` run locally: 903 tests, all pass.
+`ReminderTimePickerPaletteTest` opened the picker on a fixed 2026-10-14 time, now in the past, so
+the new red message tripped its no-colour check; its fixture moved to 2099.
+
+Not checked: Windows desktop, TalkBack, landscape, font scaling, a 360 dp phone.
+
 ## Known limitations and remaining issues
 
-See the register's open rows: U-11 (Compose untitled card), U-12 (benchmark flake). Native rendering, screen
-readers, Safari/Firefox and Supabase-backed journeys were not exercised here.
+See the register: U-12 (benchmark flake, hardened) is the only row left open; U-20 and U-21
+are fixed on Android with Windows unchecked. Windows rendering, screen readers, Safari/Firefox and Supabase-backed journeys were not
+exercised here.
