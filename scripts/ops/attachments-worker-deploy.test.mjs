@@ -17,7 +17,7 @@ const WORKFLOW = fileURLToPath(
   new URL('../../.github/workflows/attachments-worker.yml', import.meta.url),
 );
 
-const workflow = readFileSync(WORKFLOW, 'utf8');
+const workflow = readFileSync(WORKFLOW, 'utf8').replace(/\r\n/g, '\n');
 
 /** Pulls the inline `node --input-type=module -e '...'` generator out of the workflow. */
 function generatorSource() {
