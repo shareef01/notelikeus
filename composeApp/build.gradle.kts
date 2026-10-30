@@ -162,7 +162,6 @@ tasks.matching { it.name.startsWith("package") && it.name.endsWith("Msi") }.conf
 // flaky UncaughtExceptionsBeforeTest needs: the leaked exception from an earlier test rides along as a
 // suppressed exception, and only the full format with causes prints it.
 tasks.withType<Test>().configureEach {
-    jvmArgs("-Djdk.nio.channels.pipe.useLoopback=true")
     testLogging {
         events(TestLogEvent.FAILED)
         exceptionFormat = TestExceptionFormat.FULL
