@@ -1,4 +1,5 @@
 package com.aus.notelikeus.ui.main
+import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.ui.main.components.ConflictReviewDialog
 import com.aus.notelikeus.ui.main.components.DiagnosticsDialog
 import com.aus.notelikeus.ui.theme.Spacing
@@ -57,6 +58,31 @@ import com.aus.notelikeus.domain.model.SavedFilter
  * nav route already uses for the same purpose.
  */
 private const val NewNoteContentKey = -1L
+
+/** The editor for the note the two-pane scaffold has selected, in the pane or the whole screen. */
+@OptIn(KoinExperimentalAPI::class)
+@Composable
+private fun DetailPaneEditor(
+    contentKey: Long?,
+    onBack: () -> Unit,
+    onStageUndo: (Note, UndoAction, String) -> Unit,
+    isExpanded: Boolean,
+) {
+    // Unwrap the sentinel: the editor takes null to mean "compose a new note".
+    val noteId = contentKey?.takeIf { it != NewNoteContentKey }
+    key(contentKey) {
+        val editorViewModel: EditorViewModel = koinViewModel()
+        LaunchedEffect(noteId) {
+            editorViewModel.setNoteId(noteId)
+        }
+        EditorScreen(
+            viewModel = editorViewModel,
+            onBack = onBack,
+            onStageUndo = onStageUndo,
+            isExpanded = isExpanded
+        )
+    }
+}
 
 @OptIn(androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi::class, KoinExperimentalAPI::class)
 @Composable
@@ -431,29 +457,13 @@ fun MainScreen(
                             AnimatedPane {
                                 val destination = navigator.currentDestination
                                 if (destination != null && destination.contentKey != null) {
-                                    val contentKey = destination.contentKey
-                                    // Unwrap the sentinel: the editor takes null to mean "compose
-                                    // a new note".
-                                    val noteId = contentKey?.takeIf { it != NewNoteContentKey }
                                     Box(modifier = Modifier.fillMaxSize()) {
-                                        key(contentKey) {
-                                            val editorViewModel: EditorViewModel = koinViewModel()
-                                            LaunchedEffect(noteId) {
-                                                editorViewModel.setNoteId(noteId)
-                                            }
-                                            EditorScreen(
-                                                viewModel = editorViewModel,
-                                                onBack = {
-                                                    scope.launch {
-                                                        navigator.navigateBack()
-                                                    }
-                                                },
-                                                onStageUndo = { note, action, message ->
-                                                    viewModel.stageEditorUndo(note, action, message)
-                                                },
-                                                isExpanded = true
-                                            )
-                                        }
+                                        DetailPaneEditor(
+                                            contentKey = destination.contentKey,
+                                            onBack = { scope.launch { navigator.navigateBack() } },
+                                            onStageUndo = viewModel::stageEditorUndo,
+                                            isExpanded = true
+                                        )
 
                                         // Natural separation: subtle left-side inner shadow and gradient
                                         Box(
@@ -514,6 +524,16 @@ fun MainScreen(
                     }
                 }
             }
+        } else if (navigator.currentDestination?.contentKey != null) {
+            // A note left open in the two-pane layout when the window narrowed, as when a phone
+            // rotates to portrait. Same ViewModel, so nothing has to be saved and reloaded to move
+            // it, and an edit still waiting on autosave stays in the editor (U-24).
+            DetailPaneEditor(
+                contentKey = navigator.currentDestination?.contentKey,
+                onBack = { scope.launch { navigator.navigateBack() } },
+                onStageUndo = viewModel::stageEditorUndo,
+                isExpanded = false
+            )
         } else {
             ModalNavigationDrawer(
                 drawerState = drawerState,

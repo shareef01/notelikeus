@@ -133,8 +133,19 @@ Not checked: Windows desktop, TalkBack, landscape, font scaling, a 360 dp phone.
 | Desktop renderer | The dialog rendered with Compose Desktop's renderer in a throwaway test (1024×768, default Material theme, not committed): full calendar; time step with the side-by-side dial, the message and OK greyed. The packaged Windows app was not run: this machine's copy has a signed-in session |
 | TalkBack | Turned on in the emulator with its speech logged. The dialog announces "Dialog, Set reminder". Driving it further over adb was unreliable (gestures dismissed the dialog; keyboard commands gave partial output), so the live-region message was not heard. TalkBack was turned off again and its settings restored |
 
+## U-24 fix — 2026-10-30
+
+Branch `fix/keep-note-across-layouts`, from `main` at `f17ba2da`. API 36 emulator, guest mode.
+
+| Check | Result |
+|---|---|
+| New note in the two-pane layout, text typed and rotated to portrait in one command | Editor stays open with the text; landscape and back keeps it; Back shows one card |
+| Existing note edited in the pane, rotated in one command, Back straight after | Card reads `rotationdraftxx`: the edit was saved |
+| `:composeApp:desktopTest` | 903 tests, all pass; none of them covers this path |
+
+Keyboard focus is lost on the rotation, so the user taps the body to keep typing.
+
 ## Known limitations and remaining issues
 
-See the register: U-12 (benchmark flake, hardened) and U-24 (open note lost when the two-pane
-layout gives way to the phone layout) are open. The packaged Windows app, screen readers,
+See the register: U-12 (benchmark flake, hardened) is the only row left open. The packaged Windows app, screen readers,
 Safari/Firefox and Supabase-backed journeys were not exercised here.
