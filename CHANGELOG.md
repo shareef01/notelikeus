@@ -4,6 +4,19 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.4.1] — 2026-10-30
+
+### Changed
+- **Label chips and note details are easier to read** on every platform: larger text, your own capitalisation and a tinted background. Notes without a title now start with their text.
+- **Note pictures load faster on Android and Windows.** They load in the background and at the size the editor needs, and recently opened pictures are kept ready.
+
+### Fixed
+- **Reminders can be set with a phone in landscape.** The "Choose date & time" option could not be reached and the calendar and clock did not fit. A short window now gets typed date and time fields.
+- **The reminder calendar shows every day on Android and Windows.** The last two columns, and the 30th and 31st, were cut off.
+- **A reminder time in the past is explained inside the dialog** on Android and Windows, and on the web, with OK disabled until the time is in the future.
+- **Rotating a phone keeps your place.** An open reminder or link dialog stays open, and a note opened in the two-pane view stays open when the phone turns to portrait.
+- **Web:** recent searches stay open while Tab moves into them; the docked editor keeps its header and footer on screen and the sidebar stays in view as notes scroll; tablets and narrow windows get two columns; sort and filters are hidden in a view with no notes; conflict review shows pictures, a focus ring and a key for its highlights; Undo is kept for the notes a partly failed batch delete removed; and editor pictures are kept across opens.
+
 ## [2.4.0] — 2026-10-26
 
 ### Added
