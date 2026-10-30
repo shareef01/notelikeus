@@ -2,9 +2,9 @@ name: CodeQL
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
   schedule:
     # Weekly drift catch for the default branch without taxing every PR.
     - cron: '17 5 * * 1'

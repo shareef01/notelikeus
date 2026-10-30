@@ -16,14 +16,14 @@ on:
         type: choice
         options: [production, staging]
   push:
-    branches: [main, master]
+    branches: [main]
     paths:
       - 'supabase/**'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/supabase.yml'
   pull_request:
-    branches: [main, master]
+    branches: [main]
     paths:
       - 'supabase/**'
       - 'package.json'
