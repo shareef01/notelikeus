@@ -12,7 +12,7 @@ need re-reading against the current state before use.
 deployed, no release was cut, and no pull request was merged. This is the plan for the owner to
 execute, and every command in it was read out of the repository rather than recalled.
 
-The findings behind these steps are in [AUDIT_REPORT.md](AUDIT_REPORT.md) §13.2; the evidence that
+The findings behind these steps are in [AUDIT_REPORT.md](audit/AUDIT_REPORT.md) §13.2; the evidence that
 the code is ready to deploy is in §13.3.
 
 ---
@@ -225,7 +225,7 @@ ever comes back non-empty, stop and do not dispatch.
 - **That the secrets exist and are valid.** The audit read the names out of the workflows; it cannot
   read the repository's secret store. Every job fails with a named variable if one is missing.
 - **That the remote database is in the state the migrations expect.** The deployment table in
-  `AUDIT_REPORT.md` §13.1 is a read of the GitHub API, not of the hosted database: no credential for
+  `docs/audit/AUDIT_REPORT.md` §13.1 is a read of the GitHub API, not of the hosted database: no credential for
   the remote was available, so remote state was never queried from here.
 - **That the deployed clients behave as the tests say.** The instrumented suites pass on an emulator
   and the app was driven on a real device, but the two-client checks in §8 have not been performed

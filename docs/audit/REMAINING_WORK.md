@@ -31,7 +31,7 @@ v2.4.0 shipped #370 (the wipe protection, F-14, FU-8), so v2.3.2 devices are now
 ### 1.3 F-05: remote delete with no known base revision (settled)
 Fixed, Option B, as the code shows. The records now agree: `AUDIT_REPORT.md` §F-05 and the 2026-10-19 and 2026-10-21 audits were corrected on 2026-10-26. The same change fixed the web UI's handling of an unconfirmed delete: it showed "Delete failed" and dropped Undo.
 
-### 1.4 `DEPLOYMENT_RUNBOOK.md`
+### 1.4 `docs/DEPLOYMENT_RUNBOOK.md`
 Written before 2.1.0. Its header now says so, but its release steps (PR numbers, the version to tag) need rewriting before anyone follows them again.
 
 ---
@@ -60,6 +60,6 @@ Written before 2.1.0. Its header now says so, but its release steps (PR numbers,
 
 1. Approve the #379 web deploy (§1.1).
 2. Release Android and Windows (§1.2).
-3. Rewrite the release steps in `DEPLOYMENT_RUNBOOK.md` (§1.4).
+3. Rewrite the release steps in `docs/DEPLOYMENT_RUNBOOK.md` (§1.4).
 4. Upgrade the build plugins to clear DEP-1 (§2).
 5. Device verification (§3) as scheduled work.

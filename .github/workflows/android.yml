@@ -371,7 +371,7 @@ jobs:
   # FU-7. Gradle dependencies were invisible to GitHub's dependency graph: the graph understood
   # npm (Dependabot's `npm` entries in .github/dependabot.yml) but nothing submitted the resolved
   # Gradle graph, so Dependabot could never open an advisory for an Android or Windows/JVM library.
-  # The one-off OSV scan in AUDIT_REPORT.md was clean, but a scan nobody re-runs is not a control.
+  # The one-off OSV scan in docs/audit/AUDIT_REPORT.md was clean, but a scan nobody re-runs is not a control.
   #
   # It lives here rather than in desktop.yml because the graph is one graph per commit: submitting
   # it from two workflows would race, and this job needs the Android SDK that ubuntu-latest already
