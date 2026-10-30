@@ -53,6 +53,11 @@ subprojects {
         exclude("**/build/**", "**/generated/**")
     }
 
+    tasks.withType<Test>().configureEach {
+        // Circumvent JDK 21 Windows AF_UNIX domain socket pipe failure on long temp paths
+        jvmArgs("-Djdk.nio.channels.pipe.useLoopback=true")
+    }
+
     tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
         // Source sets, not compiled output: this runs without building the Kotlin targets first.
         setSource(files("src"))
