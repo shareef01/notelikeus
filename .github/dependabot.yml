@@ -1,37 +1,57 @@
 version: 2
-# Version-update PRs are switched off (open-pull-requests-limit: 0) so dependency bumps land as
-# commits from the maintainer. Security updates are separate from this file and still open PRs.
-# The `ignore` holds below stay in place for when version updates are turned back on.
+# Low-maintenance Dependabot configuration: monthly grouped routine version updates with a small PR limit.
+# Security updates remain enabled separately via GitHub security settings.
+# All Compose Multiplatform compatibility ignores are strictly preserved below.
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 0
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    groups:
+      dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/web"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 0
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    groups:
+      dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/workers/attachments"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 0
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    groups:
+      dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 0
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: "gradle"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 0
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    groups:
+      gradle-dependencies:
+        patterns:
+          - "*"
     ignore:
       # See docs/DECISIONS.md, D18. lifecycle 2.10+ depends on compose-runtime 1.11 directly, and a
       # direct dependency wins conflict resolution -- so the runtime jumps while compose-ui and

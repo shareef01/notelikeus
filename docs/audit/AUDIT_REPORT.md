@@ -333,7 +333,7 @@ Method | Source reading, `supabase db reset` + `supabase test db` against a loca
 
 ### 13.1 Deployment status, verified against the GitHub API (not inferred from a green build)
 
-The ordered plan for closing the gap below — with the verification and rollback for each step — is in [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md). None of it has been executed.
+The ordered plan for closing the gap below — with the verification and rollback for each step — is in [DEPLOYMENT_RUNBOOK.md](../DEPLOYMENT_RUNBOOK.md). None of it has been executed.
 
 `supabase.yml` and `attachments-worker.yml` both gate their `deploy` job on `github.event_name == 'workflow_dispatch'`. The successful runs on `08eb7f9c` were `push` events, so they ran `database-tests` / `verify` and **skipped** `deploy`. Queried 2026-10-13:
 
@@ -626,7 +626,7 @@ The `androidApp` run is the first device-level evidence this audit has for two p
 
 ### 13.4 What this pass did not do
 
-It did not merge, deploy or release anything, and it did not touch the hosted Supabase project: no credential for it was available from this machine, so remote state is the GitHub-API read in §13.1 and never a query of the database. The plan for the owner to close that is in [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md).
+It did not merge, deploy or release anything, and it did not touch the hosted Supabase project: no credential for it was available from this machine, so remote state is the GitHub-API read in §13.1 and never a query of the database. The plan for the owner to close that is in [DEPLOYMENT_RUNBOOK.md](../DEPLOYMENT_RUNBOOK.md).
 
 - **TalkBack and Narrator.** The accessibility *tree* was inspected on the device and every actionable control is named (§13.3.5), but spoken traversal — order, phrasing — needs a person with a screen reader on, on both Android and Windows.
 - **Keyboard navigation of the Compose UI.** FU-8's modifier is verified by key injection, but neither running app has been walked by keyboard: the Android attempt was inconclusive (§13.3.4) and the Windows one cannot be given focus at all (§13.3.6).

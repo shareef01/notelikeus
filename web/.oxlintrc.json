@@ -8,6 +8,9 @@
   },
   "rules": {
     "unicorn/prefer-add-event-listener": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "no-underscore-dangle": "off",
     "no-await-in-loop": "off"
   }
 }

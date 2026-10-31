@@ -38,12 +38,12 @@ on:
         default: '60'
         type: string
   push:
-    branches: [main, master]
+    branches: [main]
     paths:
       - 'workers/**'
       - '.github/workflows/attachments-worker.yml'
   pull_request:
-    branches: [main, master]
+    branches: [main]
     paths:
       - 'workers/**'
       - '.github/workflows/attachments-worker.yml'
