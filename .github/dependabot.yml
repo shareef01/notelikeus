@@ -53,6 +53,19 @@ updates:
         patterns:
           - "*"
     ignore:
+      # Android Gradle Plugin upgrades require manual regeneration of gradle/verification-metadata.xml
+      # checksums. Automated bumps fail dependency verification by design.
+      - dependency-name: "com.android.application"
+      - dependency-name: "com.android.library"
+      - dependency-name: "com.android.kotlin.multiplatform.library"
+
+      # Compose Multiplatform core and material3 pin holds (currently locked to CMP 1.8.x).
+      # Upgrading CMP requires synchronized coordinate updates across skiko, runtime, compiler, and UI.
+      - dependency-name: "org.jetbrains.compose:*"
+        versions: [">= 1.9.0-alpha01"]
+      - dependency-name: "org.jetbrains.compose.material3:*"
+        versions: [">= 1.9.0-alpha01"]
+
       # See docs/DECISIONS.md, D18. lifecycle 2.10+ depends on compose-runtime 1.11 directly, and a
       # direct dependency wins conflict resolution -- so the runtime jumps while compose-ui and
       # skiko stay on the CMP plugin's 1.8.2. The packaged desktop app then dies composing App()
@@ -69,11 +82,11 @@ updates:
       # together. The check is: resolve desktopRuntimeClasspath and confirm compose runtime, ui
       # and skiko all agree before packaging.
       #
-      # Patches on the 2.9.x line still come through; only 2.10+ is held.
+      # Patches on the 2.9.x line still come through; only 2.10+ is held (including prereleases).
       - dependency-name: "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose"
-        versions: [">= 2.10"]
+        versions: [">= 2.10.0-alpha01"]
       - dependency-name: "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose"
-        versions: [">= 2.10"]
+        versions: [">= 2.10.0-alpha01"]
 
       # Same hazard, different package. Koin 4.2.2 depends on Compose UI 1.10.2 directly, and a
       # direct dependency wins conflict resolution, so `org.jetbrains.compose.ui:ui` resolves
@@ -88,7 +101,7 @@ updates:
       #
       # REMOVE THIS ENTRY with the lifecycle one, when Compose Multiplatform moves off 1.8.x.
       - dependency-name: "io.insert-koin:*"
-        versions: [">= 4.2"]
+        versions: [">= 4.2.0-alpha01"]
 
       # See docs/DECISIONS.md, D27. composeAdaptive >= 1.2 raises Compose UI, foundation and animation
       # on the desktop classpath from 1.8.2 to 1.9.0 while material3, material and ripple stay on the
@@ -101,7 +114,7 @@ updates:
       #
       # REMOVE THIS ENTRY with the lifecycle and Koin ones, when Compose Multiplatform moves off 1.8.x.
       - dependency-name: "org.jetbrains.compose.material3.adaptive:*"
-        versions: [">= 1.2"]
+        versions: [">= 1.2.0-alpha01"]
 
       # See docs/DECISIONS.md, D28. navigation-compose 2.10 depends on the lifecycle 2.10+ line held
       # above, and through it moves the whole desktop Compose stack. Resolving desktopRuntimeClasspath
@@ -116,4 +129,4 @@ updates:
       # REMOVE THIS ENTRY with the lifecycle, Koin and adaptive ones, when Compose Multiplatform moves
       # off 1.8.x.
       - dependency-name: "org.jetbrains.androidx.navigation:*"
-        versions: [">= 2.10"]
+        versions: [">= 2.10.0-alpha01"]
