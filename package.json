@@ -25,6 +25,6 @@
     "test:pages-bundle-secrets": "node --test web/scripts/bundleSecrets.test.mjs"
   },
   "devDependencies": {
-    "supabase": "^2.120.0"
+    "supabase": "^2.122.0"
   }
 }
