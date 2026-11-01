@@ -13,6 +13,7 @@
  * See `contracts/backup/v4-bundle-manifest.json` for the wire format itself.
  */
 import { BACKUP_VERSION, MAX_BACKUP_FILE_BYTES } from '@/lib/backup/constants';
+import { version as packageVersion } from '../../../../package.json';
 import {
   extractZipEntry,
   listZipCentralDirectory,
@@ -140,7 +141,7 @@ export async function buildBackupBundle(
   const manifest: BundleManifest = {
     formatVersion: BUNDLE_FORMAT_VERSION,
     app: options?.app ?? 'Notelikeus',
-    appVersion: options?.appVersion ?? '1.0.0 (web)',
+    appVersion: options?.appVersion ?? `${packageVersion} (web)`,
     exportedAt: options?.exportedAt ?? Date.now(),
     backup: backupDocument,
     attachments: index,

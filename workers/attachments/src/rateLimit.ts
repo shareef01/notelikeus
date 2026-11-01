@@ -21,9 +21,11 @@ async function withinLimit(limiter: RateLimiterBinding | undefined, key: string)
   try {
     const { success } = await limiter.limit({ key });
     return success;
-  } catch {
+  } catch (error) {
     // A limiter that cannot answer must not take the API down with it. Failing open is the
     // deliberate choice: throttling is a mitigation, and the authorization boundary is elsewhere.
+    // Logging the failure ensures operator visibility when rate limiting bindings are degraded.
+    console.warn(`[Worker] Rate limiter failed open for key '${key}':`, error);
     return true;
   }
 }

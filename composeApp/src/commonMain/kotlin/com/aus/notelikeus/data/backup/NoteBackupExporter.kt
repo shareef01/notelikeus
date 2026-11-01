@@ -20,6 +20,9 @@ class NoteBackupExporter(
 
     suspend fun createJson(): String {
         val notes = repository.getAllNotesForBackup()
+        check(notes.size <= NoteBackupImporter.MAX_BACKUP_NOTES) {
+            "Cannot export backup: library has ${notes.size} notes (maximum supported is ${NoteBackupImporter.MAX_BACKUP_NOTES})"
+        }
         val labels = repository.getAllLabelsSnapshot()
 
         val backupData = BackupData(

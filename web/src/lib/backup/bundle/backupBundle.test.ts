@@ -1,4 +1,4 @@
-﻿import 'fake-indexeddb/auto';
+import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   BUNDLE_FORMAT_VERSION,
@@ -129,7 +129,7 @@ describe('bundle parsing refuses what it cannot trust', () => {
     await expect(parseBackupBundle(archive)).rejects.toThrow(/Unsupported bundle version/);
   });
 
-  it('rejects an oversized manifest before extracting media', async () => {
+  it('rejects an oversized manifest before extracting media', { timeout: 15_000 }, async () => {
     const { MAX_BUNDLE_MANIFEST_BYTES } = await import('@/lib/backup/bundle/backupBundle');
     const huge = new Uint8Array(MAX_BUNDLE_MANIFEST_BYTES + 1);
     huge.fill(0x20); // spaces — valid-ish payload shape, refused by size alone

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BACKUP_VERSION } from '@/lib/backup/constants';
+import { BACKUP_VERSION, MAX_BACKUP_NOTES } from '@/lib/backup/constants';
 import { exportNotesBackup } from '@/lib/backup/exportBackup';
 import { importNotesFromBackup } from '@/lib/backup/importBackup';
 import { labelFromName } from '@/types/label';
@@ -119,5 +119,70 @@ describe('exportNotesBackup', () => {
       labels: [{ name: 'Home' }],
       checklist: [{ text: 'bread', isChecked: true, position: 0 }],
     });
+  });
+
+  it('rejects exporting a library that exceeds MAX_BACKUP_NOTES', () => {
+    const tooManyNotes: Note[] = Array.from({ length: MAX_BACKUP_NOTES + 1 }, (_, i) =>
+      note(String(i + 1), { title: `Note ${i}` }),
+    );
+    expect(() => exportNotesBackup(tooManyNotes)).toThrow(/Cannot export backup: library has 25001 notes/);
+  });
+
+  it('round-trips a large dataset exceeding legacy 5,000 note limit with full fidelity', () => {
+    const largeSet: Note[] = Array.from({ length: 5_500 }, (_, i) =>
+      note(String(i + 1), {
+        title: `Note ${i + 1}`,
+        content: `Content for note ${i + 1}`,
+        isPinned: i % 10 === 0,
+        labels: [labelFromName(i % 2 === 0 ? 'Work' : 'Personal')],
+      }),
+    );
+    const payload = exportPayload(largeSet);
+    const { merged, result } = importNotesFromBackup(payload, []);
+    expect(result.notesImported).toBe(5_500);
+    expect(result.labelsCreated).toBe(2);
+    expect(merged).toHaveLength(5_500);
+    expect(merged[0].title).toBe('Note 1');
+    expect(merged[5499].title).toBe('Note 5500');
+  });
+
+  it('preserves all note fields with full round-trip fidelity', () => {
+    const futureReminder = Date.now() + 100_000;
+    const testNote = note('42', {
+      title: 'Full Fidelity Note',
+      content: 'Multi-line\nDetailed\nContent',
+      timestamp: 1_700_000_000,
+      color: 0xff00ff,
+      isPinned: true,
+      isArchived: true,
+      isTrashed: false,
+      position: 5,
+      reminderTimestamp: futureReminder,
+      serverUpdatedAt: 1_700_000_500,
+      labels: [labelFromName('TagA'), labelFromName('TagB')],
+      checklist: [
+        { id: 'c1', text: 'Task 1', isChecked: true, position: 0 },
+        { id: 'c2', text: 'Task 2', isChecked: false, position: 1 },
+      ],
+    });
+    const payload = exportPayload([testNote]);
+    const { merged, result } = importNotesFromBackup(payload, []);
+    expect(result.notesImported).toBe(1);
+    const restored = merged[0];
+    expect(restored.title).toBe('Full Fidelity Note');
+    expect(restored.content).toBe('Multi-line\nDetailed\nContent');
+    expect(restored.timestamp).toBe(1_700_000_000);
+    expect(restored.color).toBe(0xff00ff);
+    expect(restored.isPinned).toBe(true);
+    expect(restored.isArchived).toBe(true);
+    expect(restored.isTrashed).toBe(false);
+    expect(restored.reminderTimestamp).toBe(futureReminder);
+    expect(restored.labels.map((l) => l.name)).toEqual(['TagA', 'TagB']);
+    expect(
+      restored.checklist.map((c) => ({ text: c.text, isChecked: c.isChecked, position: c.position })),
+    ).toEqual([
+      { text: 'Task 1', isChecked: true, position: 0 },
+      { text: 'Task 2', isChecked: false, position: 1 },
+    ]);
   });
 });

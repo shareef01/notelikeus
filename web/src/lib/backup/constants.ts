@@ -2,8 +2,8 @@
 export const BACKUP_VERSION = 3;
 
 /** Soft caps to avoid OOM / tab hang on hostile backup files. */
-export const MAX_BACKUP_FILE_BYTES = 10 * 1024 * 1024;
-export const MAX_BACKUP_NOTES = 5_000;
+export const MAX_BACKUP_FILE_BYTES = 25 * 1024 * 1024;
+export const MAX_BACKUP_NOTES = 25_000;
 /**
  * Distinct label names accepted from one backup. Matches Kotlin's
  * `NoteBackupImporter.MAX_BACKUP_LABELS`; without it a 10 MB file of nothing but label strings

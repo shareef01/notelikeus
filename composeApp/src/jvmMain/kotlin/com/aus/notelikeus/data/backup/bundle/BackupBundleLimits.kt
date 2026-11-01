@@ -21,7 +21,7 @@ object BackupBundleLimits {
     /**
      * Manifest entry ceiling: embedded v3 backup (10 MiB) plus a modest attachment index.
      */
-    const val MAX_BUNDLE_MANIFEST_BYTES = 10L * 1024 * 1024 + 2L * 1024 * 1024
+    const val MAX_BUNDLE_MANIFEST_BYTES = 25L * 1024 * 1024 + 2L * 1024 * 1024
 
     const val MAX_ZIP_ENTRIES = 10_000
     const val MAX_ZIP_ENTRY_BYTES = 32L * 1024 * 1024

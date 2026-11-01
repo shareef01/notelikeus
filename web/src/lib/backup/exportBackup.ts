@@ -1,5 +1,6 @@
 import type { Note } from '@/types/note';
-import { BACKUP_VERSION } from '@/lib/backup/constants';
+import { BACKUP_VERSION, MAX_BACKUP_NOTES } from '@/lib/backup/constants';
+import { version as appVersion } from '../../../package.json';
 import { collectUniqueLabels } from '@/types/label';
 
 /** Plain backup DTO — mirrors Android NoteBackupExporter, no Firestore write sentinels. */
@@ -40,13 +41,19 @@ function noteToBackupMap(note: Note): Record<string, unknown> {
 export function exportBackupPayload(
   notes: Note[],
   exportedAt: number = Date.now(),
+  options?: { appVersion?: string },
 ): Record<string, unknown> {
+  if (notes.length > MAX_BACKUP_NOTES) {
+    throw new Error(
+      `Cannot export backup: library has ${notes.length} notes (maximum supported is ${MAX_BACKUP_NOTES})`,
+    );
+  }
   const labels = collectUniqueLabels(notes);
   return {
     version: BACKUP_VERSION,
     exportedAt,
     app: 'Notelikeus',
-    appVersion: '1.0.0 (web)',
+    appVersion: options?.appVersion ?? `${appVersion} (web)`,
     labels: labels.map((label) => ({ id: label.id, name: label.name })),
     notes: notes.map(noteToBackupMap),
   };
