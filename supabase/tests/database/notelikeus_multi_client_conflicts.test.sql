@@ -1,5 +1,5 @@
 begin;
-select plan(14);
+select plan(15);
 
 select setval('public.sync_revision_seq', 20000, true);
 
@@ -108,7 +108,7 @@ select throws_ok(
       '[]'::jsonb, '[]'::jsonb,
       0::bigint
     ) $$,
-  'P0001',
+  'NL002',
   NULL,
   'Scenario 3: Mutation with stale wipe generation rejected'
 );
@@ -121,7 +121,7 @@ select results_eq(
   $$ select (public.apply_note_delete(
       'conf-2'::text,
       20004::bigint,
-      (select wipe_generation from public.account_sync_state where user_id = auth.uid())
+      (select wipe_generation from public.account_sync_state where owner_id = auth.uid())
     )->>'idempotent')::boolean $$,
   ARRAY[true],
   'Scenario 5: Retried delete mutation is strictly idempotent'

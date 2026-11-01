@@ -106,33 +106,30 @@ class BackupBundleCodecTest {
     }
 
     @Test
-    fun generatesDeterministicKotlinBundleFixtureAndParsesWebExportedBundle() {
+    fun parsesCommittedCrossPlatformWebAndKotlinBundleFixtures() {
         val sampleBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 1, 2, 3, 4)
-        val kotlinArchive = BackupBundleCodec.buildBackupBundle(
-            backupDocument = backupDocument,
-            attachments = listOf(
-                BundleAttachmentSource(
-                    noteId = 1L,
-                    attachmentId = "att-cross-1",
-                    mimeType = "image/png",
-                    bytes = sampleBytes,
-                ),
-            ),
-            appVersion = "1.0.3",
-            exportedAt = 1767225600000L,
-        )
-        ContractFixtures.writeBytes("backup/v4-kotlin-bundle.nlkbak", kotlinArchive)
 
-        assertTrue(ContractFixtures.fileExists("backup/v4-web-bundle.nlkbak"), "Web-exported bundle fixture must exist")
+        // 1. Verify Kotlin parses genuine Web-exported bundle fixture from contracts
+        assertTrue(ContractFixtures.fileExists("backup/v4-web-bundle.nlkbak"), "Required contract fixture backup/v4-web-bundle.nlkbak must be committed and present")
         val webArchive = ContractFixtures.readBytes("backup/v4-web-bundle.nlkbak")
-        val parsed = BackupBundleCodec.parseBackupBundle(webArchive)
-        assertEquals(4, parsed.manifest.formatVersion)
-        assertEquals("Notelikeus", parsed.manifest.app)
-        assertEquals(1, parsed.media.size)
-        assertTrue(parsed.media.containsKey("att-cross-1"))
-        assertTrue(parsed.media["att-cross-1"]!!.bytes.contentEquals(sampleBytes))
-        val webTitle = parsed.manifest.backup["notes"]!!.jsonArray[0].jsonObject["title"]!!.jsonPrimitive.content
+        val parsedWeb = BackupBundleCodec.parseBackupBundle(webArchive)
+        assertEquals(4, parsedWeb.manifest.formatVersion)
+        assertEquals("Notelikeus", parsedWeb.manifest.app)
+        assertEquals(1, parsedWeb.media.size)
+        assertTrue(parsedWeb.media.containsKey("att-cross-1"))
+        assertTrue(parsedWeb.media["att-cross-1"]!!.bytes.contentEquals(sampleBytes))
+        val webTitle = parsedWeb.manifest.backup["notes"]!!.jsonArray[0].jsonObject["title"]!!.jsonPrimitive.content
         assertEquals("From Web Exporter", webTitle)
+
+        // 2. Verify Kotlin parses genuine Kotlin-exported bundle fixture from contracts
+        assertTrue(ContractFixtures.fileExists("backup/v4-kotlin-bundle.nlkbak"), "Required contract fixture backup/v4-kotlin-bundle.nlkbak must be committed and present")
+        val kotlinArchive = ContractFixtures.readBytes("backup/v4-kotlin-bundle.nlkbak")
+        val parsedKotlin = BackupBundleCodec.parseBackupBundle(kotlinArchive)
+        assertEquals(4, parsedKotlin.manifest.formatVersion)
+        assertEquals("Notelikeus", parsedKotlin.manifest.app)
+        assertEquals(1, parsedKotlin.media.size)
+        assertTrue(parsedKotlin.media.containsKey("att-cross-1"))
+        assertTrue(parsedKotlin.media["att-cross-1"]!!.bytes.contentEquals(sampleBytes))
     }
 
     @Test

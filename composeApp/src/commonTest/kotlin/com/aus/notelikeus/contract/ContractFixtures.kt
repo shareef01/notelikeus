@@ -43,9 +43,4 @@ object ContractFixtures {
         val path = relativePath.split('/').fold(root) { acc, segment -> acc / segment }
         return FileSystem.SYSTEM.exists(path)
     }
-
-    fun writeBytes(relativePath: String, bytes: ByteArray) {
-        val path = relativePath.split('/').fold(root) { acc, segment -> acc / segment }
-        FileSystem.SYSTEM.write(path) { write(bytes) }
-    }
 }
