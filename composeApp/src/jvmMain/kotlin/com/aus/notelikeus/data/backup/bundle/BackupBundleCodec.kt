@@ -204,7 +204,8 @@ object BackupBundleCodec {
         val bytes = json.encodeToString(JsonObject.serializer(), manifest).toByteArray(Charsets.UTF_8)
         if (bytes.size.toLong() > BackupBundleLimits.MAX_BUNDLE_MANIFEST_BYTES) {
             throw BundleFormatException(
-                "Backup bundle manifest is too large (${bytes.size} bytes; max is ${BackupBundleLimits.MAX_BUNDLE_MANIFEST_BYTES})"
+                "Backup bundle manifest is too large (${bytes.size} bytes; " +
+                    "max is ${BackupBundleLimits.MAX_BUNDLE_MANIFEST_BYTES})"
             )
         }
         return bytes

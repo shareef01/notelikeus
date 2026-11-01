@@ -201,12 +201,14 @@ class BackupBundleTransfer(
         if (skippedCloudOnly > 0) {
             warnings.add(
                 "$skippedCloudOnly image${if (skippedCloudOnly == 1) " was" else "s were"} not included because " +
-                    "${if (skippedCloudOnly == 1) "its bytes are" else "their bytes are"} only available in cloud storage on this device.",
+                    "${if (skippedCloudOnly == 1) "its bytes are" else "their bytes are"} " +
+                    "only available in cloud storage on this device.",
             )
         }
         if (skippedUnreadable > 0) {
             warnings.add(
-                "$skippedUnreadable image${if (skippedUnreadable == 1) " was" else "s were"} skipped because local storage could not be read.",
+                "$skippedUnreadable image${if (skippedUnreadable == 1) " was" else "s were"} skipped because " +
+                    "local storage could not be read.",
             )
         }
         return BundleExportOutcome(
