@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { readContractFixture } from '@/lib/contract/contractFixtures';
+import { existsSync, writeFileSync } from 'node:fs';
+import { readContractFixture, contractFixturePath, readContractBinaryFixture } from '@/lib/contract/contractFixtures';
+import { buildBackupBundle, parseBackupBundle } from '@/lib/backup/bundle/backupBundle';
 import { importNotesFromBackup } from '@/lib/backup/importBackup';
 import { exportBackupPayload } from '@/lib/backup/exportBackup';
 import {
@@ -140,6 +142,65 @@ describe('backup v3 contract', () => {
     expect(payload.app).toBe('Notelikeus');
     expect(payload.notes).toEqual(web.notes);
     expect(payload.labels).toEqual(web.labels);
+  });
+
+  it('generates and validates cross-runtime v4 .nlkbak bundle for Kotlin consumer', async () => {
+    const sampleBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+    const archive = await buildBackupBundle(
+      {
+        version: 3,
+        app: 'Notelikeus',
+        appVersion: '2.4.1 (web)',
+        exportedAt: 1767225600000,
+        labels: [{ id: 1, name: 'WebLabel' }],
+        notes: [
+          {
+            id: 1,
+            title: 'From Web Exporter',
+            content: 'Cross-runtime bundle test content 🚀',
+            timestamp: 1767225000000,
+            color: 0,
+            isPinned: false,
+            isArchived: false,
+            isTrashed: false,
+            position: 0,
+            reminderTimestamp: 4102444800000,
+            labels: ['WebLabel'],
+            checklist: [{ text: 'Item 1', isChecked: true, position: 0 }],
+          },
+        ],
+      },
+      [
+        {
+          noteId: 1,
+          attachmentId: 'att-cross-1',
+          type: 'image',
+          mimeType: 'image/png',
+          bytes: sampleBytes,
+        },
+      ],
+      { app: 'Notelikeus', appVersion: '2.4.1 (web)', exportedAt: 1767225600000 },
+    );
+
+    writeFileSync(contractFixturePath('backup/v4-web-bundle.nlkbak'), archive);
+
+    // Verify self-parse
+    const parsed = await parseBackupBundle(archive);
+    expect(parsed.manifest.formatVersion).toBe(4);
+    expect(parsed.manifest.app).toBe('Notelikeus');
+    expect(parsed.media.has('att-cross-1')).toBe(true);
+    expect(parsed.media.get('att-cross-1')!.bytes).toEqual(sampleBytes);
+  });
+
+  it('parses genuine Kotlin-exported v4 .nlkbak bundle if present', async () => {
+    const kotlinBundlePath = contractFixturePath('backup/v4-kotlin-bundle.nlkbak');
+    if (!existsSync(kotlinBundlePath)) return;
+
+    const archive = readContractBinaryFixture('backup/v4-kotlin-bundle.nlkbak');
+    const parsed = await parseBackupBundle(archive);
+    expect(parsed.manifest.formatVersion).toBe(4);
+    expect(parsed.manifest.app).toBe('Notelikeus');
+    expect(parsed.media.has('att-cross-1')).toBe(true);
   });
 
   it('keeps import soft caps aligned with the shared fixture and Kotlin', () => {
