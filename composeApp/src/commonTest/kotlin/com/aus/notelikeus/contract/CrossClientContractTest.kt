@@ -121,6 +121,34 @@ class CrossClientContractTest {
     }
 
     @Test
+    fun importsRichCrossPlatformContractFixtureWithUnicodeAndMaxLimits() = runTest {
+        val (repository, result) = importFixture("backup/v3-cross-platform-rich.json")
+        val success = result as BackupImportResult.Success
+        assertEquals(3, success.notesImported, "Rich fixture with Unicode and maximum limits must import cleanly")
+        assertEquals(3, success.labelsCreated)
+
+        // Note 1: Unicode and emojis
+        val n1 = repository.insertedNotes[0]
+        assertEquals("🚀 Daily Standup 📝 & Coffee ☕", n1.title)
+        assertTrue(n1.content.contains("日本語テスト"))
+        assertEquals(2, n1.checklist.size)
+        assertEquals("Item 1 (checked) 🍱", n1.checklist[0].text)
+        assertTrue(n1.labels.any { it.name == "日本語ラベル" })
+        assertEquals(4102444800000L, n1.reminderTimestamp)
+
+        // Note 2: Max field limits
+        val n2 = repository.insertedNotes[1]
+        assertEquals(2000, n2.title.length)
+        assertEquals(100000, n2.content.length)
+        assertEquals(500, n2.checklist.size)
+
+        // Note 3: Minimal note
+        val n3 = repository.insertedNotes[2]
+        assertEquals("Minimal Note", n3.title)
+    }
+
+
+    @Test
     fun exportsTheShapeTheWebImporterParses() = runTest {
         val canonical = fixture("backup/v3-kotlin-export.json")
         val repository = FakeNoteRepository()

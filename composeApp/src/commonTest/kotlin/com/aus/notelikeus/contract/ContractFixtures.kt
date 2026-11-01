@@ -33,4 +33,14 @@ object ContractFixtures {
         val path = relativePath.split('/').fold(root) { acc, segment -> acc / segment }
         return FileSystem.SYSTEM.read(path) { readUtf8() }
     }
+
+    fun readBytes(relativePath: String): ByteArray {
+        val path = relativePath.split('/').fold(root) { acc, segment -> acc / segment }
+        return FileSystem.SYSTEM.read(path) { readByteArray() }
+    }
+
+    fun fileExists(relativePath: String): Boolean {
+        val path = relativePath.split('/').fold(root) { acc, segment -> acc / segment }
+        return FileSystem.SYSTEM.exists(path)
+    }
 }

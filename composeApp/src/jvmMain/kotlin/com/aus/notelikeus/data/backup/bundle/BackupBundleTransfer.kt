@@ -162,15 +162,31 @@ class BackupBundleTransfer(
         val documentJson = exporter.createJson()
         val document = json.parseToJsonElement(documentJson).jsonObject
 
-        val entries = notes.flatMap { note ->
-            val noteId = note.id ?: return@flatMap emptyList()
-            note.attachments.map { attachment ->
-                BundleAttachmentEntry(
-                    noteId = noteId,
-                    attachmentId = attachment.id,
-                    type = attachment.type.ifBlank { "image" },
-                    mimeType = attachment.mimeType,
-                ) { readLocalAttachmentBytes(attachment)?.bytes }
+        var skippedCloudOnly = 0
+        var skippedUnreadable = 0
+
+        val entries = ArrayList<BundleAttachmentEntry>()
+        for (note in notes) {
+            val noteId = note.id ?: continue
+            for (attachment in note.attachments) {
+                if (!isPendingAttachment(attachment.storagePath) && !isFileAttachment(attachment.storagePath)) {
+                    skippedCloudOnly++
+                    continue
+                }
+                entries.add(
+                    BundleAttachmentEntry(
+                        noteId = noteId,
+                        attachmentId = attachment.id,
+                        type = attachment.type.ifBlank { "image" },
+                        mimeType = attachment.mimeType,
+                    ) {
+                        val local = readLocalAttachmentBytes(attachment)
+                        if (local == null) {
+                            skippedUnreadable++
+                        }
+                        local?.bytes
+                    },
+                )
             }
         }
 
@@ -181,17 +197,23 @@ class BackupBundleTransfer(
             origin = BundleOrigin(app = appName, appVersion = appVersion),
         )
 
-        val skipped = written.unreadable
         val warnings = ArrayList<String>()
-        if (skipped > 0) {
+        if (skippedCloudOnly > 0) {
             warnings.add(
-                "$skipped image${if (skipped == 1) " was" else "s were"} not included because " +
-                    "${if (skipped == 1) "its bytes are" else "their bytes are"} only available in cloud storage on this device.",
+                "$skippedCloudOnly image${if (skippedCloudOnly == 1) " was" else "s were"} not included because " +
+                    "${if (skippedCloudOnly == 1) "its bytes are" else "their bytes are"} " +
+                    "only available in cloud storage on this device.",
+            )
+        }
+        if (skippedUnreadable > 0) {
+            warnings.add(
+                "$skippedUnreadable image${if (skippedUnreadable == 1) " was" else "s were"} skipped because " +
+                    "local storage could not be read.",
             )
         }
         return BundleExportOutcome(
             attachmentsIncluded = written.included,
-            attachmentsSkipped = skipped,
+            attachmentsSkipped = skippedCloudOnly + skippedUnreadable,
             warnings = warnings,
         )
     }

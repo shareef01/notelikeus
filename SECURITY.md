@@ -4,8 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+| 2.4.x   | :white_check_mark: |
+| < 2.4   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -20,4 +20,3 @@ Please do not disclose security vulnerabilities publicly until they have been in
 ## Backend security model
 
 Cloud data is protected by Supabase Auth, PostgreSQL row-level security, RPC authorization (callers cannot pass arbitrary owner IDs), and mutation guards that block direct writes of revision/owner fields. Attachment blobs are authorized by a Cloudflare Worker that verifies the Supabase JWT and derives object keys from the authenticated user. Client apps only ship a public anon/publishable key; they must never contain a `service_role` key.
-

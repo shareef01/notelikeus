@@ -272,8 +272,8 @@ class NoteBackupImporter(
     }
 
     companion object {
-        const val MAX_BACKUP_CHARS = 10 * 1024 * 1024
-        const val MAX_BACKUP_NOTES = 5_000
+        const val MAX_BACKUP_CHARS = 25 * 1024 * 1024
+        const val MAX_BACKUP_NOTES = 25_000
         const val MAX_BACKUP_LABELS = 2_000
         const val MAX_NOTE_LABELS = 100
         const val MAX_NOTE_CHECKLIST = 500
