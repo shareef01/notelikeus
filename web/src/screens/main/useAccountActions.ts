@@ -81,7 +81,17 @@ export function useAccountActions({
   const exportBackup = () => {
     try {
       exportNotesBackup(notes);
-      toast('Backup exported');
+      const totalAttachments = notes.reduce(
+        (sum, n) => sum + (n.attachments?.length ?? 0),
+        0,
+      );
+      if (totalAttachments > 0) {
+        toast(
+          'Notes backup exported. Images are not included in JSON backups (use Complete Backup to include images).',
+        );
+      } else {
+        toast('Backup exported');
+      }
     } catch (error) {
       toast(messageOf(error, 'Export failed'), 'error');
     }
@@ -98,14 +108,15 @@ export function useAccountActions({
     try {
       const bundle = await buildBundleFromNotes(notes);
       downloadBundle(bundle.bytes);
-      const summary =
-        bundle.attachmentsIncluded > 0
-          ? `Backup exported with ${plural(bundle.attachmentsIncluded, 'image')}`
-          : 'Backup exported';
       if (bundle.attachmentsSkipped > 0) {
-        toast(`${summary}. ${bundle.warnings[0] ?? ''}`.trim());
+        const warningsText = bundle.warnings.join(' ');
+        toast(
+          `Incomplete backup exported: ${plural(bundle.attachmentsIncluded, 'image')} included, ${plural(bundle.attachmentsSkipped, 'image')} skipped. ${warningsText}`.trim(),
+        );
+      } else if (bundle.attachmentsIncluded > 0) {
+        toast(`Complete backup exported with ${plural(bundle.attachmentsIncluded, 'image')}`);
       } else {
-        toast(summary);
+        toast('Complete backup exported');
       }
     } catch (error) {
       toast(messageOf(error, 'Export failed'), 'error');

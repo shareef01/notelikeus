@@ -70,6 +70,40 @@ describe('backup v3 contract', () => {
     expect(result.labelsCreated).toBe(expectedBackup.labelsCreated);
   });
 
+  it('imports the rich cross-platform contract fixture with Unicode and max field limits (Phase A3)', () => {
+    const richFile = readContractFixture('backup/v3-cross-platform-rich.json');
+    const { merged, result } = importNotesFromBackup(richFile, []);
+
+    expect(result.notesImported).toBe(3);
+    expect(result.labelsCreated).toBe(3);
+    expect(merged).toHaveLength(3);
+
+    // Note 1: Unicode and emojis
+    const n1 = merged[0]!;
+    expect(n1.title).toBe('🚀 Daily Standup 📝 & Coffee ☕');
+    expect(n1.content).toBe('日本語テスト\n中文测试\n한국어 시험\nالعربية\nעִבְרִית\n✨🔥🎉');
+    expect(n1.checklist).toHaveLength(2);
+    expect(n1.checklist[0]!.text).toBe('Item 1 (checked) 🍱');
+    expect(n1.checklist[0]!.isChecked).toBe(true);
+    expect(n1.labels.map((l) => l.name).sort()).toEqual(['Personal', '日本語ラベル']);
+    expect(n1.reminderTimestamp).toBe(4102444800000);
+
+    // Note 2: Maximum field limits (2,000 title, 100,000 content, 500 checklist items)
+    const n2 = merged[1]!;
+    expect(n2.title).toHaveLength(2000);
+    expect(n2.content).toHaveLength(100000);
+    expect(n2.checklist).toHaveLength(500);
+    expect(n2.labels.map((l) => l.name)).toEqual(['Work']);
+
+    // Note 3: Minimal note with past reminder
+    const n3 = merged[2]!;
+    expect(n3.title).toBe('Minimal Note');
+    expect(n3.content).toBe('');
+    // Past reminders are normalized to null on import by design
+    expect(n3.reminderTimestamp).toBeNull();
+  });
+
+
   it('exports the shape the Kotlin importer parses', () => {
     // Built from the fixture rather than hand-written, so the assertion is about this client's
     // serializer and not about a second copy of the fixture drifting.

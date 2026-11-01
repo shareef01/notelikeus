@@ -125,8 +125,29 @@ describe('exportNotesBackup', () => {
     });
   });
 
-  // ---- Mandatory Test Matrix A & B: Boundary notes counts ----
-  it('Matrix A: exports and imports exactly 5,000 and 5,001 notes successfully', () => {
+  // ---- Mandatory Test Matrix A & B & Phase A1: Boundary notes counts ----
+  describe.each([
+    { count: 5_000, expected: 'accepted' },
+    { count: 5_001, expected: 'accepted' },
+    { count: 24_999, expected: 'accepted' },
+    { count: 25_000, expected: 'accepted' },
+    { count: 25_001, expected: 'rejected' },
+  ])('Phase A1 Parameterized Note-Count Boundary: $count notes', ({ count, expected }) => {
+    it(`is ${expected} when holding all other constraints constant`, () => {
+      const notes: Note[] = Array.from({ length: count }, (_, i) =>
+        note(String(i + 1), { title: `N${i + 1}` }),
+      );
+      if (expected === 'accepted') {
+        expect(() => validateNotesForExport(notes)).not.toThrow();
+      } else {
+        expect(() => validateNotesForExport(notes)).toThrow(
+          /Cannot export backup: library has 25001 notes \(maximum supported is 25000\)/,
+        );
+      }
+    });
+  });
+
+  it('Matrix A: round-trips 5,000 and 5,001 notes through export and import', () => {
     const set5000: Note[] = Array.from({ length: 5_000 }, (_, i) =>
       note(String(i + 1), { title: `Note ${i + 1}` }),
     );
@@ -140,25 +161,6 @@ describe('exportNotesBackup', () => {
     const payload5001 = exportPayload(set5001);
     const res5001 = importNotesFromBackup(payload5001, []);
     expect(res5001.result.notesImported).toBe(5_001);
-  });
-
-  it('Matrix B: accepts 24,999 and 25,000 notes, and rejects 25,001 notes at boundary', () => {
-    const notes24999: Note[] = Array.from({ length: 24_999 }, (_, i) =>
-      note(String(i + 1), { title: `N${i}` }),
-    );
-    expect(() => validateNotesForExport(notes24999)).not.toThrow();
-
-    const notes25000: Note[] = Array.from({ length: 25_000 }, (_, i) =>
-      note(String(i + 1), { title: `N${i}` }),
-    );
-    expect(() => validateNotesForExport(notes25000)).not.toThrow();
-
-    const notes25001: Note[] = Array.from({ length: 25_001 }, (_, i) =>
-      note(String(i + 1), { title: `N${i}` }),
-    );
-    expect(() => validateNotesForExport(notes25001)).toThrow(
-      /Cannot export backup: library has 25001 notes \(maximum supported is 25000\)/,
-    );
   });
 
   // ---- Mandatory Test Matrix C & D: File size boundaries & small count with large content ----

@@ -134,4 +134,32 @@ class NoteBackupExporterTest {
         assertTrue(json.contains("🚀"))
         assertTrue(json.contains("こんにちは"))
     }
+
+    @Test
+    fun `Phase A1 Parameterized Note-Count Boundary (5000, 5001, 24999, 25000 accepted, 25001 rejected)`() {
+        val boundaryCounts = listOf(
+            5_000 to true,
+            5_001 to true,
+            24_999 to true,
+            25_000 to true,
+            25_001 to false
+        )
+        for ((count, shouldAccept) in boundaryCounts) {
+            val notes = (1..count).map {
+                Note(id = it.toLong(), title = "n", content = "", timestamp = 1L, color = 0)
+            }
+            coEvery { repository.getAllNotesForBackup() } returns notes
+            coEvery { repository.getAllLabelsSnapshot() } returns emptyList()
+
+            if (shouldAccept) {
+                val json = kotlinx.coroutines.runBlocking { exporter.createJson() }
+                assertTrue(json.isNotEmpty())
+            } else {
+                val ex = org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+                    kotlinx.coroutines.runBlocking { exporter.createJson() }
+                }
+                assertTrue(ex.message!!.contains("maximum supported is 25000"))
+            }
+        }
+    }
 }
