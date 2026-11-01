@@ -201,7 +201,13 @@ object BackupBundleCodec {
                 }
             }
         }
-        return json.encodeToString(JsonObject.serializer(), manifest).toByteArray(Charsets.UTF_8)
+        val bytes = json.encodeToString(JsonObject.serializer(), manifest).toByteArray(Charsets.UTF_8)
+        if (bytes.size.toLong() > BackupBundleLimits.MAX_BUNDLE_MANIFEST_BYTES) {
+            throw BundleFormatException(
+                "Backup bundle manifest is too large (${bytes.size} bytes; max is ${BackupBundleLimits.MAX_BUNDLE_MANIFEST_BYTES})"
+            )
+        }
+        return bytes
     }
 
     /** Pass two: the manifest, then each image read again and checked against pass one. */

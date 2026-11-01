@@ -81,16 +81,21 @@ export async function buildBundleFromNotes(
   const document = exportBackupPayload(notes);
   const sources: BundleAttachmentSource[] = [];
   const warnings: string[] = [];
-  let skipped = 0;
+  let cloudOnly = 0;
+  let unreadable = 0;
 
   for (const note of notes) {
     for (const attachment of note.attachments) {
+      if (!isPendingAttachment(attachment.storagePath)) {
+        cloudOnly++;
+        continue;
+      }
       // eslint-disable-next-line no-await-in-loop -- reads go through IndexedDB one at a time
       const local = ownerId
         ? await readLocalAttachmentBytes(attachment, ownerId).catch(() => null)
         : null;
       if (!local) {
-        skipped++;
+        unreadable++;
         continue;
       }
       sources.push({
@@ -103,11 +108,17 @@ export async function buildBundleFromNotes(
     }
   }
 
-  if (skipped > 0) {
+  const skipped = cloudOnly + unreadable;
+  if (cloudOnly > 0) {
     warnings.push(
-      `${skipped} image${skipped === 1 ? ' was' : 's were'} not included because ${
-        skipped === 1 ? 'its bytes are' : 'their bytes are'
+      `${cloudOnly} image${cloudOnly === 1 ? ' was' : 's were'} not included because ${
+        cloudOnly === 1 ? 'its bytes are' : 'their bytes are'
       } only available in cloud storage on this device.`,
+    );
+  }
+  if (unreadable > 0) {
+    warnings.push(
+      `${unreadable} image${unreadable === 1 ? ' was' : 's were'} skipped because local storage could not be read.`,
     );
   }
 

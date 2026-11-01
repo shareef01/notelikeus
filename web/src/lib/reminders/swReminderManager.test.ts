@@ -296,4 +296,133 @@ describe('SwReminderManager Concurrency and Resilience', () => {
     await manager.catchUpThrottled();
     expect(catchUpSpy).toHaveBeenCalledTimes(2);
   });
+
+  it('discards stale callback when reminder is canceled while timeout is pending (Matrix I)', async () => {
+    let capturedCallback: (() => void) | null = null;
+    const customSetTimeout = vi.fn((cb: () => void) => {
+      capturedCallback = cb;
+      return 1234 as any;
+    });
+
+    const manager = createManager({
+      setTimeoutFn: customSetTimeout,
+    });
+
+    const reminder: SwReminder = {
+      noteId: '801',
+      title: 'Pending Cancel',
+      body: 'Will be canceled',
+      fireAt: currentTime + 500,
+    };
+
+    await manager.syncReminders([reminder]);
+    expect(manager.getActiveTimerNoteIds()).toContain('801');
+    expect(capturedCallback).toBeTypeOf('function');
+
+    // Step 2: Reminder is canceled (e.g., deleted or cleared in window)
+    await manager.syncReminders([]);
+    expect(manager.getActiveTimerNoteIds()).not.toContain('801');
+
+    // Step 3: The old callback in the JS macrotask queue executes anyway
+    currentTime += 600;
+    capturedCallback!();
+
+    // Give microtask/promise queue a moment to drain runExclusive
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // Step 4: No canceled notification is delivered
+    expect(firedNotifications).toHaveLength(0);
+    expect(storage.data).toEqual([]);
+  });
+
+  it('discards stale callback when reminder is rescheduled to a later timestamp (Matrix I)', async () => {
+    const callbacks: Array<() => void> = [];
+    const customSetTimeout = vi.fn((cb: () => void) => {
+      callbacks.push(cb);
+      return callbacks.length as any;
+    });
+
+    const manager = createManager({
+      setTimeoutFn: customSetTimeout,
+    });
+
+    const t1 = currentTime + 100;
+    const t2 = currentTime + 500;
+
+    // Schedule for T1
+    await manager.syncReminders([
+      { noteId: '802', title: 'Note 1', body: 'Body 1', fireAt: t1 },
+    ]);
+    expect(callbacks).toHaveLength(1);
+    const cb1 = callbacks[0];
+
+    // Reschedule same note to T2 (T2 > T1)
+    await manager.syncReminders([
+      { noteId: '802', title: 'Note 1', body: 'Body 1 (Updated)', fireAt: t2 },
+    ]);
+    expect(callbacks).toHaveLength(2);
+    const cb2 = callbacks[1];
+
+    // Simulate old timer cb1 firing after time advances past T1
+    currentTime = t1 + 10;
+    cb1();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // Must NOT deliver notification for stale cb1
+    expect(firedNotifications).toHaveLength(0);
+    expect(manager.getRemindersSnapshot()).toHaveLength(1);
+
+    // Now time advances to T2, cb2 fires
+    currentTime = t2 + 10;
+    cb2();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // Exactly 1 notification delivered (from cb2)
+    expect(firedNotifications).toHaveLength(1);
+    expect(firedNotifications[0].noteId).toBe('802');
+    expect(firedNotifications[0].body).toBe('You have a note reminder');
+  });
+
+  it('discards stale callback when newer sync replaces reminders (Matrix I)', async () => {
+    let oldCallback: (() => void) | null = null;
+    const customSetTimeout = vi.fn((cb: () => void) => {
+      if (!oldCallback) oldCallback = cb;
+      return 100 as any;
+    });
+
+    const manager = createManager({
+      setTimeoutFn: customSetTimeout,
+    });
+
+    await manager.syncReminders([
+      { noteId: '803', title: 'Old', body: 'Old Body', fireAt: currentTime + 50 },
+    ]);
+
+    // Newer sync arrives before timer fires, with completely different notes
+    await manager.syncReminders([
+      { noteId: '804', title: 'New', body: 'New Body', fireAt: currentTime + 1000 },
+    ]);
+
+    // Stale timer for 803 executes
+    currentTime += 60;
+    oldCallback!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(firedNotifications).toHaveLength(0);
+    expect(manager.getRemindersSnapshot().map((r) => r.noteId)).toEqual(['804']);
+  });
+
+  it('records persistence error in lastPersistenceError when storage save fails (Matrix J)', async () => {
+    storage.shouldFailSave = true;
+    const manager = createManager();
+
+    expect(manager.getLastPersistenceError()).toBeNull();
+
+    await manager.syncReminders([
+      { noteId: '805', title: 'Err', body: 'Body', fireAt: currentTime + 100 },
+    ]);
+
+    expect(manager.getLastPersistenceError()).toBeInstanceOf(Error);
+    expect(manager.getLastPersistenceError()?.message).toContain('Simulated QuotaExceededError');
+  });
 });

@@ -147,10 +147,25 @@ export async function buildBackupBundle(
     attachments: index,
   };
 
-  return writeZip([
-    { name: BUNDLE_MANIFEST_ENTRY, data: new TextEncoder().encode(JSON.stringify(manifest, null, 2)) },
+  const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
+  if (manifestBytes.byteLength > MAX_BUNDLE_MANIFEST_BYTES) {
+    throw new BundleFormatError(
+      `Backup bundle manifest is too large (${manifestBytes.byteLength} bytes; max is ${MAX_BUNDLE_MANIFEST_BYTES})`,
+    );
+  }
+
+  const archive = writeZip([
+    { name: BUNDLE_MANIFEST_ENTRY, data: manifestBytes },
     ...media,
   ]);
+
+  if (archive.byteLength > MAX_BUNDLE_FILE_BYTES) {
+    throw new BundleFormatError(
+      `Backup bundle is too large (${archive.byteLength} bytes; max is ${MAX_BUNDLE_FILE_BYTES})`,
+    );
+  }
+
+  return archive;
 }
 
 // ---- reading --------------------------------------------------------------

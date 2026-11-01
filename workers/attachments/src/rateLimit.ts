@@ -16,7 +16,24 @@ import type { RateLimiterBinding } from './auth';
 /** Cloudflare sets this on every proxied request; it is absent in local `wrangler dev` runs. */
 const CLIENT_IP_HEADER = 'CF-Connecting-IP';
 
-async function withinLimit(limiter: RateLimiterBinding | undefined, key: string): Promise<boolean> {
+/** Throttles warning logs to avoid flooding logs during binding failure or high-traffic incidents. */
+let lastLimiterWarnTime = 0;
+const LIMITER_WARN_THROTTLE_MS = 10_000;
+
+function logLimiterFailure(keyType: string, error: unknown): void {
+  const now = Date.now();
+  if (now - lastLimiterWarnTime >= LIMITER_WARN_THROTTLE_MS) {
+    lastLimiterWarnTime = now;
+    // Omit sensitive IP addresses and user UUIDs from warning logs
+    console.warn(`[Worker] Rate limiter failed open (${keyType}):`, error);
+  }
+}
+
+async function withinLimit(
+  limiter: RateLimiterBinding | undefined,
+  key: string,
+  keyType: 'client-ip' | 'user-id',
+): Promise<boolean> {
   if (!limiter) return true;
   try {
     const { success } = await limiter.limit({ key });
@@ -24,8 +41,8 @@ async function withinLimit(limiter: RateLimiterBinding | undefined, key: string)
   } catch (error) {
     // A limiter that cannot answer must not take the API down with it. Failing open is the
     // deliberate choice: throttling is a mitigation, and the authorization boundary is elsewhere.
-    // Logging the failure ensures operator visibility when rate limiting bindings are degraded.
-    console.warn(`[Worker] Rate limiter failed open for key '${key}':`, error);
+    // Logging is throttled and scrubbed of raw identifiers to prevent log flood and sensitive leakage.
+    logLimiterFailure(keyType, error);
     return true;
   }
 }
@@ -49,7 +66,7 @@ export async function rateLimitByClient(
 ): Promise<Response | null> {
   const clientIp = request.headers.get(CLIENT_IP_HEADER)?.trim();
   if (!limiter || !clientIp) return null;
-  return (await withinLimit(limiter, `ip:${clientIp}`)) ? null : tooManyRequests();
+  return (await withinLimit(limiter, `ip:${clientIp}`, 'client-ip')) ? null : tooManyRequests();
 }
 
 /** Post-authentication throttle, keyed by the authenticated user id. */
@@ -58,5 +75,5 @@ export async function rateLimitByUser(
   limiter: RateLimiterBinding | undefined,
 ): Promise<Response | null> {
   if (!limiter) return null;
-  return (await withinLimit(limiter, `user:${userId}`)) ? null : tooManyRequests();
+  return (await withinLimit(limiter, `user:${userId}`, 'user-id')) ? null : tooManyRequests();
 }

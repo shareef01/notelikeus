@@ -17,6 +17,34 @@ export interface SwReminderManagerOptions {
 /** setTimeout delays above ~24.8 days clamp in 32-bit signed ints; re-arm until fireAt is due. */
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
+/**
+ * Service Worker Reminder Manager
+ *
+ * NOTIFICATION DELIVERY MODEL:
+ *
+ * 1. Semantics: At-Most-Once Delivery, Best-Effort Wakeup.
+ *    - To prevent spamming users or resurrecting expired alarms, notifications operate with
+ *      strict at-most-once delivery semantics: reminders are deleted from memory and committed
+ *      to persistent storage BEFORE `showNotification` is called.
+ *    - If the worker is terminated or the notification call is rejected (e.g. revoked permissions
+ *      or closed browser), the reminder will NOT repeatedly re-fire on future wake-ups.
+ *
+ * 2. Platform Constraints (Browsers without Web Push):
+ *    - Browser service workers are killed by the browser within seconds of becoming idle,
+ *      destroying in-memory `setTimeout` handles.
+ *    - Because plain Web PWA background execution without Web Push cannot guarantee exact-moment
+ *      background wake-ups, reminders are persisted in CacheStorage and caught up on every worker
+ *      lifecycle event (activate, navigation fetch, window message).
+ *    - Exact scheduled alarm delivery is not claimed where browser platform limits prevent it;
+ *      Android AlarmManager paths provide exact delivery, while Web PWA provides best-effort delivery.
+ *
+ * 3. Concurrency and Race Safety:
+ *    - All state mutations (`syncReminders`, `catchUpReminders`, and `handleTimerFired`) are serialized
+ *      through an asynchronous FIFO queue (`runExclusive`) to prevent lost-update races.
+ *    - Every timer is tagged with a unique generational token (`timerTokens`). Queued timeout callbacks
+ *      verify that their token matches the active token for that note ID before mutating state or
+ *      firing notifications, completely eliminating stale-callback races from canceled or rescheduled reminders.
+ */
 export class SwReminderManager {
   private readonly storage: SwReminderStorage;
   private readonly fireNotification: (reminder: SwReminder) => Promise<void>;
@@ -27,9 +55,13 @@ export class SwReminderManager {
 
   private reminders = new Map<string, SwReminder>();
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private timerTokens = new Map<string, number>();
+  private nextTimerToken = 1;
+
   private initialized = false;
   private lastCatchUp = 0;
   private queue: Promise<void> = Promise.resolve();
+  public lastPersistenceError: Error | null = null;
 
   constructor(options: SwReminderManagerOptions) {
     this.storage = options.storage;
@@ -81,6 +113,7 @@ export class SwReminderManager {
       this.clearTimeoutFn(timerId);
       this.timers.delete(noteId);
     }
+    this.timerTokens.delete(noteId);
   }
 
   private armTimer(reminder: SwReminder): void {
@@ -88,8 +121,11 @@ export class SwReminderManager {
     const delay = reminder.fireAt - this.now();
     if (delay <= 0) return;
 
+    const token = this.nextTimerToken++;
+    this.timerTokens.set(reminder.noteId, token);
+
     const timerId = this.setTimeoutFn(() => {
-      void this.handleTimerFired(reminder.noteId);
+      void this.handleTimerFired(reminder.noteId, token, reminder.fireAt);
     }, Math.min(delay, MAX_TIMER_DELAY_MS));
 
     this.timers.set(reminder.noteId, timerId);
@@ -98,27 +134,48 @@ export class SwReminderManager {
   private async persistCurrentState(): Promise<void> {
     const list = Array.from(this.reminders.values());
     try {
+      this.lastPersistenceError = null;
       await this.storage.save(list);
     } catch (error) {
-      console.warn('[SwReminderManager] Failed to persist reminders:', error);
+      this.lastPersistenceError = error instanceof Error ? error : new Error(String(error));
+      console.warn('[SwReminderManager] Failed to persist reminders to storage:', error);
     }
   }
 
-  private async handleTimerFired(noteId: string): Promise<void> {
+  /**
+   * Invoked when a timer fires. Validates that the callback's generational token and scheduled
+   * timestamp match active state before taking action, discarding stale or canceled callbacks.
+   */
+  public async handleTimerFired(noteId: string, token?: number, expectedFireAt?: number): Promise<void> {
     return this.runExclusive(async () => {
       await this.ensureInitialized();
-      this.cancelTimer(noteId);
+
+      const activeToken = this.timerTokens.get(noteId);
+      // Guard 1: Verify this callback matches the current timer token for this note
+      if (token !== undefined) {
+        if (activeToken !== token) {
+          return; // Stale or canceled callback; discard
+        }
+      } else if (activeToken === undefined) {
+        return; // No active timer for this note
+      }
+
+      // Guard 2: Verify the reminder in memory matches the expected timestamp
       const reminder = this.reminders.get(noteId);
-      if (!reminder) return;
+      if (!reminder || (expectedFireAt !== undefined && reminder.fireAt !== expectedFireAt)) {
+        return; // Rescheduled or deleted; discard
+      }
+
+      this.cancelTimer(noteId);
 
       const currentTime = this.now();
       if (reminder.fireAt > currentTime) {
-        // Delay was clamped; re-arm until it is actually due
+        // Delay was clamped (> 24.8 days); re-arm until it is actually due
         this.armTimer(reminder);
         return;
       }
 
-      // Remove from state and commit to storage before firing to prevent duplicate delivery
+      // At-most-once delivery: remove and commit to storage BEFORE dispatching notification
       this.reminders.delete(noteId);
       await this.persistCurrentState();
 
@@ -227,6 +284,15 @@ export class SwReminderManager {
   /** Returns currently active timer noteIds for inspection / testing. */
   public getActiveTimerNoteIds(): string[] {
     return Array.from(this.timers.keys());
+  }
+
+  /** Returns the active token for a note's timer (for testing). */
+  public getActiveTimerToken(noteId: string): number | undefined {
+    return this.timerTokens.get(noteId);
+  }
+
+  public getLastPersistenceError(): Error | null {
+    return this.lastPersistenceError;
   }
 
   /** Tears down all active timers and clears state. */
