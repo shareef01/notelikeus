@@ -345,3 +345,46 @@ describe('listZipCentralDirectory / extractZipEntry', () => {
     inflateSpy.mockRestore();
   });
 });
+
+describe('writeZip memory and format (AUD-002)', () => {
+  // Digest of what the original number[] writer produced for this input. A rewrite of the writer
+  // must keep producing the same bytes, so archives stay comparable and every reader keeps working.
+  it('produces exactly the bytes the previous writer did', async () => {
+    const { createHash } = await import('node:crypto');
+    const media = new Uint8Array(256 * 1000);
+    for (let index = 0; index < media.length; index++) media[index] = index & 0xff;
+    const archive = writeZip([
+      { name: 'manifest.json', data: bytes('{"formatVersion":4}') },
+      { name: 'media/att-1', data: media },
+      { name: 'media/ü', data: new Uint8Array(0) },
+    ]);
+
+    expect(archive.byteLength).toBe(256333);
+    expect(createHash('sha256').update(archive).digest('hex')).toBe(
+      '6868e20f0fe41963b459c10b2f896a44aea56ed35310ed85e4556527022c6f1f',
+    );
+  });
+
+  // 200 MiB of photo-sized entries: the old writer threw `RangeError: Invalid array length` from
+  // about 120 MiB, and used roughly fifteen times its input in heap before that.
+  it('writes and reads back a 200 MiB archive without growing the JS heap', async () => {
+    const photo = 3 * 1024 * 1024;
+    const entries = [{ name: 'manifest.json', data: bytes('{}') }];
+    for (let index = 0; index * photo < 200 * 1024 * 1024; index++) {
+      entries.push({ name: `media/att-${index}`, data: new Uint8Array(photo).fill(index & 0xff) });
+    }
+    const heapBefore = process.memoryUsage().heapUsed;
+
+    const archive = writeZip(entries);
+
+    // The archive lives in an ArrayBuffer, outside the JS heap; the old writer's number[] did not.
+    expect(process.memoryUsage().heapUsed - heapBefore).toBeLessThan(64 * 1024 * 1024);
+    const directory = listZipCentralDirectory(archive);
+    expect(directory.map((entry) => entry.name)).toEqual(entries.map((entry) => entry.name));
+    const last = entries[entries.length - 1]!;
+    const { data: read } = await extractZipEntry(archive, directory[directory.length - 1]!);
+    expect(read.byteLength).toBe(last.data.byteLength);
+    expect(read[0]).toBe(last.data[0]);
+    expect(directory[directory.length - 1]!.crc).toBe(crc32(last.data));
+  }, 60_000);
+});
