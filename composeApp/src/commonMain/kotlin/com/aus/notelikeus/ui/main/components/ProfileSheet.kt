@@ -329,49 +329,13 @@ fun ProfileSheet(
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(Res.string.section_account))
-            if (cloudAccount.isSignedIn && !cloudAccount.email.isNullOrBlank()) {
-                SettingsRow(
-                    icon = Icons.Default.AccountCircle,
-                    title = cloudAccount.email,
-                    subtitle = stringResource(Res.string.cloud_signed_in_as)
-                )
-                SettingsRow(
-                    icon = Icons.AutoMirrored.Filled.Logout,
-                    title = stringResource(Res.string.cloud_sign_out),
-                    subtitle = stringResource(Res.string.cloud_sign_out_subtitle),
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onSignOutClick()
-                    }
-                )
-                SettingsRow(
-                    icon = Icons.Default.DeleteForever,
-                    title = stringResource(Res.string.account_delete),
-                    subtitle = stringResource(Res.string.account_delete_subtitle),
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onDeleteAccountClick()
-                    }
-                )
-            } else {
-                SettingsRow(
-                    icon = Icons.AutoMirrored.Filled.Login,
-                    title = stringResource(Res.string.cloud_sign_in),
-                    subtitle = stringResource(Res.string.cloud_sign_in_subtitle),
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                        onSignInClick()
-                    }
-                )
-            }
-            if (!signInError.isNullOrBlank()) {
-                Text(
-                    text = signInError,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 68.dp)
-                )
-            }
+            AccountRows(
+                cloudAccount = cloudAccount,
+                signInError = signInError,
+                onSignInClick = onSignInClick,
+                onSignOutClick = onSignOutClick,
+                onDeleteAccountClick = onDeleteAccountClick,
+            )
 
             SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(Res.string.section_about))
@@ -582,5 +546,59 @@ private fun cloudStatusLabel(
         CloudSyncStatus.Syncing -> stringResource(Res.string.cloud_status_syncing)
         CloudSyncStatus.Synced -> syncedCount.toString()
         CloudSyncStatus.Error -> stringResource(Res.string.cloud_status_error)
+    }
+}
+
+@Composable
+private fun AccountRows(
+    cloudAccount: CloudAccount,
+    signInError: String?,
+    onSignInClick: () -> Unit,
+    onSignOutClick: () -> Unit,
+    onDeleteAccountClick: () -> Unit,
+) {
+    val haptic = LocalHapticFeedback.current
+    if (cloudAccount.isSignedIn && !cloudAccount.email.isNullOrBlank()) {
+        SettingsRow(
+            icon = Icons.Default.AccountCircle,
+            title = cloudAccount.email,
+            subtitle = stringResource(Res.string.cloud_signed_in_as)
+        )
+        SettingsRow(
+            icon = Icons.AutoMirrored.Filled.Logout,
+            title = stringResource(Res.string.cloud_sign_out),
+            subtitle = stringResource(Res.string.cloud_sign_out_subtitle),
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                onSignOutClick()
+            }
+        )
+        SettingsRow(
+            icon = Icons.Default.DeleteForever,
+            title = stringResource(Res.string.account_delete),
+            subtitle = stringResource(Res.string.account_delete_subtitle),
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                onDeleteAccountClick()
+            }
+        )
+    } else {
+        SettingsRow(
+            icon = Icons.AutoMirrored.Filled.Login,
+            title = stringResource(Res.string.cloud_sign_in),
+            subtitle = stringResource(Res.string.cloud_sign_in_subtitle),
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                onSignInClick()
+            }
+        )
+    }
+    if (!signInError.isNullOrBlank()) {
+        Text(
+            text = signInError,
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(horizontal = 68.dp)
+        )
     }
 }

@@ -28,6 +28,6 @@ class WorkerAccountDeletionTransport(
 /** A build with no attachments Worker has nothing that holds the key to delete an auth user. */
 object UnavailableAccountDeletionTransport : AccountDeletionTransport {
     override suspend fun deleteAccount() {
-        throw IllegalStateException("Account deletion is not available in this build.")
+        error("Account deletion is not available in this build.")
     }
 }
