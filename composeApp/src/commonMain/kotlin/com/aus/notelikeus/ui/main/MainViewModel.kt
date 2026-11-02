@@ -136,6 +136,8 @@ class MainViewModel(
     fun signOutFromCloud(deleteCloudData: Boolean = false) =
         cloudSync.signOutFromCloud(deleteCloudData)
 
+    fun deleteAccount() = cloudSync.deleteAccount()
+
     fun syncNotesToCloud() = cloudSync.syncNotesToCloud()
 
     fun downloadNotesFromCloud() = cloudSync.downloadNotesFromCloud()

@@ -33,6 +33,7 @@ interface AccountActionsDeps {
   notes: Note[];
   userId: string | undefined;
   closeSignOutConfirm: () => void;
+  closeDeleteAccountConfirm: () => void;
   closeProfile: () => void;
 }
 
@@ -60,6 +61,7 @@ export function useAccountActions({
   notes,
   userId,
   closeSignOutConfirm,
+  closeDeleteAccountConfirm,
   closeProfile,
 }: AccountActionsDeps) {
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
@@ -74,6 +76,22 @@ export function useAccountActions({
       toast(deleteCloudData ? 'Signed out and cloud data deleted' : 'Signed out');
     } catch (error) {
       toast(messageOf(error, 'Sign out failed'), 'error');
+    }
+  };
+
+  /**
+   * Leaves the dialog open on failure, with the toast saying why: nothing was deleted, and the user
+   * should be able to try again without typing the confirmation a second time.
+   */
+  const deleteAccount = async () => {
+    try {
+      const { deleteAccount: deleteAccountAndLocalCopy } = await import('@/lib/auth/accountAuth');
+      await deleteAccountAndLocalCopy();
+      closeDeleteAccountConfirm();
+      closeProfile();
+      toast('Your account was deleted');
+    } catch (error) {
+      toast(messageOf(error, 'Could not delete your account. Nothing was deleted.'), 'error');
     }
   };
 
@@ -220,6 +238,7 @@ export function useAccountActions({
 
   return {
     signOut,
+    deleteAccount,
     exportBackup,
     exportCompleteBackup,
     prepareImport,

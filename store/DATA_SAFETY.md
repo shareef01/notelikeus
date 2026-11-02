@@ -12,7 +12,7 @@ Cloudflare R2 behind an authenticated Worker; there is no Firebase or Firestore 
 |----------|--------|
 | Does your app collect or share any of the required user data types? | **Yes** — account email address and note content synced to Supabase |
 | Is all user data encrypted in transit? | **Yes** (TLS to Supabase and to the Cloudflare attachments Worker) |
-| Do you provide a way for users to request data deletion? | **Yes** — delete notes in-app, “Sign out and delete cloud data”, or uninstall |
+| Do you provide a way for users to request data deletion? | **Yes** — Settings → Delete account removes the account and all its data; also delete notes in-app, “Sign out and delete cloud data”, or uninstall |
 
 ## Sign-in and sync
 
@@ -44,7 +44,7 @@ Attachments are a build-time capability: they exist only when the build is confi
 |----------|--------|
 | Data encrypted at rest on device | **Yes** — notes DB via SQLCipher (Keystore-wrapped passphrase); attachment image files and pending staging via AES-GCM under a dedicated Keystore alias |
 | Data encrypted in transit | **Yes** (HTTPS/TLS to Supabase and the attachments Worker) |
-| Users can request data deletion | **Yes** (delete notes / sign out and delete cloud data / uninstall) |
+| Users can request data deletion | **Yes** (Settings → Delete account / delete notes / sign out and delete cloud data / uninstall) |
 
 Cloud notes are **not end-to-end encrypted**; they are protected by TLS, Supabase Auth, row-level
 security, authorized RPCs, and the Worker's bearer-token check for attachment bytes. State this the

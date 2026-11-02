@@ -124,6 +124,7 @@ data class MainState(
     val cloudAccount: CloudAccount = CloudAccount(),
     val isCloudAutoSyncEnabled: Boolean = true,
     val isSigningIn: Boolean = false,
+    val isDeletingAccount: Boolean = false,
     /**
      * The address a sign-in code was emailed to, or null before one is sent. Non-null moves the
      * sign-in gate to its second step, where the code is typed in.

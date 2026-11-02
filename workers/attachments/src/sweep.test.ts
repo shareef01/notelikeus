@@ -82,6 +82,9 @@ function mockRpcs(handlers: {
           status: handlers.listStatus ?? 200,
         });
       }
+      if (url.includes('list_pending_account_deletions')) {
+        return new Response('[]', { status: 200 });
+      }
       if (url.includes('find_unreferenced_attachment_objects')) {
         const keys = (body.p_object_keys ?? []) as string[];
         return new Response(JSON.stringify(handlers.unreferenced?.(keys) ?? []), { status: 200 });

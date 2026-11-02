@@ -117,6 +117,7 @@ fun MainScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showEmptyTrashConfirm by remember { mutableStateOf(false) }
     var showCloudSignOutConfirm by remember { mutableStateOf(false) }
+    var showDeleteAccountConfirm by remember { mutableStateOf(false) }
     var showCloudRestoreConfirm by remember { mutableStateOf(false) }
     var profileSignInError by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -237,6 +238,19 @@ fun MainScreen(
                             Res.string.cloud_sign_out_deleted_success
                         } else {
                             Res.string.cloud_sign_out_success
+                        }
+                    )
+                )
+            }
+            is CloudSyncEvent.AccountDeleted -> {
+                showDeleteAccountConfirm = false
+                showProfileSheet = false
+                snackbarHostState.showSnackbar(
+                    getString(
+                        if (event.elsewhere) {
+                            Res.string.account_deleted_elsewhere
+                        } else {
+                            Res.string.account_deleted_success
                         }
                     )
                 )
@@ -636,6 +650,9 @@ fun MainScreen(
             onSignOutClick = {
                 showCloudSignOutConfirm = true
             },
+            onDeleteAccountClick = {
+                showDeleteAccountConfirm = true
+            },
             onCloudAutoSyncChange = { viewModel.setCloudAutoSyncEnabled(it) },
             onDiagnosticsClick = {
                 showProfileSheet = false
@@ -663,6 +680,15 @@ fun MainScreen(
                 scope.launch { snackbarHostState.showSnackbar(diagnosticsCopiedMsg) }
             },
             onDismiss = { viewModel.closeDiagnostics() }
+        )
+    }
+
+    if (showDeleteAccountConfirm) {
+        DeleteAccountDialog(
+            isDeleting = state.isDeletingAccount,
+            onExportBackup = onExportBackup,
+            onConfirm = { viewModel.deleteAccount() },
+            onDismiss = { showDeleteAccountConfirm = false },
         )
     }
 

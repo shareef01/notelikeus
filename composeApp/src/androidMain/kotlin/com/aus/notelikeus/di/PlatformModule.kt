@@ -43,7 +43,10 @@ import java.io.File
 import okio.Path.Companion.toPath
 import com.aus.notelikeus.data.remote.AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.NoopAttachmentBlobTransport
+import com.aus.notelikeus.data.remote.AccountDeletionTransport
 import com.aus.notelikeus.data.remote.R2AttachmentBlobTransport
+import com.aus.notelikeus.data.remote.UnavailableAccountDeletionTransport
+import com.aus.notelikeus.data.remote.WorkerAccountDeletionTransport
 import com.aus.notelikeus.data.remote.SupabaseAttachmentMetadata
 import com.aus.notelikeus.data.migration.AccountUidBridge
 import com.aus.notelikeus.data.sync.DatasetEpochAuthority
@@ -148,6 +151,13 @@ actual val platformModule = module {
         AttachmentAtRestMigrator.migrateAttachmentsRoot(attachmentsDir, protector)
         AttachmentAtRestMigrator.migratePendingStagingRoot(stagingRoot, protector)
         AndroidAttachmentLocalStorage(context, protector)
+    }
+    single<AccountDeletionTransport> {
+        if (BackendConfig.attachmentsWorkerUrl.isNotEmpty()) {
+            WorkerAccountDeletionTransport(BackendConfig.attachmentsWorkerUrl, get())
+        } else {
+            UnavailableAccountDeletionTransport
+        }
     }
     single<AttachmentBlobTransport> {
         if (BackendConfig.attachmentsWorkerUrl.isNotEmpty()) {
@@ -308,7 +318,7 @@ actual val platformModule = module {
         )
     }
 
-    single<SyncManager> { AndroidSyncManager(get(), get(), get(), get()) }
+    single<SyncManager> { AndroidSyncManager(get(), get(), get(), get(), get()) }
     single<com.aus.notelikeus.domain.platform.NetworkMonitor> {
         com.aus.notelikeus.platform.AndroidNetworkMonitor(get())
     }

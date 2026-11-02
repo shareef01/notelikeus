@@ -133,6 +133,7 @@ interface ProfileSheetProps {
   onSignIn: () => void;
   onSignUp: () => void;
   onSignOut: () => void;
+  onDeleteAccount: () => void;
 }
 
 export function ProfileSheet({
@@ -159,6 +160,7 @@ export function ProfileSheet({
   onSignIn,
   onSignUp,
   onSignOut,
+  onDeleteAccount,
 }: ProfileSheetProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
   useBodyScrollLock(open);
@@ -214,6 +216,13 @@ export function ProfileSheet({
                     subtitle="Stop syncing notes on this browser"
                     onClick={onSignOut}
                     icon={<LogoutIcon size={18} />}
+                    destructive
+                  />
+                  <SettingsRow
+                    title="Delete account"
+                    subtitle="Permanently remove your account and notes"
+                    onClick={onDeleteAccount}
+                    icon={<AccountIcon size={18} />}
                     destructive
                   />
                 </>

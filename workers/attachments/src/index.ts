@@ -1,6 +1,11 @@
 import { resolveAuthenticatedUserId, UpstreamServiceError, type WorkerEnv } from './auth';
 import { ATTACHMENT_ALLOWED_METHODS, withAttachmentCors } from './cors';
 import {
+  accountDeletionAvailable,
+  finishAccountDeletion,
+  sweepPendingAccountDeletions,
+} from './accountDeletion';
+import {
   claimOrphanedProvisionalAttachments,
   reportUnreferencedAttachmentObjects,
   sweepOrphanedDeletedAttachments,
@@ -20,6 +25,7 @@ import { rateLimitByClient, rateLimitByUser } from './rateLimit';
 export type { WorkerEnv };
 
 const SUPPORTED_METHODS = new Set(['GET', 'PUT', 'DELETE']);
+const ACCOUNT_PATH = '/v1/account';
 
 /**
  * Request pipeline, cheapest first.
@@ -38,6 +44,10 @@ export async function handleAttachmentRequest(
 ): Promise<Response> {
   try {
     const url = new URL(request.url);
+    if (url.pathname === ACCOUNT_PATH) {
+      return await deleteAccount(request, env);
+    }
+
     const parsed = parseAttachmentPath(url.pathname);
     if (!parsed) {
       return new Response('Not Found', { status: 404 });
@@ -117,6 +127,8 @@ interface AttachmentAuthz {
   confirmed?: boolean;
   /** Why a refusal was refused. `terminally_deleted` is authoritative — see putAttachment. */
   reason?: string;
+  /** `request_account_deletion`'s answer. */
+  status?: string;
 }
 
 /**
@@ -453,6 +465,48 @@ async function deleteAttachment(
   return Response.json({ deleted: true, objectKey, confirmed });
 }
 
+/**
+ * Deletes the caller's account: `DELETE /v1/account`.
+ *
+ * Refuses before anything is destroyed if this deployment could not finish the job. Once the database
+ * has accepted the request the answer is a success whatever happens next, 200 when the auth user is
+ * already gone and 202 when the cron sweep will finish: the notes are gone and the user cannot do
+ * anything further, so reporting a failure here would be the false answer.
+ *
+ * See `supabase/migrations/20261102010000_account_deletion.sql` for the protocol.
+ */
+async function deleteAccount(request: Request, env: WorkerEnv): Promise<Response> {
+  if (request.method !== 'DELETE') {
+    return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'DELETE, OPTIONS' } });
+  }
+  const throttledClient = await rateLimitByClient(request, env.ATTACHMENT_RATE_LIMITER);
+  if (throttledClient) return throttledClient;
+
+  const userId = await resolveAuthenticatedUserId(request, env);
+  if (!userId) return new Response('Unauthorized', { status: 401 });
+
+  const throttledUser = await rateLimitByUser(userId, env.ATTACHMENT_RATE_LIMITER);
+  if (throttledUser) return throttledUser;
+
+  if (!accountDeletionAvailable(env)) {
+    console.error('[Worker] Account deletion needs SUPABASE_SERVICE_ROLE_KEY');
+    return new Response('Account deletion is not available', { status: 503 });
+  }
+
+  const accepted = await authorizeAttachment(request, env, 'request_account_deletion', {});
+  if (!accepted) return new Response('Unauthorized', { status: 401 });
+  if (accepted.status !== 'accepted') return new Response('Forbidden', { status: 403 });
+
+  try {
+    if (await finishAccountDeletion(env, userId)) {
+      return Response.json({ status: 'deleted' });
+    }
+  } catch {
+    console.error('[Worker] Account deletion left for the sweep');
+  }
+  return Response.json({ status: 'pending' }, { status: 202 });
+}
+
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     if (request.method === 'OPTIONS') {
@@ -481,6 +535,7 @@ export default {
           sweepUnconfirmedAttachmentDeletes(env),
           claimOrphanedProvisionalAttachments(env),
           reportUnreferencedAttachmentObjects(env),
+          sweepPendingAccountDeletions(env),
         ]);
         const failed = results.find((result) => result.status === 'rejected');
         if (failed) throw (failed as PromiseRejectedResult).reason;
