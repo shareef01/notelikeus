@@ -21,6 +21,9 @@ object BackupDocumentIo {
     /** Matches `NoteBackupImporter.MAX_BACKUP_BYTES`. */
     const val MAX_BACKUP_DOCUMENT_BYTES = 25L * 1024 * 1024
 
+    /** Matches NoteBackupImporter.MAX_BACKUP_CHARS; kept for backwards compatibility. */
+    const val MAX_BACKUP_DOCUMENT_CHARS = 25 * 1024 * 1024
+
     /** Matches `BackupBundleLimits.MAX_BUNDLE_FILE_BYTES`. */
     const val MAX_BUNDLE_DOCUMENT_BYTES = 256L * 1024 * 1024
 

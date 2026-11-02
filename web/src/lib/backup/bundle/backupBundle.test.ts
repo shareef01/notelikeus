@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   BUNDLE_FORMAT_VERSION,
+  MAX_BUNDLE_FILE_BYTES,
   BundleFormatError,
   buildBackupBundle,
   mediaEntryName,
@@ -10,6 +11,7 @@ import {
 } from '@/lib/backup/bundle/backupBundle';
 import {
   applyBundle,
+  readBundleFile,
   buildBundleFromNotes,
   bundleFileName,
   planBundleImport,
@@ -203,6 +205,31 @@ describe('bundle parsing refuses what it cannot trust', () => {
     ]);
     // Future format version fails on the manifest; media must not be required to reach that error.
     await expect(parseBackupBundle(archive)).rejects.toThrow(/Unsupported bundle version/);
+  });
+  it('parses valid 40 MiB bundle containing multiple attachments within per-attachment limits', { timeout: 30_000 }, async () => {
+    const document = exportBackupPayload([note('1')], 1);
+    const eightMb = 8 * 1024 * 1024;
+    const dummyBytes = new Uint8Array(eightMb);
+    const attachments = Array.from({ length: 5 }, (_, i) => ({
+      noteId: 1,
+      attachmentId: `att-${i}`,
+      type: 'image' as const,
+      mimeType: 'image/jpeg',
+      bytes: dummyBytes,
+    }));
+    const archive = await buildBackupBundle(document, attachments);
+    expect(archive.byteLength).toBeGreaterThanOrEqual(40 * 1024 * 1024);
+    const parsed = await parseBackupBundle(archive);
+    expect(parsed.manifest.formatVersion).toBe(4);
+    expect(parsed.media.size).toBe(5);
+  });
+
+  it('readBundleFile rejects bundle exceeding 256 MiB boundary', async () => {
+    const fakeOversizedFile = {
+      size: MAX_BUNDLE_FILE_BYTES + 1,
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as unknown as File;
+    await expect(readBundleFile(fakeOversizedFile)).rejects.toThrow(/Backup bundle is too large/);
   });
 });
 

@@ -1,5 +1,6 @@
 package com.aus.notelikeus.data.backup.bundle
 
+import com.aus.notelikeus.data.backup.NoteBackupImporter
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
@@ -86,6 +87,48 @@ class BackupFileReadsTest {
 
         val oneByteOver = "a".repeat(50_001)
         assertNull(BackupFileReads.readTextWithin(ByteArrayInputStream(oneByteOver.toByteArray()), 50_000L))
+    }
+
+
+    @Test
+    fun `copyWithin handles 40 MiB bundle stream cleanly without 25 MiB restriction`() {
+        val fortyMb = 40L * 1024 * 1024
+        val stream = FiniteByteStream(fortyMb)
+        val copied = BackupFileReads.copyWithin(stream, target, maxBytes = BackupBundleLimits.MAX_BUNDLE_FILE_BYTES)
+        assertTrue(copied, "40 MiB bundle stream must copy cleanly under 256 MiB limit")
+        assertEquals(fortyMb, target.length())
+    }
+
+    @Test
+    fun `readTextWithin accepts 25_500_000 ASCII chars within 25 MiB limit`() {
+        val totalBytes = 25_500_000L
+        val stream = FiniteByteStream(totalBytes, fillByte = 'a'.code.toByte())
+        val text = BackupFileReads.readTextWithin(stream, NoteBackupImporter.MAX_BACKUP_BYTES)
+        assertEquals(totalBytes.toInt(), text?.length)
+    }
+
+    @Test
+    fun `readTextWithin rejects stream one byte over 25 MiB limit`() {
+        val totalBytes = NoteBackupImporter.MAX_BACKUP_BYTES + 1L
+        val stream = FiniteByteStream(totalBytes, fillByte = 'a'.code.toByte())
+        val text = BackupFileReads.readTextWithin(stream, NoteBackupImporter.MAX_BACKUP_BYTES)
+        assertNull(text)
+    }
+
+    private class FiniteByteStream(private val total: Long, private val fillByte: Byte = 0) : InputStream() {
+        private var served = 0L
+        override fun read(): Int {
+            if (served >= total) return -1
+            served++
+            return fillByte.toInt() and 0xFF
+        }
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            if (served >= total) return -1
+            val toRead = minOf(len.toLong(), total - served).toInt()
+            b.fill(fillByte, off, off + toRead)
+            served += toRead
+            return toRead
+        }
     }
 
     /** A stream that never ends, counting what it hands out. Starts with [prefix]. */

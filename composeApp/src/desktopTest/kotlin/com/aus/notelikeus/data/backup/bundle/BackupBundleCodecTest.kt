@@ -2,6 +2,7 @@ package com.aus.notelikeus.data.backup.bundle
 
 import com.aus.notelikeus.data.backup.BackupBundleManifest
 import com.aus.notelikeus.contract.ContractFixtures
+import java.io.File
 import java.io.ByteArrayOutputStream
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
@@ -199,6 +200,91 @@ class BackupBundleCodecTest {
         assertTrue(parsed.warnings.any { it.contains("missing") })
         assertEquals("Hello", parsed.manifest.backup["notes"]!!.jsonArray[0]
             .jsonObject["title"]!!.jsonPrimitive.contentOrNull)
+    }
+
+
+    @Test
+    fun `valid 40 MiB bundle with attachments opens cleanly`() {
+        val target = File.createTempFile("bundle-40mb", BackupBundleLimits.BUNDLE_FILE_EXTENSION)
+        try {
+            writeLargeBundle(target, notes = 5, imageBytes = 8 * 1024 * 1024)
+            assertTrue(target.length() >= 40L * 1024 * 1024, "bundle size should be at least 40 MiB")
+            val bundle = BackupBundleCodec.openBackupBundle(target)
+            bundle.use {
+                assertEquals(4, it.manifest.formatVersion)
+                assertEquals(5, it.manifest.attachments.size)
+                assertEquals(0, it.droppedAttachments)
+            }
+        } finally {
+            target.delete()
+        }
+    }
+
+    @Test
+    fun `bundle exceeding 256 MiB archive boundary is rejected`() {
+        val target = File.createTempFile("oversized-bundle", ".nlkbak")
+        try {
+            val raf = java.io.RandomAccessFile(target, "rw")
+            raf.setLength(BackupBundleLimits.MAX_BUNDLE_FILE_BYTES + 1L)
+            raf.close()
+            assertFailsWith<BundleFormatException> {
+                BackupBundleCodec.openBackupBundle(target)
+            }
+        } finally {
+            target.delete()
+        }
+    }
+
+    @Test
+    fun `oversized manifest inside valid zip is rejected`() {
+        val hugeManifest = "x".repeat((BackupBundleLimits.MAX_BUNDLE_MANIFEST_BYTES + 1).toInt())
+        val custom = writeRawBundle(hugeManifest)
+        val file = File.createTempFile("oversized-manifest", ".nlkbak")
+        try {
+            file.writeBytes(custom)
+            assertFailsWith<BundleFormatException> {
+                BackupBundleCodec.openBackupBundle(file)
+            }
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `truncated and malformed zip is rejected`() {
+        val malformedBytes = byteArrayOf(0x50, 0x4B, 0x03, 0x04, 1, 2, 3, 4, 5)
+        assertFailsWith<BundleFormatException> {
+            BackupBundleCodec.parseBackupBundle(malformedBytes)
+        }
+    }
+
+    @Test
+    fun `archive decompression limit violation is rejected`() {
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zos ->
+            val manifestBytes = Json.encodeToString(JsonObject.serializer(), backupDocument).toByteArray()
+            val mEntry = ZipEntry(BackupBundleLimits.BUNDLE_MANIFEST_ENTRY)
+            zos.putNextEntry(mEntry)
+            zos.write(manifestBytes)
+            zos.closeEntry()
+
+            for (i in 0..16) {
+                val entry = ZipEntry("media/att-$i")
+                entry.size = 32L * 1024 * 1024
+                zos.putNextEntry(entry)
+                zos.write(ByteArray(10))
+                zos.closeEntry()
+            }
+        }
+        val file = File.createTempFile("zip-bomb-test", ".nlkbak")
+        try {
+            file.writeBytes(out.toByteArray())
+            assertFailsWith<BundleFormatException> {
+                BackupBundleCodec.openBackupBundle(file)
+            }
+        } finally {
+            file.delete()
+        }
     }
 
     private fun writeRawBundle(

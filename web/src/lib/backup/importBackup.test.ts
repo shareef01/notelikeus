@@ -247,6 +247,17 @@ describe('importNotesFromBackup', () => {
       expect((parsed as any).version).toBe(BACKUP_VERSION);
     });
 
+    it('readBackupFile accepts ASCII file with 25_500_000 characters within 25 MiB limit', async () => {
+      // 25,500,000 ASCII characters is > 25,000,000 chars, but < 26,214,400 bytes (25 MiB)
+      const file25_5M = {
+        size: 25_500_000,
+        text: async () => JSON.stringify({ version: BACKUP_VERSION, notes: [] }),
+      } as unknown as File;
+
+      const parsed = await readBackupFile(file25_5M);
+      expect((parsed as any).version).toBe(BACKUP_VERSION);
+    });
+
     it('readBackupFile rejects file at 25 MiB + 1 byte', async () => {
       const overFile = {
         size: MAX_BACKUP_FILE_BYTES + 1,

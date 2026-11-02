@@ -257,6 +257,45 @@ class NoteBackupImporterTest {
         assertTrue("expected InvalidFormat for emoji oversized payload, got $result", result is BackupImportResult.InvalidFormat)
     }
 
+
+    @Test
+    fun `ASCII JSON exceeding 25_000_000 characters but below 25 MiB is accepted`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+
+        val prefix = """{"version":1,"notes":[{"title":"test","content":""""
+        val suffix = """","timestamp":1,"color":-1}]}"""
+        val paddingLength = 25_500_000 - prefix.length - suffix.length
+        val json = prefix + "a".repeat(paddingLength) + suffix
+        assertEquals(25_500_000, json.length)
+
+        val result = importer.importFromJson(json, actionToken())
+        assertTrue(result is BackupImportResult.Success)
+        assertEquals(1, (result as BackupImportResult.Success).notesImported)
+    }
+
+    @Test
+    fun `JSON exactly at 25 MiB boundary is accepted and 25 MiB plus 1 byte is rejected`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+
+        val maxBytes = NoteBackupImporter.MAX_BACKUP_BYTES.toInt()
+        val prefix = """{"version":1,"notes":[{"title":"test","content":""""
+        val suffix = """","timestamp":1,"color":-1}]}"""
+
+        val atLimitJson = prefix + "a".repeat(maxBytes - prefix.length - suffix.length) + suffix
+        assertEquals(maxBytes, atLimitJson.length)
+        val resultAtLimit = importer.importFromJson(atLimitJson, actionToken())
+        assertTrue(resultAtLimit is BackupImportResult.Success)
+        assertEquals(1, (resultAtLimit as BackupImportResult.Success).notesImported)
+
+        val overLimitJson = prefix + "a".repeat(maxBytes - prefix.length - suffix.length + 1) + suffix
+        assertEquals(maxBytes + 1, overLimitJson.length)
+        val result = importer.importFromJson(overLimitJson, actionToken())
+        assertTrue(result is BackupImportResult.InvalidFormat)
+        assertEquals("Backup file is too large", (result as BackupImportResult.InvalidFormat).message)
+    }
+
     @Test
     fun `truncated or invalid JSON is rejected cleanly`() = runTest {
         val repository = RecordingNoteRepository()
