@@ -54,9 +54,10 @@ describe('SwReminderManager Concurrency and Resilience', () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     for (const mgr of activeManagers) {
       mgr.destroy();
+      await mgr.whenIdle();
     }
     activeManagers = [];
   });
@@ -327,8 +328,8 @@ describe('SwReminderManager Concurrency and Resilience', () => {
     currentTime += 600;
     capturedCallback!();
 
-    // Give microtask/promise queue a moment to drain runExclusive
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // Await exclusive queue completion deterministically
+    await manager.whenIdle();
 
     // Step 4: No canceled notification is delivered
     expect(firedNotifications).toHaveLength(0);
@@ -366,7 +367,7 @@ describe('SwReminderManager Concurrency and Resilience', () => {
     // Simulate old timer cb1 firing after time advances past T1
     currentTime = t1 + 10;
     cb1();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await manager.whenIdle();
 
     // Must NOT deliver notification for stale cb1
     expect(firedNotifications).toHaveLength(0);
@@ -375,7 +376,7 @@ describe('SwReminderManager Concurrency and Resilience', () => {
     // Now time advances to T2, cb2 fires
     currentTime = t2 + 10;
     cb2();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await manager.whenIdle();
 
     // Exactly 1 notification delivered (from cb2)
     expect(firedNotifications).toHaveLength(1);
@@ -406,7 +407,7 @@ describe('SwReminderManager Concurrency and Resilience', () => {
     // Stale timer for 803 executes
     currentTime += 60;
     oldCallback!();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await manager.whenIdle();
 
     expect(firedNotifications).toHaveLength(0);
     expect(manager.getRemindersSnapshot().map((r) => r.noteId)).toEqual(['804']);
@@ -424,5 +425,261 @@ describe('SwReminderManager Concurrency and Resilience', () => {
 
     expect(manager.getLastPersistenceError()).toBeInstanceOf(Error);
     expect(manager.getLastPersistenceError()?.message).toContain('Simulated QuotaExceededError');
+  });
+
+  describe('Regression Coverage (Tasks 2.A - 2.I)', () => {
+    it('2.A: handles destroy while timer callback is queued without firing', async () => {
+      let queuedCb: (() => void) | null = null;
+      const customSetTimeout = vi.fn((cb: () => void) => {
+        queuedCb = cb;
+        return 9901 as any;
+      });
+      const manager = createManager({ setTimeoutFn: customSetTimeout });
+      await manager.syncReminders([
+        { noteId: '901', title: 'Reminder', body: 'Body 901', fireAt: currentTime + 50 },
+      ]);
+      expect(queuedCb).toBeTypeOf('function');
+
+      // Destroy before the queued callback executes in macrotask queue
+      manager.destroy();
+      expect(manager.getRemindersSnapshot()).toHaveLength(0);
+
+      // Callback executes anyway from event loop
+      queuedCb!();
+      await manager.whenIdle();
+
+      expect(firedNotifications).toHaveLength(0);
+    });
+
+    it('2.B: handles destroy while notification operation is awaiting', async () => {
+      let resolveNotify: (() => void) | null = null;
+      let notifyStarted: (() => void) | null = null;
+      const notifyStartedPromise = new Promise<void>((resolve) => {
+        notifyStarted = resolve;
+      });
+      const notifyPromise = new Promise<void>((resolve) => {
+        resolveNotify = resolve;
+      });
+
+      const delayedNotification = vi.fn(async (reminder: SwReminder) => {
+        notifyStarted?.();
+        await notifyPromise;
+        firedNotifications.push(reminder);
+      });
+
+      const manager = createManager({ fireNotification: delayedNotification });
+      await manager.syncReminders([
+        { noteId: '902', title: 'Reminder', body: 'Body 902', fireAt: currentTime + 10 },
+      ]);
+
+      // Fire timer
+      currentTime += 20;
+      const timerPromise = manager.handleTimerFired('902');
+      await notifyStartedPromise;
+
+      // Destroy manager while notifyPromise is still pending
+      manager.destroy();
+
+      // Now resolve the notification promise
+      resolveNotify!();
+      await timerPromise;
+      await manager.whenIdle();
+
+      // Manager destroyed must not re-arm or crash
+      expect(manager.getActiveTimerNoteIds()).toHaveLength(0);
+    });
+
+    it('2.C: handles reschedule while previous timer is firing', async () => {
+      let resolveSave: () => void = () => {};
+      let saveStarted: () => void = () => {};
+      const saveStartedPromise = new Promise<void>((resolve) => {
+        saveStarted = resolve;
+      });
+      const originalSave = storage.save.bind(storage);
+      let interceptSave = false;
+
+      storage.save = async (reminders) => {
+        if (interceptSave) {
+          interceptSave = false;
+          saveStarted();
+          await new Promise<void>((res) => {
+            resolveSave = res;
+          });
+        }
+        return originalSave(reminders);
+      };
+
+      const manager = createManager();
+      await manager.syncReminders([
+        { noteId: '903', title: 'Reminder', body: 'Body 903', fireAt: currentTime + 50 },
+      ]);
+
+      currentTime += 60;
+      interceptSave = true;
+
+      // Start firing timer for 903 (pauses inside storage.save)
+      const firePromise = manager.handleTimerFired('903');
+      await saveStartedPromise;
+
+      // While firing is paused, window reschedules 903 to future
+      const reschedulePromise = manager.syncReminders([
+        { noteId: '903', title: 'Reminder', body: 'Body 903', fireAt: currentTime + 500 },
+      ]);
+
+      // Unblock the initial timer
+      resolveSave();
+      await Promise.all([firePromise, reschedulePromise]);
+      await manager.whenIdle();
+
+      // Storage and active timer reflect the rescheduled state cleanly
+      expect(manager.getRemindersSnapshot()).toHaveLength(1);
+      expect(manager.getRemindersSnapshot()[0]!.fireAt).toBe(currentTime + 500);
+      expect(manager.getActiveTimerNoteIds()).toContain('903');
+    });
+
+    it('2.D: handles multiple concurrent timer events without duplicate firing or lost updates', async () => {
+      const manager = createManager();
+      const reminders: SwReminder[] = [
+        { noteId: '9041', title: 'Reminder', body: 'B1', fireAt: currentTime + 10 },
+        { noteId: '9042', title: 'Reminder', body: 'B2', fireAt: currentTime + 10 },
+        { noteId: '9043', title: 'Reminder', body: 'B3', fireAt: currentTime + 10 },
+        { noteId: '9044', title: 'Reminder', body: 'B4', fireAt: currentTime + 10 },
+        { noteId: '9045', title: 'Reminder', body: 'B5', fireAt: currentTime + 10 },
+      ];
+      await manager.syncReminders(reminders);
+
+      currentTime += 20;
+      // Fire all 5 simultaneously
+      const fires = reminders.map((r) => manager.handleTimerFired(r.noteId));
+      await Promise.all(fires);
+      await manager.whenIdle();
+
+      expect(firedNotifications).toHaveLength(5);
+      const firedIds = firedNotifications.map((r) => r.noteId).sort();
+      expect(firedIds).toEqual(['9041', '9042', '9043', '9044', '9045']);
+      expect(storage.data).toEqual([]);
+      expect(manager.getRemindersSnapshot()).toEqual([]);
+    });
+
+    it('2.E: discards notification when reminder is removed while callback is pending', async () => {
+      let timerCb: (() => void) | null = null;
+      const customSetTimeout = vi.fn((cb: () => void) => {
+        timerCb = cb;
+        return 9905 as any;
+      });
+      const manager = createManager({ setTimeoutFn: customSetTimeout });
+      await manager.syncReminders([
+        { noteId: '905', title: 'Reminder', body: 'Body 905', fireAt: currentTime + 100 },
+      ]);
+
+      // Remove reminder via empty sync
+      await manager.syncReminders([]);
+      expect(manager.getActiveTimerNoteIds()).toHaveLength(0);
+
+      // Pending callback fires
+      currentTime += 110;
+      timerCb!();
+      await manager.whenIdle();
+
+      expect(firedNotifications).toHaveLength(0);
+    });
+
+    it('2.F: discards stale callback after reminder replacement', async () => {
+      const callbacks: Array<() => void> = [];
+      const customSetTimeout = vi.fn((cb: () => void) => {
+        callbacks.push(cb);
+        return callbacks.length as any;
+      });
+      const manager = createManager({ setTimeoutFn: customSetTimeout });
+
+      await manager.syncReminders([
+        { noteId: '906', title: 'Reminder', body: 'Old', fireAt: currentTime + 100 },
+      ]);
+      const oldCb = callbacks[0]!;
+
+      // Replace reminder with later timestamp
+      const newFireAt = currentTime + 300;
+      await manager.syncReminders([
+        { noteId: '906', title: 'Reminder', body: 'New', fireAt: newFireAt },
+      ]);
+      expect(callbacks).toHaveLength(2);
+
+      // Fire old callback
+      currentTime += 110;
+      oldCb();
+      await manager.whenIdle();
+
+      expect(firedNotifications).toHaveLength(0);
+      expect(manager.getRemindersSnapshot()[0]!.fireAt).toBe(newFireAt);
+    });
+
+    it('2.G: supports reinitialization after destroy without state leak', async () => {
+      const manager = createManager();
+      await manager.syncReminders([
+        { noteId: '9071', title: 'Reminder', body: 'Body', fireAt: currentTime + 100 },
+      ]);
+      manager.destroy();
+      await manager.whenIdle();
+
+      expect(manager.getRemindersSnapshot()).toHaveLength(0);
+      expect(manager.getActiveTimerNoteIds()).toHaveLength(0);
+
+      // Reinitialize same manager instance with fresh sync
+      await manager.syncReminders([
+        { noteId: '9072', title: 'Reminder', body: 'Body', fireAt: currentTime + 200 },
+      ]);
+
+      expect(manager.getRemindersSnapshot().map((r) => r.noteId)).toEqual(['9072']);
+      expect(manager.getActiveTimerNoteIds()).toEqual(['9072']);
+    });
+
+    it('2.H: recovers cleanly when promise rejects during timer processing', async () => {
+      const failingNotify = vi.fn(async () => {
+        throw new Error('Push service transient failure');
+      });
+      const manager = createManager({ fireNotification: failingNotify });
+
+      await manager.syncReminders([
+        { noteId: '9081', title: 'Reminder', body: 'B', fireAt: currentTime + 10 },
+        { noteId: '9082', title: 'Reminder', body: 'B', fireAt: currentTime + 50 },
+      ]);
+
+      currentTime += 20;
+      await manager.handleTimerFired('9081');
+      await manager.whenIdle();
+
+      expect(failingNotify).toHaveBeenCalledTimes(1);
+      // Reminders list must still have removed 9081 and preserved 9082
+      expect(manager.getRemindersSnapshot().map((r) => r.noteId)).toEqual(['9082']);
+
+      // Subsequent operation proceeds without deadlock
+      currentTime += 40;
+      await manager.handleTimerFired('9082');
+      await manager.whenIdle();
+      expect(manager.getRemindersSnapshot()).toHaveLength(0);
+    });
+
+    it('2.I: tears down cleanly in afterEach even with outstanding asynchronous work', async () => {
+      const slowStorage: SwReminderStorage = {
+        load: async () => [],
+        save: async () => {
+          await new Promise((res) => setTimeout(res, 50));
+        },
+      };
+
+      const manager = createManager({ storage: slowStorage });
+      // Queue async work
+      void manager.syncReminders([
+        { noteId: '909', title: 'Reminder', body: 'Body', fireAt: currentTime + 100 },
+      ]);
+
+      // Destroy immediately while save is pending
+      manager.destroy();
+      await manager.whenIdle();
+
+      // State is torn down cleanly
+      expect(manager.getRemindersSnapshot()).toHaveLength(0);
+      expect(manager.getActiveTimerNoteIds()).toHaveLength(0);
+    });
   });
 });

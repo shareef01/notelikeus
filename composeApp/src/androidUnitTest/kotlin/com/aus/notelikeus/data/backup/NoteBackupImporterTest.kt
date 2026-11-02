@@ -228,6 +228,83 @@ class NoteBackupImporterTest {
         assertTrue("expected Error, got $result", result is BackupImportResult.Error)
         assertTrue(repository.finalizedIds.isEmpty())
     }
+
+    @Test
+    fun `multibyte CJK backup exceeding 25 MiB byte limit is rejected even if character count is lower`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+
+        // 9,000,000 CJK characters = 27,000,000 UTF-8 bytes (> 25 MiB = 26,214,400 bytes)
+        // while character length is only 9M (< 25M chars)
+        val cjkContent = "漢".repeat(9_000_000)
+        val json = """{"version":1,"notes":[{"title":"CJK","content":"$cjkContent","timestamp":1,"color":-1}]}"""
+
+        val result = importer.importFromJson(json, actionToken())
+        assertTrue("expected InvalidFormat for multibyte oversized payload, got $result", result is BackupImportResult.InvalidFormat)
+        assertEquals("Backup file is too large", (result as BackupImportResult.InvalidFormat).message)
+    }
+
+    @Test
+    fun `multibyte emoji backup exceeding 25 MiB byte limit is rejected`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+
+        // 7,000,000 4-byte emojis = 28,000,000 UTF-8 bytes (> 25 MiB)
+        val emojiContent = "🎉".repeat(7_000_000)
+        val json = """{"version":1,"notes":[{"title":"Emoji","content":"$emojiContent","timestamp":1,"color":-1}]}"""
+
+        val result = importer.importFromJson(json, actionToken())
+        assertTrue("expected InvalidFormat for emoji oversized payload, got $result", result is BackupImportResult.InvalidFormat)
+    }
+
+
+    @Test
+    fun `ASCII JSON exceeding 25_000_000 characters but below 25 MiB is accepted`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+
+        val prefix = """{"version":1,"notes":[{"title":"test","content":""""
+        val suffix = """","timestamp":1,"color":-1}]}"""
+        val paddingLength = 25_500_000 - prefix.length - suffix.length
+        val json = prefix + "a".repeat(paddingLength) + suffix
+        assertEquals(25_500_000, json.length)
+
+        val result = importer.importFromJson(json, actionToken())
+        assertTrue(result is BackupImportResult.Success)
+        assertEquals(1, (result as BackupImportResult.Success).notesImported)
+    }
+
+    @Test
+    fun `JSON exactly at 25 MiB boundary is accepted and 25 MiB plus 1 byte is rejected`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+
+        val maxBytes = NoteBackupImporter.MAX_BACKUP_BYTES.toInt()
+        val prefix = """{"version":1,"notes":[{"title":"test","content":""""
+        val suffix = """","timestamp":1,"color":-1}]}"""
+
+        val atLimitJson = prefix + "a".repeat(maxBytes - prefix.length - suffix.length) + suffix
+        assertEquals(maxBytes, atLimitJson.length)
+        val resultAtLimit = importer.importFromJson(atLimitJson, actionToken())
+        assertTrue(resultAtLimit is BackupImportResult.Success)
+        assertEquals(1, (resultAtLimit as BackupImportResult.Success).notesImported)
+
+        val overLimitJson = prefix + "a".repeat(maxBytes - prefix.length - suffix.length + 1) + suffix
+        assertEquals(maxBytes + 1, overLimitJson.length)
+        val result = importer.importFromJson(overLimitJson, actionToken())
+        assertTrue(result is BackupImportResult.InvalidFormat)
+        assertEquals("Backup file is too large", (result as BackupImportResult.InvalidFormat).message)
+    }
+
+    @Test
+    fun `truncated or invalid JSON is rejected cleanly`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+
+        val truncated = """{"version":1,"notes":[{"title":"Truncated"""
+        val result = importer.importFromJson(truncated, actionToken())
+        assertTrue("expected unreadable or invalid format, got $result", result is BackupImportResult.InvalidFormat)
+    }
 }
 
 /**

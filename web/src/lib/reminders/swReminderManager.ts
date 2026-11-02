@@ -59,6 +59,8 @@ export class SwReminderManager {
   private nextTimerToken = 1;
 
   private initialized = false;
+  private isDestroyed = false;
+  private lifecycleEpoch = 1;
   private lastCatchUp = 0;
   private queue: Promise<void> = Promise.resolve();
   public lastPersistenceError: Error | null = null;
@@ -117,14 +119,17 @@ export class SwReminderManager {
   }
 
   private armTimer(reminder: SwReminder): void {
+    if (this.isDestroyed) return;
     this.cancelTimer(reminder.noteId);
     const delay = reminder.fireAt - this.now();
     if (delay <= 0) return;
 
     const token = this.nextTimerToken++;
     this.timerTokens.set(reminder.noteId, token);
+    const epoch = this.lifecycleEpoch;
 
     const timerId = this.setTimeoutFn(() => {
+      if (this.isDestroyed || this.lifecycleEpoch !== epoch) return;
       void this.handleTimerFired(reminder.noteId, token, reminder.fireAt);
     }, Math.min(delay, MAX_TIMER_DELAY_MS));
 
@@ -147,8 +152,12 @@ export class SwReminderManager {
    * timestamp match active state before taking action, discarding stale or canceled callbacks.
    */
   public async handleTimerFired(noteId: string, token?: number, expectedFireAt?: number): Promise<void> {
+    const epoch = this.lifecycleEpoch;
+    if (this.isDestroyed) return;
     return this.runExclusive(async () => {
+      if (this.isDestroyed || this.lifecycleEpoch !== epoch) return;
       await this.ensureInitialized();
+      if (this.isDestroyed || this.lifecycleEpoch !== epoch) return;
 
       const activeToken = this.timerTokens.get(noteId);
       // Guard 1: Verify this callback matches the current timer token for this note
@@ -178,6 +187,7 @@ export class SwReminderManager {
       // At-most-once delivery: remove and commit to storage BEFORE dispatching notification
       this.reminders.delete(noteId);
       await this.persistCurrentState();
+      if (this.isDestroyed || this.lifecycleEpoch !== epoch) return;
 
       try {
         await this.fireNotification(reminder);
@@ -193,7 +203,13 @@ export class SwReminderManager {
    */
   public async syncReminders(incoming: unknown[]): Promise<void> {
     const clean = sanitizeReminders(incoming);
+    if (this.isDestroyed) {
+      this.isDestroyed = false;
+      this.lifecycleEpoch++;
+    }
+    const epoch = this.lifecycleEpoch;
     return this.runExclusive(async () => {
+      if (this.isDestroyed || this.lifecycleEpoch !== epoch) return;
       this.initialized = true; // explicitly superseded by incoming sync
       const activeIds = new Set<string>();
       const currentTime = this.now();
@@ -226,8 +242,12 @@ export class SwReminderManager {
    * Atomic across all due reminders; commits deletion of due reminders before notification firing.
    */
   public async catchUpReminders(): Promise<void> {
+    const epoch = this.lifecycleEpoch;
+    if (this.isDestroyed) return;
     return this.runExclusive(async () => {
+      if (this.isDestroyed || this.lifecycleEpoch !== epoch) return;
       await this.ensureInitialized();
+      if (this.isDestroyed || this.lifecycleEpoch !== epoch) return;
       if (this.reminders.size === 0) return;
 
       const currentTime = this.now();
@@ -248,8 +268,10 @@ export class SwReminderManager {
           this.reminders.delete(reminder.noteId);
         }
         await this.persistCurrentState();
+        if (this.isDestroyed || this.lifecycleEpoch !== epoch) return;
 
         for (const reminder of due) {
+          if (this.isDestroyed || this.lifecycleEpoch !== epoch) break;
           try {
             await this.fireNotification(reminder);
           } catch (error) {
@@ -257,6 +279,8 @@ export class SwReminderManager {
           }
         }
       }
+
+      if (this.isDestroyed || this.lifecycleEpoch !== epoch) return;
 
       for (const reminder of upcoming) {
         if (!this.timers.has(reminder.noteId)) {
@@ -295,8 +319,18 @@ export class SwReminderManager {
     return this.lastPersistenceError;
   }
 
+  /**
+   * Resolves when all currently queued exclusive operations have completed.
+   * Useful in tests and coordinated teardown to avoid race conditions.
+   */
+  public async whenIdle(): Promise<void> {
+    return this.queue;
+  }
+
   /** Tears down all active timers and clears state. */
   public destroy(): void {
+    this.isDestroyed = true;
+    this.lifecycleEpoch++;
     for (const noteId of Array.from(this.timers.keys())) {
       this.cancelTimer(noteId);
     }

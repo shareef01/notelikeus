@@ -348,7 +348,7 @@ private fun launchApp(
                                 } else {
                                     val json = runCatching {
                                         file.inputStream().use {
-                                            BackupFileReads.readTextWithin(it, NoteBackupImporter.MAX_BACKUP_CHARS)
+                                            BackupFileReads.readTextWithin(it, NoteBackupImporter.MAX_BACKUP_BYTES)
                                         }
                                     }.getOrNull()
                                     if (json != null) viewModel.importBackup(json)

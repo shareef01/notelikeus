@@ -14,19 +14,27 @@ object BackupFileReads {
     /** Up to [count] leading bytes, enough to tell a bundle from a JSON backup. */
     fun readHead(input: InputStream, count: Int = 2): ByteArray = input.readNBytes(count)
 
-    /** The whole stream as UTF-8 text, or null when it is longer than [maxChars] characters. */
-    fun readTextWithin(input: InputStream, maxChars: Int): String? {
-        val reader = input.reader(Charsets.UTF_8)
-        val buffer = CharArray(DEFAULT_BUFFER_SIZE)
-        val text = StringBuilder()
+    /**
+     * Reads the entire stream as UTF-8 text up to [maxBytes] bytes, returning null if the input
+     * exceeds [maxBytes] before EOF is reached.
+     */
+    fun readTextWithin(input: InputStream, maxBytes: Long): String? {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        val byteOutput = java.io.ByteArrayOutputStream()
+        var totalBytes = 0L
         while (true) {
-            val read = reader.read(buffer)
-            if (read <= 0) break
-            if (text.length + read > maxChars) return null
-            text.appendRange(buffer, 0, read)
+            val read = input.read(buffer)
+            if (read < 0) break
+            totalBytes += read
+            if (totalBytes > maxBytes) return null
+            byteOutput.write(buffer, 0, read)
         }
-        return text.toString()
+        return byteOutput.toString(Charsets.UTF_8.name())
     }
+
+    /** Overload for Int parameter (e.g. legacy maxChars/maxBytes). */
+    fun readTextWithin(input: InputStream, maxChars: Int): String? =
+        readTextWithin(input, maxChars.toLong())
 
     /**
      * Streams [input] into [target], or returns false — leaving no [target] behind — when more than
