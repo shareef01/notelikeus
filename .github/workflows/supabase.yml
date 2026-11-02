@@ -148,6 +148,10 @@ jobs:
       - name: Run pgTAP database tests
         run: npm run supabase:test
 
+      # Two real connections, which pgTAP's single session cannot hold (AUD-007).
+      - name: Test that a cloud wipe waits for an in-flight note write
+        run: bash scripts/ops/wipe-lock-race.test.sh
+
       - name: Test the connection retry helper
         run: npm run test:retry-on-connect
 

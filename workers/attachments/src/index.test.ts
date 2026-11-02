@@ -1430,3 +1430,94 @@ describe('PUT against a terminally deleted attachment identity', () => {
     expect(body).not.toContain('<html>');
   });
 });
+
+/**
+ * AUD-003: the confirmation that releases quota is written by the service role, for the owner this
+ * Worker verified, and only after this request deleted the object.
+ */
+describe('DELETE confirms through the service role', () => {
+  const SERVICE_KEY = 'service-role-key';
+  const key = `owners/${USER_A}/notes/1/att1`;
+  let confirmCalls: Array<{ authorization: string; body: Record<string, unknown> }>;
+
+  function serviceRoleMock(answer: () => Response = () => Response.json({ status: 'applied' })) {
+    confirmCalls = [];
+    mockSupabaseAuth({ [USER_A]: USER_A, [USER_B]: USER_B }, (url, init) => {
+      if (!url.includes('/rest/v1/rpc/confirm_attachment_object_deleted')) return undefined;
+      const headers = init?.headers as Record<string, string>;
+      confirmCalls.push({
+        authorization: headers.Authorization ?? '',
+        body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
+      });
+      return answer();
+    });
+  }
+
+  beforeEach(async () => {
+    env = { ...env, SUPABASE_SERVICE_ROLE_KEY: SERVICE_KEY };
+    serviceRoleMock();
+    expect((await upload('1', 'att1', USER_A)).status).toBe(200);
+  });
+
+  it('deletes the object, then confirms with the service role for the verified owner', async () => {
+    const response = await handleAttachmentRequest(request('DELETE', '/v1/attachments/1/att1', USER_A), env);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ deleted: true, confirmed: true });
+    expect(bucket.objects.has(key)).toBe(false);
+    expect(confirmCalls).toHaveLength(1);
+    expect(confirmCalls[0]!.authorization).toBe(`Bearer ${SERVICE_KEY}`);
+    expect(confirmCalls[0]!.body).toEqual({ p_owner_id: USER_A, p_note_id: '1', p_attachment_id: 'att1' });
+    // The user-token finalize can no longer confirm anything, so it is not asked to.
+    expect(rpcNames()).not.toContain('finalize_note_attachment_delete');
+  });
+
+  it('never confirms when the claim was refused, so no quota is released', async () => {
+    const response = await handleAttachmentRequest(request('DELETE', '/v1/attachments/1/att1', USER_B), env);
+
+    expect(response.status).toBe(404);
+    expect(bucket.objects.has(key)).toBe(true);
+    expect(confirmCalls).toHaveLength(0);
+  });
+
+  it('reports an unconfirmed delete when the service-role confirmation fails, and keeps the delete', async () => {
+    serviceRoleMock(() => new Response('boom', { status: 500 }));
+
+    const response = await handleAttachmentRequest(request('DELETE', '/v1/attachments/1/att1', USER_A), env);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ deleted: true, confirmed: false });
+    expect(bucket.objects.has(key)).toBe(false);
+  });
+
+  it('reports an unconfirmed delete when the service role finds no claim', async () => {
+    serviceRoleMock(() => Response.json({ status: 'skipped', reason: 'not_claimed' }));
+
+    const response = await handleAttachmentRequest(request('DELETE', '/v1/attachments/1/att1', USER_A), env);
+
+    expect(await response.json()).toMatchObject({ deleted: true, confirmed: false });
+  });
+
+  it('does not confirm when the object delete itself failed', async () => {
+    bucket.delete = async () => {
+      throw new Error('R2 unavailable');
+    };
+
+    const response = await handleAttachmentRequest(request('DELETE', '/v1/attachments/1/att1', USER_A), env);
+
+    expect(response.status).toBe(502);
+    expect(confirmCalls).toHaveLength(0);
+  });
+
+  it('converges on a retry: the second DELETE confirms again and still answers 200', async () => {
+    serviceRoleMock(() => new Response('boom', { status: 500 }));
+    await handleAttachmentRequest(request('DELETE', '/v1/attachments/1/att1', USER_A), env);
+    serviceRoleMock();
+
+    const retry = await handleAttachmentRequest(request('DELETE', '/v1/attachments/1/att1', USER_A), env);
+
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toMatchObject({ deleted: true, confirmed: true });
+    expect(confirmCalls).toHaveLength(1);
+  });
+});

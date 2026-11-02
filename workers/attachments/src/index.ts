@@ -8,6 +8,8 @@ import {
 import {
   claimOrphanedProvisionalAttachments,
   reportUnreferencedAttachmentObjects,
+  rpc,
+  serviceRoleHeaders,
   sweepOrphanedDeletedAttachments,
   sweepUnconfirmedAttachmentDeletes,
 } from './sweep';
@@ -86,7 +88,7 @@ export async function handleAttachmentRequest(
       case 'GET':
         return await getAttachment(request, env, objectKey, parsed);
       default:
-        return await deleteAttachment(request, env, objectKey, parsed);
+        return await deleteAttachment(request, env, objectKey, parsed, userId);
     }
   } catch (error) {
     if (error instanceof UpstreamServiceError) {
@@ -422,6 +424,7 @@ async function deleteAttachment(
   env: WorkerEnv,
   objectKey: string,
   parsed: { noteId: string; attachmentId: string },
+  userId: string,
 ): Promise<Response> {
   // Phase 1: authorize and durably record the deletion.
   const claim = await authorizeAttachment(request, env, 'begin_note_attachment_delete', {
@@ -450,19 +453,44 @@ async function deleteAttachment(
   // the false answer — and the sweep picks the row up from its unconfirmed claim regardless.
   let confirmed = false;
   try {
-    const result = await authorizeAttachment(request, env, 'finalize_note_attachment_delete', {
-      p_note_id: parsed.noteId,
-      p_attachment_id: parsed.attachmentId,
-    });
-    // `confirmed` says the stamp landed on a row; `allowed` is the fallback for a database that
-    // predates it and did the work without reporting it.
-    confirmed = result?.confirmed ?? result?.allowed === true;
+    confirmed = await confirmObjectDeleted(request, env, userId, parsed);
   } catch (error) {
-    if (!(error instanceof UpstreamServiceError)) throw error;
-    console.error(`[Worker] Attachment delete left unconfirmed: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'unknown failure';
+    console.error(`[Worker] Attachment delete left unconfirmed: ${message}`);
   }
 
   return Response.json({ deleted: true, objectKey, confirmed });
+}
+
+/**
+ * Stamps the confirmation that releases this attachment's quota, now that this request deleted it.
+ *
+ * Through the service role: the stamp is what the quota trusts, and since 20261103000000 the user's own
+ * token cannot write it, because the user could then write it without deleting anything (AUD-003). The
+ * owner is the id this Worker verified, never one the request supplied. A deployment without the key
+ * keeps the user-token call, which still records the claim and leaves the confirmation to the sweep.
+ */
+async function confirmObjectDeleted(
+  request: Request,
+  env: WorkerEnv,
+  userId: string,
+  parsed: { noteId: string; attachmentId: string },
+): Promise<boolean> {
+  if (serviceRoleHeaders(env)) {
+    const result = await rpc<{ status?: string }>(env, 'confirm_attachment_object_deleted', {
+      p_owner_id: userId,
+      p_note_id: parsed.noteId,
+      p_attachment_id: parsed.attachmentId,
+    });
+    return result?.status === 'applied';
+  }
+  const result = await authorizeAttachment(request, env, 'finalize_note_attachment_delete', {
+    p_note_id: parsed.noteId,
+    p_attachment_id: parsed.attachmentId,
+  });
+  // `confirmed` says the stamp landed on a row; `allowed` is the fallback for a database that
+  // predates it and did the work without reporting it.
+  return result?.confirmed ?? result?.allowed === true;
 }
 
 /**

@@ -78,11 +78,16 @@ select is(
   'deleting a note frees no quota while its objects are still stored'
 );
 
+-- The Worker's DELETE: the owner claims, the object goes, the service role confirms (AUD-003).
+select public.begin_note_attachment_delete('1', 'fill1');
+select set_config('role', 'service_role', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 select is(
-  (public.finalize_note_attachment_delete('1', 'fill1')->>'confirmed'),
-  'true',
+  (public.confirm_attachment_object_deleted(tests.get_supabase_uid('quota_a@notelikeus.test'), '1', 'fill1')->>'status'),
+  'applied',
   'one object confirmed gone'
 );
+select tests.authenticate_as('quota_a@notelikeus.test');
 
 select is(
   (public.precheck_note_attachment_put('2', 'over', 'image/png', 10485760::bigint)->>'allowed'),
@@ -91,7 +96,8 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- A legacy soft-deleted row on a live note: nothing reclaims it, so it must not count
+-- An unclaimed soft-deleted row on a live note still holds its bytes, so it counts (AUD-003):
+-- deleting a note, clearing its tombstone and re-creating the id made one at will
 -- ---------------------------------------------------------------------------
 select public.finalize_note_attachment_put(
   '2', 'legacy', public.expected_attachment_object_key(auth.uid(), '2', 'legacy'),
@@ -103,8 +109,8 @@ select notelikeus_internal.end_sync_mutation();
 
 select is(
   notelikeus_internal.attachment_stored_bytes(auth.uid(), 'none'),
-  19 * 10485760::bigint,
-  'an unclaimed soft-deleted row on a live note holds no quota'
+  19 * 10485760::bigint + 1000,
+  'an unclaimed soft-deleted row on a live note still holds quota until its object is confirmed gone'
 );
 
 select * from finish();
