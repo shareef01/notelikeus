@@ -87,10 +87,12 @@
 
     <!-- Export / Import -->
     <string name="export_success">Backup exported</string>
-    <string name="export_bundle_success">Backup exported (%1$d images)</string>
-    <string name="export_bundle_success_skipped">Backup exported (%1$d images; %2$d skipped)</string>
+    <string name="export_bundle_complete">Complete backup exported with all %1$d images</string>
+    <string name="export_bundle_incomplete">Incomplete backup: %1$d of %2$d images included, %3$d not in this file</string>
     <string name="export_failed">Export failed</string>
-    <string name="export_backup_subtitle">Save notes and local images as .nlkbak</string>
+    <string name="export_backup_subtitle">Complete backup: notes and every image, downloading cloud images, as .nlkbak</string>
+    <string name="export_device_backup">Export backup from this device</string>
+    <string name="export_device_backup_subtitle">Works offline; includes only images stored on this device</string>
     <string name="export_notes_only">Export notes only</string>
     <string name="export_notes_only_subtitle">Save notes as JSON (no images)</string>
     <string name="import_success">%1$d notes imported</string>
@@ -210,7 +212,10 @@
     <string name="account_delete_subtitle">Permanently remove your account and notes</string>
     <string name="account_delete_confirm_title">Delete your account?</string>
     <string name="account_delete_confirm_message">This permanently deletes your account, your notes and your images from Notelikeus cloud, and removes them from this device, including any edits that haven’t been uploaded yet. Your other signed-in devices remove their copies the next time they sync. This happens right away and cannot be undone.</string>
-    <string name="account_delete_export_first">Export a backup first</string>
+    <string name="account_delete_export_first">Export a complete backup first</string>
+    <string name="account_delete_backup_complete">Complete backup saved: your notes and all %1$d images are in the file.</string>
+    <string name="account_delete_backup_incomplete">This backup is incomplete: %1$d of %2$d images could not be included. Deleting your account deletes them for good. Export again while online, or continue only if you accept the loss.</string>
+    <string name="account_delete_accept_loss">I understand %1$d images will be permanently lost</string>
     <string name="account_delete_type_to_confirm">Type DELETE to confirm</string>
     <string name="account_delete_in_progress">Deleting…</string>
     <string name="account_deleted_success">Your account was deleted</string>

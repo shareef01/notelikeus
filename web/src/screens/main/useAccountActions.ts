@@ -9,8 +9,12 @@ import {
   readBundleFile,
   releaseStagedBundle,
   stagePlannedAttachments,
+  type BackupExportOutcome,
+  type BundleExportMode,
   type PlannedBundleImport,
 } from '@/lib/backup/bundle/bundleTransfer';
+import { getAttachmentBlobStore } from '@/lib/attachments/attachmentBlobStoreRegistry';
+import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { formatUnknownError } from '@/lib/errors/formatUnknownError';
 import { useToastStore } from '@/store/toastStore';
 import type { Note } from '@/types/note';
@@ -116,29 +120,51 @@ export function useAccountActions({
   };
 
   /**
-   * The complete backup: the same JSON document plus the attachment bytes this device holds.
+   * Builds and downloads a bundle, and says exactly how complete it is.
    *
-   * Reports what it could not include rather than producing a bundle that quietly has fewer
-   * images than the library does — a backup you cannot trust the completeness of is worse than
-   * one that tells you what is missing.
+   * "Complete" is only ever said when every image is in the file. Anything less is reported as an
+   * incomplete backup with its numbers, and as an error, because the delete-account dialog offers this
+   * export as the way to keep your data and a cheerful toast is what made a partial one look safe.
    */
-  const exportCompleteBackup = async () => {
+  const exportBundle = async (mode: BundleExportMode): Promise<BackupExportOutcome | null> => {
     try {
-      const bundle = await buildBundleFromNotes(notes);
+      const downloadCloudAttachment =
+        mode === 'complete'
+          ? (noteId: string, attachmentId: string) =>
+              getAttachmentBlobStore().download(noteId, attachmentId)
+          : undefined;
+      const bundle = await buildBundleFromNotes(notes, undefined, { mode, downloadCloudAttachment });
       downloadBundle(bundle.bytes);
-      if (bundle.attachmentsSkipped > 0) {
-        const warningsText = bundle.warnings.join(' ');
+      const { attachmentsIncluded: included, attachmentsTotal: total } = bundle;
+      if (!bundle.complete) {
         toast(
-          `Incomplete backup exported: ${plural(bundle.attachmentsIncluded, 'image')} included, ${plural(bundle.attachmentsSkipped, 'image')} skipped. ${warningsText}`.trim(),
+          `Incomplete backup: ${included} of ${plural(total, 'image')} included, ${
+            total - included
+          } not in this file. ${bundle.warnings.join(' ')}`.trim(),
+          'error',
         );
-      } else if (bundle.attachmentsIncluded > 0) {
-        toast(`Complete backup exported with ${plural(bundle.attachmentsIncluded, 'image')}`);
+      } else if (total > 0) {
+        toast(`Complete backup exported with all ${plural(total, 'image')}`);
       } else {
         toast('Complete backup exported');
       }
+      return { complete: bundle.complete, included, total };
     } catch (error) {
       toast(messageOf(error, 'Export failed'), 'error');
+      return null;
     }
+  };
+
+  /**
+   * The complete backup: notes plus every image, downloading the ones that live only in the cloud.
+   * Signed out (guest) every image is already on this device, so there is nothing to download.
+   */
+  const exportCompleteBackup = () =>
+    exportBundle(userId && isR2AttachmentsEnabled() ? 'complete' : 'device');
+
+  /** The offline backup: only images already stored on this device, and no network at all. */
+  const exportDeviceBackup = async () => {
+    await exportBundle('device');
   };
 
   /**
@@ -241,6 +267,7 @@ export function useAccountActions({
     deleteAccount,
     exportBackup,
     exportCompleteBackup,
+    exportDeviceBackup,
     prepareImport,
     pendingImport,
     confirmImport,

@@ -12,7 +12,18 @@ sealed class BackupTransferEvent {
     data class BundleExported(
         val attachmentsIncluded: Int,
         val attachmentsSkipped: Int,
-    ) : BackupTransferEvent()
+        /** Every image the exported notes reference. */
+        val attachmentsTotal: Int = attachmentsIncluded + attachmentsSkipped,
+    ) : BackupTransferEvent() {
+        /** Only when every image is in the file. Nothing else may call a backup complete. */
+        val complete: Boolean get() = attachmentsIncluded == attachmentsTotal
+
+        constructor(outcome: com.aus.notelikeus.data.backup.BundleExportOutcome) : this(
+            attachmentsIncluded = outcome.attachmentsIncluded,
+            attachmentsSkipped = outcome.attachmentsSkipped,
+            attachmentsTotal = outcome.attachmentsTotal,
+        )
+    }
     data object ExportFailed : BackupTransferEvent()
     data class Imported(
         val notesImported: Int,

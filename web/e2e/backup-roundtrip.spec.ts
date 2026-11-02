@@ -87,7 +87,7 @@ test('both export controls produce the format they promise', async ({ browser })
   expect(parsed.notes[0].title).toBe('BACKUP note');
 
   // The bundle, per "Download notes and images as one .nlkbak file".
-  const bundle = await exportVia(page, /^Export backup with images/, '/tmp/e2e-complete.nlkbak');
+  const bundle = await exportVia(page, /^Export complete backup/, '/tmp/e2e-complete.nlkbak');
   expect(bundle.subarray(0, 2).toString('latin1'), 'the bundle should be a zip').toBe('PK');
   await context.close();
 });

@@ -17,6 +17,7 @@ import {
   MAX_BUNDLE_FILE_BYTES,
   assertSupportedEmbeddedBackup,
   buildBackupBundle,
+  isBundleableAttachment,
   parseBackupBundle,
   type BundleAttachmentSource,
   type ParsedBundle,
@@ -38,18 +39,60 @@ import type { Note } from '@/types/note';
 
 export interface BundleExportResult {
   bytes: Uint8Array;
+  /** Every image the exported notes reference. */
+  attachmentsTotal: number;
   attachmentsIncluded: number;
+  /** Not included for any reason: `attachmentsTotal - attachmentsIncluded`. */
   attachmentsSkipped: number;
+  /** The part of `attachmentsSkipped` that was tried and failed: unreadable, a failed download, or rejected. */
+  attachmentsFailed: number;
+  /**
+   * True only when every referenced image is in the archive. Nothing else may call a bundle complete:
+   * the delete-account flow relies on this to decide whether the user still needs a warning.
+   */
+  complete: boolean;
+  /** Whether images that live only in the cloud were fetched (`complete`) or left out (`device`). */
+  mode: BundleExportMode;
   warnings: string[];
 }
+
+/**
+ * `device` is the offline backup: only bytes already on this device, never a network request.
+ * `complete` also downloads images that live only in the cloud, through the same authenticated Worker
+ * GET the editor uses, so the archive can hold the whole library.
+ */
+export type BundleExportMode = 'device' | 'complete';
+
+/** How complete an exported bundle is, for the places that must not overstate it. */
+export interface BackupExportOutcome {
+  complete: boolean;
+  /** Images in the file. */
+  included: number;
+  /** Images the exported notes reference. */
+  total: number;
+}
+
+export interface BundleExportOptions {
+  mode?: BundleExportMode;
+  /** The authenticated Worker GET. Required for `complete`. */
+  downloadCloudAttachment?: (noteId: string, attachmentId: string) => Promise<Blob>;
+  /** Simultaneous reads and downloads. Small on purpose: the Worker throttles per user. */
+  concurrency?: number;
+  /** Extra attempts for a download that failed outright; 429s are already retried by the store. */
+  retries?: number;
+  onProgress?: (done: number, total: number) => void;
+}
+
+/** Downloads in flight at once for a complete export. */
+export const CLOUD_EXPORT_CONCURRENCY = 3;
+const CLOUD_EXPORT_RETRIES = 1;
 
 /**
  * Reads the bytes for [attachment] from local storage, or null when they are not here.
  *
  * Only locally-staged bytes are reachable without the network. An attachment already committed to
- * R2 lives behind an authenticated Worker call, and fetching it would make an export depend on
- * being online and signed in — which the product principles rule out. Those are reported as
- * skipped rather than silently omitted.
+ * R2 lives behind an authenticated Worker call; a `device` export never makes one, and reports those
+ * as skipped rather than silently omitting them.
  */
 async function readLocalAttachmentBytes(
   attachment: Attachment,
@@ -64,10 +107,79 @@ async function readLocalAttachmentBytes(
 }
 
 /**
- * Builds a bundle from [notes] and whatever attachment bytes are on this device.
+ * Downloads one cloud-only image and checks it is the one the note references.
+ *
+ * Identity comes from the request itself: the Worker derives the object key from the signed-in user
+ * and this note and attachment id, and answers 404 for anything else, so a body that arrives is that
+ * attachment. What can still go wrong is the body (truncated, empty, oversized), so its size is held
+ * to the size the server recorded at upload and to the bundle's per-image cap. Returns the reason
+ * when it fails.
+ */
+async function downloadCloudAttachment(
+  note: Note,
+  attachment: Attachment,
+  download: NonNullable<BundleExportOptions['downloadCloudAttachment']>,
+  retries: number,
+): Promise<{ bytes: Uint8Array; mimeType?: string } | string> {
+  let lastFailure = 'download failed';
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      // eslint-disable-next-line no-await-in-loop -- a retry follows the failed attempt
+      const blob = await download(note.id, attachment.id);
+      // eslint-disable-next-line no-await-in-loop -- read only once the download succeeded
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      if (bytes.byteLength === 0) return 'the server returned an empty file';
+      const expected = attachment.sizeBytes;
+      if (expected != null && expected > 0 && bytes.byteLength !== expected) {
+        // A short read is the likeliest cause, so it is worth another attempt.
+        lastFailure = `the download was ${bytes.byteLength} bytes, expected ${expected}`;
+        continue;
+      }
+      if (!isBundleableAttachment(attachment.id, bytes.byteLength)) return 'a backup cannot store it';
+      return { bytes, mimeType: attachment.mimeType || blob.type || undefined };
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : 'download failed';
+    }
+  }
+  return lastFailure;
+}
+
+/** Runs [tasks] with at most [limit] in flight, keeping results in input order. */
+async function runBounded<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
+  // Filled by index as tasks finish, so the order is the input's whatever order they finish in.
+  const results: T[] = [];
+  let next = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, tasks.length)) }, async () => {
+    while (next < tasks.length) {
+      const index = next++;
+      // eslint-disable-next-line no-await-in-loop -- each worker takes the next task when it is free
+      results[index] = await tasks[index]!();
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+function bundleSource(
+  note: Note,
+  attachment: Attachment,
+  read: { bytes: Uint8Array; mimeType?: string },
+): BundleAttachmentSource {
+  return {
+    noteId: note.localId,
+    attachmentId: attachment.id,
+    type: attachment.type || 'image',
+    mimeType: read.mimeType,
+    bytes: read.bytes,
+  };
+}
+
+/**
+ * Builds a bundle from [notes] and their images.
  *
  * `backup` is produced by the *unchanged* JSON exporter, so a bundle and a JSON backup of the
- * same library carry byte-identical note data.
+ * same library carry byte-identical note data. Both modes write the same v4 layout; a complete
+ * export only has more `media/` entries, so every client reads either.
  */
 export async function buildBundleFromNotes(
   notes: Note[],
@@ -77,38 +189,73 @@ export async function buildBundleFromNotes(
    * or — far worse — with the previous account's.
    */
   ownerId: string | null = resolveOwnerId(),
+  options: BundleExportOptions = {},
 ): Promise<BundleExportResult> {
+  const mode = options.mode ?? 'device';
+  const download = options.downloadCloudAttachment;
+  if (mode === 'complete' && !download) {
+    throw new Error('A complete backup needs a signed-in connection to download cloud images.');
+  }
   const document = exportBackupPayload(notes);
-  const sources: BundleAttachmentSource[] = [];
   const warnings: string[] = [];
   let cloudOnly = 0;
   let unreadable = 0;
+  let downloadFailed = 0;
+  let rejected = 0;
 
-  for (const note of notes) {
-    for (const attachment of note.attachments) {
+  const items = notes.flatMap((note) => note.attachments.map((attachment) => ({ note, attachment })));
+  const total = items.length;
+  let done = 0;
+
+  const tasks = items.map(({ note, attachment }) => async (): Promise<BundleAttachmentSource | null> => {
+    try {
       if (!isPendingAttachment(attachment.storagePath)) {
-        cloudOnly++;
-        continue;
+        if (mode === 'device' || !download) {
+          cloudOnly++;
+          return null;
+        }
+        const fetched = await downloadCloudAttachment(
+          note,
+          attachment,
+          download,
+          options.retries ?? CLOUD_EXPORT_RETRIES,
+        );
+        if (typeof fetched === 'string') {
+          downloadFailed++;
+          warnings.push(`An image in "${note.title || 'a note'}" could not be downloaded: ${fetched}.`);
+          return null;
+        }
+        return bundleSource(note, attachment, fetched);
       }
-      // eslint-disable-next-line no-await-in-loop -- reads go through IndexedDB one at a time
-      const local = ownerId
-        ? await readLocalAttachmentBytes(attachment, ownerId).catch(() => null)
-        : null;
+      const local = ownerId ? await readLocalAttachmentBytes(attachment, ownerId).catch(() => null) : null;
       if (!local) {
         unreadable++;
-        continue;
+        return null;
       }
-      sources.push({
-        noteId: note.localId,
-        attachmentId: attachment.id,
-        type: attachment.type || 'image',
-        mimeType: local.mimeType,
-        bytes: local.bytes,
-      });
+      if (!isBundleableAttachment(attachment.id, local.bytes.byteLength)) {
+        rejected++;
+        return null;
+      }
+      return bundleSource(note, attachment, local);
+    } finally {
+      options.onProgress?.(++done, total);
     }
+  });
+
+  const settled = await runBounded(tasks, options.concurrency ?? CLOUD_EXPORT_CONCURRENCY);
+  const sources: BundleAttachmentSource[] = [];
+  const seen = new Set<string>();
+  for (const item of settled) {
+    if (!item) continue;
+    // buildBackupBundle keeps the first of two identical ids and drops the rest; count it the same way.
+    if (seen.has(item.attachmentId)) {
+      rejected++;
+      continue;
+    }
+    seen.add(item.attachmentId);
+    sources.push(item);
   }
 
-  const skipped = cloudOnly + unreadable;
   if (cloudOnly > 0) {
     warnings.push(
       `${cloudOnly} image${cloudOnly === 1 ? ' was' : 's were'} not included because ${
@@ -121,11 +268,22 @@ export async function buildBundleFromNotes(
       `${unreadable} image${unreadable === 1 ? ' was' : 's were'} skipped because local storage could not be read.`,
     );
   }
+  if (rejected > 0) {
+    warnings.push(
+      `${rejected} image${rejected === 1 ? ' was' : 's were'} skipped because a backup cannot store ${
+        rejected === 1 ? 'it' : 'them'
+      }.`,
+    );
+  }
 
   return {
     bytes: await buildBackupBundle(document, sources),
+    attachmentsTotal: total,
     attachmentsIncluded: sources.length,
-    attachmentsSkipped: skipped,
+    attachmentsSkipped: total - sources.length,
+    attachmentsFailed: unreadable + downloadFailed + rejected,
+    complete: sources.length === total,
+    mode,
     warnings,
   };
 }

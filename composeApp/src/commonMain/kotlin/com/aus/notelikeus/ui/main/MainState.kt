@@ -113,6 +113,11 @@ data class MainState(
     val pendingCloudSyncEvent: CloudSyncEvent? = null,
     /** Outcome of the last backup export or import, until the UI has reported it. */
     val pendingBackupTransferEvent: BackupTransferEvent? = null,
+    /**
+     * The last bundle export, kept after its snackbar so the delete-account dialog can say whether
+     * the backup it offered is complete (AUD-001). Cleared when that dialog opens.
+     */
+    val lastBundleExport: BackupTransferEvent.BundleExported? = null,
     /** True while the diagnostics dialog is open. */
     val isDiagnosticsOpen: Boolean = false,
     /**
