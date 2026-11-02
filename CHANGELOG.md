@@ -4,6 +4,8 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-11-02
+
 ### Added
 - **You can delete your account.** Settings → Delete account, on Android, Windows and the web, permanently removes your account, notes and images. You type DELETE to confirm, and it happens right away with no undo. Your other signed-in devices remove their copies the next time they sync.
 

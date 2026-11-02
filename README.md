@@ -3,7 +3,7 @@
 A local-first, cross-platform notes application for Android, Windows, and the Web. Built with Kotlin Multiplatform, Compose, and React, featuring encrypted storage at rest, optimistic offline-first sync, and serverless media authorization.
 
 - **Live Web App:** <https://notelikeus.pages.dev>
-- **Latest Release:** [v2.4.1](https://github.com/shareef01/notelikeus/releases/tag/v2.4.1) (Android APK & Windows MSI)
+- **Latest Release:** [v2.5.0](https://github.com/shareef01/notelikeus/releases/tag/v2.5.0) (Android APK & Windows MSI)
 - **Architecture Documentation:** [docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md)
 - **Decisions Record:** [docs/DECISIONS.md](docs/DECISIONS.md)
 
