@@ -4,6 +4,10 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **An open web tab no longer misses a change from another device.** Two devices saving at the same moment could hide one of the changes until the app was reopened.
+- **Attachment storage limit covers pictures still being removed.** Deleting a note frees its share of the 200 MB limit once its pictures are gone from storage, and that cleanup now runs hourly.
+
 ## [2.4.1] — 2026-10-30
 
 ### Changed

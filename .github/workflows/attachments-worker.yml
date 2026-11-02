@@ -226,7 +226,7 @@ jobs:
                 `simple = { limit = ${limit}, period = ${period} }`,
               );
             }
-            lines.push(``, `[triggers]`, `crons = ["15 */6 * * *"]`, ``);
+            lines.push(``, `[triggers]`, `crons = ["15 * * * *"]`, ``);
             writeFileSync("workers/attachments/wrangler.toml", lines.join("\n"));
           '
           # Printed without the account id, so the binding and cron stay reviewable.

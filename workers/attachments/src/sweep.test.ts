@@ -455,7 +455,7 @@ describe('provisional upload claim (F-09)', () => {
     expect(rpcCalls.map((call) => call.url.split('/rpc/')[1])).toEqual([
       'claim_orphaned_provisional_attachments',
     ]);
-    expect(rpcCalls[0]!.body).toEqual({ p_limit: 50 });
+    expect(rpcCalls[0]!.body).toEqual({ p_limit: 100 });
     // The claim alone never deletes: the object goes once the claimed row is swept as an
     // unconfirmed delete, through that pass's canonical-key checks.
     expect(bucket.objects.has(OBJECT_KEY)).toBe(true);
