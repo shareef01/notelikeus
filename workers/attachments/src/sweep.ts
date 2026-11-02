@@ -14,7 +14,11 @@ interface OrphanRow {
   object_key?: string;
 }
 
-const SWEEP_LIMIT = 50;
+/**
+ * Rows per pass, per cron run: the most the listing RPCs return. A row costs up to three subrequests,
+ * so one run stays well inside the Workers paid plan's 1000.
+ */
+const SWEEP_LIMIT = 100;
 
 function serviceRoleHeaders(env: WorkerEnv): HeadersInit | null {
   const key = env.SUPABASE_SERVICE_ROLE_KEY?.trim();

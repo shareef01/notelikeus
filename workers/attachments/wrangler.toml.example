@@ -46,4 +46,4 @@ SUPABASE_URL = "http://127.0.0.1:54321"
 # docs/CLOUDFLARE_ZONE_CONTROLS.md
 
 [triggers]
-crons = ["15 */6 * * *"]
+crons = ["15 * * * *"]
