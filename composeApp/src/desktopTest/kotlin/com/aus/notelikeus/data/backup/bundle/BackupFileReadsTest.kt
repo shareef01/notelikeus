@@ -58,6 +58,36 @@ class BackupFileReadsTest {
         assertContentEquals(byteArrayOf(0x50, 0x4b), BackupFileReads.readHead(CountingZeros(0x50, 0x4b)))
     }
 
+    @Test
+    fun `multibyte UTF-8 over byte limit is refused even when character count is below limit`() {
+        // 20,000 3-byte CJK chars = 60,000 UTF-8 bytes
+        val cjkText = "漢".repeat(20_000)
+        val bytes = cjkText.toByteArray(Charsets.UTF_8)
+        assertEquals(60_000, bytes.size)
+
+        // With maxBytes = 50_000, must be refused because 60,000 > 50,000 bytes
+        assertNull(BackupFileReads.readTextWithin(ByteArrayInputStream(bytes), maxBytes = 50_000L))
+    }
+
+    @Test
+    fun `multibyte emojis over byte limit are refused`() {
+        // 15,000 4-byte emoji chars = 60,000 UTF-8 bytes
+        val emojiText = "🎉".repeat(15_000)
+        val bytes = emojiText.toByteArray(Charsets.UTF_8)
+        assertEquals(60_000, bytes.size)
+
+        assertNull(BackupFileReads.readTextWithin(ByteArrayInputStream(bytes), maxBytes = 50_000L))
+    }
+
+    @Test
+    fun `exact byte boundary is respected`() {
+        val exact = "a".repeat(50_000)
+        assertEquals(exact, BackupFileReads.readTextWithin(ByteArrayInputStream(exact.toByteArray()), 50_000L))
+
+        val oneByteOver = "a".repeat(50_001)
+        assertNull(BackupFileReads.readTextWithin(ByteArrayInputStream(oneByteOver.toByteArray()), 50_000L))
+    }
+
     /** A stream that never ends, counting what it hands out. Starts with [prefix]. */
     private class CountingZeros(vararg prefix: Int) : InputStream() {
         private val head = prefix.map { it.toByte() }

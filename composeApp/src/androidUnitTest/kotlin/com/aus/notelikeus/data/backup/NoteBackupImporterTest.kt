@@ -228,6 +228,44 @@ class NoteBackupImporterTest {
         assertTrue("expected Error, got $result", result is BackupImportResult.Error)
         assertTrue(repository.finalizedIds.isEmpty())
     }
+
+    @Test
+    fun `multibyte CJK backup exceeding 25 MiB byte limit is rejected even if character count is lower`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+
+        // 9,000,000 CJK characters = 27,000,000 UTF-8 bytes (> 25 MiB = 26,214,400 bytes)
+        // while character length is only 9M (< 25M chars)
+        val cjkContent = "漢".repeat(9_000_000)
+        val json = """{"version":1,"notes":[{"title":"CJK","content":"$cjkContent","timestamp":1,"color":-1}]}"""
+
+        val result = importer.importFromJson(json, actionToken())
+        assertTrue("expected InvalidFormat for multibyte oversized payload, got $result", result is BackupImportResult.InvalidFormat)
+        assertEquals("Backup file is too large", (result as BackupImportResult.InvalidFormat).message)
+    }
+
+    @Test
+    fun `multibyte emoji backup exceeding 25 MiB byte limit is rejected`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+
+        // 7,000,000 4-byte emojis = 28,000,000 UTF-8 bytes (> 25 MiB)
+        val emojiContent = "🎉".repeat(7_000_000)
+        val json = """{"version":1,"notes":[{"title":"Emoji","content":"$emojiContent","timestamp":1,"color":-1}]}"""
+
+        val result = importer.importFromJson(json, actionToken())
+        assertTrue("expected InvalidFormat for emoji oversized payload, got $result", result is BackupImportResult.InvalidFormat)
+    }
+
+    @Test
+    fun `truncated or invalid JSON is rejected cleanly`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+
+        val truncated = """{"version":1,"notes":[{"title":"Truncated"""
+        val result = importer.importFromJson(truncated, actionToken())
+        assertTrue("expected unreadable or invalid format, got $result", result is BackupImportResult.InvalidFormat)
+    }
 }
 
 /**
