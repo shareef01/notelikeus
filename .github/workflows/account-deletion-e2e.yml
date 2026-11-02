@@ -1,0 +1,88 @@
+name: Account deletion e2e
+
+# Deleting an account is the one flow that crosses Supabase Auth, Postgres and R2, and there is no
+# staging project to rehearse it on (DECISIONS: staging and production are one project). This runs it
+# against a throwaway local stack, and touches no hosted service.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - 'workers/**'
+      - 'scripts/ops/account-deletion-e2e.mjs'
+      - '.github/workflows/account-deletion-e2e.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - 'workers/**'
+      - 'scripts/ops/account-deletion-e2e.mjs'
+      - '.github/workflows/account-deletion-e2e.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: account-deletion-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            workers/attachments/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix workers/attachments
+
+      - name: Start local Supabase stack
+        run: npm run supabase:start
+
+      - name: Read the local stack's keys
+        run: |
+          # Mask before anything can print them. These are the CLI's local defaults, not secrets of
+          # any hosted project, but a log has no reason to carry a service-role key of any kind.
+          npx supabase status -o env > /tmp/supabase.env
+          for name in API_URL ANON_KEY SERVICE_ROLE_KEY; do
+            value="$(sed -n "s/^${name}=\"\{0,1\}\([^\"]*\)\"\{0,1\}$/\1/p" /tmp/supabase.env)"
+            if [ -z "$value" ]; then
+              echo "supabase status has no $name"
+              exit 1
+            fi
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done
+
+      - name: Start the Worker
+        working-directory: workers/attachments
+        run: |
+          cp wrangler.toml.example wrangler.toml
+          printf 'SUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\n' "$ANON_KEY" "$SERVICE_ROLE_KEY" > .dev.vars
+          nohup npx wrangler dev --local --ip 127.0.0.1 --port 8787 --test-scheduled > /tmp/worker.log 2>&1 &
+
+      - name: Run the deletion end to end
+        run: node scripts/ops/account-deletion-e2e.mjs
+
+      - name: Show the Worker log
+        if: failure()
+        run: cat /tmp/worker.log
+
+      - name: Stop local Supabase stack
+        if: always()
+        run: npm run supabase:stop
