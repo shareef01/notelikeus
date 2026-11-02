@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
@@ -107,6 +108,7 @@ fun ProfileSheet(
     onCloudRestoreClick: () -> Unit = {},
     onSignInClick: () -> Unit = {},
     onSignOutClick: () -> Unit = {},
+    onDeleteAccountClick: () -> Unit = {},
     onCloudAutoSyncChange: (Boolean) -> Unit = {},
     onDiagnosticsClick: () -> Unit = {},
 ) {
@@ -340,6 +342,15 @@ fun ProfileSheet(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         onSignOutClick()
+                    }
+                )
+                SettingsRow(
+                    icon = Icons.Default.DeleteForever,
+                    title = stringResource(Res.string.account_delete),
+                    subtitle = stringResource(Res.string.account_delete_subtitle),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onDeleteAccountClick()
                     }
                 )
             } else {

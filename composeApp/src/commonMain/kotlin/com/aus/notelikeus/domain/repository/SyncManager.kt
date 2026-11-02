@@ -25,6 +25,13 @@ interface SyncManager {
     suspend fun signInWithEmailCode(email: String, code: String): Result<Unit>
     suspend fun signInWithEmail(email: String, password: String, create: Boolean): Result<Unit>
     suspend fun signOut(deleteCloudData: Boolean): Result<Unit>
+
+    /**
+     * Permanently deletes the signed-in account everywhere, then this device's copy of it.
+     *
+     * Fails with nothing changed if the server did not accept the request.
+     */
+    suspend fun deleteAccount(): Result<Unit>
     suspend fun syncNotes()
     suspend fun downloadNotes()
 

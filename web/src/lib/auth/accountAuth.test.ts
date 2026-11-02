@@ -15,6 +15,16 @@ const clearPendingAttachmentsForOwner = vi.fn(async (ownerId: string) => {
   calls.push(`clear-attachments:${ownerId}`);
 });
 
+const requestAccountDeletion = vi.fn(async () => {
+  calls.push('delete-account');
+});
+const endDeletedAccountSessionSupabase = vi.fn(async () => {
+  calls.push('end-session');
+});
+
+vi.mock('@/lib/supabase/deleteAccount', () => ({
+  requestAccountDeletion: () => requestAccountDeletion(),
+}));
 vi.mock('@/lib/supabase/deleteAllUserCloudData', () => ({
   deleteAllSupabaseCloudData: () => deleteAllSupabaseCloudData(),
 }));
@@ -22,6 +32,7 @@ vi.mock('@/lib/auth/supabaseAuth', () => ({
   sendEmailSignInCodeSupabase: vi.fn(),
   verifyEmailSignInCodeSupabase: vi.fn(),
   signOutSupabase: () => signOutSupabase(),
+  endDeletedAccountSessionSupabase: () => endDeletedAccountSessionSupabase(),
 }));
 vi.mock('@/lib/local/notesLocalRepository', () => ({
   clearOwner: (ownerId: string) => clearOwner(ownerId),
@@ -30,7 +41,7 @@ vi.mock('@/lib/local/pendingAttachmentRepository', () => ({
   clearPendingAttachmentsForOwner: (ownerId: string) => clearPendingAttachmentsForOwner(ownerId),
 }));
 
-import { signOutAccount } from '@/lib/auth/accountAuth';
+import { clearDeletedAccount, deleteAccount, signOutAccount } from '@/lib/auth/accountAuth';
 import { useAuthStore } from '@/store/authStore';
 
 /**
@@ -68,5 +79,38 @@ describe('signOutAccount', () => {
     await signOutAccount();
 
     expect(calls).toEqual(['sign-out']);
+  });
+});
+
+describe('deleteAccount', () => {
+  beforeEach(() => {
+    calls.length = 0;
+    vi.clearAllMocks();
+    useAuthStore.getState().setUser({ uid: 'user-a', email: null, displayName: null });
+  });
+
+  it('asks the server first, then clears this browser, then ends the session', async () => {
+    await deleteAccount();
+
+    expect(calls).toEqual([
+      'delete-account',
+      'clear-notes:user-a',
+      'clear-attachments:user-a',
+      'end-session',
+    ]);
+  });
+
+  it('keeps everything local, and stays signed in, when the server refuses', async () => {
+    requestAccountDeletion.mockRejectedValueOnce(new Error('Could not delete'));
+
+    await expect(deleteAccount()).rejects.toThrow('Could not delete');
+
+    expect(calls).toEqual([]);
+  });
+
+  it('clears a copy for an account deleted from another device', async () => {
+    await clearDeletedAccount('user-a');
+
+    expect(calls).toEqual(['clear-notes:user-a', 'clear-attachments:user-a', 'end-session']);
   });
 });

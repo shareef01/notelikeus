@@ -62,6 +62,7 @@ internal class CloudSyncController(
                         // the way down to ProfileSheet and rendered as "Last sync: %d notes", so
                         // that row read "Last sync: 0 notes" permanently, on every device, however
                         // much had actually synced. The counts only exist on these two events.
+                        isDeletingAccount = current.isDeletingAccount && event !is CloudSyncEvent.AccountDeleted,
                         cloudSyncedNoteCount = when (event) {
                             is CloudSyncEvent.Uploaded -> event.noteCount
                             is CloudSyncEvent.Downloaded -> event.noteCount
@@ -69,6 +70,9 @@ internal class CloudSyncController(
                         }
                     )
                 }
+                // Decoded copies of the account's pictures. A device told this by its sync has not
+                // been through deleteAccount below.
+                if (event is CloudSyncEvent.AccountDeleted) clearAttachmentThumbnailCache()
             }
         }.launchIn(scope)
 
@@ -221,6 +225,31 @@ internal class CloudSyncController(
     private fun signOutFailureMessage(error: Throwable): String =
         error.message?.takeIf { it.isNotBlank() }
             ?: "Couldn't delete your cloud notes, so you're still signed in. Try again."
+
+    /**
+     * Deletes the account, after the user typed the confirmation. A failure is reported and changes
+     * nothing: the account and this device's notes are both still there, and the user can retry.
+     */
+    fun deleteAccount() {
+        if (state.value.isDeletingAccount) return
+        scope.launch {
+            state.update { it.copy(isDeletingAccount = true) }
+            val result = syncManager.deleteAccount()
+            if (result.isSuccess) clearAttachmentThumbnailCache()
+            state.update { currentState ->
+                currentState.copy(
+                    isDeletingAccount = false,
+                    pendingCloudSyncEvent = result.fold(
+                        onSuccess = { CloudSyncEvent.AccountDeleted() },
+                        onFailure = { CloudSyncEvent.Failure(accountDeleteFailureMessage) },
+                    ),
+                )
+            }
+        }
+    }
+
+    private val accountDeleteFailureMessage =
+        "Couldn't delete your account, and nothing was deleted. Check your connection and try again."
 
     fun syncNotesToCloud() {
         scope.launch {

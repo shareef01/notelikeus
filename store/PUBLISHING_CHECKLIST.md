@@ -30,6 +30,7 @@ Use this list before submitting Notelikeus to Google Play.
 
 - [ ] **Privacy policy URL** — `https://notelikeus.pages.dev/privacy.html` (or a custom domain once attached). The old Firebase Hosting URL is retired.
 - [ ] **Data safety** — complete form using `DATA_SAFETY.md`
+- [ ] **Account deletion** — in the Data safety form, declare in-app deletion (Settings → Delete account) and give the web app URL as the link where accounts can be deleted without installing the app (sign in, then Settings → Delete account). Confirm the Worker has `SUPABASE_SERVICE_ROLE_KEY` first: without it deletion answers 503.
 - [ ] **Content rating** — complete IARC questionnaire (notes app, no user-generated public content)
 - [ ] **Target audience** — set age group (likely 13+ or all ages; no child-directed content)
 - [ ] **News app / COVID / government** — No

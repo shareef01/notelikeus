@@ -3,6 +3,7 @@ import { authoredContentDigest } from '@/lib/notes/conflictResolution';
 import { useToastStore } from '@/store/toastStore';
 import { categorizeSyncError } from '@/lib/diagnostics/diagnosticsReport';
 import { formatUnknownError } from '@/lib/errors/formatUnknownError';
+import { isAccountDeletedError } from '@/lib/supabase/deleteAccount';
 import { deleteNote, hasPendingPush, putNotes } from '@/lib/local/notesLocalRepository';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
 import { shouldUploadOverRemote } from '@/lib/notes/remoteMerge';
@@ -194,6 +195,21 @@ function trackRemoteIds(userId: string, ids: string[]) {
  * reconnect/tab-refocus catches a newer remote edit instead of leaving a stale local flush
  * as the last writer.
  */
+/**
+ * Another device deleted this account: the server said so, so this browser's copy goes too.
+ *
+ * Imported on demand because the auth module imports this one.
+ */
+async function endSessionOfDeletedAccount(userId: string): Promise<void> {
+  try {
+    const { clearDeletedAccount } = await import('@/lib/auth/accountAuth');
+    await clearDeletedAccount(userId);
+    useToastStore.getState().show('This account was deleted. Its notes were removed from this browser.');
+  } catch (error) {
+    console.warn('[Notelikeus] Clearing a deleted account failed:', error);
+  }
+}
+
 async function reconcileNow(userId: string): Promise<void> {
   const now = Date.now();
   if (reconcileInFlight) return reconcileInFlight;
@@ -228,6 +244,10 @@ async function reconcileNow(userId: string): Promise<void> {
       useNotesStore.getState().clearSyncError();
     } catch (error) {
       if (reconcileUserId !== userId) return;
+      if (isAccountDeletedError(error)) {
+        await endSessionOfDeletedAccount(userId);
+        return;
+      }
       lastReconcileStartedAt = 0; // allow immediate retry on the next trigger
       // The category, not the error: a revision conflict's message embeds the remote note's
       // title, and diagnostics must never carry note content.
@@ -249,6 +269,10 @@ async function pushQueuedEdits(userId: string): Promise<void> {
   try {
     await getRemoteNotesDataSource().pushPendingEdits?.(userId);
   } catch (error) {
+    if (isAccountDeletedError(error)) {
+      await endSessionOfDeletedAccount(userId);
+      return;
+    }
     // Still queued; the flush already marked it as not synced, and the next trigger retries it.
     console.warn('[Notelikeus] Pushing queued edits after reconnect failed:', error);
   }

@@ -4,6 +4,9 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Added
+- **You can delete your account.** Settings → Delete account, on Android, Windows and the web, permanently removes your account, notes and images. You type DELETE to confirm, and it happens right away with no undo. Your other signed-in devices remove their copies the next time they sync.
+
 ### Fixed
 - **An open web tab no longer misses a change from another device.** Two devices saving at the same moment could hide one of the changes until the app was reopened.
 - **Attachment storage limit covers pictures still being removed.** Deleting a note frees its share of the 200 MB limit once its pictures are gone from storage, and that cleanup now runs hourly.

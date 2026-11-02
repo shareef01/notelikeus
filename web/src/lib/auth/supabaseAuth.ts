@@ -170,6 +170,18 @@ export async function createEmailPasswordAccountSupabase(
   }
 }
 
+/**
+ * Ends the session of an account that no longer exists. Local scope, because there is no server
+ * session left worth revoking and this must not fail for want of a network: the account is gone
+ * whether or not the server can be reached.
+ */
+export async function endDeletedAccountSessionSupabase(): Promise<void> {
+  clearGuestAdoptionIntent();
+  await getSupabaseClient().auth.signOut({ scope: 'local' });
+  stopNotesRealtimeSync();
+  clearLocalUserData();
+}
+
 export async function signOutSupabase(): Promise<void> {
   clearGuestAdoptionIntent();
   const { error } = await getSupabaseClient().auth.signOut();

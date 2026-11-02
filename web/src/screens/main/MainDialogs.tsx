@@ -3,6 +3,7 @@ import { BulkDeleteDialog } from '@/components/notes/BulkDeleteDialog';
 import { EmptyTrashDialog } from '@/components/notes/EmptyTrashDialog';
 import { PrivacyPolicyDialog } from '@/components/settings/PrivacyPolicyDialog';
 import { ProfileSheet } from '@/components/settings/ProfileSheet';
+import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
 import { SignOutDialog } from '@/components/settings/SignOutDialog';
 import { SortSheet } from '@/components/layout/SortSheet';
 
@@ -10,6 +11,7 @@ import { SortSheet } from '@/components/layout/SortSheet';
 export interface MainDialogState {
   profile: boolean;
   signOutConfirm: boolean;
+  deleteAccountConfirm: boolean;
   privacyPolicy: boolean;
   emptyTrashConfirm: boolean;
   bulkDeleteConfirm: boolean;
@@ -19,6 +21,7 @@ export interface MainDialogState {
 export const NO_DIALOGS_OPEN: MainDialogState = {
   profile: false,
   signOutConfirm: false,
+  deleteAccountConfirm: false,
   privacyPolicy: false,
   emptyTrashConfirm: false,
   bulkDeleteConfirm: false,
@@ -56,6 +59,7 @@ interface MainDialogsProps {
   onSignIn: () => void;
   onSignUp: () => void;
   onSignOut: (deleteCloudData: boolean) => void;
+  onDeleteAccount: () => Promise<void>;
   onEmptyTrash: () => void;
   onBulkPermanentDelete: () => void;
 }
@@ -96,6 +100,7 @@ export function MainDialogs({
   onSignIn,
   onSignUp,
   onSignOut,
+  onDeleteAccount,
   onEmptyTrash,
   onBulkPermanentDelete,
 }: MainDialogsProps) {
@@ -125,6 +130,7 @@ export function MainDialogs({
         onSignIn={onSignIn}
         onSignUp={onSignUp}
         onSignOut={() => onOpenChange({ signOutConfirm: true })}
+        onDeleteAccount={() => onOpenChange({ deleteAccountConfirm: true })}
       />
 
       <SortSheet
@@ -139,6 +145,13 @@ export function MainDialogs({
         onCancel={() => onOpenChange({ signOutConfirm: false })}
         onSignOut={() => onSignOut(false)}
         onSignOutAndDelete={() => onSignOut(true)}
+      />
+
+      <DeleteAccountDialog
+        open={open.deleteAccountConfirm}
+        onCancel={() => onOpenChange({ deleteAccountConfirm: false })}
+        onExportBackup={onExportCompleteBackup}
+        onConfirm={onDeleteAccount}
       />
 
       <BulkDeleteDialog

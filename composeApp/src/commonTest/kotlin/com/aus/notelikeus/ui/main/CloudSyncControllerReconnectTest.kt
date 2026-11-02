@@ -30,6 +30,7 @@ class CloudSyncControllerReconnectTest {
         override suspend fun signInWithEmailCode(email: String, code: String) = Result.success(Unit)
         override suspend fun signInWithEmail(email: String, password: String, create: Boolean) = Result.success(Unit)
         override suspend fun signOut(deleteCloudData: Boolean) = Result.success(Unit)
+        override suspend fun deleteAccount() = Result.success(Unit)
         override suspend fun syncNotes() = Unit
         override suspend fun allowUploadAfterCloudWipe(): Result<Unit> = Result.success(Unit)
         override suspend fun downloadNotes() {

@@ -27,7 +27,21 @@ class SupabaseTransportException(
                 WipeGenerationRefusal.Stale
             else -> null
         }
+
+    /**
+     * Whether the database said this account is being deleted (`NL003`). A definite answer, which is
+     * what makes it safe to erase the local copy on: nothing a network or an expired session can
+     * produce looks like it.
+     */
+    val isAccountDeleted: Boolean
+        get() = body.contains("NL003") || body.contains("account_deleted:")
 }
+
+/** Whether this failure, or anything it wraps, is the database's answer that the account is gone. */
+fun Throwable.isAccountDeletedRefusal(): Boolean =
+    generateSequence(this) { it.cause }
+        .take(8)
+        .any { it is SupabaseTransportException && it.isAccountDeleted }
 
 /** Why the wipe-generation guard refused a write. */
 enum class WipeGenerationRefusal {

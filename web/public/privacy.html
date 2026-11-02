@@ -101,6 +101,7 @@
         <li>Note content is stored in <strong>Supabase</strong> under your account</li>
         <li>Attachment binaries, when used, are stored in <strong>Cloudflare R2</strong> behind an authenticated Worker</li>
         <li>Signing out <strong>clears locally cached notes on this device</strong> so the next account cannot inherit them; cloud data remains until you delete it (in-app “Sign out and delete cloud data”)</li>
+        <li><strong>Deleting your account:</strong> Settings → Delete account, on Android, Windows and the web, takes effect immediately and cannot be undone. Your notes are removed from Supabase at once; your images are then removed from Cloudflare R2 and your account and email address from Supabase Auth, normally within seconds and otherwise retried hourly. The device you delete from removes its copy straight away, including edits not yet uploaded, and other signed-in devices remove theirs the next time they sync; a device whose session has already expired stops syncing and removes its copy when anyone next signs in on it or when the app is uninstalled. For up to two hours the server keeps your account’s random internal id, with no email or note content, so a device still signed in can be told the account is gone. Supabase and Cloudflare may hold data in their own routine backups until those expire. Backup files you exported are not affected.</li>
       </ul>
 
       <h2>Security</h2>

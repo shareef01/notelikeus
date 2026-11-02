@@ -20,7 +20,7 @@ interface OrphanRow {
  */
 const SWEEP_LIMIT = 100;
 
-function serviceRoleHeaders(env: WorkerEnv): HeadersInit | null {
+export function serviceRoleHeaders(env: WorkerEnv): HeadersInit | null {
   const key = env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   if (!key) return null;
   return {
@@ -30,7 +30,7 @@ function serviceRoleHeaders(env: WorkerEnv): HeadersInit | null {
   };
 }
 
-async function rpc<T>(
+export async function rpc<T>(
   env: WorkerEnv,
   name: string,
   body: Record<string, unknown>,

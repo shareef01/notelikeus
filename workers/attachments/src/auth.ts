@@ -3,7 +3,7 @@
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
   /**
-   * Worker cron only. Never ship this in a client app. User PUT/GET/DELETE
+   * Worker cron and account deletion only. Never ship this in a client app. User PUT/GET/DELETE
    * still use the caller's bearer + anon key.
    */
   SUPABASE_SERVICE_ROLE_KEY?: string;

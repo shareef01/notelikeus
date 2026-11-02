@@ -288,6 +288,7 @@ export function MainScreen() {
     signOut,
     exportBackup,
     exportCompleteBackup,
+    deleteAccount,
     prepareImport,
     pendingImport,
     confirmImport,
@@ -296,6 +297,7 @@ export function MainScreen() {
     notes,
     userId: user?.uid,
     closeSignOutConfirm: () => openDialogs({ signOutConfirm: false }),
+    closeDeleteAccountConfirm: () => openDialogs({ deleteAccountConfirm: false }),
     closeProfile: () => openDialogs({ profile: false }),
   });
 
@@ -694,6 +696,7 @@ export function MainScreen() {
         onSignIn={() => openAuthScreen('signin')}
         onSignUp={() => openAuthScreen('signup')}
         onSignOut={(deleteCloudData) => void signOut(deleteCloudData)}
+        onDeleteAccount={deleteAccount}
         onEmptyTrash={() => void emptyTheTrash()}
         onBulkPermanentDelete={() => void bulkPermanentDelete()}
       />

@@ -288,6 +288,7 @@ jobs:
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
             echo "Orphan sweep: no SUPABASE_SERVICE_ROLE_KEY secret, the cron stays a deliberate no-op."
+            echo "::warning::No SUPABASE_SERVICE_ROLE_KEY secret: in-app account deletion answers 503 and deletes nothing."
           fi
 
       - name: Enable the orphan sweep
