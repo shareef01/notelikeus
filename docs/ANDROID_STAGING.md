@@ -2,6 +2,9 @@
 
 Clients use the same Supabase configuration keys in debug and release. There is no Firebase fallback.
 
+"Staging" here is a name, not a separate environment: the project has one Supabase project and one
+Worker, so these keys reach production data. Sign in with a test account.
+
 ```bash
 npm run kotlin:staging-properties
 ```
