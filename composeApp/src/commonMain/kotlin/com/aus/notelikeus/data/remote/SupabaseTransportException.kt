@@ -1,5 +1,10 @@
 package com.aus.notelikeus.data.remote
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+
 class SupabaseTransportException(
     val functionName: String,
     val statusCode: Int,
@@ -32,9 +37,26 @@ class SupabaseTransportException(
      * Whether the database said this account is being deleted (`NL003`). A definite answer, which is
      * what makes it safe to erase the local copy on: nothing a network or an expired session can
      * produce looks like it.
+     *
+     * Read from the error's own fields: PostgREST's `code`, or a `message` that *starts* with the
+     * fence's prefix. Not a substring of the body (AUD-009): an error body can quote values back, such
+     * as a note title, and text a user typed must never be able to erase their local copy.
      */
     val isAccountDeleted: Boolean
-        get() = body.contains("NL003") || body.contains("account_deleted:")
+        get() = postgrestError()?.let { (code, message) ->
+            code == ACCOUNT_DELETED_SQLSTATE || message?.startsWith(ACCOUNT_DELETED_PREFIX) == true
+        } ?: false
+
+    /** PostgREST's `{"code", "message"}`, or null for a body that is not one. */
+    private fun postgrestError(): Pair<String?, String?>? = runCatching {
+        val error = Json.parseToJsonElement(body).jsonObject
+        (error["code"] as? JsonPrimitive)?.contentOrNull to (error["message"] as? JsonPrimitive)?.contentOrNull
+    }.getOrNull()
+
+    private companion object {
+        const val ACCOUNT_DELETED_SQLSTATE = "NL003"
+        const val ACCOUNT_DELETED_PREFIX = "account_deleted:"
+    }
 
     /**
      * Whether the server refused a destructive action until the user signs in again (AUD-005): the

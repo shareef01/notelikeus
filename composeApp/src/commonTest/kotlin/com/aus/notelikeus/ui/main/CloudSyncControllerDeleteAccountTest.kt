@@ -1,5 +1,6 @@
 package com.aus.notelikeus.ui.main
 
+import com.aus.notelikeus.data.remote.AccountDeletionOutcomeUnknownException
 import com.aus.notelikeus.domain.repository.SyncManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -72,6 +73,20 @@ class CloudSyncControllerDeleteAccountTest {
         assertTrue("nothing was deleted" in event.message, event.message)
         assertFalse("503" in event.message, "transport detail is not for the user")
         assertFalse(state.value.isDeletingAccount)
+    }
+
+    // AUD-010: "nothing was deleted" is said only when it is known.
+    @Test
+    fun `an outcome that could not be settled says so instead of claiming nothing was deleted`() = runTest {
+        val controller = controller()
+        sync.deleteResult = Result.failure(AccountDeletionOutcomeUnknownException(RuntimeException("timeout")))
+
+        controller.deleteAccount()
+        runCurrent()
+
+        val event = assertIs<CloudSyncEvent.Failure>(state.value.pendingCloudSyncEvent)
+        assertTrue("Couldn't confirm whether your account was deleted" in event.message, event.message)
+        assertFalse("nothing was deleted" in event.message, event.message)
     }
 
     @Test
