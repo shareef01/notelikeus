@@ -230,4 +230,6 @@ public anon JWT — rather than duplicating them under names that could drift.
 
 **Apply the migrations first.** A Worker calling an RPC its database does not have yet
 answers 503, while the older Worker's RPCs all still exist, so schema-first is safe in
-both directions and Worker-first is not.
+both directions and Worker-first is not. The deploy job enforces it: it lists the hosted project's migrations and refuses
+to deploy while any committed one is unapplied, the same check the Pages deploy runs. That
+needs the three `supabase.yml` secrets as well.

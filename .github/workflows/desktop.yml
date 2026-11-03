@@ -203,31 +203,41 @@ jobs:
   # released source rather than from main's tip. The tag is only ever read: `gh release upload`
   # adds an asset to a release and cannot move or recreate a ref.
   msi-release:
-    if: github.event_name == 'workflow_dispatch'
+    # From main only, as the comment above says: a dispatch from any other branch would run that
+    # branch's own copy of this job, with write access.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: windows-latest
     timeout-minutes: 60
     # The only job in this workflow with write access, and the only one that publishes anything.
     permissions:
       contents: write
+    # The dispatch inputs reach the scripts below only as environment variables. `${{ inputs.* }}`
+    # inside a script pastes the text into the script itself, so a crafted tag ran as PowerShell in
+    # this write-access job before the check below ever saw it (AUD-012).
+    env:
+      RELEASE_TAG_INPUT: ${{ inputs.release_tag }}
+      REPLACE_EXISTING_ASSET: ${{ inputs.replace_existing_asset }}
 
     steps:
       - name: Validate the requested release tag
         shell: pwsh
         run: |
-          $tag = "${{ inputs.release_tag }}"
+          $tag = $env:RELEASE_TAG_INPUT
           if ([string]::IsNullOrWhiteSpace($tag)) { throw "release_tag is required" }
-          if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+') { throw "release_tag '$tag' does not look like a release tag" }
+          # Anchored at both ends: nothing after the version is let through.
+          if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$') { throw "release_tag '$tag' does not look like a release tag" }
 
       # The released source, not main's tip: the installer must correspond to the release commit.
       - name: Check out the released commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.release_tag }}
+          # Under refs/tags/, so a branch that happens to share the name is never what gets built.
+          ref: refs/tags/${{ env.RELEASE_TAG_INPUT }}
 
       - name: Prove the checkout is the tag's commit
         shell: pwsh
         run: |
-          $tag = "${{ inputs.release_tag }}"
+          $tag = $env:RELEASE_TAG_INPUT
           $head = (git rev-parse HEAD).Trim()
           $tagSha = (git rev-parse "$tag^{commit}").Trim()
           Write-Host "release $tag = $tagSha · building from $head"
@@ -333,7 +343,7 @@ jobs:
           $name = [System.IO.Path]::GetFileName($msi)
           $existing = gh release view $tag --json assets --jq '.assets[].name'
           if ($existing -contains $name) {
-            if ("${{ inputs.replace_existing_asset }}" -ne "true") {
+            if ($env:REPLACE_EXISTING_ASSET -ne "true") {
               throw "Asset $name already exists on $tag. Re-run with replace_existing_asset=true if replacing it is intended."
             }
             Write-Host "Replacing $name on $tag (replace_existing_asset=true)"
