@@ -38,6 +38,8 @@ Supabase PostgreSQL. Authoritative note mutations go through RPCs, not direct ta
 - attachment RPCs: `register_note_attachment`, `delete_note_attachment`, `list_user_attachments`, `list_pending_deleted_attachments`, `purge_deleted_note_attachment`, `precheck_note_attachment_put`, `authorize_note_attachment_{put,get,delete}`, `finalize_note_attachment_put`, `begin_note_attachment_delete`, `finalize_note_attachment_delete`
 - Hosted sweep only (`service_role`): `list_orphaned_deleted_attachments`, `claim_orphaned_attachment_for_delete`, `purge_orphaned_deleted_attachment`, `list_unconfirmed_attachment_deletes`, `confirm_attachment_object_deleted`
 
+**Note limits** (AUD-004, `20261105000000`): an account holds at most 10 000 notes and 100 MiB of note text (title, content, labels and checklist). The `notes_account_usage` trigger keeps a running total per account in `account_note_usage`, from each row's own change, and refuses with NL005 a write that would take the account past a limit while growing it. Shrinking and deleting are always allowed, so an account already over a limit is never stuck. Per-note limits stay in `validate_note_payload`; attachments have their own 200 MB quota.
+
 Row-level security is enabled on user-owned tables. Direct INSERT/UPDATE/DELETE of revision, owner, and tombstone rows is blocked by mutation guards. User attachment PUT/GET/DELETE stay on the caller’s bearer token.
 
 ## Sync protocol

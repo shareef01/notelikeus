@@ -4,6 +4,7 @@ import { useToastStore } from '@/store/toastStore';
 import { categorizeSyncError } from '@/lib/diagnostics/diagnosticsReport';
 import { formatUnknownError } from '@/lib/errors/formatUnknownError';
 import { isAccountDeletedError } from '@/lib/supabase/deleteAccount';
+import { isNoteLimitError, noteLimitMessage } from '@/lib/supabase/noteLimits';
 import { deleteNote, hasPendingPush, putNotes } from '@/lib/local/notesLocalRepository';
 import { notesContentEqual } from '@/lib/notes/noteEquality';
 import { shouldUploadOverRemote } from '@/lib/notes/remoteMerge';
@@ -256,7 +257,10 @@ async function reconcileNow(userId: string): Promise<void> {
       // reconcile means the cloud is behind, not that the library is unreadable, and taking the
       // screen away would also take away the offline edits waiting to be pushed.
       useNotesStore.getState().setSyncError(
-        formatUnknownError(error, 'Could not sync notes. Please try again.'),
+        // AUD-004: the account is at its note limit; say what to do rather than show the raw refusal.
+        isNoteLimitError(error)
+          ? noteLimitMessage(error)
+          : formatUnknownError(error, 'Could not sync notes. Please try again.'),
       );
     } finally {
       reconcileInFlight = null;
