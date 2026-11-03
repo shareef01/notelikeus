@@ -10,6 +10,7 @@ vi.mock('@/lib/supabase/supabaseSyncEngine', () => ({
 }));
 
 import { isAccountDeletedError, requestAccountDeletion } from '@/lib/supabase/deleteAccount';
+import { ReauthenticationRequiredError } from '@/lib/auth/reauthentication';
 
 describe('isAccountDeletedError', () => {
   it('recognises the database refusal by code or by message', () => {
@@ -50,6 +51,24 @@ describe('requestAccountDeletion', () => {
       method: 'DELETE',
       headers: { Authorization: 'Bearer token' },
     });
+  });
+
+  // AUD-005: the Worker refuses a session that did not sign in recently, before deleting anything.
+  it('turns the Worker reauthentication answer into ReauthenticationRequiredError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{"error":"reauthentication_required"}', { status: 403 })),
+    );
+
+    await expect(requestAccountDeletion()).rejects.toBeInstanceOf(ReauthenticationRequiredError);
+  });
+
+  it('does not read any other 403 as a request to sign in again', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('Forbidden', { status: 403 })));
+
+    const failure = await requestAccountDeletion().catch((error: unknown) => error);
+    expect(failure).not.toBeInstanceOf(ReauthenticationRequiredError);
+    expect(String(failure)).toContain('Could not delete your account');
   });
 
   it('treats 202 as success: the sweep finishes what the notes already lost', async () => {

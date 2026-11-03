@@ -705,6 +705,25 @@ fun MainScreen(
         )
     }
 
+    // AUD-005: the server wants a recent sign-in before it deletes anything. The delete dialog's
+    // confirmation already stands, so it steps aside for the code.
+    val identityCheck = state.pendingIdentityCheck
+    LaunchedEffect(identityCheck) {
+        if (identityCheck == IdentityCheck.DeleteAccount) showDeleteAccountConfirm = false
+    }
+    val accountEmail = state.cloudAccount.email
+    if (identityCheck != null && accountEmail != null) {
+        ConfirmIdentityDialog(
+            check = identityCheck,
+            email = accountEmail,
+            codeSent = state.identityCodeSent,
+            isBusy = state.isConfirmingIdentity,
+            onSendCode = { viewModel.requestIdentityCode() },
+            onConfirm = { code -> viewModel.confirmIdentity(code) },
+            onDismiss = { viewModel.cancelIdentityCheck() },
+        )
+    }
+
     MainDialogs(
         showCloudSignOutConfirm = showCloudSignOutConfirm,
         showCloudRestoreConfirm = showCloudRestoreConfirm,

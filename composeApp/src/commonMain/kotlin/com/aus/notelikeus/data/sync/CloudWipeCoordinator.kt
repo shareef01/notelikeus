@@ -1,5 +1,6 @@
 package com.aus.notelikeus.data.sync
 
+import com.aus.notelikeus.data.remote.isReauthenticationRequiredRefusal
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -54,7 +55,18 @@ class CloudWipeCoordinator(
         } catch (failure: Throwable) {
             return@withLock CloudWipeOutcome.NotStarted(failure)
         }
-        attempt(ownerUid, performWipe)
+        attempt(ownerUid, performWipe, refusedForSignIn = ::refusedUntilSignedIn)
+    }
+
+    /**
+     * The server refused this new request outright until the user signs in again (AUD-005), and wiped
+     * nothing. Unlike an ambiguous failure it is not kept as owed: the user is asked to confirm it is
+     * them right now, and a confirmation they cancel must not turn into a wipe that runs by itself at
+     * their next sign-in.
+     */
+    private suspend fun refusedUntilSignedIn(ownerUid: String, failure: Throwable): CloudWipeOutcome {
+        runCatching { intents.clear(ownerUid) }
+        return CloudWipeOutcome.ReauthenticationRequired(failure)
     }
 
     /**
@@ -77,10 +89,17 @@ class CloudWipeCoordinator(
      * Completion clears *that owner's* record only: an account whose wipe finished can never erase what
      * another account is still owed, however the two overlap.
      */
-    private suspend fun attempt(ownerUid: String, performWipe: suspend () -> Unit): CloudWipeOutcome {
+    private suspend fun attempt(
+        ownerUid: String,
+        performWipe: suspend () -> Unit,
+        refusedForSignIn: (suspend (String, Throwable) -> CloudWipeOutcome)? = null,
+    ): CloudWipeOutcome {
         try {
             performWipe()
         } catch (failure: Throwable) {
+            if (refusedForSignIn != null && failure.isReauthenticationRequiredRefusal()) {
+                return refusedForSignIn(ownerUid, failure)
+            }
             // The request may or may not have reached the server. Either way it stays owed.
             return CloudWipeOutcome.Failed(failure)
         }
@@ -110,6 +129,12 @@ sealed interface CloudWipeOutcome {
 
     /** The wipe completed, but the record could not be cleared; a harmless retry is still owed. */
     data class CompletedButStillPending(val failure: Throwable) : CloudWipeOutcome
+
+    /**
+     * The server wants a recent sign-in before it wipes anything, and wiped nothing. Not owed: the
+     * caller asks the user to confirm it is them and, if they do, requests the wipe again.
+     */
+    data class ReauthenticationRequired(val failure: Throwable) : CloudWipeOutcome
 
     /** True when the durable record still says the account is owed a destructive wipe. */
     val stillPending: Boolean

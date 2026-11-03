@@ -290,6 +290,9 @@ export function MainScreen() {
     exportCompleteBackup,
     exportDeviceBackup,
     deleteAccount,
+    identityCheck,
+    confirmIdentity,
+    cancelIdentityCheck,
     prepareImport,
     pendingImport,
     confirmImport,
@@ -699,6 +702,9 @@ export function MainScreen() {
         onSignUp={() => openAuthScreen('signup')}
         onSignOut={(deleteCloudData) => void signOut(deleteCloudData)}
         onDeleteAccount={deleteAccount}
+        identityCheck={identityCheck}
+        onConfirmIdentity={confirmIdentity}
+        onCancelIdentityCheck={cancelIdentityCheck}
         onEmptyTrash={() => void emptyTheTrash()}
         onBulkPermanentDelete={() => void bulkPermanentDelete()}
       />

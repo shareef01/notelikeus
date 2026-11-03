@@ -2,6 +2,7 @@ import { attachmentWorkerPath, parseAttachmentObjectKey } from '@/lib/attachment
 import { loadAttachmentsWorkerUrl } from '@/lib/attachments/attachmentConfig';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import { ensureSupabaseAuthenticated } from '@/lib/supabase/supabaseSyncEngine';
+import { isReauthenticationRequired, ReauthenticationRequiredError } from '@/lib/auth/reauthentication';
 
 interface DeleteAllUserCloudDataResult {
   status?: string;
@@ -71,7 +72,8 @@ async function deleteR2Objects(objectKeys: string[], token: string, workerUrl: s
 export async function deleteAllSupabaseCloudData(): Promise<number> {
   await ensureSupabaseAuthenticated();
   const { data, error } = await getSupabaseClient().rpc('delete_all_user_cloud_data');
-  if (error) throw error;
+  // AUD-005: nothing was wiped; the caller asks for a new code and retries.
+  if (error) throw isReauthenticationRequired(error) ? new ReauthenticationRequiredError() : error;
   const result = (data ?? {}) as DeleteAllUserCloudDataResult;
   const objectKeys = result.attachment_object_keys ?? [];
   const notesDeleted = result.notes_deleted ?? 0;

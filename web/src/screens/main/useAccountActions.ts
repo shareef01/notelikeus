@@ -16,6 +16,7 @@ import {
 import { getAttachmentBlobStore } from '@/lib/attachments/attachmentBlobStoreRegistry';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { formatUnknownError } from '@/lib/errors/formatUnknownError';
+import { isReauthenticationRequired } from '@/lib/auth/reauthentication';
 import { useToastStore } from '@/store/toastStore';
 import type { Note } from '@/types/note';
 import { useState } from 'react';
@@ -40,6 +41,9 @@ interface AccountActionsDeps {
   closeDeleteAccountConfirm: () => void;
   closeProfile: () => void;
 }
+
+/** A destructive action the server refused until the user confirms it is them. */
+export type IdentityCheck = 'deleteAccount' | 'wipeCloudData';
 
 /** A parsed backup waiting on the user to confirm that importing it is what they meant. */
 export interface PendingImport {
@@ -69,6 +73,8 @@ export function useAccountActions({
   closeProfile,
 }: AccountActionsDeps) {
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+  /** The destructive action waiting for a new sign-in code before it is retried (AUD-005). */
+  const [identityCheck, setIdentityCheck] = useState<IdentityCheck | null>(null);
 
   const signOut = async (deleteCloudData: boolean) => {
     closeSignOutConfirm();
@@ -79,13 +85,19 @@ export function useAccountActions({
       await signOutAccount({ deleteCloudData });
       toast(deleteCloudData ? 'Signed out and cloud data deleted' : 'Signed out');
     } catch (error) {
+      // Nothing was wiped and the user is still signed in: ask for a code, then wipe.
+      if (deleteCloudData && isReauthenticationRequired(error)) {
+        setIdentityCheck('wipeCloudData');
+        return;
+      }
       toast(messageOf(error, 'Sign out failed'), 'error');
     }
   };
 
   /**
    * Leaves the dialog open on failure, with the toast saying why: nothing was deleted, and the user
-   * should be able to try again without typing the confirmation a second time.
+   * should be able to try again without typing the confirmation a second time. When the server wants
+   * a recent sign-in first, the confirmation is already given, so the code is all that is asked for.
    */
   const deleteAccount = async () => {
     try {
@@ -95,7 +107,40 @@ export function useAccountActions({
       closeProfile();
       toast('Your account was deleted');
     } catch (error) {
+      if (isReauthenticationRequired(error)) {
+        closeDeleteAccountConfirm();
+        setIdentityCheck('deleteAccount');
+        return;
+      }
       toast(messageOf(error, 'Could not delete your account. Nothing was deleted.'), 'error');
+    }
+  };
+
+  /** Retries the waiting action with the fresh session the code started. */
+  const confirmIdentity = async () => {
+    const action = identityCheck;
+    try {
+      const auth = await import('@/lib/auth/accountAuth');
+      if (action === 'deleteAccount') {
+        await auth.deleteAccount();
+        closeProfile();
+        toast('Your account was deleted');
+      } else if (action === 'wipeCloudData') {
+        await auth.signOutAccount({ deleteCloudData: true });
+        toast('Signed out and cloud data deleted');
+      }
+    } catch (error) {
+      toast(
+        messageOf(
+          error,
+          action === 'deleteAccount'
+            ? 'Could not delete your account. Nothing was deleted.'
+            : 'Could not delete your cloud data. Nothing was deleted.',
+        ),
+        'error',
+      );
+    } finally {
+      setIdentityCheck(null);
     }
   };
 
@@ -265,6 +310,9 @@ export function useAccountActions({
   return {
     signOut,
     deleteAccount,
+    identityCheck,
+    confirmIdentity,
+    cancelIdentityCheck: () => setIdentityCheck(null),
     exportBackup,
     exportCompleteBackup,
     exportDeviceBackup,

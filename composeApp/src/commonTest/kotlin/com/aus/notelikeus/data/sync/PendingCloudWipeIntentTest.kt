@@ -1,5 +1,6 @@
 package com.aus.notelikeus.data.sync
 
+import com.aus.notelikeus.data.remote.SupabaseTransportException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -293,6 +294,53 @@ class PendingCloudWipeIntentTest {
             store.read().map { it.ownerUid }.toSet(),
             "a concurrent request was lost: ${store.read().map { it.ownerUid }}",
         )
+    }
+
+    /** The database's answer to a wipe on a session that did not sign in recently (AUD-005). */
+    private fun refusedForSignIn(): Nothing = throw SupabaseTransportException(
+        "delete_all_user_cloud_data",
+        400,
+        """{"code":"NL004","message":"reauthentication_required: confirm it is you"}""",
+    )
+
+    /** WIPE-17: a refusal until the user signs in again wiped nothing, so nothing is left owed. */
+    @Test
+    fun `WIPE-17 a new request refused for a stale session is not kept owed`() = runTest(timeout = TIMEOUT) {
+        val store = InMemoryPendingCloudWipeIntentStore()
+        val recorder = RecordingWipe().apply { behavior = { refusedForSignIn() } }
+
+        val outcome = CloudWipeCoordinator(store).requestWipe(owner, 1L, wipe(recorder))
+
+        assertTrue(outcome is CloudWipeOutcome.ReauthenticationRequired, "reported $outcome")
+        assertFalse(outcome.stillPending)
+        assertNull(store.find(owner), "a cancelled confirmation would come back as a wipe at the next sign-in")
+    }
+
+    /** WIPE-18: and that refusal leaves nothing for the next sign-in to resume. */
+    @Test
+    fun `WIPE-18 a refused request is not resumed by the next sign-in`() = runTest(timeout = TIMEOUT) {
+        val store = InMemoryPendingCloudWipeIntentStore()
+        val coordinator = CloudWipeCoordinator(store)
+        coordinator.requestWipe(owner, 1L, wipe(RecordingWipe().apply { behavior = { refusedForSignIn() } }))
+        val later = RecordingWipe()
+
+        val resumed = coordinator.resumeIfPending(owner, wipe(later))
+
+        assertNull(resumed)
+        assertFalse(later.invoked)
+    }
+
+    /** WIPE-19: a wipe already owed from an earlier, ambiguous failure stays owed when resumed stale. */
+    @Test
+    fun `WIPE-19 an owed wipe resumed on a stale session stays owed`() = runTest(timeout = TIMEOUT) {
+        val store = InMemoryPendingCloudWipeIntentStore()
+        val coordinator = CloudWipeCoordinator(store)
+        coordinator.requestWipe(owner, 1L, wipe(RecordingWipe().apply { behavior = { error("offline") } }))
+
+        val resumed = coordinator.resumeIfPending(owner, wipe(RecordingWipe().apply { behavior = { refusedForSignIn() } }))
+
+        assertTrue(resumed is CloudWipeOutcome.Failed, "reported $resumed")
+        assertEquals(owner, store.find(owner)?.ownerUid, "the user's earlier request was dropped")
     }
 
     private companion object {
