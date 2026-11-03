@@ -191,7 +191,19 @@ actual val platformModule = module {
     }
     single<AccountDeletionTransport> {
         if (BackendConfig.attachmentsWorkerUrl.isNotEmpty()) {
-            WorkerAccountDeletionTransport(BackendConfig.attachmentsWorkerUrl, get())
+            val rpc = DesktopSupabaseRpcClient(
+                supabaseUrl = BackendConfig.supabaseUrl,
+                anonKey = BackendConfig.supabaseAnonKey,
+                accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+            )
+            WorkerAccountDeletionTransport(
+                BackendConfig.attachmentsWorkerUrl,
+                get(),
+                // Raises NL003 for an account being deleted: how an unclear failure is settled (AUD-010).
+                checkAccountLive = {
+                    rpc.callRpc("get_sync_generation", kotlinx.serialization.json.JsonObject(emptyMap()))
+                },
+            )
         } else {
             UnavailableAccountDeletionTransport
         }

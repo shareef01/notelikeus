@@ -1,5 +1,6 @@
 package com.aus.notelikeus.ui.main
 
+import com.aus.notelikeus.data.remote.AccountDeletionOutcomeUnknownException
 import com.aus.notelikeus.data.remote.isReauthenticationRequiredRefusal
 import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.util.DateUtils
@@ -259,14 +260,23 @@ internal class CloudSyncController(
                 isDeletingAccount = false,
                 pendingCloudSyncEvent = result.fold(
                     onSuccess = { CloudSyncEvent.AccountDeleted() },
-                    onFailure = { CloudSyncEvent.Failure(accountDeleteFailureMessage) },
+                    onFailure = { CloudSyncEvent.Failure(accountDeleteFailureMessage(it)) },
                 ),
             )
         }
     }
 
-    private val accountDeleteFailureMessage =
-        "Couldn't delete your account, and nothing was deleted. Check your connection and try again."
+    /**
+     * "Nothing was deleted" only when that is known (AUD-010). After a failure that may have come after
+     * the server accepted the request, and that asking the server could not settle, it says so instead.
+     */
+    private fun accountDeleteFailureMessage(error: Throwable): String =
+        if (generateSequence(error) { it.cause }.take(8).any { it is AccountDeletionOutcomeUnknownException }) {
+            "Couldn't confirm whether your account was deleted. Check your connection. If it was, " +
+                "this device removes its copy the next time it syncs."
+        } else {
+            "Couldn't delete your account, and nothing was deleted. Check your connection and try again."
+        }
 
     private fun requireIdentityCheck(check: IdentityCheck) {
         state.update {
