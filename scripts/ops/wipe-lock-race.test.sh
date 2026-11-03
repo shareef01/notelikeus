@@ -13,7 +13,8 @@ psql_db() { docker exec -i "$container" psql -U postgres -d postgres -v ON_ERROR
 
 uid="$(psql_db -c "select gen_random_uuid()")"
 email="wipe-race-${uid}@notelikeus.test"
-claims="{\"sub\":\"${uid}\",\"role\":\"authenticated\"}"
+# A fresh sign-in, as GoTrue issues it: the wipe needs one within the last ten minutes (AUD-005).
+claims="{\"sub\":\"${uid}\",\"role\":\"authenticated\",\"amr\":[{\"method\":\"otp\",\"timestamp\":$(date +%s)}]}"
 as_user="set local role authenticated; select set_config('request.jwt.claims', '${claims}', true);"
 
 cleanup() {
