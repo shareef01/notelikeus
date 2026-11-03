@@ -40,7 +40,7 @@ You can delete your account from **Settings → Delete account** in the Android,
 - Your notes, deleted-note records and sync data are removed from Supabase at once
 - Your images are removed from Cloudflare R2, and then your account, including your email address, is removed from Supabase Auth. This normally finishes within seconds; if a service is unavailable it is retried hourly until it succeeds
 - The device you delete from removes its local copy straight away, including edits not yet uploaded. Other signed-in devices remove theirs the next time they sync. A device whose session has already expired stops syncing, and its local copy is removed when anyone next signs in on it or when the app is uninstalled
-- For up to two hours afterwards the server keeps your account’s random internal id, with no email or note content, so that a device still signed in can be told the account is gone
+- For a short time afterwards the server keeps your account’s random internal id, with no email or note content, so that a device still signed in can be told the account is gone. It is removed by an hourly cleanup once the account has been gone for two hours and none of its images are left in storage: normally between two and three hours after deletion, later only while a service is unavailable
 
 Supabase and Cloudflare may hold data in their own routine backups until those expire. Backup files you exported are yours and are not affected.
 
