@@ -143,22 +143,27 @@ select results_eq(
   'a repeated begin reports the existing claim instead of re-claiming'
 );
 
--- 5. Finalization records that the object is gone, and is idempotent.
+-- 5. The user's token cannot confirm that the object is gone (AUD-003): that stamp releases quota,
+--    so only the service role, which deleted the object, may write it. Finalizing stays idempotent.
 select results_eq(
   $$ select (public.finalize_note_attachment_delete('400', 'att400')->>'confirmed')::boolean $$,
-  ARRAY[true],
-  'finalization confirms the deletion'
+  ARRAY[false],
+  'the user token cannot confirm its own object deletion'
 );
 select results_eq(
   $$ select count(*)::integer from public.note_attachments
      where attachment_id = 'att400' and object_deleted_at is not null $$,
-  ARRAY[1],
-  'the confirmation is stamped on the row'
+  ARRAY[0],
+  'no confirmation is stamped by the user token'
 );
+select tests.authenticate_as_service_role();
+select public.confirm_attachment_object_deleted(
+  tests.get_supabase_uid('del_user_a@notelikeus.test'), '400', 'att400');
+select tests.authenticate_as('del_user_a@notelikeus.test');
 select results_eq(
   $$ select (public.finalize_note_attachment_delete('400', 'att400')->>'confirmed')::boolean $$,
   ARRAY[true],
-  'finalizing twice is a no-op that still reports success'
+  'finalizing again reports the service-role confirmation'
 );
 
 -- 6. A restore must not resurrect an attachment the owner deleted: its bytes are gone.
@@ -264,11 +269,14 @@ select results_eq(
   ARRAY[true],
   'a wiped attachment can still be claimed for deletion by its owner'
 );
+select tests.authenticate_as_service_role();
 select results_eq(
-  $$ select (public.finalize_note_attachment_delete('600', 'att600')->>'confirmed')::boolean $$,
-  ARRAY[true],
+  $$ select public.confirm_attachment_object_deleted(
+       tests.get_supabase_uid('del_user_a@notelikeus.test'), '600', 'att600')->>'status' $$,
+  ARRAY['applied'::text],
   'a wiped attachment deletion can still be confirmed'
 );
+select tests.authenticate_as('del_user_a@notelikeus.test');
 select results_eq(
   $$ select (public.finalize_cloud_wipe()->>'attachments_purged')::integer > 0 $$,
   ARRAY[true],

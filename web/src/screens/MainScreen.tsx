@@ -288,6 +288,7 @@ export function MainScreen() {
     signOut,
     exportBackup,
     exportCompleteBackup,
+    exportDeviceBackup,
     deleteAccount,
     prepareImport,
     pendingImport,
@@ -690,7 +691,8 @@ export function MainScreen() {
         userEmail={cloud.userEmail}
         syncStatus={cloud.status}
         onExportBackup={exportBackup}
-        onExportCompleteBackup={() => void exportCompleteBackup()}
+        onExportCompleteBackup={exportCompleteBackup}
+        onExportDeviceBackup={() => void exportDeviceBackup()}
         onShowDiagnostics={() => setShowDiagnostics(true)}
         onImportBackup={() => backupInputRef.current?.click()}
         onSignIn={() => openAuthScreen('signin')}

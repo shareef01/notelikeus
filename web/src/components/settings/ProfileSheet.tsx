@@ -127,6 +127,7 @@ interface ProfileSheetProps {
   syncStatus: string;
   onExportBackup: () => void;
   onExportCompleteBackup: () => void;
+  onExportDeviceBackup: () => void;
   onShowDiagnostics: () => void;
   onImportBackup: () => void;
   onPrivacyPolicy: () => void;
@@ -154,6 +155,7 @@ export function ProfileSheet({
   syncStatus,
   onExportBackup,
   onExportCompleteBackup,
+  onExportDeviceBackup,
   onShowDiagnostics,
   onImportBackup,
   onPrivacyPolicy,
@@ -246,9 +248,15 @@ export function ProfileSheet({
 
             <SettingsSection title="Data & Backup">
               <SettingsRow
-                title="Export backup with images"
-                subtitle="Download notes and images as one .nlkbak file"
+                title="Export complete backup"
+                subtitle="Notes and every image, downloading cloud images, as one .nlkbak file"
                 onClick={onExportCompleteBackup}
+                icon={<BackupIcon size={18} />}
+              />
+              <SettingsRow
+                title="Export backup from this device"
+                subtitle="Works offline; includes only images stored on this device"
+                onClick={onExportDeviceBackup}
                 icon={<BackupIcon size={18} />}
               />
               <SettingsRow

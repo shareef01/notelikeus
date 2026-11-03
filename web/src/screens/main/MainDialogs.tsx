@@ -1,4 +1,5 @@
 import type { ViewColumns } from '@/store/uiStore';
+import type { BackupExportOutcome } from '@/lib/backup/bundle/bundleTransfer';
 import { BulkDeleteDialog } from '@/components/notes/BulkDeleteDialog';
 import { EmptyTrashDialog } from '@/components/notes/EmptyTrashDialog';
 import { PrivacyPolicyDialog } from '@/components/settings/PrivacyPolicyDialog';
@@ -53,7 +54,8 @@ interface MainDialogsProps {
   syncStatus: React.ComponentProps<typeof ProfileSheet>['syncStatus'];
 
   onExportBackup: () => void;
-  onExportCompleteBackup: () => void;
+  onExportCompleteBackup: () => Promise<BackupExportOutcome | null>;
+  onExportDeviceBackup: () => void;
   onShowDiagnostics: () => void;
   onImportBackup: () => void;
   onSignIn: () => void;
@@ -95,6 +97,7 @@ export function MainDialogs({
   syncStatus,
   onExportBackup,
   onExportCompleteBackup,
+  onExportDeviceBackup,
   onShowDiagnostics,
   onImportBackup,
   onSignIn,
@@ -123,7 +126,8 @@ export function MainDialogs({
         userEmail={userEmail}
         syncStatus={syncStatus}
         onExportBackup={onExportBackup}
-        onExportCompleteBackup={onExportCompleteBackup}
+        onExportCompleteBackup={() => void onExportCompleteBackup()}
+        onExportDeviceBackup={onExportDeviceBackup}
         onShowDiagnostics={onShowDiagnostics}
         onImportBackup={onImportBackup}
         onPrivacyPolicy={() => onOpenChange({ privacyPolicy: true })}

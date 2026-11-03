@@ -9,6 +9,7 @@ import com.aus.notelikeus.data.attachments.isPendingAttachment
 import com.aus.notelikeus.data.attachments.pendingStoragePath
 import com.aus.notelikeus.data.backup.BackupBundleOperations
 import com.aus.notelikeus.data.backup.BackupImportResult
+import com.aus.notelikeus.data.backup.BundleExportMode
 import com.aus.notelikeus.data.backup.BundleExportOutcome
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
@@ -26,8 +27,10 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * JVM port of `web/src/lib/backup/bundle/bundleTransfer.ts`.
  *
- * Export includes only bytes already on this device (pending staging or local `file:` paths) —
- * never fetches R2. Import remints attachment ids onto freshly allocated note ids.
+ * A [BundleExportMode.Device] export includes only bytes already on this device (pending staging or
+ * local `file:` paths) and never touches the network. A [BundleExportMode.Complete] export also
+ * downloads images that live only in the cloud through [cloudAttachments]. Import remints attachment
+ * ids onto freshly allocated note ids.
  */
 class BackupBundleTransfer(
     private val repository: NoteRepository,
@@ -38,6 +41,7 @@ class BackupBundleTransfer(
     private val ownerIdProvider: () -> String?,
     private val appName: String = "Notelikeus",
     private val appVersion: String,
+    private val cloudAttachments: CloudAttachmentSource? = null,
 ) : BackupBundleOperations {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -155,39 +159,19 @@ class BackupBundleTransfer(
      * Streams the bundle into [sink], reading one image at a time (F-07), and closes it.
      *
      * Images are read when the codec asks for them, never collected up front: a library's images
-     * can be far larger than the app's heap.
+     * can be far larger than the app's heap. In [BundleExportMode.Complete] an image that lives only
+     * in the cloud is downloaded at that moment, one at a time, so the bound holds for those too. The
+     * codec reads every image twice (to measure it, then to write it) and fails the export if the two
+     * reads differ, so a download is repeated rather than parked in an unencrypted temp file.
      */
-    override suspend fun exportBundle(sink: okio.Sink): BundleExportOutcome {
+    override suspend fun exportBundle(sink: okio.Sink, mode: BundleExportMode): BundleExportOutcome {
         val notes = repository.getAllNotesForBackup()
-        val documentJson = exporter.createJson()
-        val document = json.parseToJsonElement(documentJson).jsonObject
-
-        var skippedCloudOnly = 0
-        var skippedUnreadable = 0
-
-        val entries = ArrayList<BundleAttachmentEntry>()
-        for (note in notes) {
-            val noteId = note.id ?: continue
-            for (attachment in note.attachments) {
-                if (!isPendingAttachment(attachment.storagePath) && !isFileAttachment(attachment.storagePath)) {
-                    skippedCloudOnly++
-                    continue
-                }
-                entries.add(
-                    BundleAttachmentEntry(
-                        noteId = noteId,
-                        attachmentId = attachment.id,
-                        type = attachment.type.ifBlank { "image" },
-                        mimeType = attachment.mimeType,
-                    ) {
-                        val local = readLocalAttachmentBytes(attachment)
-                        if (local == null) {
-                            skippedUnreadable++
-                        }
-                        local?.bytes
-                    },
-                )
-            }
+        val document = json.parseToJsonElement(exporter.createJson()).jsonObject
+        val download = if (mode == BundleExportMode.Complete) openCloudDownloader() else null
+        val tally = ExportTally()
+        val entries = notes.flatMap { note ->
+            val noteId = note.id ?: return@flatMap emptyList()
+            note.attachments.mapNotNull { attachment -> exportEntry(noteId, attachment, download, tally) }
         }
 
         val written = BackupBundleCodec.writeBackupBundle(
@@ -197,25 +181,140 @@ class BackupBundleTransfer(
             origin = BundleOrigin(app = appName, appVersion = appVersion),
         )
 
-        val warnings = ArrayList<String>()
-        if (skippedCloudOnly > 0) {
-            warnings.add(
-                "$skippedCloudOnly image${if (skippedCloudOnly == 1) " was" else "s were"} not included because " +
-                    "${if (skippedCloudOnly == 1) "its bytes are" else "their bytes are"} " +
+        // The codec also drops an image it cannot store (a bad id, a repeat, over the size cap)
+        // without reporting it, so what is missing is counted from what it wrote, not from what failed.
+        val skipped = tally.total - written.included
+        val rejected = (skipped - tally.cloudOnly - tally.unreadable - tally.downloadFailures.size).coerceAtLeast(0)
+        return BundleExportOutcome(
+            attachmentsIncluded = written.included,
+            attachmentsSkipped = skipped,
+            warnings = exportWarnings(tally, rejected),
+            attachmentsTotal = tally.total,
+            attachmentsFailed = tally.unreadable + tally.downloadFailures.size + rejected,
+            mode = mode,
+        )
+    }
+
+    /** What one export could not include, by reason. */
+    private class ExportTally {
+        var total = 0
+        var cloudOnly = 0
+        var unreadable = 0
+
+        /** Keyed by attachment id, so the codec's second read of an image cannot count it twice. */
+        val downloadFailures = LinkedHashMap<String, String>()
+    }
+
+    /**
+     * The codec entry for one image, or null when it cannot be read at all in this mode: an image that
+     * lives only in the cloud, in an export that does not download.
+     */
+    private fun exportEntry(
+        noteId: Long,
+        attachment: Attachment,
+        download: CloudAttachmentDownloader?,
+        tally: ExportTally,
+    ): BundleAttachmentEntry? {
+        tally.total++
+        val local = isPendingAttachment(attachment.storagePath) || isFileAttachment(attachment.storagePath)
+        if (!local && download == null) {
+            tally.cloudOnly++
+            return null
+        }
+        return BundleAttachmentEntry(
+            noteId = noteId,
+            attachmentId = attachment.id,
+            type = attachment.type.ifBlank { "image" },
+            mimeType = attachment.mimeType,
+        ) {
+            if (download == null || local) {
+                readLocalAttachmentBytes(attachment)?.bytes.also { if (it == null) tally.unreadable++ }
+            } else {
+                when (val fetched = downloadCloudAttachment(download, noteId, attachment)) {
+                    is CloudRead.Bytes -> fetched.bytes
+                    is CloudRead.Failed -> {
+                        tally.downloadFailures.putIfAbsent(attachment.id, fetched.reason)
+                        null
+                    }
+                }
+            }
+        }
+    }
+
+    private fun exportWarnings(tally: ExportTally, rejected: Int): List<String> = buildList {
+        if (tally.cloudOnly > 0) {
+            add(
+                "${tally.cloudOnly} image${if (tally.cloudOnly == 1) " was" else "s were"} not included because " +
+                    "${if (tally.cloudOnly == 1) "its bytes are" else "their bytes are"} " +
                     "only available in cloud storage on this device.",
             )
         }
-        if (skippedUnreadable > 0) {
-            warnings.add(
-                "$skippedUnreadable image${if (skippedUnreadable == 1) " was" else "s were"} skipped because " +
+        if (tally.unreadable > 0) {
+            add(
+                "${tally.unreadable} image${if (tally.unreadable == 1) " was" else "s were"} skipped because " +
                     "local storage could not be read.",
             )
         }
-        return BundleExportOutcome(
-            attachmentsIncluded = written.included,
-            attachmentsSkipped = skippedCloudOnly + skippedUnreadable,
-            warnings = warnings,
-        )
+        val failures = tally.downloadFailures
+        if (failures.isNotEmpty()) {
+            add(
+                "${failures.size} image${if (failures.size == 1) "" else "s"} could not be " +
+                    "downloaded: ${failures.values.distinct().joinToString("; ")}.",
+            )
+        }
+        if (rejected > 0) {
+            add("$rejected image${if (rejected == 1) " was" else "s were"} skipped because a backup cannot store them.")
+        }
+    }
+
+    /** The downloader for this export, refused when it belongs to an account other than the one exporting. */
+    private suspend fun openCloudDownloader(): CloudAttachmentDownloader {
+        val source = cloudAttachments ?: error("A complete backup needs a connection to cloud storage.")
+        val (cloudOwner, downloader) = source.open()
+        check(cloudOwner == ownerIdProvider()) {
+            "The signed-in account changed before the backup started; nothing was exported."
+        }
+        return downloader
+    }
+
+    private sealed interface CloudRead {
+        class Bytes(val bytes: ByteArray) : CloudRead
+        class Failed(val reason: String) : CloudRead
+    }
+
+    /**
+     * Downloads one cloud-only image and checks it is the one the note references.
+     *
+     * Identity comes from the request: the Worker derives the object key from the signed-in user and
+     * this note and attachment id, and answers 404 for anything else. What can still go wrong is the
+     * body, so it is held to the size the server recorded at upload. One more attempt follows a failure;
+     * rate limiting is already retried by the transport.
+     */
+    private suspend fun downloadCloudAttachment(
+        download: CloudAttachmentDownloader,
+        noteId: Long,
+        attachment: Attachment,
+    ): CloudRead {
+        var lastFailure = "the download failed"
+        repeat(CLOUD_DOWNLOAD_ATTEMPTS) {
+            val bytes = try {
+                download.download(noteId.toString(), attachment.id)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                AppLog.warn(TAG, "Downloading an image for a complete backup failed", error)
+                lastFailure = "the download failed"
+                return@repeat
+            }
+            val expected = attachment.sizeBytes
+            when {
+                bytes.isEmpty() -> return CloudRead.Failed("the server returned an empty file")
+                expected != null && expected > 0 && bytes.size.toLong() != expected ->
+                    lastFailure = "a download was ${bytes.size} bytes, expected $expected"
+                else -> return CloudRead.Bytes(bytes)
+            }
+        }
+        return CloudRead.Failed(lastFailure)
     }
 
     override suspend fun importBundle(
@@ -333,5 +432,8 @@ class BackupBundleTransfer(
 
     companion object {
         private const val TAG = "BackupBundle"
+
+        /** The first download and one retry. */
+        private const val CLOUD_DOWNLOAD_ATTEMPTS = 2
     }
 }

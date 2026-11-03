@@ -60,7 +60,7 @@ test('a bundle preview writes no images; confirming does', async ({ page }, info
   await page.getByRole('button', { name: 'Open settings', exact: true }).first().click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: /Export backup with images/ }).click(),
+    page.getByRole('button', { name: /Export complete backup/ }).click(),
   ]);
   const bundle = info.outputPath('backup.nlkbak');
   await download.saveAs(bundle);

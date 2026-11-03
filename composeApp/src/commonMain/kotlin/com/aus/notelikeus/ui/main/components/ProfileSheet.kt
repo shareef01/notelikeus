@@ -103,6 +103,7 @@ fun ProfileSheet(
     onAppLockChange: (Boolean) -> Unit,
     onExportClick: () -> Unit,
     onExportNotesOnlyClick: () -> Unit = {},
+    onExportDeviceBackupClick: () -> Unit = {},
     onImportClick: () -> Unit,
     onCloudSyncClick: () -> Unit = {},
     onCloudRestoreClick: () -> Unit = {},
@@ -306,6 +307,15 @@ fun ProfileSheet(
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     onExportClick()
+                }
+            )
+            SettingsRow(
+                icon = Icons.Default.Backup,
+                title = stringResource(Res.string.export_device_backup),
+                subtitle = stringResource(Res.string.export_device_backup_subtitle),
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onExportDeviceBackupClick()
                 }
             )
             SettingsRow(

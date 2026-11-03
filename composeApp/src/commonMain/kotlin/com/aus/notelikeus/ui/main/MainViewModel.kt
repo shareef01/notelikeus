@@ -8,6 +8,8 @@ import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.BackupExportResult
 import com.aus.notelikeus.data.backup.BackupImportResult
 import com.aus.notelikeus.data.backup.NoteBackupImporter
+import com.aus.notelikeus.data.attachments.isR2AttachmentsEnabled
+import com.aus.notelikeus.data.backup.BundleExportMode
 import com.aus.notelikeus.data.backup.BundleExportOutcome
 import com.aus.notelikeus.domain.diagnostics.DiagnosticsCollector
 import com.aus.notelikeus.domain.diagnostics.formatDiagnosticsReport
@@ -699,9 +701,34 @@ class MainViewModel(
         }
     }
 
-    /** Streams the bundle into [sink] (the destination the user picked), and closes it. */
-    suspend fun exportBackupBundle(sink: okio.Sink): Result<BundleExportOutcome> =
-        runCatching { bundleOperations.exportBundle(sink) }
+    /**
+     * Whether the next bundle export is the offline one. Set by every entry point right before it opens
+     * the platform file picker, and read by [exportBackupBundle] once a file is picked, so the pickers in
+     * between need not know. Every entry point sets it, so a cancelled picker cannot leave an offline
+     * request behind for the delete-account dialog's export to inherit.
+     */
+    private var nextExportDeviceOnly = false
+
+    /** Asks for the next bundle export to be the complete one (the default) or the offline one. */
+    fun requestBundleExport(deviceOnly: Boolean = false) {
+        nextExportDeviceOnly = deviceOnly
+    }
+
+    /**
+     * Streams the bundle into [sink] (the destination the user picked), and closes it.
+     *
+     * A complete backup unless the offline one was asked for: signed in, images that live only in
+     * the cloud are downloaded into it; signed out every image is already on this device.
+     */
+    suspend fun exportBackupBundle(sink: okio.Sink): Result<BundleExportOutcome> {
+        val deviceOnly = nextExportDeviceOnly.also { nextExportDeviceOnly = false }
+        val mode = if (!deviceOnly && _state.value.cloudAccount.isSignedIn && isR2AttachmentsEnabled()) {
+            BundleExportMode.Complete
+        } else {
+            BundleExportMode.Device
+        }
+        return runCatching { bundleOperations.exportBundle(sink, mode) }
+    }
 
     fun bundleFileName(): String = bundleOperations.bundleFileName()
 
@@ -794,7 +821,17 @@ class MainViewModel(
      * where the outcome is known.
      */
     fun reportBackupTransfer(event: BackupTransferEvent) {
-        _state.update { it.copy(pendingBackupTransferEvent = event) }
+        _state.update {
+            it.copy(
+                pendingBackupTransferEvent = event,
+                lastBundleExport = event as? BackupTransferEvent.BundleExported ?: it.lastBundleExport,
+            )
+        }
+    }
+
+    /** Forgets the last bundle export, so a reopened delete-account dialog never shows a stale one. */
+    fun clearLastBundleExport() {
+        if (_state.value.lastBundleExport != null) _state.update { it.copy(lastBundleExport = null) }
     }
 
     fun clearPendingBackupTransferEvent() {

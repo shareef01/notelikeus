@@ -165,15 +165,17 @@ fun MainScreen(
         snackbarHostState.showSnackbar(
             when (event) {
                 BackupTransferEvent.Exported -> getString(Res.string.export_success)
+                // "Complete" only when every image is in the file (AUD-001).
                 is BackupTransferEvent.BundleExported -> when {
-                    event.attachmentsSkipped > 0 ->
+                    !event.complete ->
                         getString(
-                            Res.string.export_bundle_success_skipped,
+                            Res.string.export_bundle_incomplete,
                             event.attachmentsIncluded,
-                            event.attachmentsSkipped,
+                            event.attachmentsTotal,
+                            event.attachmentsTotal - event.attachmentsIncluded,
                         )
                     else ->
-                        getString(Res.string.export_bundle_success, event.attachmentsIncluded)
+                        getString(Res.string.export_bundle_complete, event.attachmentsTotal)
                 }
                 BackupTransferEvent.ExportFailed -> getString(Res.string.export_failed)
                 is BackupTransferEvent.Imported ->
@@ -626,11 +628,17 @@ fun MainScreen(
             },
             onExportClick = {
                 showProfileSheet = false
+                viewModel.requestBundleExport()
                 onExportBackup()
             },
             onExportNotesOnlyClick = {
                 showProfileSheet = false
                 onExportNotesOnly()
+            },
+            onExportDeviceBackupClick = {
+                showProfileSheet = false
+                viewModel.requestBundleExport(deviceOnly = true)
+                onExportBackup()
             },
             onImportClick = {
                 showProfileSheet = false
@@ -651,6 +659,7 @@ fun MainScreen(
                 showCloudSignOutConfirm = true
             },
             onDeleteAccountClick = {
+                viewModel.clearLastBundleExport()
                 showDeleteAccountConfirm = true
             },
             onCloudAutoSyncChange = { viewModel.setCloudAutoSyncEnabled(it) },
@@ -686,7 +695,11 @@ fun MainScreen(
     if (showDeleteAccountConfirm) {
         DeleteAccountDialog(
             isDeleting = state.isDeletingAccount,
-            onExportBackup = onExportBackup,
+            lastExport = state.lastBundleExport,
+            onExportBackup = {
+                viewModel.requestBundleExport()
+                onExportBackup()
+            },
             onConfirm = { viewModel.deleteAccount() },
             onDismiss = { showDeleteAccountConfirm = false },
         )

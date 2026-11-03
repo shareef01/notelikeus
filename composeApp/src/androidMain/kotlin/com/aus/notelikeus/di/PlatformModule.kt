@@ -125,6 +125,7 @@ actual val platformModule = module {
             ownerIdProvider = { get<CloudSessionManager>().getCurrentAccount().userId },
             appName = get<android.content.Context>().getString(com.aus.notelikeus.shared.R.string.app_name),
             appVersion = com.aus.notelikeus.util.AppConfig.versionName,
+            cloudAttachments = com.aus.notelikeus.data.backup.bundle.BlobTransportCloudAttachmentSource(get()),
         )
     }
     single { SharedPrefsNoteSyncStateStore(get()) }

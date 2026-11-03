@@ -90,6 +90,14 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string | undefined> 
   }
 }
 
+/**
+ * Whether [buildBackupBundle] will write this attachment. It skips the others without failing, so a
+ * caller that reports what a bundle contains has to ask this rather than count what it passed in.
+ */
+export function isBundleableAttachment(attachmentId: string, byteLength: number): boolean {
+  return ATTACHMENT_ID_PATTERN.test(attachmentId) && byteLength <= MAX_BUNDLE_ATTACHMENT_BYTES;
+}
+
 export function mediaEntryName(attachmentId: string): string {
   return `${BUNDLE_MEDIA_PREFIX}${attachmentId}`;
 }

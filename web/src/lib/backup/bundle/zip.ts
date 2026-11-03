@@ -88,8 +88,9 @@ function crc32Table(): Uint32Array {
 export function crc32(bytes: Uint8Array): number {
   const table = crc32Table();
   let crc = 0xffffffff;
-  for (const byte of bytes) {
-    crc = table[(crc ^ byte) & 0xff]! ^ (crc >>> 8);
+  // Indexed rather than `for...of`: the iterator protocol doubled the time of a large export.
+  for (let index = 0; index < bytes.length; index++) {
+    crc = table[(crc ^ bytes[index]!) & 0xff]! ^ (crc >>> 8);
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
@@ -115,17 +116,28 @@ export function isSafeZipEntryName(name: string): boolean {
   return segments.every((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
 }
 
-// ---- little-endian helpers ------------------------------------------------
-
-function writeUint32(target: number[], value: number): void {
-  target.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
-}
-
-function writeUint16(target: number[], value: number): void {
-  target.push(value & 0xff, (value >>> 8) & 0xff);
-}
-
 // ---- writer ---------------------------------------------------------------
+
+/** Fixed part of a local file header, before the name. */
+const LOCAL_HEADER_BYTES = 30;
+/** Fixed part of a central directory header, before the name. */
+const CENTRAL_HEADER_BYTES = 46;
+const EOCD_BYTES = 22;
+
+/** Writes the fields of one header, in order, as little-endian 16- and 32-bit values. */
+function writeFields(view: DataView, offset: number, fields: ReadonlyArray<readonly [16 | 32, number]>): number {
+  let at = offset;
+  for (const [bits, value] of fields) {
+    if (bits === 16) {
+      view.setUint16(at, value, true);
+      at += 2;
+    } else {
+      view.setUint32(at, value >>> 0, true);
+      at += 4;
+    }
+  }
+  return at;
+}
 
 /**
  * Builds a stored ZIP archive from [entries], in the order given.
@@ -133,15 +145,21 @@ function writeUint16(target: number[], value: number): void {
  * No zip64: the caller is bounded well below 4 GB by {@link MAX_ZIP_TOTAL_BYTES}, and refusing
  * to produce an archive a plain reader cannot open is better than producing one that needs an
  * extension to read back.
+ *
+ * Every header's size is known before a byte is written, so the archive is allocated once and each
+ * entry's bytes are copied into it with `set`. Peak memory is the entries plus one archive. This used
+ * to append every byte to a `number[]`, which cost about fifteen times the input and stopped at V8's
+ * array-length limit near 120 MiB (AUD-002). The output is byte-for-byte what that writer produced.
  */
 export function writeZip(entries: ZipEntryInput[]): Uint8Array {
   if (entries.length > MAX_ZIP_ENTRIES) {
     throw new ZipFormatError(`Too many archive entries (max ${MAX_ZIP_ENTRIES})`);
   }
   const encoder = new TextEncoder();
-  const local: number[] = [];
-  const central: number[] = [];
+  const prepared: { nameBytes: Uint8Array; data: Uint8Array; checksum: number; offset: number }[] = [];
   let total = 0;
+  let localLength = 0;
+  let centralLength = 0;
 
   for (const entry of entries) {
     if (!isSafeZipEntryName(entry.name)) {
@@ -153,58 +171,69 @@ export function writeZip(entries: ZipEntryInput[]): Uint8Array {
     }
 
     const nameBytes = encoder.encode(entry.name);
-    const checksum = crc32(entry.data);
-    const size = entry.data.byteLength;
-    const offset = local.length;
-
-    writeUint32(local, LOCAL_HEADER_SIGNATURE);
-    writeUint16(local, 20); // version needed
-    writeUint16(local, 0x0800); // UTF-8 names
-    writeUint16(local, METHOD_STORE);
-    writeUint16(local, 0); // mod time
-    writeUint16(local, 0); // mod date
-    writeUint32(local, checksum);
-    writeUint32(local, size);
-    writeUint32(local, size);
-    writeUint16(local, nameBytes.length);
-    writeUint16(local, 0); // extra length
-    local.push(...nameBytes);
-    for (const byte of entry.data) local.push(byte);
-
-    writeUint32(central, CENTRAL_HEADER_SIGNATURE);
-    writeUint16(central, 20); // version made by
-    writeUint16(central, 20); // version needed
-    writeUint16(central, 0x0800);
-    writeUint16(central, METHOD_STORE);
-    writeUint16(central, 0);
-    writeUint16(central, 0);
-    writeUint32(central, checksum);
-    writeUint32(central, size);
-    writeUint32(central, size);
-    writeUint16(central, nameBytes.length);
-    writeUint16(central, 0); // extra
-    writeUint16(central, 0); // comment
-    writeUint16(central, 0); // disk number
-    writeUint16(central, 0); // internal attrs
-    writeUint32(central, 0); // external attrs
-    writeUint32(central, offset);
-    central.push(...nameBytes);
+    prepared.push({ nameBytes, data: entry.data, checksum: crc32(entry.data), offset: localLength });
+    localLength += LOCAL_HEADER_BYTES + nameBytes.length + entry.data.byteLength;
+    centralLength += CENTRAL_HEADER_BYTES + nameBytes.length;
   }
 
-  const eocd: number[] = [];
-  writeUint32(eocd, EOCD_SIGNATURE);
-  writeUint16(eocd, 0);
-  writeUint16(eocd, 0);
-  writeUint16(eocd, entries.length);
-  writeUint16(eocd, entries.length);
-  writeUint32(eocd, central.length);
-  writeUint32(eocd, local.length);
-  writeUint16(eocd, 0); // comment length
+  const out = new Uint8Array(localLength + centralLength + EOCD_BYTES);
+  const view = new DataView(out.buffer);
 
-  const out = new Uint8Array(local.length + central.length + eocd.length);
-  out.set(local, 0);
-  out.set(central, local.length);
-  out.set(eocd, local.length + central.length);
+  let at = 0;
+  for (const { nameBytes, data, checksum } of prepared) {
+    at = writeFields(view, at, [
+      [32, LOCAL_HEADER_SIGNATURE],
+      [16, 20], // version needed
+      [16, 0x0800], // UTF-8 names
+      [16, METHOD_STORE],
+      [16, 0], // mod time
+      [16, 0], // mod date
+      [32, checksum],
+      [32, data.byteLength],
+      [32, data.byteLength],
+      [16, nameBytes.length],
+      [16, 0], // extra length
+    ]);
+    out.set(nameBytes, at);
+    at += nameBytes.length;
+    out.set(data, at);
+    at += data.byteLength;
+  }
+
+  for (const { nameBytes, data, checksum, offset } of prepared) {
+    at = writeFields(view, at, [
+      [32, CENTRAL_HEADER_SIGNATURE],
+      [16, 20], // version made by
+      [16, 20], // version needed
+      [16, 0x0800],
+      [16, METHOD_STORE],
+      [16, 0],
+      [16, 0],
+      [32, checksum],
+      [32, data.byteLength],
+      [32, data.byteLength],
+      [16, nameBytes.length],
+      [16, 0], // extra
+      [16, 0], // comment
+      [16, 0], // disk number
+      [16, 0], // internal attrs
+      [32, 0], // external attrs
+      [32, offset],
+    ]);
+    out.set(nameBytes, at);
+    at += nameBytes.length;
+  }
+
+  writeFields(view, at, [
+    [32, EOCD_SIGNATURE],
+    [16, 0],
+    [16, 0],
+    [16, entries.length],
+    [16, entries.length],
+    [32, centralLength],
+    [32, localLength],
+    [16, 0], // comment length
+  ]);
   return out;
 }
 

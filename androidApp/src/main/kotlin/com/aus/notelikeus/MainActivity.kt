@@ -143,10 +143,7 @@ class MainActivity : FragmentActivity() {
                         result.fold(
                             onSuccess = { outcome ->
                                 viewModel.reportBackupTransfer(
-                                    BackupTransferEvent.BundleExported(
-                                        attachmentsIncluded = outcome.attachmentsIncluded,
-                                        attachmentsSkipped = outcome.attachmentsSkipped,
-                                    ),
+                                    BackupTransferEvent.BundleExported(outcome),
                                 )
                             },
                             onFailure = { error ->

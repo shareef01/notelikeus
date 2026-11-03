@@ -161,6 +161,7 @@ actual val platformModule = module {
             localStorage = get(),
             ownerIdProvider = { get<CloudSessionManager>().getCurrentAccount().userId },
             appVersion = AppConfig.versionName,
+            cloudAttachments = com.aus.notelikeus.data.backup.bundle.BlobTransportCloudAttachmentSource(get()),
         )
     }
 
