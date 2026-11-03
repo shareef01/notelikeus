@@ -2,7 +2,7 @@
 -- See supabase/migrations/20261102010000_account_deletion.sql.
 
 begin;
-select plan(28);
+select plan(29);
 
 select setval('public.sync_revision_seq', 30000, true);
 
@@ -81,16 +81,27 @@ select public.apply_note_change(
 
 -- -------------------------------------------------------------------------------- the request
 
+-- AUD-006: a deletion starts only through the Worker, which verifies the token and calls the
+-- service-role function for that owner.
+select throws_ok(
+  $$ select public.request_account_deletion() $$,
+  '42501', null, 'a signed-in user cannot start a deletion directly'
+);
+select tests.clear_authentication();
+reset role;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 select is(
-  public.request_account_deletion()->>'status',
+  public.request_account_deletion_for(tests.get_supabase_uid('del_a@notelikeus.test'), now())->>'status',
   'accepted',
   'the request is accepted'
 );
 select is(
-  public.request_account_deletion()->>'status',
+  public.request_account_deletion_for(tests.get_supabase_uid('del_a@notelikeus.test'), now())->>'status',
   'accepted',
   'repeating the request gives the same answer'
 );
+select tests.authenticate_as('del_a@notelikeus.test');
 
 select is((select count(*)::int from public.notes), 0, 'every note is gone');
 select is((select count(*)::int from public.note_tombstones), 0, 'every tombstone is gone');
