@@ -26,14 +26,26 @@ vi.mock("@/lib/notes/tombstones", async (importOriginal) => ({
   restoreCloudNote: vi.fn().mockResolvedValue(undefined),
 }));
 
-const { attachmentMocks } = vi.hoisted(() => ({
-  attachmentMocks: {
-    isR2AttachmentsEnabled: vi.fn(() => false),
-    gcAttachmentsAfterNoteDelete: vi.fn().mockResolvedValue(undefined),
-    deleteAttachmentsForNote: vi.fn().mockResolvedValue(undefined),
-    syncNoteAttachments: vi.fn(async (note: unknown) => note),
-  },
-}));
+const { attachmentMocks, AttachmentSyncIncompleteError } = vi.hoisted(() => {
+  /** Stands in for the real class, so `saveNote`'s `instanceof` check sees the same constructor. */
+  class FakeAttachmentSyncIncompleteError extends Error {
+    readonly note: unknown;
+    constructor(note: unknown) {
+      super("1 attachment upload failed");
+      this.note = note;
+    }
+  }
+  return {
+    AttachmentSyncIncompleteError: FakeAttachmentSyncIncompleteError,
+    attachmentMocks: {
+      isR2AttachmentsEnabled: vi.fn(() => false),
+      gcAttachmentsAfterNoteDelete: vi.fn().mockResolvedValue(undefined),
+      deleteAttachmentsForNote: vi.fn().mockResolvedValue(undefined),
+      syncNoteAttachments: vi.fn(async (note: unknown) => note),
+      releaseUploadedPendingAttachments: vi.fn().mockResolvedValue(undefined),
+    },
+  };
+});
 
 vi.mock("@/lib/attachments/attachmentConfig", () => ({
   isR2AttachmentsEnabled: () => attachmentMocks.isR2AttachmentsEnabled(),
@@ -46,6 +58,9 @@ vi.mock("@/lib/attachments/attachmentSyncService", () => ({
     attachmentMocks.deleteAttachmentsForNote(noteId, attachments),
   syncNoteAttachments: (note: unknown) =>
     attachmentMocks.syncNoteAttachments(note),
+  releaseUploadedPendingAttachments: (snapshot: unknown, uploaded: unknown, ownerId?: string) =>
+    attachmentMocks.releaseUploadedPendingAttachments(snapshot, uploaded, ownerId),
+  AttachmentSyncIncompleteError,
 }));
 
 import { restoreCloudNote } from "@/lib/notes/tombstones";
@@ -157,6 +172,70 @@ describe("saveNote", () => {
     expect(useNotesStore.getState().notes.some((n) => n.id === note.id)).toBe(
       true,
     );
+  });
+
+  describe("staged image release (AUD-011)", () => {
+    const staged = (id: string) => ({
+      id,
+      noteId: 1,
+      storagePath: `pending:${id}`,
+      type: "image" as const,
+      mimeType: "image/png",
+    });
+    const uploaded = (id: string) => ({ ...staged(id), storagePath: `r2:owners/user-1/notes/1/${id}` });
+
+    beforeEach(() => {
+      attachmentMocks.isR2AttachmentsEnabled.mockReturnValue(true);
+      useAuthStore.getState().setUser({ uid: "user-1", email: null, displayName: null });
+    });
+
+    it("releases staged copies only after the note that points at the uploads is persisted", async () => {
+      const note = { ...makeNote(), attachments: [staged("att-a")] };
+      attachmentMocks.syncNoteAttachments.mockResolvedValueOnce({ ...note, attachments: [uploaded("att-a")] });
+
+      await saveNote(note);
+
+      const persistedRewrite = vi.mocked(putLocalEdit).mock.calls.findIndex(
+        ([, persisted]) => (persisted as { attachments?: { storagePath: string }[] }).attachments?.[0]?.storagePath.startsWith("r2:"),
+      );
+      expect(persistedRewrite).toBeGreaterThanOrEqual(0);
+      expect(attachmentMocks.releaseUploadedPendingAttachments).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(putLocalEdit).mock.invocationCallOrder[persistedRewrite]).toBeLessThan(
+        attachmentMocks.releaseUploadedPendingAttachments.mock.invocationCallOrder[0]!,
+      );
+    });
+
+    it("persists the uploads that landed when another upload in the note fails, then releases only those", async () => {
+      const note = { ...makeNote(), attachments: [staged("att-a"), staged("att-b")] };
+      const partial = { ...note, attachments: [uploaded("att-a"), staged("att-b")] };
+      attachmentMocks.syncNoteAttachments.mockRejectedValueOnce(new AttachmentSyncIncompleteError(partial));
+
+      await saveNote(note);
+
+      expect(vi.mocked(putLocalEdit).mock.calls.some(([, persisted]) => persisted === partial)).toBe(true);
+      expect(attachmentMocks.releaseUploadedPendingAttachments).toHaveBeenCalledWith(note, partial, "user-1");
+      expect(useNotesStore.getState().notes.find((n) => n.id === "1")?.attachments).toEqual(partial.attachments);
+    });
+
+    it("releases nothing when persisting the uploaded note fails", async () => {
+      const note = { ...makeNote(), attachments: [staged("att-a")] };
+      attachmentMocks.syncNoteAttachments.mockResolvedValueOnce({ ...note, attachments: [uploaded("att-a")] });
+      // The first write (the note itself) lands; the rewrite to the uploaded path does not.
+      vi.mocked(putLocalEdit).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("IndexedDB disk full"));
+
+      await saveNote(note);
+
+      expect(attachmentMocks.releaseUploadedPendingAttachments).not.toHaveBeenCalled();
+    });
+
+    it("releases nothing when no upload landed", async () => {
+      const note = { ...makeNote(), attachments: [staged("att-a")] };
+      attachmentMocks.syncNoteAttachments.mockRejectedValueOnce(new Error("offline"));
+
+      await saveNote(note);
+
+      expect(attachmentMocks.releaseUploadedPendingAttachments).not.toHaveBeenCalled();
+    });
   });
 
   it("does not mutate in-memory store when the IndexedDB write fails", async () => {

@@ -14,6 +14,8 @@ import {
 import {
   gcAttachmentsAfterNoteDelete,
   mergeAttachmentsIntoNotes,
+  AttachmentSyncIncompleteError,
+  releaseUploadedPendingAttachments,
   retryPendingAttachmentGc,
   syncNoteAttachments,
 } from '@/lib/attachments/attachmentSyncService';
@@ -187,8 +189,115 @@ describe('syncNoteAttachments', () => {
       'r2:owners/user-1/notes/note-1/att-pending',
     );
 
-    // Pending Blob must now be released
+    // Uploading releases nothing (AUD-011): the staged copy stays until the caller has persisted
+    // a note that points at the uploaded one, and then releases it.
+    expect(peekPendingAttachment('att-pending')).toBeDefined();
+    await releaseUploadedPendingAttachments(note, syncedNote);
     expect(peekPendingAttachment('att-pending')).toBeUndefined();
+  });
+
+  // AUD-011: the second upload failing used to leave the first image's bytes released while the
+  // persisted note still pointed at them, and every later save stopped at "missing local blob".
+  it('keeps every staged copy when a later upload in the same note fails, and reports what landed', async () => {
+    const first = new Blob(['first image'], { type: 'image/png' });
+    const second = new Blob(['second image'], { type: 'image/png' });
+    expect(await storePendingAttachment('att-a', first, 'image/png', 'note-3')).toBe(true);
+    expect(await storePendingAttachment('att-b', second, 'image/png', 'note-3')).toBe(true);
+    const note = {
+      ...createEmptyNote({ id: 'note-3', localId: 3 }),
+      attachments: ['att-a', 'att-b'].map((id) => ({
+        id,
+        noteId: 3,
+        storagePath: pendingStoragePath(id),
+        type: 'image' as const,
+        mimeType: 'image/png',
+      })),
+    };
+    const uploadMock = vi.fn(async (noteId: string, attachmentId: string, blob: Blob) => {
+      if (attachmentId === 'att-b') throw new Error('R2 upload 503');
+      return { objectKey: `owners/user-1/notes/${noteId}/${attachmentId}`, mimeType: 'image/png', sizeBytes: blob.size };
+    });
+    setAttachmentBlobStoreForTests({ upload: uploadMock, download: vi.fn(), delete: vi.fn() });
+
+    const failure = await syncNoteAttachments(note).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(AttachmentSyncIncompleteError);
+    const partial = (failure as AttachmentSyncIncompleteError).note;
+    expect(partial.attachments.map((attachment) => attachment.storagePath)).toEqual([
+      'r2:owners/user-1/notes/note-3/att-a',
+      pendingStoragePath('att-b'),
+    ]);
+    // Nothing is released by the upload itself, including the one that landed.
+    expect(peekPendingAttachment('att-a')?.blob).toBe(first);
+    expect(peekPendingAttachment('att-b')?.blob).toBe(second);
+
+    // Once the caller has persisted the partial note: exactly the uploaded copy goes.
+    await releaseUploadedPendingAttachments(note, partial);
+    expect(peekPendingAttachment('att-a')).toBeUndefined();
+    expect(peekPendingAttachment('att-b')?.blob).toBe(second);
+
+    // The next save retries only the image that failed.
+    uploadMock.mockClear();
+    uploadMock.mockImplementation(async (noteId: string, attachmentId: string, blob: Blob) => ({
+      objectKey: `owners/user-1/notes/${noteId}/${attachmentId}`,
+      mimeType: 'image/png',
+      sizeBytes: blob.size,
+    }));
+    const retried = await syncNoteAttachments(partial);
+    expect(uploadMock).toHaveBeenCalledTimes(1);
+    expect(uploadMock.mock.calls[0]?.[1]).toBe('att-b');
+    expect(retried.attachments.every((attachment) => attachment.storagePath.startsWith('r2:'))).toBe(true);
+  });
+
+  it('recovers a staged reference whose bytes were released after they had already been uploaded', async () => {
+    const other = new Blob(['still staged'], { type: 'image/png' });
+    expect(await storePendingAttachment('att-ok', other, 'image/png', 'note-4')).toBe(true);
+    const note = {
+      ...createEmptyNote({ id: 'note-4', localId: 4 }),
+      attachments: ['att-gone', 'att-ok'].map((id) => ({
+        id,
+        noteId: 4,
+        storagePath: pendingStoragePath(id),
+        type: 'image' as const,
+        mimeType: 'image/png',
+      })),
+    };
+    const uploaded = new Blob(['the uploaded bytes'], { type: 'image/png' });
+    const download = vi.fn(async () => uploaded);
+    const upload = vi.fn(async (noteId: string, attachmentId: string, blob: Blob) => ({
+      objectKey: `owners/user-1/notes/${noteId}/${attachmentId}`,
+      mimeType: 'image/png',
+      sizeBytes: blob.size,
+    }));
+    setAttachmentBlobStoreForTests({ upload, download, delete: vi.fn() });
+
+    const synced = await syncNoteAttachments(note);
+
+    expect(download).toHaveBeenCalledWith('note-4', 'att-gone');
+    expect(synced.attachments[0]).toMatchObject({
+      id: 'att-gone',
+      storagePath: 'r2:owners/user-1/notes/note-4/att-gone',
+      sizeBytes: uploaded.size,
+    });
+    // The lost one no longer stops the rest: the other image still uploads.
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(synced.attachments[1]?.storagePath).toBe('r2:owners/user-1/notes/note-4/att-ok');
+  });
+
+  it('releases only what was staged before and is in R2 after', async () => {
+    const kept = new Blob(['kept'], { type: 'image/png' });
+    expect(await storePendingAttachment('att-kept', kept, 'image/png', 'note-5')).toBe(true);
+    const note = {
+      ...createEmptyNote({ id: 'note-5', localId: 5 }),
+      attachments: [
+        { id: 'att-kept', noteId: 5, storagePath: pendingStoragePath('att-kept'), type: 'image' as const },
+      ],
+    };
+
+    // The upload kept it staged (it failed), so it must not be released.
+    await releaseUploadedPendingAttachments(note, note);
+
+    expect(peekPendingAttachment('att-kept')?.blob).toBe(kept);
   });
 
   it('throws an explicit error when pending metadata reference exists but blob is missing', async () => {
