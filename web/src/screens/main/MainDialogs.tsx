@@ -5,6 +5,8 @@ import { EmptyTrashDialog } from '@/components/notes/EmptyTrashDialog';
 import { PrivacyPolicyDialog } from '@/components/settings/PrivacyPolicyDialog';
 import { ProfileSheet } from '@/components/settings/ProfileSheet';
 import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
+import { ConfirmIdentityDialog } from '@/components/auth/ConfirmIdentityDialog';
+import type { IdentityCheck } from '@/screens/main/useAccountActions';
 import { SignOutDialog } from '@/components/settings/SignOutDialog';
 import { SortSheet } from '@/components/layout/SortSheet';
 
@@ -62,6 +64,10 @@ interface MainDialogsProps {
   onSignUp: () => void;
   onSignOut: (deleteCloudData: boolean) => void;
   onDeleteAccount: () => Promise<void>;
+  /** The action waiting for "confirm it's you", or null (AUD-005). */
+  identityCheck: IdentityCheck | null;
+  onConfirmIdentity: () => Promise<void>;
+  onCancelIdentityCheck: () => void;
   onEmptyTrash: () => void;
   onBulkPermanentDelete: () => void;
 }
@@ -104,6 +110,9 @@ export function MainDialogs({
   onSignUp,
   onSignOut,
   onDeleteAccount,
+  identityCheck,
+  onConfirmIdentity,
+  onCancelIdentityCheck,
   onEmptyTrash,
   onBulkPermanentDelete,
 }: MainDialogsProps) {
@@ -156,6 +165,14 @@ export function MainDialogs({
         onCancel={() => onOpenChange({ deleteAccountConfirm: false })}
         onExportBackup={onExportCompleteBackup}
         onConfirm={onDeleteAccount}
+      />
+
+      <ConfirmIdentityDialog
+        open={identityCheck !== null}
+        email={userEmail}
+        action={identityCheck === 'deleteAccount' ? 'delete your account' : 'delete your cloud data'}
+        onCancel={onCancelIdentityCheck}
+        onConfirmed={onConfirmIdentity}
       />
 
       <BulkDeleteDialog

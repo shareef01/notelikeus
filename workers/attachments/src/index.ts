@@ -3,6 +3,10 @@ import { ATTACHMENT_ALLOWED_METHODS, withAttachmentCors } from './cors';
 import {
   accountDeletionAvailable,
   finishAccountDeletion,
+  REAUTHENTICATION_REQUIRED,
+  reauthenticationRequired,
+  recentSignInAt,
+  requestAccountDeletion,
   sweepPendingAccountDeletions,
 } from './accountDeletion';
 import {
@@ -521,9 +525,15 @@ async function deleteAccount(request: Request, env: WorkerEnv): Promise<Response
     return new Response('Account deletion is not available', { status: 503 });
   }
 
-  const accepted = await authorizeAttachment(request, env, 'request_account_deletion', {});
-  if (!accepted) return new Response('Unauthorized', { status: 401 });
-  if (accepted.status !== 'accepted') return new Response('Forbidden', { status: 403 });
+  // AUD-005: a live token is not enough to destroy the account; its session must have signed in
+  // recently. The token was just accepted by Supabase Auth above, so its claims can be read here.
+  const signedInAt = recentSignInAt(request.headers.get('Authorization'), userId);
+  if (signedInAt === null) return reauthenticationRequired();
+
+  // AUD-006: the user cannot start this from PostgREST any more, only the service role can, and the
+  // database checks the sign-in time again.
+  const requested = await requestAccountDeletion(env, userId, signedInAt);
+  if (requested === REAUTHENTICATION_REQUIRED) return reauthenticationRequired();
 
   try {
     if (await finishAccountDeletion(env, userId)) {

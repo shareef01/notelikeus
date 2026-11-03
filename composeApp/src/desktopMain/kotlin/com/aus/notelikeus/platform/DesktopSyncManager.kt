@@ -92,6 +92,8 @@ class DesktopSyncManager(
             ) {
                 is CloudWipeOutcome.NotStarted -> return Result.failure(outcome.failure)
                 is CloudWipeOutcome.Failed -> return Result.failure(outcome.failure)
+                // Nothing was wiped and the request is not owed; the caller asks for a new code (AUD-005).
+                is CloudWipeOutcome.ReauthenticationRequired -> return Result.failure(outcome.failure)
                 CloudWipeOutcome.Completed, is CloudWipeOutcome.CompletedButStillPending -> Unit
             }
         }

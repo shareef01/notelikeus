@@ -139,6 +139,9 @@ class MainViewModel(
         cloudSync.signOutFromCloud(deleteCloudData)
 
     fun deleteAccount() = cloudSync.deleteAccount()
+    fun requestIdentityCode() = cloudSync.requestIdentityCode()
+    fun confirmIdentity(code: String) = cloudSync.confirmIdentity(code)
+    fun cancelIdentityCheck() = cloudSync.cancelIdentityCheck()
 
     fun syncNotesToCloud() = cloudSync.syncNotesToCloud()
 

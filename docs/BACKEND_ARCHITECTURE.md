@@ -12,6 +12,8 @@ Supabase Auth is the only cloud identity provider.
 
 Cloud ownership is `auth.uid()` (Supabase UUID). There is no Firebase UID mapping.
 
+**Destructive actions need a recent sign-in** (AUD-005, `20261104000000`). Deleting the account and wiping its cloud data are refused unless the session signed in within the last ten minutes, read from the access token's `amr` claim, which GoTrue keeps across a refresh. The database answers NL004, and the Worker answers 403 `reauthentication_required`. Clients then ask for a new emailed code for the same account and retry. Account deletion is started only by the Worker: it verifies the token and its sign-in time, then calls `request_account_deletion_for(owner, signed_in_at)` with the service role, which checks the time again. `request_account_deletion()` is no longer granted to users (AUD-006).
+
 ## Local storage
 
 | Client | Store |

@@ -130,6 +130,12 @@ data class MainState(
     val isCloudAutoSyncEnabled: Boolean = true,
     val isSigningIn: Boolean = false,
     val isDeletingAccount: Boolean = false,
+    /** The destructive action waiting for "confirm it's you", or null (AUD-005). */
+    val pendingIdentityCheck: IdentityCheck? = null,
+    /** True once the confirmation code for [pendingIdentityCheck] has been emailed. */
+    val identityCodeSent: Boolean = false,
+    /** True while that code is being sent or checked, or the action is being retried. */
+    val isConfirmingIdentity: Boolean = false,
     /**
      * The address a sign-in code was emailed to, or null before one is sent. Non-null moves the
      * sign-in gate to its second step, where the code is typed in.

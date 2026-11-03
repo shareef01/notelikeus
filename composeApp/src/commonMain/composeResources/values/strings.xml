@@ -216,6 +216,13 @@
     <string name="account_delete_backup_complete">Complete backup saved: your notes and all %1$d images are in the file.</string>
     <string name="account_delete_backup_incomplete">This backup is incomplete: %1$d of %2$d images could not be included. Deleting your account deletes them for good. Export again while online, or continue only if you accept the loss.</string>
     <string name="account_delete_accept_loss">I understand %1$d images will be permanently lost</string>
+    <string name="identity_check_title">Confirm it’s you</string>
+    <string name="identity_check_message_delete_account">To delete your account, enter a new sign-in code. We’ll email it to %1$s. You stay signed in, and nothing on this device changes.</string>
+    <string name="identity_check_message_wipe">To delete your cloud data, enter a new sign-in code. We’ll email it to %1$s. You stay signed in, and nothing on this device changes.</string>
+    <string name="identity_check_send_code">Email me a code</string>
+    <string name="identity_check_resend_code">Resend code</string>
+    <string name="identity_check_code_label">Code from the email</string>
+    <string name="identity_check_confirm">Confirm</string>
     <string name="account_delete_type_to_confirm">Type DELETE to confirm</string>
     <string name="account_delete_in_progress">Deleting…</string>
     <string name="account_deleted_success">Your account was deleted</string>

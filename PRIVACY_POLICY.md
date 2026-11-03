@@ -35,7 +35,7 @@ When you choose to sign in and use sync:
 
 ## Deleting your account
 
-You can delete your account from **Settings → Delete account** in the Android, Windows and web apps. It takes effect immediately and cannot be undone:
+You can delete your account from **Settings → Delete account** in the Android, Windows and web apps. If you haven't signed in within the last ten minutes, the app first emails you a code to confirm it's you; the same applies to "Sign out and delete cloud data". Deletion takes effect immediately and cannot be undone:
 
 - Your notes, deleted-note records and sync data are removed from Supabase at once
 - Your images are removed from Cloudflare R2, and then your account, including your email address, is removed from Supabase Auth. This normally finishes within seconds; if a service is unavailable it is retried hourly until it succeeds

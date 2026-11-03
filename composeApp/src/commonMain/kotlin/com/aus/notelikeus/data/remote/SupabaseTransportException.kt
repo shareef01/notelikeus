@@ -35,7 +35,21 @@ class SupabaseTransportException(
      */
     val isAccountDeleted: Boolean
         get() = body.contains("NL003") || body.contains("account_deleted:")
+
+    /**
+     * Whether the server refused a destructive action until the user signs in again (AUD-005): the
+     * database's NL004, or the Worker's 403 `reauthentication_required`. Nothing was deleted, and the
+     * answer only ever leads to asking for a new code, so it is read leniently.
+     */
+    val isReauthenticationRequired: Boolean
+        get() = body.contains("NL004") || body.contains("reauthentication_required")
 }
+
+/** Whether this failure, or anything it wraps, is the server asking for a recent sign-in first. */
+fun Throwable.isReauthenticationRequiredRefusal(): Boolean =
+    generateSequence(this) { it.cause }
+        .take(8)
+        .any { it is SupabaseTransportException && it.isReauthenticationRequired }
 
 /** Whether this failure, or anything it wraps, is the database's answer that the account is gone. */
 fun Throwable.isAccountDeletedRefusal(): Boolean =

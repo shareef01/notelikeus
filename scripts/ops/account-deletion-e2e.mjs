@@ -64,7 +64,14 @@ async function createUser(label) {
     }),
     `sign in ${label}`,
   );
-  return { label, id, token: (await session.json()).access_token };
+  const { access_token: token, refresh_token: refreshToken } = await session.json();
+  return { label, id, token, refreshToken };
+}
+
+/** The `amr` sign-in times GoTrue put in an access token, in seconds. */
+function signInTimes(token) {
+  const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+  return (Array.isArray(claims.amr) ? claims.amr : []).map((entry) => entry?.timestamp);
 }
 
 /** Everything a real client leaves behind: a note, and an attachment with its object in R2. */
@@ -216,14 +223,44 @@ const repeat = await fetch(`${WORKER_URL}/v1/account`, {
 });
 check('old token: repeat delete refused', repeat.status === 401, String(repeat.status));
 
+// AUD-005 rests on GoTrue keeping the moment of sign-in in `amr` across a refresh. If it reset it,
+// refreshing an old session would make it look recent, and the recent-sign-in rule would mean nothing.
+const firstTimes = signInTimes(interrupted.token);
+const refreshed = await (
+  await expectOk(
+    await fetch(`${API_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { apikey: ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: interrupted.refreshToken }),
+    }),
+    'refresh interrupted',
+  )
+).json();
+check('a fresh sign-in carries an amr sign-in time', firstTimes.length > 0 && firstTimes.every(Number.isFinite), JSON.stringify(firstTimes));
+check(
+  'a refreshed token keeps the original amr sign-in time',
+  JSON.stringify(signInTimes(refreshed.access_token)) === JSON.stringify(firstTimes),
+  `${JSON.stringify(firstTimes)} then ${JSON.stringify(signInTimes(refreshed.access_token))}`,
+);
+interrupted.token = refreshed.access_token;
+
+// AUD-006: a user's token cannot start a deletion without the Worker, however fresh it is.
+const direct = await fetch(`${API_URL}/rest/v1/rpc/request_account_deletion`, {
+  method: 'POST',
+  headers: userHeaders(interrupted),
+  body: '{}',
+});
+check('a user token cannot call request_account_deletion directly', !direct.ok, String(direct.status));
+check('and that refusal deleted nothing', (await rowCount('notes', interrupted)) === 1);
+
 // The Worker dying right after the database step leaves a request only the cron sweep can finish.
 await expectOk(
-  await fetch(`${API_URL}/rest/v1/rpc/request_account_deletion`, {
+  await fetch(`${API_URL}/rest/v1/rpc/request_account_deletion_for`, {
     method: 'POST',
-    headers: userHeaders(interrupted),
-    body: '{}',
+    headers: adminHeaders,
+    body: JSON.stringify({ p_owner_id: interrupted.id, p_signed_in_at: new Date().toISOString() }),
   }),
-  'request_account_deletion',
+  'request_account_deletion_for',
 );
 check('interrupted: auth user still there before the sweep', await authUserExists(interrupted));
 check('interrupted: object still there before the sweep', objectExists(interrupted, 'image-1'));
