@@ -52,6 +52,10 @@ class SupabaseSessionManager(
     }
 
     override fun diagnose(error: Throwable): String {
+        // AUD-004: at the account's note limit, the database's own sentence says what to do.
+        generateSequence(error) { it.cause }.take(8)
+            .firstNotNullOfOrNull { (it as? SupabaseTransportException)?.noteLimitMessage }
+            ?.let { return it }
         return when {
             error is SupabaseTransportException && error.isAuthFailure ->
                 "Your Supabase session expired. Sign in again to sync."

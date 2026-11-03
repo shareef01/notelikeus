@@ -47,6 +47,22 @@ class SupabaseTransportException(
             code == ACCOUNT_DELETED_SQLSTATE || message?.startsWith(ACCOUNT_DELETED_PREFIX) == true
         } ?: false
 
+    /**
+     * What to tell the user when the database refused a note write for the account's note limits
+     * (AUD-004, NL005), or null for any other failure: its own sentence, without the machine prefix.
+     */
+    val noteLimitMessage: String?
+        get() = postgrestError()?.let { (code, message) ->
+            val text = message?.takeIf { it.startsWith(NOTE_LIMIT_PREFIX) }
+                ?.removePrefix(NOTE_LIMIT_PREFIX)?.trim()
+            when {
+                !text.isNullOrEmpty() -> text.replaceFirstChar(Char::uppercaseChar)
+                code == NOTE_LIMIT_SQLSTATE ->
+                    "This account has reached its note limit. Delete notes you no longer need to sync new ones."
+                else -> null
+            }
+        }
+
     /** PostgREST's `{"code", "message"}`, or null for a body that is not one. */
     private fun postgrestError(): Pair<String?, String?>? = runCatching {
         val error = Json.parseToJsonElement(body).jsonObject
@@ -56,6 +72,8 @@ class SupabaseTransportException(
     private companion object {
         const val ACCOUNT_DELETED_SQLSTATE = "NL003"
         const val ACCOUNT_DELETED_PREFIX = "account_deleted:"
+        const val NOTE_LIMIT_SQLSTATE = "NL005"
+        const val NOTE_LIMIT_PREFIX = "account_note_limit:"
     }
 
     /**
