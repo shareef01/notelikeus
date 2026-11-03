@@ -11,12 +11,12 @@ SUPABASE_URL = "http://127.0.0.1:54321"
 # Optional comma-separated extra Origins (localhost and notelikeus[.pages.dev] projects are always allowed).
 # ALLOWED_ORIGINS = "https://notes.example.com"
 # Set via `wrangler secret put SUPABASE_ANON_KEY` in real deployments.
-# Hosted orphan sweep and account deletion: `wrangler secret put SUPABASE_SERVICE_ROLE_KEY`.
-# Without it `DELETE /v1/account` answers 503 and deletes nothing.
-# The cron is a no-op until that secret exists — deliberately, because a service-role key bypasses
-# row-level security, so the sweep is opt-in per deployment rather than something every deploy
-# turns on. `.github/workflows/attachments-worker.yml` uploads it only when the repository has a
-# SUPABASE_SERVICE_ROLE_KEY secret, and says which way it went in the job log.
+# Required in production: `wrangler secret put SUPABASE_SERVICE_ROLE_KEY`. Without it
+# `DELETE /v1/account` answers 503 and deletes nothing, a deleted attachment never releases its quota
+# (only the service role may confirm its object is gone), and the cron sweeps do nothing.
+# Local development can leave it out; the Worker then behaves as described and refuses rather than
+# half-does. `.github/workflows/attachments-worker.yml` uploads it when the repository has a
+# SUPABASE_SERVICE_ROLE_KEY secret, and warns in the job log when it does not.
 
 # Abuse control. Cloudflare counts these at the edge, so the limit holds across every isolate the
 # Worker runs in — an in-process counter would not. The Worker applies it twice per request: keyed
