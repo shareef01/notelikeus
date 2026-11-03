@@ -1,4 +1,5 @@
 import 'fake-indexeddb/auto';
+import { pagedSnapshotRpc } from '@/test/pagedSnapshotRpc';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const rpc = vi.fn();
@@ -8,7 +9,7 @@ vi.mock('@/lib/supabase/client', () => ({
   loadSupabaseUrl: () => 'http://localhost:54321',
   loadSupabaseAnonKey: () => 'anon',
   getSupabaseClient: () => ({
-    rpc,
+    rpc: pagedSnapshotRpc(rpc),
     auth: {
       getSession: () => Promise.resolve({ data: { session: { user: { id: 'u' } } }, error: null }),
     },

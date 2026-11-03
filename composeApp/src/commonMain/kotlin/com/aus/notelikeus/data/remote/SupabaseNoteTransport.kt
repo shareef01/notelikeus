@@ -189,7 +189,7 @@ class SupabaseNoteTransport internal constructor(
      * instead of adopting whatever is current by then.
      */
     private suspend fun fetchSnapshot(uid: String, datasetEpoch: Long): CloudNoteSnapshot {
-        val snapshot = parsedSnapshot(rpc.callRpc("fetch_full_snapshot", buildJsonObject { }))
+        val snapshot = parsedSnapshot(PagedSnapshotReader(rpc).read())
         val learned = mutableMapOf<Long, Long>()
         val records = snapshot.notes.mapNotNull { element ->
             val row = element.jsonObject
@@ -368,7 +368,7 @@ class SupabaseNoteTransport internal constructor(
     }
 
     override suspend fun fetchTombstones(uid: String): Map<Long, Long> {
-        val snapshot = parsedSnapshot(rpc.callRpc("fetch_full_snapshot", buildJsonObject { }))
+        val snapshot = parsedSnapshot(PagedSnapshotReader(rpc).read())
         return snapshot.tombstones.mapNotNull { element ->
             val row = element.jsonObject
             val noteId = row.stringId("note_id")?.toLongOrNull() ?: return@mapNotNull null

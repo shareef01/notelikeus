@@ -6,6 +6,7 @@ import {
   withoutRestoredDeletes,
 } from '@/lib/notes/restoreRetry';
 import { getSupabaseClient } from '@/lib/supabase/client';
+import { fetchPagedSnapshot } from '@/lib/supabase/pagedSnapshot';
 import {
   forgetNoteRevision,
   loadRevisionState,
@@ -101,8 +102,14 @@ export async function fetchSnapshotNotes(options?: {
   maxRevision: number;
   wipeGeneration: number;
 }> {
-  const { data, error } = await getSupabaseClient().rpc('fetch_full_snapshot');
-  if (error) throw error;
+  // AUD-008: read in pages, falling back to the one-response snapshot on a database without them.
+  const paged = await fetchPagedSnapshot();
+  let data: unknown = paged;
+  if (paged == null) {
+    const full = await getSupabaseClient().rpc('fetch_full_snapshot');
+    if (full.error) throw full.error;
+    data = full.data;
+  }
   // SQL NULL used to mean "zero notes" because fetch_full_snapshot's outer FROM notes
   // matched nothing — that also dropped tombstones. Refuse it; the RPC must return JSON.
   if (data == null) {

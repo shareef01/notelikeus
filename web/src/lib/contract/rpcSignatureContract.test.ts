@@ -42,6 +42,11 @@ import { createEmptyNote } from '@/types/note';
 const USER = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const responses: Record<string, unknown> = {
   fetch_full_snapshot: { notes: [], tombstones: [], note_count: 0 },
+  fetch_snapshot_page: {
+    items: [],
+    next_after: null,
+    state: { head_revision: 0, wipe_generation: 0, note_count: 0, tombstone_count: 0 },
+  },
   pull_changes: { changes: [], has_more: false },
 };
 
@@ -184,9 +189,9 @@ describe('web RPC arguments match a deployed signature', () => {
     expectResolvable('pull_changes');
   });
 
-  it('fetch_full_snapshot', async () => {
+  it('fetch_snapshot_page', async () => {
     await fetchSnapshotNotes({ hydrateAttachments: false });
-    expectResolvable('fetch_full_snapshot');
+    expectResolvable('fetch_snapshot_page');
   });
 
   it('purge_deleted_note_attachment', async () => {
