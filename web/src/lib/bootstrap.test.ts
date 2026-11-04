@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const clearOwnerMock = vi.fn().mockResolvedValue(undefined);
 const clearPendingAttachmentsMock = vi.fn().mockResolvedValue(undefined);
 const countPendingPushesMock = vi.fn().mockResolvedValue(0);
+const countPendingAttachmentsMock = vi.fn().mockResolvedValue(0);
 
 vi.mock('@/lib/local/notesLocalRepository', () => ({
   clearOwner: (...args: unknown[]) => clearOwnerMock(...args),
@@ -11,6 +12,7 @@ vi.mock('@/lib/local/notesLocalRepository', () => ({
 
 vi.mock('@/lib/local/pendingAttachmentRepository', () => ({
   clearPendingAttachmentsForOwner: (...args: unknown[]) => clearPendingAttachmentsMock(...args),
+  countPendingAttachmentsForOwner: (...args: unknown[]) => countPendingAttachmentsMock(...args),
 }));
 
 import {
@@ -76,6 +78,31 @@ describe('clearLocalUserDataForAccountSwitch', () => {
     expect(clearPendingAttachmentsMock).not.toHaveBeenCalled();
     // The session state is still cleared: the next account never sees A's notes in memory.
     expect(useNotesStore.getState().notes).toEqual([]);
+  });
+
+  // AUDIT-002: a note can be fully synced while an image it references never uploaded. The staged
+  // copy is then the only one, so an account switch must not delete it.
+  it("keeps the previous account's data while it has staged images, even with no pending edit", async () => {
+    countPendingAttachmentsMock.mockResolvedValueOnce(1);
+
+    await clearLocalUserDataForAccountSwitch('user-a');
+
+    expect(countPendingAttachmentsMock).toHaveBeenCalledWith('user-a');
+    expect(clearOwnerMock).not.toHaveBeenCalled();
+    expect(clearPendingAttachmentsMock).not.toHaveBeenCalled();
+  });
+
+  // AUDIT-006: a count that could not be read is not zero.
+  it.each([
+    ['pending edits', () => countPendingPushesMock.mockRejectedValueOnce(new Error('meta read failed'))],
+    ['staged images', () => countPendingAttachmentsMock.mockRejectedValueOnce(new Error('index read failed'))],
+  ])("keeps the previous account's data when its %s cannot be counted", async (_what, fail) => {
+    fail();
+
+    await expect(clearLocalUserDataForAccountSwitch('user-a')).resolves.toBeUndefined();
+
+    expect(clearOwnerMock).not.toHaveBeenCalled();
+    expect(clearPendingAttachmentsMock).not.toHaveBeenCalled();
   });
 
   it('surfaces storage failure when clearing prior account data fails', async () => {

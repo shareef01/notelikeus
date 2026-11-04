@@ -1,5 +1,8 @@
 import { clearOwner, countPendingPushes } from '@/lib/local/notesLocalRepository';
-import { clearPendingAttachmentsForOwner } from '@/lib/local/pendingAttachmentRepository';
+import {
+  clearPendingAttachmentsForOwner,
+  countPendingAttachmentsForOwner,
+} from '@/lib/local/pendingAttachmentRepository';
 import { isSupabaseBackendEnabled, loadSupabaseAnonKey, loadSupabaseUrl } from '@/lib/supabase/env';
 import { isBrowserSafeSupabaseKey } from '@/lib/supabase/backendFlag';
 import { LEGACY_NOTES_STORAGE_KEY } from '@/lib/notes/legacyLocalMigration';
@@ -196,7 +199,8 @@ export function clearLocalUserData(): void {
  * unsynced offline edits must remain in IndexedDB until the same account signs in again and syncs.
  *
  * The same holds across a switch (FU-1): while the prior account still has edits the cloud has not
- * confirmed, its namespace is the only copy of them, so it is left in place — owner-scoped and
+ * confirmed, or images that never uploaded (AUDIT-002), or when that cannot be checked (AUDIT-006),
+ * its namespace is the only copy of them, so it is left in place — owner-scoped and
  * sealed, out of the new account's reach — and uploads the next time that account signs in here.
  * The in-memory and session state is still cleared either way.
  */
@@ -211,10 +215,27 @@ export async function clearLocalUserDataForAccountSwitch(previousOwnerId: string
   } catch {
     // ignore
   }
-  const unsynced = await countPendingPushes(previousOwnerId).catch(() => 0);
-  if (unsynced > 0) {
+  // Staged images count as unsynced work too. The note text is pushed before its images upload, so a
+  // note can be fully synced while an image it references failed to upload (quota full, Worker
+  // unreachable) and exists nowhere but here (AUDIT-002).
+  let unsyncedEdits: number;
+  let stagedImages: number;
+  try {
+    [unsyncedEdits, stagedImages] = await Promise.all([
+      countPendingPushes(previousOwnerId),
+      countPendingAttachmentsForOwner(previousOwnerId),
+    ]);
+  } catch (error) {
+    // A count that could not be read is not a count of zero: deleting on it could destroy the only
+    // copy of the previous account's work (AUDIT-006). Keep the namespace; it is owner-scoped and
+    // sealed, so the next account cannot read it.
+    console.warn("[Notelikeus] Keeping the previous account's local data: could not check it for unsynced work", error);
+    return;
+  }
+  if (unsyncedEdits > 0 || stagedImages > 0) {
     console.warn(
-      `[Notelikeus] Keeping the previous account's local notes: ${unsynced} edit(s) have not been uploaded yet`,
+      `[Notelikeus] Keeping the previous account's local data: ${unsyncedEdits} edit(s) and ` +
+        `${stagedImages} image(s) have not been uploaded yet`,
     );
     return;
   }

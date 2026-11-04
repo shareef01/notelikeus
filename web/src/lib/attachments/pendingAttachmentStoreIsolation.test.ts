@@ -53,6 +53,19 @@ describe('pendingAttachmentStore isolation', () => {
     expect(await getPendingAttachmentBlob('att-2', 'note-2', 'user-b')).toBeUndefined();
   });
 
+  // AUDIT-002: an image whose upload failed after its note synced has no other copy. Switching to
+  // another account hides it from that account, but must not delete it.
+  it("keeps the previous account's staged image across an account switch, for that account only", async () => {
+    await storePendingAttachment('att-unuploaded', new Blob(['only copy']), 'image/png', 'note-9', 'user-a');
+
+    await clearLocalUserDataForAccountSwitch('user-a');
+
+    expect(await getPendingAttachmentBlob('att-unuploaded', 'note-9', 'user-b')).toBeUndefined();
+    const kept = await getPendingAttachmentBlob('att-unuploaded', 'note-9', 'user-a');
+    expect(kept).toBeDefined();
+    expect(await kept!.blob.text()).toBe('only copy');
+  });
+
   it('refuses to return pending attachment when requesting owner does not match', async () => {
     const blob = new Blob(['secret drawing'], { type: 'image/png' });
     await storePendingAttachment('att-3', blob, 'image/png', 'note-3', 'user-a');
