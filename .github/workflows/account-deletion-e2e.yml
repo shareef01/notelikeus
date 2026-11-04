@@ -52,7 +52,7 @@ jobs:
           npm ci --prefix workers/attachments
 
       - name: Start local Supabase stack
-        run: npm run supabase:start
+        run: bash scripts/ops/retry-supabase-start.sh npx supabase start
 
       - name: Read the local stack's keys
         run: |
