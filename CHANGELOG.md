@@ -4,6 +4,20 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-11-04
+
+### Changed
+- **Deleting your account or your cloud data asks you to confirm it's you.** If you last signed in more than 10 minutes ago, Notelikeus first emails you a sign-in code to enter, on Android, Windows and the web.
+- **Each account holds up to 10 000 notes and 100 MB of note text.** A save that would go past either limit is refused with a message saying which one; pictures keep their own 200 MB limit.
+
+### Fixed
+- **The backup offered before deleting your account includes your synced pictures.** It used to leave out pictures stored only in the cloud, which the deletion then removed.
+- **Large backups export reliably.** Backups of a few hundred MB no longer run out of memory.
+- **A picture that fails to upload no longer loses the note's other pictures** on the web.
+- **If the connection drops while deleting your account,** the app now checks whether the deletion went through instead of guessing.
+- **Very large accounts sync completely.** The cloud copy is read in parts, so it no longer times out.
+- **The attachment storage limit can no longer be bypassed,** and wiping your cloud data can no longer race a save from another device.
+
 ## [2.5.0] — 2026-11-02
 
 ### Added
