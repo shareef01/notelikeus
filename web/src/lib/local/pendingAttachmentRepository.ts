@@ -293,6 +293,23 @@ export async function listPendingAttachmentsForOwner(
   return out;
 }
 
+/**
+ * How many images are staged for [ownerId], counted from the index without opening any of them.
+ *
+ * Counting rows rather than readable records matters: a staged image whose key cannot be loaded right
+ * now is still the only copy of that image, so it must still count as something not to delete.
+ */
+export async function countPendingAttachmentsForOwner(ownerId: string): Promise<number> {
+  const db = await getNotesDatabase();
+  return new Promise<number>((resolve, reject) => {
+    const tx = db.transaction(PENDING_ATTACHMENTS_STORE, 'readonly');
+    const request = tx.objectStore(PENDING_ATTACHMENTS_STORE).index('ownerId').count(ownerId);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () =>
+      reject(request.error ?? new Error('countPendingAttachmentsForOwner failed'));
+  });
+}
+
 export async function clearPendingAttachmentsForOwner(ownerId: string): Promise<void> {
   const db = await getNotesDatabase();
   return new Promise<void>((resolve, reject) => {
