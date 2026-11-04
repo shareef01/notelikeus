@@ -88,6 +88,13 @@ updates:
       - dependency-name: "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose"
         versions: [">= 2.10.0-alpha01"]
 
+      # kotlinx-serialization 1.12 is built with Kotlin 2.4 and pulls kotlin-stdlib 2.4.10, whose
+      # metadata the project's Kotlin 2.1 compiler cannot read: every Kotlin compile fails with
+      # "compiled with an incompatible version of Kotlin". Found on #400.
+      # REMOVE THIS ENTRY when the Kotlin plugin moves to 2.3 or later (`kotlin` in libs.versions.toml).
+      - dependency-name: "org.jetbrains.kotlinx:kotlinx-serialization-json"
+        versions: [">= 1.12.0"]
+
       # Same hazard, different package. Koin 4.2.2 depends on Compose UI 1.10.2 directly, and a
       # direct dependency wins conflict resolution, so `org.jetbrains.compose.ui:ui` resolves
       # 1.8.2 -> 1.10.2 while the Compose compiler plugin stays on the CMP 1.8.x it targets. The
