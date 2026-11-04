@@ -4,6 +4,12 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.6.1] — 2026-11-05
+
+### Fixed
+- **Signing out no longer silently deletes changes that haven't synced.** On Android and Windows, if edits, deletions or pictures haven't reached the cloud yet, the app tries to sync them first. If anything is still left, it tells you what and asks before signing out; you can stay signed in instead.
+- **Pictures that never finished uploading are kept when another account signs in** on the web. They used to be deleted along with the previous account's other data, even though the browser held the only copy.
+
 ## [2.6.0] — 2026-11-04
 
 ### Changed
