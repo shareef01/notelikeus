@@ -99,7 +99,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Start local Supabase
-        run: npm run supabase:start
+        run: bash scripts/ops/retry-supabase-start.sh npx supabase start
 
       - name: Reset database from migrations
         run: npm run supabase:reset
