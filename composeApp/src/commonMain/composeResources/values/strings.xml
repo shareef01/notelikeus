@@ -208,7 +208,10 @@
     <string name="cloud_sign_out_confirm_title">Sign out?</string>
     <string name="cloud_sign_out_confirm_message">Signing out clears notes on this device so another account cannot inherit them. Cloud copies remain unless you delete them. You’ll need to sign in again to keep using Notelikeus.</string>
     <string name="cloud_sign_out_delete_data">Sign out and delete cloud data</string>
-    <string name="account_delete">Delete account</string>
+    <string name="cloud_sign_out_unsynced_title">Some changes aren’t in the cloud yet</string>
+    <string name="cloud_sign_out_unsynced_message">This device couldn’t sync: %1$s. Signing out now deletes them for good. Stay signed in and try again when you’re online, or export a backup first.</string>
+    <string name="cloud_sign_out_unsynced_confirm">Sign out and lose them</string>
+    <string name="cloud_sign_out_unsynced_stay">Stay signed in</string>    <string name="account_delete">Delete account</string>
     <string name="account_delete_subtitle">Permanently remove your account and notes</string>
     <string name="account_delete_confirm_title">Delete your account?</string>
     <string name="account_delete_confirm_message">This permanently deletes your account, your notes and your images from Notelikeus cloud, and removes them from this device, including any edits that haven’t been uploaded yet. Your other signed-in devices remove their copies the next time they sync. This happens right away and cannot be undone.</string>
@@ -355,6 +358,18 @@ Sync diagnostics shows counts and version numbers only — never note text, toke
       The Filters sheet’s live count. Plurals rather than "%1$d notes", which renders "1 notes" for
       the single-note case that a new or heavily-filtered library hits constantly.
     -->
+    <plurals name="unsynced_edits">
+        <item quantity="one">%1$d note with changes</item>
+        <item quantity="other">%1$d notes with changes</item>
+    </plurals>
+    <plurals name="unsynced_deletions">
+        <item quantity="one">%1$d deleted note</item>
+        <item quantity="other">%1$d deleted notes</item>
+    </plurals>
+    <plurals name="unsynced_images">
+        <item quantity="one">%1$d image</item>
+        <item quantity="other">%1$d images</item>
+    </plurals>
     <plurals name="deleted_notes_came_back">
         <item quantity="one">A note you deleted changed on another device, so it’s back</item>
         <item quantity="other">%1$d notes you deleted changed on another device, so they’re back</item>

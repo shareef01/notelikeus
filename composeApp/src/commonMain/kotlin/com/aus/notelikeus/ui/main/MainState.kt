@@ -1,6 +1,7 @@
 package com.aus.notelikeus.ui.main
 
 import com.aus.notelikeus.domain.model.Label
+import com.aus.notelikeus.domain.repository.UnsyncedWork
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.NoteQuery
 import com.aus.notelikeus.domain.model.NoteScope
@@ -130,6 +131,11 @@ data class MainState(
     val isCloudAutoSyncEnabled: Boolean = true,
     val isSigningIn: Boolean = false,
     val isDeletingAccount: Boolean = false,
+    /**
+     * Work only this device holds, found when the user asked to sign out (AUDIT-001). Non-null holds
+     * the sign-out until the user decides: signing out clears this device's notes, so it would be lost.
+     */
+    val unsyncedBeforeSignOut: UnsyncedWork? = null,
     /** The destructive action waiting for "confirm it's you", or null (AUD-005). */
     val pendingIdentityCheck: IdentityCheck? = null,
     /** True once the confirmation code for [pendingIdentityCheck] has been emailed. */

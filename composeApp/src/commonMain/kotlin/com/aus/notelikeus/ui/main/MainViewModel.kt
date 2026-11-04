@@ -135,8 +135,10 @@ class MainViewModel(
     fun signInWithEmailPassword(email: String, password: String, createAccount: Boolean) =
         cloudSync.signInWithEmailPassword(email, password, createAccount)
 
-    fun signOutFromCloud(deleteCloudData: Boolean = false) =
-        cloudSync.signOutFromCloud(deleteCloudData)
+    fun signOutFromCloud(deleteCloudData: Boolean = false, discardUnsynced: Boolean = false) =
+        cloudSync.signOutFromCloud(deleteCloudData, discardUnsynced)
+
+    fun keepUnsyncedAndStaySignedIn() = cloudSync.keepUnsyncedAndStaySignedIn()
 
     fun deleteAccount() = cloudSync.deleteAccount()
     fun requestIdentityCode() = cloudSync.requestIdentityCode()

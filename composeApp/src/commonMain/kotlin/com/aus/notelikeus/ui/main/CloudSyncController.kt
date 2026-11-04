@@ -204,11 +204,38 @@ internal class CloudSyncController(
      * so the session is deliberately still alive and the notes are still in the cloud. Silently
      * swallowing that left the user looking at a signed-in app with no explanation.
      */
-    fun signOutFromCloud(deleteCloudData: Boolean = false) {
-        scope.launch { performSignOut(deleteCloudData) }
+    fun signOutFromCloud(deleteCloudData: Boolean = false, discardUnsynced: Boolean = false) {
+        scope.launch { performSignOut(deleteCloudData, discardUnsynced) }
     }
 
-    private suspend fun performSignOut(deleteCloudData: Boolean) {
+    /** The user chose to stay signed in rather than lose what has not synced. */
+    fun keepUnsyncedAndStaySignedIn() {
+        state.update { it.copy(unsyncedBeforeSignOut = null) }
+    }
+
+    private suspend fun performSignOut(deleteCloudData: Boolean, discardUnsynced: Boolean) {
+        // AUDIT-001: an ordinary sign-out clears this device's notes, so anything the cloud does not
+        // have yet would be gone for good. Sync once, and if work is still only here, ask first.
+        // Deleting the cloud data is already a choice to delete everything, so it is not asked again.
+        if (!deleteCloudData && !discardUnsynced) {
+            val unsynced = runCatching { syncManager.unsyncedWorkBeforeSignOut() }.getOrElse { error ->
+                // A check that failed proves nothing, so it cannot clear the way to deleting.
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                state.update {
+                    it.copy(
+                        pendingCloudSyncEvent = CloudSyncEvent.Failure(
+                            "Couldn't check for changes that haven't synced, so you're still signed in. Try again.",
+                        ),
+                    )
+                }
+                return
+            }
+            if (!unsynced.isEmpty) {
+                state.update { it.copy(unsyncedBeforeSignOut = unsynced) }
+                return
+            }
+        }
+        state.update { it.copy(unsyncedBeforeSignOut = null) }
         val result = syncManager.signOut(deleteCloudData)
         // Card thumbnails are decoded copies of the account's pictures; they do not outlive its session.
         if (result.isSuccess) clearAttachmentThumbnailCache()
@@ -332,7 +359,7 @@ internal class CloudSyncController(
             clearIdentityCheck()
             when (check) {
                 IdentityCheck.DeleteAccount -> performDeleteAccount()
-                IdentityCheck.WipeCloudData -> performSignOut(deleteCloudData = true)
+                IdentityCheck.WipeCloudData -> performSignOut(deleteCloudData = true, discardUnsynced = false)
             }
         }
     }
