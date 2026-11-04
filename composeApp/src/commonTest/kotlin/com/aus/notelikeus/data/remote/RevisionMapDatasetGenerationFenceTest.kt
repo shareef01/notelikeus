@@ -543,6 +543,11 @@ class RevisionMapDatasetGenerationFenceTest {
         fun answer(functionName: String): JsonObject = responses[functionName] ?: buildJsonObject { }
 
         override suspend fun callRpc(functionName: String, body: JsonObject): JsonObject {
+            // AUD-008: a paged read is answered from the full-snapshot script, recorded once per read.
+            if (functionName == PagedSnapshotTestSupport.PAGE_FUNCTION) {
+                if (PagedSnapshotTestSupport.startsRead(body)) record(PagedSnapshotTestSupport.FULL_FUNCTION, body)
+                return PagedSnapshotTestSupport.page(answer(PagedSnapshotTestSupport.FULL_FUNCTION), body)
+            }
             record(functionName, body)
             return answer(functionName)
         }
@@ -585,6 +590,7 @@ class RevisionMapDatasetGenerationFenceTest {
         fun baseRevisions(): List<Long> = delegate.baseRevisions()
 
         override suspend fun callRpc(functionName: String, body: JsonObject): JsonObject {
+            if (functionName == PagedSnapshotTestSupport.PAGE_FUNCTION) return delegate.callRpc(functionName, body)
             delegate.record(functionName, body)
             if (functionName == parkedFunction) {
                 started.complete(Unit)
@@ -615,6 +621,14 @@ class RevisionMapDatasetGenerationFenceTest {
         fun baseRevisions(): List<Long> = delegate.baseRevisions()
 
         override suspend fun callRpc(functionName: String, body: JsonObject): JsonObject {
+            // AUD-008: the read parks on its first page, the way it parked on the one-response snapshot.
+            if (functionName == PagedSnapshotTestSupport.PAGE_FUNCTION) {
+                if (PagedSnapshotTestSupport.startsRead(body)) {
+                    started.complete(Unit)
+                    released.await()
+                }
+                return PagedSnapshotTestSupport.page(snapshot, body)
+            }
             if (functionName == "fetch_full_snapshot") {
                 started.complete(Unit)
                 released.await()

@@ -112,7 +112,7 @@ class NoteSyncEngineRemoteIdentityF1Test {
             authorizations += exchange.requestHeaders.getFirst("Authorization").orEmpty()
             functions += function
             firstRequestSeen = true
-            exchange.requestBody.readBytes()
+            val requestBody = exchange.requestBody.readBytes().decodeToString()
             val rejected = rejectWith
             val body = if (rejected != null) {
                 """{"message":"JWT expired"}"""
@@ -120,6 +120,12 @@ class NoteSyncEngineRemoteIdentityF1Test {
                 when (function) {
                     "fetch_full_snapshot" ->
                         """{"notes":$snapshotNotes,"note_count":$snapshotNoteCount,"tombstones":[]}"""
+                    // AUD-008: the same library, as the paged read asks for it — notes, then tombstones.
+                    "fetch_snapshot_page" -> {
+                        val items = if ("\"tombstones\"" in requestBody) "[]" else snapshotNotes
+                        """{"items":$items,"next_after":null,"state":{"head_revision":0,"wipe_generation":0,""" +
+                            """"note_count":$snapshotNoteCount,"tombstone_count":0}}"""
+                    }
                     "restore_note" -> """{"status":"applied","revision":7,"server_updated_at":2000}"""
                     "delete_all_user_cloud_data" -> """{"status":"ok"}"""
                     else -> """{"status":"applied","revision":1,"server_updated_at":1000}"""
@@ -157,8 +163,9 @@ class NoteSyncEngineRemoteIdentityF1Test {
 
             val result = engine.uploadNote(NOTE_ID)
 
+            // AUD-008: each snapshot read is two requests now, notes then tombstones, and all are A's.
             assertEquals(
-                THREE_REQUESTS_AS_A,
+                FIVE_REQUESTS_AS_A,
                 authorizations,
                 "the engine's mutation did not authenticate as the account it started as",
             )
@@ -181,8 +188,8 @@ class NoteSyncEngineRemoteIdentityF1Test {
     /**
      * Red B — a **read** that began as A must send A's bearer.
      *
-     * `downloadAllNotes` opens with the cloud-tombstone merge and then the full snapshot, so two
-     * requests go out for one logical operation and both must be A's.
+     * `downloadAllNotes` opens with the cloud-tombstone merge and then the full snapshot, each a
+     * paged read of two requests (AUD-008), so four go out for one logical operation and all must be A's.
      *
      * Recorded red before the fix:
      * `expected [Bearer token-a, Bearer token-a] but was [Bearer token-a, Bearer token-b]`
@@ -195,8 +202,9 @@ class NoteSyncEngineRemoteIdentityF1Test {
 
             engine.downloadAllNotes()
 
+            // AUD-008: the tombstone merge and the snapshot are each a paged read, two requests apiece.
             assertEquals(
-                TWO_REQUESTS_AS_A,
+                FOUR_REQUESTS_AS_A,
                 authorizations,
                 "the engine's read did not authenticate as the account it started as",
             )
@@ -343,7 +351,7 @@ class NoteSyncEngineRemoteIdentityF1Test {
 
             assertTrue(result.isSuccess, "a valid upload failed: ${result.exceptionOrNull()}")
             assertEquals(
-                4,
+                6,
                 authorizations.size,
                 "precondition: the flow made several round trips, made ${authorizations.size}",
             )
@@ -383,11 +391,12 @@ class NoteSyncEngineRemoteIdentityF1Test {
 
             assertTrue(result.isSuccess, "a valid wipe failed: ${result.exceptionOrNull()}")
             assertEquals(
-                listOf("Bearer $TOKEN_A", "Bearer $TOKEN_A"),
+                List(3) { "Bearer $TOKEN_A" },
                 authorizations,
                 "the wipe did not authenticate as the account that issued it",
             )
-            assertEquals(listOf("fetch_full_snapshot", "delete_all_user_cloud_data"), functions)
+            // AUD-008: the snapshot it reads first is paged, notes then tombstones.
+            assertEquals(listOf("fetch_snapshot_page", "fetch_snapshot_page", "delete_all_user_cloud_data"), functions)
             assertEquals(
                 1,
                 providerCalls,
@@ -744,8 +753,8 @@ class NoteSyncEngineRemoteIdentityF1Test {
     }
 
     private companion object {
-        val THREE_REQUESTS_AS_A = List(3) { "Bearer $TOKEN_A" }
-        val TWO_REQUESTS_AS_A = List(2) { "Bearer $TOKEN_A" }
+        val FIVE_REQUESTS_AS_A = List(5) { "Bearer $TOKEN_A" }
+        val FOUR_REQUESTS_AS_A = List(4) { "Bearer $TOKEN_A" }
 
         const val OWNER_A = "account-a"
         const val OWNER_B = "account-b"

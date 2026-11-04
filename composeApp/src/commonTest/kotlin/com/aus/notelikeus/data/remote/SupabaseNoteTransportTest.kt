@@ -25,7 +25,18 @@ private class RecordingRpcClient(
         responses.getOrPut(functionName) { mutableListOf() }.addAll(response)
     }
 
+    private var lastSnapshot: JsonObject? = null
+
     override suspend fun callRpc(functionName: String, body: JsonObject): JsonObject {
+        // AUD-008: a paged read is answered from this fake's full-snapshot script, recorded once per read.
+        if (functionName == PagedSnapshotTestSupport.PAGE_FUNCTION) {
+            val full = if (PagedSnapshotTestSupport.startsRead(body) || lastSnapshot == null) {
+                callRpc(PagedSnapshotTestSupport.FULL_FUNCTION, buildJsonObject { }).also { lastSnapshot = it }
+            } else {
+                lastSnapshot!!
+            }
+            return PagedSnapshotTestSupport.page(full, body)
+        }
         calls += functionName to body
         val queue = responses[functionName] ?: return buildJsonObject { }
         return if (queue.size > 1) queue.removeFirst() else queue.firstOrNull() ?: buildJsonObject { }
