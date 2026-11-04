@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { readContractFixture } from '@/lib/contract/contractFixtures';
+import { existsSync } from 'node:fs';
+import { readContractFixture, contractFixturePath, readContractBinaryFixture } from '@/lib/contract/contractFixtures';
+import { parseBackupBundle } from '@/lib/backup/bundle/backupBundle';
 import { importNotesFromBackup } from '@/lib/backup/importBackup';
 import { exportBackupPayload } from '@/lib/backup/exportBackup';
 import {
@@ -70,6 +72,40 @@ describe('backup v3 contract', () => {
     expect(result.labelsCreated).toBe(expectedBackup.labelsCreated);
   });
 
+  it('imports the rich cross-platform contract fixture with Unicode and max field limits (Phase A3)', () => {
+    const richFile = readContractFixture('backup/v3-cross-platform-rich.json');
+    const { merged, result } = importNotesFromBackup(richFile, []);
+
+    expect(result.notesImported).toBe(3);
+    expect(result.labelsCreated).toBe(3);
+    expect(merged).toHaveLength(3);
+
+    // Note 1: Unicode and emojis
+    const n1 = merged[0]!;
+    expect(n1.title).toBe('🚀 Daily Standup 📝 & Coffee ☕');
+    expect(n1.content).toBe('日本語テスト\n中文测试\n한국어 시험\nالعربية\nעִבְרִית\n✨🔥🎉');
+    expect(n1.checklist).toHaveLength(2);
+    expect(n1.checklist[0]!.text).toBe('Item 1 (checked) 🍱');
+    expect(n1.checklist[0]!.isChecked).toBe(true);
+    expect(n1.labels.map((l) => l.name).sort()).toEqual(['Personal', '日本語ラベル']);
+    expect(n1.reminderTimestamp).toBe(4102444800000);
+
+    // Note 2: Maximum field limits (2,000 title, 100,000 content, 500 checklist items)
+    const n2 = merged[1]!;
+    expect(n2.title).toHaveLength(2000);
+    expect(n2.content).toHaveLength(100000);
+    expect(n2.checklist).toHaveLength(500);
+    expect(n2.labels.map((l) => l.name)).toEqual(['Work']);
+
+    // Note 3: Minimal note with past reminder
+    const n3 = merged[2]!;
+    expect(n3.title).toBe('Minimal Note');
+    expect(n3.content).toBe('');
+    // Past reminders are normalized to null on import by design
+    expect(n3.reminderTimestamp).toBeNull();
+  });
+
+
   it('exports the shape the Kotlin importer parses', () => {
     // Built from the fixture rather than hand-written, so the assertion is about this client's
     // serializer and not about a second copy of the fixture drifting.
@@ -106,6 +142,32 @@ describe('backup v3 contract', () => {
     expect(payload.app).toBe('Notelikeus');
     expect(payload.notes).toEqual(web.notes);
     expect(payload.labels).toEqual(web.labels);
+  });
+
+  it('parses genuine committed Web-exported v4 .nlkbak bundle', async () => {
+    const sampleBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+    const webBundlePath = contractFixturePath('backup/v4-web-bundle.nlkbak');
+    expect(existsSync(webBundlePath), 'Required contract fixture backup/v4-web-bundle.nlkbak must be committed and present').toBe(true);
+
+    const archive = readContractBinaryFixture('backup/v4-web-bundle.nlkbak');
+    const parsed = await parseBackupBundle(archive);
+    expect(parsed.manifest.formatVersion).toBe(4);
+    expect(parsed.manifest.app).toBe('Notelikeus');
+    expect(parsed.media.has('att-cross-1')).toBe(true);
+    expect(parsed.media.get('att-cross-1')!.bytes).toEqual(sampleBytes);
+  });
+
+  it('parses genuine committed Kotlin-exported v4 .nlkbak bundle', async () => {
+    const sampleBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+    const kotlinBundlePath = contractFixturePath('backup/v4-kotlin-bundle.nlkbak');
+    expect(existsSync(kotlinBundlePath), 'Required contract fixture backup/v4-kotlin-bundle.nlkbak must be committed and present').toBe(true);
+
+    const archive = readContractBinaryFixture('backup/v4-kotlin-bundle.nlkbak');
+    const parsed = await parseBackupBundle(archive);
+    expect(parsed.manifest.formatVersion).toBe(4);
+    expect(parsed.manifest.app).toBe('Notelikeus');
+    expect(parsed.media.has('att-cross-1')).toBe(true);
+    expect(parsed.media.get('att-cross-1')!.bytes).toEqual(sampleBytes);
   });
 
   it('keeps import soft caps aligned with the shared fixture and Kotlin', () => {

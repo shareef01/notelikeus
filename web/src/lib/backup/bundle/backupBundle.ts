@@ -13,6 +13,7 @@
  * See `contracts/backup/v4-bundle-manifest.json` for the wire format itself.
  */
 import { BACKUP_VERSION, MAX_BACKUP_FILE_BYTES } from '@/lib/backup/constants';
+import { version as packageVersion } from '../../../../package.json';
 import {
   extractZipEntry,
   listZipCentralDirectory,
@@ -89,6 +90,14 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string | undefined> 
   }
 }
 
+/**
+ * Whether [buildBackupBundle] will write this attachment. It skips the others without failing, so a
+ * caller that reports what a bundle contains has to ask this rather than count what it passed in.
+ */
+export function isBundleableAttachment(attachmentId: string, byteLength: number): boolean {
+  return ATTACHMENT_ID_PATTERN.test(attachmentId) && byteLength <= MAX_BUNDLE_ATTACHMENT_BYTES;
+}
+
 export function mediaEntryName(attachmentId: string): string {
   return `${BUNDLE_MEDIA_PREFIX}${attachmentId}`;
 }
@@ -140,16 +149,31 @@ export async function buildBackupBundle(
   const manifest: BundleManifest = {
     formatVersion: BUNDLE_FORMAT_VERSION,
     app: options?.app ?? 'Notelikeus',
-    appVersion: options?.appVersion ?? '1.0.0 (web)',
+    appVersion: options?.appVersion ?? `${packageVersion} (web)`,
     exportedAt: options?.exportedAt ?? Date.now(),
     backup: backupDocument,
     attachments: index,
   };
 
-  return writeZip([
-    { name: BUNDLE_MANIFEST_ENTRY, data: new TextEncoder().encode(JSON.stringify(manifest, null, 2)) },
+  const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
+  if (manifestBytes.byteLength > MAX_BUNDLE_MANIFEST_BYTES) {
+    throw new BundleFormatError(
+      `Backup bundle manifest is too large (${manifestBytes.byteLength} bytes; max is ${MAX_BUNDLE_MANIFEST_BYTES})`,
+    );
+  }
+
+  const archive = writeZip([
+    { name: BUNDLE_MANIFEST_ENTRY, data: manifestBytes },
     ...media,
   ]);
+
+  if (archive.byteLength > MAX_BUNDLE_FILE_BYTES) {
+    throw new BundleFormatError(
+      `Backup bundle is too large (${archive.byteLength} bytes; max is ${MAX_BUNDLE_FILE_BYTES})`,
+    );
+  }
+
+  return archive;
 }
 
 // ---- reading --------------------------------------------------------------

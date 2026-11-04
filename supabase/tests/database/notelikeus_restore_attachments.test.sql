@@ -58,6 +58,14 @@ select results_eq(
 );
 
 select public.apply_note_delete('1', (select revision from public.notes where note_id = '1'));
+-- The client sweep purges after the Worker's DELETE, which ends with the service role confirming the
+-- object is gone (AUD-003: the purge no longer drops a row whose object is unconfirmed).
+select public.begin_note_attachment_delete('1', 'att1');
+select set_config('role', 'service_role', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select public.confirm_attachment_object_deleted(
+  tests.get_supabase_uid('restore_att_a@notelikeus.test'), '1', 'att1');
+select tests.authenticate_as('restore_att_a@notelikeus.test');
 select results_eq(
   $$ select (public.purge_deleted_note_attachment('att1', '1')->>'status') $$,
   ARRAY['applied'::text],

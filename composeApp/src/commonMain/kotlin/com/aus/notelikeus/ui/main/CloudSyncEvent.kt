@@ -3,6 +3,9 @@ package com.aus.notelikeus.ui.main
 sealed class CloudSyncEvent {
     data object SignedIn : CloudSyncEvent()
     data class SignedOut(val cloudDataDeleted: Boolean = false) : CloudSyncEvent()
+
+    /** @param elsewhere deleted from another device, which this one has just found out. */
+    data class AccountDeleted(val elsewhere: Boolean = false) : CloudSyncEvent()
     data class Uploaded(val noteCount: Int) : CloudSyncEvent()
     /**
      * @param deletedNotesBack notes this device deleted that the download restored because another

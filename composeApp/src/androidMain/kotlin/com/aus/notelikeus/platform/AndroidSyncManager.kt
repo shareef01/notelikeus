@@ -1,6 +1,8 @@
 package com.aus.notelikeus.platform
 
+import com.aus.notelikeus.data.remote.AccountDeletionTransport
 import com.aus.notelikeus.data.remote.CloudSessionManager
+import com.aus.notelikeus.data.remote.isAccountDeletedRefusal
 import com.aus.notelikeus.data.sync.CloudWipeCoordinator
 import com.aus.notelikeus.data.sync.CloudWipeOutcome
 import com.aus.notelikeus.data.sync.LocalAccountIsolator
@@ -21,6 +23,7 @@ class AndroidSyncManager(
     private val isolator: LocalAccountIsolator,
     /** F-8: owns the durable record of an accepted destructive wipe request. */
     private val cloudWipeCoordinator: CloudWipeCoordinator,
+    private val accountDeletion: AccountDeletionTransport,
     /** Timestamps the accepted request; injected so tests stay deterministic. */
     private val now: () -> Long = { System.currentTimeMillis() },
 ) : SyncManager {
@@ -95,6 +98,8 @@ class AndroidSyncManager(
             ) {
                 is CloudWipeOutcome.NotStarted -> return Result.failure(outcome.failure)
                 is CloudWipeOutcome.Failed -> return Result.failure(outcome.failure)
+                // Nothing was wiped and the request is not owed; the caller asks for a new code (AUD-005).
+                is CloudWipeOutcome.ReauthenticationRequired -> return Result.failure(outcome.failure)
                 CloudWipeOutcome.Completed, is CloudWipeOutcome.CompletedButStillPending -> Unit
             }
         }
@@ -102,6 +107,22 @@ class AndroidSyncManager(
             isolator.isolate()
             refreshAccount()
         }
+    }
+
+    override suspend fun deleteAccount(): Result<Unit> = runCatching {
+        accountDeletion.deleteAccount()
+        endDeletedAccountSession()
+    }
+
+    /**
+     * The account is gone, so its session and this device's copy of its notes go too. Called only on
+     * a definite answer from the server. A failure here is not reported as a failed deletion: an
+     * interrupted isolation is durable and completes at the next startup.
+     */
+    private suspend fun endDeletedAccountSession() {
+        runCatching { sessionManager.signOut() }
+        isolator.isolate()
+        refreshAccount()
     }
 
     override suspend fun syncNotes() {
@@ -140,13 +161,22 @@ class AndroidSyncManager(
     private suspend fun runSync(
         onSuccess: (Int) -> CloudSyncEvent,
         block: suspend () -> Result<Int>
-    ) = runTimedSync(
-        status = _syncStatus,
-        pendingEvent = _pendingEvent,
-        describeError = { sessionManager.diagnose(it) },
-        successEvent = onSuccess,
-        block = block
-    )
+    ) {
+        var accountDeleted = false
+        runTimedSync(
+            status = _syncStatus,
+            pendingEvent = _pendingEvent,
+            describeError = { sessionManager.diagnose(it) },
+            successEvent = onSuccess,
+            onFailure = { accountDeleted = it.isAccountDeletedRefusal() },
+            block = block
+        )
+        if (accountDeleted) {
+            endDeletedAccountSession()
+            _syncStatus.value = CloudSyncStatus.Unknown
+            _pendingEvent.value = CloudSyncEvent.AccountDeleted(elsewhere = true)
+        }
+    }
 
     override fun clearPendingEvent() {
         _pendingEvent.value = null

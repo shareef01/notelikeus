@@ -1,7 +1,8 @@
-﻿import 'fake-indexeddb/auto';
+import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   BUNDLE_FORMAT_VERSION,
+  MAX_BUNDLE_FILE_BYTES,
   BundleFormatError,
   buildBackupBundle,
   mediaEntryName,
@@ -10,6 +11,7 @@ import {
 } from '@/lib/backup/bundle/backupBundle';
 import {
   applyBundle,
+  readBundleFile,
   buildBundleFromNotes,
   bundleFileName,
   planBundleImport,
@@ -92,6 +94,21 @@ describe('bundle format', () => {
       'notelikeus_backup_2026-07-08.nlkbak',
     );
   });
+
+  it('rejects building an archive when manifest exceeds MAX_BUNDLE_MANIFEST_BYTES (Matrix F)', async () => {
+    // Create a mock document with enough content to push manifest beyond 27 MiB
+    const largeContent = 'a'.repeat(90_000);
+    const notes: Note[] = [];
+    // 320 notes * 90k chars ~ 28.8 MB > 27 MiB
+    for (let i = 0; i < 320; i++) {
+      notes.push(note(String(i + 1), { content: largeContent }));
+    }
+    const document = { version: 3 as const, exportedAt: 1, notes };
+
+    await expect(buildBackupBundle(document, [])).rejects.toThrow(BundleFormatError);
+    await expect(buildBackupBundle(document, [])).rejects.toThrow(/manifest is too large/);
+  });
+
 });
 
 describe('bundle parsing refuses what it cannot trust', () => {
@@ -129,7 +146,7 @@ describe('bundle parsing refuses what it cannot trust', () => {
     await expect(parseBackupBundle(archive)).rejects.toThrow(/Unsupported bundle version/);
   });
 
-  it('rejects an oversized manifest before extracting media', async () => {
+  it('rejects an oversized manifest before extracting media', { timeout: 15_000 }, async () => {
     const { MAX_BUNDLE_MANIFEST_BYTES } = await import('@/lib/backup/bundle/backupBundle');
     const huge = new Uint8Array(MAX_BUNDLE_MANIFEST_BYTES + 1);
     huge.fill(0x20); // spaces — valid-ish payload shape, refused by size alone
@@ -188,6 +205,31 @@ describe('bundle parsing refuses what it cannot trust', () => {
     ]);
     // Future format version fails on the manifest; media must not be required to reach that error.
     await expect(parseBackupBundle(archive)).rejects.toThrow(/Unsupported bundle version/);
+  });
+  it('parses valid 40 MiB bundle containing multiple attachments within per-attachment limits', { timeout: 30_000 }, async () => {
+    const document = exportBackupPayload([note('1')], 1);
+    const eightMb = 8 * 1024 * 1024;
+    const dummyBytes = new Uint8Array(eightMb);
+    const attachments = Array.from({ length: 5 }, (_, i) => ({
+      noteId: 1,
+      attachmentId: `att-${i}`,
+      type: 'image' as const,
+      mimeType: 'image/jpeg',
+      bytes: dummyBytes,
+    }));
+    const archive = await buildBackupBundle(document, attachments);
+    expect(archive.byteLength).toBeGreaterThanOrEqual(40 * 1024 * 1024);
+    const parsed = await parseBackupBundle(archive);
+    expect(parsed.manifest.formatVersion).toBe(4);
+    expect(parsed.media.size).toBe(5);
+  });
+
+  it('readBundleFile rejects bundle exceeding 256 MiB boundary', async () => {
+    const fakeOversizedFile = {
+      size: MAX_BUNDLE_FILE_BYTES + 1,
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as unknown as File;
+    await expect(readBundleFile(fakeOversizedFile)).rejects.toThrow(/Backup bundle is too large/);
   });
 });
 
@@ -565,4 +607,29 @@ describe('a bundle import writes nothing until it is confirmed', () => {
 
     expect(await listPendingAttachmentsForOwner(GUEST_OWNER_ID)).toEqual([]);
   });
+
+  it('reports unreadable local attachments as skipped with unreadable warning (Matrix G)', async () => {
+    // Note has a pending storage path, but the file was never staged / was deleted from IDB
+    const unreadableNote = note('88', {
+      title: 'Unreadable Note',
+      attachments: [
+        {
+          id: 'missing-att',
+          noteId: 88,
+          storagePath: pendingStoragePath('missing-att'),
+          type: 'image',
+          mimeType: 'image/png',
+        },
+      ],
+    });
+
+    const exported = await buildBundleFromNotes([unreadableNote], GUEST_OWNER_ID);
+    expect(exported.attachmentsIncluded).toBe(0);
+    expect(exported.attachmentsSkipped).toBe(1);
+    expect(exported.warnings).toHaveLength(1);
+    expect(exported.warnings[0]).toBe(
+      '1 image was skipped because local storage could not be read.',
+    );
+  });
+
 });

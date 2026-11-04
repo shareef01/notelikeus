@@ -1,6 +1,17 @@
 begin;
 select plan(15);
 
+create function tests.authenticate_as_service_role()
+returns void
+language plpgsql
+as $$
+begin
+  perform set_config('role', 'service_role', true);
+  perform set_config('request.jwt.claim.role', 'service_role', true);
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
+end;
+$$;
+
 -- The wipe has to leave every attachment object reachable for deletion. It previously returned
 -- only the keys of rows that were still live, then hard-deleted every row — so already
 -- soft-deleted attachments were never listed, and the rows the Worker authorizes DELETEs against
@@ -94,7 +105,17 @@ select results_eq(
   'a repeated wipe still lists the objects that are still stored'
 );
 
--- 6. Finalizing drops the marked rows once the objects are gone.
+-- 6. Finalizing drops the marked rows once the objects are gone. "Gone" is what the Worker's DELETE
+--    establishes: the owner claims the row, the object is deleted, and the service role confirms it
+--    (AUD-003 -- the user's own token can no longer write that confirmation).
+select public.begin_note_attachment_delete('100', 'attlive');
+select public.begin_note_attachment_delete('101', 'attgone');
+select tests.authenticate_as_service_role();
+select public.confirm_attachment_object_deleted(
+  tests.get_supabase_uid('wipe_user_a@notelikeus.test'), '100', 'attlive');
+select public.confirm_attachment_object_deleted(
+  tests.get_supabase_uid('wipe_user_a@notelikeus.test'), '101', 'attgone');
+select tests.authenticate_as('wipe_user_a@notelikeus.test');
 select results_eq(
   $$ select (public.finalize_cloud_wipe()->>'attachments_purged')::integer $$,
   ARRAY[2],

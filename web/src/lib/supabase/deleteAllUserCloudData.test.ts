@@ -3,6 +3,7 @@ import {
   CloudWipeIncompleteError,
   deleteAllSupabaseCloudData,
 } from '@/lib/supabase/deleteAllUserCloudData';
+import { ReauthenticationRequiredError } from '@/lib/auth/reauthentication';
 
 const rpc = vi.fn();
 const getSession = vi.fn();
@@ -50,6 +51,20 @@ describe('deleteAllSupabaseCloudData', () => {
     rpc.mockReset();
     getSession.mockReset();
     loadAttachmentsWorkerUrl.mockReset();
+  });
+
+  // AUD-005: a stale session is refused before anything is wiped, and the caller asks for a code.
+  it('turns the database NL004 answer into ReauthenticationRequiredError and touches no object', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: 'NL004', message: 'reauthentication_required: confirm it is you' },
+    });
+
+    await expect(deleteAllSupabaseCloudData()).rejects.toBeInstanceOf(ReauthenticationRequiredError);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalledWith('finalize_cloud_wipe');
   });
 
   it('throws when the wipe RPC fails so sign-out does not proceed', async () => {

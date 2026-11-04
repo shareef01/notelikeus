@@ -40,7 +40,10 @@ import com.aus.notelikeus.data.attachments.FileAttachmentStagingStore
 import okio.Path.Companion.toPath
 import com.aus.notelikeus.data.remote.AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.NoopAttachmentBlobTransport
+import com.aus.notelikeus.data.remote.AccountDeletionTransport
 import com.aus.notelikeus.data.remote.R2AttachmentBlobTransport
+import com.aus.notelikeus.data.remote.UnavailableAccountDeletionTransport
+import com.aus.notelikeus.data.remote.WorkerAccountDeletionTransport
 import com.aus.notelikeus.data.remote.SupabaseAttachmentMetadata
 import com.aus.notelikeus.data.sync.DatasetEpochAuthority
 import com.aus.notelikeus.data.sync.LocalCommitGate
@@ -158,6 +161,7 @@ actual val platformModule = module {
             localStorage = get(),
             ownerIdProvider = { get<CloudSessionManager>().getCurrentAccount().userId },
             appVersion = AppConfig.versionName,
+            cloudAttachments = com.aus.notelikeus.data.backup.bundle.BlobTransportCloudAttachmentSource(get()),
         )
     }
 
@@ -184,6 +188,25 @@ actual val platformModule = module {
         AttachmentAtRestMigrator.migrateAttachmentsRoot(File(home, "attachments"), protector)
         AttachmentAtRestMigrator.migratePendingStagingRoot(File(home, "pending-attachments"), protector)
         DesktopAttachmentLocalStorage(protector = protector, homeDir = File(System.getProperty("user.home")))
+    }
+    single<AccountDeletionTransport> {
+        if (BackendConfig.attachmentsWorkerUrl.isNotEmpty()) {
+            val rpc = DesktopSupabaseRpcClient(
+                supabaseUrl = BackendConfig.supabaseUrl,
+                anonKey = BackendConfig.supabaseAnonKey,
+                accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+            )
+            WorkerAccountDeletionTransport(
+                BackendConfig.attachmentsWorkerUrl,
+                get(),
+                // Raises NL003 for an account being deleted: how an unclear failure is settled (AUD-010).
+                checkAccountLive = {
+                    rpc.callRpc("get_sync_generation", kotlinx.serialization.json.JsonObject(emptyMap()))
+                },
+            )
+        } else {
+            UnavailableAccountDeletionTransport
+        }
     }
     single<AttachmentBlobTransport> {
         if (BackendConfig.attachmentsWorkerUrl.isNotEmpty()) {
@@ -349,6 +372,7 @@ actual val platformModule = module {
             get<CloudSessionManager>(),
             get<LocalAccountIsolator>(),
             get<CloudWipeCoordinator>(),
+            get<AccountDeletionTransport>(),
         )
     }
 }

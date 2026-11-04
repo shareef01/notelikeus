@@ -149,7 +149,7 @@ class NoteBackupImporter(
      * work, and keeping it inline pushed that method past the project's length and complexity limits.
      */
     private fun prepare(jsonStr: String): PreparedImport {
-        if (jsonStr.length > MAX_BACKUP_CHARS) {
+        if (jsonStr.length > MAX_BACKUP_BYTES || utf8ByteLength(jsonStr) > MAX_BACKUP_BYTES) {
             return PreparedImport.rejected(BackupImportResult.InvalidFormat("Backup file is too large"))
         }
 
@@ -272,8 +272,10 @@ class NoteBackupImporter(
     }
 
     companion object {
-        const val MAX_BACKUP_CHARS = 10 * 1024 * 1024
-        const val MAX_BACKUP_NOTES = 5_000
+        const val MAX_BACKUP_BYTES = 25L * 1024 * 1024
+        /** Matches MAX_BACKUP_BYTES; kept for backwards compatibility. */
+        const val MAX_BACKUP_CHARS = 25 * 1024 * 1024
+        const val MAX_BACKUP_NOTES = 25_000
         const val MAX_BACKUP_LABELS = 2_000
         const val MAX_NOTE_LABELS = 100
         const val MAX_NOTE_CHECKLIST = 500
@@ -309,5 +311,30 @@ class NoteBackupImporter(
             }
         }
         return maxDepth
+    }
+
+    /**
+     * Computes the exact UTF-8 byte length of [str] in O(N) time with zero allocations,
+     * exiting early if the limit is exceeded.
+     */
+    private fun utf8ByteLength(str: String): Long {
+        var byteCount = 0L
+        var i = 0
+        val len = str.length
+        while (i < len) {
+            val c = str[i].code
+            when {
+                c < 0x80 -> byteCount += 1
+                c < 0x800 -> byteCount += 2
+                c in 0xD800..0xDFFF -> {
+                    byteCount += 4
+                    i++ // Skip low surrogate
+                }
+                else -> byteCount += 3
+            }
+            if (byteCount > MAX_BACKUP_BYTES) return byteCount
+            i++
+        }
+        return byteCount
     }
 }

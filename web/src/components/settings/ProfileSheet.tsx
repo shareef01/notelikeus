@@ -127,12 +127,14 @@ interface ProfileSheetProps {
   syncStatus: string;
   onExportBackup: () => void;
   onExportCompleteBackup: () => void;
+  onExportDeviceBackup: () => void;
   onShowDiagnostics: () => void;
   onImportBackup: () => void;
   onPrivacyPolicy: () => void;
   onSignIn: () => void;
   onSignUp: () => void;
   onSignOut: () => void;
+  onDeleteAccount: () => void;
 }
 
 export function ProfileSheet({
@@ -153,12 +155,14 @@ export function ProfileSheet({
   syncStatus,
   onExportBackup,
   onExportCompleteBackup,
+  onExportDeviceBackup,
   onShowDiagnostics,
   onImportBackup,
   onPrivacyPolicy,
   onSignIn,
   onSignUp,
   onSignOut,
+  onDeleteAccount,
 }: ProfileSheetProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
   useBodyScrollLock(open);
@@ -216,6 +220,13 @@ export function ProfileSheet({
                     icon={<LogoutIcon size={18} />}
                     destructive
                   />
+                  <SettingsRow
+                    title="Delete account"
+                    subtitle="Permanently remove your account and notes"
+                    onClick={onDeleteAccount}
+                    icon={<AccountIcon size={18} />}
+                    destructive
+                  />
                 </>
               ) : (
                 <>
@@ -237,9 +248,15 @@ export function ProfileSheet({
 
             <SettingsSection title="Data & Backup">
               <SettingsRow
-                title="Export backup with images"
-                subtitle="Download notes and images as one .nlkbak file"
+                title="Export complete backup"
+                subtitle="Notes and every image, downloading cloud images, as one .nlkbak file"
                 onClick={onExportCompleteBackup}
+                icon={<BackupIcon size={18} />}
+              />
+              <SettingsRow
+                title="Export backup from this device"
+                subtitle="Works offline; includes only images stored on this device"
+                onClick={onExportDeviceBackup}
                 icon={<BackupIcon size={18} />}
               />
               <SettingsRow

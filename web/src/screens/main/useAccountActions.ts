@@ -9,9 +9,14 @@ import {
   readBundleFile,
   releaseStagedBundle,
   stagePlannedAttachments,
+  type BackupExportOutcome,
+  type BundleExportMode,
   type PlannedBundleImport,
 } from '@/lib/backup/bundle/bundleTransfer';
+import { getAttachmentBlobStore } from '@/lib/attachments/attachmentBlobStoreRegistry';
+import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { formatUnknownError } from '@/lib/errors/formatUnknownError';
+import { isReauthenticationRequired } from '@/lib/auth/reauthentication';
 import { useToastStore } from '@/store/toastStore';
 import type { Note } from '@/types/note';
 import { useState } from 'react';
@@ -33,8 +38,12 @@ interface AccountActionsDeps {
   notes: Note[];
   userId: string | undefined;
   closeSignOutConfirm: () => void;
+  closeDeleteAccountConfirm: () => void;
   closeProfile: () => void;
 }
+
+/** A destructive action the server refused until the user confirms it is them. */
+export type IdentityCheck = 'deleteAccount' | 'wipeCloudData';
 
 /** A parsed backup waiting on the user to confirm that importing it is what they meant. */
 export interface PendingImport {
@@ -60,9 +69,12 @@ export function useAccountActions({
   notes,
   userId,
   closeSignOutConfirm,
+  closeDeleteAccountConfirm,
   closeProfile,
 }: AccountActionsDeps) {
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+  /** The destructive action waiting for a new sign-in code before it is retried (AUD-005). */
+  const [identityCheck, setIdentityCheck] = useState<IdentityCheck | null>(null);
 
   const signOut = async (deleteCloudData: boolean) => {
     closeSignOutConfirm();
@@ -73,7 +85,62 @@ export function useAccountActions({
       await signOutAccount({ deleteCloudData });
       toast(deleteCloudData ? 'Signed out and cloud data deleted' : 'Signed out');
     } catch (error) {
+      // Nothing was wiped and the user is still signed in: ask for a code, then wipe.
+      if (deleteCloudData && isReauthenticationRequired(error)) {
+        setIdentityCheck('wipeCloudData');
+        return;
+      }
       toast(messageOf(error, 'Sign out failed'), 'error');
+    }
+  };
+
+  /**
+   * Leaves the dialog open on failure, with the toast saying why: nothing was deleted, and the user
+   * should be able to try again without typing the confirmation a second time. When the server wants
+   * a recent sign-in first, the confirmation is already given, so the code is all that is asked for.
+   */
+  const deleteAccount = async () => {
+    try {
+      const { deleteAccount: deleteAccountAndLocalCopy } = await import('@/lib/auth/accountAuth');
+      await deleteAccountAndLocalCopy();
+      closeDeleteAccountConfirm();
+      closeProfile();
+      toast('Your account was deleted');
+    } catch (error) {
+      if (isReauthenticationRequired(error)) {
+        closeDeleteAccountConfirm();
+        setIdentityCheck('deleteAccount');
+        return;
+      }
+      toast(messageOf(error, 'Could not delete your account. Nothing was deleted.'), 'error');
+    }
+  };
+
+  /** Retries the waiting action with the fresh session the code started. */
+  const confirmIdentity = async () => {
+    const action = identityCheck;
+    try {
+      const auth = await import('@/lib/auth/accountAuth');
+      if (action === 'deleteAccount') {
+        await auth.deleteAccount();
+        closeProfile();
+        toast('Your account was deleted');
+      } else if (action === 'wipeCloudData') {
+        await auth.signOutAccount({ deleteCloudData: true });
+        toast('Signed out and cloud data deleted');
+      }
+    } catch (error) {
+      toast(
+        messageOf(
+          error,
+          action === 'deleteAccount'
+            ? 'Could not delete your account. Nothing was deleted.'
+            : 'Could not delete your cloud data. Nothing was deleted.',
+        ),
+        'error',
+      );
+    } finally {
+      setIdentityCheck(null);
     }
   };
 
@@ -81,35 +148,68 @@ export function useAccountActions({
   const exportBackup = () => {
     try {
       exportNotesBackup(notes);
-      toast('Backup exported');
+      const totalAttachments = notes.reduce(
+        (sum, n) => sum + (n.attachments?.length ?? 0),
+        0,
+      );
+      if (totalAttachments > 0) {
+        toast(
+          'Notes backup exported. Images are not included in JSON backups (use Complete Backup to include images).',
+        );
+      } else {
+        toast('Backup exported');
+      }
     } catch (error) {
       toast(messageOf(error, 'Export failed'), 'error');
     }
   };
 
   /**
-   * The complete backup: the same JSON document plus the attachment bytes this device holds.
+   * Builds and downloads a bundle, and says exactly how complete it is.
    *
-   * Reports what it could not include rather than producing a bundle that quietly has fewer
-   * images than the library does — a backup you cannot trust the completeness of is worse than
-   * one that tells you what is missing.
+   * "Complete" is only ever said when every image is in the file. Anything less is reported as an
+   * incomplete backup with its numbers, and as an error, because the delete-account dialog offers this
+   * export as the way to keep your data and a cheerful toast is what made a partial one look safe.
    */
-  const exportCompleteBackup = async () => {
+  const exportBundle = async (mode: BundleExportMode): Promise<BackupExportOutcome | null> => {
     try {
-      const bundle = await buildBundleFromNotes(notes);
+      const downloadCloudAttachment =
+        mode === 'complete'
+          ? (noteId: string, attachmentId: string) =>
+              getAttachmentBlobStore().download(noteId, attachmentId)
+          : undefined;
+      const bundle = await buildBundleFromNotes(notes, undefined, { mode, downloadCloudAttachment });
       downloadBundle(bundle.bytes);
-      const summary =
-        bundle.attachmentsIncluded > 0
-          ? `Backup exported with ${plural(bundle.attachmentsIncluded, 'image')}`
-          : 'Backup exported';
-      if (bundle.attachmentsSkipped > 0) {
-        toast(`${summary}. ${bundle.warnings[0] ?? ''}`.trim());
+      const { attachmentsIncluded: included, attachmentsTotal: total } = bundle;
+      if (!bundle.complete) {
+        toast(
+          `Incomplete backup: ${included} of ${plural(total, 'image')} included, ${
+            total - included
+          } not in this file. ${bundle.warnings.join(' ')}`.trim(),
+          'error',
+        );
+      } else if (total > 0) {
+        toast(`Complete backup exported with all ${plural(total, 'image')}`);
       } else {
-        toast(summary);
+        toast('Complete backup exported');
       }
+      return { complete: bundle.complete, included, total };
     } catch (error) {
       toast(messageOf(error, 'Export failed'), 'error');
+      return null;
     }
+  };
+
+  /**
+   * The complete backup: notes plus every image, downloading the ones that live only in the cloud.
+   * Signed out (guest) every image is already on this device, so there is nothing to download.
+   */
+  const exportCompleteBackup = () =>
+    exportBundle(userId && isR2AttachmentsEnabled() ? 'complete' : 'device');
+
+  /** The offline backup: only images already stored on this device, and no network at all. */
+  const exportDeviceBackup = async () => {
+    await exportBundle('device');
   };
 
   /**
@@ -209,8 +309,13 @@ export function useAccountActions({
 
   return {
     signOut,
+    deleteAccount,
+    identityCheck,
+    confirmIdentity,
+    cancelIdentityCheck: () => setIdentityCheck(null),
     exportBackup,
     exportCompleteBackup,
+    exportDeviceBackup,
     prepareImport,
     pendingImport,
     confirmImport,

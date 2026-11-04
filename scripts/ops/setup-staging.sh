@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Bootstrap a Notelikeus *staging* stack (Supabase + R2 attachments worker).
 #
+# Warning: the Worker it deploys is named notelikeus-attachments, which is the production Worker, and
+# today the only Supabase project is production's. Unless SKIP_CLOUDFLARE=1 and SUPABASE_PROJECT_REF
+# names a separate project, this deploys the working tree to production.
+#
 # Required environment variables:
 #   SUPABASE_ACCESS_TOKEN   — personal access token (Account → Access Tokens)
 #   SUPABASE_PROJECT_REF    — staging project ref (subdomain before .supabase.co)

@@ -1,8 +1,12 @@
 import type { ViewColumns } from '@/store/uiStore';
+import type { BackupExportOutcome } from '@/lib/backup/bundle/bundleTransfer';
 import { BulkDeleteDialog } from '@/components/notes/BulkDeleteDialog';
 import { EmptyTrashDialog } from '@/components/notes/EmptyTrashDialog';
 import { PrivacyPolicyDialog } from '@/components/settings/PrivacyPolicyDialog';
 import { ProfileSheet } from '@/components/settings/ProfileSheet';
+import { DeleteAccountDialog } from '@/components/settings/DeleteAccountDialog';
+import { ConfirmIdentityDialog } from '@/components/auth/ConfirmIdentityDialog';
+import type { IdentityCheck } from '@/screens/main/useAccountActions';
 import { SignOutDialog } from '@/components/settings/SignOutDialog';
 import { SortSheet } from '@/components/layout/SortSheet';
 
@@ -10,6 +14,7 @@ import { SortSheet } from '@/components/layout/SortSheet';
 export interface MainDialogState {
   profile: boolean;
   signOutConfirm: boolean;
+  deleteAccountConfirm: boolean;
   privacyPolicy: boolean;
   emptyTrashConfirm: boolean;
   bulkDeleteConfirm: boolean;
@@ -19,6 +24,7 @@ export interface MainDialogState {
 export const NO_DIALOGS_OPEN: MainDialogState = {
   profile: false,
   signOutConfirm: false,
+  deleteAccountConfirm: false,
   privacyPolicy: false,
   emptyTrashConfirm: false,
   bulkDeleteConfirm: false,
@@ -50,12 +56,18 @@ interface MainDialogsProps {
   syncStatus: React.ComponentProps<typeof ProfileSheet>['syncStatus'];
 
   onExportBackup: () => void;
-  onExportCompleteBackup: () => void;
+  onExportCompleteBackup: () => Promise<BackupExportOutcome | null>;
+  onExportDeviceBackup: () => void;
   onShowDiagnostics: () => void;
   onImportBackup: () => void;
   onSignIn: () => void;
   onSignUp: () => void;
   onSignOut: (deleteCloudData: boolean) => void;
+  onDeleteAccount: () => Promise<void>;
+  /** The action waiting for "confirm it's you", or null (AUD-005). */
+  identityCheck: IdentityCheck | null;
+  onConfirmIdentity: () => Promise<void>;
+  onCancelIdentityCheck: () => void;
   onEmptyTrash: () => void;
   onBulkPermanentDelete: () => void;
 }
@@ -91,11 +103,16 @@ export function MainDialogs({
   syncStatus,
   onExportBackup,
   onExportCompleteBackup,
+  onExportDeviceBackup,
   onShowDiagnostics,
   onImportBackup,
   onSignIn,
   onSignUp,
   onSignOut,
+  onDeleteAccount,
+  identityCheck,
+  onConfirmIdentity,
+  onCancelIdentityCheck,
   onEmptyTrash,
   onBulkPermanentDelete,
 }: MainDialogsProps) {
@@ -118,13 +135,15 @@ export function MainDialogs({
         userEmail={userEmail}
         syncStatus={syncStatus}
         onExportBackup={onExportBackup}
-        onExportCompleteBackup={onExportCompleteBackup}
+        onExportCompleteBackup={() => void onExportCompleteBackup()}
+        onExportDeviceBackup={onExportDeviceBackup}
         onShowDiagnostics={onShowDiagnostics}
         onImportBackup={onImportBackup}
         onPrivacyPolicy={() => onOpenChange({ privacyPolicy: true })}
         onSignIn={onSignIn}
         onSignUp={onSignUp}
         onSignOut={() => onOpenChange({ signOutConfirm: true })}
+        onDeleteAccount={() => onOpenChange({ deleteAccountConfirm: true })}
       />
 
       <SortSheet
@@ -139,6 +158,21 @@ export function MainDialogs({
         onCancel={() => onOpenChange({ signOutConfirm: false })}
         onSignOut={() => onSignOut(false)}
         onSignOutAndDelete={() => onSignOut(true)}
+      />
+
+      <DeleteAccountDialog
+        open={open.deleteAccountConfirm}
+        onCancel={() => onOpenChange({ deleteAccountConfirm: false })}
+        onExportBackup={onExportCompleteBackup}
+        onConfirm={onDeleteAccount}
+      />
+
+      <ConfirmIdentityDialog
+        open={identityCheck !== null}
+        email={userEmail}
+        action={identityCheck === 'deleteAccount' ? 'delete your account' : 'delete your cloud data'}
+        onCancel={onCancelIdentityCheck}
+        onConfirmed={onConfirmIdentity}
       />
 
       <BulkDeleteDialog

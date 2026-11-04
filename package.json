@@ -18,6 +18,7 @@
     "test:kotlin-staging-properties": "node --test scripts/ops/write-kotlin-staging-properties.test.mjs",
     "deploy:staging-pages": "node scripts/ops/deploy-staging-pages.mjs",
     "test:retry-on-connect": "bash scripts/ops/retry-on-connect.test.sh",
+    "test:retry-supabase-start": "bash scripts/ops/retry-supabase-start.test.sh",
     "test:attachments-worker": "npm --prefix workers/attachments test",
     "test:attachments-worker-deploy": "node --test scripts/ops/attachments-worker-deploy.test.mjs",
     "check:unreferenced-kotlin": "node scripts/ops/unreferenced-kotlin.mjs",

@@ -99,11 +99,15 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Start local Supabase
-        run: npm run supabase:start
+        run: bash scripts/ops/retry-supabase-start.sh npx supabase start
 
       - name: Reset database from migrations
         run: npm run supabase:reset
         # `supabase:reset` passes `--yes` so this step cannot hang on a TTY confirm.
+
+      # Mandatory CI gate: all PostgreSQL pgTAP unit & security tests run against fresh container
+      - name: Run pgTAP database tests
+        run: npm run supabase:test
 
       - name: Run Playwright E2E
         working-directory: web

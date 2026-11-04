@@ -113,6 +113,11 @@ data class MainState(
     val pendingCloudSyncEvent: CloudSyncEvent? = null,
     /** Outcome of the last backup export or import, until the UI has reported it. */
     val pendingBackupTransferEvent: BackupTransferEvent? = null,
+    /**
+     * The last bundle export, kept after its snackbar so the delete-account dialog can say whether
+     * the backup it offered is complete (AUD-001). Cleared when that dialog opens.
+     */
+    val lastBundleExport: BackupTransferEvent.BundleExported? = null,
     /** True while the diagnostics dialog is open. */
     val isDiagnosticsOpen: Boolean = false,
     /**
@@ -124,6 +129,13 @@ data class MainState(
     val cloudAccount: CloudAccount = CloudAccount(),
     val isCloudAutoSyncEnabled: Boolean = true,
     val isSigningIn: Boolean = false,
+    val isDeletingAccount: Boolean = false,
+    /** The destructive action waiting for "confirm it's you", or null (AUD-005). */
+    val pendingIdentityCheck: IdentityCheck? = null,
+    /** True once the confirmation code for [pendingIdentityCheck] has been emailed. */
+    val identityCodeSent: Boolean = false,
+    /** True while that code is being sent or checked, or the action is being retried. */
+    val isConfirmingIdentity: Boolean = false,
     /**
      * The address a sign-in code was emailed to, or null before one is sent. Non-null moves the
      * sign-in gate to its second step, where the code is typed in.

@@ -38,6 +38,7 @@ import { MainDialogs, NO_DIALOGS_OPEN, type MainDialogState } from '@/screens/ma
 import { getEmptyState } from '@/screens/main/mainEmptyState';
 import { ConfirmDialog } from '@/components/ui/ModalDialog';
 import { Button } from '@/components/ui/Button';
+import { formatPendingImportDescription } from '@/screens/main/importDescription';
 import { useAccountActions } from '@/screens/main/useAccountActions';
 import { useNoteActions } from '@/screens/main/useNoteActions';
 import { formatUnknownError } from '@/lib/errors/formatUnknownError';
@@ -287,6 +288,11 @@ export function MainScreen() {
     signOut,
     exportBackup,
     exportCompleteBackup,
+    exportDeviceBackup,
+    deleteAccount,
+    identityCheck,
+    confirmIdentity,
+    cancelIdentityCheck,
     prepareImport,
     pendingImport,
     confirmImport,
@@ -295,6 +301,7 @@ export function MainScreen() {
     notes,
     userId: user?.uid,
     closeSignOutConfirm: () => openDialogs({ signOutConfirm: false }),
+    closeDeleteAccountConfirm: () => openDialogs({ deleteAccountConfirm: false }),
     closeProfile: () => openDialogs({ profile: false }),
   });
 
@@ -687,12 +694,17 @@ export function MainScreen() {
         userEmail={cloud.userEmail}
         syncStatus={cloud.status}
         onExportBackup={exportBackup}
-        onExportCompleteBackup={() => void exportCompleteBackup()}
+        onExportCompleteBackup={exportCompleteBackup}
+        onExportDeviceBackup={() => void exportDeviceBackup()}
         onShowDiagnostics={() => setShowDiagnostics(true)}
         onImportBackup={() => backupInputRef.current?.click()}
         onSignIn={() => openAuthScreen('signin')}
         onSignUp={() => openAuthScreen('signup')}
         onSignOut={(deleteCloudData) => void signOut(deleteCloudData)}
+        onDeleteAccount={deleteAccount}
+        identityCheck={identityCheck}
+        onConfirmIdentity={confirmIdentity}
+        onCancelIdentityCheck={cancelIdentityCheck}
         onEmptyTrash={() => void emptyTheTrash()}
         onBulkPermanentDelete={() => void bulkPermanentDelete()}
       />
@@ -743,22 +755,7 @@ export function MainScreen() {
                 pendingImport.result.notesImported === 1 ? '' : 's'
               } as new notes?`
         }
-        description={
-          pendingImport == null
-            ? ''
-            : `They're added alongside what's already here, so importing this file again will ` +
-              `create another copy of each note. ` +
-              (pendingImport.attachmentsImported > 0
-                ? `${pendingImport.attachmentsImported} image${
-                    pendingImport.attachmentsImported === 1 ? '' : 's'
-                  } will be restored too.`
-                : `Images aren't part of a notes-only JSON backup and won't come across.`) +
-              (pendingImport.attachmentsSkipped > 0
-                ? ` ${pendingImport.attachmentsSkipped} image${
-                    pendingImport.attachmentsSkipped === 1 ? '' : 's'
-                  } in this file couldn't be read and will be skipped.`
-                : '')
-        }
+        description={formatPendingImportDescription(pendingImport)}
         confirmLabel="Import"
         tone="primary"
         onCancel={cancelImport}

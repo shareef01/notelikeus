@@ -3,6 +3,7 @@ import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
 import { NAVIGATION_DENYLIST } from '@/lib/hosting/navigationDenylist';
 import { sanitizeReminders, type SwReminder } from '@/lib/reminders/swReminderPayload';
+import { SwReminderManager, type SwReminderStorage } from '@/lib/reminders/swReminderManager';
 import { createHandlerBoundToURL } from 'workbox-precaching';
 
 declare let self: ServiceWorkerGlobalScope;
@@ -27,8 +28,6 @@ const handler = createHandlerBoundToURL('/index.html');
 const navigationRoute = new NavigationRoute(handler, { denylist: NAVIGATION_DENYLIST });
 registerRoute(navigationRoute);
 
-const swTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
 /**
  * Timers do not survive the worker. The browser terminates an idle service worker within
  * seconds, taking every pending setTimeout with it, so an in-memory schedule alone means any
@@ -42,42 +41,36 @@ const swTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const REMINDER_CACHE = 'notelikeus-reminders';
 const REMINDER_KEY = '/__reminders';
 
-async function loadReminders(): Promise<SwReminder[]> {
-  try {
-    const cache = await caches.open(REMINDER_CACHE);
-    const stored = await cache.match(REMINDER_KEY);
-    if (!stored) return [];
-    const parsed: unknown = await stored.json();
-    return sanitizeReminders(parsed);
-  } catch (error) {
-    console.warn('[Notelikeus SW] Stored reminders unreadable; starting with none:', error);
-    return [];
-  }
-}
+const reminderStorage: SwReminderStorage = {
+  async load(): Promise<SwReminder[]> {
+    try {
+      const cache = await caches.open(REMINDER_CACHE);
+      const stored = await cache.match(REMINDER_KEY);
+      if (!stored) return [];
+      const parsed: unknown = await stored.json();
+      return sanitizeReminders(parsed);
+    } catch (error) {
+      console.warn('[Notelikeus SW] Stored reminders unreadable; starting with none:', error);
+      return [];
+    }
+  },
 
-async function saveReminders(reminders: SwReminder[]): Promise<void> {
-  try {
-    const cache = await caches.open(REMINDER_CACHE);
-    await cache.put(
-      REMINDER_KEY,
-      new Response(JSON.stringify(reminders), {
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
-  } catch (error) {
-    // Storage unavailable — in-memory timers still cover this worker's lifetime, but reminders
-    // will not survive it being terminated.
-    console.warn('[Notelikeus SW] Could not persist reminders:', error);
-  }
-}
-
-function cancelSwReminder(noteId: string) {
-  const timerId = swTimers.get(noteId);
-  if (timerId != null) {
-    clearTimeout(timerId);
-    swTimers.delete(noteId);
-  }
-}
+  async save(reminders: SwReminder[]): Promise<void> {
+    try {
+      const cache = await caches.open(REMINDER_CACHE);
+      await cache.put(
+        REMINDER_KEY,
+        new Response(JSON.stringify(reminders), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    } catch (error) {
+      // Storage unavailable — in-memory timers still cover this worker's lifetime, but reminders
+      // will not survive it being terminated.
+      console.warn('[Notelikeus SW] Could not persist reminders:', error);
+    }
+  },
+};
 
 function fireReminder(reminder: SwReminder): Promise<void> {
   return self.registration.showNotification(reminder.title || 'Reminder', {
@@ -89,72 +82,10 @@ function fireReminder(reminder: SwReminder): Promise<void> {
   });
 }
 
-/** setTimeout delays above ~24.8 days clamp; re-arm until fireAt is actually due. */
-const MAX_TIMER_DELAY_MS = 2_147_483_647;
-
-function armTimer(reminder: SwReminder) {
-  cancelSwReminder(reminder.noteId);
-  const delay = reminder.fireAt - Date.now();
-  if (delay <= 0) return;
-
-  const timerId = setTimeout(() => {
-    swTimers.delete(reminder.noteId);
-    void (async () => {
-      if (reminder.fireAt > Date.now()) {
-        armTimer(reminder);
-        return;
-      }
-      // Same reasoning as catchUpReminders: a rejected notification must not skip the cleanup
-      // below, or the reminder stays stored and re-fires on every subsequent wake-up.
-      try {
-        await fireReminder(reminder);
-      } catch {
-        // Best-effort delivery.
-      }
-      // Drop it from storage so a later catch-up does not fire it a second time.
-      const remaining = (await loadReminders()).filter((r) => r.noteId !== reminder.noteId);
-      await saveReminders(remaining);
-    })();
-  }, Math.min(delay, MAX_TIMER_DELAY_MS));
-
-  swTimers.set(reminder.noteId, timerId);
-}
-
-/** Fires anything already due and re-arms the rest. Safe to call on any worker wake-up. */
-async function catchUpReminders(): Promise<void> {
-  const stored = await loadReminders();
-  if (stored.length === 0) return;
-
-  const now = Date.now();
-  const due = stored.filter((reminder) => reminder.fireAt <= now);
-  const upcoming = stored.filter((reminder) => reminder.fireAt > now);
-
-  for (const reminder of due) {
-    // showNotification rejects when permission has been revoked since the reminder was set.
-    // Letting that escape used to strand the whole batch: the remaining due reminders never
-    // fired, and the save below never ran, so every one of them stayed stored and retried on
-    // each wake-up. Dropping a reminder we cannot show is the better failure — the condition is
-    // persistent, so retrying forever only produces repeated failures the user never sees.
-    try {
-      await fireReminder(reminder);
-    } catch {
-      // Best-effort delivery; it is removed from storage along with the rest of `due`.
-    }
-  }
-  if (due.length > 0) await saveReminders(upcoming);
-  for (const reminder of upcoming) armTimer(reminder);
-}
-
-async function syncSwReminders(reminders: SwReminder[]): Promise<void> {
-  const activeIds = new Set(reminders.map((reminder) => reminder.noteId));
-  // Snapshot the keys: cancelSwReminder mutates swTimers inside the loop.
-  // oxlint-disable-next-line unicorn/no-useless-spread
-  for (const noteId of [...swTimers.keys()]) {
-    if (!activeIds.has(noteId)) cancelSwReminder(noteId);
-  }
-  await saveReminders(reminders);
-  for (const reminder of reminders) armTimer(reminder);
-}
+const reminderManager = new SwReminderManager({
+  storage: reminderStorage,
+  fireNotification: fireReminder,
+});
 
 self.addEventListener('message', (event) => {
   // Only accept control messages from same-origin window clients (not arbitrary workers).
@@ -177,13 +108,10 @@ self.addEventListener('message', (event) => {
     return;
   }
   if (data?.type === 'SYNC_REMINDERS' && Array.isArray(data.reminders)) {
-    event.waitUntil(syncSwReminders(sanitizeReminders(data.reminders)));
+    event.waitUntil(reminderManager.syncReminders(data.reminders));
   }
 });
 
-// Any navigation is a chance to deliver something the worker slept through. Throttled so a
-// burst of requests does not re-read storage repeatedly.
-let lastCatchUp = 0;
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin === self.location.origin && url.pathname.endsWith('.woff2')) {
@@ -191,10 +119,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (event.request.mode !== 'navigate') return;
-  const now = Date.now();
-  if (now - lastCatchUp < 30_000) return;
-  lastCatchUp = now;
-  event.waitUntil(catchUpReminders());
+  event.waitUntil(reminderManager.catchUpThrottled());
 });
 
 self.addEventListener('activate', (event) => {
@@ -206,7 +131,7 @@ self.addEventListener('activate', (event) => {
       await caches.delete('google-fonts-webfonts');
       await self.clients.claim();
       // Deliver anything that came due while no worker was running.
-      await catchUpReminders();
+      await reminderManager.catchUpReminders();
     })(),
   );
 });

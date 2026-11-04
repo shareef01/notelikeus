@@ -43,7 +43,10 @@ import java.io.File
 import okio.Path.Companion.toPath
 import com.aus.notelikeus.data.remote.AttachmentBlobTransport
 import com.aus.notelikeus.data.remote.NoopAttachmentBlobTransport
+import com.aus.notelikeus.data.remote.AccountDeletionTransport
 import com.aus.notelikeus.data.remote.R2AttachmentBlobTransport
+import com.aus.notelikeus.data.remote.UnavailableAccountDeletionTransport
+import com.aus.notelikeus.data.remote.WorkerAccountDeletionTransport
 import com.aus.notelikeus.data.remote.SupabaseAttachmentMetadata
 import com.aus.notelikeus.data.migration.AccountUidBridge
 import com.aus.notelikeus.data.sync.DatasetEpochAuthority
@@ -122,6 +125,7 @@ actual val platformModule = module {
             ownerIdProvider = { get<CloudSessionManager>().getCurrentAccount().userId },
             appName = get<android.content.Context>().getString(com.aus.notelikeus.shared.R.string.app_name),
             appVersion = com.aus.notelikeus.util.AppConfig.versionName,
+            cloudAttachments = com.aus.notelikeus.data.backup.bundle.BlobTransportCloudAttachmentSource(get()),
         )
     }
     single { SharedPrefsNoteSyncStateStore(get()) }
@@ -148,6 +152,25 @@ actual val platformModule = module {
         AttachmentAtRestMigrator.migrateAttachmentsRoot(attachmentsDir, protector)
         AttachmentAtRestMigrator.migratePendingStagingRoot(stagingRoot, protector)
         AndroidAttachmentLocalStorage(context, protector)
+    }
+    single<AccountDeletionTransport> {
+        if (BackendConfig.attachmentsWorkerUrl.isNotEmpty()) {
+            val rpc = AndroidSupabaseRpcClient(
+                supabaseUrl = BackendConfig.supabaseUrl,
+                anonKey = BackendConfig.supabaseAnonKey,
+                accessTokenProvider = get<SupabaseAccessTokenProvider>(),
+            )
+            WorkerAccountDeletionTransport(
+                BackendConfig.attachmentsWorkerUrl,
+                get(),
+                // Raises NL003 for an account being deleted: how an unclear failure is settled (AUD-010).
+                checkAccountLive = {
+                    rpc.callRpc("get_sync_generation", kotlinx.serialization.json.JsonObject(emptyMap()))
+                },
+            )
+        } else {
+            UnavailableAccountDeletionTransport
+        }
     }
     single<AttachmentBlobTransport> {
         if (BackendConfig.attachmentsWorkerUrl.isNotEmpty()) {
@@ -308,7 +331,7 @@ actual val platformModule = module {
         )
     }
 
-    single<SyncManager> { AndroidSyncManager(get(), get(), get(), get()) }
+    single<SyncManager> { AndroidSyncManager(get(), get(), get(), get(), get()) }
     single<com.aus.notelikeus.domain.platform.NetworkMonitor> {
         com.aus.notelikeus.platform.AndroidNetworkMonitor(get())
     }

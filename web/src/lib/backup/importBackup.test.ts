@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { importNotesFromBackup } from '@/lib/backup/importBackup';
+import { importNotesFromBackup, readBackupFile } from '@/lib/backup/importBackup';
 import {
   BACKUP_VERSION,
+  MAX_BACKUP_FILE_BYTES,
+  MAX_BACKUP_NOTES,
   MAX_BACKUP_LABELS,
   MAX_NOTE_CHECKLIST_ITEMS,
   MAX_NOTE_CONTENT_CHARS,
@@ -188,5 +190,120 @@ describe('importNotesFromBackup', () => {
     );
 
     expect(result.labelsCreated).toBe(2);
+  });
+
+  it('rejects a backup that exceeds MAX_BACKUP_NOTES', () => {
+    const tooMany = Array.from({ length: MAX_BACKUP_NOTES + 1 }, (_, i) => ({
+      localId: i + 1,
+      title: `Note ${i}`,
+    }));
+    expect(() =>
+      importNotesFromBackup({ version: BACKUP_VERSION, notes: tooMany }, []),
+    ).toThrow(/Backup has too many notes \(max 25000\)/);
+  });
+
+  it('accepts a backup at the MAX_BACKUP_NOTES boundary', () => {
+    const boundary = Array.from({ length: 6_000 }, (_, i) => ({
+      localId: i + 1,
+      title: `Note ${i + 1}`,
+      content: 'Large backup test content',
+    }));
+    const { result, merged } = importNotesFromBackup(
+      { version: BACKUP_VERSION, notes: boundary },
+      [],
+    );
+    expect(result.notesImported).toBe(6_000);
+    expect(merged).toHaveLength(6_000);
+  });
+
+  it('readBackupFile rejects a file exceeding MAX_BACKUP_FILE_BYTES', async () => {
+    const fakeOversizedFile = {
+      size: MAX_BACKUP_FILE_BYTES + 1,
+      text: async () => '{"version": 3, "notes": []}',
+    } as unknown as File;
+
+    await expect(readBackupFile(fakeOversizedFile)).rejects.toThrow(/Backup file is too large/);
+  });
+
+  it('readBackupFile parses a valid backup file within MAX_BACKUP_FILE_BYTES', async () => {
+    const validFile = {
+      size: 50,
+      text: async () => JSON.stringify({ version: BACKUP_VERSION, notes: [{ title: 'hello' }] }),
+    } as unknown as File;
+
+    const parsed = (await readBackupFile(validFile)) as { version: number; notes: unknown[] };
+    expect(parsed.version).toBe(BACKUP_VERSION);
+    expect(parsed.notes).toHaveLength(1);
+  });
+
+  describe('cross-platform limit consistency (Task 3)', () => {
+    it('readBackupFile accepts file exactly at the 25 MiB byte boundary', async () => {
+      const exactFile = {
+        size: MAX_BACKUP_FILE_BYTES,
+        text: async () => JSON.stringify({ version: BACKUP_VERSION, notes: [] }),
+      } as unknown as File;
+
+      const parsed = await readBackupFile(exactFile);
+      expect((parsed as any).version).toBe(BACKUP_VERSION);
+    });
+
+    it('readBackupFile accepts ASCII file with 25_500_000 characters within 25 MiB limit', async () => {
+      // 25,500,000 ASCII characters is > 25,000,000 chars, but < 26,214,400 bytes (25 MiB)
+      const file25_5M = {
+        size: 25_500_000,
+        text: async () => JSON.stringify({ version: BACKUP_VERSION, notes: [] }),
+      } as unknown as File;
+
+      const parsed = await readBackupFile(file25_5M);
+      expect((parsed as any).version).toBe(BACKUP_VERSION);
+    });
+
+    it('readBackupFile rejects file at 25 MiB + 1 byte', async () => {
+      const overFile = {
+        size: MAX_BACKUP_FILE_BYTES + 1,
+        text: async () => JSON.stringify({ version: BACKUP_VERSION, notes: [] }),
+      } as unknown as File;
+
+      await expect(readBackupFile(overFile)).rejects.toThrow('Backup file is too large');
+    });
+
+    it('handles multibyte CJK, emojis, and surrogate pairs cleanly', () => {
+      const cjkAndEmojiBackup = {
+        version: BACKUP_VERSION,
+        notes: [
+          {
+            title: '漢字タイトル 🍱',
+            content: '日本語・中文・한국어 ✨🔥🎉',
+            labels: ['ラベル1', '标签2'],
+            checklist: [{ text: 'タスク 🚀', isChecked: true, position: 0 }],
+          },
+        ],
+      };
+      const { result, merged } = importNotesFromBackup(cjkAndEmojiBackup, []);
+      expect(result.notesImported).toBe(1);
+      expect(merged[0]!.title).toBe('漢字タイトル 🍱');
+      expect(merged[0]!.content).toBe('日本語・中文・한국어 ✨🔥🎉');
+      expect(merged[0]!.checklist[0]!.text).toBe('タスク 🚀');
+    });
+
+    it('rejects truncated / invalid JSON input', async () => {
+      const truncatedFile = {
+        size: 100,
+        text: async () => '{"version": 3, "notes": [{"title": "Trunc',
+      } as unknown as File;
+
+      await expect(readBackupFile(truncatedFile)).rejects.toThrow('Backup file is not valid JSON');
+    });
+
+    it('enforces note count boundary: 25,000 accepted, 25,001 rejected', () => {
+      const notes25k = Array.from({ length: 25_000 }, (_, i) => ({ title: `Note ${i}` }));
+      const { result } = importNotesFromBackup({ version: BACKUP_VERSION, notes: notes25k }, []);
+      expect(result.notesImported).toBe(25_000);
+
+      const notes25k1 = Array.from({ length: 25_001 }, (_, i) => ({ title: `Note ${i}` }));
+      expect(() =>
+        importNotesFromBackup({ version: BACKUP_VERSION, notes: notes25k1 }, []),
+      ).toThrow('Backup has too many notes (max 25000)');
+    });
   });
 });

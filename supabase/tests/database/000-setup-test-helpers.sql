@@ -92,7 +92,18 @@ begin
 end;
 $$ language plpgsql;
 
+-- Signs in as [identifier] the way a fresh GoTrue session does: the access token's `amr` claim says
+-- the user authenticated just now. Destructive RPCs read it (20261104000000); use
+-- tests.authenticate_as_signed_in_at for a session that signed in longer ago.
 create or replace function tests.authenticate_as(identifier text)
+returns void
+as $$
+begin
+    perform tests.authenticate_as_signed_in_at(identifier, now());
+end;
+$$ language plpgsql;
+
+create or replace function tests.authenticate_as_signed_in_at(identifier text, signed_in_at timestamptz)
 returns void
 as $$
 declare
@@ -114,7 +125,10 @@ begin
             'email', user_data ->> 'email',
             'phone', user_data ->> 'phone',
             'user_metadata', user_data -> 'raw_user_meta_data',
-            'app_metadata', user_data -> 'raw_app_meta_data'
+            'app_metadata', user_data -> 'raw_app_meta_data',
+            'amr', json_build_array(
+                json_build_object('method', 'otp', 'timestamp', floor(extract(epoch from signed_in_at))::bigint)
+            )
         )::text,
         true
     );

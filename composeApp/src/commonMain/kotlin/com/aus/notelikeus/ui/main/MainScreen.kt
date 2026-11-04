@@ -117,6 +117,7 @@ fun MainScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showEmptyTrashConfirm by remember { mutableStateOf(false) }
     var showCloudSignOutConfirm by remember { mutableStateOf(false) }
+    var showDeleteAccountConfirm by remember { mutableStateOf(false) }
     var showCloudRestoreConfirm by remember { mutableStateOf(false) }
     var profileSignInError by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -164,15 +165,17 @@ fun MainScreen(
         snackbarHostState.showSnackbar(
             when (event) {
                 BackupTransferEvent.Exported -> getString(Res.string.export_success)
+                // "Complete" only when every image is in the file (AUD-001).
                 is BackupTransferEvent.BundleExported -> when {
-                    event.attachmentsSkipped > 0 ->
+                    !event.complete ->
                         getString(
-                            Res.string.export_bundle_success_skipped,
+                            Res.string.export_bundle_incomplete,
                             event.attachmentsIncluded,
-                            event.attachmentsSkipped,
+                            event.attachmentsTotal,
+                            event.attachmentsTotal - event.attachmentsIncluded,
                         )
                     else ->
-                        getString(Res.string.export_bundle_success, event.attachmentsIncluded)
+                        getString(Res.string.export_bundle_complete, event.attachmentsTotal)
                 }
                 BackupTransferEvent.ExportFailed -> getString(Res.string.export_failed)
                 is BackupTransferEvent.Imported ->
@@ -237,6 +240,19 @@ fun MainScreen(
                             Res.string.cloud_sign_out_deleted_success
                         } else {
                             Res.string.cloud_sign_out_success
+                        }
+                    )
+                )
+            }
+            is CloudSyncEvent.AccountDeleted -> {
+                showDeleteAccountConfirm = false
+                showProfileSheet = false
+                snackbarHostState.showSnackbar(
+                    getString(
+                        if (event.elsewhere) {
+                            Res.string.account_deleted_elsewhere
+                        } else {
+                            Res.string.account_deleted_success
                         }
                     )
                 )
@@ -612,11 +628,17 @@ fun MainScreen(
             },
             onExportClick = {
                 showProfileSheet = false
+                viewModel.requestBundleExport()
                 onExportBackup()
             },
             onExportNotesOnlyClick = {
                 showProfileSheet = false
                 onExportNotesOnly()
+            },
+            onExportDeviceBackupClick = {
+                showProfileSheet = false
+                viewModel.requestBundleExport(deviceOnly = true)
+                onExportBackup()
             },
             onImportClick = {
                 showProfileSheet = false
@@ -635,6 +657,10 @@ fun MainScreen(
             },
             onSignOutClick = {
                 showCloudSignOutConfirm = true
+            },
+            onDeleteAccountClick = {
+                viewModel.clearLastBundleExport()
+                showDeleteAccountConfirm = true
             },
             onCloudAutoSyncChange = { viewModel.setCloudAutoSyncEnabled(it) },
             onDiagnosticsClick = {
@@ -663,6 +689,38 @@ fun MainScreen(
                 scope.launch { snackbarHostState.showSnackbar(diagnosticsCopiedMsg) }
             },
             onDismiss = { viewModel.closeDiagnostics() }
+        )
+    }
+
+    if (showDeleteAccountConfirm) {
+        DeleteAccountDialog(
+            isDeleting = state.isDeletingAccount,
+            lastExport = state.lastBundleExport,
+            onExportBackup = {
+                viewModel.requestBundleExport()
+                onExportBackup()
+            },
+            onConfirm = { viewModel.deleteAccount() },
+            onDismiss = { showDeleteAccountConfirm = false },
+        )
+    }
+
+    // AUD-005: the server wants a recent sign-in before it deletes anything. The delete dialog's
+    // confirmation already stands, so it steps aside for the code.
+    val identityCheck = state.pendingIdentityCheck
+    LaunchedEffect(identityCheck) {
+        if (identityCheck == IdentityCheck.DeleteAccount) showDeleteAccountConfirm = false
+    }
+    val accountEmail = state.cloudAccount.email
+    if (identityCheck != null && accountEmail != null) {
+        ConfirmIdentityDialog(
+            check = identityCheck,
+            email = accountEmail,
+            codeSent = state.identityCodeSent,
+            isBusy = state.isConfirmingIdentity,
+            onSendCode = { viewModel.requestIdentityCode() },
+            onConfirm = { code -> viewModel.confirmIdentity(code) },
+            onDismiss = { viewModel.cancelIdentityCheck() },
         )
     }
 

@@ -1,4 +1,5 @@
 import {
+  endDeletedAccountSessionSupabase,
   sendEmailSignInCodeSupabase,
   signOutSupabase,
   verifyEmailSignInCodeSupabase,
@@ -6,6 +7,7 @@ import {
 import { clearOwner } from '@/lib/local/notesLocalRepository';
 import { clearPendingAttachmentsForOwner } from '@/lib/local/pendingAttachmentRepository';
 import { deleteAllSupabaseCloudData } from '@/lib/supabase/deleteAllUserCloudData';
+import { requestAccountDeletion } from '@/lib/supabase/deleteAccount';
 import { useAuthStore } from '@/store/authStore';
 
 /**
@@ -43,4 +45,29 @@ export async function signOutAccount(options: { deleteCloudData?: boolean } = {}
     }
   }
   await signOutSupabase();
+}
+
+/**
+ * Removes this browser's copy of an account that has been deleted, and ends its session.
+ *
+ * Only ever called on a definite answer from the server. Pending edits go with the notes: they are
+ * what the next sign-in would otherwise try to push, and the account they belong to is gone.
+ */
+export async function clearDeletedAccount(ownerId: string | undefined): Promise<void> {
+  if (ownerId) {
+    await clearOwner(ownerId);
+    await clearPendingAttachmentsForOwner(ownerId);
+  }
+  await endDeletedAccountSessionSupabase();
+}
+
+/**
+ * Deletes the signed-in account for good, everywhere, then this browser's copy of it.
+ *
+ * Throws before touching anything local if the server did not accept the request.
+ */
+export async function deleteAccount(): Promise<void> {
+  const ownerId = useAuthStore.getState().user?.uid;
+  await requestAccountDeletion();
+  await clearDeletedAccount(ownerId);
 }

@@ -89,11 +89,23 @@ export async function saveNote(note: Note): Promise<void> {
   // If there are pending attachments and R2 is enabled, attempt upload
   const hasPending = toSave.attachments.some((a) => isPendingAttachment(a.storagePath));
   if (isR2AttachmentsEnabled() && hasPending) {
-    const { syncNoteAttachments } = await import(
-      '@/lib/attachments/attachmentSyncService'
-    );
+    const {
+      AttachmentSyncIncompleteError,
+      releaseUploadedPendingAttachments,
+      syncNoteAttachments,
+    } = await import('@/lib/attachments/attachmentSyncService');
     try {
-      const synced = await syncNoteAttachments(toSave);
+      let synced: Note;
+      let uploadFailure: unknown = null;
+      try {
+        synced = await syncNoteAttachments(toSave);
+      } catch (error) {
+        // Some uploads failed. The ones that landed are still written down below, so their staged
+        // copies can go and a later save retries only the rest.
+        if (!(error instanceof AttachmentSyncIncompleteError)) throw error;
+        synced = error.note;
+        uploadFailure = error;
+      }
       // Verify session ownership has not changed during the attachment upload
       if (resolveOwnerId() !== sessionOwnerId) {
         console.warn('[Notelikeus] Session changed during attachment upload; dropping stale note write');
@@ -102,6 +114,9 @@ export async function saveNote(note: Note): Promise<void> {
       if (!notesEqual(toSave, synced)) {
         await persistLocalNote(synced, sessionOwnerId ?? undefined);
         useNotesStore.getState().upsertLocalNote(synced);
+        // Only now, with a persisted note pointing at the uploaded copies, may the staged ones go
+        // (AUD-011). A failed persist above throws past this and keeps them.
+        await releaseUploadedPendingAttachments(toSave, synced, sessionOwnerId ?? undefined);
         const currentUid = useAuthStore.getState().user?.uid;
         if (currentUid && currentUid === sessionOwnerId) {
           try {
@@ -111,6 +126,7 @@ export async function saveNote(note: Note): Promise<void> {
           }
         }
       }
+      if (uploadFailure) throw uploadFailure;
     } catch (error) {
       // Offline/Worker failure: note text and local pending blobs survive safely
       console.warn('Attachment upload failed or offline; note text remains durably saved locally:', error);

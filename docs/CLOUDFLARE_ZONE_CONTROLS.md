@@ -41,7 +41,8 @@ not a note with twenty images syncing once.
 
 ### 3. R2 bucket access
 
-- [ ] Confirm the R2 bucket used for attachments (`notelikeus-attachments`) has **public access
+- [ ] Confirm the R2 bucket used for attachments (`notelikeus-attachments-dev`, which despite its
+      name is the production bucket the Worker deploy names) has **public access
       disabled** in the Cloudflare Dashboard (Storage → R2 → bucket → Settings). Public R2 buckets
       bypass the Worker entirely: any URL of the form `pub-<hash>.r2.dev/<object-key>` would serve
       attachment bytes to anyone without authentication. This cannot be verified from source control

@@ -1,5 +1,7 @@
 package com.aus.notelikeus.ui.main
 
+import com.aus.notelikeus.data.remote.AccountDeletionOutcomeUnknownException
+import com.aus.notelikeus.data.remote.isReauthenticationRequiredRefusal
 import com.aus.notelikeus.domain.repository.SyncManager
 import com.aus.notelikeus.util.DateUtils
 import com.aus.notelikeus.ui.components.clearAttachmentThumbnailCache
@@ -62,6 +64,7 @@ internal class CloudSyncController(
                         // the way down to ProfileSheet and rendered as "Last sync: %d notes", so
                         // that row read "Last sync: 0 notes" permanently, on every device, however
                         // much had actually synced. The counts only exist on these two events.
+                        isDeletingAccount = current.isDeletingAccount && event !is CloudSyncEvent.AccountDeleted,
                         cloudSyncedNoteCount = when (event) {
                             is CloudSyncEvent.Uploaded -> event.noteCount
                             is CloudSyncEvent.Downloaded -> event.noteCount
@@ -69,6 +72,9 @@ internal class CloudSyncController(
                         }
                     )
                 }
+                // Decoded copies of the account's pictures. A device told this by its sync has not
+                // been through deleteAccount below.
+                if (event is CloudSyncEvent.AccountDeleted) clearAttachmentThumbnailCache()
             }
         }.launchIn(scope)
 
@@ -199,28 +205,146 @@ internal class CloudSyncController(
      * swallowing that left the user looking at a signed-in app with no explanation.
      */
     fun signOutFromCloud(deleteCloudData: Boolean = false) {
-        scope.launch {
-            val result = syncManager.signOut(deleteCloudData)
-            // Card thumbnails are decoded copies of the account's pictures; they do not outlive its session.
-            if (result.isSuccess) clearAttachmentThumbnailCache()
-            state.update { currentState ->
-                currentState.copy(
-                    pendingCloudSyncEvent = result.fold(
-                        // Nothing emitted CloudSyncEvent.SignedOut, so the branch rendering it and
-                        // both its strings were unreachable. Confirming a destructive action is
-                        // worth more than deleting the code that was already written for it —
-                        // "sign out and delete my cloud notes" should say that it happened.
-                        onSuccess = { CloudSyncEvent.SignedOut(cloudDataDeleted = deleteCloudData) },
-                        onFailure = { CloudSyncEvent.Failure(signOutFailureMessage(it)) }
-                    )
+        scope.launch { performSignOut(deleteCloudData) }
+    }
+
+    private suspend fun performSignOut(deleteCloudData: Boolean) {
+        val result = syncManager.signOut(deleteCloudData)
+        // Card thumbnails are decoded copies of the account's pictures; they do not outlive its session.
+        if (result.isSuccess) clearAttachmentThumbnailCache()
+        // The server wants a recent sign-in first (AUD-005). Nothing was wiped and the user is still
+        // signed in, so this asks for a code rather than reporting a failure.
+        if (deleteCloudData && result.exceptionOrNull()?.isReauthenticationRequiredRefusal() == true) {
+            requireIdentityCheck(IdentityCheck.WipeCloudData)
+            return
+        }
+        state.update { currentState ->
+            currentState.copy(
+                pendingCloudSyncEvent = result.fold(
+                    // Nothing emitted CloudSyncEvent.SignedOut, so the branch rendering it and
+                    // both its strings were unreachable. Confirming a destructive action is
+                    // worth more than deleting the code that was already written for it —
+                    // "sign out and delete my cloud notes" should say that it happened.
+                    onSuccess = { CloudSyncEvent.SignedOut(cloudDataDeleted = deleteCloudData) },
+                    onFailure = { CloudSyncEvent.Failure(signOutFailureMessage(it)) }
                 )
-            }
+            )
         }
     }
 
     private fun signOutFailureMessage(error: Throwable): String =
         error.message?.takeIf { it.isNotBlank() }
             ?: "Couldn't delete your cloud notes, so you're still signed in. Try again."
+
+    /**
+     * Deletes the account, after the user typed the confirmation. A failure is reported and changes
+     * nothing: the account and this device's notes are both still there, and the user can retry.
+     */
+    fun deleteAccount() {
+        if (state.value.isDeletingAccount) return
+        scope.launch { performDeleteAccount() }
+    }
+
+    private suspend fun performDeleteAccount() {
+        state.update { it.copy(isDeletingAccount = true) }
+        val result = syncManager.deleteAccount()
+        if (result.isSuccess) clearAttachmentThumbnailCache()
+        // The confirmation is already given, so a recent sign-in is all that is still asked for.
+        if (result.exceptionOrNull()?.isReauthenticationRequiredRefusal() == true) {
+            state.update { it.copy(isDeletingAccount = false) }
+            requireIdentityCheck(IdentityCheck.DeleteAccount)
+            return
+        }
+        state.update { currentState ->
+            currentState.copy(
+                isDeletingAccount = false,
+                pendingCloudSyncEvent = result.fold(
+                    onSuccess = { CloudSyncEvent.AccountDeleted() },
+                    onFailure = { CloudSyncEvent.Failure(accountDeleteFailureMessage(it)) },
+                ),
+            )
+        }
+    }
+
+    /**
+     * "Nothing was deleted" only when that is known (AUD-010). After a failure that may have come after
+     * the server accepted the request, and that asking the server could not settle, it says so instead.
+     */
+    private fun accountDeleteFailureMessage(error: Throwable): String =
+        if (generateSequence(error) { it.cause }.take(8).any { it is AccountDeletionOutcomeUnknownException }) {
+            "Couldn't confirm whether your account was deleted. Check your connection. If it was, " +
+                "this device removes its copy the next time it syncs."
+        } else {
+            "Couldn't delete your account, and nothing was deleted. Check your connection and try again."
+        }
+
+    private fun requireIdentityCheck(check: IdentityCheck) {
+        state.update {
+            it.copy(pendingIdentityCheck = check, identityCodeSent = false, isConfirmingIdentity = false)
+        }
+    }
+
+    /**
+     * "Confirm it's you", step one: emails a sign-in code to the signed-in account's own address.
+     *
+     * Deliberately not [requestEmailCode], which drives the sign-in screen: the user is signed in, and
+     * this only starts a fresh session for the same account.
+     */
+    fun requestIdentityCode() {
+        val email = state.value.cloudAccount.email
+        if (state.value.pendingIdentityCheck == null || email.isNullOrBlank()) return
+        scope.launch {
+            state.update { it.copy(isConfirmingIdentity = true) }
+            val result = syncManager.requestEmailCode(email)
+            state.update { currentState ->
+                currentState.copy(
+                    isConfirmingIdentity = false,
+                    identityCodeSent = currentState.identityCodeSent || result.isSuccess,
+                    pendingCloudSyncEvent = result.exceptionOrNull()
+                        ?.let { CloudSyncEvent.Failure(signInFailureMessage(it)) }
+                        ?: currentState.pendingCloudSyncEvent,
+                )
+            }
+        }
+    }
+
+    /**
+     * Step two: signs in again with [code], then runs the waiting action with that fresh session. A
+     * wrong code keeps the dialog open; the action runs only after the code was accepted.
+     */
+    fun confirmIdentity(code: String) {
+        val check = state.value.pendingIdentityCheck ?: return
+        val email = state.value.cloudAccount.email ?: return
+        scope.launch {
+            state.update { it.copy(isConfirmingIdentity = true) }
+            val signedIn = syncManager.signInWithEmailCode(email, code.trim())
+            if (signedIn.isFailure) {
+                state.update {
+                    it.copy(
+                        isConfirmingIdentity = false,
+                        pendingCloudSyncEvent = CloudSyncEvent.Failure(
+                            signInFailureMessage(signedIn.exceptionOrNull()!!),
+                        ),
+                    )
+                }
+                return@launch
+            }
+            clearIdentityCheck()
+            when (check) {
+                IdentityCheck.DeleteAccount -> performDeleteAccount()
+                IdentityCheck.WipeCloudData -> performSignOut(deleteCloudData = true)
+            }
+        }
+    }
+
+    /** Leaves the action undone. Nothing was deleted, and nothing is owed. */
+    fun cancelIdentityCheck() = clearIdentityCheck()
+
+    private fun clearIdentityCheck() {
+        state.update {
+            it.copy(pendingIdentityCheck = null, identityCodeSent = false, isConfirmingIdentity = false)
+        }
+    }
 
     fun syncNotesToCloud() {
         scope.launch {

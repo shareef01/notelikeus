@@ -1,8 +1,19 @@
 import { resolveAuthenticatedUserId, UpstreamServiceError, type WorkerEnv } from './auth';
 import { ATTACHMENT_ALLOWED_METHODS, withAttachmentCors } from './cors';
 import {
+  accountDeletionAvailable,
+  finishAccountDeletion,
+  REAUTHENTICATION_REQUIRED,
+  reauthenticationRequired,
+  recentSignInAt,
+  requestAccountDeletion,
+  sweepPendingAccountDeletions,
+} from './accountDeletion';
+import {
   claimOrphanedProvisionalAttachments,
   reportUnreferencedAttachmentObjects,
+  rpc,
+  serviceRoleHeaders,
   sweepOrphanedDeletedAttachments,
   sweepUnconfirmedAttachmentDeletes,
 } from './sweep';
@@ -20,6 +31,7 @@ import { rateLimitByClient, rateLimitByUser } from './rateLimit';
 export type { WorkerEnv };
 
 const SUPPORTED_METHODS = new Set(['GET', 'PUT', 'DELETE']);
+const ACCOUNT_PATH = '/v1/account';
 
 /**
  * Request pipeline, cheapest first.
@@ -38,6 +50,10 @@ export async function handleAttachmentRequest(
 ): Promise<Response> {
   try {
     const url = new URL(request.url);
+    if (url.pathname === ACCOUNT_PATH) {
+      return await deleteAccount(request, env);
+    }
+
     const parsed = parseAttachmentPath(url.pathname);
     if (!parsed) {
       return new Response('Not Found', { status: 404 });
@@ -76,7 +92,7 @@ export async function handleAttachmentRequest(
       case 'GET':
         return await getAttachment(request, env, objectKey, parsed);
       default:
-        return await deleteAttachment(request, env, objectKey, parsed);
+        return await deleteAttachment(request, env, objectKey, parsed, userId);
     }
   } catch (error) {
     if (error instanceof UpstreamServiceError) {
@@ -117,6 +133,8 @@ interface AttachmentAuthz {
   confirmed?: boolean;
   /** Why a refusal was refused. `terminally_deleted` is authoritative — see putAttachment. */
   reason?: string;
+  /** `request_account_deletion`'s answer. */
+  status?: string;
 }
 
 /**
@@ -410,6 +428,7 @@ async function deleteAttachment(
   env: WorkerEnv,
   objectKey: string,
   parsed: { noteId: string; attachmentId: string },
+  userId: string,
 ): Promise<Response> {
   // Phase 1: authorize and durably record the deletion.
   const claim = await authorizeAttachment(request, env, 'begin_note_attachment_delete', {
@@ -438,19 +457,92 @@ async function deleteAttachment(
   // the false answer — and the sweep picks the row up from its unconfirmed claim regardless.
   let confirmed = false;
   try {
-    const result = await authorizeAttachment(request, env, 'finalize_note_attachment_delete', {
-      p_note_id: parsed.noteId,
-      p_attachment_id: parsed.attachmentId,
-    });
-    // `confirmed` says the stamp landed on a row; `allowed` is the fallback for a database that
-    // predates it and did the work without reporting it.
-    confirmed = result?.confirmed ?? result?.allowed === true;
+    confirmed = await confirmObjectDeleted(request, env, userId, parsed);
   } catch (error) {
-    if (!(error instanceof UpstreamServiceError)) throw error;
-    console.error(`[Worker] Attachment delete left unconfirmed: ${error.message}`);
+    const message = error instanceof Error ? error.message : 'unknown failure';
+    console.error(`[Worker] Attachment delete left unconfirmed: ${message}`);
   }
 
   return Response.json({ deleted: true, objectKey, confirmed });
+}
+
+/**
+ * Stamps the confirmation that releases this attachment's quota, now that this request deleted it.
+ *
+ * Through the service role: the stamp is what the quota trusts, and since 20261103000000 the user's own
+ * token cannot write it, because the user could then write it without deleting anything (AUD-003). The
+ * owner is the id this Worker verified, never one the request supplied. A deployment without the key
+ * keeps the user-token call, which still records the claim and leaves the confirmation to the sweep.
+ */
+async function confirmObjectDeleted(
+  request: Request,
+  env: WorkerEnv,
+  userId: string,
+  parsed: { noteId: string; attachmentId: string },
+): Promise<boolean> {
+  if (serviceRoleHeaders(env)) {
+    const result = await rpc<{ status?: string }>(env, 'confirm_attachment_object_deleted', {
+      p_owner_id: userId,
+      p_note_id: parsed.noteId,
+      p_attachment_id: parsed.attachmentId,
+    });
+    return result?.status === 'applied';
+  }
+  const result = await authorizeAttachment(request, env, 'finalize_note_attachment_delete', {
+    p_note_id: parsed.noteId,
+    p_attachment_id: parsed.attachmentId,
+  });
+  // `confirmed` says the stamp landed on a row; `allowed` is the fallback for a database that
+  // predates it and did the work without reporting it.
+  return result?.confirmed ?? result?.allowed === true;
+}
+
+/**
+ * Deletes the caller's account: `DELETE /v1/account`.
+ *
+ * Refuses before anything is destroyed if this deployment could not finish the job. Once the database
+ * has accepted the request the answer is a success whatever happens next, 200 when the auth user is
+ * already gone and 202 when the cron sweep will finish: the notes are gone and the user cannot do
+ * anything further, so reporting a failure here would be the false answer.
+ *
+ * See `supabase/migrations/20261102010000_account_deletion.sql` for the protocol.
+ */
+async function deleteAccount(request: Request, env: WorkerEnv): Promise<Response> {
+  if (request.method !== 'DELETE') {
+    return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'DELETE, OPTIONS' } });
+  }
+  const throttledClient = await rateLimitByClient(request, env.ATTACHMENT_RATE_LIMITER);
+  if (throttledClient) return throttledClient;
+
+  const userId = await resolveAuthenticatedUserId(request, env);
+  if (!userId) return new Response('Unauthorized', { status: 401 });
+
+  const throttledUser = await rateLimitByUser(userId, env.ATTACHMENT_RATE_LIMITER);
+  if (throttledUser) return throttledUser;
+
+  if (!accountDeletionAvailable(env)) {
+    console.error('[Worker] Account deletion needs SUPABASE_SERVICE_ROLE_KEY');
+    return new Response('Account deletion is not available', { status: 503 });
+  }
+
+  // AUD-005: a live token is not enough to destroy the account; its session must have signed in
+  // recently. The token was just accepted by Supabase Auth above, so its claims can be read here.
+  const signedInAt = recentSignInAt(request.headers.get('Authorization'), userId);
+  if (signedInAt === null) return reauthenticationRequired();
+
+  // AUD-006: the user cannot start this from PostgREST any more, only the service role can, and the
+  // database checks the sign-in time again.
+  const requested = await requestAccountDeletion(env, userId, signedInAt);
+  if (requested === REAUTHENTICATION_REQUIRED) return reauthenticationRequired();
+
+  try {
+    if (await finishAccountDeletion(env, userId)) {
+      return Response.json({ status: 'deleted' });
+    }
+  } catch {
+    console.error('[Worker] Account deletion left for the sweep');
+  }
+  return Response.json({ status: 'pending' }, { status: 202 });
 }
 
 export default {
@@ -481,6 +573,7 @@ export default {
           sweepUnconfirmedAttachmentDeletes(env),
           claimOrphanedProvisionalAttachments(env),
           reportUnreferencedAttachmentObjects(env),
+          sweepPendingAccountDeletions(env),
         ]);
         const failed = results.find((result) => result.status === 'rejected');
         if (failed) throw (failed as PromiseRejectedResult).reason;

@@ -18,8 +18,11 @@ import okio.sink
  */
 object BackupDocumentIo {
 
-    /** Matches `NoteBackupImporter.MAX_BACKUP_CHARS`. */
-    const val MAX_BACKUP_DOCUMENT_CHARS = 10 * 1024 * 1024
+    /** Matches `NoteBackupImporter.MAX_BACKUP_BYTES`. */
+    const val MAX_BACKUP_DOCUMENT_BYTES = 25L * 1024 * 1024
+
+    /** Matches NoteBackupImporter.MAX_BACKUP_CHARS; kept for backwards compatibility. */
+    const val MAX_BACKUP_DOCUMENT_CHARS = 25 * 1024 * 1024
 
     /** Matches `BackupBundleLimits.MAX_BUNDLE_FILE_BYTES`. */
     const val MAX_BUNDLE_DOCUMENT_BYTES = 256L * 1024 * 1024
@@ -62,7 +65,7 @@ object BackupDocumentIo {
     fun read(resolver: ContentResolver, uri: Uri): String? =
         runCatching {
             resolver.openInputStream(uri)?.use { input ->
-                BackupFileReads.readTextWithin(input, MAX_BACKUP_DOCUMENT_CHARS)
+                BackupFileReads.readTextWithin(input, MAX_BACKUP_DOCUMENT_BYTES)
                     ?: run {
                         Log.w(TAG, "Backup document exceeds the import limit; refusing it")
                         null

@@ -82,6 +82,9 @@ function mockRpcs(handlers: {
           status: handlers.listStatus ?? 200,
         });
       }
+      if (url.includes('list_pending_account_deletions')) {
+        return new Response('[]', { status: 200 });
+      }
       if (url.includes('find_unreferenced_attachment_objects')) {
         const keys = (body.p_object_keys ?? []) as string[];
         return new Response(JSON.stringify(handlers.unreferenced?.(keys) ?? []), { status: 200 });
@@ -455,7 +458,7 @@ describe('provisional upload claim (F-09)', () => {
     expect(rpcCalls.map((call) => call.url.split('/rpc/')[1])).toEqual([
       'claim_orphaned_provisional_attachments',
     ]);
-    expect(rpcCalls[0]!.body).toEqual({ p_limit: 50 });
+    expect(rpcCalls[0]!.body).toEqual({ p_limit: 100 });
     // The claim alone never deletes: the object goes once the claimed row is swept as an
     // unconfirmed delete, through that pass's canonical-key checks.
     expect(bucket.objects.has(OBJECT_KEY)).toBe(true);
