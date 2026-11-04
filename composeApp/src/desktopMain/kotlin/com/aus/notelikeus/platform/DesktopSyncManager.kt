@@ -9,6 +9,7 @@ import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.data.sync.NoteSyncEngine
 import com.aus.notelikeus.data.sync.runTimedSync
 import com.aus.notelikeus.domain.repository.SyncManager
+import com.aus.notelikeus.domain.repository.UnsyncedWork
 import com.aus.notelikeus.ui.main.CloudAccount
 import com.aus.notelikeus.ui.main.CloudSyncEvent
 import com.aus.notelikeus.ui.main.CloudSyncStatus
@@ -103,6 +104,9 @@ class DesktopSyncManager(
             _cloudAccount.value = CloudAccount(isOfflineMode = true)
         }
     }
+
+    override suspend fun unsyncedWorkBeforeSignOut(): UnsyncedWork =
+        syncEngine.unsyncedWorkAfterSyncAttempt()
 
     override suspend fun deleteAccount(): Result<Unit> = runCatching {
         accountDeletion.deleteAccount()

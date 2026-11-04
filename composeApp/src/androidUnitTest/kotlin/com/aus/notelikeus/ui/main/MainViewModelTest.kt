@@ -5,6 +5,7 @@ import app.cash.turbine.test
 import com.aus.notelikeus.data.backup.NoteBackupExporter
 import com.aus.notelikeus.data.backup.NoteBackupImporter
 import com.aus.notelikeus.domain.model.ChecklistItem
+import com.aus.notelikeus.domain.repository.UnsyncedWork
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.NoteSortOrder
@@ -480,6 +481,8 @@ class MainViewModelTest {
 
     @Test
     fun `a successful sign-out clears the card thumbnails`() = runTest {
+        // Nothing left unsynced, so the sign-out goes ahead without asking (AUDIT-001).
+        coEvery { syncManager.unsyncedWorkBeforeSignOut() } returns UnsyncedWork.NONE
         coEvery { syncManager.signOut(any()) } returns Result.success(Unit)
         val before = SharedThumbnailCache.currentGeneration
 

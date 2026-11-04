@@ -46,7 +46,9 @@ import com.aus.notelikeus.domain.model.SavedFilter
     import notelikeus.composeapp.generated.resources.*
     import org.jetbrains.compose.resources.getPluralString
     import org.jetbrains.compose.resources.getString
+    import org.jetbrains.compose.resources.pluralStringResource
     import org.jetbrains.compose.resources.stringResource
+    import com.aus.notelikeus.ui.components.ConfirmDialog
     import org.koin.compose.viewmodel.koinViewModel
     import org.koin.core.annotation.KoinExperimentalAPI
 
@@ -721,6 +723,31 @@ fun MainScreen(
             onSendCode = { viewModel.requestIdentityCode() },
             onConfirm = { code -> viewModel.confirmIdentity(code) },
             onDismiss = { viewModel.cancelIdentityCheck() },
+        )
+    }
+
+    // AUDIT-001: signing out would clear work the cloud does not have yet. Staying signed in is the
+    // default; losing it takes a second, explicit choice.
+    state.unsyncedBeforeSignOut?.let { unsynced ->
+        val parts = buildList {
+            if (unsynced.edits > 0) {
+                add(pluralStringResource(Res.plurals.unsynced_edits, unsynced.edits, unsynced.edits))
+            }
+            if (unsynced.deletions > 0) {
+                add(pluralStringResource(Res.plurals.unsynced_deletions, unsynced.deletions, unsynced.deletions))
+            }
+            if (unsynced.images > 0) {
+                add(pluralStringResource(Res.plurals.unsynced_images, unsynced.images, unsynced.images))
+            }
+        }
+        ConfirmDialog(
+            title = stringResource(Res.string.cloud_sign_out_unsynced_title),
+            message = stringResource(Res.string.cloud_sign_out_unsynced_message, parts.joinToString(", ")),
+            confirmLabel = stringResource(Res.string.cloud_sign_out_unsynced_confirm),
+            dismissLabel = stringResource(Res.string.cloud_sign_out_unsynced_stay),
+            destructive = true,
+            onConfirm = { viewModel.signOutFromCloud(discardUnsynced = true) },
+            onDismiss = { viewModel.keepUnsyncedAndStaySignedIn() },
         )
     }
 

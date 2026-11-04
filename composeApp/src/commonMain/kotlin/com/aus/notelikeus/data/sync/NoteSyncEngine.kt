@@ -25,6 +25,7 @@ import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.repository.LocalCommitResult
 import com.aus.notelikeus.domain.repository.LocalCommitToken
 import com.aus.notelikeus.domain.repository.LocalCommitTokenProvider
+import com.aus.notelikeus.domain.repository.UnsyncedWork
 import com.aus.notelikeus.util.AppLog
 import kotlinx.coroutines.CancellationException
 import com.aus.notelikeus.util.DateUtils
@@ -796,6 +797,48 @@ class NoteSyncEngine(
 
     /** Returns, and resets, how many notes deleted here the last download had to restore. */
     fun takeDeletedNotesCameBack(): Int = deletedNotesCameBack.also { deletedNotesCameBack = 0 }
+
+    /**
+     * What this device holds that the cloud has not confirmed (AUDIT-001), after one attempt to sync.
+     *
+     * - An edit is a live note whose timestamp is not the version last known to match the cloud
+     *   ([NoteSyncStateStore.syncedTimestampById]; equality, so a wrong clock cannot hide one), or one
+     *   still owed the push that names an image it uploaded.
+     * - A deletion counts only while the cloud still held the note at the last download and the
+     *   delete is still waiting on its revision or its fingerprint. A note that never reached the
+     *   cloud has nothing to lose, and a completed delete has cleared both.
+     * - An image counts while it is still staged on this device.
+     *
+     * Most accurate straight after a sync: the delete side reads [NoteSyncStateStore.knownCloudIds],
+     * which a download refreshes.
+     */
+    suspend fun unsyncedWorkAfterSyncAttempt(): UnsyncedWork {
+        // One upload and one download, results ignored: offline, refused or failed, the counts below
+        // say what is still only here. The download is what refreshes knownCloudIds for deletions.
+        uploadAllNotes()
+        downloadAllNotes()
+        return unsyncedWork()
+    }
+
+    /** [unsyncedWorkAfterSyncAttempt] without the sync attempt. */
+    suspend fun unsyncedWork(): UnsyncedWork {
+        val notes = noteDao.getAllNotesForBackup().map { it.toNote() }
+        val synced = syncStateStore.syncedTimestampById()
+        val recommit = syncStateStore.recommitNeededIds()
+        val live = notes.filter { note -> note.id?.let { !syncStateStore.isDeleted(it) } == true }
+        val edits = live.count { note ->
+            val id = note.id ?: return@count false
+            synced[id] != note.timestamp || id in recommit
+        }
+        val inCloud = syncStateStore.knownCloudIds()
+        val revisions = syncStateStore.knownServerRevisionById()
+        val digests = syncStateStore.deletedDigestById()
+        val deletions = syncStateStore.deletedIds().count { id ->
+            id in inCloud && (id in revisions || id in digests)
+        }
+        val images = live.sumOf { note -> note.attachments.count { isPendingAttachment(it.storagePath) } }
+        return UnsyncedWork(edits = edits, deletions = deletions, images = images)
+    }
 
     /**
      * Notes the last download found deleted in the cloud while they held words the cloud never

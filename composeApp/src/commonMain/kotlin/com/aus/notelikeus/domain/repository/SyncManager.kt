@@ -27,6 +27,13 @@ interface SyncManager {
     suspend fun signOut(deleteCloudData: Boolean): Result<Unit>
 
     /**
+     * Tries once to bring the cloud up to date, then reports what is still only on this device
+     * (AUDIT-001). Called before an ordinary sign-out, which clears this device's notes; a non-empty
+     * answer means signing out now would lose that work, so the caller asks the user first.
+     */
+    suspend fun unsyncedWorkBeforeSignOut(): UnsyncedWork = UnsyncedWork.NONE
+
+    /**
      * Permanently deletes the signed-in account everywhere, then this device's copy of it.
      *
      * Fails with nothing changed if the server did not accept the request.
