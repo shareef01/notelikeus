@@ -31,6 +31,8 @@ concurrency:
 
 jobs:
   build:
+    # Named so branch protection can require it: Android CI has a job with the same id.
+    name: Desktop build
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
