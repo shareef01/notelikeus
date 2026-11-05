@@ -3,6 +3,8 @@ package com.aus.notelikeus.data.repository
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.aus.notelikeus.data.local.NotelikeusDatabase
+import com.aus.notelikeus.data.backup.NoteBackupImporter
+import com.aus.notelikeus.data.backup.BackupImportResult
 import com.aus.notelikeus.data.mapper.toNoteEntity
 import com.aus.notelikeus.data.sync.LocalCommitGate
 import com.aus.notelikeus.domain.model.Attachment
@@ -14,6 +16,10 @@ import com.aus.notelikeus.data.sync.RecordingSyncCoordinator
 import com.aus.notelikeus.domain.platform.SyncCoordinator
 import com.aus.notelikeus.domain.repository.LocalCommitResult
 import com.aus.notelikeus.domain.repository.LocalCommitToken
+import com.aus.notelikeus.domain.repository.NoteRepository
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import java.io.File
@@ -22,6 +28,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -222,6 +229,62 @@ class NoteRepositoryActionGenerationFenceTest {
 
     // ---- fixtures ----
 
+    @Test
+    fun `a stale backup import writes no rows or labels into the replacement dataset`() = runTest(timeout = TIMEOUT) {
+        val coordinator = RecordingSyncCoordinator()
+        val repo = repository(coordinator)
+        val stale = actionToken()
+        seedReplacementDataset()
+        val result = NoteBackupImporter(repo).importFromJson(IMPORT_JSON, stale)
+        assertIs<BackupImportResult.Superseded>(result)
+        assertEquals(0, result.notesImported)
+        assertEquals(listOf(REPLACEMENT_TITLE), repo.getAllNotesForBackup().map { it.title })
+        assertTrue(repo.getAllLabelsSnapshot().isEmpty())
+        assertTrue(coordinator.uploads.isEmpty())
+    }
+
+    @Test
+    fun `a current backup import commits all rows and finalizes outside the account gate`() = runTest(timeout = TIMEOUT) {
+        val coordinator = RecordingSyncCoordinator()
+        val repo = repository(coordinator)
+        val result = NoteBackupImporter(repo).importFromJson(IMPORT_JSON, actionToken())
+        assertIs<BackupImportResult.Success>(result)
+        assertEquals(1, result.notesImported)
+        assertEquals(listOf("Imported private note"), repo.getAllNotesForBackup().map { it.title })
+        assertEquals(listOf("Private label"), repo.getAllLabelsSnapshot().map { it.name })
+        assertEquals(1, coordinator.uploads.size)
+    }
+
+    @Test
+    fun `account isolation cannot enter between import authorization and its database transaction`() = runTest(timeout = TIMEOUT) {
+        val repo = repository(RecordingSyncCoordinator())
+        val entered = CompletableDeferred<Unit>()
+        val proceed = CompletableDeferred<Unit>()
+        val isolated = CompletableDeferred<Unit>()
+        val delayed = object : NoteRepository by repo {
+            override suspend fun <R> withWriteTransaction(block: suspend () -> R): R {
+                entered.complete(Unit)
+                proceed.await()
+                return repo.withWriteTransaction(block)
+            }
+        }
+        val token = actionToken()
+        val importing = async { NoteBackupImporter(delayed).importFromJson(IMPORT_JSON, token) }
+        entered.await()
+        val isolation = async {
+            LocalCommitGate.isolate {
+                database.noteDao.deleteAllNotes()
+                isolated.complete(Unit)
+            }
+        }
+        yield()
+        assertFalse(isolated.isCompleted)
+        proceed.complete(Unit)
+        importing.await()
+        isolation.await()
+        assertTrue(repo.getAllNotesForBackup().isEmpty())
+    }
+
     /**
      * The note as a production action would hold it: the row the user was looking at *before* the
      * boundary. Its id is the colliding one, deliberately.
@@ -296,6 +359,7 @@ class NoteRepositoryActionGenerationFenceTest {
     }
 
     private companion object {
+        const val IMPORT_JSON = """{"version":3,"labels":[{"name":"Private label"}],"notes":[{"title":"Imported private note","content":"Private body","timestamp":1000,"color":0,"labels":["Private label"]}]}"""
         const val UID = "same-user"
         const val NOTE_ID = 42L
         const val REPLACEMENT_TITLE = "replacement note"

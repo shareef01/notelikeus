@@ -25,13 +25,12 @@ class NoteBackupImporter(
      * The token is the *import's* origin authority, not a per-note one: the file was chosen for the
      * library on screen, so the uploads its notes need may only be queued while that dataset is still
      * the current one. When it is not, the import is reported as
-     * [BackupImportResult.Superseded] — the rows it wrote were dropped by the isolation that won, and
-     * nothing was queued.
+     * [BackupImportResult.Superseded] — no stale rows are inserted, or an isolation after the commit
+     * wipes the old dataset's rows, and no remaining uploads are queued.
      *
-     * The note inserts themselves are deliberately left unfenced
-     * ([NoteRepository.insertNoteWithoutSync] cannot enqueue anything) and the gate is taken *after*
-     * the import transaction has closed, so this cannot hold a write transaction while waiting for the
-     * account gate — the inverse of the order isolation takes.
+     * The whole write transaction runs inside the account gate, in the same gate → database order
+     * as isolation. A stale import must be refused before it inserts even one note or label.
+     * Finalization and upload scheduling happen after the transaction and gate have closed.
      */
     suspend fun importFromJson(
         jsonStr: String,
@@ -47,45 +46,50 @@ class NoteBackupImporter(
             var labelsCreated = 0
             var notesImported = 0
 
-            repository.withWriteTransaction {
-                val labelMap = repository.getAllLabelsSnapshot()
-                    .associateBy { it.name.lowercase() }
-                    .toMutableMap()
+            val committed = com.aus.notelikeus.data.sync.LocalCommitGate.commit(commitToken) {
+                repository.withWriteTransaction {
+                    val labelMap = repository.getAllLabelsSnapshot()
+                        .associateBy { it.name.lowercase() }
+                        .toMutableMap()
 
-                suspend fun ensureLabel(name: String): Label {
-                    val key = name.trim().lowercase()
-                    labelMap[key]?.let { return it }
-                    val id = repository.insertLabel(Label(name = name.trim()))
-                    val label = Label(id = id, name = name.trim())
-                    labelMap[key] = label
-                    labelsCreated++
-                    return label
-                }
-
-                backupData.labels.forEach { label ->
-                    if (label.name.isNotBlank()) {
-                        ensureLabel(label.name)
+                    suspend fun ensureLabel(name: String): Label {
+                        val key = name.trim().lowercase()
+                        labelMap[key]?.let { return it }
+                        val id = repository.insertLabel(Label(name = name.trim()))
+                        val label = Label(id = id, name = name.trim())
+                        labelMap[key] = label
+                        labelsCreated++
+                        return label
                     }
-                }
 
-                val basePosition = repository.getNextNotePosition()
-
-                backupData.notes.forEach { noteDto ->
-                    val note = importedNote(
-                        dto = noteDto,
-                        position = basePosition + notesImported,
-                        resolvedLabels = noteDto.labels.map { ensureLabel(it) },
-                    )
-
-                    val newId = repository.insertNoteWithoutSync(note)
-                    importedIds += newId
-                    noteDto.id?.let { oldId ->
-                        if (!newNoteIdByOldId.containsKey(oldId)) {
-                            newNoteIdByOldId[oldId] = newId
+                    backupData.labels.forEach { label ->
+                        if (label.name.isNotBlank()) {
+                            ensureLabel(label.name)
                         }
                     }
-                    notesImported++
+
+                    val basePosition = repository.getNextNotePosition()
+
+                    backupData.notes.forEach { noteDto ->
+                        val note = importedNote(
+                            dto = noteDto,
+                            position = basePosition + notesImported,
+                            resolvedLabels = noteDto.labels.map { ensureLabel(it) },
+                        )
+
+                        val newId = repository.insertNoteWithoutSync(note)
+                        importedIds += newId
+                        noteDto.id?.let { oldId ->
+                            if (!newNoteIdByOldId.containsKey(oldId)) {
+                                newNoteIdByOldId[oldId] = newId
+                            }
+                        }
+                        notesImported++
+                    }
                 }
+            }
+            if (committed is com.aus.notelikeus.domain.repository.LocalCommitResult.StaleGeneration) {
+                return BackupImportResult.Superseded(notesImported = 0)
             }
 
             val finalized = repository.finalizeImportedNotes(importedIds, commitToken)

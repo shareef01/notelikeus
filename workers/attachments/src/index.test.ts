@@ -809,7 +809,7 @@ describe('attachment worker upload limits', () => {
     expect(bucket.objects.size).toBe(0);
   });
 
-  it('attempts compensating R2 delete if finalize PUT fails', async () => {
+  it('keeps bytes for retry when finalization refuses without retiring the identity', async () => {
     mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
       if (url.includes('/rest/v1/rpc/finalize_note_attachment_put')) {
         return new Response(JSON.stringify({ error: 'quota exceeded' }), { status: 403 });
@@ -818,8 +818,52 @@ describe('attachment worker upload limits', () => {
 
     const response = await upload('1', 'att1', USER_A);
     expect(response.status).toBe(403);
-    // Compensating delete must have removed the object from R2!
-    expect(bucket.objects.has(`owners/${USER_A}/notes/1/att1`)).toBe(false);
+    // A concurrent retry may have committed this same key after our preflight.
+    expect(bucket.objects.has(`owners/${USER_A}/notes/1/att1`)).toBe(true);
+  });
+
+  it.each(['v1', 'v2'])('a failed concurrent %s PUT cannot delete a successful retry', async (version) => {
+    const put = bucket.put.bind(bucket);
+    let entered!: () => void;
+    let failFirst!: (error: Error) => void;
+    const firstEntered = new Promise<void>((resolve) => { entered = resolve; });
+    let writes = 0;
+    bucket.put = async (...args) => {
+      if (++writes === 1) {
+        entered();
+        await new Promise<void>((_resolve, reject) => { failFirst = reject; });
+      } else await put(...args);
+    };
+    const send = () => handleAttachmentRequest(request('PUT', `/${version}/attachments/1/att1`, USER_A, {
+      body: new Uint8Array([1, 2, 3]), headers: { 'Content-Type': 'image/png' },
+    }), env);
+    const first = send();
+    await firstEntered;
+    expect((await send()).status).toBe(200);
+    failFirst(new Error('late storage failure'));
+    expect((await first).status).toBe(502);
+    expect(attachmentRows.has(rowKey(USER_A, '1', 'att1'))).toBe(true);
+    expect((await handleAttachmentRequest(request('GET', '/v1/attachments/1/att1', USER_A), env)).status).toBe(200);
+  });
+
+  it('a rejected finalization cannot delete bytes another retry finalized meanwhile', async () => {
+    let entered!: () => void;
+    let refuse!: (response: Response) => void;
+    const finalizing = new Promise<void>((resolve) => { entered = resolve; });
+    let calls = 0;
+    mockSupabaseAuth({ [USER_A]: USER_A }, (url) => {
+      if (url.includes('/finalize_note_attachment_put') && ++calls === 1) {
+        entered();
+        return new Promise<Response>((resolve) => { refuse = resolve; });
+      }
+    });
+    const first = deferredUpload('1', 'att1', USER_A);
+    await finalizing;
+    expect((await deferredUpload('1', 'att1', USER_A)).status).toBe(200);
+    refuse(new Response('refused', { status: 403 }));
+    expect((await first).status).toBe(403);
+    expect(attachmentRows.has(rowKey(USER_A, '1', 'att1'))).toBe(true);
+    expect((await handleAttachmentRequest(request('GET', '/v1/attachments/1/att1', USER_A), env)).status).toBe(200);
   });
 });
 
@@ -1339,7 +1383,7 @@ describe('PUT against a terminally deleted attachment identity', () => {
    * The interleaving that makes the authoritative answer necessary, and forced compensation with
    * it. A DELETE lands between this PUT's authorization and its R2 lookup, so the Worker sees a
    * live row, finds the object missing, and re-uploads to "repair" an attachment that has in fact
-   * just been retired. `ownedByThisRequest` is false on that path, so ordinary compensation would
+   * just been retired. A repair shares its key with live metadata, so ordinary compensation would
    * decline to remove the bytes — and nothing would ever collect them: the row's object deletion
    * is already confirmed, so the unconfirmed-delete sweep skips it, and its note is still live, so
    * the orphan sweep never looks at it either.

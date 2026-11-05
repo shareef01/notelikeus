@@ -51,9 +51,8 @@ interface NoteRepository {
      * R15.2 closes. The refusal is reported to the caller as
      * [com.aus.notelikeus.data.backup.BackupImportResult.Superseded] rather than swallowed.
      *
-     * The rows themselves are inserted by [insertNoteWithoutSync], deliberately unfenced: it cannot
-     * enqueue anything, and it runs inside the import's own write transaction, where taking the
-     * account gate per row would invert a lock order that isolation also takes (gate → database).
+     * The importer fences its whole write transaction before calling [insertNoteWithoutSync], using
+     * the same gate → database lock order as isolation. Finalization runs after that gate is released.
      */
     suspend fun finalizeImportedNotes(
         ids: List<Long>,
