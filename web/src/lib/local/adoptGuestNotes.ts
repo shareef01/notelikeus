@@ -1,7 +1,7 @@
 ﻿import { GUEST_OWNER_ID } from '@/lib/local/constants';
-import { deleteNote, listNotes, putNotes } from '@/lib/local/notesLocalRepository';
+import { listNotes, putNotes } from '@/lib/local/notesLocalRepository';
+import { cleanAdoptedGuestNote } from '@/lib/local/guestAdoptionCleanup';
 import {
-  deletePendingAttachment,
   getPendingAttachment,
   listPendingAttachmentsForOwner,
   putPendingAttachment,
@@ -144,21 +144,11 @@ export async function adoptGuestNotesIntoAccount(
   // 5. Clean up ONLY adopted notes from guest source (colliding notes remain in guest source)
   for (const note of notesToClean) {
     try {
-      await deleteNote(GUEST_OWNER_ID, note.id);
+      await cleanAdoptedGuestNote(userId, note,
+        attachmentsToAdopt.filter((record) => record.noteId === note.id).map((record) => record.attachmentId));
     } catch (error) {
       console.warn(`[Notelikeus] Failed to delete adopted guest note ${note.id}:`, error);
     }
   }
 
-  // Clean up guest pending attachments
-  for (const record of attachmentsToAdopt) {
-    try {
-      await deletePendingAttachment(GUEST_OWNER_ID, record.noteId, record.attachmentId);
-    } catch (error) {
-      console.warn(
-        `[Notelikeus] Failed to delete adopted guest attachment ${record.attachmentId}:`,
-        error,
-      );
-    }
-  }
 }

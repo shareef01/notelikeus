@@ -58,7 +58,9 @@ export async function clearDeletedAccount(ownerId: string | undefined): Promise<
     await clearOwner(ownerId);
     await clearPendingAttachmentsForOwner(ownerId);
   }
-  await endDeletedAccountSessionSupabase();
+  if (ownerId && useAuthStore.getState().user?.uid === ownerId) {
+    await endDeletedAccountSessionSupabase(ownerId);
+  }
 }
 
 /**
@@ -66,8 +68,18 @@ export async function clearDeletedAccount(ownerId: string | undefined): Promise<
  *
  * Throws before touching anything local if the server did not accept the request.
  */
-export async function deleteAccount(): Promise<void> {
-  const ownerId = useAuthStore.getState().user?.uid;
-  await requestAccountDeletion();
+export async function deleteAccount(ownerId = useAuthStore.getState().user?.uid): Promise<void> {
+  if (!ownerId) throw new Error('Sign in again to delete your account.');
+  const assertOwner = () => {
+    if (useAuthStore.getState().user?.uid !== ownerId) throw new Error('Account changed; confirm deletion again for the account you intend to delete.');
+  };
+  assertOwner();
+  try {
+    await requestAccountDeletion(ownerId);
+  } catch (error) {
+    // A late reauthentication refusal must not turn into a deletion prompt for another account.
+    assertOwner();
+    throw error;
+  }
   await clearDeletedAccount(ownerId);
 }

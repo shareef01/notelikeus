@@ -20,6 +20,8 @@ export interface PendingAttachmentRecord {
 
 /** Raw IndexedDB shape — bytes may be sealed NLA1 or legacy plaintext (Blob or ArrayBuffer). */
 interface StoredPendingAttachment {
+  /** Changes with every write; also claimed on first read of a legacy row. */
+  writeVersion?: string;
   ownerId: string;
   noteId: string;
   attachmentId: string;
@@ -120,6 +122,7 @@ async function sealRecord(record: PendingAttachmentRecord): Promise<StoredPendin
   );
   return {
     ...record,
+    writeVersion: crypto.randomUUID(),
     // ArrayBuffer clones cleanly through IndexedDB (unlike some Blob polyfills in tests).
     blob: bytesToArrayBuffer(sealed),
     // sizeBytes stays the plaintext size callers already computed.
@@ -139,10 +142,16 @@ async function maybeMigratePlaintext(stored: StoredPendingAttachment): Promise<v
     );
     const next: StoredPendingAttachment = {
       ...stored,
+      writeVersion: crypto.randomUUID(),
       blob: bytesToArrayBuffer(sealed),
     };
     await withStore(PENDING_ATTACHMENTS_STORE, 'readwrite', (store) => {
-      store.put(next);
+      const request = store.get([stored.ownerId, stored.noteId, stored.attachmentId]);
+      request.onsuccess = () => {
+        const current = request.result as StoredPendingAttachment | undefined;
+        if (stored.writeVersion && current?.writeVersion === stored.writeVersion) store.put(next);
+      };
+      return request;
     });
   } catch {
     // Leave plaintext in place; dual-read still works.
@@ -178,8 +187,18 @@ export async function getPendingAttachment(
 ): Promise<PendingAttachmentRecord | null> {
   const result = await withStore<StoredPendingAttachment | undefined>(
     PENDING_ATTACHMENTS_STORE,
-    'readonly',
-    (store) => store.get([ownerId, noteId, attachmentId]),
+    'readwrite',
+    (store) => {
+      const request = store.get([ownerId, noteId, attachmentId]);
+      request.onsuccess = () => {
+        const record = request.result as StoredPendingAttachment | undefined;
+        if (record && !record.writeVersion) {
+          record.writeVersion = crypto.randomUUID();
+          store.put(record);
+        }
+      };
+      return request;
+    },
   );
   if (!result) return null;
   const opened = await openStoredBlob(result);
@@ -257,10 +276,7 @@ export async function findPendingAttachmentForOwner(
   });
 
   if (!stored) return null;
-  const opened = await openStoredBlob(stored);
-  if (!opened) return null;
-  void maybeMigratePlaintext(stored);
-  return toPublic(stored, opened);
+  return getPendingAttachment(stored.ownerId, stored.noteId, stored.attachmentId);
 }
 
 export async function findPendingAttachmentById(
@@ -276,10 +292,7 @@ export async function findPendingAttachmentById(
     request.onerror = () => reject(request.error ?? new Error('findPendingAttachmentById failed'));
   });
   if (!stored) return null;
-  const opened = await openStoredBlob(stored);
-  if (!opened) return null;
-  void maybeMigratePlaintext(stored);
-  return toPublic(stored, opened);
+  return getPendingAttachment(stored.ownerId, stored.noteId, stored.attachmentId);
 }
 
 export async function listPendingAttachmentsForOwner(
@@ -298,10 +311,8 @@ export async function listPendingAttachmentsForOwner(
 
   const out: PendingAttachmentRecord[] = [];
   for (const stored of rows) {
-    const opened = await openStoredBlob(stored);
-    if (!opened) continue;
-    void maybeMigratePlaintext(stored);
-    out.push(toPublic(stored, opened));
+    const opened = await getPendingAttachment(stored.ownerId, stored.noteId, stored.attachmentId);
+    if (opened) out.push(opened);
   }
   return out;
 }

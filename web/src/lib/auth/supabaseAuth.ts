@@ -175,9 +175,11 @@ export async function createEmailPasswordAccountSupabase(
  * session left worth revoking and this must not fail for want of a network: the account is gone
  * whether or not the server can be reached.
  */
-export async function endDeletedAccountSessionSupabase(): Promise<void> {
+export async function endDeletedAccountSessionSupabase(ownerId = useAuthStore.getState().user?.uid): Promise<void> {
+  if (!ownerId || useAuthStore.getState().user?.uid !== ownerId) return;
   clearGuestAdoptionIntent();
   await getSupabaseClient().auth.signOut({ scope: 'local' });
+  if (useAuthStore.getState().user && useAuthStore.getState().user?.uid !== ownerId) return;
   stopNotesRealtimeSync();
   clearLocalUserData();
 }

@@ -347,15 +347,8 @@ describe('F04: Guest to Authenticated Note Adoption & Cross-Account Privacy', ()
     const guestNote = createEmptyNote({ id: 'guest-note-cleanup-fail', localId: 401, title: 'Cleanup Fail Test' });
     await putNote(GUEST_OWNER_ID, guestNote);
 
-    // Mock cleanup deleteNote failure
-    const notesRepo = await import('@/lib/local/notesLocalRepository');
-    const originalDeleteNote = notesRepo.deleteNote;
-    vi.spyOn(notesRepo, 'deleteNote').mockImplementation(async (ownerId, noteId) => {
-      if (ownerId === GUEST_OWNER_ID) {
-        throw new Error('Storage lock during cleanup');
-      }
-      return originalDeleteNote(ownerId, noteId);
-    });
+    const cleanup = await import('@/lib/local/guestAdoptionCleanup');
+    vi.spyOn(cleanup, 'cleanAdoptedGuestNote').mockRejectedValue(new Error('Storage lock during cleanup'));
 
     markGuestAdoptionIntent();
     // Function handles cleanup failure gracefully with warning

@@ -18,6 +18,7 @@ import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { formatUnknownError } from '@/lib/errors/formatUnknownError';
 import { isReauthenticationRequired } from '@/lib/auth/reauthentication';
 import { useToastStore } from '@/store/toastStore';
+import { useAuthStore } from '@/store/authStore';
 import type { Note } from '@/types/note';
 import { useState } from 'react';
 
@@ -75,6 +76,7 @@ export function useAccountActions({
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   /** The destructive action waiting for a new sign-in code before it is retried (AUD-005). */
   const [identityCheck, setIdentityCheck] = useState<IdentityCheck | null>(null);
+  const [identityOwnerId, setIdentityOwnerId] = useState<string | undefined>(undefined);
 
   const signOut = async (deleteCloudData: boolean) => {
     closeSignOutConfirm();
@@ -87,6 +89,7 @@ export function useAccountActions({
     } catch (error) {
       // Nothing was wiped and the user is still signed in: ask for a code, then wipe.
       if (deleteCloudData && isReauthenticationRequired(error)) {
+        setIdentityOwnerId(userId);
         setIdentityCheck('wipeCloudData');
         return;
       }
@@ -102,12 +105,14 @@ export function useAccountActions({
   const deleteAccount = async () => {
     try {
       const { deleteAccount: deleteAccountAndLocalCopy } = await import('@/lib/auth/accountAuth');
-      await deleteAccountAndLocalCopy();
+      if (!userId) throw new Error('Sign in again to delete your account.');
+      await deleteAccountAndLocalCopy(userId);
       closeDeleteAccountConfirm();
       closeProfile();
       toast('Your account was deleted');
     } catch (error) {
       if (isReauthenticationRequired(error)) {
+        setIdentityOwnerId(userId);
         closeDeleteAccountConfirm();
         setIdentityCheck('deleteAccount');
         return;
@@ -121,8 +126,10 @@ export function useAccountActions({
     const action = identityCheck;
     try {
       const auth = await import('@/lib/auth/accountAuth');
+      const ownerId = identityOwnerId;
+      if (!ownerId || useAuthStore.getState().user?.uid !== ownerId) throw new Error('Account changed; confirm the action again for the current account.');
       if (action === 'deleteAccount') {
-        await auth.deleteAccount();
+        await auth.deleteAccount(ownerId);
         closeProfile();
         toast('Your account was deleted');
       } else if (action === 'wipeCloudData') {
@@ -316,7 +323,7 @@ export function useAccountActions({
   return {
     signOut,
     deleteAccount,
-    identityCheck,
+    identityCheck: identityOwnerId === userId ? identityCheck : null,
     confirmIdentity,
     cancelIdentityCheck: () => setIdentityCheck(null),
     exportBackup,
