@@ -1150,7 +1150,9 @@ class NoteSyncEngine(
                     // marker into that dataset's sync state.
                     val deletedAt = now()
                     val edited = ConflictResolution.isLocallyEdited(localNote, syncedTimestamps[noteId])
-                    val carried = if (edited) carriedAttachmentsFor(localNote) else emptyMap()
+                    val carried = if (edited) {
+                        carriedAttachmentsFor(localNote, requireAllLocalImages = true)
+                    } else emptyMap()
                     var copy: Note? = null
                     when (commitLocally(commitToken) {
                         // Gone from the cloud while edited here: the deletion stands for the id, the
@@ -2035,7 +2037,7 @@ class NoteSyncEngine(
                 val id = note.id ?: return@filter false
                 syncStateStore.isDeleted(id) && keepsWords(note, id)
             }
-            .associate { it.id to carriedAttachmentsFor(it) }
+            .associate { it.id to carriedAttachmentsFor(it, requireAllLocalImages = true) }
         return commitLocally(commitToken) {
             // One commit for the whole snapshot rather than one per row: the candidates are a single
             // snapshot result read in one pass, and a partial purge would be worse than none — some
@@ -2218,8 +2220,17 @@ class NoteSyncEngine(
     private suspend fun carriedAttachmentsFor(
         local: Note,
         remoteIdentity: OperationRemoteIdentity? = null,
-    ): Map<String, Attachment> =
-        runCatching { attachmentSync?.stageForCopy(local.attachments, remoteIdentity) }.getOrNull().orEmpty()
+        requireAllLocalImages: Boolean = false,
+    ): Map<String, Attachment> {
+        val carried = runCatching { attachmentSync?.stageForCopy(local.attachments, remoteIdentity) }
+            .getOrNull().orEmpty()
+        // An overwritten row can keep images that failed to move; a deleted row cannot. Refuse
+        // deletion until every device-only image is safely staged for the conflicted copy.
+        check(!requireAllLocalImages || local.attachments.all {
+            (!isPendingAttachment(it.storagePath) && !isFileAttachment(it.storagePath)) || it.id in carried
+        }) { "Could not preserve all local images for the conflicted copy; sync will retry" }
+        return carried
+    }
 
     private suspend fun innerUpdate(note: Note) {
         val noteId = note.id ?: return

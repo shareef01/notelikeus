@@ -2,6 +2,8 @@ package com.aus.notelikeus.data.sync
 
 import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentSyncService
+import com.aus.notelikeus.data.attachments.AttachmentStagingStore
+import com.aus.notelikeus.data.attachments.StagedAttachment
 import com.aus.notelikeus.data.attachments.FileAttachmentStagingStore
 import com.aus.notelikeus.data.attachments.fileStoragePath
 import com.aus.notelikeus.data.attachments.isPendingAttachment
@@ -52,6 +54,7 @@ class ConflictCopyAttachmentsTest {
 
     private lateinit var attachments: AttachmentSyncService
     private lateinit var engine: NoteSyncEngine
+    private var refuseCopyStaging = false
 
     @BeforeTest
     fun setUp() {
@@ -68,7 +71,12 @@ class ConflictCopyAttachmentsTest {
             metadata = null,
             localStorage = localStorage,
             noteDao = noteDao,
-            staging = staging,
+            staging = object : AttachmentStagingStore by staging {
+                override suspend fun stage(
+                    attachmentId: String, ownerId: String, noteId: Long?, bytes: ByteArray, mimeType: String,
+                ): StagedAttachment? = if (refuseCopyStaging) null else
+                    staging.stage(attachmentId, ownerId, noteId, bytes, mimeType)
+            },
             ownerIdProvider = { UID },
             attachmentsEnabled = { false },
         )
@@ -163,6 +171,39 @@ class ConflictCopyAttachmentsTest {
 
         assertTrue(copyRow().attachments.isEmpty())
         assertEquals(listOf("att-missing"), noteDao.notes.getValue(1L).toNote().attachments.map { it.id })
+    }
+
+    @Test
+    fun `a deletion conflict keeps the original image and note when staging fails then retries`() = runTest {
+        val photo = "only copy".encodeToByteArray()
+        assertTrue(attachments.stageAttachment("quota-photo", 1L, photo, "image/png"))
+        seedOfflineEditWith(Attachment(id = "quota-photo", noteId = 1L, storagePath = pendingStoragePath("quota-photo")))
+        transport.tombstones[1L] = 2_000L
+        refuseCopyStaging = true
+
+        assertTrue(engine.downloadAllNotes().isFailure)
+        assertEquals(listOf("quota-photo"), noteDao.notes.getValue(1L).toNote().attachments.map { it.id })
+        assertContentEquals(photo, staging.readBytes("quota-photo", UID))
+        assertEquals(1, noteDao.notes.size)
+
+        refuseCopyStaging = false
+        engine.downloadAllNotes().getOrThrow()
+        assertFalse(1L in noteDao.notes)
+        val copy = copyRow().attachments.single()
+        assertContentEquals(photo, staging.readBytes(copy.id, UID))
+    }
+
+    @Test
+    fun `an unexplained remote deletion cannot discard an image that failed to copy`() = runTest {
+        val photo = "only copy".encodeToByteArray()
+        assertTrue(attachments.stageAttachment("quota-photo", 1L, photo, "image/png"))
+        seedOfflineEditWith(Attachment(id = "quota-photo", noteId = 1L, storagePath = pendingStoragePath("quota-photo")))
+        transport.notes[2L] = cloudEdit().copy(noteId = 2L)
+        refuseCopyStaging = true
+
+        assertTrue(engine.downloadAllNotes().isFailure)
+        assertEquals(listOf("quota-photo"), noteDao.notes.getValue(1L).toNote().attachments.map { it.id })
+        assertContentEquals(photo, staging.readBytes("quota-photo", UID))
     }
 
     private companion object {

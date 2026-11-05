@@ -296,22 +296,17 @@ async function putAttachment(
         alreadyUploaded: true,
       });
     }
-    // Metadata says live but the object is gone. Re-upload to repair it; compensation below
-    // still leaves the object alone, because deleting it cannot improve on already-missing.
+    // Metadata says live but the object is gone. Re-upload to repair it; failures below leave
+    // the key alone unless the database definitively retires this identity.
   }
 
-  // Compensation may only remove bytes this request is solely responsible for. When a live row
-  // already referenced this key, the object is not ours to delete on an ambiguous failure.
-  // `force` is for the one answer that removes the ambiguity: if the database says the identity
-  // is terminally deleted, no row can legitimately point at this key — object_key is unique and
-  // derived from the identity — so the bytes this request just wrote are nobody's.
-  const ownedByThisRequest = preflight.already_live !== true;
-  const compensate = async (reason: string, force = false) => {
-    if (!ownedByThisRequest && !force) return;
+  // Preflight is a snapshot, not ownership of this key: a concurrent retry can commit the same
+  // identity before this request fails. Only terminal deletion proves no live row can need it.
+  const removeRetiredObject = async () => {
     try {
       await env.ATTACHMENTS_BUCKET.delete(objectKey);
     } catch {
-      console.error(`[Worker] Compensating R2 delete failed after ${reason}`);
+      console.error('[Worker] R2 delete failed for terminally deleted identity');
     }
   };
 
@@ -321,9 +316,8 @@ async function putAttachment(
       httpMetadata: { contentType: mimeType },
     });
   } catch {
-    // A throwing put may still have landed bytes. No metadata will ever point at them, and no
-    // sweeper can find an object with no row, so clean up rather than leak them permanently.
-    await compensate('storage write failure');
+    // A throwing put may have landed, or another PUT may have committed this key meanwhile.
+    // Keep the bytes for retry; unreferenced-object reporting measures abandoned uploads.
     return new Response('Storage write failed', { status: 502 });
   }
 
@@ -333,7 +327,7 @@ async function putAttachment(
   // whether finalization committed, and if it did, deleting the object would leave a live attachment
   // whose bytes are gone (F-08). Bytes with no row are the recoverable side of that ambiguity: the
   // client's retry rewrites this same object key, and only an upload abandoned for good leaves them
-  // orphaned. The definitive refusals below still compensate.
+  // orphaned. Only a terminally retired identity below can safely be compensated.
   //
   // The v2 route asks for the deferred protocol: the row is created provisional and becomes visible
   // only when the note that references it commits (see `apply_note_change`'s attachment-id argument).
@@ -363,17 +357,13 @@ async function putAttachment(
         },
   );
 
-  // Checked before the generic rejection below, which would otherwise take the conservative
-  // branch and leave these bytes orphaned: a terminal answer carries no attachment_id, and on
-  // the repair path ownedByThisRequest is false. That is exactly the case a DELETE racing this
-  // upload produces.
+  // A terminal identity cannot be revived by a retry, so no concurrent commit can need its bytes.
   if (finalized?.reason === TERMINALLY_DELETED) {
-    await compensate('terminally deleted identity', true);
+    await removeRetiredObject();
     return terminallyDeleted();
   }
 
   if (!finalized || !finalized.attachment_id || finalized.object_key !== objectKey) {
-    await compensate('finalization rejection');
     return new Response('Forbidden', { status: 403 });
   }
 
