@@ -1,3 +1,5 @@
+import { rpcWithHeaders } from '@/test/rpcWithHeaders';
+import { useAuthStore } from '@/store/authStore';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CloudWipeIncompleteError,
@@ -11,7 +13,7 @@ const loadAttachmentsWorkerUrl = vi.fn(() => 'http://127.0.0.1:8787');
 
 vi.mock('@/lib/supabase/client', () => ({
   getSupabaseClient: () => ({
-    rpc,
+    rpc: rpcWithHeaders(rpc),
     auth: { getSession },
   }),
 }));
@@ -42,8 +44,9 @@ function wipeReturning(keys: string[], notesDeleted = 2) {
 
 describe('deleteAllSupabaseCloudData', () => {
   beforeEach(() => {
+    useAuthStore.getState().setUser({ uid: '11111111-2222-4333-8444-555555555555', email: null, displayName: null });
     loadAttachmentsWorkerUrl.mockReturnValue('http://127.0.0.1:8787');
-    getSession.mockResolvedValue({ data: { session: { access_token: 'jwt' } } });
+    getSession.mockResolvedValue({ data: { session: { user: { id: '11111111-2222-4333-8444-555555555555' }, access_token: 'jwt' } } });
   });
 
   afterEach(() => {
@@ -62,14 +65,14 @@ describe('deleteAllSupabaseCloudData', () => {
       error: { code: 'NL004', message: 'reauthentication_required: confirm it is you' },
     });
 
-    await expect(deleteAllSupabaseCloudData()).rejects.toBeInstanceOf(ReauthenticationRequiredError);
+    await expect(deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555')).rejects.toBeInstanceOf(ReauthenticationRequiredError);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalledWith('finalize_cloud_wipe');
   });
 
   it('throws when the wipe RPC fails so sign-out does not proceed', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'not authenticated' } });
-    await expect(deleteAllSupabaseCloudData()).rejects.toEqual({ message: 'not authenticated' });
+    await expect(deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555')).rejects.toEqual({ message: 'not authenticated' });
   });
 
   it('deletes every listed object and reports the note count', async () => {
@@ -77,7 +80,7 @@ describe('deleteAllSupabaseCloudData', () => {
     vi.stubGlobal('fetch', fetchMock);
     wipeReturning([KEY_A]);
 
-    await expect(deleteAllSupabaseCloudData()).resolves.toBe(2);
+    await expect(deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555')).resolves.toBe(2);
     expect(fetchMock).toHaveBeenCalledWith(
       'http://127.0.0.1:8787/v1/attachments/9/att-1',
       expect.objectContaining({ method: 'DELETE' }),
@@ -92,7 +95,7 @@ describe('deleteAllSupabaseCloudData', () => {
     vi.stubGlobal('fetch', fetchMock);
     wipeReturning([KEY_A, KEY_B]);
 
-    await expect(deleteAllSupabaseCloudData()).rejects.toBeInstanceOf(CloudWipeIncompleteError);
+    await expect(deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555')).rejects.toBeInstanceOf(CloudWipeIncompleteError);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -104,7 +107,7 @@ describe('deleteAllSupabaseCloudData', () => {
     vi.stubGlobal('fetch', fetchMock);
     wipeReturning([KEY_A, KEY_B]);
 
-    await expect(deleteAllSupabaseCloudData()).rejects.toMatchObject({
+    await expect(deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555')).rejects.toMatchObject({
       name: 'CloudWipeIncompleteError',
       remainingObjects: 1,
     });
@@ -114,7 +117,7 @@ describe('deleteAllSupabaseCloudData', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     wipeReturning([KEY_A]);
 
-    await expect(deleteAllSupabaseCloudData()).rejects.toBeInstanceOf(CloudWipeIncompleteError);
+    await expect(deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555')).rejects.toBeInstanceOf(CloudWipeIncompleteError);
   });
 
   it('treats an already-missing object as deleted, so a retry converges', async () => {
@@ -124,7 +127,7 @@ describe('deleteAllSupabaseCloudData', () => {
     vi.stubGlobal('fetch', fetchMock);
     wipeReturning([KEY_A]);
 
-    await expect(deleteAllSupabaseCloudData()).resolves.toBe(2);
+    await expect(deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555')).resolves.toBe(2);
   });
 
   it('refuses when attachments exist but no Worker is configured to reach them', async () => {
@@ -133,7 +136,7 @@ describe('deleteAllSupabaseCloudData', () => {
     vi.stubGlobal('fetch', fetchMock);
     wipeReturning([KEY_A]);
 
-    await expect(deleteAllSupabaseCloudData()).rejects.toBeInstanceOf(CloudWipeIncompleteError);
+    await expect(deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555')).rejects.toBeInstanceOf(CloudWipeIncompleteError);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -141,8 +144,8 @@ describe('deleteAllSupabaseCloudData', () => {
     getSession.mockResolvedValue({ data: { session: null } });
     vi.stubGlobal('fetch', vi.fn());
     wipeReturning([KEY_A]);
-
-    await expect(deleteAllSupabaseCloudData()).rejects.toBeInstanceOf(CloudWipeIncompleteError);
+    await expect(deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555')).rejects.toThrow('Account changed');
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it('counts an unparseable object key as a failure rather than skipping it', async () => {
@@ -150,7 +153,7 @@ describe('deleteAllSupabaseCloudData', () => {
     vi.stubGlobal('fetch', fetchMock);
     wipeReturning(['not/a/valid/object/key']);
 
-    await expect(deleteAllSupabaseCloudData()).rejects.toBeInstanceOf(CloudWipeIncompleteError);
+    await expect(deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555')).rejects.toBeInstanceOf(CloudWipeIncompleteError);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -158,7 +161,7 @@ describe('deleteAllSupabaseCloudData', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
     wipeReturning([KEY_A]);
 
-    await deleteAllSupabaseCloudData();
+    await deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555');
 
     expect(rpc).toHaveBeenCalledWith('finalize_cloud_wipe');
   });
@@ -167,7 +170,7 @@ describe('deleteAllSupabaseCloudData', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
     wipeReturning([KEY_A]);
 
-    await expect(deleteAllSupabaseCloudData()).rejects.toBeInstanceOf(CloudWipeIncompleteError);
+    await expect(deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555')).rejects.toBeInstanceOf(CloudWipeIncompleteError);
     // Dropping the rows here would strand the surviving objects: the Worker authorizes against
     // them, and the sweeper finds them through them.
     expect(rpc).not.toHaveBeenCalledWith('finalize_cloud_wipe');
@@ -178,7 +181,7 @@ describe('deleteAllSupabaseCloudData', () => {
     vi.stubGlobal('fetch', fetchMock);
     wipeReturning([], 5);
 
-    await expect(deleteAllSupabaseCloudData()).resolves.toBe(5);
+    await expect(deleteAllSupabaseCloudData('11111111-2222-4333-8444-555555555555')).resolves.toBe(5);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

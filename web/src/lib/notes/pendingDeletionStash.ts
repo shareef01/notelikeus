@@ -37,6 +37,17 @@ function readStash(ownerId: string): TombstoneSnapshot | null {
   }
 }
 
+/** A deletion whose local write completed after its session left still belongs to its owner. */
+export function rememberInactiveDeletion(ownerId: string, noteId: string, baseline: number | null, digest: string | null): void {
+  const snapshot = readStash(ownerId) ?? normalizeTombstoneSnapshot({});
+  if (!(noteId in snapshot.deletedAtById)) {
+    snapshot.deletedAtById[noteId] = Date.now();
+    if (baseline != null) snapshot.baselineRevisionById[noteId] = baseline;
+    if (digest) snapshot.deletedDigestById[noteId] = digest;
+  }
+  localStorage.setItem(stashKey(ownerId), JSON.stringify(snapshot));
+}
+
 /**
  * Moves the live tombstones into `ownerId`'s stash and empties the live store.
  *

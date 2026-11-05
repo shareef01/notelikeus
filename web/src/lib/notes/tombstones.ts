@@ -1,4 +1,5 @@
 import type { Note } from '@/types/note';
+import { ownerAccessToken } from '@/lib/supabase/ownerSession';
 
 /** Keep local tombstones long enough for offline devices to observe the delete. */
 export const TOMBSTONE_TTL_MS = 180 * 24 * 60 * 60 * 1000;
@@ -41,10 +42,11 @@ export async function restoreCloudNote(userId: string, note: Note): Promise<void
   // The revision this browser believes is there. Before F-14 this was a hard-coded null, which the
   // server treated as "no opinion" and overwrote; now it is the fence's whole input.
   const baseRevision = getNoteBaseRevision(await loadRevisionState(userId), note.id);
+  const token = await ownerAccessToken(userId);
   const { data, error } = await getSupabaseClient().rpc(
     'restore_note',
     noteToSupabaseRpcArgs(note, baseRevision, wipeGeneration, { attachmentIds: false }),
-  );
+  ).setHeader('Authorization', `Bearer ${token}`);
   // A restore is what puts a deleted note back, so it is exactly what a wipe refusal must stop.
   if (error) await asWipeRefusal(userId, error);
   const result = (data ?? {}) as {

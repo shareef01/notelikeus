@@ -164,8 +164,12 @@ actual val platformModule = module {
                 BackendConfig.attachmentsWorkerUrl,
                 get(),
                 // Raises NL003 for an account being deleted: how an unclear failure is settled (AUD-010).
-                checkAccountLive = {
-                    rpc.callRpc("get_sync_generation", kotlinx.serialization.json.JsonObject(emptyMap()))
+                sessionOwnerId = { get<CloudSessionManager>().getCurrentAccount().userId },
+                checkAccountLiveWithToken = { ownerId, token ->
+                    val identity = com.aus.notelikeus.data.remote.OperationRemoteIdentity(
+                        ownerId, token,
+                    )
+                    rpc.callRpc(identity, "get_sync_generation", kotlinx.serialization.json.JsonObject(emptyMap()))
                 },
             )
         } else {

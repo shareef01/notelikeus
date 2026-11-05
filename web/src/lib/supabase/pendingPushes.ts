@@ -1,3 +1,4 @@
+import { retryRemovedAttachmentCleanup } from '@/lib/attachments/removedAttachmentCleanup';
 import { ATTACHMENT_R2_PREFIX, isPendingAttachment } from '@/lib/attachments/attachmentPaths';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { releaseUploadedPendingAttachments, syncNoteAttachments } from '@/lib/attachments/attachmentSyncService';
@@ -91,6 +92,7 @@ async function runFlush(
         }
       }
     }
+    if (isActive()) await retryRemovedAttachmentCleanup(userId).catch(() => {});
     status.setFailed(userId, failed);
     return result;
   } catch (error) {

@@ -8,6 +8,38 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AccountDeletionTransportTest {
+    @Test
+    fun `token acquisition cannot redirect an explicit deletion to a different owner`() = runTest {
+        var owner = "A"
+        val transport = WorkerAccountDeletionTransport(
+            "https://worker.example", object : SupabaseAccessTokenProvider {
+                override suspend fun accessToken(): String { owner = "B"; return "B-token" }
+            },
+            send = { _, _ -> error("must not send") },
+            sessionOwnerId = { owner },
+        )
+        assertFailsWith<IllegalStateException> { transport.deleteAccount("A") }
+    }
+
+    @Test
+    fun `ambiguous deletion checks the captured bearer after a switch`() = runTest {
+        var owner = "A"
+        var checked: String? = null
+        val transport = WorkerAccountDeletionTransport(
+            "https://worker.example", object : SupabaseAccessTokenProvider {
+                override suspend fun accessToken() = "A-token"
+            },
+            send = { _, _ -> owner = "B"; throw NetworkFailure("lost reply") },
+            sessionOwnerId = { owner },
+            checkAccountLiveWithToken = { ownerId, token ->
+                assertEquals("A", ownerId)
+                checked = token
+                throw deletedAnswer
+            },
+        )
+        transport.deleteAccount("A")
+        assertEquals("A-token", checked)
+    }
     /** A request that never got an answer, as a dropped connection or a timeout leaves it. */
     private class NetworkFailure(message: String) : Exception(message)
 

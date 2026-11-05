@@ -61,11 +61,37 @@ object AttachmentAtRestMigrator {
         include: (File) -> Boolean,
     ) {
         if (!root.exists()) return
+        recoverInterruptedSwaps(root, protector, aadFor, include)
         val files = root.walkTopDown()
             .filter { it.isFile && include(it) }
             .toList()
         for (file in files) {
             migrateOne(file, quarantineRoot, protector, aadFor(file))
+        }
+    }
+
+    private fun recoverInterruptedSwaps(
+        root: File,
+        protector: AttachmentBytesProtector,
+        aadFor: (File) -> ByteArray,
+        include: (File) -> Boolean,
+    ) {
+        val backups = root.walkTopDown().filter { it.isFile && it.name.endsWith(BACKUP_SUFFIX) }.toList()
+        for (backup in backups) {
+            val original = File(backup.parentFile, backup.name.removeSuffix(BACKUP_SUFFIX))
+            if (original.exists() || !include(original)) continue
+            val temp = File(original.parentFile, original.name + TEMP_SUFFIX)
+            runCatching {
+                val source = protector.open(backup.readBytes(), aadFor(original))
+                val candidate = if (temp.exists()) protector.open(temp.readBytes(), aadFor(original)) else null
+                val verified = source != null && candidate != null && candidate.contentEquals(source)
+                if (verified && temp.renameTo(original)) {
+                    backup.delete()
+                } else {
+                    // Restore the only verified source; the ordinary scan encrypts it again.
+                    backup.renameTo(original)
+                }
+            }.onFailure { AppLog.warn(TAG, "Could not recover attachment swap", it) }
         }
     }
 

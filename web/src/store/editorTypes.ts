@@ -41,9 +41,6 @@ export const DEFAULT_EDITOR_COLOR = 0; // Use theme background by default to pre
 
 export function buildNoteFromEditor(state: EditorState): Note | null {
   if (!state.id || state.localId == null) return null;
-  if (!state.title.trim() && !state.content.trim() && state.checklist.length === 0 && state.attachments.length === 0) {
-    return null;
-  }
 
   return {
     id: state.id,

@@ -1,3 +1,5 @@
+vi.mock('@/lib/supabase/ownerSession', () => ({ ownerAccessToken: vi.fn(async () => 'captured-owner-token') }));
+import { rpcWithHeaders } from '@/test/rpcWithHeaders';
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOTES_DB_NAME } from '@/lib/local/constants';
@@ -10,7 +12,7 @@ const USER = '11111111-1111-4111-8111-111111111111';
 const { rpcMock } = vi.hoisted(() => ({ rpcMock: vi.fn() }));
 
 vi.mock('@/lib/supabase/client', () => ({
-  getSupabaseClient: () => ({ rpc: rpcMock }),
+  getSupabaseClient: () => ({ rpc: rpcWithHeaders(rpcMock) }),
   isSupabaseBackendEnabled: () => true,
 }));
 

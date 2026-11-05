@@ -99,8 +99,8 @@ export function createR2AttachmentBlobStore(
       return response.blob();
     },
 
-    async delete(noteId, attachmentId): Promise<void> {
-      const token = await accessToken();
+    async delete(noteId, attachmentId, expectedOwnerId): Promise<void> {
+      const token = await accessToken(expectedOwnerId);
       const response = await fetchWithRateLimitRetry(() =>
         fetch(`${base}${attachmentWorkerPath(noteId, attachmentId)}`, {
           method: 'DELETE',

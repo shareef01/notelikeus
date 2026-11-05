@@ -7,6 +7,7 @@ import {
   putLocalEdit,
   putNote,
 } from '@/lib/local/notesLocalRepository';
+import { captureOwnerScope } from '@/lib/local/ownerScope';
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import { notesEqual } from '@/lib/notes/noteEquality';
 import { CloudDeleteUnconfirmedError } from '@/lib/remote/remoteNotesDataSource';
@@ -17,30 +18,33 @@ import { useTombstoneStore } from '@/store/tombstoneStore';
 import { loadRevisionState } from '@/lib/supabase/revisionStore';
 import { getNoteBaseRevision } from '@/lib/supabase/revisionStore';
 import type { Note } from '@/types/note';
+import { rememberInactiveDeletion } from '@/lib/notes/pendingDeletionStash';
 
 async function persistLocalNote(
   note: Note,
   targetOwnerId?: string,
-  { asEdit = true }: { asEdit?: boolean } = {},
+  { asEdit = true, removed = [] }: { asEdit?: boolean; removed?: Note["attachments"] } = {},
 ): Promise<void> {
   const ownerId = targetOwnerId ?? resolveOwnerId();
   if (!ownerId) return;
   // A signed-in edit is recorded as waiting for the cloud in the same transaction, so no snapshot
   // or pull can overwrite it before it has been pushed (F-06). Guest notes never sync.
   if (asEdit && useAuthStore.getState().user?.uid === ownerId) {
-    await putLocalEdit(ownerId, note);
+    if (removed.length) await putLocalEdit(ownerId, note, removed);
+    else await putLocalEdit(ownerId, note);
   } else {
     await putNote(ownerId, note);
   }
 }
 
-async function pushNote(note: Note): Promise<void> {
-  const ownerId = resolveOwnerId();
+async function pushNote(note: Note, scope = captureOwnerScope(), removed: Note["attachments"] = []): Promise<void> {
+  scope.assertActive();
+  const ownerId = scope.ownerId;
   if (ownerId) {
     // Persist-first: commit to IndexedDB before mutating memory
-    await persistLocalNote(note, ownerId);
+    await persistLocalNote(note, ownerId, { removed });
   }
-  if (resolveOwnerId() !== ownerId) return;
+  if (!scope.isActive()) return;
   useNotesStore.getState().upsertLocalNote(note);
   const currentUid = useAuthStore.getState().user?.uid;
   if (!currentUid || currentUid !== ownerId) return;
@@ -63,28 +67,26 @@ function withTimestamp(note: Note, patch: Partial<Note>): Note {
 
 /** Save locally and optionally push to the cloud when signed in — no React hooks. */
 export async function saveNote(note: Note): Promise<void> {
-  const sessionOwnerId = resolveOwnerId();
+  const scope = captureOwnerScope();
+  const sessionOwnerId = scope.ownerId;
   const existing = getNote(note.id);
   const toSave = note;
 
-  // Clean up removed attachments if any
-  if (isR2AttachmentsEnabled() && existing) {
-    const { deleteAttachmentsForNote } = await import(
-      '@/lib/attachments/attachmentSyncService'
-    );
-    const nextIds = new Set(toSave.attachments.map((attachment) => attachment.id));
-    const removed = existing.attachments.filter(
-      (attachment) => !nextIds.has(attachment.id),
-    );
-    if (removed.length > 0) {
-      await deleteAttachmentsForNote(note.id, removed);
+  const nextIds = new Set(toSave.attachments.map(a => a.id));
+  const removed = (existing?.attachments ?? []).filter(a => !nextIds.has(a.id));
+  if (existing && notesEqual(existing, toSave)) return;
+  await pushNote(toSave, scope, removed);
+  if (!scope.isActive()) return;
+  if (removed.length && !useAuthStore.getState().user && sessionOwnerId) {
+    const { releasePendingAttachment } = await import('@/lib/attachments/pendingAttachmentStore');
+    for (const a of removed) {
+      if (a.storagePath.startsWith('pending:')) await releasePendingAttachment(a.storagePath.slice(8), note.id, sessionOwnerId);
     }
   }
-
-  // Local data is primary: text note persistence must NOT wait for cloud attachment upload!
-  if (existing && notesEqual(existing, toSave)) return;
-  await pushNote(toSave);
-  if (resolveOwnerId() !== sessionOwnerId) return;
+  if (sessionOwnerId && useAuthStore.getState().user) {
+    const { retryRemovedAttachmentCleanup } = await import('@/lib/attachments/removedAttachmentCleanup');
+    await retryRemovedAttachmentCleanup(sessionOwnerId).catch(() => {});
+  }
 
   // If there are pending attachments and R2 is enabled, attempt upload
   const hasPending = toSave.attachments.some((a) => isPendingAttachment(a.storagePath));
@@ -107,12 +109,13 @@ export async function saveNote(note: Note): Promise<void> {
         uploadFailure = error;
       }
       // Verify session ownership has not changed during the attachment upload
-      if (resolveOwnerId() !== sessionOwnerId) {
+      if (!scope.isActive()) {
         console.warn('[Notelikeus] Session changed during attachment upload; dropping stale note write');
         return;
       }
-      if (!notesEqual(toSave, synced)) {
+      if (!notesEqual(toSave, synced) && notesEqual(getNote(note.id) ?? toSave, toSave)) {
         await persistLocalNote(synced, sessionOwnerId ?? undefined);
+        if (!scope.isActive()) return;
         useNotesStore.getState().upsertLocalNote(synced);
         // Only now, with a persisted note pointing at the uploaded copies, may the staged ones go
         // (AUD-011). A failed persist above throws past this and keeps them.
@@ -161,6 +164,7 @@ export async function removeNote(
   noteId: string,
   options: RemoveNoteOptions = {},
 ): Promise<RemoveNoteOutcome> {
+  const scope = captureOwnerScope();
   const existing = getNote(noteId);
   const isGuest = useAuthStore.getState().guestMode;
   const attachments = existing?.attachments ?? [];
@@ -186,11 +190,17 @@ export async function removeNote(
     }
   }
 
+  if (!scope.isActive()) return "deleted";
   // Persist-first: commit deletion to IndexedDB before mutating in-memory store
   if (ownerId) {
     await deleteLocalIndexedDbNote(ownerId, noteId);
   }
 
+  if (!scope.isActive()) {
+    if (userId && ownerId) rememberInactiveDeletion(ownerId, noteId, baselineRevision,
+      baselineRevision == null && existing ? authoredContentDigest(existing) : null);
+    return 'deleted';
+  }
   if (!isGuest) {
     // Without a known revision the delete cannot be sent yet. The fingerprint of what the user
     // deleted lets a later snapshot finish it, but only against a cloud copy that still says
@@ -213,10 +223,11 @@ export async function removeNote(
     }
   }
 
-  if (!isR2AttachmentsEnabled() || attachments.length === 0) return 'deleted';
+  if (!scope.isActive() || !isR2AttachmentsEnabled() || attachments.length === 0) return 'deleted';
   const { deferAttachmentGc, gcAttachmentsAfterNoteDelete } = await import(
     '@/lib/attachments/attachmentSyncService'
   );
+  if (!scope.isActive()) return 'deleted';
   useTombstoneStore.getState().markPendingAttachmentGc(
     noteId,
     attachments.map((attachment) => attachment.id),
@@ -227,7 +238,7 @@ export async function removeNote(
   }
   try {
     await gcAttachmentsAfterNoteDelete(noteId, attachments);
-    useTombstoneStore.getState().clearPendingAttachmentGc(noteId);
+    if (scope.isActive()) useTombstoneStore.getState().clearPendingAttachmentGc(noteId);
   } catch {
     // Note stays deleted; GC retries on the next snapshot or pull.
   }
@@ -311,6 +322,7 @@ export async function emptyTrash(options: RemoveNoteOptions = {}): Promise<Remov
 /** Reverse a permanent delete within the undo window. Clears both tombstones so the
  * realtime listener and future merges (which suppress tombstoned ids) keep the note live. */
 export async function restorePermanentlyDeletedNote(note: Note): Promise<void> {
+  const scope = captureOwnerScope();
   const userId = useAuthStore.getState().user?.uid;
   useTombstoneStore.getState().markRestored(note.id);
 
@@ -319,10 +331,11 @@ export async function restorePermanentlyDeletedNote(note: Note): Promise<void> {
   try {
     await persistLocalNote(note, undefined, { asEdit: false });
   } catch (error) {
-    useTombstoneStore.getState().clearRestored([note.id]);
+    if (scope.isActive()) useTombstoneStore.getState().clearRestored([note.id]);
     throw error;
   }
 
+  if (!scope.isActive()) return;
   useTombstoneStore.getState().clearIds([note.id]);
   useNotesStore.getState().upsertLocalNote(note);
   if (userId) {
@@ -333,11 +346,11 @@ export async function restorePermanentlyDeletedNote(note: Note): Promise<void> {
       // so the marker must not stay set — every later reconcile would retry a call that can only be
       // refused again. The local undo stands and the next snapshot reconciles the live row. Rethrown
       // either way, because the user asked for this and needs to hear that it did not happen.
-      if (error instanceof RestoreRefusedError) {
+      if (scope.isActive() && error instanceof RestoreRefusedError) {
         useTombstoneStore.getState().clearRestored([note.id]);
       }
       throw error;
     }
   }
-  useTombstoneStore.getState().clearRestored([note.id]);
+  if (scope.isActive()) useTombstoneStore.getState().clearRestored([note.id]);
 }

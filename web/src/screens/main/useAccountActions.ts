@@ -19,6 +19,7 @@ import { formatUnknownError } from '@/lib/errors/formatUnknownError';
 import { isReauthenticationRequired } from '@/lib/auth/reauthentication';
 import { useToastStore } from '@/store/toastStore';
 import { useAuthStore } from '@/store/authStore';
+import { captureOwnerScope } from '@/lib/local/ownerScope';
 import type { Note } from '@/types/note';
 import { useState } from 'react';
 
@@ -48,6 +49,7 @@ export type IdentityCheck = 'deleteAccount' | 'wipeCloudData';
 
 /** A parsed backup waiting on the user to confirm that importing it is what they meant. */
 export interface PendingImport {
+  scope?: ReturnType<typeof captureOwnerScope>;
   merged: Note[];
   result: { notesImported: number; labelsCreated: number };
   /** Images this import will restore. Zero for a plain JSON backup, which carries none. */
@@ -84,7 +86,7 @@ export function useAccountActions({
 
     try {
       const { signOutAccount } = await import('@/lib/auth/accountAuth');
-      await signOutAccount({ deleteCloudData });
+      await signOutAccount({ deleteCloudData, ownerId: userId });
       toast(deleteCloudData ? 'Signed out and cloud data deleted' : 'Signed out');
     } catch (error) {
       // Nothing was wiped and the user is still signed in: ask for a code, then wipe.
@@ -133,7 +135,7 @@ export function useAccountActions({
         closeProfile();
         toast('Your account was deleted');
       } else if (action === 'wipeCloudData') {
-        await auth.signOutAccount({ deleteCloudData: true });
+        await auth.signOutAccount({ deleteCloudData: true, ownerId });
         toast('Signed out and cloud data deleted');
       }
     } catch (error) {
@@ -231,6 +233,7 @@ export function useAccountActions({
    * as an archive.
    */
   const prepareImport = async (file: File) => {
+    const scope = captureOwnerScope();
     try {
       const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
       if (looksLikeBundle(file, head)) {
@@ -239,7 +242,9 @@ export function useAccountActions({
           toast('No notes found in backup');
           return;
         }
+        scope.assertActive();
         setPendingImport({
+          scope,
           merged: plan.merged,
           result: { notesImported: plan.notesImported, labelsCreated: plan.labelsCreated },
           attachmentsImported: plan.attachmentsImported,
@@ -256,7 +261,9 @@ export function useAccountActions({
         toast('No notes found in backup');
         return;
       }
+      scope.assertActive();
       setPendingImport({
+        scope,
         merged,
         result,
         attachmentsImported: 0,
@@ -274,13 +281,16 @@ export function useAccountActions({
     const staged = pendingImport;
     if (!staged) return;
     setPendingImport(null);
+    const scope = staged.scope ?? captureOwnerScope();
+    if (!scope.isActive()) { toast('Account changed; prepare the import again.', 'error'); return; }
     // A bundle's images are written only now, after the user said yes; a preview that was
     // cancelled or abandoned never wrote any.
-    const bundle = staged.bundle ? await stagePlannedAttachments(staged.bundle) : null;
+    const bundle = staged.bundle ? await stagePlannedAttachments(staged.bundle, scope.ownerId) : null;
     const merged = bundle?.merged ?? staged.merged;
     const attachmentsImported = bundle?.attachmentsImported ?? staged.attachmentsImported;
     const attachmentsSkipped = bundle?.attachmentsSkipped ?? staged.attachmentsSkipped;
     try {
+      scope.assertActive();
       const outcome = await commitImportedNotes(
         merged,
         staged.result.notesImported,
@@ -315,7 +325,7 @@ export function useAccountActions({
     } catch (error) {
       // Only the local write throws, and it is all or nothing (AUDIT-005): no note was written, so
       // nothing references the images just staged. Take them back.
-      if (bundle) await releaseStagedBundle(bundle);
+      if (bundle) await releaseStagedBundle(bundle, scope.ownerId);
       toast(messageOf(error, 'Import failed'), 'error');
     }
   };

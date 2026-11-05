@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '@/lib/supabase/client';
+import { ownerAccessToken } from '@/lib/supabase/ownerSession';
 
 export interface NoteAttachmentMetadata {
   attachmentId: string;
@@ -62,10 +63,13 @@ export async function listPendingDeletedAttachments(): Promise<PendingDeletedAtt
 export async function purgeDeletedNoteAttachment(
   attachmentId: string,
   noteId: string,
+  ownerId?: string,
 ): Promise<void> {
-  const { error } = await getSupabaseClient().rpc('purge_deleted_note_attachment', {
+  const token = ownerId ? await ownerAccessToken(ownerId) : null;
+  const request = getSupabaseClient().rpc('purge_deleted_note_attachment', {
     p_attachment_id: attachmentId,
     p_note_id: noteId,
   });
+  const { error } = await (token ? request.setHeader('Authorization', `Bearer ${token}`) : request);
   if (error) throw error;
 }

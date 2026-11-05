@@ -8,6 +8,7 @@ import {
 import { useNoteLabels } from '@/hooks/useNoteLabels';
 import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { saveNote, removeNote } from '@/lib/notes/noteActions';
+import { captureOwnerScope } from '@/lib/local/ownerScope';
 import { markEditorSavePending, markEditorSaveSettled } from '@/lib/notes/pendingEditorSaves';
 import {
   releaseCopiedPendingAttachments,
@@ -30,7 +31,6 @@ import {
   pendingStoragePath,
 } from '@/lib/attachments/attachmentPaths';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
-import { getAttachmentBlobStore } from '@/lib/attachments/attachmentBlobStoreRegistry';
 import { releasePendingAttachment, stagePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
 import { revokeAttachmentPreviewUrl } from '@/lib/attachments/attachmentPreviewCache';
 import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
@@ -76,6 +76,9 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       nextNotePosition(),
     );
   });
+  const ownerScope = useRef(captureOwnerScope());
+  const draftRevision = useRef(0);
+  const saveChain = useRef<Promise<unknown>>(Promise.resolve());
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef(state);
   /** The version this editor last loaded or wrote — tells its own echo from another device's edit. */
@@ -107,8 +110,10 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     const savingForRoute = loadedRouteRef.current;
     const isCurrentRoute = () => loadedRouteRef.current === savingForRoute;
 
+    if (!ownerScope.current.isActive()) return { status: 'failed', error: new Error('Account changed') };
+    const savingRevision = draftRevision.current;
     const current = stateRef.current;
-    if (isNoteEmpty(current)) return { status: 'unchanged' };
+    if (!current.id && isNoteEmpty(current)) return { status: 'unchanged' };
 
     // An edit route whose note never loaded (see the noteId effect) must never be saved: it has
     // no id, so the allocate-new-id path below would mint a phantom note. Only a 'new' route or
@@ -140,6 +145,9 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         })),
       };
     }
+
+    // Reserve a new identity before any suspension or later autosave.
+    if (!current.id) { stateRef.current = working; setState(working); }
 
     // Clamp to the same caps the RPCs enforce, so an oversized paste can never wedge
     // the editor in a permanently-failing autosave. The input maxLength attributes are the
@@ -204,13 +212,14 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       // Only once the copy is saved: until then the draft's own staged images are the ones to keep.
       if (forkedFrom) await releaseCopiedPendingAttachments(forkedFrom, stored ?? null);
       if (isCurrentRoute()) {
-        setState((prev) => ({
-          ...working,
-          isSaving: false,
-          lastSavedAt: updatedTimestamp,
-          saveFailed: false,
-          conflictCopy: forked || prev.conflictCopy === true,
-        }));
+        const latest = stateRef.current;
+        const next = draftRevision.current === savingRevision ? working : {
+          ...latest, id: working.id, localId: working.localId,
+          serverUpdatedAt: working.serverUpdatedAt,
+        };
+        stateRef.current = { ...next, isSaving: false, lastSavedAt: updatedTimestamp,
+          saveFailed: false, conflictCopy: forked || latest.conflictCopy === true };
+        setState(stateRef.current);
       }
       return { status: 'saved', noteId: note.id };
     } catch (error) {
@@ -229,7 +238,9 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     savesInFlight.current += 1;
     markEditorSavePending(saveTracker.current);
     try {
-      return await persistDraft();
+      const next = saveChain.current.catch(() => undefined).then(() => persistDraft());
+      saveChain.current = next;
+      return await next;
     } finally {
       savesInFlight.current -= 1;
       settleIfIdle();
@@ -353,6 +364,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
 
   const patch = useCallback(
     (updater: (prev: EditorState) => EditorState) => {
+      draftRevision.current += 1;
       setState((prev) => {
         const next = updater(prev);
         stateRef.current = next;
@@ -541,14 +553,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     },
     removeAttachment: (attachmentId: string) => {
       const current = stateRef.current;
-      const removed = current.attachments.find((attachment) => attachment.id === attachmentId);
-      if (removed && current.id && !isPendingAttachment(removed.storagePath)) {
-        void getAttachmentBlobStore()
-          .delete(current.id, attachmentId)
-          .catch(() => {});
-      }
-      // Deliberate removal, so the staged blob is no longer the only copy of anything visible.
-      void releasePendingAttachment(attachmentId, current.id ?? undefined);
+      // Cleanup follows persistence and cloud acknowledgement in noteActions.
       if (current.id) {
         revokeAttachmentPreviewUrl(current.id, attachmentId);
       }

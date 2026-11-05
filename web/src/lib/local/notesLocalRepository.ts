@@ -36,6 +36,8 @@ export interface LocalOwnerMeta {
    * the only copy of the user's latest text, so no remote apply may overwrite or delete it.
    */
   pendingPushes?: Record<string, PendingPush>;
+  /** Images removed by an edit; retire only after that edit is accepted remotely. */
+  pendingAttachmentRemovals?: Record<string, import('@/types/attachment').Attachment[]>;
   /**
    * The account's cloud wipe generation, as last published by the server. 0 means never wiped.
    * Every note mutation presents this so a wipe cannot be reversed by a stale device — see
@@ -320,7 +322,7 @@ function mergeKnownCloudIds(
  * The marker keeps the base revision of the *first* unconfirmed edit: later edits build on the same
  * cloud version until a push succeeds, so the server can still tell whether someone else changed it.
  */
-export async function putLocalEdit(ownerId: string, note: Note): Promise<void> {
+export async function putLocalEdit(ownerId: string, note: Note, removed: import('@/types/attachment').Attachment[] = []): Promise<void> {
   const record = await toStoredRecord(ownerId, note);
   await withNotesAndMeta(ownerId, (notes, meta) => {
     notes.put(record);
@@ -330,7 +332,11 @@ export async function putLocalEdit(ownerId: string, note: Note): Promise<void> {
       baseRevision: previous ? previous.baseRevision : (meta.noteRevisions?.[note.id] ?? null),
       seq: (previous?.seq ?? 0) + 1,
     };
-    return { ...meta, pendingPushes: pending };
+    const removals = { ...meta.pendingAttachmentRemovals };
+    const retained = new Set(note.attachments.map(a => a.id));
+    removals[note.id] = [...new Map([...(removals[note.id] ?? []), ...removed]
+      .filter(a => !retained.has(a.id)).map(a => [a.id, a])).values()];
+    return { ...meta, pendingPushes: pending, pendingAttachmentRemovals: removals };
   });
 }
 

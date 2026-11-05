@@ -9,6 +9,7 @@ import { getRemoteNotesDataSource } from '@/lib/remote/remoteNotesDataSourceRegi
 import { useNotesStore } from '@/store/notesStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Note } from '@/types/note';
+import { captureOwnerScope } from '@/lib/local/ownerScope';
 
 /**
  * Loads notes from IndexedDB into the in-memory store.
@@ -22,7 +23,10 @@ import type { Note } from '@/types/note';
  * readable notes go on screen; the rest are reported so the UI can say they are still on disk.
  */
 export async function loadLocalNotesIntoStore(ownerId: string): Promise<Note[]> {
+  const scope = captureOwnerScope();
+  if (scope.ownerId && scope.ownerId !== ownerId) return [];
   const { notes, unreadable } = await listStoredNotes(ownerId);
+  if (!scope.isActive()) return [];
   useNotesStore.getState().setUnreadableNoteIds(unreadable.map((row) => row.id));
   if (unreadable.length > 0) {
     console.warn(
@@ -50,7 +54,10 @@ export async function loadLocalNotesIntoStore(ownerId: string): Promise<Note[]> 
  * is set for the owner.
  */
 export async function hydrateIndexedDbFromRemote(userId: string): Promise<void> {
+  const scope = captureOwnerScope();
+  if (scope.ownerId && scope.ownerId !== userId) return;
   const meta = await getOwnerMeta(userId);
+  if (!scope.isActive()) return;
   if (meta?.remoteHydrated ?? meta?.firebaseHydrated) {
     await loadLocalNotesIntoStore(userId);
     return;
@@ -58,6 +65,7 @@ export async function hydrateIndexedDbFromRemote(userId: string): Promise<void> 
 
   const remote = getRemoteNotesDataSource();
   const snapshot = await remote.fetchAllNotes(userId);
+  if (!scope.isActive()) return;
   await putNotes(userId, snapshot);
   await setOwnerMeta(userId, {
     remoteHydrated: true,
@@ -69,6 +77,7 @@ export async function hydrateIndexedDbFromRemote(userId: string): Promise<void> 
   // path reads, so those extras must stay visible. An empty snapshot is also not authoritative
   // over a populated local namespace (Firebase→Supabase migration, or the wrong account).
   const { notes: local, unreadable } = await listStoredNotes(userId);
+  if (!scope.isActive()) return;
   useNotesStore.getState().setUnreadableNoteIds(unreadable.map((row) => row.id));
   const isDeleted = useTombstoneStore.getState().isDeleted;
   const liveLocal = local.filter((note) => !isDeleted(note.id));

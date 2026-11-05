@@ -13,6 +13,10 @@ import com.aus.notelikeus.domain.repository.UnsyncedWork
 import com.aus.notelikeus.ui.main.CloudAccount
 import com.aus.notelikeus.ui.main.CloudSyncEvent
 import com.aus.notelikeus.ui.main.CloudSyncStatus
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import com.aus.notelikeus.data.sync.LocalCommitGate
+import com.aus.notelikeus.domain.repository.LocalCommitToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +32,10 @@ class DesktopSyncManager(
     /** Timestamps the accepted request; injected so tests stay deterministic. */
     private val now: () -> Long = { System.currentTimeMillis() },
 ) : SyncManager {
+
+    private val accountLifecycle = Mutex()
+
+    private fun captureAccount() = LocalCommitGate.captureCoherent { sessionManager.getCurrentAccount().userId }
 
     private val _syncStatus = MutableStateFlow(CloudSyncStatus.Offline)
     override val syncStatus: StateFlow<CloudSyncStatus> = _syncStatus.asStateFlow()
@@ -63,8 +71,10 @@ class DesktopSyncManager(
         sessionManager.requestEmailCode(email)
 
     override suspend fun signInWithEmailCode(email: String, code: String): Result<Unit> {
-        return sessionManager.signInWithEmailCode(email, code).onSuccess {
-            onSignedIn()
+        return accountLifecycle.withLock {
+            sessionManager.signInWithEmailCode(email, code).onSuccess {
+                onSignedIn()
+            }
         }
     }
 
@@ -73,44 +83,52 @@ class DesktopSyncManager(
         password: String,
         create: Boolean
     ): Result<Unit> {
-        // Every sign-in runs onSignedIn: without it the session is saved but the account state,
-        // account isolation and any owed cloud wipe never catch up, and the UI stays on the gate.
-        return sessionManager.signInWithEmailPassword(email, password, create).onSuccess {
-            onSignedIn()
+        return accountLifecycle.withLock {
+            // Every sign-in runs onSignedIn: without it the session is saved but the account state,
+            // account isolation and any owed cloud wipe never catch up, and the UI stays on the gate.
+            sessionManager.signInWithEmailPassword(email, password, create).onSuccess {
+                onSignedIn()
+            }
         }
     }
 
     override suspend fun signOut(deleteCloudData: Boolean): Result<Unit> {
-        if (deleteCloudData) {
-            // Persist the accepted request before any destructive work (F-8) — same ordering as Android,
-            // on a durable store that local account isolation does not touch.
-            val owner = sessionManager.getCurrentAccount().userId
-                ?: return Result.failure(IllegalStateException("not signed in"))
-            when (
-                val outcome = cloudWipeCoordinator.requestWipe(owner, now()) {
-                    syncEngine.deleteAllCloudData().getOrThrow()
+        return accountLifecycle.withLock {
+            if (deleteCloudData) {
+                // Persist the accepted request before any destructive work (F-8) — same ordering as Android,
+                // on a durable store that local account isolation does not touch.
+                val owner = sessionManager.getCurrentAccount().userId
+                    ?: return Result.failure(IllegalStateException("not signed in"))
+                when (
+                    val outcome = cloudWipeCoordinator.requestWipe(owner, now()) {
+                        syncEngine.deleteAllCloudData().getOrThrow()
+                    }
+                ) {
+                    is CloudWipeOutcome.NotStarted -> return Result.failure(outcome.failure)
+                    is CloudWipeOutcome.Failed -> return Result.failure(outcome.failure)
+                    // Nothing was wiped and the request is not owed; the caller asks for a new code (AUD-005).
+                    is CloudWipeOutcome.ReauthenticationRequired -> return Result.failure(outcome.failure)
+                    CloudWipeOutcome.Completed, is CloudWipeOutcome.CompletedButStillPending -> Unit
                 }
-            ) {
-                is CloudWipeOutcome.NotStarted -> return Result.failure(outcome.failure)
-                is CloudWipeOutcome.Failed -> return Result.failure(outcome.failure)
-                // Nothing was wiped and the request is not owed; the caller asks for a new code (AUD-005).
-                is CloudWipeOutcome.ReauthenticationRequired -> return Result.failure(outcome.failure)
-                CloudWipeOutcome.Completed, is CloudWipeOutcome.CompletedButStillPending -> Unit
             }
-        }
-        return sessionManager.signOut().onSuccess {
-            isolator.isolate()
-            _syncStatus.value = CloudSyncStatus.Offline
-            _cloudAccount.value = CloudAccount(isOfflineMode = true)
+            sessionManager.signOut().onSuccess {
+                isolator.isolate()
+                _syncStatus.value = CloudSyncStatus.Offline
+                _cloudAccount.value = CloudAccount(isOfflineMode = true)
+            }
         }
     }
 
     override suspend fun unsyncedWorkBeforeSignOut(): UnsyncedWork =
         syncEngine.unsyncedWorkAfterSyncAttempt()
 
-    override suspend fun deleteAccount(): Result<Unit> = runCatching {
-        accountDeletion.deleteAccount()
-        endDeletedAccountSession()
+    override suspend fun deleteAccount(): Result<Unit> {
+        val origin = captureAccount()
+        return runCatching<Unit> {
+            val owner = origin.initiatingUid ?: error("Sign in again to delete your account.")
+            accountDeletion.deleteAccount(owner)
+            accountLifecycle.withLock { endDeletedAccountSession(origin) }
+        }
     }
 
     /**
@@ -118,11 +136,14 @@ class DesktopSyncManager(
      * a definite answer from the server. A failure here is not reported as a failed deletion: an
      * interrupted isolation is durable and completes at the next startup.
      */
-    private suspend fun endDeletedAccountSession() {
+    private suspend fun endDeletedAccountSession(origin: LocalCommitToken): Boolean {
+        if (origin.initiatingUid == null || sessionManager.getCurrentAccount().userId != origin.initiatingUid ||
+            LocalCommitGate.currentGeneration() != origin.generation) return false
         runCatching { sessionManager.signOut() }
         isolator.isolate()
         _syncStatus.value = CloudSyncStatus.Offline
         _cloudAccount.value = CloudAccount(isOfflineMode = true)
+        return true
     }
 
     override suspend fun syncNotes() {
@@ -157,6 +178,7 @@ class DesktopSyncManager(
         successEvent: (Int) -> CloudSyncEvent? = { null },
         block: suspend () -> Result<Int>,
     ) {
+        val origin = captureAccount()
         var accountDeleted = false
         runTimedSync(
             status = _syncStatus,
@@ -171,8 +193,7 @@ class DesktopSyncManager(
             },
             block = block,
         )
-        if (accountDeleted) {
-            endDeletedAccountSession()
+        if (accountDeleted && accountLifecycle.withLock { endDeletedAccountSession(origin) }) {
             _pendingEvent.value = CloudSyncEvent.AccountDeleted(elsewhere = true)
         }
     }
