@@ -106,6 +106,19 @@ class BackupBundleCodecTest {
         assertTrue(error.message!!.contains("Unsupported bundle version"))
     }
 
+    /**
+     * AUDIT-009: the web reader refuses a bundle that names one entry twice, and this one used to
+     * keep whichever copy came last, so the same file could import different pictures on each client.
+     */
+    @Test
+    fun `bundle naming an entry twice is refused, as on the web`() {
+        val archive = ContractFixtures.readBytes("backup/v4-duplicate-entry-bundle.nlkbak")
+        val error = assertFailsWith<BundleFormatException> {
+            BackupBundleCodec.parseBackupBundle(archive)
+        }
+        assertTrue(error.message!!.contains("duplicate entry name"), error.message)
+    }
+
     @Test
     fun parsesCommittedCrossPlatformWebAndKotlinBundleFixtures() {
         val sampleBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 1, 2, 3, 4)

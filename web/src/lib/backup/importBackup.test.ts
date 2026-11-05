@@ -167,6 +167,26 @@ describe('importNotesFromBackup', () => {
     ).toThrow(/labels must be an array/);
   });
 
+  // AUDIT-010: a note's own labels were not checked. An object or a number threw a raw TypeError,
+  // and a string was read character by character into one-letter labels. Kotlin refuses the file.
+  it.each([
+    ['an object', { name: 'Work' }],
+    ['a number', 42],
+    ['a string', 'Work'],
+  ])("rejects a note whose labels is %s, as Kotlin does", (_kind, labels) => {
+    expect(() =>
+      importNotesFromBackup({ version: 3, notes: [{ title: 'n', labels }] }, []),
+    ).toThrow(/^Note labels must be an array$/);
+  });
+
+  it('still imports a note with no labels or null labels', () => {
+    const { result } = importNotesFromBackup(
+      { version: 3, notes: [{ title: 'a' }, { title: 'b', labels: null }] },
+      [],
+    );
+    expect(result.notesImported).toBe(2);
+  });
+
   it('rejects negative, fractional, and non-finite versions', () => {
     for (const version of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() => importNotesFromBackup({ version, notes: [{ title: 'n' }] }, [])).toThrow(

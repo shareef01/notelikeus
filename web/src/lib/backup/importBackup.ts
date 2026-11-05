@@ -160,6 +160,15 @@ export function importNotesFromBackup(
   if (noteEntries.length > MAX_BACKUP_NOTES) {
     throw new Error(`Backup has too many notes (max ${MAX_BACKUP_NOTES})`);
   }
+  // Checked before anything is read, as the top-level labels are (AUDIT-010). Iterating a label
+  // field that is not a list threw a raw TypeError, or split a string into one-letter labels;
+  // Kotlin refuses the whole file, and so does this.
+  for (const entry of noteEntries) {
+    const labels = entry && typeof entry === 'object' ? (entry as { labels?: unknown }).labels : null;
+    if (labels != null && !Array.isArray(labels)) {
+      throw new Error('Note labels must be an array');
+    }
+  }
 
   const existingLabelKeys = new Set(
     existingNotes.flatMap((note) => note.labels.map((label) => label.name.toLowerCase())),

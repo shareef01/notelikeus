@@ -355,6 +355,11 @@ object BackupBundleCodec {
             if (!isSafeZipEntryName(entry.name)) {
                 throw BundleFormatException("Backup bundle contains an unsafe entry name")
             }
+            // Refused, as on the web (AUDIT-009): keeping either copy would let the same file import
+            // different pictures on different clients.
+            if (entry.name in byName) {
+                throw BundleFormatException("Backup bundle has a duplicate entry name")
+            }
             if (byName.size >= BackupBundleLimits.MAX_ZIP_ENTRIES) {
                 throw BundleFormatException("Backup bundle has too many entries")
             }
