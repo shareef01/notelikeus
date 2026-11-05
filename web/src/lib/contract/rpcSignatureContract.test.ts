@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { rpcWithHeaders } from '@/test/rpcWithHeaders';
 
 /**
  * The argument objects the web client sends must name a function the database actually has.
@@ -18,11 +19,11 @@ const sent: Array<{ name: string; args: Record<string, unknown> }> = [];
 
 vi.mock('@/lib/supabase/client', () => ({
   getSupabaseClient: () => ({
-    rpc: async (name: string, args: Record<string, unknown> = {}) => {
+    rpc: rpcWithHeaders(async (name: string, args: Record<string, unknown> = {}) => {
       sent.push({ name, args });
       return { data: responses[name] ?? { status: 'applied', revision: 2 }, error: null };
-    },
-    auth: { getSession: async () => ({ data: { session: { user: { id: USER } } }, error: null }) },
+    }),
+    auth: { getSession: async () => ({ data: { session: { user: { id: USER }, access_token: 'test-token' } }, error: null }) },
   }),
   isSupabaseBackendEnabled: () => true,
 }));
@@ -37,6 +38,7 @@ import {
   pullIncrementalChanges,
 } from '@/lib/supabase/supabaseSyncEngine';
 import { useTombstoneStore } from '@/store/tombstoneStore';
+import { useAuthStore } from '@/store/authStore';
 import { createEmptyNote } from '@/types/note';
 
 const USER = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -165,6 +167,7 @@ const note = () => ({ ...createEmptyNote({ id: '42', localId: 42, title: 't' }),
 describe('web RPC arguments match a deployed signature', () => {
   beforeEach(async () => {
     sent.length = 0;
+    useAuthStore.getState().setUser({ uid: USER, email: null, displayName: null });
     useTombstoneStore.getState().reset();
     await resetNotesDatabaseForTests();
   });

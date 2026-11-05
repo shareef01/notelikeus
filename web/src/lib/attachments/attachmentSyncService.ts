@@ -108,7 +108,7 @@ export class AttachmentSyncIncompleteError extends Error {
  * Every attachment is attempted even after one fails, and a failure throws
  * {@link AttachmentSyncIncompleteError} carrying the partly rewritten note.
  */
-export async function syncNoteAttachments(note: Note): Promise<Note> {
+export async function syncNoteAttachments(note: Note, ownerId = resolveOwnerId()): Promise<Note> {
   if (!isR2AttachmentsEnabled() || note.attachments.length === 0) return note;
 
   const store = getAttachmentBlobStore();
@@ -122,15 +122,16 @@ export async function syncNoteAttachments(note: Note): Promise<Note> {
     }
     const pendingId = attachment.storagePath.slice(ATTACHMENT_PENDING_PREFIX.length);
     try {
+      if (!ownerId) throw new Error('Missing account for attachment upload');
       // eslint-disable-next-line no-await-in-loop -- one attachment at a time, in note order
-      const pending = peekPendingAttachment(pendingId) ?? (await getPendingAttachmentBlob(pendingId, note.id));
+      const pending = peekPendingAttachment(pendingId, ownerId) ?? (await getPendingAttachmentBlob(pendingId, note.id, ownerId));
       if (!pending) {
         // eslint-disable-next-line no-await-in-loop -- one attachment at a time, in note order
-        synced.push(await recoverUploadedAttachment(note, attachment, pendingId));
+        synced.push(await recoverUploadedAttachment(note, attachment, pendingId, ownerId));
         continue;
       }
       // eslint-disable-next-line no-await-in-loop -- one attachment at a time, in note order
-      const result = await store.upload(note.id, attachment.id, pending.blob, pending.mimeType);
+      const result = await store.upload(note.id, attachment.id, pending.blob, pending.mimeType, ownerId);
       synced.push({
         ...attachment,
         storagePath: `${ATTACHMENT_R2_PREFIX}${result.objectKey}`,
@@ -162,12 +163,11 @@ async function recoverUploadedAttachment(
   note: Note,
   attachment: Attachment,
   pendingId: string,
+  ownerId: string,
 ): Promise<Attachment> {
-  const ownerId = resolveOwnerId();
-  if (!ownerId) throw new Error(`Missing local blob for pending attachment ${pendingId}`);
   let blob: Blob | undefined;
   try {
-    blob = await getAttachmentBlobStore().download(note.id, attachment.id);
+    blob = await getAttachmentBlobStore().download(note.id, attachment.id, ownerId);
   } catch {
     blob = undefined;
   }

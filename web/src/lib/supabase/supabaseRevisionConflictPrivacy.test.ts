@@ -1,21 +1,27 @@
 ﻿import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { rpcWithHeaders } from '@/test/rpcWithHeaders';
 
 const { rpcMock } = vi.hoisted(() => ({ rpcMock: vi.fn() }));
 
 vi.mock('@/lib/supabase/client', () => ({
-  getSupabaseClient: () => ({ rpc: rpcMock }),
+  getSupabaseClient: () => ({
+    rpc: rpcWithHeaders(rpcMock),
+    auth: { getSession: async () => ({ data: { session: { user: { id: USER }, access_token: 'test-token' } }, error: null }) },
+  }),
   isSupabaseBackendEnabled: () => true,
 }));
 
 import { applyNoteChange } from '@/lib/supabase/supabaseSyncEngine';
 import { createEmptyNote } from '@/types/note';
+import { useAuthStore } from '@/store/authStore';
 
 const USER = '11111111-1111-4111-8111-111111111111';
 
 describe('F07: Revision Conflict Privacy (No Note Title Leak)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAuthStore.getState().setUser({ uid: USER, email: null, displayName: null });
   });
 
   it('revisionConflictErrorDoesNotContainNoteTitle', async () => {

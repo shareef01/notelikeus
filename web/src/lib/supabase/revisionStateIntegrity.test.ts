@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseNotePayload } from '@/lib/supabase/supabaseNoteMapper';
+import { rpcWithHeaders } from '@/test/rpcWithHeaders';
 
 /**
  * F-03 / F-04: the web client's per-note revisions and pull cursor.
@@ -14,13 +15,13 @@ const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 
 vi.mock('@/lib/supabase/client', () => ({
   getSupabaseClient: () => ({
-    rpc: async (name: string, args: Record<string, unknown> = {}) => {
+    rpc: rpcWithHeaders(async (name: string, args: Record<string, unknown> = {}) => {
       rpcCalls.push({ name, args });
       const handler = handlers[name];
       if (!handler) return { data: null, error: new Error(`unexpected rpc ${name}`) };
       return { data: handler(args), error: null };
-    },
-    auth: { getSession: async () => ({ data: { session: { user: { id: USER } } }, error: null }) },
+    }),
+    auth: { getSession: async () => ({ data: { session: { user: { id: USER }, access_token: 'test-token' } }, error: null }) },
   }),
   isSupabaseBackendEnabled: () => true,
 }));
@@ -38,6 +39,7 @@ import {
 } from '@/lib/supabase/revisionStore';
 import { applyNoteChange, pullIncrementalChanges } from '@/lib/supabase/supabaseSyncEngine';
 import { useTombstoneStore } from '@/store/tombstoneStore';
+import { useAuthStore } from '@/store/authStore';
 import { createEmptyNote, type Note } from '@/types/note';
 
 const USER = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -63,6 +65,7 @@ beforeEach(async () => {
   for (const key of Object.keys(handlers)) delete handlers[key];
   rpcCalls.length = 0;
   useTombstoneStore.getState().reset();
+  useAuthStore.getState().setUser({ uid: USER, email: null, displayName: null });
   await resetNotesDatabaseForTests();
   indexedDB.deleteDatabase(NOTES_DB_NAME);
   await resetNotesDatabaseForTests();

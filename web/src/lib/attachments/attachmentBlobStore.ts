@@ -10,7 +10,8 @@ export interface AttachmentBlobStore {
     attachmentId: string,
     blob: Blob,
     mimeType: string,
+    ownerId?: string,
   ): Promise<AttachmentBlobUploadResult>;
-  download(noteId: string, attachmentId: string): Promise<Blob>;
+  download(noteId: string, attachmentId: string, ownerId?: string): Promise<Blob>;
   delete(noteId: string, attachmentId: string): Promise<void>;
 }

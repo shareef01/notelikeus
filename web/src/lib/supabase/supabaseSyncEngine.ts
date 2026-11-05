@@ -6,6 +6,7 @@ import {
   withoutRestoredDeletes,
 } from '@/lib/notes/restoreRetry';
 import { getSupabaseClient } from '@/lib/supabase/client';
+import { ownerAccessToken } from '@/lib/supabase/ownerSession';
 import { fetchPagedSnapshot } from '@/lib/supabase/pagedSnapshot';
 import {
   forgetNoteRevision,
@@ -21,7 +22,7 @@ import {
 } from '@/lib/supabase/supabaseNoteMapper';
 import {
   asWipeRefusal,
-  recordWipeGeneration,
+  observeRemoteWipeGeneration,
   wipeGenerationForPush,
 } from '@/lib/supabase/wipeGeneration';
 import { useTombstoneStore } from '@/store/tombstoneStore';
@@ -158,8 +159,13 @@ export async function applyNoteChange(
   baseRevision: number | null,
 ): Promise<Note> {
   const wipeGeneration = await wipeGenerationForPush(userId);
+  const token = await ownerAccessToken(userId);
   const args = noteToSupabaseRpcArgs(note, baseRevision, wipeGeneration);
-  const { data, error } = await getSupabaseClient().rpc('apply_note_change', args);
+  const { data, error } = await getSupabaseClient().rpc('apply_note_change', args)
+    .setHeader('Authorization', `Bearer ${token}`);
+  // The request is bound to its owner, but the response must not mutate the next session's
+  // global tombstone state after a sign-out/account switch.
+  await ownerAccessToken(userId);
   // A wipe refusal throws a typed error and blocks every later push; anything else rethrows.
   if (error) await asWipeRefusal(userId, error);
   const result = (data ?? {}) as ApplyNoteResult;
@@ -219,7 +225,15 @@ export async function pullIncrementalChanges(
     // Every pull carries the generation, so an account wiped on another device is learned about
     // here even when it had no changes left to report.
     if (typeof payload.wipe_generation === 'number') {
-      await recordWipeGeneration(userId, payload.wipe_generation);
+      const blocked = await observeRemoteWipeGeneration(userId, payload.wipe_generation);
+      if (!stillActive()) return changed;
+      if (blocked) {
+        useNotesStore.getState().setCloudWipeNotice({
+          generation: payload.wipe_generation,
+          localNoteCount: notesById.size,
+        });
+        return changed;
+      }
     }
     if (changes.length === 0) break;
 

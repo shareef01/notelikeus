@@ -18,10 +18,7 @@ import {
 } from "@/lib/supabase/supabaseSyncEngine";
 import {
   asWipeRefusal,
-  blockPushesAfterWipe,
-  pushesBlockedByWipe,
-  readWipeGeneration,
-  recordWipeGeneration,
+  observeRemoteWipeGeneration,
   wipeGenerationForPush,
 } from "@/lib/supabase/wipeGeneration";
 import {
@@ -119,6 +116,14 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       await flushPendingPushes(userId, { isActive: () => session.isActive() });
       if (!session.isActive()) return;
       const fetched = await fetchSnapshotNotes({ hydrateAttachments: false });
+      if (!session.isActive()) return;
+      if (await observeRemoteWipeGeneration(userId, fetched.wipeGeneration)) {
+        if (session.isActive()) useNotesStore.getState().setCloudWipeNotice({
+          generation: fetched.wipeGeneration,
+          localNoteCount: useNotesStore.getState().notes.length,
+        });
+        return;
+      }
       if (!session.isActive()) return;
       const prior = await loadRevisionState(userId);
       const local = await listNotes(userId);
@@ -443,13 +448,7 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
     // are the result of an intentional wipe rather than a truncated read. Learning it is not the
     // same as being allowed to upload: re-creating the notes is the user's call, which is why the
     // block stays set and the local copies are neither uploaded nor deleted here.
-    const knownGeneration = await readWipeGeneration(userId);
-    const wipedElsewhere = wipeGeneration > knownGeneration;
-    await recordWipeGeneration(userId, wipeGeneration);
-    if (wipedElsewhere) {
-      await blockPushesAfterWipe(userId);
-    }
-    if (wipedElsewhere || (await pushesBlockedByWipe(userId))) {
+    if (await observeRemoteWipeGeneration(userId, wipeGeneration)) {
       useNotesStore.getState().setCloudWipeNotice({
         generation: wipeGeneration,
         localNoteCount: localNotes.filter((note) => !isDeleted(note.id)).length,

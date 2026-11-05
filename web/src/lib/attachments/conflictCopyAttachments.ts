@@ -26,8 +26,8 @@ function pendingIdOf(attachment: Attachment): string {
  * A pending image's bytes live nowhere but this device's IndexedDB, keyed to the note that staged
  * them, so a conflicted copy that dropped them would drop the only copy. Each one is staged again
  * under the copy with a new attachment id (the cloud keys attachments by id per owner, so two
- * notes cannot share one) before the copy is written; an image whose staging fails is left out
- * rather than referenced without bytes. Uploaded images are not copied: they are in the cloud
+ * notes cannot share one) before the copy is written. A missing image or failed staging write
+ * refuses the whole copy, leaving the original note and its bytes available for retry. Uploaded images are not copied: they are in the cloud
  * already, under the original note, which the conflict keeps.
  */
 export async function withPendingAttachments(
@@ -36,13 +36,20 @@ export async function withPendingAttachments(
   ownerId?: string,
 ): Promise<Note> {
   const attachments: Attachment[] = [];
-  for (const attachment of source.attachments) {
-    if (!isPendingAttachment(attachment.storagePath)) continue;
-    const pending = await getPendingAttachmentBlob(pendingIdOf(attachment), source.id, ownerId);
-    if (!pending) continue;
-    const id = createAttachmentId();
-    if (!(await storePendingAttachment(id, pending.blob, pending.mimeType, copy.id, ownerId))) continue;
-    attachments.push({ ...attachment, id, noteId: copy.localId, storagePath: pendingStoragePath(id) });
+  try {
+    for (const attachment of source.attachments) {
+      if (!isPendingAttachment(attachment.storagePath)) continue;
+      const pending = await getPendingAttachmentBlob(pendingIdOf(attachment), source.id, ownerId);
+      if (!pending) throw new Error(`Missing image ${attachment.id} for its conflicted copy`);
+      const id = createAttachmentId();
+      if (!(await storePendingAttachment(id, pending.blob, pending.mimeType, copy.id, ownerId))) {
+        throw new Error(`Could not stage image ${attachment.id} for its conflicted copy`);
+      }
+      attachments.push({ ...attachment, id, noteId: copy.localId, storagePath: pendingStoragePath(id) });
+    }
+  } catch (error) {
+    await releaseCopyAttachments({ ...copy, attachments }, ownerId);
+    throw error;
   }
   return { ...copy, attachments };
 }
@@ -96,7 +103,7 @@ export async function reclaimUncommittedUploads(
     }
     let blob: Blob;
     try {
-      blob = await store.download(local.id, attachment.id);
+      blob = await store.download(local.id, attachment.id, ownerId);
     } catch (error) {
       if (noteGone) continue;
       throw error;

@@ -273,7 +273,7 @@ describe('syncNoteAttachments', () => {
 
     const synced = await syncNoteAttachments(note);
 
-    expect(download).toHaveBeenCalledWith('note-4', 'att-gone');
+    expect(download).toHaveBeenCalledWith('note-4', 'att-gone', 'user-1');
     expect(synced.attachments[0]).toMatchObject({
       id: 'att-gone',
       storagePath: 'r2:owners/user-1/notes/note-4/att-gone',

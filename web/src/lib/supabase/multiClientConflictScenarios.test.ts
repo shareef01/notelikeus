@@ -1,5 +1,6 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { rpcWithHeaders } from '@/test/rpcWithHeaders';
 
 const { rpcMock } = vi.hoisted(() => ({ rpcMock: vi.fn() }));
 
@@ -8,9 +9,9 @@ const USER_B = '22222222-2222-4222-8222-222222222222';
 
 vi.mock('@/lib/supabase/client', () => ({
   getSupabaseClient: () => ({
-    rpc: rpcMock,
+    rpc: rpcWithHeaders(rpcMock),
     auth: {
-      getSession: () => Promise.resolve({ data: { session: { user: { id: USER_A } } }, error: null }),
+      getSession: () => Promise.resolve({ data: { session: { user: { id: USER_A }, access_token: 'test-token' } }, error: null }),
     },
   }),
   isSupabaseBackendEnabled: () => true,
@@ -22,6 +23,7 @@ import { resetNotesDatabaseForTests } from '@/lib/local/idb';
 import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNotesDataSource';
 import { rememberNoteRevision } from '@/lib/supabase/revisionStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
+import { useAuthStore } from '@/store/authStore';
 import { createEmptyNote, type Note } from '@/types/note';
 import { CloudWipedElsewhereError } from '@/lib/supabase/wipeGeneration';
 import { NoteConflictError } from '@/lib/supabase/supabaseSyncEngine';
@@ -34,6 +36,7 @@ describe('Phase B3: Multi-Client Synchronization Integrity & Conflict Scenarios'
   beforeEach(async () => {
     vi.clearAllMocks();
     useTombstoneStore.getState().reset();
+    useAuthStore.getState().setUser({ uid: USER_A, email: null, displayName: null });
     await resetNotesDatabaseForTests();
   });
 
@@ -162,18 +165,14 @@ describe('Phase B3: Multi-Client Synchronization Integrity & Conflict Scenarios'
 
   // Scenario 6: A client attempts a mutation using another user’s note identifier
   it('Scenario 6: cross-account mutation attempt is strictly rejected by owner isolation', async () => {
-    // If a request tries to mutate a note belonging to another owner, server returns not found / conflict
-    rpcMock.mockResolvedValueOnce({
-      data: { status: 'conflict', error: 'note_not_found' },
-      error: null,
-    });
-
+    // The current session is A; a stale operation naming B must stop before any RPC is sent.
     await expect(
       supabaseRemoteNotesDataSource.upsertNote(
         USER_B,
         note('60', { title: 'Attempted cross-account hijack' }),
       ),
-    ).rejects.toThrow(NoteConflictError);
+    ).rejects.toThrow('Account changed during sync');
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
   // Scenario 7: A client attempts to replay an obsolete revision
