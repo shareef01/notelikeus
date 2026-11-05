@@ -8,6 +8,7 @@ import {
   loadLastMergedUserId,
   saveLastMergedUserId,
 } from '@/lib/notes/lastMergedUser';
+import { restorePendingDeletions } from '@/lib/notes/pendingDeletionStash';
 import { formatUnknownError } from '@/lib/errors/formatUnknownError';
 import { startNotesRealtimeSync, stopNotesRealtimeSync } from '@/lib/notes/notesSyncService';
 import { useAuthStore, selectUserId } from '@/store/authStore';
@@ -42,6 +43,9 @@ export function useNotesSync(enabled: boolean) {
         } else {
           useNotesStore.getState().setNotes([]);
         }
+        // Deletions this account made before another account or guest mode took over (AUDIT-004).
+        // Before the first snapshot, so the notes they delete are not pulled back from the cloud.
+        restorePendingDeletions(userId);
         useNotesStore.getState().setStatus('loading');
 
         await migrateLegacyLocalNotes(userId);
