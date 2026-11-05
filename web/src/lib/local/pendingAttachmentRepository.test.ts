@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { looksSealed } from '@/lib/crypto/attachmentBytesCodec';
 import { resetAttachmentCryptoKeyForTests } from '@/lib/crypto/attachmentCryptoKey';
 import { PENDING_ATTACHMENTS_STORE } from '@/lib/local/constants';
@@ -9,6 +9,7 @@ import {
   withStore,
 } from '@/lib/local/idb';
 import {
+  AttachmentEncryptionUnavailableError,
   clearPendingAttachmentsForOwner,
   deletePendingAttachment,
   findPendingAttachmentById,
@@ -117,6 +118,61 @@ describe('pendingAttachmentRepository', () => {
 
     await deletePendingAttachment('user-del', 'note-del', 'att-del');
     expect(await getPendingAttachment('user-del', 'note-del', 'att-del')).toBeNull();
+  });
+
+  // AUDIT-008: a missing key used to fall back to writing the image unencrypted.
+  describe('when the key that seals staged images cannot be loaded', () => {
+    const record = () => {
+      const blob = new Blob(['private-photo'], { type: 'image/png' });
+      return {
+        ownerId: 'user-nokey',
+        noteId: 'note-nokey',
+        attachmentId: 'att-nokey',
+        blob,
+        mimeType: 'image/png',
+        sizeBytes: blob.size,
+        createdAt: 1,
+      };
+    };
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('refuses the write and stores nothing, rather than store it unencrypted', async () => {
+      vi.stubGlobal('crypto', { ...globalThis.crypto, subtle: undefined });
+
+      await expect(putPendingAttachment(record())).rejects.toBeInstanceOf(
+        AttachmentEncryptionUnavailableError,
+      );
+
+      const raw = await withStore<unknown>(PENDING_ATTACHMENTS_STORE, 'readonly', (store) =>
+        store.get(['user-nokey', 'note-nokey', 'att-nokey']),
+      );
+      expect(raw).toBeUndefined();
+    });
+
+    it('tells the editor why, so it can say so', async () => {
+      vi.stubGlobal('crypto', { ...globalThis.crypto, subtle: undefined });
+      const { stagePendingAttachment } = await import('@/lib/attachments/pendingAttachmentStore');
+
+      const outcome = await stagePendingAttachment(
+        'att-nokey', record().blob, 'image/png', 'note-nokey', 'user-nokey',
+      );
+
+      expect(outcome).toBe('encryption-unavailable');
+    });
+
+    it('works again once the key loads, since a failed load is not remembered', async () => {
+      vi.stubGlobal('crypto', { ...globalThis.crypto, subtle: undefined });
+      await expect(putPendingAttachment(record())).rejects.toThrow();
+      vi.unstubAllGlobals();
+
+      await putPendingAttachment(record());
+
+      const retrieved = await getPendingAttachment('user-nokey', 'note-nokey', 'att-nokey');
+      expect(await retrieved?.blob.text()).toBe('private-photo');
+    });
   });
 
   it('seals bytes at rest in IndexedDB while returning plaintext to callers', async () => {
