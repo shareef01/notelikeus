@@ -13,7 +13,6 @@ class SupabaseSessionStore(
     @Volatile private var session: SupabaseAuthSession? = persistence.load()
     private var incarnation = 0L
 
-    fun hasSession(): Boolean = session != null
     fun userId(): String? = session?.userId
     fun email(): String? = session?.email
     fun account(): CloudSessionAccount {
