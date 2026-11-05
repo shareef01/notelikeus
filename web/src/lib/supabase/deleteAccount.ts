@@ -1,7 +1,8 @@
 import { loadAttachmentsWorkerUrl } from '@/lib/attachments/attachmentConfig';
 import { ReauthenticationRequiredError } from '@/lib/auth/reauthentication';
 import { getSupabaseClient } from '@/lib/supabase/client';
-import { ensureSupabaseAuthenticated } from '@/lib/supabase/supabaseSyncEngine';
+import { ownerAccessToken } from '@/lib/supabase/ownerSession';
+import { useAuthStore } from '@/store/authStore';
 
 /**
  * The SQLSTATE the database raises for an account being deleted. See
@@ -47,10 +48,10 @@ export class AccountDeletionOutcomeUnknownError extends Error {
  * turns out to be deleted, false when it is still live, and a throw when that cannot be told.
  * `get_sync_generation` raises NL003 for an account being deleted and answers normally otherwise.
  */
-async function accountWasDeleted(): Promise<boolean> {
+async function accountWasDeleted(token: string): Promise<boolean> {
   let error: unknown;
   try {
-    ({ error } = await getSupabaseClient().rpc('get_sync_generation'));
+    ({ error } = await getSupabaseClient().rpc('get_sync_generation').setHeader('Authorization', `Bearer ${token}`));
   } catch (thrown) {
     error = thrown;
   }
@@ -66,14 +67,12 @@ async function accountWasDeleted(): Promise<boolean> {
  * session has to confirm it is the user first. A failure that may have come after the request was
  * accepted is settled by asking the server; [AccountDeletionOutcomeUnknownError] when it cannot be.
  */
-export async function requestAccountDeletion(): Promise<void> {
+export async function requestAccountDeletion(ownerId = useAuthStore.getState().user?.uid): Promise<void> {
   const workerUrl = loadAttachmentsWorkerUrl().replace(/\/$/, '');
   if (!workerUrl) throw new Error('Account deletion is not available in this build.');
 
-  await ensureSupabaseAuthenticated();
-  const { data } = await getSupabaseClient().auth.getSession();
-  const token = data.session?.access_token?.trim();
-  if (!token) throw new Error('Sign in again to delete your account.');
+  if (!ownerId) throw new Error('Sign in again to delete your account.');
+  const token = await ownerAccessToken(ownerId);
 
   let response: Response;
   try {
@@ -83,7 +82,7 @@ export async function requestAccountDeletion(): Promise<void> {
     });
   } catch {
     // The request may have reached the Worker before the connection dropped.
-    if (await accountWasDeleted()) return;
+    if (await accountWasDeleted(token)) return;
     throw new Error('Could not reach the server. Your account was not deleted.');
   }
   if (response.status === 401) throw new Error('Sign in again to delete your account.');
@@ -96,6 +95,6 @@ export async function requestAccountDeletion(): Promise<void> {
   if (response.ok) return;
   // A 4xx is the Worker refusing before anything was deleted. A 5xx can follow an accepted request,
   // for instance when the database's answer timed out on the way back (AUD-010).
-  if (response.status >= 500 && (await accountWasDeleted())) return;
+  if (response.status >= 500 && (await accountWasDeleted(token))) return;
   throw new Error('Could not delete your account. Nothing was deleted. Please try again.');
 }

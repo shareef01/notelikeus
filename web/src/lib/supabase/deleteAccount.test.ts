@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { rpcWithHeaders } from '@/test/rpcWithHeaders';
+import { useAuthStore } from '@/store/authStore';
 
 const getSession = vi.fn();
 /** `get_sync_generation`: answers normally while the account is live, NL003 once it is being deleted. */
 const rpc = vi.fn();
 
 vi.mock('@/lib/supabase/client', () => ({
-  getSupabaseClient: () => ({ auth: { getSession }, rpc }),
+  getSupabaseClient: () => ({ auth: { getSession }, rpc: rpcWithHeaders(rpc) }),
 }));
 
 const LIVE = { data: { wipe_generation: 0 }, error: null };
@@ -54,7 +56,9 @@ describe('isAccountDeletedError', () => {
 describe('requestAccountDeletion', () => {
   beforeEach(() => {
     vi.stubEnv('VITE_ATTACHMENTS_WORKER_URL', 'https://worker.example/');
-    getSession.mockResolvedValue({ data: { session: { access_token: 'token' } } });
+    useAuthStore.getState().setUser({ uid: 'owner', email: null, displayName: null });
+    getSession.mockReset();
+    getSession.mockResolvedValue({ data: { session: { access_token: 'token', user: { id: 'owner' } } } });
     rpc.mockReset();
     rpc.mockResolvedValue(LIVE);
   });
