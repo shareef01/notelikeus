@@ -19,6 +19,32 @@ import javax.crypto.SecretKey
  */
 class DesktopAttachmentCryptoTest {
 
+    @get:Rule val recoveryDirectory = TemporaryFolder()
+
+    @Test
+    fun interruptedAttachmentSwapIsRecoveredBeforeScanning() {
+        val root = recoveryDirectory.newFolder("attachments")
+        val protector = SoftwareAttachmentBytesProtector()
+        val original = File(root, "picture.jpg")
+        val bytes = byteArrayOf(1, 2, 3)
+        File(root, "picture.jpg.pre-encrypt").writeBytes(bytes)
+        File(root, "picture.jpg.encrypt-tmp").writeBytes(protector.seal(bytes, "picture.jpg".toByteArray()))
+        AttachmentAtRestMigrator.migrateAttachmentsRoot(root, protector)
+        assertArrayEquals(bytes, protector.open(original.readBytes(), "picture.jpg".toByteArray()))
+    }
+
+    @Test
+    fun incompleteOrCorruptSwapRestoresAndResealsOriginal() {
+        val root = recoveryDirectory.newFolder("pending")
+        val owner = File(root, "A").apply { mkdirs() }
+        val protector = SoftwareAttachmentBytesProtector()
+        val bytes = byteArrayOf(4, 5, 6)
+        File(owner, "image.bin.pre-encrypt").writeBytes(bytes)
+        File(owner, "image.bin.encrypt-tmp").writeBytes(byteArrayOf(9))
+        AttachmentAtRestMigrator.migratePendingStagingRoot(root, protector)
+        assertArrayEquals(bytes, protector.open(File(owner, "image.bin").readBytes(), "A/image".toByteArray()))
+    }
+
     private fun softwareKey(): SecretKey =
         KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
 

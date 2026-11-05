@@ -1,3 +1,4 @@
+import { useToastStore } from '@/store/toastStore';
 import { useLabelManagement } from '@/hooks/useLabelManagement';
 import { DeleteLabelDialog } from '@/components/labels/DeleteLabelDialog';
 import { CloseIcon, TrashIcon, AddIcon, LabelIcon } from '@/components/icons/Icons';
@@ -36,9 +37,10 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
     setEditName(label.name);
   };
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     if (labelToEdit && editName.trim() && editName !== labelToEdit.name) {
-      updateLabel(labelToEdit.id, editName.trim());
+      try { await updateLabel(labelToEdit.id, editName.trim()); }
+      catch { useToastStore.getState().show("Could not save label changes. Try again.", "error"); return; }
     }
     setLabelToEdit(null);
   };
@@ -157,9 +159,10 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
         open={labelToDelete != null}
         labelName={labelToDelete?.name ?? ''}
         onCancel={() => setLabelToDelete(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (labelToDelete) {
-            deleteLabel(labelToDelete.id);
+            try { await deleteLabel(labelToDelete.id); }
+            catch { useToastStore.getState().show("Could not delete label. Try again.", "error"); return; }
             setLabelToDelete(null);
           }
         }}

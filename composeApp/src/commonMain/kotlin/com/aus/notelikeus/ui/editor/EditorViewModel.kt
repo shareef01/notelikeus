@@ -683,14 +683,16 @@ class EditorViewModel(
         data object StaleGeneration : PersistNoteOutcome
     }
 
+    private fun EditorState.isNewEmptyDraft(): Boolean {
+        if (id != null) return false
+        return title.isEmpty() && content.isEmpty() && checklist.isEmpty() && attachments.isEmpty()
+    }
+
     private suspend fun persistNote(
         commitToken: LocalCommitToken,
     ): PersistNoteOutcome = saveMutex.withLock {
         val currentState = clampStateToSyncLimits(_state.value)
-        if (currentState.title.isEmpty() &&
-            currentState.content.isEmpty() &&
-            currentState.checklist.isEmpty() &&
-            currentState.attachments.isEmpty()
+        if (currentState.isNewEmptyDraft()
         ) {
             _state.update { it.copy(isSaving = false) }
             return@withLock PersistNoteOutcome.NothingToSave
@@ -1186,10 +1188,7 @@ class EditorViewModel(
 
     fun saveNote() {
         val currentState = _state.value
-        if (currentState.title.isEmpty() &&
-            currentState.content.isEmpty() &&
-            currentState.checklist.isEmpty() &&
-            currentState.attachments.isEmpty()
+        if (currentState.isNewEmptyDraft()
         ) return
 
         // Supersede any autosave still counting down, so this save is the only one in flight.
@@ -1209,10 +1208,7 @@ class EditorViewModel(
      */
     suspend fun saveNoteAndAwait() {
         val currentState = _state.value
-        if (currentState.title.isEmpty() &&
-            currentState.content.isEmpty() &&
-            currentState.checklist.isEmpty() &&
-            currentState.attachments.isEmpty()
+        if (currentState.isNewEmptyDraft()
         ) return
         autosaveJob?.cancel()
         // Captured before the suspending persistence call, on the caller's own action.
@@ -1227,10 +1223,7 @@ class EditorViewModel(
      */
     suspend fun saveLocallyAndAwait(): LocalSaveResult {
         val currentState = _state.value
-        if (currentState.title.isEmpty() &&
-            currentState.content.isEmpty() &&
-            currentState.checklist.isEmpty() &&
-            currentState.attachments.isEmpty()
+        if (currentState.isNewEmptyDraft()
         ) {
             return LocalSaveResult.Unchanged
         }

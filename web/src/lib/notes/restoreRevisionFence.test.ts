@@ -1,3 +1,5 @@
+vi.mock('@/lib/supabase/ownerSession', () => ({ ownerAccessToken: vi.fn(async () => 'captured-owner-token') }));
+import { rpcWithHeaders } from '@/test/rpcWithHeaders';
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,7 +10,7 @@ vi.mock('@/lib/supabase/client', () => ({
   loadSupabaseUrl: () => 'http://localhost:54321',
   loadSupabaseAnonKey: () => 'anon',
   getSupabaseClient: () => ({
-    rpc,
+    rpc: rpcWithHeaders(rpc),
     auth: {
       getSession: () => Promise.resolve({ data: { session: { user: { id: 'u' } } }, error: null }),
     },

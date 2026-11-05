@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
  */
 interface AccountDeletionTransport {
     suspend fun deleteAccount()
+    suspend fun deleteAccount(ownerId: String) = deleteAccount()
 }
 
 class WorkerAccountDeletionTransport(
@@ -22,12 +23,20 @@ class WorkerAccountDeletionTransport(
      * normally while it is live (`get_sync_generation`). Used only to settle an unclear outcome.
      */
     private val checkAccountLive: (suspend () -> Unit)? = null,
+    private val sessionOwnerId: (() -> String?)? = null,
+    private val checkAccountLiveWithToken: (suspend (String, String) -> Unit)? = null,
 ) : AccountDeletionTransport {
     private val url = "${workerBaseUrl.trimEnd('/')}/v1/account"
 
-    override suspend fun deleteAccount() {
+    override suspend fun deleteAccount() = deleteCaptured(sessionOwnerId?.invoke())
+
+    override suspend fun deleteAccount(ownerId: String) = deleteCaptured(ownerId)
+
+    private suspend fun deleteCaptured(ownerId: String?) {
+        if (sessionOwnerId != null) check(sessionOwnerId.invoke() == ownerId) { "Account changed" }
         val token = accessTokenProvider.accessToken()
             ?: throw SupabaseTransportException("account", 401, "missing access token")
+        if (sessionOwnerId != null) check(sessionOwnerId.invoke() == ownerId) { "Account changed" }
         try {
             retryOnAttachmentRateLimit { send(url, token) }
         } catch (cancelled: CancellationException) {
@@ -36,10 +45,10 @@ class WorkerAccountDeletionTransport(
             // A 4xx is the Worker refusing before anything was deleted. A 5xx may have come after the
             // database accepted the request.
             if (answered.statusCode in 400..499) throw answered
-            settleUnclearOutcome(answered)
+            settleUnclearOutcome(answered, token, ownerId)
         } catch (failure: Exception) {
             // A lost connection or a timeout: the request may have got through.
-            settleUnclearOutcome(failure)
+            settleUnclearOutcome(failure, token, ownerId)
         }
     }
 
@@ -48,8 +57,12 @@ class WorkerAccountDeletionTransport(
      * is still live (then nothing was deleted, as the message says), and throws
      * [AccountDeletionOutcomeUnknownException] when even that cannot be told.
      */
-    private suspend fun settleUnclearOutcome(failure: Exception) {
-        val check = checkAccountLive ?: throw AccountDeletionOutcomeUnknownException(failure)
+    private suspend fun settleUnclearOutcome(failure: Exception, token: String, ownerId: String?) {
+        val check: suspend () -> Unit = if (checkAccountLiveWithToken != null && ownerId != null) {
+            { checkAccountLiveWithToken.invoke(ownerId, token) }
+        } else {
+            checkAccountLive ?: throw AccountDeletionOutcomeUnknownException(failure)
+        }
         try {
             check()
         } catch (cancelled: CancellationException) {

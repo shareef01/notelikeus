@@ -1,5 +1,9 @@
 package com.aus.notelikeus.appfunctions
 
+import com.aus.notelikeus.data.remote.CloudSessionManager
+import com.aus.notelikeus.data.remote.CloudSessionAccount
+import com.aus.notelikeus.data.sync.LocalCommitGate
+import com.aus.notelikeus.domain.repository.LocalCommitResult
 import androidx.appfunctions.AppFunctionContext
 import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.platform.ReminderManager
@@ -46,11 +50,14 @@ class NoteAppFunctionsTest {
         repository = mockk(relaxed = true)
         reminderManager = mockk(relaxed = true)
         settingsRepository = mockk(relaxed = true)
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(123L)
+        coEvery { repository.updateNote(any(), any()) } returns LocalCommitResult.Applied(Unit)
         setAppLocked(false)
 
         startKoin {
             modules(
                 module {
+                    single<CloudSessionManager> { mockk { every { getCurrentAccount() } returns CloudSessionAccount("A", null, true, false) } }
                     single<NoteRepository> { repository }
                     single<ReminderManager> { reminderManager }
                     single<SettingsRepository> { settingsRepository }
@@ -66,8 +73,24 @@ class NoteAppFunctionsTest {
     }
 
     @Test
+    fun `archive refuses a write after account isolation during lookup`() = runTest {
+        var written = false
+        coEvery { repository.getNoteById(1L) } coAnswers {
+            LocalCommitGate.isolate { Unit }
+            Note(id = 1L, title = "A private", content = "A text", timestamp = 1, color = 0)
+        }
+        coEvery { repository.updateNote(any(), any()) } coAnswers {
+            LocalCommitGate.commit(secondArg()) { written = true }
+        }
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking { noteAppFunctions.archiveNote(context, 1L) }
+        }
+        assertEquals(false, written)
+    }
+
+    @Test
     fun `createNote inserts note and returns AppFunctionNote`() = runTest {
-        coEvery { repository.insertNoteWithResult(any()) } returns 123L
+        coEvery { repository.insertNoteWithResult(any(), any()) } returns LocalCommitResult.Applied(123L)
 
         val result = noteAppFunctions.createNote(context, "New Note", "Content")
 
@@ -76,7 +99,7 @@ class NoteAppFunctionsTest {
         assertEquals("Content", result.content)
         coVerify {
             repository.insertNoteWithResult(
-                match { it.title == "New Note" && it.content == "Content" }
+                match { it.title == "New Note" && it.content == "Content" }, any()
             )
         }
     }
@@ -120,7 +143,7 @@ class NoteAppFunctionsTest {
 
         assertNotNull(result)
         assertEquals(futureTime, result?.reminderTimestamp)
-        coVerify { repository.updateNote(match { it.reminderTimestamp == futureTime }) }
+        coVerify { repository.updateNote(match { it.reminderTimestamp == futureTime }, any()) }
         coVerify { reminderManager.scheduleReminder(1L, futureTime) }
     }
 
@@ -137,7 +160,7 @@ class NoteAppFunctionsTest {
 
         noteAppFunctions.archiveNote(context, 1L)
 
-        coVerify { repository.updateNote(match { it.isArchived && it.timestamp > 1L }) }
+        coVerify { repository.updateNote(match { it.isArchived && it.timestamp > 1L }, any()) }
     }
 
     @Test
@@ -148,7 +171,7 @@ class NoteAppFunctionsTest {
 
         noteAppFunctions.addReminder(context, 1L, future)
 
-        coVerify { repository.updateNote(match { it.timestamp > 1L }) }
+        coVerify { repository.updateNote(match { it.timestamp > 1L }, any()) }
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -197,7 +220,7 @@ class NoteAppFunctionsTest {
 
         assertNotNull(result)
         assertEquals(true, result?.isArchived)
-        coVerify { repository.updateNote(match { it.isArchived }) }
+        coVerify { repository.updateNote(match { it.isArchived }, any()) }
     }
 
     @Test
@@ -207,7 +230,7 @@ class NoteAppFunctionsTest {
         val result = noteAppFunctions.archiveNote(context, 999L)
 
         assertNull(result)
-        coVerify(exactly = 0) { repository.updateNote(any()) }
+        coVerify(exactly = 0) { repository.updateNote(any(), any()) }
     }
 
     // --- App lock ---
@@ -248,7 +271,7 @@ class NoteAppFunctionsTest {
         assertThrows(IllegalStateException::class.java) {
             runBlocking { noteAppFunctions.archiveNote(context, 1L) }
         }
-        coVerify(exactly = 0) { repository.updateNote(any()) }
+        coVerify(exactly = 0) { repository.updateNote(any(), any()) }
     }
 
     @Test

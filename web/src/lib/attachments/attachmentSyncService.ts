@@ -1,3 +1,4 @@
+import { captureOwnerScope } from '@/lib/local/ownerScope';
 import {
   attachmentFromMetadata,
   ATTACHMENT_PENDING_PREFIX,
@@ -18,7 +19,7 @@ import {
   peekPendingAttachment,
   releasePendingAttachment,
 } from '@/lib/attachments/pendingAttachmentStore';
-import { listPendingPushes } from '@/lib/local/notesLocalRepository';
+import { getOwnerMeta, listPendingPushes } from '@/lib/local/notesLocalRepository';
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import type { Attachment } from '@/types/attachment';
@@ -61,8 +62,13 @@ export function mergeAttachmentsIntoNotes(
 
 export async function hydrateNotesWithAttachments(notes: Note[]): Promise<Note[]> {
   if (!isR2AttachmentsEnabled() || notes.length === 0) return notes;
+  const scope = captureOwnerScope();
   const metadata = await listUserAttachments();
-  return mergeAttachmentsIntoNotes(notes, metadata, await notesAwaitingCommit());
+  const meta = scope.ownerId ? await getOwnerMeta(scope.ownerId) : null;
+  const removed = meta?.pendingAttachmentRemovals ?? {};
+  const filtered = metadata.filter(row => !(removed[row.noteId] ?? []).some(a => a.id === row.attachmentId));
+  if (!scope.isActive()) return notes;
+  return mergeAttachmentsIntoNotes(notes, filtered, await notesAwaitingCommit());
 }
 
 async function notesAwaitingCommit(): Promise<Set<string>> {
@@ -245,18 +251,22 @@ export async function gcAttachmentsAfterNoteDelete(
   attachments: Attachment[],
 ): Promise<void> {
   if (!isR2AttachmentsEnabled() || attachments.length === 0) return;
+  const scope = captureOwnerScope();
   const store = getAttachmentBlobStore();
   const failures: unknown[] = [];
   for (const attachment of attachments) {
+    if (!scope.isActive()) return;
     if (isPendingAttachment(attachment.storagePath)) {
       await releasePendingAttachment(
         attachment.storagePath.slice(ATTACHMENT_PENDING_PREFIX.length),
         noteId,
+        scope.ownerId ?? undefined,
       );
       continue;
     }
     try {
-      await store.delete(noteId, attachment.id);
+      if (scope.ownerId) await store.delete(noteId, attachment.id, scope.ownerId);
+      else await store.delete(noteId, attachment.id);
     } catch (error) {
       failures.push(error);
     }
@@ -276,31 +286,33 @@ export async function gcAttachmentsAfterNoteDelete(
  * Held here, in memory, until the Undo closes: after a reload there is no Undo left to protect, and
  * the persisted pending-GC marker lets the next sync finish the cleanup.
  */
-const deferredAttachmentGc = new Map<string, Attachment[]>();
+const deferredAttachmentGc = new Map<string, { attachments: Attachment[]; scope: ReturnType<typeof captureOwnerScope> }>();
+const deferredKey = (noteId: string) => `${resolveOwnerId()}:${noteId}`;
 
 export function deferAttachmentGc(noteId: string, attachments: Attachment[]): void {
-  deferredAttachmentGc.set(noteId, attachments);
+  deferredAttachmentGc.set(deferredKey(noteId), { attachments, scope: captureOwnerScope() });
 }
 
 export function isAttachmentGcDeferred(noteId: string): boolean {
-  return deferredAttachmentGc.has(noteId);
+  return deferredAttachmentGc.has(deferredKey(noteId));
 }
 
 /** Undo was taken: the images stay. The pending-GC marker is cleared by markRestored. */
 export function cancelDeferredAttachmentGc(noteIds: string[]): void {
-  for (const id of noteIds) deferredAttachmentGc.delete(id);
+  for (const id of noteIds) deferredAttachmentGc.delete(deferredKey(id));
 }
 
 /** Undo closed without being taken: clean up now, as an immediate delete would have. */
 export async function runDeferredAttachmentGc(noteIds: string[]): Promise<void> {
   const tomb = useTombstoneStore.getState();
   for (const noteId of noteIds) {
-    const attachments = deferredAttachmentGc.get(noteId);
-    deferredAttachmentGc.delete(noteId);
-    if (!attachments || tomb.isRestored(noteId)) continue;
+    const held = deferredAttachmentGc.get(deferredKey(noteId));
+    deferredAttachmentGc.delete(deferredKey(noteId));
+    if (!held || !held.scope.isActive() || tomb.isRestored(noteId)) continue;
+    const { attachments, scope } = held;
     try {
       await gcAttachmentsAfterNoteDelete(noteId, attachments);
-      useTombstoneStore.getState().clearPendingAttachmentGc(noteId);
+      if (scope.isActive()) useTombstoneStore.getState().clearPendingAttachmentGc(noteId);
     } catch {
       // Marker stays; the next snapshot or pull retries.
     }
@@ -313,8 +325,10 @@ export function resetDeferredAttachmentGcForTests(): void {
 }
 
 export async function retryPendingAttachmentGc(): Promise<void> {
+  const scope = captureOwnerScope();
   const tomb = useTombstoneStore.getState();
   for (const [noteId, attachmentIds] of tomb.pendingAttachmentGcEntries()) {
+    if (!scope.isActive()) return;
     if (isAttachmentGcDeferred(noteId)) continue;
     if (tomb.isRestored(noteId)) {
       tomb.clearPendingAttachmentGc(noteId);
@@ -333,11 +347,12 @@ export async function retryPendingAttachmentGc(): Promise<void> {
       // Marker stays; the next snapshot or pull retries.
     }
   }
-  await sweepServerPendingDeletedAttachments();
+  if (scope.isActive()) await sweepServerPendingDeletedAttachments();
 }
 
 async function sweepServerPendingDeletedAttachments(): Promise<void> {
   if (!isR2AttachmentsEnabled()) return;
+  const scope = captureOwnerScope();
   let pending;
   try {
     pending = await listPendingDeletedAttachments();
@@ -347,10 +362,12 @@ async function sweepServerPendingDeletedAttachments(): Promise<void> {
   const tomb = useTombstoneStore.getState();
   const store = getAttachmentBlobStore();
   for (const row of pending) {
+    if (!scope.isActive()) return;
     if (tomb.isRestored(row.noteId) || isAttachmentGcDeferred(row.noteId)) continue;
     try {
-      await store.delete(row.noteId, row.attachmentId);
-      await purgeDeletedNoteAttachment(row.attachmentId, row.noteId);
+      await store.delete(row.noteId, row.attachmentId, scope.ownerId ?? undefined);
+      if (!scope.isActive()) return;
+      await purgeDeletedNoteAttachment(row.attachmentId, row.noteId, scope.ownerId ?? undefined);
     } catch {
       // Prefer orphan storage; the next pull retries.
     }

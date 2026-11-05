@@ -1,69 +1,61 @@
 package com.aus.notelikeus.data.remote
 
 import com.aus.notelikeus.util.AppLog
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class SupabaseSessionStore(
     private val persistence: SupabaseSessionPersistence = InMemorySupabaseSessionPersistence(),
 ) {
-    @Volatile private var accessToken: String? = null
-    @Volatile private var refreshToken: String? = null
-    @Volatile private var userId: String? = null
-    @Volatile private var email: String? = null
-    @Volatile private var expiresAtEpochMs: Long = 0L
+    private val lock = Any()
+    private val refreshMutex = Mutex()
+    @Volatile private var session: SupabaseAuthSession? = persistence.load()
+    private var incarnation = 0L
 
-    init {
-        persistence.load()?.let { restore(it) }
+    fun userId(): String? = session?.userId
+    fun email(): String? = session?.email
+    fun account(): CloudSessionAccount {
+        val current = session
+        return CloudSessionAccount(current?.userId, current?.email, current != null, current == null)
     }
 
-    fun hasSession(): Boolean = accessToken != null
-
-    fun userId(): String? = userId
-
-    fun email(): String? = email
-
-    fun account(): CloudSessionAccount = CloudSessionAccount(
-        userId = userId,
-        email = email,
-        isSignedIn = hasSession(),
-        isAnonymous = !hasSession(),
-    )
-
-    fun save(session: SupabaseAuthSession) {
-        restore(session)
-        persistence.save(session)
+    fun save(value: SupabaseAuthSession) = synchronized(lock) {
+        incarnation++
+        session = value
+        persistence.save(value)
     }
 
-    suspend fun validAccessToken(refresh: suspend (String) -> SupabaseAuthSession): String? {
-        val token = accessToken ?: return null
-        if (System.currentTimeMillis() + EXPIRY_SKEW_MS < expiresAtEpochMs) {
-            return token
+    suspend fun validAccessToken(refresh: suspend (String) -> SupabaseAuthSession): String? = refreshMutex.withLock {
+        val (current, started) = synchronized(lock) { session to incarnation }
+        current ?: return@withLock null
+        if (System.currentTimeMillis() + EXPIRY_SKEW_MS < current.expiresAtEpochMs) {
+            return@withLock current.accessToken
         }
-        val currentRefresh = refreshToken ?: return null
-        return runCatching {
-            val refreshed = refresh(currentRefresh)
-            save(refreshed)
-            refreshed.accessToken
-        }.onFailure { error ->
-            // The only trace a rejected refresh token leaves on a release build.
-            AppLog.warn(TAG, "Session refresh failed: ${error.javaClass.simpleName} ${error.message?.take(200)}")
-        }.getOrNull()
+        val token = current.refreshToken ?: return@withLock null
+        try {
+            val refreshed = refresh(token)
+            synchronized(lock) {
+                if (incarnation != started || session !== current || refreshed.userId != current.userId) {
+                    null
+                } else {
+                    session = refreshed
+                    persistence.save(refreshed)
+                    refreshed.accessToken
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            AppLog.warn(TAG, "Session refresh failed: ${error.javaClass.simpleName}")
+            null
+        }
     }
 
-    fun clear() {
-        accessToken = null
-        refreshToken = null
-        userId = null
-        email = null
-        expiresAtEpochMs = 0L
+    fun clear() = synchronized(lock) {
+        incarnation++
+        session = null
         persistence.clear()
-    }
-
-    private fun restore(session: SupabaseAuthSession) {
-        accessToken = session.accessToken
-        refreshToken = session.refreshToken
-        userId = session.userId
-        email = session.email
-        expiresAtEpochMs = session.expiresAtEpochMs
     }
 
     private companion object {

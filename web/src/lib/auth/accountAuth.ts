@@ -9,6 +9,7 @@ import { clearPendingAttachmentsForOwner } from '@/lib/local/pendingAttachmentRe
 import { deleteAllSupabaseCloudData } from '@/lib/supabase/deleteAllUserCloudData';
 import { requestAccountDeletion } from '@/lib/supabase/deleteAccount';
 import { useAuthStore } from '@/store/authStore';
+import { captureOwnerScope } from '@/lib/local/ownerScope';
 
 /**
  * Step 1 of email sign-in: emails a one-time code (creating the account on first use).
@@ -35,15 +36,20 @@ export async function verifyEmailSignInCode(email: string, code: string): Promis
  *
  * An ordinary sign-out keeps the local copy, so offline edits upload at the next sign-in.
  */
-export async function signOutAccount(options: { deleteCloudData?: boolean } = {}): Promise<void> {
+export async function signOutAccount(options: { deleteCloudData?: boolean; ownerId?: string } = {}): Promise<void> {
+  const scope = captureOwnerScope();
+  const ownerId = options.ownerId ?? useAuthStore.getState().user?.uid;
+  if (ownerId && scope.ownerId !== ownerId) throw new Error('Account changed');
   if (options.deleteCloudData) {
-    const ownerId = useAuthStore.getState().user?.uid;
-    await deleteAllSupabaseCloudData();
-    if (ownerId) {
+    if (!ownerId) throw new Error('Sign in again to delete cloud data.');
+    try { await deleteAllSupabaseCloudData(ownerId); }
+    catch (error) { scope.assertActive(); throw error; }
+    if (ownerId && scope.isActive()) {
       await clearOwner(ownerId);
       await clearPendingAttachmentsForOwner(ownerId);
     }
   }
+  if (!scope.isActive()) return;
   await signOutSupabase();
 }
 

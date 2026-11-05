@@ -134,7 +134,7 @@ describe('Undo after a permanent delete keeps the images (AUDIT-003)', () => {
     useToastStore.getState().dismiss();
     await settle();
 
-    expect(blobDelete).toHaveBeenCalledWith('note-1', 'att-1');
+    expect(blobDelete).toHaveBeenCalledWith('note-1', 'att-1', 'user-1');
     expect(useTombstoneStore.getState().pendingAttachmentGcEntries()).toEqual([]);
   });
 
@@ -144,12 +144,12 @@ describe('Undo after a permanent delete keeps the images (AUDIT-003)', () => {
     useToastStore.getState().show('Something else happened');
     await settle();
 
-    expect(blobDelete).toHaveBeenCalledWith('note-1', 'att-1');
+    expect(blobDelete).toHaveBeenCalledWith('note-1', 'att-1', 'user-1');
   });
 
   it('still deletes straight away when there is no Undo', async () => {
     await removeNotes(['note-1']);
 
-    expect(blobDelete).toHaveBeenCalledWith('note-1', 'att-1');
+    expect(blobDelete).toHaveBeenCalledWith('note-1', 'att-1', 'user-1');
   });
 });

@@ -1,7 +1,8 @@
 import { attachmentWorkerPath, parseAttachmentObjectKey } from '@/lib/attachments/attachmentObjectKey';
 import { loadAttachmentsWorkerUrl } from '@/lib/attachments/attachmentConfig';
 import { getSupabaseClient } from '@/lib/supabase/client';
-import { ensureSupabaseAuthenticated } from '@/lib/supabase/supabaseSyncEngine';
+import { ownerAccessToken } from '@/lib/supabase/ownerSession';
+import { captureOwnerScope } from '@/lib/local/ownerScope';
 import { isReauthenticationRequired, ReauthenticationRequiredError } from '@/lib/auth/reauthentication';
 
 interface DeleteAllUserCloudDataResult {
@@ -69,9 +70,13 @@ async function deleteR2Objects(objectKeys: string[], token: string, workerUrl: s
  * Throws if the RPC fails, and throws [CloudWipeIncompleteError] if any object survived — callers
  * must not report success, and must not sign out, after a wipe that left bytes behind.
  */
-export async function deleteAllSupabaseCloudData(): Promise<number> {
-  await ensureSupabaseAuthenticated();
-  const { data, error } = await getSupabaseClient().rpc('delete_all_user_cloud_data');
+export async function deleteAllSupabaseCloudData(ownerId: string): Promise<number> {
+  const scope = captureOwnerScope();
+  if (scope.ownerId !== ownerId) throw new Error('Account changed');
+  const token = await ownerAccessToken(ownerId);
+  scope.assertActive();
+  const { data, error } = await getSupabaseClient().rpc('delete_all_user_cloud_data')
+    .setHeader('Authorization', `Bearer ${token}`);
   // AUD-005: nothing was wiped; the caller asks for a new code and retries.
   if (error) throw isReauthenticationRequired(error) ? new ReauthenticationRequiredError() : error;
   const result = (data ?? {}) as DeleteAllUserCloudDataResult;
@@ -79,13 +84,11 @@ export async function deleteAllSupabaseCloudData(): Promise<number> {
   const notesDeleted = result.notes_deleted ?? 0;
 
   if (objectKeys.length === 0) {
-    await purgeWipedAttachmentMetadata();
+    await purgeWipedAttachmentMetadata(token);
     return notesDeleted;
   }
 
   const workerUrl = loadAttachmentsWorkerUrl().replace(/\/$/, '');
-  const { data: sessionData } = await getSupabaseClient().auth.getSession();
-  const token = sessionData.session?.access_token?.trim();
   // Without a Worker or a session there is no way to reach the objects at all. Reporting success
   // here is exactly the lie this function exists to avoid.
   if (!workerUrl || !token) throw new CloudWipeIncompleteError(objectKeys.length);
@@ -93,7 +96,7 @@ export async function deleteAllSupabaseCloudData(): Promise<number> {
   const failed = await deleteR2Objects(objectKeys, token, workerUrl);
   if (failed > 0) throw new CloudWipeIncompleteError(failed);
 
-  await purgeWipedAttachmentMetadata();
+  await purgeWipedAttachmentMetadata(token);
   return notesDeleted;
 }
 
@@ -104,9 +107,9 @@ export async function deleteAllSupabaseCloudData(): Promise<number> {
  * removes them if this never lands. Failing the whole wipe over it would tell the user their
  * data survived when it did not.
  */
-async function purgeWipedAttachmentMetadata(): Promise<void> {
+async function purgeWipedAttachmentMetadata(token: string): Promise<void> {
   try {
-    await getSupabaseClient().rpc('finalize_cloud_wipe');
+    await getSupabaseClient().rpc('finalize_cloud_wipe').setHeader('Authorization', `Bearer ${token}`);
   } catch {
     // Left for the sweeper.
   }

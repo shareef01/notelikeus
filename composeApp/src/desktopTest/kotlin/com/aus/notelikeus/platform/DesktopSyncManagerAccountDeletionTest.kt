@@ -50,8 +50,9 @@ class DesktopSyncManagerAccountDeletionTest {
 
     private class FakeSession : CloudSessionManager {
         var signOuts = 0
+        var uid = UID
         override fun getCurrentAccount() =
-            CloudSessionAccount(UID.takeIf { signOuts == 0 }, "a@example.com", signOuts == 0, false)
+            CloudSessionAccount(uid.takeIf { signOuts == 0 }, "a@example.com", signOuts == 0, false)
         override suspend fun requestEmailCode(email: String) = Result.success(Unit)
         override suspend fun signInWithEmailCode(email: String, code: String) = Result.success(Unit)
         override suspend fun signInWithEmailPassword(email: String, password: String, createAccount: Boolean) =
@@ -67,8 +68,10 @@ class DesktopSyncManagerAccountDeletionTest {
     private class FakeDeletion : AccountDeletionTransport {
         var failure: Throwable? = null
         var calls = 0
+        var beforeReply: suspend () -> Unit = {}
         override suspend fun deleteAccount() {
             calls++
+            beforeReply()
             failure?.let { throw it }
         }
     }
@@ -121,6 +124,23 @@ class DesktopSyncManagerAccountDeletionTest {
         assertEquals(1, deletion.calls)
         assertEquals(1, session.signOuts)
         assertEquals(1, isolations)
+    }
+
+    @Test
+    fun `late account deletion does not sign out or isolate replacement session`() = runBlocking {
+        deletion.beforeReply = { session.uid = "replacement-account" }
+        assertTrue(manager.deleteAccount().isSuccess)
+        assertEquals(0, session.signOuts)
+        assertEquals(0, isolations)
+        assertEquals("replacement-account", session.getCurrentAccount().userId)
+    }
+
+    @Test
+    fun `late deletion cannot isolate a newer dataset for the same account`() = runBlocking {
+        deletion.beforeReply = { com.aus.notelikeus.data.sync.LocalCommitGate.isolate { Unit } }
+        assertTrue(manager.deleteAccount().isSuccess)
+        assertEquals(0, session.signOuts)
+        assertEquals(0, isolations)
     }
 
     @Test

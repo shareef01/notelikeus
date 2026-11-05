@@ -7,6 +7,7 @@ import { listPendingPushes, putLocalEdits, putNotes } from '@/lib/local/notesLoc
 import { GUEST_OWNER_ID } from '@/lib/local/constants';
 import { useNotesStore } from '@/store/notesStore';
 import type { Note } from '@/types/note';
+import { captureOwnerScope } from '@/lib/local/ownerScope';
 
 /**
  * Where an import ended up.
@@ -36,11 +37,16 @@ export async function commitImportedNotes(
   notesImported: number,
   userId: string | undefined,
 ): Promise<ImportCommitOutcome> {
+  const scope = captureOwnerScope();
+  if (scope.ownerId && scope.ownerId !== (userId ?? GUEST_OWNER_ID)) {
+    throw new Error('Account changed; prepare the import again.');
+  }
   if (notesImported <= 0) {
     return userId ? 'synced' : 'local';
   }
   const imported = merged.slice(merged.length - notesImported);
   const publishImported = () => {
+    if (!scope.isActive()) return;
     const current = useNotesStore.getState().notes;
     useNotesStore.getState().setNotes([...current, ...imported]);
   };
@@ -61,6 +67,7 @@ export async function commitImportedNotes(
   }
 
   const importedIds = merged.slice(merged.length - notesImported).map((note) => note.id);
+  if (!scope.isActive()) return 'pending';
   try {
     await getRemoteNotesDataSource().pushPendingEdits?.(userId);
   } catch (error) {

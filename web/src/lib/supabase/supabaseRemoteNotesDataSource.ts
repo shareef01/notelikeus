@@ -1,4 +1,6 @@
 import { keepingLocalOnlyAttachments } from '@/lib/attachments/attachmentPaths';
+import { captureOwnerScope } from '@/lib/local/ownerScope';
+import { ownerAccessToken } from '@/lib/supabase/ownerSession';
 import {
   mergeRemoteNotes,
   shouldUploadOverRemote,
@@ -305,7 +307,9 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
   },
 
   async deleteNote(userId, noteId, baseRevision) {
+    const scope = captureOwnerScope();
     await ensureSupabaseAuthenticated();
+    scope.assertActive();
 
     if (baseRevision == null) {
       // F-05, Option B: DEL-6 stands — a delete never adopts a revision from the server, so there
@@ -324,6 +328,8 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
 
     try {
       const wipeGeneration = await wipeGenerationForPush(userId);
+      const token = await ownerAccessToken(userId);
+      scope.assertActive();
       const { data, error } = await getSupabaseClient().rpc(
         "apply_note_delete",
         {
@@ -331,26 +337,27 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
           p_base_revision: baseRevision,
           p_wipe_generation: wipeGeneration,
         },
-      );
+      ).setHeader('Authorization', `Bearer ${token}`);
+      scope.assertActive();
       if (error) {
         // A wipe refusal is definite and must not be retried with the same arguments.
         await asWipeRefusal(userId, error);
       }
-      if (!accountStillOwnsDelete(userId)) {
+      if (!scope.isActive() || !accountStillOwnsDelete(userId)) {
         throw new Error("Account changed during delete");
       }
       const result = (data ?? {}) as ApplyNoteResult;
 
       if (result.idempotent) {
         await forgetNoteRevision(userId, noteId);
-        useTombstoneStore.getState().markDeleted(noteId, baseRevision);
+        if (scope.isActive()) useTombstoneStore.getState().markDeleted(noteId, baseRevision);
         return;
       }
 
       if (result.status === "conflict") {
         if (result.error === "note_not_found") {
           await forgetNoteRevision(userId, noteId);
-          useTombstoneStore.getState().markDeleted(noteId, baseRevision);
+          if (scope.isActive()) useTombstoneStore.getState().markDeleted(noteId, baseRevision);
           return;
         }
         throw new Error(`Delete conflict for note ${noteId}`);
@@ -359,10 +366,10 @@ export const supabaseRemoteNotesDataSource: RemoteNotesDataSource = {
       // The note is gone, so its revision goes too. The pull cursor is left alone: the delete's
       // revision says nothing about changes other devices committed below it (F-04).
       await forgetNoteRevision(userId, noteId);
-      useTombstoneStore.getState().markDeleted(noteId, baseRevision);
+      if (scope.isActive()) useTombstoneStore.getState().markDeleted(noteId, baseRevision);
       return;
     } catch (error) {
-      useTombstoneStore.getState().markDeleted(noteId, baseRevision);
+      if (scope.isActive()) useTombstoneStore.getState().markDeleted(noteId, baseRevision);
       throw error;
     }
   },

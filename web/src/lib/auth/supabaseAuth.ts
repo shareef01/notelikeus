@@ -4,6 +4,7 @@ import type { AuthUser } from '@/lib/auth/authUser';
 import { authUserFromSupabase } from '@/lib/auth/authUser';
 import { stopNotesRealtimeSync } from '@/lib/notes/notesSyncService';
 import { getSupabaseClient } from '@/lib/supabase/client';
+import { captureOwnerScope } from '@/lib/local/ownerScope';
 
 export function initSupabaseAuthListener(
   onUser: (user: AuthUser | null) => void,
@@ -185,9 +186,11 @@ export async function endDeletedAccountSessionSupabase(ownerId = useAuthStore.ge
 }
 
 export async function signOutSupabase(): Promise<void> {
+  const scope = captureOwnerScope();
   clearGuestAdoptionIntent();
   const { error } = await getSupabaseClient().auth.signOut();
   if (error) throw error;
+  if (!scope.isActive() && (useAuthStore.getState().user || useAuthStore.getState().guestMode)) return;
   stopNotesRealtimeSync();
   clearLocalUserData();
 }

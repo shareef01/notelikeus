@@ -13,5 +13,5 @@ export interface AttachmentBlobStore {
     ownerId?: string,
   ): Promise<AttachmentBlobUploadResult>;
   download(noteId: string, attachmentId: string, ownerId?: string): Promise<Blob>;
-  delete(noteId: string, attachmentId: string): Promise<void>;
+  delete(noteId: string, attachmentId: string, ownerId?: string): Promise<void>;
 }

@@ -1,5 +1,9 @@
 package com.aus.notelikeus.appfunctions
 
+import com.aus.notelikeus.data.sync.SessionLocalCommitTokenProvider
+import com.aus.notelikeus.data.sync.LocalCommitGate
+import com.aus.notelikeus.domain.repository.LocalCommitResult
+import com.aus.notelikeus.data.remote.CloudSessionManager
 import androidx.appfunctions.AppFunctionContext
 import androidx.appfunctions.service.AppFunction
 import com.aus.notelikeus.domain.model.Note
@@ -23,6 +27,7 @@ import org.koin.core.component.inject
  */
 class NoteAppFunctions : KoinComponent {
     private val repository: NoteRepository by inject()
+    private val sessions: CloudSessionManager by inject()
     private val reminderManager: ReminderManager by inject()
     private val settingsRepository: SettingsRepository by inject()
 
@@ -56,29 +61,33 @@ class NoteAppFunctions : KoinComponent {
         context: AppFunctionContext,
         title: String,
         content: String
-    ): AppFunctionNote = withContext(Dispatchers.IO) {
-        requireUnlocked()
-        requireWithinLimits(title, content)
-        val note = Note(
-            title = title,
-            content = content,
-            timestamp = System.currentTimeMillis(),
-            color = 0
-        )
-        val id = repository.insertNoteWithResult(note)
-        AppFunctionNote(
-            id = id,
-            title = title,
-            content = content,
-            isPinned = false,
-            isArchived = false,
-            reminderTimestamp = null
-        )
+    ): AppFunctionNote {
+        val token = SessionLocalCommitTokenProvider(sessions).capture()
+        return withContext(Dispatchers.IO) {
+            requireUnlocked()
+            requireWithinLimits(title, content)
+            val note = Note(
+                title = title,
+                content = content,
+                timestamp = System.currentTimeMillis(),
+                color = 0
+            )
+            val id = applied(repository.insertNoteWithResult(note, token))
+            AppFunctionNote(
+                id = id,
+                title = title,
+                content = content,
+                isPinned = false,
+                isArchived = false,
+                reminderTimestamp = null
+            )
+        }
     }
 
     /**
      * List all active notes.
-     * Required workflow: Call this to obtain valid note IDs before calling "addReminder" or "archiveNote" if you don't have a specific search query.
+     * Required workflow: Call this to obtain valid note IDs before calling "addReminder" or
+     * "archiveNote" if you don't have a specific search query.
      *
      * @param context The execution context.
      * @return A list of all active [AppFunctionNote] objects.
@@ -86,10 +95,14 @@ class NoteAppFunctions : KoinComponent {
     @AppFunction(isDescribedByKDoc = true)
     suspend fun listNotes(
         context: AppFunctionContext
-    ): List<AppFunctionNote> = withContext(Dispatchers.IO) {
-        requireUnlocked()
-        repository.getActiveNotes().first()
-            .map { it.toAppFunctionNote() }
+    ): List<AppFunctionNote> {
+        val token = SessionLocalCommitTokenProvider(sessions).capture()
+        return withContext(Dispatchers.IO) {
+            requireUnlocked()
+            val notes = repository.getActiveNotes().first()
+                .map { it.toAppFunctionNote() }
+            applied(LocalCommitGate.commit(token) { notes })
+        }
     }
 
     /**
@@ -104,14 +117,18 @@ class NoteAppFunctions : KoinComponent {
     suspend fun searchNotes(
         context: AppFunctionContext,
         query: String
-    ): List<AppFunctionNote> = withContext(Dispatchers.IO) {
-        requireUnlocked()
-        repository.getActiveNotes().first()
-            .filter {
-                it.title.contains(query, ignoreCase = true) ||
-                it.content.contains(query, ignoreCase = true)
-            }
-            .map { it.toAppFunctionNote() }
+    ): List<AppFunctionNote> {
+        val token = SessionLocalCommitTokenProvider(sessions).capture()
+        return withContext(Dispatchers.IO) {
+            requireUnlocked()
+            val notes = repository.getActiveNotes().first()
+                .filter {
+                    it.title.contains(query, ignoreCase = true) ||
+                    it.content.contains(query, ignoreCase = true)
+                }
+                .map { it.toAppFunctionNote() }
+            applied(LocalCommitGate.commit(token) { notes })
+        }
     }
 
     /**
@@ -128,25 +145,28 @@ class NoteAppFunctions : KoinComponent {
         context: AppFunctionContext,
         noteId: Long,
         timestamp: Long
-    ): AppFunctionNote? = withContext(Dispatchers.IO) {
-        requireUnlocked()
-        val note = repository.getNoteById(noteId) ?: return@withContext null
-        // app_metadata.xml tells agents reminders must be in the future; nothing enforced it, so a
-        // past timestamp was accepted and handed to the alarm scheduler, which either fires at once
-        // or never. The editor rejects the same input, so this only differed by entry point.
-        //
-        // Checked after the lookup so an unknown id still answers "not found", which is the more
-        // specific thing to tell a caller that got both wrong.
-        require(timestamp > System.currentTimeMillis()) {
-            "Reminder time must be in the future."
+    ): AppFunctionNote? {
+        val token = SessionLocalCommitTokenProvider(sessions).capture()
+        return withContext(Dispatchers.IO) {
+            requireUnlocked()
+            val note = repository.getNoteById(noteId) ?: return@withContext null
+            // app_metadata.xml tells agents reminders must be in the future; nothing enforced it, so a
+            // past timestamp was accepted and handed to the alarm scheduler, which either fires at once
+            // or never. The editor rejects the same input, so this only differed by entry point.
+            //
+            // Checked after the lookup so an unknown id still answers "not found", which is the more
+            // specific thing to tell a caller that got both wrong.
+            require(timestamp > System.currentTimeMillis()) {
+                "Reminder time must be in the future."
+            }
+            val updatedNote = note.copy(
+                reminderTimestamp = timestamp,
+                timestamp = System.currentTimeMillis()
+            )
+            applied(repository.updateNote(updatedNote, token))
+            applied(LocalCommitGate.commit(token) { reminderManager.scheduleReminder(noteId, timestamp) })
+            updatedNote.toAppFunctionNote()
         }
-        val updatedNote = note.copy(
-            reminderTimestamp = timestamp,
-            timestamp = System.currentTimeMillis()
-        )
-        repository.updateNote(updatedNote)
-        reminderManager.scheduleReminder(noteId, timestamp)
-        updatedNote.toAppFunctionNote()
     }
 
     /**
@@ -161,12 +181,15 @@ class NoteAppFunctions : KoinComponent {
     suspend fun archiveNote(
         context: AppFunctionContext,
         noteId: Long
-    ): AppFunctionNote? = withContext(Dispatchers.IO) {
-        requireUnlocked()
-        val note = repository.getNoteById(noteId) ?: return@withContext null
-        val updatedNote = note.copy(isArchived = true, timestamp = System.currentTimeMillis())
-        repository.updateNote(updatedNote)
-        updatedNote.toAppFunctionNote()
+    ): AppFunctionNote? {
+        val token = SessionLocalCommitTokenProvider(sessions).capture()
+        return withContext(Dispatchers.IO) {
+            requireUnlocked()
+            val note = repository.getNoteById(noteId) ?: return@withContext null
+            val updatedNote = note.copy(isArchived = true, timestamp = System.currentTimeMillis())
+            applied(repository.updateNote(updatedNote, token))
+            updatedNote.toAppFunctionNote()
+        }
     }
 
     /**
@@ -178,6 +201,11 @@ class NoteAppFunctions : KoinComponent {
      * sync attempt, silently, for as long as it existed: the one note that never reaches the cloud,
      * with nothing in the UI to say why.
      */
+    private fun <T> applied(result: LocalCommitResult<T>): T = when (result) {
+        is LocalCommitResult.Applied -> result.value
+        LocalCommitResult.StaleGeneration -> error("Account changed; repeat the action.")
+    }
+
     private fun requireWithinLimits(title: String, content: String) {
         require(title.length <= MAX_TITLE_CHARS) {
             "Title is limited to $MAX_TITLE_CHARS characters."

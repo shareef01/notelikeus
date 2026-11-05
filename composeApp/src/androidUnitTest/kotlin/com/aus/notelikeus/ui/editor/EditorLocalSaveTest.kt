@@ -197,6 +197,19 @@ class EditorLocalSaveTest {
     }
 
     @Test
+    fun `clearing an existing note persists the empty replacement`() = runTest {
+        coEvery { repository.getNoteById(3L) } returns Note(id = 3L, title = "erase", content = "erase", timestamp = 1, color = 0)
+        coEvery { repository.updateNote(any(), any()) } returns LocalCommitResult.Applied(Unit)
+        val subject = EditorViewModel(repository, reminderManager, SavedStateHandle(mapOf("noteId" to 3L)),
+            localCommitTokenProvider = FakeLocalCommitTokenProvider())
+        advanceUntilIdle()
+        subject.onTitleChange("")
+        subject.onContentValueChange(androidx.compose.ui.text.input.TextFieldValue(""))
+        assertEquals(LocalSaveResult.Saved(3L), subject.saveLocallyAndAwait())
+        coVerify { repository.updateNote(match { it.id == 3L && it.title.isEmpty() && it.content.isEmpty() }, any()) }
+    }
+
+    @Test
     fun `an attachment is not referenced when its bytes could not be staged`() = runTest {
         val sync = mockk<AttachmentSyncService>(relaxed = true)
         coEvery { sync.stageAttachment(any(), any(), any(), any()) } returns false
