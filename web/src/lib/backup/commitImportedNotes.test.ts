@@ -211,4 +211,23 @@ describe('commitImportedNotes', () => {
     expect(resumeRealtimeSnapshots).toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it.each([undefined, 'signed-in'])('preserves changes since preview for owner %s', async (userId) => {
+    const { listNotes, putNotes } = await import('@/lib/local/notesLocalRepository');
+    const { GUEST_OWNER_ID } = await import('@/lib/local/constants');
+    const owner = userId ?? GUEST_OWNER_ID;
+    const preview = note('1');
+    const updated = { ...preview, title: 'Updated after preview' };
+    const added = note('2');
+    const imported = note('3');
+    await putNotes(owner, [updated, added]);
+    useNotesStore.getState().setNotes([updated, added]);
+    remoteMocks.pushPendingEdits.mockResolvedValueOnce(undefined);
+
+    await commitImportedNotes([preview, imported], 1, userId);
+
+    expect(useNotesStore.getState().notes).toEqual([updated, added, imported]);
+    expect((await listNotes(owner)).find((n) => n.id === '1')?.title).toBe(updated.title);
+    expect(await listNotes(owner)).toHaveLength(3);
+  });
 });
