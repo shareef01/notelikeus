@@ -268,9 +268,54 @@ export async function gcAttachmentsAfterNoteDelete(
   }
 }
 
+/**
+ * Image cleanup for notes whose permanent delete still offers Undo (AUDIT-003).
+ *
+ * Deleting an image's bytes claims it, and restore_note deliberately keeps a claimed image
+ * deleted, so cleanup run while Undo is still on offer brought the note back without its images.
+ * Held here, in memory, until the Undo closes: after a reload there is no Undo left to protect, and
+ * the persisted pending-GC marker lets the next sync finish the cleanup.
+ */
+const deferredAttachmentGc = new Map<string, Attachment[]>();
+
+export function deferAttachmentGc(noteId: string, attachments: Attachment[]): void {
+  deferredAttachmentGc.set(noteId, attachments);
+}
+
+export function isAttachmentGcDeferred(noteId: string): boolean {
+  return deferredAttachmentGc.has(noteId);
+}
+
+/** Undo was taken: the images stay. The pending-GC marker is cleared by markRestored. */
+export function cancelDeferredAttachmentGc(noteIds: string[]): void {
+  for (const id of noteIds) deferredAttachmentGc.delete(id);
+}
+
+/** Undo closed without being taken: clean up now, as an immediate delete would have. */
+export async function runDeferredAttachmentGc(noteIds: string[]): Promise<void> {
+  const tomb = useTombstoneStore.getState();
+  for (const noteId of noteIds) {
+    const attachments = deferredAttachmentGc.get(noteId);
+    deferredAttachmentGc.delete(noteId);
+    if (!attachments || tomb.isRestored(noteId)) continue;
+    try {
+      await gcAttachmentsAfterNoteDelete(noteId, attachments);
+      useTombstoneStore.getState().clearPendingAttachmentGc(noteId);
+    } catch {
+      // Marker stays; the next snapshot or pull retries.
+    }
+  }
+}
+
+/** Test-only reset of the in-memory deferrals. */
+export function resetDeferredAttachmentGcForTests(): void {
+  deferredAttachmentGc.clear();
+}
+
 export async function retryPendingAttachmentGc(): Promise<void> {
   const tomb = useTombstoneStore.getState();
   for (const [noteId, attachmentIds] of tomb.pendingAttachmentGcEntries()) {
+    if (isAttachmentGcDeferred(noteId)) continue;
     if (tomb.isRestored(noteId)) {
       tomb.clearPendingAttachmentGc(noteId);
       continue;
@@ -302,7 +347,7 @@ async function sweepServerPendingDeletedAttachments(): Promise<void> {
   const tomb = useTombstoneStore.getState();
   const store = getAttachmentBlobStore();
   for (const row of pending) {
-    if (tomb.isRestored(row.noteId)) continue;
+    if (tomb.isRestored(row.noteId) || isAttachmentGcDeferred(row.noteId)) continue;
     try {
       await store.delete(row.noteId, row.attachmentId);
       await purgeDeletedNoteAttachment(row.attachmentId, row.noteId);

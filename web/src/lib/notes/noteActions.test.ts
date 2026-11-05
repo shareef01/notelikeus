@@ -52,6 +52,7 @@ vi.mock("@/lib/attachments/attachmentConfig", () => ({
 }));
 
 vi.mock("@/lib/attachments/attachmentSyncService", () => ({
+  deferAttachmentGc: vi.fn(),
   gcAttachmentsAfterNoteDelete: (noteId: string, attachments: unknown) =>
     attachmentMocks.gcAttachmentsAfterNoteDelete(noteId, attachments),
   deleteAttachmentsForNote: (noteId: string, attachments: unknown) =>
