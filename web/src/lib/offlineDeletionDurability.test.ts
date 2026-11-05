@@ -1,9 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  bootstrapApp,
   clearLocalUserData,
   clearLocalUserDataForAccountSwitch,
   clearPendingDeletions,
+  clearPersistedAppData,
 } from '@/lib/bootstrap';
+import { restorePendingDeletions } from '@/lib/notes/pendingDeletionStash';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 
 /**
@@ -39,7 +42,7 @@ describe('offline deletion durability across sign-out', () => {
     expect(localStorage.getItem('notelikeus-deleted-notes')).not.toBeNull();
   });
 
-  it('drops pending deletions when a different account takes over', async () => {
+  it('takes pending deletions out of use when a different account takes over', async () => {
     useTombstoneStore.getState().markDeleted('note-from-account-a');
 
     await clearLocalUserDataForAccountSwitch('owner-a');
@@ -47,15 +50,14 @@ describe('offline deletion durability across sign-out', () => {
     // The other half of the invariant: one account's deletions must never suppress another
     // account's notes.
     expect(useTombstoneStore.getState().isDeleted('note-from-account-a')).toBe(false);
-    expect(localStorage.getItem('notelikeus-deleted-notes')).toBeNull();
   });
 
-  it('drops pending deletions when entering guest mode', () => {
-    useTombstoneStore.getState().markDeleted('note-from-account-a');
+  it('drops pending deletions whose account is unknown', () => {
+    useTombstoneStore.getState().markDeleted('note-from-nobody');
 
     clearPendingDeletions();
 
-    expect(useTombstoneStore.getState().isDeleted('note-from-account-a')).toBe(false);
+    expect(useTombstoneStore.getState().isDeleted('note-from-nobody')).toBe(false);
   });
 
   it('still forgets a deletion the server has acknowledged', () => {
@@ -69,7 +71,7 @@ describe('offline deletion durability across sign-out', () => {
     expect(useTombstoneStore.getState().isDeleted('note-synced-delete')).toBe(false);
   });
 
-  it('preserves last merged user id across normal sign out so the next account switch purges tombstones', async () => {
+  it('preserves last merged user id across normal sign out so the next account switch sets tombstones aside', async () => {
     const { loadLastMergedUserId, saveLastMergedUserId } = await import('@/lib/notes/lastMergedUser');
 
     // 1. User A is active and deletes a note offline
@@ -92,9 +94,113 @@ describe('offline deletion durability across sign-out', () => {
       await clearLocalUserDataForAccountSwitch(lastMerged);
     }
 
-    // After account switch, User A's tombstones are purged and cannot suppress User B's notes:
+    // After account switch, User A's tombstones are out of use and cannot suppress User B's notes:
     expect(useTombstoneStore.getState().isDeleted('note-offline-deleted-by-a')).toBe(false);
-    expect(localStorage.getItem('notelikeus-deleted-notes')).toBeNull();
     expect(loadLastMergedUserId()).toBeNull();
+  });
+});
+
+/**
+ * AUDIT-004: an account switch or guest mode used to destroy the previous account's pending
+ * deletions. Its notes deleted offline then came back on its next sync, from the still-live cloud
+ * copy.
+ */
+describe('pending deletions across account switches (AUDIT-004)', () => {
+  beforeEach(() => {
+    useTombstoneStore.getState().reset();
+    localStorage.clear();
+  });
+
+  it("keeps A's deletions through A -> B -> A", async () => {
+    useTombstoneStore.getState().markDeleted('note-a', 7, 1_000);
+
+    await clearLocalUserDataForAccountSwitch('user-a');
+    restorePendingDeletions('user-b');
+    // B never sees A's deletion.
+    expect(useTombstoneStore.getState().isDeleted('note-a')).toBe(false);
+    useTombstoneStore.getState().markDeleted('note-b');
+
+    await clearLocalUserDataForAccountSwitch('user-b');
+    restorePendingDeletions('user-a');
+
+    const state = useTombstoneStore.getState();
+    expect(state.isDeleted('note-a')).toBe(true);
+    // The baseline the delete is sent against survives too, or the server refuses it.
+    expect(state.baselineRevisionById['note-a']).toBe(7);
+    expect(state.deletedAtById['note-a']).toBe(1_000);
+    // And A does not pick up B's.
+    expect(state.isDeleted('note-b')).toBe(false);
+  });
+
+  it('keeps them across a reload while set aside', async () => {
+    useTombstoneStore.getState().markDeleted('note-a');
+    await clearLocalUserDataForAccountSwitch('user-a');
+
+    // A reload empties memory; only localStorage is left.
+    useTombstoneStore.getState().reset();
+    restorePendingDeletions('user-a');
+
+    expect(useTombstoneStore.getState().isDeleted('note-a')).toBe(true);
+  });
+
+  it('restores them once, then forgets the set-aside copy', async () => {
+    useTombstoneStore.getState().markDeleted('note-a');
+    await clearLocalUserDataForAccountSwitch('user-a');
+    restorePendingDeletions('user-a');
+    useTombstoneStore.getState().clearIds(['note-a']); // the server acknowledged it
+
+    restorePendingDeletions('user-a');
+
+    expect(useTombstoneStore.getState().isDeleted('note-a')).toBe(false);
+  });
+
+  it("keeps A's deletions when A enters guest mode and later signs in again", async () => {
+    const { saveLastMergedUserId } = await import('@/lib/notes/lastMergedUser');
+    const { useAuthStore } = await import('@/store/authStore');
+    saveLastMergedUserId('user-a');
+    useTombstoneStore.getState().markDeleted('note-a');
+
+    useAuthStore.getState().enterGuestMode();
+    expect(useTombstoneStore.getState().isDeleted('note-a')).toBe(false);
+
+    useAuthStore.getState().exitGuestMode();
+    restorePendingDeletions('user-a');
+    expect(useTombstoneStore.getState().isDeleted('note-a')).toBe(true);
+  });
+
+  it('still clears them on an explicit clear of local data', async () => {
+    useTombstoneStore.getState().markDeleted('note-a');
+    await clearLocalUserDataForAccountSwitch('user-a');
+
+    clearPersistedAppData();
+    restorePendingDeletions('user-a');
+
+    expect(useTombstoneStore.getState().isDeleted('note-a')).toBe(false);
+  });
+});
+
+/** AUDIT-007: the automatic recovery from a failed store load used to remove the tombstone record. */
+describe('startup recovery keeps pending deletions (AUDIT-007)', () => {
+  beforeEach(() => {
+    useTombstoneStore.getState().reset();
+    localStorage.clear();
+  });
+
+  it('keeps the tombstone record when another store fails to load', async () => {
+    const { useNotesStore } = await import('@/store/notesStore');
+    useTombstoneStore.getState().markDeleted('note-offline-deleted');
+    const persisted = localStorage.getItem('notelikeus-deleted-notes');
+    expect(persisted).not.toBeNull();
+    const rehydrate = vi
+      .spyOn(useNotesStore.persist, 'rehydrate')
+      .mockRejectedValueOnce(new Error('filters record is unreadable'));
+
+    // The configuration checks after recovery may refuse to boot in tests; recovery has run by then.
+    await bootstrapApp().catch(() => undefined);
+
+    expect(rehydrate).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem('notelikeus-deleted-notes')).toBe(persisted);
+    expect(useTombstoneStore.getState().isDeleted('note-offline-deleted')).toBe(true);
+    rehydrate.mockRestore();
   });
 });

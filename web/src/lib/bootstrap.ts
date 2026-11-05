@@ -18,6 +18,10 @@ import { clearGuestAdoptionIntent } from '@/lib/local/guestAdoptionIntent';
 import { clearPendingAttachmentStore } from '@/lib/attachments/pendingAttachmentStore';
 import { clearAttachmentThumbnailCache } from '@/lib/attachments/attachmentThumbnailCache';
 import { clearAttachmentPreviewCache } from '@/lib/attachments/attachmentPreviewCache';
+import {
+  clearAllPendingDeletionStashes,
+  stashPendingDeletions,
+} from '@/lib/notes/pendingDeletionStash';
 
 export type BootFailureCode = 'storage' | 'supabase-config' | 'unknown';
 
@@ -136,8 +140,16 @@ async function rehydrateStores(): Promise<void> {
   ]);
 }
 
-export function clearPersistedAppData(): void {
+/**
+ * Removes the app's localStorage records. The explicit "clear local data" action passes nothing
+ * and removes pending deletions with everything else. Automatic startup recovery passes
+ * keepPendingDeletions (AUDIT-007): a store that failed to load is no reason to destroy the only
+ * record of notes deleted offline, which would come back on the next sync.
+ */
+export function clearPersistedAppData(options: { keepPendingDeletions?: boolean } = {}): void {
+  if (!options.keepPendingDeletions) clearAllPendingDeletionStashes();
   for (const key of STORAGE_KEYS) {
+    if (options.keepPendingDeletions && key === DELETED_NOTES_STORAGE_KEY) continue;
     try {
       localStorage.removeItem(key);
     } catch {
@@ -153,8 +165,16 @@ export function clearPersistedAppData(): void {
  * already gone and the server copy is still live. Clearing this is therefore as destructive as
  * clearing the notes themselves, and belongs only where the notes are cleared too — an account
  * switch, or entering guest mode. See [clearLocalUserData], which deliberately does not.
+ *
+ * With the owner's id, the deletions are put aside under that account rather than destroyed
+ * (AUDIT-004), and come back when it signs in again. They are discarded only when the owner is
+ * unknown, or the stash could not be written: they must never be applied to another account.
  */
-export function clearPendingDeletions(): void {
+export function clearPendingDeletions(ownerId?: string | null): void {
+  if (ownerId) {
+    stashPendingDeletions(ownerId);
+    return;
+  }
   useTombstoneStore.getState().reset();
   try {
     localStorage.removeItem(DELETED_NOTES_STORAGE_KEY);
@@ -207,8 +227,9 @@ export function clearLocalUserData(): void {
 export async function clearLocalUserDataForAccountSwitch(previousOwnerId: string): Promise<void> {
   clearGuestAdoptionIntent();
   clearLocalUserData();
-  // A different account must not inherit this one's pending deletions.
-  clearPendingDeletions();
+  // A different account must not inherit this one's pending deletions, and this one must not lose
+  // them (AUDIT-004): they are put aside under its id until it signs in here again.
+  clearPendingDeletions(previousOwnerId);
   clearPendingAttachmentStore();
   try {
     localStorage.removeItem(LAST_MERGED_USER_STORAGE_KEY);
@@ -253,7 +274,7 @@ export async function bootstrapApp(): Promise<void> {
     await rehydrateStores();
   } catch (error) {
     console.error('[Notelikeus] Rehydrate failed, clearing persisted data:', error);
-    clearPersistedAppData();
+    clearPersistedAppData({ keepPendingDeletions: true });
     try {
       await rehydrateStores();
     } catch (retryError) {

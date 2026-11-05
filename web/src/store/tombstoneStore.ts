@@ -266,30 +266,87 @@ export const useTombstoneStore = create<TombstoneState>()(
         restoredIds: state.restoredIds,
         pendingAttachmentGcByNoteId: state.pendingAttachmentGcByNoteId,
       }),
-      merge: (persisted, current) => {
-        const raw = persisted as {
-          deletedAtById?: unknown;
-          baselineRevisionById?: unknown;
-          deletedDigestById?: unknown;
-          deletedIds?: unknown;
-          restoredIds?: unknown;
-          pendingAttachmentGcByNoteId?: unknown;
-        } | undefined;
-        const fromNew = normalizeDeletedMap(raw?.deletedAtById);
-        const baselines = normalizeNumberMap(raw?.baselineRevisionById);
-        const fromLegacy = normalizeDeletedMap(raw?.deletedIds);
-        const restoredIds = Array.isArray(raw?.restoredIds)
-          ? raw.restoredIds.filter((id): id is string => typeof id === 'string')
-          : [];
-        return {
-          ...current,
-          deletedAtById: { ...fromLegacy, ...fromNew },
-          baselineRevisionById: baselines,
-          deletedDigestById: normalizeStringMap(raw?.deletedDigestById),
-          restoredIds,
-          pendingAttachmentGcByNoteId: normalizePendingGc(raw?.pendingAttachmentGcByNoteId),
-        };
-      },
+      merge: (persisted, current) => ({ ...current, ...normalizeTombstoneSnapshot(persisted) }),
     },
   ),
 );
+
+/** The persisted part of the tombstone store: one account's deletion intent. */
+export interface TombstoneSnapshot {
+  deletedAtById: Record<string, number>;
+  baselineRevisionById: Record<string, number>;
+  deletedDigestById: Record<string, string>;
+  restoredIds: string[];
+  pendingAttachmentGcByNoteId: Record<string, string[]>;
+}
+
+/** Reads a persisted or stashed snapshot defensively; anything malformed is dropped field by field. */
+export function normalizeTombstoneSnapshot(persisted: unknown): TombstoneSnapshot {
+  const raw = (persisted && typeof persisted === 'object' ? persisted : undefined) as {
+    deletedAtById?: unknown;
+    baselineRevisionById?: unknown;
+    deletedDigestById?: unknown;
+    deletedIds?: unknown;
+    restoredIds?: unknown;
+    pendingAttachmentGcByNoteId?: unknown;
+  } | undefined;
+  const fromNew = normalizeDeletedMap(raw?.deletedAtById);
+  const fromLegacy = normalizeDeletedMap(raw?.deletedIds);
+  const restoredIds = Array.isArray(raw?.restoredIds)
+    ? raw.restoredIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  return {
+    deletedAtById: { ...fromLegacy, ...fromNew },
+    baselineRevisionById: normalizeNumberMap(raw?.baselineRevisionById),
+    deletedDigestById: normalizeStringMap(raw?.deletedDigestById),
+    restoredIds,
+    pendingAttachmentGcByNoteId: normalizePendingGc(raw?.pendingAttachmentGcByNoteId),
+  };
+}
+
+export function snapshotTombstones(): TombstoneSnapshot {
+  const state = useTombstoneStore.getState();
+  return {
+    deletedAtById: state.deletedAtById,
+    baselineRevisionById: state.baselineRevisionById,
+    deletedDigestById: state.deletedDigestById,
+    restoredIds: state.restoredIds,
+    pendingAttachmentGcByNoteId: state.pendingAttachmentGcByNoteId,
+  };
+}
+
+export function isTombstoneSnapshotEmpty(snapshot: TombstoneSnapshot): boolean {
+  return (
+    Object.keys(snapshot.deletedAtById).length === 0 &&
+    Object.keys(snapshot.baselineRevisionById).length === 0 &&
+    Object.keys(snapshot.deletedDigestById).length === 0 &&
+    snapshot.restoredIds.length === 0 &&
+    Object.keys(snapshot.pendingAttachmentGcByNoteId).length === 0
+  );
+}
+
+/**
+ * Combines two snapshots of the same account. The earlier deletion time wins, as in markDeleted
+ * and mergeFromCloud; `primary` wins for baselines and digests, which are fixed at deletion time.
+ */
+export function mergeTombstoneSnapshots(
+  primary: TombstoneSnapshot,
+  secondary: TombstoneSnapshot,
+): TombstoneSnapshot {
+  const deletedAtById = { ...secondary.deletedAtById };
+  for (const [id, at] of Object.entries(primary.deletedAtById)) {
+    const other = deletedAtById[id];
+    deletedAtById[id] = other == null ? at : Math.min(at, other);
+  }
+  const pendingAttachmentGcByNoteId = { ...secondary.pendingAttachmentGcByNoteId };
+  for (const [id, ids] of Object.entries(primary.pendingAttachmentGcByNoteId)) {
+    pendingAttachmentGcByNoteId[id] = [...new Set([...(pendingAttachmentGcByNoteId[id] ?? []), ...ids])];
+  }
+  return {
+    deletedAtById,
+    baselineRevisionById: { ...secondary.baselineRevisionById, ...primary.baselineRevisionById },
+    deletedDigestById: { ...secondary.deletedDigestById, ...primary.deletedDigestById },
+    restoredIds: [...new Set([...primary.restoredIds, ...secondary.restoredIds])],
+    pendingAttachmentGcByNoteId,
+  };
+}

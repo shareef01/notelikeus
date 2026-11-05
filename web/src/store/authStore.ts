@@ -2,6 +2,7 @@
 import type { AuthUser } from '@/lib/auth/authUser';
 import { clearLocalUserData, clearPendingDeletions } from '@/lib/bootstrap';
 import { clearGuestAdoptionIntent } from '@/lib/local/guestAdoptionIntent';
+import { loadLastMergedUserId } from '@/lib/notes/lastMergedUser';
 
 interface AuthState {
   user: AuthUser | null;
@@ -39,8 +40,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     // appear in guest filters, and in-memory notes would flash until guest bootstrap.
     clearLocalUserData();
     // Guest is a different namespace, so a signed-in account's pending deletions must not follow
-    // the user into it — and guest deletes never record tombstones to begin with.
-    clearPendingDeletions();
+    // the user into it — and guest deletes never record tombstones to begin with. They are put
+    // aside under the account they belong to, not dropped (AUDIT-004).
+    clearPendingDeletions(loadLastMergedUserId());
     set({ guestMode: true });
   },
   exitGuestMode: () => set((state) => (state.guestMode ? { guestMode: false } : state)),
