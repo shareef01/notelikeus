@@ -11,7 +11,7 @@ vi.mock('@/lib/supabase/client', () => ({
   getSupabaseClient: () => ({
     rpc: pagedSnapshotRpc(rpc),
     auth: {
-      getSession: () => Promise.resolve({ data: { session: { user: { id: 'u' } } }, error: null }),
+      getSession: () => Promise.resolve({ data: { session: { user: { id: USER }, access_token: 'test-token' } }, error: null }),
     },
     channel: () => {
       const ch: Record<string, unknown> = {};
@@ -28,7 +28,7 @@ vi.mock('@/lib/supabase/client', () => ({
 
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
 import { saveRevisionState } from '@/lib/supabase/revisionStore';
-import { applyNoteChange } from '@/lib/supabase/supabaseSyncEngine';
+import { applyNoteChange, pullIncrementalChanges } from '@/lib/supabase/supabaseSyncEngine';
 import { supabaseRemoteNotesDataSource } from '@/lib/supabase/supabaseRemoteNotesDataSource';
 import {
   CloudWipedElsewhereError,
@@ -39,8 +39,10 @@ import {
   wipeGenerationForPush,
 } from '@/lib/supabase/wipeGeneration';
 import { useNotesStore } from '@/store/notesStore';
+import { useAuthStore } from '@/store/authStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
 import { createEmptyNote, type Note } from '@/types/note';
+import { listNotes, putNotes } from '@/lib/local/notesLocalRepository';
 
 const USER = '22222222-2222-4222-8222-222222222222';
 
@@ -83,6 +85,7 @@ describe('wipe generation protocol', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     useNotesStore.getState().reset();
+    useAuthStore.getState().setUser({ uid: USER, email: null, displayName: null });
     useTombstoneStore.getState().reset();
     await resetNotesDatabaseForTests();
     rpc.mockResolvedValue({ data: {}, error: null });
@@ -205,5 +208,62 @@ describe('wipe generation protocol', () => {
         new Set(['n1']),
       ),
     ).rejects.toThrow(/refusing to delete local copies/);
+  });
+
+  it('blocks reupload after an empty incremental pull learns a newer wipe generation', async () => {
+    const original = localNote('n1');
+    await putNotes(USER, [original]);
+    useNotesStore.getState().setNotes([original]);
+    rpc.mockImplementation((fn: string) => Promise.resolve(fn === 'pull_changes'
+      ? { data: { changes: [], wipe_generation: 1 }, error: null }
+      : fn === 'fetch_full_snapshot' ? snapshot({ wipeGeneration: 1 })
+        : { data: { status: 'applied', revision: 10 }, error: null }));
+
+    await pullIncrementalChanges(USER, new Map([[original.id, original]]));
+    expect(await readWipeGeneration(USER)).toBe(1);
+    expect(await pushesBlockedByWipe(USER)).toBe(true);
+    const result = await supabaseRemoteNotesDataSource.syncNotesWithCloud(USER, [original], new Set([original.id]));
+    expect(result.merged).toEqual([original]);
+    expect(await listNotes(USER)).toEqual([original]);
+    expect(rpc).not.toHaveBeenCalledWith('apply_note_change', expect.anything());
+    expect(useNotesStore.getState().cloudWipeNotice?.generation).toBe(1);
+  });
+
+  it('preserves local notes and the pull cursor when a generation bump also carries changes', async () => {
+    const original = localNote('n1');
+    await putNotes(USER, [original]);
+    await saveRevisionState(USER, { lastRemoteRevision: 5 });
+    rpc.mockResolvedValue({ data: { changes: [{ type: 'tombstone', note_id: original.id, deleted_at: 100, revision: 9 }], wipe_generation: 2 }, error: null });
+
+    const notes = new Map([[original.id, original]]);
+    await pullIncrementalChanges(USER, notes);
+    expect(await listNotes(USER)).toEqual([original]);
+    expect(notes.get(original.id)).toEqual(original);
+    expect(await pushesBlockedByWipe(USER)).toBe(true);
+    expect(useTombstoneStore.getState().isDeleted(original.id)).toBe(false);
+    const { loadRevisionState } = await import('@/lib/supabase/revisionStore');
+    expect((await loadRevisionState(USER)).lastRemoteRevision).toBe(5);
+  });
+
+  it('recognizes a wipe during baseline loading without replacing the local library', async () => {
+    const original = localNote('n1');
+    await putNotes(USER, [original]);
+    await saveRevisionState(USER, { knownCloudIds: [original.id], noteRevisions: { [original.id]: 5 } });
+    useNotesStore.getState().setNotes([original]);
+    rpc.mockImplementation((fn: string) => Promise.resolve(fn === 'fetch_full_snapshot'
+      ? snapshot({ wipeGeneration: 1 }) : { data: {}, error: null }));
+    const emitted = vi.fn();
+    const onError = vi.fn();
+    const stop = supabaseRemoteNotesDataSource.subscribeToNotes(USER, emitted, onError);
+    try {
+      await vi.waitFor(() => expect(useNotesStore.getState().cloudWipeNotice?.generation).toBe(1));
+      expect(await pushesBlockedByWipe(USER)).toBe(true);
+      expect(await listNotes(USER)).toEqual([original]);
+      expect(useNotesStore.getState().notes).toEqual([original]);
+      expect(emitted).not.toHaveBeenCalled();
+      expect(onError).not.toHaveBeenCalled();
+    } finally {
+      stop();
+    }
   });
 });

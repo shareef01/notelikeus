@@ -42,28 +42,23 @@ export function createR2AttachmentBlobStore(
 ): AttachmentBlobStore {
   const base = workerBaseUrl.replace(/\/$/, '');
 
-  async function accessToken(): Promise<string> {
+  async function accessToken(expectedOwnerId?: string): Promise<string> {
     const { data, error } = await getSupabaseClient().auth.getSession();
     const token = data.session?.access_token?.trim();
-    if (error || !token) {
+    if (error || !token || (expectedOwnerId && data.session?.user.id !== expectedOwnerId)) {
       throw new Error('missing Supabase session for attachment upload');
     }
     return token;
   }
 
-  async function ownerId(): Promise<string> {
-    const { data, error } = await getSupabaseClient().auth.getUser();
-    const id = data.user?.id?.trim();
-    if (error || !id) {
-      throw new Error('missing Supabase user for attachment storage');
-    }
-    return id;
-  }
-
   return {
-    async upload(noteId, attachmentId, blob, mimeType): Promise<AttachmentBlobUploadResult> {
-      const token = await accessToken();
-      const userId = await ownerId();
+    async upload(noteId, attachmentId, blob, mimeType, expectedOwnerId): Promise<AttachmentBlobUploadResult> {
+      const { data, error } = await getSupabaseClient().auth.getSession();
+      const token = data.session?.access_token?.trim();
+      const userId = data.session?.user.id;
+      if (error || !token || !userId || (expectedOwnerId && userId !== expectedOwnerId)) {
+        throw new Error('Account changed during attachment upload');
+      }
       const objectKey = buildAttachmentObjectKey(userId, noteId, attachmentId);
       // Deferred protocol, with no fallback to v1: v1 would commit the row before any note names it.
       const response = await fetchWithRateLimitRetry(() =>
@@ -91,8 +86,8 @@ export function createR2AttachmentBlobStore(
       };
     },
 
-    async download(noteId, attachmentId): Promise<Blob> {
-      const token = await accessToken();
+    async download(noteId, attachmentId, expectedOwnerId): Promise<Blob> {
+      const token = await accessToken(expectedOwnerId);
       const response = await fetchWithRateLimitRetry(() =>
         fetch(`${base}${attachmentWorkerPath(noteId, attachmentId)}`, {
           headers: { Authorization: `Bearer ${token}` },

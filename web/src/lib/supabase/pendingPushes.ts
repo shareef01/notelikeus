@@ -18,7 +18,9 @@ import { conflictedCopyOf } from '@/lib/notes/conflictResolution';
 import { notesUserContentEqual } from '@/lib/notes/noteEquality';
 import { loadRevisionState } from '@/lib/supabase/revisionStore';
 import { applyNoteChange, NoteConflictError } from '@/lib/supabase/supabaseSyncEngine';
+import { wipeGenerationForPush } from '@/lib/supabase/wipeGeneration';
 import { useNotesStore } from '@/store/notesStore';
+import { useAuthStore } from '@/store/authStore';
 import { useSyncStatusStore } from '@/store/syncStatusStore';
 import { useToastStore } from '@/store/toastStore';
 import { useTombstoneStore } from '@/store/tombstoneStore';
@@ -64,7 +66,7 @@ async function runFlush(
   userId: string,
   options?: { isActive?: () => boolean },
 ): Promise<PendingFlushResult> {
-  const isActive = () => options?.isActive?.() !== false;
+  const isActive = () => options?.isActive?.() !== false && useAuthStore.getState().user?.uid === userId;
   const result = emptyResult();
   const attempted = new Set<string>();
   const status = useSyncStatusStore.getState();
@@ -79,9 +81,10 @@ async function runFlush(
         if (!isActive()) return result;
         attempted.add(noteId);
         try {
-          await flushOne(userId, noteId, result);
+          await flushOne(userId, noteId, result, isActive);
           reportedRejections.delete(rejectionKey(userId, noteId));
         } catch (error) {
+          if (!isActive()) return result;
           failed = true;
           console.warn(`[Notelikeus] Note ${noteId} is saved locally; its upload will be retried:`, error);
           if (isPermanentRejection(error)) reportRejection(userId, noteId, error);
@@ -137,23 +140,28 @@ function reportRejection(userId: string, noteId: string, error: unknown): void {
     );
 }
 
-async function flushOne(userId: string, noteId: string, result: PendingFlushResult): Promise<void> {
+async function flushOne(userId: string, noteId: string, result: PendingFlushResult, isActive: () => boolean): Promise<void> {
   if (useTombstoneStore.getState().isDeleted(noteId)) {
     // Deleted on this device: the delete path owns what happens in the cloud now.
     await dropPendingPush(userId, noteId);
     return;
   }
   const pending = await readPendingEdit(userId, noteId);
+  if (!isActive()) return;
   if (!pending) {
     await dropPendingPush(userId, noteId);
     return;
   }
   const { marker } = pending;
+  // A blocked account must not upload its old image bytes before the note mutation refuses.
+  await wipeGenerationForPush(userId);
+  if (!isActive()) return;
   // Imports and reconnects use this queue without going through the editor's upload path.
   // Keep the staged bytes until the accepted paths have been persisted by settleAccepted.
   const note = isR2AttachmentsEnabled() && pending.note.attachments.some((attachment) => isPendingAttachment(attachment.storagePath))
-    ? await syncNoteAttachments(pending.note)
+    ? await syncNoteAttachments(pending.note, userId)
     : pending.note;
+  if (!isActive()) return;
   if (isR2AttachmentsEnabled() && note.attachments.some((attachment) => isPendingAttachment(attachment.storagePath))) {
     throw new Error('Images are saved on this device but attachment uploads are unavailable');
   }
@@ -162,11 +170,12 @@ async function flushOne(userId: string, noteId: string, result: PendingFlushResu
   try {
     accepted = await applyNoteChange(userId, note, marker.baseRevision);
   } catch (error) {
+    if (!isActive()) return;
     if (!(error instanceof NoteConflictError)) throw error;
     if (error.missing) {
       // Nothing in the cloud to conflict with — no note, no tombstone — so this is a create.
       accepted = await applyNoteChange(userId, note, null);
-      await settleAccepted(userId, pending.note, marker.seq, accepted, result);
+      if (isActive()) await settleAccepted(userId, pending.note, marker.seq, accepted, result, isActive);
       return;
     }
     // The cloud's version carries no attachments (the payload has none), so the comparison leaves
@@ -174,12 +183,12 @@ async function flushOne(userId: string, noteId: string, result: PendingFlushResu
     if (error.current && notesUserContentEqual({ ...note, attachments: [] }, error.current)) {
       accepted = await adoptSameVersion(userId, note, error.current);
     } else {
-      await keepBothVersions(userId, note, marker.seq, error.current, result);
+      await keepBothVersions(userId, note, marker.seq, error.current, result, isActive);
       return;
     }
   }
 
-  await settleAccepted(userId, pending.note, marker.seq, accepted, result);
+  if (isActive()) await settleAccepted(userId, pending.note, marker.seq, accepted, result, isActive);
 }
 
 /**
@@ -202,10 +211,11 @@ async function settleAccepted(
   seq: number,
   accepted: Note,
   result: PendingFlushResult,
+  isActive: () => boolean,
 ): Promise<void> {
   const revision = (await loadRevisionState(userId)).noteRevisions[accepted.id] ?? null;
   if ((await settlePendingPush(userId, seq, accepted, revision)) === 'settled') {
-    publish(pushed, accepted);
+    if (isActive()) publish(pushed, accepted);
     result.upserted.push(accepted);
     await releaseUploadedPendingAttachments(pushed, accepted, userId);
   }
@@ -217,16 +227,22 @@ async function keepBothVersions(
   seq: number,
   current: Note | null,
   result: PendingFlushResult,
+  isActive: () => boolean,
 ): Promise<void> {
   // Images not uploaded yet exist only here, under the local note's id, and an upload this push was
   // to name is visible nowhere until a commit does: both go with the copy.
   const source = await reclaimUncommittedUploads(local, userId, { noteGone: current === null });
   const copy = await withPendingAttachments(source, conflictedCopy(local), userId);
+  if (!isActive()) {
+    await releaseCopyAttachments(copy, userId);
+    return;
+  }
   if (!(await resolveConflictedPush(userId, local.id, seq, copy, current))) {
     await releaseCopyAttachments(copy, userId);
     return;
   }
   await releaseCopiedPendingAttachments(source, current, userId);
+  if (!isActive()) return;
 
   const store = useNotesStore.getState();
   if (current) {

@@ -78,6 +78,18 @@ export async function recordWipeGeneration(ownerId: string, generation: number):
   });
 }
 
+/** Learn a remote wipe and block pushes in the same transaction, before any retry can use it. */
+export async function observeRemoteWipeGeneration(ownerId: string, generation: number): Promise<boolean> {
+  let blocked = false;
+  await updateOwnerMeta(ownerId, (meta) => {
+    blocked = meta.wipeBlockedAt != null;
+    if (!Number.isSafeInteger(generation) || generation < 0 || generation <= (meta.wipeGeneration ?? 0)) return null;
+    blocked = true;
+    return { ...meta, wipeGeneration: generation, wipeBlockedAt: meta.wipeBlockedAt ?? Date.now() };
+  });
+  return blocked;
+}
+
 /**
  * The generation to present on a push, or a throw when this browser is not allowed to push.
  *

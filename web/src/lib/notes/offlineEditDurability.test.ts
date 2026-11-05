@@ -28,6 +28,7 @@ import { pendingStoragePath } from '@/lib/attachments/attachmentPaths';
 import { storePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
 import { NOTES_DB_NAME } from '@/lib/local/constants';
 import { getPendingAttachment } from '@/lib/local/pendingAttachmentRepository';
+import * as pendingRepository from '@/lib/local/pendingAttachmentRepository';
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
 import {
   applyRemotePageAtomically,
@@ -263,6 +264,31 @@ describe('F-06 offline edit durability', () => {
     expect(stored.map((note) => note.id)).not.toContain('1');
     expect(stored.map((note) => note.title)).toEqual(['offline edit (conflicted copy)']);
     expect([...cloud.values()].map((row) => row.note.title)).toEqual(['offline edit (conflicted copy)']);
+    expect(await listPendingPushes(USER)).toEqual({});
+  });
+
+  it('keeps the original edit and image pending when conflict-copy staging fails, then retries', async () => {
+    expect(await storePendingAttachment('quota-photo', new Blob(['only copy']), 'image/png', '1', USER)).toBe(true);
+    online = false;
+    const current = useNotesStore.getState().notes[0];
+    const edited = { ...current, title: 'offline photo edit', timestamp: current.timestamp + 100,
+      attachments: [{ id: 'quota-photo', noteId: 1, storagePath: pendingStoragePath('quota-photo'), type: 'image' }] };
+    await saveNote(edited);
+    online = true;
+    anotherDeviceEdits('remote winner');
+    const failedWrite = vi.spyOn(pendingRepository, 'putPendingAttachment').mockRejectedValue(new Error('Quota exceeded'));
+    try {
+      await subscribeOnce();
+      expect(await listNotes(USER)).toEqual([edited]);
+      expect(Object.keys(await listPendingPushes(USER))).toEqual(['1']);
+      expect(await getPendingAttachment(USER, '1', 'quota-photo')).not.toBeNull();
+    } finally {
+      failedWrite.mockRestore();
+    }
+    await subscribeOnce();
+    const copy = (await listNotes(USER)).find((note) => note.id !== '1')!;
+    expect(copy.attachments).toHaveLength(1);
+    expect(await getPendingAttachment(USER, copy.id, copy.attachments[0].id)).not.toBeNull();
     expect(await listPendingPushes(USER)).toEqual({});
   });
 

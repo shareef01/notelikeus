@@ -14,7 +14,7 @@ vi.mock('@/lib/attachments/attachmentConfig', async (importOriginal) => ({
 vi.mock('@/lib/supabase/client', () => ({
   getSupabaseClient: () => ({
     auth: {
-      getSession: async () => ({ data: { session: { access_token: 'token' } }, error: null }),
+      getSession: async () => ({ data: { session: { access_token: 'token', user: { id: 'owner-1' } } }, error: null }),
       getUser: async () => ({ data: { user: { id: 'owner-1' } }, error: null }),
     },
   }),
@@ -114,7 +114,7 @@ describe('deferred attachment protocol (web)', () => {
       });
 
       expect(download).toHaveBeenCalledTimes(1);
-      expect(download).toHaveBeenCalledWith('7', 'att-new');
+      expect(download).toHaveBeenCalledWith('7', 'att-new', OWNER);
       expect(reclaimed.attachments.map((attachment) => attachment.storagePath)).toEqual([
         uploaded('att-committed').storagePath,
         pendingStoragePath('att-new'),

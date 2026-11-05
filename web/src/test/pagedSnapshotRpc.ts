@@ -6,6 +6,7 @@
  * missing note_count, an empty cloud) reaches the client exactly as it would through the paged read,
  * and the test's own rpc mock still records a `fetch_full_snapshot` call for each snapshot read.
  */
+import { rpcWithHeaders } from '@/test/rpcWithHeaders';
 type Rpc = (name: string, args?: Record<string, unknown>) => unknown;
 
 interface FullSnapshot {
@@ -24,7 +25,7 @@ interface FullSnapshot {
 const lastAnswers = new WeakMap<Rpc, { data?: unknown; error?: unknown } | undefined>();
 
 export function pagedSnapshotRpc(rpc: Rpc): Rpc {
-  return async (name, args) => {
+  return rpcWithHeaders(async (name: string, args?: Record<string, unknown>) => {
     if (name !== 'fetch_snapshot_page') return rpc(name, args);
     if (args?.p_kind !== 'tombstones' || !lastAnswers.has(rpc)) {
       lastAnswers.set(rpc, (await rpc('fetch_full_snapshot')) as { data?: unknown; error?: unknown } | undefined);
@@ -50,5 +51,5 @@ export function pagedSnapshotRpc(rpc: Rpc): Rpc {
       },
       error: null,
     };
-  };
+  });
 }
