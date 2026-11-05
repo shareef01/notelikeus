@@ -31,7 +31,7 @@ import {
 } from '@/lib/attachments/attachmentPaths';
 import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
 import { getAttachmentBlobStore } from '@/lib/attachments/attachmentBlobStoreRegistry';
-import { releasePendingAttachment, storePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
+import { releasePendingAttachment, stagePendingAttachment } from '@/lib/attachments/pendingAttachmentStore';
 import { revokeAttachmentPreviewUrl } from '@/lib/attachments/attachmentPreviewCache';
 import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -504,13 +504,23 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       // Stage the blob durably *before* the note references it. The note autosaves with a
       // `pending:` path, so if staging silently failed that reference would outlive the blob and
       // the attachment would come back after a reload as metadata pointing at nothing.
-      const staged = await storePendingAttachment(
+      const staged = await stagePendingAttachment(
         attachmentId,
         file,
         file.type,
         stateRef.current.id ?? undefined,
       );
-      if (!staged) {
+      if (staged === 'encryption-unavailable') {
+        // Never stored unencrypted (AUDIT-008), so the image is not added at all.
+        useToastStore
+          .getState()
+          .show(
+            'Could not add that image: this browser could not load the key that encrypts it on this device. Try again, or reload the page.',
+            'error',
+          );
+        return;
+      }
+      if (staged !== 'staged') {
         useToastStore.getState().show('Could not add that image', 'error');
         return;
       }

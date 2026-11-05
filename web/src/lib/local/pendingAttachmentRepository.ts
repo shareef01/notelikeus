@@ -93,11 +93,24 @@ async function openStoredBlob(stored: StoredPendingAttachment): Promise<Blob | n
   }
 }
 
+/**
+ * The image could not be staged because the device key that seals staged images could not be
+ * loaded. Nothing was written.
+ */
+export class AttachmentEncryptionUnavailableError extends Error {
+  constructor() {
+    super('The key that encrypts stored images could not be loaded');
+    this.name = 'AttachmentEncryptionUnavailableError';
+  }
+}
+
 async function sealRecord(record: PendingAttachmentRecord): Promise<StoredPendingAttachment> {
   const key = await getAttachmentCryptoKey();
   if (!key) {
-    // WebCrypto/IDB unavailable — fall back to plaintext rather than drop the staging write.
-    return record;
+    // Refused rather than written in the clear (AUDIT-008), as notes are: a staged image is often
+    // the only copy, and an unencrypted one would sit in the profile until it uploads. The caller
+    // reports it and references nothing. A failed load is not cached, so a retry can succeed.
+    throw new AttachmentEncryptionUnavailableError();
   }
   const plain = await blobToBytes(record.blob);
   const sealed = await sealAttachmentBytes(

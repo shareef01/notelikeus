@@ -1,5 +1,6 @@
 import { resolveOwnerId } from '@/lib/local/ownerNamespace';
 import {
+  AttachmentEncryptionUnavailableError,
   deletePendingAttachmentForOwner,
   findPendingAttachmentForOwner,
   getPendingAttachment,
@@ -29,8 +30,22 @@ export async function storePendingAttachment(
   noteId?: string,
   ownerId?: string,
 ): Promise<boolean> {
+  return (await stagePendingAttachment(attachmentId, blob, mimeType, noteId, ownerId)) === 'staged';
+}
+
+/**
+ * {@link storePendingAttachment}, saying why staging failed: `encryption-unavailable` when the
+ * key that seals staged images could not be loaded (AUDIT-008), so the caller can say so.
+ */
+export async function stagePendingAttachment(
+  attachmentId: string,
+  blob: Blob,
+  mimeType: string,
+  noteId?: string,
+  ownerId?: string,
+): Promise<'staged' | 'encryption-unavailable' | 'failed'> {
   const resolvedOwner = ownerId ?? resolveOwnerId();
-  if (!resolvedOwner) return false;
+  if (!resolvedOwner) return 'failed';
   try {
     await putPendingAttachment({
       ownerId: resolvedOwner,
@@ -41,11 +56,11 @@ export async function storePendingAttachment(
       sizeBytes: blob.size,
       createdAt: Date.now(),
     });
-  } catch {
-    return false;
+  } catch (error) {
+    return error instanceof AttachmentEncryptionUnavailableError ? 'encryption-unavailable' : 'failed';
   }
   pending.set(attachmentId, { blob, mimeType, noteId, ownerId: resolvedOwner });
-  return true;
+  return 'staged';
 }
 
 export function peekPendingAttachment(
