@@ -18,8 +18,9 @@ import type { Note } from '@/types/note';
 export type ImportCommitOutcome = 'synced' | 'pending' | 'local';
 
 /**
- * Commits an import: the merged library becomes the local library, and when signed in the imported
- * notes are queued for the cloud like any other edit.
+ * Commits an import by adding its new notes to the current library. Existing notes in the preview
+ * are stale snapshots and must never replace edits or sync results received since it was prepared.
+ * When signed in the imported notes are queued for the cloud like any other edit.
  *
  * Signed in, the imported notes (the last [notesImported] of [merged]) are written to IndexedDB as
  * pending local edits in one transaction, before anything is sent (AUDIT-005). This used to upload
@@ -36,21 +37,25 @@ export async function commitImportedNotes(
   userId: string | undefined,
 ): Promise<ImportCommitOutcome> {
   if (notesImported <= 0) {
-    useNotesStore.getState().setNotes(merged);
     return userId ? 'synced' : 'local';
   }
+  const imported = merged.slice(merged.length - notesImported);
+  const publishImported = () => {
+    const current = useNotesStore.getState().notes;
+    useNotesStore.getState().setNotes([...current, ...imported]);
+  };
 
   // No snapshot of the pre-import cloud may replace the merged library while it is being written.
   // Afterwards the pending markers protect the imported notes on their own (F-06).
   pauseRealtimeSnapshots();
   try {
     if (!userId) {
-      await putNotes(GUEST_OWNER_ID, merged);
-      useNotesStore.getState().setNotes(merged);
+      await putNotes(GUEST_OWNER_ID, imported);
+      publishImported();
       return 'local';
     }
-    await putLocalEdits(userId, merged.slice(merged.length - notesImported));
-    useNotesStore.getState().setNotes(merged);
+    await putLocalEdits(userId, imported);
+    publishImported();
   } finally {
     resumeRealtimeSnapshots();
   }

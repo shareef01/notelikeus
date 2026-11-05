@@ -1,4 +1,6 @@
-import { ATTACHMENT_R2_PREFIX } from '@/lib/attachments/attachmentPaths';
+import { ATTACHMENT_R2_PREFIX, isPendingAttachment } from '@/lib/attachments/attachmentPaths';
+import { isR2AttachmentsEnabled } from '@/lib/attachments/attachmentConfig';
+import { releaseUploadedPendingAttachments, syncNoteAttachments } from '@/lib/attachments/attachmentSyncService';
 import {
   reclaimUncommittedUploads,
   releaseCopiedPendingAttachments,
@@ -146,7 +148,15 @@ async function flushOne(userId: string, noteId: string, result: PendingFlushResu
     await dropPendingPush(userId, noteId);
     return;
   }
-  const { marker, note } = pending;
+  const { marker } = pending;
+  // Imports and reconnects use this queue without going through the editor's upload path.
+  // Keep the staged bytes until the accepted paths have been persisted by settleAccepted.
+  const note = isR2AttachmentsEnabled() && pending.note.attachments.some((attachment) => isPendingAttachment(attachment.storagePath))
+    ? await syncNoteAttachments(pending.note)
+    : pending.note;
+  if (isR2AttachmentsEnabled() && note.attachments.some((attachment) => isPendingAttachment(attachment.storagePath))) {
+    throw new Error('Images are saved on this device but attachment uploads are unavailable');
+  }
 
   let accepted: Note;
   try {
@@ -156,7 +166,7 @@ async function flushOne(userId: string, noteId: string, result: PendingFlushResu
     if (error.missing) {
       // Nothing in the cloud to conflict with — no note, no tombstone — so this is a create.
       accepted = await applyNoteChange(userId, note, null);
-      await settleAccepted(userId, note, marker.seq, accepted, result);
+      await settleAccepted(userId, pending.note, marker.seq, accepted, result);
       return;
     }
     // The cloud's version carries no attachments (the payload has none), so the comparison leaves
@@ -169,7 +179,7 @@ async function flushOne(userId: string, noteId: string, result: PendingFlushResu
     }
   }
 
-  await settleAccepted(userId, note, marker.seq, accepted, result);
+  await settleAccepted(userId, pending.note, marker.seq, accepted, result);
 }
 
 /**
@@ -197,6 +207,7 @@ async function settleAccepted(
   if ((await settlePendingPush(userId, seq, accepted, revision)) === 'settled') {
     publish(pushed, accepted);
     result.upserted.push(accepted);
+    await releaseUploadedPendingAttachments(pushed, accepted, userId);
   }
 }
 
