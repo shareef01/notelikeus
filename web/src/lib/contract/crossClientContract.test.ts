@@ -157,6 +157,12 @@ describe('backup v3 contract', () => {
     expect(parsed.media.get('att-cross-1')!.bytes).toEqual(sampleBytes);
   });
 
+  // AUDIT-009: both readers refuse this file. Kotlin used to keep the last copy of the name.
+  it('refuses a bundle that names an entry twice, as Kotlin does', async () => {
+    const archive = readContractBinaryFixture('backup/v4-duplicate-entry-bundle.nlkbak');
+    await expect(parseBackupBundle(archive)).rejects.toThrow(/duplicate entry name/);
+  });
+
   it('parses genuine committed Kotlin-exported v4 .nlkbak bundle', async () => {
     const sampleBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
     const kotlinBundlePath = contractFixturePath('backup/v4-kotlin-bundle.nlkbak');
