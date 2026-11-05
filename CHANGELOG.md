@@ -4,6 +4,16 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.6.2] — 2026-11-05
+
+### Fixed
+- **Undo after deleting a note forever brings its pictures back too.** They used to be deleted straight away, so Undo returned the note without them, on Android, Windows and the web.
+- **A backup that names the same file twice is refused on every platform.** Android and Windows used to accept it and could import different pictures than the web would.
+- **Importing a backup while signed in no longer loses or duplicates notes if the upload fails partway** on the web. The notes are saved on your device first and sync when the connection is back.
+- **Notes you deleted offline stay deleted after you switch accounts or try guest mode** on the web. They used to come back the next time that account synced.
+- **Pictures waiting to upload are never stored unencrypted** on the web. If the encryption key can't be loaded, the picture isn't added and you're told why.
+- **A backup whose note labels aren't a list is refused with a clear message** on the web, instead of failing with an internal error.
+
 ## [2.6.1] — 2026-11-05
 
 ### Fixed
