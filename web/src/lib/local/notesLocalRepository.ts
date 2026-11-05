@@ -334,6 +334,27 @@ export async function putLocalEdit(ownerId: string, note: Note): Promise<void> {
   });
 }
 
+/**
+ * {@link putLocalEdit} for many notes in one transaction: all of them are saved and waiting for the
+ * cloud, or none is. A backup import commits this way, so a failure partway leaves nothing behind.
+ */
+export async function putLocalEdits(ownerId: string, notes: Note[]): Promise<void> {
+  if (notes.length === 0) return;
+  const records = await Promise.all(notes.map((note) => toStoredRecord(ownerId, note)));
+  await withNotesAndMeta(ownerId, (store, meta) => {
+    const pending = { ...meta.pendingPushes };
+    notes.forEach((note, index) => {
+      store.put(records[index]);
+      const previous = pending[note.id];
+      pending[note.id] = {
+        baseRevision: previous ? previous.baseRevision : (meta.noteRevisions?.[note.id] ?? null),
+        seq: (previous?.seq ?? 0) + 1,
+      };
+    });
+    return { ...meta, pendingPushes: pending };
+  });
+}
+
 export async function listPendingPushes(ownerId: string): Promise<Record<string, PendingPush>> {
   const meta = await getOwnerMeta(ownerId);
   mirrorPending(ownerId, meta?.pendingPushes);

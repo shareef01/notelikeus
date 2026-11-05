@@ -274,7 +274,7 @@ export function useAccountActions({
     const attachmentsImported = bundle?.attachmentsImported ?? staged.attachmentsImported;
     const attachmentsSkipped = bundle?.attachmentsSkipped ?? staged.attachmentsSkipped;
     try {
-      const uploadedToCloud = await commitImportedNotes(
+      const outcome = await commitImportedNotes(
         merged,
         staged.result.notesImported,
         userId,
@@ -292,7 +292,12 @@ export function useAccountActions({
       }
       const base =
         parts.length > 0 ? `Imported ${parts.join(' and ')}` : 'No notes found in backup';
-      const synced = uploadedToCloud ? `${base} and synced to cloud` : base;
+      const synced =
+        outcome === 'synced' && staged.result.notesImported > 0
+          ? `${base} and synced to cloud`
+          : outcome === 'pending'
+            ? `${base}. Saved on this device; they'll sync when the connection is back`
+            : base;
       // A partial failure is named in the same breath as the success, so the count and the
       // caveat cannot be read separately.
       toast(
@@ -301,7 +306,8 @@ export function useAccountActions({
           : synced,
       );
     } catch (error) {
-      // No note was written, so nothing references the images just staged: take them back.
+      // Only the local write throws, and it is all or nothing (AUDIT-005): no note was written, so
+      // nothing references the images just staged. Take them back.
       if (bundle) await releaseStagedBundle(bundle);
       toast(messageOf(error, 'Import failed'), 'error');
     }

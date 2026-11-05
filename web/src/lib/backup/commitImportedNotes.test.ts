@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const { remoteMocks } = vi.hoisted(() => ({
   remoteMocks: {
-    uploadAllNotes: vi.fn().mockResolvedValue(1),
+    pushPendingEdits: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -24,6 +24,12 @@ import { resetNotesDatabaseForTests } from '@/lib/local/idb';
 import { useNotesStore } from '@/store/notesStore';
 import { createEmptyNote } from '@/types/note';
 
+/** Stands in for a push that the cloud accepts in full. */
+async function settleAll(userId: string): Promise<void> {
+  const { dropPendingPush, listPendingPushes } = await import('@/lib/local/notesLocalRepository');
+  for (const id of Object.keys(await listPendingPushes(userId))) await dropPendingPush(userId, id);
+}
+
 function note(id: string) {
   return createEmptyNote({ id, localId: Number(id), title: `Note ${id}` });
 }
@@ -36,40 +42,34 @@ describe('commitImportedNotes', () => {
   });
 
 
-  it('uploads before writing the store when signed in', async () => {
+  it('saves the imported notes as pending edits before pushing them', async () => {
+    const { listNotes, listPendingPushes } = await import('@/lib/local/notesLocalRepository');
     const order: string[] = [];
     vi.mocked(pauseRealtimeSnapshots).mockImplementation(() => order.push('pause'));
-    vi.mocked(remoteMocks.uploadAllNotes).mockImplementation(async () => {
-      order.push('upload');
-      expect(useNotesStore.getState().notes).toEqual([]);
-      return 1;
-    });
     vi.mocked(resumeRealtimeSnapshots).mockImplementation(() => order.push('resume'));
+    remoteMocks.pushPendingEdits.mockImplementation(async (userId: string) => {
+      order.push('push');
+      // Durable and queued before anything is sent.
+      expect(Object.keys(await listPendingPushes(userId))).toEqual(['1']);
+      expect((await listNotes(userId)).map((n) => n.id)).toEqual(['1']);
+      await settleAll(userId);
+    });
 
     const merged = [note('1')];
-    const uploaded = await commitImportedNotes(merged, 1, 'user-1');
+    const outcome = await commitImportedNotes(merged, 1, 'user-1');
 
-    expect(uploaded).toBe(true);
-    expect(remoteMocks.uploadAllNotes).toHaveBeenCalledWith('user-1', merged);
+    expect(outcome).toBe('synced');
+    expect(remoteMocks.pushPendingEdits).toHaveBeenCalledWith('user-1');
     expect(useNotesStore.getState().notes).toEqual(merged);
-    expect(order).toEqual(['pause', 'upload', 'resume']);
-  });
-
-  it('does not write the store if the upload fails', async () => {
-    vi.mocked(remoteMocks.uploadAllNotes).mockRejectedValueOnce(new Error('offline'));
-
-    await expect(commitImportedNotes([note('1')], 1, 'user-1')).rejects.toThrow('offline');
-
-    expect(useNotesStore.getState().notes).toEqual([]);
-    expect(resumeRealtimeSnapshots).toHaveBeenCalled();
+    expect(order).toEqual(['pause', 'resume', 'push']);
   });
 
   it('writes locally only when signed out', async () => {
     const merged = [note('1')];
-    const uploaded = await commitImportedNotes(merged, 1, undefined);
+    const outcome = await commitImportedNotes(merged, 1, undefined);
 
-    expect(uploaded).toBe(false);
-    expect(remoteMocks.uploadAllNotes).not.toHaveBeenCalled();
+    expect(outcome).toBe('local');
+    expect(remoteMocks.pushPendingEdits).not.toHaveBeenCalled();
     expect(useNotesStore.getState().notes).toEqual(merged);
   });
 
@@ -146,63 +146,69 @@ describe('commitImportedNotes', () => {
     expect(raw!.note.content).toBe('');
   });
 
-  // Test E: authenticatedRemoteFailureLeavesCleanState
-  it('authenticatedRemoteFailureLeavesCleanState', async () => {
-    const { listNotes } = await import('@/lib/local/notesLocalRepository');
-    const { GUEST_OWNER_ID } = await import('@/lib/local/constants');
+  // AUDIT-005: the upload used to run first and IndexedDB was written only afterwards, so a failure
+  // partway left some notes in the cloud and none here, and a retried import duplicated them.
+  it('keeps every imported note saved and queued when the upload fails partway', async () => {
+    const { listNotes, listPendingPushes, dropPendingPush } = await import(
+      '@/lib/local/notesLocalRepository'
+    );
+    const USER = 'user-partial';
+    // The first two notes reach the cloud, then the connection drops.
+    remoteMocks.pushPendingEdits.mockImplementationOnce(async (userId: string) => {
+      await dropPendingPush(userId, '10');
+      await dropPendingPush(userId, '11');
+      throw new Error('network dropped');
+    });
 
-    vi.mocked(remoteMocks.uploadAllNotes).mockRejectedValueOnce(new Error('network error'));
+    const merged = [note('10'), note('11'), note('12'), note('13')];
+    const outcome = await commitImportedNotes(merged, 4, USER);
 
-    const imported = [note('auth-fail-1')];
-    await expect(commitImportedNotes(imported, 1, 'user-xyz')).rejects.toThrow('network error');
+    expect(outcome).toBe('pending');
+    expect(useNotesStore.getState().notes).toEqual(merged);
+    expect((await listNotes(USER)).map((n) => n.id).sort()).toEqual(['10', '11', '12', '13']);
+    expect(Object.keys(await listPendingPushes(USER)).sort()).toEqual(['12', '13']);
 
-    // UI store is empty
-    expect(useNotesStore.getState().notes).toEqual([]);
-
-    // Neither guest nor user namespace in IndexedDB was polluted
-    expect(await listNotes(GUEST_OWNER_ID)).toEqual([]);
-    expect(await listNotes('user-xyz')).toEqual([]);
+    // The next sync (not a second import) sends the rest, under the same ids.
+    remoteMocks.pushPendingEdits.mockImplementationOnce(settleAll);
+    await remoteMocks.pushPendingEdits(USER);
+    expect(await listPendingPushes(USER)).toEqual({});
+    expect(await listNotes(USER)).toHaveLength(4);
   });
 
-  // F2: authenticatedBackupImportPersistsAcrossReload
-  it('authenticatedBackupImportPersistsAcrossReload', async () => {
-    const { listNotes, putNotes } = await import('@/lib/local/notesLocalRepository');
-    const USER = 'user-auth-1';
+  it('reports the import as saved, not failed, when the cloud is unreachable', async () => {
+    remoteMocks.pushPendingEdits.mockRejectedValueOnce(new Error('offline'));
 
-    // 1. Seed IndexedDB with existing note A
+    await expect(commitImportedNotes([note('1')], 1, 'user-offline')).resolves.toBe('pending');
+    expect(useNotesStore.getState().notes).toHaveLength(1);
+  });
+
+  it('writes only the imported notes, and keeps the existing ones as they are', async () => {
+    const { listNotes, listPendingPushes, putNotes } = await import('@/lib/local/notesLocalRepository');
+    const USER = 'user-auth-1';
     const existingA = note('note-A');
     await putNotes(USER, [existingA]);
+    remoteMocks.pushPendingEdits.mockResolvedValueOnce(undefined);
 
-    // 2. Import backup containing B (merged list is A + B)
     const importedB = note('note-B');
-    const merged = [existingA, importedB];
-    const success = await commitImportedNotes(merged, 1, USER);
+    await commitImportedNotes([existingA, importedB], 1, USER);
 
-    expect(success).toBe(true);
-    expect(remoteMocks.uploadAllNotes).toHaveBeenCalledWith(USER, merged);
-    expect(useNotesStore.getState().notes).toEqual(merged);
-
-    // 3. Simulate full in-memory loss/reload
+    // Only B is a new edit; A was already in sync and stays that way.
+    expect(Object.keys(await listPendingPushes(USER))).toEqual(['note-B']);
     useNotesStore.getState().reset();
-    expect(useNotesStore.getState().notes).toEqual([]);
-
-    // 4. Reload directly from IndexedDB for USER without remote or realtime dependency
-    const persisted = await listNotes(USER);
-    expect(persisted).toHaveLength(2);
-    expect(persisted.map((n) => n.id).sort()).toEqual(['note-A', 'note-B']);
+    expect((await listNotes(USER)).map((n) => n.id).sort()).toEqual(['note-A', 'note-B']);
   });
 
-  it('failedAuthenticatedPersistenceDoesNotReportSuccessfulImport', async () => {
+  it('changes nothing when the local write fails', async () => {
     const notesLocalRepository = await import('@/lib/local/notesLocalRepository');
-    const putNotesSpy = vi.spyOn(notesLocalRepository, 'putNotes').mockRejectedValueOnce(new Error('IndexedDB disk full'));
+    const spy = vi
+      .spyOn(notesLocalRepository, 'putLocalEdits')
+      .mockRejectedValueOnce(new Error('IndexedDB disk full'));
 
-    const merged = [note('auth-disk-full-1')];
-    await expect(commitImportedNotes(merged, 1, 'user-auth-fail')).rejects.toThrow('IndexedDB disk full');
+    await expect(commitImportedNotes([note('1')], 1, 'user-auth-fail')).rejects.toThrow('IndexedDB disk full');
 
-    // Ephemeral store must not be updated if local persistence fails
     expect(useNotesStore.getState().notes).toEqual([]);
-    // Realtime pause/resume must be balanced
+    expect(remoteMocks.pushPendingEdits).not.toHaveBeenCalled();
     expect(resumeRealtimeSnapshots).toHaveBeenCalled();
-    putNotesSpy.mockRestore();
+    spy.mockRestore();
   });
 });
