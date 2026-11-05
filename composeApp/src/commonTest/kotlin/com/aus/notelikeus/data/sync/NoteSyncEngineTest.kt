@@ -631,6 +631,7 @@ class NoteSyncEngineTest {
                 .toNoteEntity(),
         )
         var gcCalls = 0
+        var clock = 1_000_000L
         engine = NoteSyncEngine(
             transport = transport,
             remoteIdentityProvider = testRemoteIdentityProvider { "uid" },
@@ -638,6 +639,7 @@ class NoteSyncEngineTest {
             labelDao = labelDao,
             syncStateStore = stateStore,
             uidProvider = { Result.success("uid") },
+            now = { clock },
             deleteNoteAttachments = { _, _, _ ->
                 gcCalls++
                 if (gcCalls == 1) error("r2 unavailable")
@@ -650,10 +652,94 @@ class NoteSyncEngineTest {
         assertTrue(42L in transport.deletedNoteIds)
         assertTrue(stateStore.isDeleted(42L))
         assertTrue(42L in stateStore.pendingAttachmentGcIds())
+        clock += NoteSyncEngine.ATTACHMENT_GC_UNDO_GRACE_MS
+
+        assertTrue(engine.downloadAllNotes().isSuccess)
         assertEquals(1, gcCalls)
+        assertTrue(42L in stateStore.pendingAttachmentGcIds())
 
         assertTrue(engine.downloadAllNotes().isSuccess)
         assertEquals(2, gcCalls)
+        assertTrue(42L !in stateStore.pendingAttachmentGcIds())
+    }
+
+    /**
+     * AUDIT-003: the images used to be deleted as soon as the server confirmed the delete, inside
+     * the Undo snackbar. Deleting an image claims it and restore_note keeps claimed images deleted,
+     * so Undo brought the note back without them.
+     */
+    @Test
+    fun `permanent delete keeps the images while Undo can still bring the note back`() = runTest {
+        setup()
+        val attachments = listOf(
+            Attachment(id = "a1", noteId = 42L, storagePath = "r2:owners/uid/notes/42/a1"),
+        )
+        stateStore.setKnownCloudIds(setOf(42L))
+        stateStore.updateKnownServerRevision(42L, 1L)
+        noteDao.insertNote(
+            Note(id = 42L, title = "Holiday", content = "body", timestamp = 1L, color = 0, attachments = attachments)
+                .toNoteEntity(),
+        )
+        var gcCalls = 0
+        var clock = 1_000_000L
+        engine = NoteSyncEngine(
+            transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { "uid" },
+            noteDao = noteDao,
+            labelDao = labelDao,
+            syncStateStore = stateStore,
+            uidProvider = { Result.success("uid") },
+            now = { clock },
+            deleteNoteAttachments = { _, _, _ -> gcCalls++; LocalCommitResult.Applied(Unit) },
+        )
+        stateStore.setLastMergedUserId("uid")
+
+        assertTrue(engine.deleteNote(42L).isSuccess)
+        assertEquals(0, gcCalls)
+        // A sync inside the Undo window leaves them alone too.
+        clock += 10_000L
+        assertTrue(engine.downloadAllNotes().isSuccess)
+        assertEquals(0, gcCalls)
+
+        // Undo: the restore cancels the cleanup for good.
+        assertTrue(engine.restoreNote(42L).isSuccess)
+        clock += NoteSyncEngine.ATTACHMENT_GC_UNDO_GRACE_MS
+        assertTrue(engine.downloadAllNotes().isSuccess)
+        assertEquals(0, gcCalls)
+        assertTrue(42L !in stateStore.pendingAttachmentGcIds())
+    }
+
+    @Test
+    fun `permanent delete cleans up the images once Undo is over`() = runTest {
+        setup()
+        val attachments = listOf(
+            Attachment(id = "a1", noteId = 42L, storagePath = "r2:owners/uid/notes/42/a1"),
+        )
+        stateStore.setKnownCloudIds(setOf(42L))
+        stateStore.updateKnownServerRevision(42L, 1L)
+        noteDao.insertNote(
+            Note(id = 42L, title = "Gone", content = "body", timestamp = 1L, color = 0, attachments = attachments)
+                .toNoteEntity(),
+        )
+        var gcCalls = 0
+        var clock = 1_000_000L
+        engine = NoteSyncEngine(
+            transport = transport,
+            remoteIdentityProvider = testRemoteIdentityProvider { "uid" },
+            noteDao = noteDao,
+            labelDao = labelDao,
+            syncStateStore = stateStore,
+            uidProvider = { Result.success("uid") },
+            now = { clock },
+            deleteNoteAttachments = { _, _, _ -> gcCalls++; LocalCommitResult.Applied(Unit) },
+        )
+        stateStore.setLastMergedUserId("uid")
+
+        assertTrue(engine.deleteNote(42L).isSuccess)
+        clock += NoteSyncEngine.ATTACHMENT_GC_UNDO_GRACE_MS
+
+        assertTrue(engine.downloadAllNotes().isSuccess)
+        assertEquals(1, gcCalls)
         assertTrue(42L !in stateStore.pendingAttachmentGcIds())
     }
 

@@ -149,7 +149,18 @@ export type RemoveNoteOutcome = 'deleted' | 'cloudDeleteUnconfirmed';
  * copy exists from before this device last synced. Guest-mode deletes skip the
  * tombstone: guest notes live in IndexedDB only, so a persisted tombstone could
  * later suppress an unrelated real cloud note that happens to reuse the same id. */
-export async function removeNote(noteId: string): Promise<RemoveNoteOutcome> {
+export interface RemoveNoteOptions {
+  /**
+   * The caller offers Undo: hold the image cleanup until the Undo closes (AUDIT-003). The caller
+   * must then end the hold with runDeferredAttachmentGc or cancelDeferredAttachmentGc.
+   */
+  deferAttachmentGc?: boolean;
+}
+
+export async function removeNote(
+  noteId: string,
+  options: RemoveNoteOptions = {},
+): Promise<RemoveNoteOutcome> {
   const existing = getNote(noteId);
   const isGuest = useAuthStore.getState().guestMode;
   const attachments = existing?.attachments ?? [];
@@ -203,13 +214,17 @@ export async function removeNote(noteId: string): Promise<RemoveNoteOutcome> {
   }
 
   if (!isR2AttachmentsEnabled() || attachments.length === 0) return 'deleted';
-  const { gcAttachmentsAfterNoteDelete } = await import(
+  const { deferAttachmentGc, gcAttachmentsAfterNoteDelete } = await import(
     '@/lib/attachments/attachmentSyncService'
   );
   useTombstoneStore.getState().markPendingAttachmentGc(
     noteId,
     attachments.map((attachment) => attachment.id),
   );
+  if (options.deferAttachmentGc) {
+    deferAttachmentGc(noteId, attachments);
+    return 'deleted';
+  }
   try {
     await gcAttachmentsAfterNoteDelete(noteId, attachments);
     useTombstoneStore.getState().clearPendingAttachmentGc(noteId);
@@ -240,8 +255,11 @@ export interface RemoveNotesResult {
  * no longer here failed only in the cloud: the local delete and its tombstone are committed, and
  * the tombstone retries the cloud delete, so that note counts as removed.
  */
-export async function removeNotes(noteIds: string[]): Promise<RemoveNotesResult> {
-  const settled = await Promise.allSettled(noteIds.map((noteId) => removeNote(noteId)));
+export async function removeNotes(
+  noteIds: string[],
+  options: RemoveNoteOptions = {},
+): Promise<RemoveNotesResult> {
+  const settled = await Promise.allSettled(noteIds.map((noteId) => removeNote(noteId, options)));
   const result: RemoveNotesResult = { removedIds: [], pendingInCloud: 0, failedIds: [] };
   settled.forEach((outcome, index) => {
     const noteId = noteIds[index]!;
@@ -285,9 +303,9 @@ export async function archiveNoteById(noteId: string): Promise<Note | null> {
   return updated;
 }
 
-export async function emptyTrash(): Promise<RemoveNotesResult> {
+export async function emptyTrash(options: RemoveNoteOptions = {}): Promise<RemoveNotesResult> {
   const trashed = useNotesStore.getState().notes.filter((note) => note.isTrashed);
-  return removeNotes(trashed.map((note) => note.id));
+  return removeNotes(trashed.map((note) => note.id), options);
 }
 
 /** Reverse a permanent delete within the undo window. Clears both tombstones so the

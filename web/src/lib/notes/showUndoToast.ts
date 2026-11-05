@@ -4,14 +4,22 @@ import { useToastStore } from '@/store/toastStore';
 export interface UndoAction {
   message: string;
   revert: () => void | Promise<void>;
+  /** Runs once if the toast goes away without Undo being pressed. */
+  onExpire?: () => void;
   /** `error` when part of the action failed and the message says so. */
   tone?: 'default' | 'error';
 }
 
-export function showUndoToast({ message, revert, tone = 'default' }: UndoAction): void {
-  useToastStore.getState().show(message, tone, 'Undo', () => {
-    void runNoteAction('Undo', async () => {
-      await revert();
-    });
-  });
+export function showUndoToast({ message, revert, onExpire, tone = 'default' }: UndoAction): void {
+  useToastStore.getState().show(
+    message,
+    tone,
+    'Undo',
+    () => {
+      void runNoteAction('Undo', async () => {
+        await revert();
+      });
+    },
+    onExpire,
+  );
 }

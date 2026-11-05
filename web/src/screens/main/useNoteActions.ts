@@ -9,6 +9,10 @@ import {
   trashNoteById,
   type RemoveNotesResult,
 } from '@/lib/notes/noteActions';
+import {
+  cancelDeferredAttachmentGc,
+  runDeferredAttachmentGc,
+} from '@/lib/attachments/attachmentSyncService';
 import { commitNotePositions, previewMoveNote } from '@/lib/notes/noteOrder';
 import { runNoteAction } from '@/lib/notes/runNoteAction';
 import { showUndoToast } from '@/lib/notes/showUndoToast';
@@ -64,6 +68,7 @@ export function reportPermanentDelete(
   }
   const removed = new Set(removedIds);
   const restorable = snapshots.filter((note) => removed.has(note.id));
+  const restorableIds = new Set(restorable.map((note) => note.id));
   showUndoToast({
     message: permanentDeleteMessage(
       message(removedIds.length),
@@ -73,7 +78,14 @@ export function reportPermanentDelete(
     ),
     tone: failedIds.length > 0 ? 'error' : 'default',
     revert: async () => {
+      // The images were held back for exactly this (AUDIT-003). A note with no snapshot cannot
+      // come back, so its cleanup goes ahead.
+      cancelDeferredAttachmentGc([...restorableIds]);
+      void runDeferredAttachmentGc(removedIds.filter((id) => !restorableIds.has(id)));
       await Promise.all(restorable.map((note) => restorePermanentlyDeletedNote(note)));
+    },
+    onExpire: () => {
+      void runDeferredAttachmentGc(removedIds);
     },
   });
 }
@@ -148,7 +160,7 @@ export function useNoteActions({
     (note: Note) =>
       runNoteAction('Delete', async () => {
         const previous = { ...note };
-        const result = await removeNotes([note.id]);
+        const result = await removeNotes([note.id], { deferAttachmentGc: true });
         reportPermanentDelete(result, [previous], () => 'Note deleted permanently');
       }),
     [],
@@ -159,7 +171,7 @@ export function useNoteActions({
       runNoteAction('Empty trash', async () => {
         closeEmptyTrashConfirm();
         const trashedSnapshots = notes.filter((note) => note.isTrashed).map((note) => ({ ...note }));
-        const result = await emptyTrash();
+        const result = await emptyTrash({ deferAttachmentGc: true });
         if (result.removedIds.length === 0 && result.failedIds.length === 0) {
           useToastStore.getState().show('Trash is already empty');
           return;
@@ -248,7 +260,10 @@ export function useNoteActions({
         closeBulkDeleteConfirm();
         const snapshots = getSelectedSnapshots();
         if (snapshots.length === 0) return;
-        const result = await removeNotes(snapshots.map((note) => note.id));
+        const result = await removeNotes(
+          snapshots.map((note) => note.id),
+          { deferAttachmentGc: true },
+        );
         clearSelection();
         reportPermanentDelete(result, snapshots, (deleted) => `${plural(deleted)} deleted permanently`);
       }),

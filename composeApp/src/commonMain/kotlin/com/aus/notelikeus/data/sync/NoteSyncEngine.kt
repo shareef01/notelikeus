@@ -739,46 +739,15 @@ class NoteSyncEngine(
                     transport.deleteNote(remoteIdentity, noteId, baseRevision = baseline)
                 }
                 if (result == CloudNoteTransport.DeleteResult.Success) {
-                    // Local bookkeeping only: the blob GC below is network work and runs after the
-                    // gate is released, so account isolation can never wait on a round trip.
-                    val recorded = commitLocally(commitToken) {
+                    commitLocally(commitToken) {
                         syncStateStore.clearKnownServerRevisions(listOf(noteId))
-                        // Blob GC only after authoritative server deletion. Failure is retryable.
+                        // Blob GC only after authoritative server deletion, and not here: Undo may
+                        // still bring the note back, and an image whose bytes are deleted stays
+                        // deleted after a restore (AUDIT-003). The marker hands the cleanup to
+                        // retryPendingAttachmentGc once ATTACHMENT_GC_UNDO_GRACE_MS has passed, and
+                        // restoreNote clears it.
                         if (note != null && note.attachments.isNotEmpty()) {
                             syncStateStore.markPendingAttachmentGc(noteId, note.attachments.map { it.id })
-                        }
-                    }
-                    if (recorded is LocalCommitResult.Applied && note != null && note.attachments.isNotEmpty()) {
-                        // Outside the gate. The removal's own local half is fenced on this same
-                        // token, and it snapshots its remote identity inside that call, so a session
-                        // change before reaching here refuses it rather than re-targeting A's
-                        // deletion at the new account's colliding ids.
-                        // The cleanup's own result is part of the seam, so it is taken here rather
-                        // than swallowed: `runCatching { … }.onSuccess` used to treat a *refused*
-                        // cleanup as an applied one, because a nested StaleGeneration is still a
-                        // successful `Result` — and the marker was then dropped for a dataset that no
-                        // longer owned it. Three outcomes, kept apart exactly as the retry loop below
-                        // keeps them (3D.4B.1 undid the collapse that used to flatten the first two):
-                        //   Applied -> the cleanup ran for this dataset, so its marker may be dropped;
-                        //   stale   -> the dataset that asked for this delete is gone, so the marker is
-                        //              not cleared — not even attempted, because this operation does
-                        //              not own it and the next sweep does;
-                        //   thrown  -> historical behaviour, unchanged: the marker stays for the next
-                        //              sweep, which is what re-attempts the blob GC.
-                        val cleanup = runCatching {
-                            deleteNoteAttachments(noteId, note.attachments, commitToken)
-                        }
-                        if (cleanup.isSuccess) {
-                            when (cleanup.getOrThrow()) {
-                                is LocalCommitResult.Applied -> {
-                                    // Post-remote bookkeeping, still under the original token: only the
-                                    // dataset that set the retry marker may clear it.
-                                    commitLocally(commitToken) {
-                                        syncStateStore.clearPendingAttachmentGc(noteId)
-                                    }
-                                }
-                                LocalCommitResult.StaleGeneration -> Unit
-                            }
                         }
                     }
                 }
@@ -1938,7 +1907,11 @@ class NoteSyncEngine(
         commitToken: LocalCommitToken,
         metadataIdentity: OperationRemoteIdentity,
     ): LocalCommitResult<Unit> {
-        for ((noteId, attachmentIds) in syncStateStore.pendingAttachmentGcEntries()) {
+        val deletedAtById = syncStateStore.deletedAtById()
+        // A note Undo may still bring back keeps its images (AUDIT-003); a later sync cleans up.
+        val due = syncStateStore.pendingAttachmentGcEntries()
+            .filterKeys { noteId -> !isWithinUndoGrace(noteId, deletedAtById) }
+        for ((noteId, attachmentIds) in due) {
             val fromNote = noteDao.getNoteById(noteId)?.toNote()?.attachments
             val attachments = fromNote ?: attachmentIds.map { id ->
                 Attachment(id = id, noteId = noteId, storagePath = "r2:gc/$noteId/$id")
@@ -1977,7 +1950,7 @@ class NoteSyncEngine(
         // live session a second time for one logical operation and hand the sweep whatever account
         // happened to be live by then.
         val swept = attachmentSync?.sweepPendingDeletedAttachments(commitToken, metadataIdentity) { id ->
-            id.toLongOrNull() in syncStateStore.restoredIds()
+            keepsImagesFromSweep(id, deletedAtById)
         } ?: LocalCommitResult.Applied(Unit)
         return when (swept) {
             is LocalCommitResult.Applied -> LocalCommitResult.Applied(Unit)
@@ -2267,8 +2240,33 @@ class NoteSyncEngine(
         }
     }
 
-    private companion object {
-        const val TAG = "NoteSyncEngine"
+    /**
+     * Whether [noteId]'s images must still be kept because Undo may yet bring the note back.
+     * A note with no tombstone time is past it: nothing local can still undo its delete.
+     */
+    private fun isWithinUndoGrace(noteId: Long, deletedAtById: Map<Long, Long>): Boolean {
+        val deletedAt = deletedAtById[noteId] ?: return false
+        return now() - deletedAt < ATTACHMENT_GC_UNDO_GRACE_MS
+    }
+
+    /** The server sweep leaves a note's images alone once it is restored, or while Undo may restore it. */
+    private fun keepsImagesFromSweep(id: String, deletedAtById: Map<Long, Long>): Boolean {
+        val noteId = id.toLongOrNull() ?: return false
+        return noteId in syncStateStore.restoredIds() || isWithinUndoGrace(noteId, deletedAtById)
+    }
+
+    internal companion object {
+        private const val TAG = "NoteSyncEngine"
+
+        /**
+         * How long a permanently deleted note's images are kept before cleanup (AUDIT-003).
+         *
+         * Deleting an image's bytes claims it, and restore_note keeps a claimed image deleted, so
+         * cleanup that ran inside the Undo snackbar brought the note back without its images. The
+         * snackbar is SnackbarDuration.Long (10 s); this leaves room for a slow tap and a clock
+         * that drifts. Cleanup after it is done by the next sync's retry, from the persisted marker.
+         */
+        const val ATTACHMENT_GC_UNDO_GRACE_MS = 60_000L
     }
 
 }
