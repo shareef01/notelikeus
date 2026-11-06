@@ -350,7 +350,7 @@ export function MainScreen() {
   );
 
   return (
-    <div className="flex min-h-screen w-full bg-true-surface lg:mx-auto lg:max-w-shell">
+    <div className={`flex min-h-screen w-full bg-true-surface ${dockedEditor ? '' : 'lg:mx-auto lg:max-w-shell'}`}>
 
       <SideDrawer
         open={drawerOpen}

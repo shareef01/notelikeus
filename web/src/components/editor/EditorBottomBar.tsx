@@ -71,13 +71,12 @@ export function EditorBottomBar({
 
   return (
     <footer
-      className="relative z-10 flex shrink-0 items-center justify-between px-2 pb-safe-action pt-2 sm:px-3 lg:px-4"
+      className="relative z-10 flex shrink-0 items-center justify-between border-t border-brand-outline/40 px-5 pb-safe-action pt-2"
       style={{ color: contentColor }}
     >
-      <div className="flex-1" />
-      <div className="text-center text-xs font-medium" role="status" aria-live="polite">
+      <div className="min-w-0 flex-1 text-left text-xs font-medium sm:text-[13px]" role="status" aria-live="polite">
         {isError ? (
-          <div className="flex items-center justify-center gap-1 text-red-700 dark:text-red-400">
+          <div className="flex items-center justify-start gap-1 text-red-700 dark:text-red-400">
             <span>{statusText}</span>
             {onRetrySave ? (
               <button
@@ -90,7 +89,7 @@ export function EditorBottomBar({
             ) : null}
           </div>
         ) : (
-          <div className="opacity-75 tracking-tight flex items-center justify-center gap-1.5">
+          <div className="opacity-75 tracking-tight flex items-center justify-start gap-1.5">
             <span>{statusText}</span>
           </div>
         )}
@@ -98,16 +97,17 @@ export function EditorBottomBar({
           <div className="mt-0.5 font-semibold opacity-90">{reminderLabel}</div>
         ) : null}
       </div>
-      <div className="flex flex-1 justify-end">
+      <div className="ml-3 flex shrink-0 justify-end">
         <button
           type="button"
           onClick={onMoreClick}
-          className={`flex size-10 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] ${FOOTER_FOCUS}`}
+          className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs font-medium hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] ${FOOTER_FOCUS}`}
           aria-label="More options"
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
             <path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
           </svg>
+          <span>More</span>
         </button>
       </div>
     </footer>

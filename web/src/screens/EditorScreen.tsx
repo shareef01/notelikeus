@@ -231,9 +231,9 @@ export function EditorScreen({ route }: EditorScreenProps) {
     attachmentsEnabled,
   });
   const isDarkPalette = useNotePaletteDark();
-  const surface = noteSurfaceStyle(state.color, { solid: true, isDarkPalette });
-  const contentColor =
-    state.color === 0 ? 'rgb(var(--primary-rgb))' : surface.color;
+  const surface = noteSurfaceStyle(0, { solid: true, isDarkPalette });
+  const noteAccent = noteSurfaceStyle(state.color, { solid: true, isDarkPalette }).backgroundColor;
+  const contentColor = surface.color;
   const hasChecklist = state.checklist.length > 0;
   const isFloatLayout = isTabletUp && editorLayout === 'float';
   const writingColumnClass = editorWritingColumnClass(editorLayout, isTabletUp);
@@ -363,7 +363,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             aria-modal="true"
             aria-label="Note editor"
             className="relative flex h-full w-full flex-col"
-            style={surface}
+            data-editor-surface="" style={surface}
           >
             {dropOverlay}
             {children}
@@ -383,7 +383,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           onDragLeave={handleDragLeave}
           onDrop={(e) => void handleDrop(e)}
         >
-          <div className="relative mx-auto flex h-full w-full max-w-editor flex-col" style={surface}>
+          <div className="relative flex h-full w-full flex-col" data-editor-surface="" style={surface}>
             {dropOverlay}
             {children}
           </div>
@@ -399,7 +399,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           aria-modal="true"
           aria-label="Note editor"
           className={FULLSCREEN_EDITOR_SHELL_CLASS}
-          style={surface}
+          data-editor-surface="" style={surface}
           onPaste={handlePaste}
           onDragEnter={handleDragEnter}
           onDragOver={handleDragOver}
@@ -425,7 +425,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
         <div
           ref={floatPanelRef}
           className="relative flex h-[min(52rem,90vh)] w-full max-w-editor flex-col overflow-hidden rounded-note border border-brand-outline/40 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
-          style={surface}
+          data-editor-surface="" style={surface}
           onClick={(event) => event.stopPropagation()}
           role="dialog"
           aria-modal="true"
@@ -467,7 +467,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
   const layoutControls = isTabletUp ? (
     <div
-      className="flex shrink-0 items-center"
+      className="flex shrink-0 items-center gap-0.5 rounded-xl border border-brand-outline/50 bg-true-surface-variant/40 p-0.5"
       role="radiogroup"
       aria-label="Editor layout"
     >
@@ -509,15 +509,16 @@ export function EditorScreen({ route }: EditorScreenProps) {
                   break;
               }
             }}
-            className={`flex size-9 items-center justify-center rounded-full transition-opacity duration-150 ${CHROME_FOCUS} ${
+            className={`flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors duration-150 min-[1200px]:w-auto min-[1200px]:px-2.5 ${CHROME_FOCUS} ${
               active
-                ? 'opacity-100'
-                : 'opacity-45 hover:bg-[color-mix(in_srgb,currentColor_8%,transparent)] hover:opacity-80'
+                ? 'bg-true-surface shadow-xs'
+                : 'text-brand-secondary hover:bg-brand-primary/5'
             }`}
             aria-label={button.label}
             title={button.label}
           >
             <Icon size={18} />
+            <span className="hidden min-[1200px]:inline">{button.id === 'float' ? 'Float' : button.id === 'dock' ? 'Dock' : 'Full screen'}</span>
           </button>
         );
       })}
@@ -528,53 +529,60 @@ export function EditorScreen({ route }: EditorScreenProps) {
   return editorShell(
     <>
       <header
-        className="flex shrink-0 items-center justify-between px-2 pt-safe sm:px-3 lg:px-4"
-        style={{ color: contentColor }}
+        className="flex shrink-0 items-center justify-between gap-2 border-b border-brand-outline/40 px-3 pb-2 pt-safe"
+        style={{ color: contentColor, borderTop: `3px solid ${state.color === 0 ? 'transparent' : noteAccent}` }}
       >
         <button
           type="button"
           onClick={() => void handleBack()}
-          className={`flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] ${CHROME_FOCUS}`}
+          className={`flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-2 text-sm font-medium hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
           aria-label="Back"
         >
-          <ArrowBackIcon size={22} />
+          <ArrowBackIcon size={20} />
+          <span className="hidden min-[1200px]:inline">Back</span>
         </button>
 
         <div className="flex items-center gap-1">
           {layoutControls}
+          {isTabletUp ? <span className="mx-1 h-5 w-px bg-brand-outline/50" aria-hidden /> : null}
           <button
             type="button"
             onClick={() => setShowReminderPicker(true)}
-            className={`flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] ${CHROME_FOCUS}`}
+            className={`flex size-10 items-center justify-center rounded-xl hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
             aria-label="Set reminder"
+            title="Set reminder"
           >
             {state.reminderTimestamp != null ? (
               <NotificationActiveIcon size={20} className="opacity-100" />
             ) : (
-              <NotificationIcon size={20} className="opacity-55" />
+              <NotificationIcon size={20} className="opacity-80" />
             )}
           </button>
           <button
             type="button"
             onClick={editor.togglePin}
-            className={`flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] ${CHROME_FOCUS}`}
+            className={`flex size-10 items-center justify-center rounded-xl hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
+            aria-pressed={state.isPinned}
             aria-label={state.isPinned ? 'Unpin' : 'Pin'}
+            title={state.isPinned ? 'Unpin note' : 'Pin note'}
           >
-            <PinIcon size={20} className={state.isPinned ? 'opacity-100' : 'opacity-55'} />
+            <PinIcon size={20} className={state.isPinned ? 'opacity-100' : 'opacity-80'} />
           </button>
           <button
             type="button"
             onClick={editor.toggleArchive}
-            className={`flex size-11 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)] ${CHROME_FOCUS}`}
+            className={`flex size-10 items-center justify-center rounded-xl hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
+            aria-pressed={state.isArchived}
             aria-label={state.isArchived ? 'Unarchive' : 'Archive'}
+            title={state.isArchived ? 'Unarchive note' : 'Archive note'}
           >
-            <ArchiveIcon size={20} className={state.isArchived ? 'opacity-100' : 'opacity-55'} />
+            <ArchiveIcon size={20} className={state.isArchived ? 'opacity-100' : 'opacity-80'} />
           </button>
         </div>
       </header>
 
       <div
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-layout-gap pt-4 sm:px-6 sm:pt-6 lg:px-8"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-layout-gap pt-7 sm:px-8 sm:pt-10 lg:px-10"
         style={{
           // Shrink the scrollport above the keyboard. Padding alone extends the
           // content but leaves the caret's visibility boundary behind the keyboard.
@@ -659,7 +667,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             }}
             placeholder="Title"
             maxLength={MAX_NOTE_TITLE_CHARS}
-            className="w-full resize-none overflow-hidden bg-transparent text-[28px] font-semibold leading-tight tracking-[-0.03em] outline-none placeholder:text-current placeholder:opacity-80 sm:text-[34px]"
+            className="w-full resize-none overflow-hidden bg-transparent text-[26px] font-semibold leading-tight tracking-[-0.03em] outline-none placeholder:text-current placeholder:opacity-80 sm:text-[32px]"
             style={{ color: contentColor }}
           />
 
@@ -669,7 +677,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
                 <span
                   key={label.id}
                   className="rounded-full px-2.5 py-1 text-xs font-medium tracking-wide"
-                  style={{ backgroundColor: 'rgba(0,0,0,0.14)', color: contentColor }}
+                  style={{ backgroundColor: 'color-mix(in srgb, currentColor 10%, transparent)', color: contentColor }}
                 >
                   {label.name}
                 </span>
@@ -699,7 +707,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             <>
               <RichTextToolbar
                 contentColor={contentColor}
-                backgroundColor={surface.backgroundColor}
+                backgroundColor="rgb(var(--surface-variant-rgb))"
                 active={rich.active ?? undefined}
                 onBold={() => rich.editor?.chain().focus().toggleBold().run()}
                 onItalic={() => rich.editor?.chain().focus().toggleItalic().run()}
@@ -754,7 +762,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
         <div
           className="pointer-events-auto"
           style={{
-            background: `linear-gradient(to top, ${surface.backgroundColor} 70%, transparent 100%)`,
+            background: surface.backgroundColor,
           }}
         >
           <EditorBottomBar

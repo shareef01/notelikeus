@@ -20,10 +20,10 @@ function fullscreenShellMarkup(): string {
 }
 
 describe('editorWritingColumnClass', () => {
-  it('constrains the measure only in fullscreen', () => {
+  it('constrains the writing measure in every desktop layout', () => {
     expect(editorWritingColumnClass('fullscreen', true)).toBe('mx-auto max-w-editor');
-    expect(editorWritingColumnClass('dock', true)).toBe('');
-    expect(editorWritingColumnClass('float', true)).toBe('');
+    expect(editorWritingColumnClass('dock', true)).toBe('mx-auto max-w-editor');
+    expect(editorWritingColumnClass('float', true)).toBe('mx-auto max-w-editor');
   });
 
   it('adds nothing on phones, where the viewport is already the constraint', () => {
