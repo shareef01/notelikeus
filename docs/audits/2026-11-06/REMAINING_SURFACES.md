@@ -37,6 +37,15 @@ that shifting a fall-back day's 00:30 by one calendar day reaches the next date.
 Combined after:/before: ranges also count civil dates instead of elapsed
 24-hour periods, with reversed ranges reported as an empty span.
 
+The repeated fall-back hour had another lossy round trip: reopening a web
+reminder at `2027-11-07T01:30-05:00` and confirming its unchanged input returned
+`01:30-04:00`, one hour earlier. During the second hour this could disable Set by
+mistaking a future reminder for a past one. Native calendar conversion can choose
+the other occurrence in the opposite direction. Both pickers now retain the
+original instant when its displayed civil date/time fields have not changed;
+edited fields still resolve normally. Tests cover both occurrences and the web
+dialog's enabled state during the repeated hour.
+
 ### R03 — P2: desktop image selection allocates the entire file before rejecting its size
 
 The desktop picker called `File.readBytes()` before `EditorViewModel` checked

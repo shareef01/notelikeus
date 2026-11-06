@@ -33,7 +33,7 @@ export function ReminderPickerDialog({
 
   if (!open) return null;
 
-  const parsed = fromLocalDateTimeInputValue(value);
+  const parsed = fromLocalDateTimeInputValue(value, initialTimestamp);
   // A past time used to enable Set; the editor then refused it in a toast after this dialog had
   // closed, so the user lost what they typed. Say so here, where it can still be changed.
   const isPast = parsed != null && parsed <= Date.now();

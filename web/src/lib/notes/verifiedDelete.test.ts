@@ -41,8 +41,9 @@ describe('a delete made without a known revision', () => {
 
   it('conservatively restores a cloud copy when the stored digest uses the legacy format', () => {
     useTombstoneStore.getState().markDeleted('1', null, 50, 'legacy-unframed-digest');
-    const result = partitionTombstoned([note()], { ...emptyRevisionState, noteRevisions: { '1': 7 } });
-    expect(result.live).toEqual([note()]);
+    const cloud = note();
+    const result = partitionTombstoned([cloud], { ...emptyRevisionState, noteRevisions: { '1': 7 } });
+    expect(result.live).toEqual([cloud]);
     expect(result.staleIds).toEqual([]);
   });
 

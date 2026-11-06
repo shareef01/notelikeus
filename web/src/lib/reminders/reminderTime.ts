@@ -85,8 +85,12 @@ export function toLocalDateTimeInputValue(timestamp: number): string {
  * A wall-clock time a spring-forward change skips resolves to the first instant that does exist,
  * matching the Kotlin path's `combineDateAndTime`.
  */
-export function fromLocalDateTimeInputValue(value: string): number | null {
+export function fromLocalDateTimeInputValue(value: string, existingReminder?: number | null): number | null {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value)) return null;
+  // A fall-back hour names two instants. Keeping unchanged displayed fields must not switch
+  // an existing reminder to the other occurrence (or make a future reminder appear past).
+  if (existingReminder != null && Number.isFinite(existingReminder) &&
+      toLocalDateTimeInputValue(existingReminder) === value) return existingReminder;
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : null;
 }
