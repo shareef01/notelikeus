@@ -460,10 +460,10 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         ...s,
         checklist: s.checklist.filter((item) => item.id !== id),
       })),
-    convertContentToChecklist: () =>
+    convertContentToChecklist: (plainText?: string) =>
       patch((s) => {
         if (s.checklist.length > 0) return s;
-        const lines = s.content
+        const lines = (plainText ?? s.content)
           .split('\n')
           .map((line) => line.trim())
           .filter(Boolean);

@@ -142,7 +142,7 @@ describe('Web Rapid Image Capture — EditorScreen paste and drag-and-drop', () 
   it('does NOT call addAttachment when pasting plain text', async () => {
     const { container, cleanup } = renderEditor();
 
-    const textarea = container.querySelector('textarea');
+    const textarea = container.querySelector('[role="dialog"]');
     expect(textarea).toBeDefined();
 
     let defaultPrevented = false;
@@ -526,7 +526,7 @@ describe('Web Rapid Image Capture — EditorScreen paste and drag-and-drop', () 
 
   it('title input focus: image paste attaches image and prevents default; text paste remains native', async () => {
     const { container, cleanup } = renderEditor();
-    const titleInput = container.querySelector('input[placeholder="Title"]') as HTMLInputElement;
+    const titleInput = container.querySelector('#note-title') as HTMLInputElement;
     expect(titleInput).not.toBeNull();
 
     const imageFile = new File(['img'], 'title-screenshot.png', { type: 'image/png' });
@@ -578,19 +578,10 @@ describe('Web Rapid Image Capture — EditorScreen paste and drag-and-drop', () 
   });
 
   it('checklist input focus: image paste attaches image; text paste remains native', async () => {
+    const mockedEditor = noteEditorHook.useNoteEditor('note-1');
+    mockedEditor.state.checklist = [{ id: 'item-1', text: 'Task', isChecked: false, position: 0 }];
     const { container, cleanup } = renderEditor();
-
-    // Click "Add checklist" to enter checklist mode
-    const checklistBtn = container.querySelector('button[aria-label="Add checklist"]');
-    if (checklistBtn) {
-      await act(async () => {
-        checklistBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      });
-    }
-
-    const itemInput =
-      container.querySelector('input[aria-label="Checklist item"]') ||
-      container.querySelector('input[type="text"]');
+    const itemInput = container.querySelector('input[placeholder="List item"]');
     expect(itemInput).not.toBeNull();
 
     const imageFile = new File(['img'], 'checklist-photo.png', { type: 'image/png' });
@@ -653,7 +644,7 @@ describe('Web Rapid Image Capture — EditorScreen paste and drag-and-drop', () 
     ];
 
     const { container, cleanup } = renderEditor();
-    const textarea = container.querySelector('textarea[placeholder="Start writing\u2026"]') as HTMLTextAreaElement;
+    const textarea = container.querySelector('[role="dialog"]') as HTMLElement;
 
     for (const text of textVariants) {
       mockAddAttachment.mockClear();

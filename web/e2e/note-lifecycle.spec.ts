@@ -99,7 +99,7 @@ test('a title typed the moment a new note opens stays the title', async ({ page 
   await page.waitForTimeout(800);
   await page.keyboard.type(title.slice(6));
   await expect(page.locator('#note-title')).toHaveValue(title);
-  await expect(page.getByRole('textbox', { name: 'Note body' })).toHaveValue('');
+  await expect(page.getByRole('textbox', { name: 'Note body' })).toHaveText('');
 
   const created = writeAccepted(page);
   await leaveEditor(page);

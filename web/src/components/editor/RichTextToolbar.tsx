@@ -3,6 +3,8 @@ import { type ReactNode, type SyntheticEvent, useRef, useState, useCallback } fr
 
 interface RichTextToolbarProps {
   contentColor: string;
+  backgroundColor?: string;
+  active?: { bold: boolean; italic: boolean; bullet: boolean; link: boolean };
   onBold: () => void;
   onItalic: () => void;
   onBullet: () => void;
@@ -13,6 +15,8 @@ interface RichTextToolbarProps {
 
 export function RichTextToolbar({
   contentColor,
+  backgroundColor,
+  active,
   onBold,
   onItalic,
   onBullet,
@@ -24,14 +28,10 @@ export function RichTextToolbar({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const buttonClass =
-    'flex size-9 items-center justify-center rounded-full transition-colors hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)] active:bg-[color-mix(in_srgb,currentColor_18%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current';
+    'flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)] active:bg-[color-mix(in_srgb,currentColor_18%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current';
 
-  // The action runs on click, which a mouse, a tap, Enter, Space and a screen reader all fire.
-  // It used to run on pointerdown alone, which made every button here dead to the keyboard.
-  // Pointerdown and mousedown are still cancelled so a click or a tap does not take focus from the
-  // note body, which keeps the caret and the selection where they were, and keeps marker-only
-  // content (e.g. ****) from flipping the editor into markdown preview, where an empty bold span
-  // is invisible.
+  // Click supports pointer, keyboard, and assistive activation. Preventing pointer focus
+  // keeps the editor's selection and the on-screen keyboard in place during formatting.
   const keepBodyFocus = (event: SyntheticEvent) => event.preventDefault();
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -79,7 +79,8 @@ export function RichTextToolbar({
     label: string,
     icon: ReactNode,
     action: () => void,
-    shortcut?: string
+    shortcut?: string,
+    pressed?: boolean
   ) => (
     <button
       type="button"
@@ -90,6 +91,8 @@ export function RichTextToolbar({
       onMouseDown={keepBodyFocus}
       onClick={action}
       aria-label={label}
+      aria-pressed={pressed}
+      style={pressed ? { background: 'color-mix(in srgb, currentColor 16%, transparent)' } : undefined}
       aria-keyshortcuts={shortcut}
       title={shortcut ? `${label} (${shortcut.replace('Control', 'Ctrl')})` : label}
     >
@@ -101,20 +104,20 @@ export function RichTextToolbar({
     <div
       ref={containerRef}
       onKeyDown={handleKeyDown}
-      className="sticky top-0 z-10 mt-5 inline-flex max-w-full flex-wrap items-center gap-0.5 py-0.5"
-      style={{ color: contentColor }}
+      className="sticky top-0 z-10 mt-6 inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-2xl border border-current/15 p-1 shadow-sm"
+      style={{ color: contentColor, backgroundColor }}
       role="toolbar"
       aria-label="Text formatting"
     >
-      {formatButton(0, 'Bold', <BoldIcon size={18} />, onBold, 'Control+B')}
-      {formatButton(1, 'Italic', <ItalicIcon size={18} />, onItalic, 'Control+I')}
-      {formatButton(2, 'Link', <LinkIcon size={18} />, onLink)}
-      <span className="mx-1 h-4 w-px shrink-0 bg-current opacity-20" aria-hidden />
-      {formatButton(3, 'Bullet list', <BulletListIcon size={18} />, onBullet)}
+      {formatButton(0, 'Bold', <BoldIcon size={18} />, onBold, 'Control+B', active?.bold)}
+      {formatButton(1, 'Italic', <ItalicIcon size={18} />, onItalic, 'Control+I', active?.italic)}
+      {formatButton(2, 'Link', <LinkIcon size={18} />, onLink, undefined, active?.link)}
+      <span className="mx-0.5 h-4 w-px shrink-0 bg-current opacity-20" aria-hidden />
+      {formatButton(3, 'Bullet list', <BulletListIcon size={18} />, onBullet, undefined, active?.bullet)}
       {formatButton(4, 'Checklist', <ChecklistIcon size={18} />, onChecklist)}
       {onAddImage ? (
         <>
-          <span className="mx-1 h-4 w-px shrink-0 bg-current opacity-20" aria-hidden />
+          <span className="mx-0.5 h-4 w-px shrink-0 bg-current opacity-20" aria-hidden />
           {formatButton(5, 'Add image', <ImageIcon size={18} />, onAddImage)}
         </>
       ) : null}
