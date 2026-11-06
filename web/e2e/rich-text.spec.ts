@@ -35,6 +35,9 @@ test('a formatted guest note survives a reload', async ({ page }) => {
   await selectNoteText(body, 0, 4);
   await body.press('Control+b');
   await page.getByRole('button', { name: 'Back', exact: true }).click();
+  // Back waits for IndexedDB before closing; a click alone does not await that work.
+  await expect(page.getByRole('textbox', { name: 'Note title' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Persistence check', exact: true })).toBeVisible();
   await page.reload();
   await page.getByRole('button', { name: 'Continue without an account' }).click();
   await page.getByRole('button', { name: 'Persistence check', exact: true }).click();
