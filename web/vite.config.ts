@@ -145,7 +145,7 @@ export default defineConfig(({ mode }) => {
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
           if (id.includes('@supabase')) return 'supabase';
-          if (id.includes('react-dom') || id.includes('react/') || id.includes('scheduler')) {
+          if (/[/\\]node_modules[/\\](?:react|react-dom|scheduler)[/\\]/.test(id)) {
             return 'react-vendor';
           }
           if (id.includes('zustand')) return 'zustand';

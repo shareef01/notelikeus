@@ -62,7 +62,7 @@ test('a failed local save keeps the editor open with the text intact', async ({ 
   await expect(page.getByRole('alert')).toContainText('Could not save this note', {
     timeout: 15_000,
   });
-  await expect(page.getByRole('textbox', { name: 'Note body' }).first()).toHaveValue(body);
+  await expect(page.getByRole('textbox', { name: 'Note body' }).first()).toHaveText(body);
   await expect(page.getByRole('textbox', { name: 'Note title' }).first()).toHaveValue(
     'Failed save note',
   );
@@ -102,7 +102,7 @@ test('retrying after the failure clears the error and keeps the editor open with
   await expect(page.getByRole('alert')).toHaveCount(0, { timeout: 15_000 });
   await expect(titleField).toBeVisible({ timeout: 10_000 });
   await expect(titleField).toHaveValue(title);
-  await expect(page.getByRole('button', { name: 'Edit note body' })).toContainText(body);
+  await expect(page.getByRole('textbox', { name: 'Note body' })).toContainText(body);
   await expect(page.getByText('Note saved', { exact: true })).toBeVisible({ timeout: 10_000 });
 });
 

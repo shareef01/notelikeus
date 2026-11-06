@@ -16,6 +16,7 @@ import {
 } from '@/lib/attachments/conflictCopyAttachments';
 import { conflictedCopyOf } from '@/lib/notes/conflictResolution';
 import { decideEditorSave } from '@/lib/notes/editorConflict';
+import { notesUserContentEqual } from '@/lib/notes/noteEquality';
 import type { LocalSaveResult } from '@/lib/notes/localSaveResult';
 import { requestNotificationPermission } from '@/lib/reminders/reminderScheduler';
 import { useNotesStore } from '@/store/notesStore';
@@ -123,6 +124,14 @@ export function useNoteEditor(noteId: string | 'new' | null) {
       routeRef.current !== 'new' &&
       loadedRouteRef.current !== routeRef.current
     ) {
+      return { status: 'unchanged' };
+    }
+
+    // Closing an editor flushes it even without typing. Viewing a note is not an edit:
+    // compare persisted fields before assigning a new timestamp or issuing a write.
+    const draft = buildNoteFromEditor(current);
+    if (draft && lastSavedRef.current && !current.saveFailed &&
+        notesUserContentEqual(draft, lastSavedRef.current)) {
       return { status: 'unchanged' };
     }
 
@@ -451,10 +460,10 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         ...s,
         checklist: s.checklist.filter((item) => item.id !== id),
       })),
-    convertContentToChecklist: () =>
+    convertContentToChecklist: (plainText?: string) =>
       patch((s) => {
         if (s.checklist.length > 0) return s;
-        const lines = s.content
+        const lines = (plainText ?? s.content)
           .split('\n')
           .map((line) => line.trim())
           .filter(Boolean);

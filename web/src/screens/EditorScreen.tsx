@@ -15,7 +15,9 @@ import { EditorBottomBar } from '@/components/editor/EditorBottomBar';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { EditorOptionsSheet } from '@/components/editor/EditorOptionsSheet';
 import { LinkDialog } from '@/components/editor/LinkDialog';
-import { MarkdownBody } from '@/components/editor/MarkdownPreview';
+import { EditorContent } from '@tiptap/react';
+import { useRichNoteEditor } from '@/hooks/useRichNoteEditor';
+import { toSafeHref } from '@/lib/text/markdown';
 import { ReminderPickerDialog } from '@/components/editor/ReminderPickerDialog';
 import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
 import { useNoteEditor } from '@/hooks/useNoteEditor';
@@ -30,11 +32,6 @@ import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { isEditableTarget, useShortcuts } from '@/hooks/useShortcuts';
 import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
-import {
-  prefixLinesWithBullet,
-  wrapSelection,
-  wrapSelectionAsLink,
-} from '@/lib/text/markdown';
 import { shareText } from '@/lib/share/shareText';
 import { noteSurfaceStyle } from '@/theme/contrast';
 import {
@@ -47,7 +44,7 @@ import { useToastStore } from '@/store/toastStore';
 import { useNotesStore } from '@/store/notesStore';
 import { saveNote } from '@/lib/notes/noteActions';
 import { showUndoToast } from '@/lib/notes/showUndoToast';
-import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
+import { MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 const EDITOR_LAYOUTS: {
@@ -211,12 +208,16 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const [showOptions, setShowOptions] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showReminderPicker, setShowReminderPicker] = useState(false);
-  const [contentFocused, setContentFocused] = useState(true);
-  const titleRef = useRef<HTMLInputElement>(null);
+  const rich = useRichNoteEditor(state.content, (text) => {
+    if (/(?:^|\n)\[(?: )?\] $/.test(text)) {
+      const result = editor.setContentSmart(text, text.length, text.length);
+      if (result.structureChanged) editor.convertContentToChecklist();
+    } else editor.setContent(text);
+  });
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const selectionRef = useRef({ start: 0, end: 0 });
+
   const attachmentsEnabled = isR2AttachmentsEnabled();
   const {
     isDragActive,
@@ -242,77 +243,35 @@ export function EditorScreen({ route }: EditorScreenProps) {
     !isTabletUp || editorLayout === 'fullscreen' ? keyboardInset : 0;
 
   useEffect(() => {
-    const field = contentRef.current;
-    if (!field || !contentFocused || hasChecklist) return;
-    field.style.height = '0px';
-    field.style.height = `${Math.max(field.scrollHeight, 240)}px`;
-  }, [state.content, contentFocused, hasChecklist]);
-
-  useEffect(() => {
-    if (noteId !== 'new' || hasChecklist) return;
-    setContentFocused(true);
+    if (noteId !== 'new' || hasChecklist || !rich.editor) return;
     const id = requestAnimationFrame(() => {
-      // A user who already clicked into the title keeps it: moving focus here sent the rest of
-      // their title into the body (AU-20).
       if (titleRef.current && document.activeElement === titleRef.current) return;
-      contentRef.current?.focus();
+      rich.editor?.view.dom.focus();
     });
     return () => cancelAnimationFrame(id);
-  }, [noteId, hasChecklist]);
+  }, [noteId, hasChecklist, rich.editor]);
 
   const focusContentField = () => {
-    if (hasChecklist) return;
-    setContentFocused(true);
-    requestAnimationFrame(() => contentRef.current?.focus());
+    if (!hasChecklist) rich.editor?.commands.focus();
   };
 
-  const rememberSelection = () => {
-    const field = contentRef.current;
+  useEffect(() => {
+    const field = titleRef.current;
     if (!field) return;
-    selectionRef.current = {
-      start: field.selectionStart,
-      end: field.selectionEnd,
+    const resize = () => {
+      field.style.height = '0px';
+      field.style.height = field.scrollHeight + 'px';
     };
-  };
-
-  const applyFormatting = (
-    updater: (
-      text: string,
-      selectionStart: number,
-      selectionEnd: number,
-    ) => { text: string; selectionStart: number; selectionEnd: number } | null,
-  ) => {
-    setContentFocused(true);
-
-    const run = () => {
-      const field = contentRef.current;
-      // Textarea keeps selection offsets after blur; prefer them when mounted.
-      const start = field ? field.selectionStart : selectionRef.current.start;
-      const end = field ? field.selectionEnd : selectionRef.current.end;
-
-      const result = editor.applyContentFormatting(updater, start, end);
-      if (!result) return;
-
-      selectionRef.current = {
-        start: result.selectionStart,
-        end: result.selectionEnd,
-      };
-      setContentFocused(true);
-
-      requestAnimationFrame(() => {
-        const nextField = contentRef.current;
-        if (!nextField) return;
-        nextField.focus();
-        nextField.setSelectionRange(result.selectionStart, result.selectionEnd);
-      });
-    };
-
-    if (contentRef.current) {
-      run();
-    } else {
-      requestAnimationFrame(run);
-    }
-  };
+    resize();
+    let width = field.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (field.clientWidth === width) return;
+      width = field.clientWidth;
+      resize();
+    });
+    observer.observe(field);
+    return () => observer.disconnect();
+  }, [state.title]);
 
   const onFloatClose = useCallback(() => {
     void handleBack();
@@ -618,7 +577,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
           const target = event.target as HTMLElement;
           if (
             target.closest(
-              'input, textarea, button, a, [aria-label="Text formatting"], [role="toolbar"]',
+              'input, textarea, [contenteditable], button, a, [aria-label="Text formatting"], [role="toolbar"]',
             )
           ) {
             return;
@@ -677,15 +636,21 @@ export function EditorScreen({ route }: EditorScreenProps) {
           <label htmlFor="note-title" className="sr-only">
             Note title
           </label>
-          <input
+          <textarea
             ref={titleRef}
             id="note-title"
-            type="text"
+            rows={1}
             value={state.title}
-            onChange={(event) => editor.setTitle(event.target.value)}
+            onChange={(event) => editor.setTitle(event.target.value.replace(/[\r\n]+/g, ' '))}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                focusContentField();
+              }
+            }}
             placeholder="Title"
             maxLength={MAX_NOTE_TITLE_CHARS}
-            className="w-full bg-transparent text-[24px] font-semibold leading-tight tracking-[-0.03em] outline-none placeholder:text-current placeholder:opacity-80 sm:text-[26px]"
+            className="w-full resize-none overflow-hidden bg-transparent text-[28px] font-semibold leading-tight tracking-[-0.03em] outline-none placeholder:text-current placeholder:opacity-80 sm:text-[34px]"
             style={{ color: contentColor }}
           />
 
@@ -725,23 +690,13 @@ export function EditorScreen({ route }: EditorScreenProps) {
             <>
               <RichTextToolbar
                 contentColor={contentColor}
-                onBold={() =>
-                  applyFormatting((text, start, end) => wrapSelection(text, start, end, '**'))
-                }
-                onItalic={() =>
-                  applyFormatting((text, start, end) => wrapSelection(text, start, end, '_'))
-                }
-                onBullet={() =>
-                  applyFormatting((text, start, end) => prefixLinesWithBullet(text, start, end))
-                }
-                onChecklist={() => {
-                  setContentFocused(true);
-                  editor.convertContentToChecklist();
-                }}
-                onLink={() => {
-                  rememberSelection();
-                  setShowLinkDialog(true);
-                }}
+                backgroundColor={surface.backgroundColor}
+                active={rich.active ?? undefined}
+                onBold={() => rich.editor?.chain().focus().toggleBold().run()}
+                onItalic={() => rich.editor?.chain().focus().toggleItalic().run()}
+                onBullet={() => rich.editor?.chain().focus().toggleBulletList().run()}
+                onChecklist={() => editor.convertContentToChecklist(rich.editor?.getText({ blockSeparator: '\n' }))}
+                onLink={() => setShowLinkDialog(true)}
                 onAddImage={
                   attachmentsEnabled
                     ? () => {
@@ -763,71 +718,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
                 }}
               />
 
-              {contentFocused || !state.content.trim() ? (
-                <textarea
-                  ref={contentRef}
-                  aria-label="Note body"
-                  value={state.content}
-                  onFocus={() => setContentFocused(true)}
-                  onBlur={() => {
-                    rememberSelection();
-                    window.setTimeout(() => {
-                      if (document.activeElement?.closest('[aria-label="Text formatting"]')) {
-                        return;
-                      }
-                      setContentFocused(false);
-                    }, 0);
-                  }}
-                  onSelect={rememberSelection}
-                  onKeyDown={(event) => {
-                    // The toolbar's Bold and Italic, from the keyboard, as in every other editor.
-                    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
-                    const marker = { b: '**', i: '_' }[event.key.toLowerCase()];
-                    if (!marker) return;
-                    event.preventDefault();
-                    applyFormatting((text, start, end) => wrapSelection(text, start, end, marker));
-                  }}
-                  onKeyUp={rememberSelection}
-                  onMouseUp={rememberSelection}
-                  onChange={(event) => {
-                    const field = event.target;
-                    const result = editor.setContentSmart(
-                      field.value,
-                      field.selectionStart,
-                      field.selectionEnd,
-                    );
-                    if (result.structureChanged) {
-                      editor.convertContentToChecklist();
-                      return;
-                    }
-                    selectionRef.current = {
-                      start: result.selectionStart,
-                      end: result.selectionEnd,
-                    };
-                    requestAnimationFrame(() => {
-                      field.setSelectionRange(result.selectionStart, result.selectionEnd);
-                    });
-                  }}
-                  placeholder="Start writing…"
-                  rows={1}
-                  maxLength={MAX_NOTE_CONTENT_CHARS}
-                  className="mt-4 w-full min-h-[min(60vh,32rem)] resize-none overflow-hidden bg-transparent text-[17px] leading-[1.65] tracking-[0.005em] outline-none placeholder:text-current placeholder:opacity-80 sm:text-[18px]"
-                  style={{ color: contentColor }}
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    focusContentField();
-                  }}
-                  aria-label="Edit note body"
-                  // flex + justify-start: a <button> centres its content vertically by default,
-                  // which dropped the text to mid-screen whenever the body lost focus.
-                  className={`mt-4 flex w-full min-h-[min(60vh,32rem)] flex-col justify-start rounded-note text-left transition-opacity hover:opacity-95 ${CHROME_FOCUS}`}
-                >
-                  <MarkdownBody text={state.content} contentColor={contentColor} />
-                </button>
-              )}
+              <EditorContent editor={rich.editor} className="mt-6" style={{ color: contentColor }} />
 
               {/* A cue for starting a list in an empty note. Once the note has text, the toolbar's
                   Checklist button converts it; a second "Convert to checklist" here repeated that
@@ -835,7 +726,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
               {!state.content.trim() ? (
                 <button
                   type="button"
-                  onClick={editor.convertContentToChecklist}
+                  onClick={() => editor.convertContentToChecklist()}
                   className={`tap-target mt-10 self-start text-left text-sm font-medium opacity-80 transition-opacity hover:opacity-100 ${CHROME_FOCUS}`}
                   style={{ color: contentColor }}
                 >
@@ -894,7 +785,13 @@ export function EditorScreen({ route }: EditorScreenProps) {
         open={showLinkDialog}
         onCancel={() => setShowLinkDialog(false)}
         onConfirm={(url) => {
-          applyFormatting((text, start, end) => wrapSelectionAsLink(text, start, end, url));
+          const href = toSafeHref(url);
+          if (href !== '#' && rich.editor) {
+            const chain = rich.editor.chain().focus();
+            if (rich.editor.state.selection.empty) {
+              chain.insertContent({ type: 'text', text: 'link', marks: [{ type: 'link', attrs: { href } }] }).run();
+            } else chain.setLink({ href }).run();
+          }
           setShowLinkDialog(false);
         }}
       />
