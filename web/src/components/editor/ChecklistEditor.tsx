@@ -6,7 +6,7 @@ interface ChecklistEditorProps {
   items: ChecklistItem[];
   contentColor: string;
   onUpdate: (id: string, text: string, isChecked: boolean) => void;
-  onAdd: () => void;
+  onAdd: (afterId?: string) => string | void;
   onRemove: (id: string) => void;
   onConvertToText?: () => void;
 }
@@ -26,13 +26,7 @@ export function ChecklistEditor({
   const pendingFocusId = useRef<string | 'new' | null>(null);
 
   useEffect(() => {
-    if (pendingFocusId.current === 'new') {
-      const last = sorted[sorted.length - 1];
-      if (last) {
-        inputRefs.current.get(last.id)?.focus();
-      }
-      pendingFocusId.current = null;
-    } else if (pendingFocusId.current) {
+    if (pendingFocusId.current) {
       inputRefs.current.get(pendingFocusId.current)?.focus();
       pendingFocusId.current = null;
     }
@@ -49,8 +43,7 @@ export function ChecklistEditor({
       if (item.text.trim() === '') {
         return;
       }
-      pendingFocusId.current = 'new';
-      onAdd();
+      pendingFocusId.current = onAdd(item.id) ?? null;
     } else if (e.key === 'Backspace' && item.text === '') {
       e.preventDefault();
       if (index > 0) {
@@ -103,7 +96,7 @@ export function ChecklistEditor({
 
       <button
         type="button"
-        onClick={onAdd}
+        onClick={() => { pendingFocusId.current = onAdd() ?? null; }}
         className="mt-2 flex items-center gap-2 rounded-note px-2 py-2 text-base font-medium opacity-90 transition-opacity hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
         style={{ color: contentColor }}
       >

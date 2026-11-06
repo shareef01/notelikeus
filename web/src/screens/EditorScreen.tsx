@@ -17,7 +17,7 @@ import { EditorOptionsSheet } from '@/components/editor/EditorOptionsSheet';
 import { LinkDialog } from '@/components/editor/LinkDialog';
 import { EditorContent } from '@tiptap/react';
 import { useRichNoteEditor } from '@/hooks/useRichNoteEditor';
-import { toSafeHref } from '@/lib/text/markdown';
+import { recordEditorHistoryNoteId, registerEditorBackHandler } from '@/hooks/useEditorHistory';
 import { ReminderPickerDialog } from '@/components/editor/ReminderPickerDialog';
 import { RichTextToolbar } from '@/components/editor/RichTextToolbar';
 import { useNoteEditor } from '@/hooks/useNoteEditor';
@@ -27,7 +27,7 @@ import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
 import { isConflictedCopyTitle } from '@/lib/notes/conflictResolution';
 import { useCloudSync } from '@/hooks/useCloudSync';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
-import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { dismissFocusTrapExcept, useFocusTrap } from '@/hooks/useFocusTrap';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { isEditableTarget, useShortcuts } from '@/hooks/useShortcuts';
 import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset';
@@ -109,8 +109,9 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const handleBack = useCallback(async () => {
     const result = await editor.flushSave();
     if (result.status === 'failed') return;
+    recordEditorHistoryNoteId(result.status === 'saved' ? result.noteId : state.id);
     closeEditor();
-  }, [closeEditor, editor]);
+  }, [closeEditor, editor, state.id]);
 
   const handleDiscardAndClose = useCallback(async () => {
     await editor.discardChanges();
@@ -207,13 +208,14 @@ export function EditorScreen({ route }: EditorScreenProps) {
   ]);
   const [showOptions, setShowOptions] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<{from: number; to: number; href: string; doc: unknown} | null>(null);
   const [showReminderPicker, setShowReminderPicker] = useState(false);
   const rich = useRichNoteEditor(state.content, (text) => {
     if (/(?:^|\n)\[(?: )?\] $/.test(text)) {
       const result = editor.setContentSmart(text, text.length, text.length);
       if (result.structureChanged) editor.convertContentToChecklist();
     } else editor.setContent(text);
-  });
+  }, {undo: () => editor.undoConversion(), redo: () => editor.redoConversion()});
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -286,6 +288,10 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const floatPanelRef = useFocusTrap<HTMLDivElement>(isFloatLayout, onFloatClose);
   const overlayPanelRef = useFocusTrap<HTMLDivElement>(needsOverlayTrap, onFloatClose);
   useBodyScrollLock(isOverlayShell);
+  useEffect(() => registerEditorBackHandler(async () => {
+    if (dismissFocusTrapExcept(floatPanelRef.current, overlayPanelRef.current)) return;
+    await handleBack();
+  }), [handleBack, floatPanelRef, overlayPanelRef]);
 
   const handleDelete = async () => {
     // Trashing is a write like any other; closing on a failed one would report a delete that
@@ -694,6 +700,11 @@ export function EditorScreen({ route }: EditorScreenProps) {
             />
           ) : null}
 
+          {(editor.canUndoConversion || editor.canRedoConversion) && <button type="button"
+            className={`mt-3 self-start rounded-note px-3 py-2 text-sm text-brand-primary ${CHROME_FOCUS}`}
+            onClick={() => editor.canUndoConversion ? editor.undoConversion() : editor.redoConversion()}>
+            {editor.canUndoConversion ? 'Undo conversion' : 'Redo conversion'}
+          </button>}
           {hasChecklist ? (
             <ChecklistEditor
               items={state.checklist}
@@ -713,7 +724,12 @@ export function EditorScreen({ route }: EditorScreenProps) {
                 onItalic={() => rich.editor?.chain().focus().toggleItalic().run()}
                 onBullet={() => rich.editor?.chain().focus().toggleBulletList().run()}
                 onChecklist={() => editor.convertContentToChecklist(rich.editor?.getText({ blockSeparator: '\n' }))}
-                onLink={() => setShowLinkDialog(true)}
+                onLink={() => {
+                  if (!rich.editor) return;
+                  const {from, to} = rich.editor.state.selection;
+                  setLinkTarget({from, to, href: rich.editor.isActive('link') ? rich.editor.getAttributes('link').href : '', doc: rich.editor.state.doc});
+                  setShowLinkDialog(true);
+                }}
                 onAddImage={
                   attachmentsEnabled
                     ? () => {
@@ -767,7 +783,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
         >
           <EditorBottomBar
             timestamp={state.timestamp}
-            isSaving={state.isSaving}
+            isSaving={state.isSaving || editor.isDirty}
             saveFailed={state.saveFailed}
             isSavedLocally={state.lastSavedAt != null}
             isSignedIn={Boolean(userId) && !isGuest}
@@ -801,14 +817,20 @@ export function EditorScreen({ route }: EditorScreenProps) {
       <LinkDialog
         open={showLinkDialog}
         onCancel={() => setShowLinkDialog(false)}
-        onConfirm={(url) => {
-          const href = toSafeHref(url);
-          if (href !== '#' && rich.editor) {
-            const chain = rich.editor.chain().focus();
-            if (rich.editor.state.selection.empty) {
-              chain.insertContent({ type: 'text', text: 'link', marks: [{ type: 'link', attrs: { href } }] }).run();
-            } else chain.setLink({ href }).run();
+        initialUrl={linkTarget?.href ?? ''}
+        onRemove={() => {
+          if (rich.editor && linkTarget && rich.editor.state.doc === linkTarget.doc) {
+            rich.editor.chain().focus().setTextSelection({from: linkTarget.from, to: linkTarget.to}).extendMarkRange('link').unsetLink().run();
           }
+          setShowLinkDialog(false);
+        }}
+        onConfirm={(href) => {
+          if (rich.editor && linkTarget && rich.editor.state.doc === linkTarget.doc) {
+            const chain = rich.editor.chain().focus().setTextSelection({from: linkTarget.from, to: linkTarget.to});
+            if (linkTarget.href) chain.extendMarkRange('link').setLink({href}).run();
+            else if (linkTarget.from === linkTarget.to) chain.insertContent({ type: 'text', text: 'link', marks: [{ type: 'link', attrs: { href } }] }).run();
+            else chain.setLink({href}).run();
+          } else useToastStore.getState().show('The note changed. Select the text and try again.', 'error');
           setShowLinkDialog(false);
         }}
       />

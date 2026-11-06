@@ -1,0 +1,221 @@
+[
+  {
+    "name": "profile-1440x900",
+    "geometry": {
+      "top": 0,
+      "bottom": 900,
+      "height": 900,
+      "scrollHeight": 900,
+      "overflow": "visible",
+      "rootOverflow": "hidden"
+    },
+    "errors": [],
+    "violations": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "nodes": [
+          {
+            "html": "<p class=\"truncate text-[15px] font-medium leading-snug tracking-tight text-red-300\">Sign out</p>",
+            "target": [
+              ".hover\\:bg-brand-primary\\/\\[0\\.04\\].active\\:bg-brand-primary\\/\\[0\\.07\\].min-h-\\[3\\.5rem\\]:nth-child(2) > .min-w-0.flex-1 > .text-red-300.text-\\[15px\\].truncate"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.8 (foreground color: #ffa2a2, background color: #f8f8f8, font size: 11.3pt (15px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "html": "<p class=\"truncate text-[15px] font-medium leading-snug tracking-tight text-red-300\">Delete account</p>",
+            "target": [
+              ".hover\\:bg-brand-primary\\/\\[0\\.04\\].active\\:bg-brand-primary\\/\\[0\\.07\\].min-h-\\[3\\.5rem\\]:nth-child(3) > .min-w-0.flex-1 > .text-red-300.text-\\[15px\\].truncate"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.8 (foreground color: #ffa2a2, background color: #f8f8f8, font size: 11.3pt (15px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "profile-320x568",
+    "geometry": {
+      "top": 0,
+      "bottom": 568,
+      "height": 568,
+      "scrollHeight": 568,
+      "overflow": "visible",
+      "rootOverflow": "hidden"
+    },
+    "errors": [],
+    "violations": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "nodes": [
+          {
+            "html": "<p class=\"truncate text-[15px] font-medium leading-snug tracking-tight text-red-300\">Sign out</p>",
+            "target": [
+              ".hover\\:bg-brand-primary\\/\\[0\\.04\\].active\\:bg-brand-primary\\/\\[0\\.07\\].min-h-\\[3\\.5rem\\]:nth-child(2) > .min-w-0.flex-1 > .text-red-300.text-\\[15px\\].truncate"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.8 (foreground color: #ffa2a2, background color: #f8f8f8, font size: 11.3pt (15px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "html": "<p class=\"truncate text-[15px] font-medium leading-snug tracking-tight text-red-300\">Delete account</p>",
+            "target": [
+              ".hover\\:bg-brand-primary\\/\\[0\\.04\\].active\\:bg-brand-primary\\/\\[0\\.07\\].min-h-\\[3\\.5rem\\]:nth-child(3) > .min-w-0.flex-1 > .text-red-300.text-\\[15px\\].truncate"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.8 (foreground color: #ffa2a2, background color: #f8f8f8, font size: 11.3pt (15px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "profile-720x450",
+    "geometry": {
+      "top": 0,
+      "bottom": 450,
+      "height": 450,
+      "scrollHeight": 450,
+      "overflow": "visible",
+      "rootOverflow": "hidden"
+    },
+    "errors": [],
+    "violations": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "nodes": [
+          {
+            "html": "<p class=\"truncate text-[15px] font-medium leading-snug tracking-tight text-red-300\">Sign out</p>",
+            "target": [
+              ".hover\\:bg-brand-primary\\/\\[0\\.04\\].active\\:bg-brand-primary\\/\\[0\\.07\\].min-h-\\[3\\.5rem\\]:nth-child(2) > .min-w-0.flex-1 > .text-red-300.text-\\[15px\\].truncate"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.8 (foreground color: #ffa2a2, background color: #f8f8f8, font size: 11.3pt (15px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "html": "<p class=\"truncate text-[15px] font-medium leading-snug tracking-tight text-red-300\">Delete account</p>",
+            "target": [
+              ".hover\\:bg-brand-primary\\/\\[0\\.04\\].active\\:bg-brand-primary\\/\\[0\\.07\\].min-h-\\[3\\.5rem\\]:nth-child(3) > .min-w-0.flex-1 > .text-red-300.text-\\[15px\\].truncate"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.8 (foreground color: #ffa2a2, background color: #f8f8f8, font size: 11.3pt (15px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "delete-account-1440x900",
+    "geometry": {
+      "top": 178,
+      "bottom": 722,
+      "height": 544,
+      "scrollHeight": 544,
+      "overflow": "visible",
+      "rootOverflow": "hidden"
+    },
+    "errors": [],
+    "violations": []
+  },
+  {
+    "name": "delete-account-320x568",
+    "geometry": {
+      "top": -132,
+      "bottom": 552,
+      "height": 684,
+      "scrollHeight": 684,
+      "overflow": "visible",
+      "rootOverflow": "hidden"
+    },
+    "errors": [],
+    "violations": []
+  },
+  {
+    "name": "delete-account-720x450",
+    "geometry": {
+      "top": -47,
+      "bottom": 497,
+      "height": 544,
+      "scrollHeight": 544,
+      "overflow": "visible",
+      "rootOverflow": "hidden"
+    },
+    "errors": [],
+    "violations": []
+  },
+  {
+    "name": "sign-out-1440x900",
+    "geometry": {
+      "top": 317,
+      "bottom": 583,
+      "height": 266,
+      "scrollHeight": 266,
+      "overflow": "visible",
+      "rootOverflow": "hidden"
+    },
+    "errors": [],
+    "violations": []
+  },
+  {
+    "name": "sign-out-320x568",
+    "geometry": {
+      "top": 246,
+      "bottom": 552,
+      "height": 306,
+      "scrollHeight": 306,
+      "overflow": "visible",
+      "rootOverflow": "hidden"
+    },
+    "errors": [],
+    "violations": []
+  },
+  {
+    "name": "sign-out-720x450",
+    "geometry": {
+      "top": 92,
+      "bottom": 358,
+      "height": 266,
+      "scrollHeight": 266,
+      "overflow": "visible",
+      "rootOverflow": "hidden"
+    },
+    "errors": [],
+    "violations": []
+  },
+  {
+    "name": "privacy-1440x900",
+    "geometry": {
+      "top": 67.5,
+      "bottom": 832.5,
+      "height": 763,
+      "scrollHeight": 2296,
+      "overflow": "auto",
+      "rootOverflow": "hidden"
+    },
+    "errors": [],
+    "violations": []
+  },
+  {
+    "name": "privacy-320x568",
+    "geometry": {
+      "top": 69.203125,
+      "bottom": 552,
+      "height": 481,
+      "scrollHeight": 3824,
+      "overflow": "auto",
+      "rootOverflow": "hidden"
+    },
+    "errors": [],
+    "violations": []
+  },
+  {
+    "name": "privacy-720x450",
+    "geometry": {
+      "top": 33.75,
+      "bottom": 416.25,
+      "height": 381,
+      "scrollHeight": 2296,
+      "overflow": "auto",
+      "rootOverflow": "hidden"
+    },
+    "errors": [],
+    "violations": []
+  }
+]

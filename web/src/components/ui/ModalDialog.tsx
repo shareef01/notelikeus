@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useId } from 'react';
+import { useVisibleViewport } from '@/hooks/useVisibleViewport';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
@@ -41,19 +42,20 @@ export function ModalDialog({
   children,
 }: ModalDialogProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(open, onClose);
+  const viewport = useVisibleViewport();
   useBodyScrollLock(open);
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 animate-in fade-in duration-200 sm:items-center sm:p-6">
+    <div style={{top: viewport.top, height: viewport.height}} className="fixed inset-x-0 z-[60] flex items-end justify-center bg-black/70 p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] animate-in fade-in duration-200 sm:items-center sm:p-6">
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={ariaLabelledBy}
         aria-label={ariaLabelledBy ? undefined : ariaLabel}
-        className={`w-full ${size === 'wide' ? 'max-w-3xl' : 'max-w-md'} rounded-note bg-true-surface p-5 shadow-xl animate-in zoom-in-95 duration-200`}
+        className={`max-h-full overflow-y-auto overscroll-contain w-full ${size === 'wide' ? 'max-w-3xl' : 'max-w-md'} rounded-note bg-true-surface p-5 shadow-xl animate-in zoom-in-95 duration-200`}
       >
         {children}
       </div>

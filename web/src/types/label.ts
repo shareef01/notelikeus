@@ -4,6 +4,9 @@ export interface Label {
   name: string;
 }
 
+/** Comparison key for label form validation; existing IDs remain stable. */
+export const labelNameKey = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
+
 export function labelFromName(name: string, id?: string): Label {
   return {
     id: id ?? `label-${name.trim().toLowerCase().replace(/\s+/g, '-')}`,

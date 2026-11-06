@@ -11,6 +11,29 @@ import { createEmptyNote } from '@/types/note';
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 afterEach(() => { vi.useRealTimers(); });
 
+it('dirty feedback follows the current revision, including edits during a slow save', async () => {
+  vi.useFakeTimers();
+  useNotesStore.getState().setNotes([createEmptyNote({ id: '1', localId: 1, content: 'initial' })]);
+  let finish!: () => void;
+  vi.mocked(saveNote).mockReset().mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; })).mockResolvedValue(undefined);
+  let editor!: ReturnType<typeof useNoteEditor>;
+  function Probe() { editor = useNoteEditor('1'); return null; }
+  const root = createRoot(document.createElement('div'));
+  act(() => root.render(createElement(Probe)));
+  try {
+    expect(editor.isDirty).toBe(false);
+    act(() => editor.setContent('first edit'));
+    expect(editor.isDirty).toBe(true);
+    expect(editor.state.isSaving).toBe(false); // debounce has not elapsed
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    act(() => editor.setContent('newer edit'));
+    await act(async () => { finish(); });
+    expect(editor.isDirty).toBe(true);
+    await act(async () => { await editor.flushSave(); });
+    expect(editor.isDirty).toBe(false);
+  } finally { act(() => root.unmount()); }
+});
+
 it('viewing and closing an existing note preserves its date without writing', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-06T12:00:00Z'));

@@ -106,7 +106,7 @@ describe('LinkDialog', () => {
     act(() => {
       input.form!.requestSubmit();
     });
-    expect(onConfirm).toHaveBeenCalledWith('example.com');
+    expect(onConfirm).toHaveBeenCalledWith('https://example.com');
     cleanup();
   });
 

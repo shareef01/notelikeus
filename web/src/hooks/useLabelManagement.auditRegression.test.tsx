@@ -7,7 +7,23 @@ import { useAuthStore } from '@/store/authStore';
 import { createEmptyNote } from '@/types/note';
 import { listNotes, listPendingPushes, putNotes } from '@/lib/local/notesLocalRepository';
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';
+import { useLabelRegistryStore } from '@/store/labelRegistryStore';
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+it('rejects normalized duplicate creation and renaming without modifying labels', async () => {
+  useNotesStore.getState().setNotes([]);
+  useLabelRegistryStore.setState({labels: {}});
+  let labels!: ReturnType<typeof useLabelManagement>;
+  function Probe() { labels = useLabelManagement(); return null; }
+  const root = createRoot(document.createElement('div'));
+  act(() => root.render(createElement(Probe)));
+  try {
+    act(() => { labels.createLabel('Work'); labels.createLabel('Home'); });
+    expect(() => labels.createLabel('  WORK  ')).toThrow('already exists');
+    await expect(labels.updateLabel('label-home', ' work ')).rejects.toThrow('already exists');
+    expect(labels.labels.map(label => label.name)).toEqual(['Home', 'Work']);
+  } finally { act(() => root.unmount()); }
+});
 
 it('AUD-E07 persists label renames and records pending note edits', async () => {
   await resetNotesDatabaseForTests();

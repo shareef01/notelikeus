@@ -1,0 +1,29 @@
+[
+  {
+    "id": "persisted-conversion-undo",
+    "converted": "Remaining task\n\nFinished task",
+    "reopenedBody": "\n",
+    "structuredRows": 0
+  },
+  {
+    "id": "dirty-save-label",
+    "footer": "Saved on this device • 22:25",
+    "body": "Changed text that has not reached the pending autosave timer"
+  },
+  {
+    "id": "hover-selection-overlap",
+    "title": {
+      "x": 309,
+      "y": 187,
+      "width": 266.609375,
+      "height": 56
+    },
+    "checkbox": {
+      "x": 299,
+      "y": 177,
+      "width": 24,
+      "height": 24
+    },
+    "overlap": 196
+  }
+]

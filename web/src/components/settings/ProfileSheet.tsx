@@ -80,7 +80,7 @@ function SettingsRow({
       <div className="min-w-0 flex-1">
         <p
           className={`truncate text-[15px] font-medium leading-snug tracking-tight ${
-            destructive ? 'text-red-300' : 'text-brand-primary'
+            destructive ? 'text-red-700 dark:text-red-300' : 'text-brand-primary'
           }`}
         >
           {title}

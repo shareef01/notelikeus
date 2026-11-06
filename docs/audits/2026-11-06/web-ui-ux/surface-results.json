@@ -1,0 +1,510 @@
+[
+  {
+    "state": "empty",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "notes",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "search",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "archive",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "trash",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "labels",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Edit labels",
+        "top": 0,
+        "bottom": 900,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "settings",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Settings",
+        "top": 0,
+        "bottom": 900,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "editor",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Note editor",
+        "top": 45,
+        "bottom": 855,
+        "overflow": "hidden"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "options",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Note editor",
+        "top": 45,
+        "bottom": 855,
+        "overflow": "hidden"
+      },
+      {
+        "name": "Note options",
+        "top": 92.5,
+        "bottom": 807.5,
+        "overflow": "auto"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "reminder",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Note editor",
+        "top": 45,
+        "bottom": 855,
+        "overflow": "hidden"
+      },
+      {
+        "name": "_r_k_",
+        "top": 291,
+        "bottom": 609,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "sort",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Sort notes",
+        "top": 356,
+        "bottom": 544,
+        "overflow": "auto"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "selection",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "import",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "_r_a_",
+        "top": 354,
+        "bottom": 546,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "load-error",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "sync-error",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "unreadable",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "offline",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "diagnostics",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Settings",
+        "top": 0,
+        "bottom": 900,
+        "overflow": "visible"
+      },
+      {
+        "name": "_r_g_",
+        "top": 90,
+        "bottom": 810,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "privacy",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Settings",
+        "top": 0,
+        "bottom": 900,
+        "overflow": "visible"
+      },
+      {
+        "name": "_r_9_",
+        "top": 67.5,
+        "bottom": 832.5,
+        "overflow": "auto"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "conflict",
+    "width": 1440,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "_r_f_",
+        "top": 286,
+        "bottom": 614,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "empty",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "notes",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "search",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "archive",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "trash",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "labels",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Edit labels",
+        "top": 0,
+        "bottom": 568,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "settings",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Settings",
+        "top": 0,
+        "bottom": 568,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "editor",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Note editor",
+        "top": 0,
+        "bottom": 568,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "options",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Note editor",
+        "top": 0,
+        "bottom": 568,
+        "overflow": "visible"
+      },
+      {
+        "name": "Note options",
+        "top": 45.453125,
+        "bottom": 568,
+        "overflow": "auto"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "reminder",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Note editor",
+        "top": 0,
+        "bottom": 568,
+        "overflow": "visible"
+      },
+      {
+        "name": "_r_k_",
+        "top": 176,
+        "bottom": 552,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "sort",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Sort notes",
+        "top": 350,
+        "bottom": 568,
+        "overflow": "auto"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "selection",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "import",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "_r_a_",
+        "top": 300,
+        "bottom": 552,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "load-error",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "sync-error",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "unreadable",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "offline",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [],
+    "overflow": 0
+  },
+  {
+    "state": "diagnostics",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Settings",
+        "top": 0,
+        "bottom": 568,
+        "overflow": "visible"
+      },
+      {
+        "name": "_r_g_",
+        "top": 97.609375,
+        "bottom": 552,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "privacy",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "Settings",
+        "top": 0,
+        "bottom": 568,
+        "overflow": "visible"
+      },
+      {
+        "name": "_r_9_",
+        "top": 69.203125,
+        "bottom": 552,
+        "overflow": "auto"
+      }
+    ],
+    "overflow": 0
+  },
+  {
+    "state": "conflict",
+    "width": 320,
+    "errors": [],
+    "violations": [],
+    "dialogs": [
+      {
+        "name": "_r_f_",
+        "top": -142,
+        "bottom": 552,
+        "overflow": "visible"
+      }
+    ],
+    "overflow": 0
+  }
+]

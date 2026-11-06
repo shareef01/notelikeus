@@ -1,0 +1,118 @@
+[
+  {
+    "theme": "light",
+    "width": 320,
+    "violations": [
+      {
+        "id": "color-contrast",
+        "nodes": [
+          {
+            "html": "<p class=\"text-sm font-semibold text-amber-100\">Your cloud notes were deleted from another device</p>",
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.5 (foreground color: #fef3c6, background color: #d1c6c0, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "html": "<p class=\"mt-1 text-sm text-amber-100/80\">Nothing was uploaded. 3 notes are still on this browser. It is not in the cloud any more, and it will stay here until you choose.</p>",
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.39 (foreground color: #f5eac5, background color: #d1c6c0, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "html": "<button type=\"button\" class=\"min-h-11 rounded-note px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-950/50\">Not now</button>",
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.34 (foreground color: #fee685, background color: #d1c6c0, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "html": "<button type=\"button\" class=\"min-h-11 rounded-note px-3 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-950/50 disabled:opacity-60\">Upload my notes again</button>",
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.5 (foreground color: #fef3c6, background color: #d1c6c0, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ]
+      }
+    ],
+    "text": {
+      "x": 12,
+      "y": 12,
+      "width": 18.390625,
+      "height": 160
+    },
+    "upload": {
+      "x": 133.421875,
+      "y": 12,
+      "width": 174.578125,
+      "height": 44
+    },
+    "scrollWidth": 320
+  },
+  {
+    "theme": "light",
+    "width": 1440,
+    "violations": [
+      {
+        "id": "color-contrast",
+        "nodes": [
+          {
+            "html": "<p class=\"text-sm font-semibold text-amber-100\">Your cloud notes were deleted from another device</p>",
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.5 (foreground color: #fef3c6, background color: #d1c6c0, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "html": "<p class=\"mt-1 text-sm text-amber-100/80\">Nothing was uploaded. 3 notes are still on this browser. It is not in the cloud any more, and it will stay here until you choose.</p>",
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.39 (foreground color: #f5eac5, background color: #d1c6c0, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "html": "<button type=\"button\" class=\"min-h-11 rounded-note px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-950/50\">Not now</button>",
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.34 (foreground color: #fee685, background color: #d1c6c0, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "html": "<button type=\"button\" class=\"min-h-11 rounded-note px-3 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-950/50 disabled:opacity-60\">Upload my notes again</button>",
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 1.5 (foreground color: #fef3c6, background color: #d1c6c0, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ]
+      }
+    ],
+    "text": {
+      "x": 144,
+      "y": 12,
+      "width": 794.40625,
+      "height": 20
+    },
+    "upload": {
+      "x": 1121.421875,
+      "y": 12,
+      "width": 174.578125,
+      "height": 44
+    },
+    "scrollWidth": 1440
+  },
+  {
+    "theme": "dark",
+    "width": 320,
+    "violations": [],
+    "text": {
+      "x": 12,
+      "y": 12,
+      "width": 18.390625,
+      "height": 160
+    },
+    "upload": {
+      "x": 133.421875,
+      "y": 12,
+      "width": 174.578125,
+      "height": 44
+    },
+    "scrollWidth": 320
+  },
+  {
+    "theme": "dark",
+    "width": 1440,
+    "violations": [],
+    "text": {
+      "x": 144,
+      "y": 12,
+      "width": 794.40625,
+      "height": 20
+    },
+    "upload": {
+      "x": 1121.421875,
+      "y": 12,
+      "width": 174.578125,
+      "height": 44
+    },
+    "scrollWidth": 1440
+  }
+]

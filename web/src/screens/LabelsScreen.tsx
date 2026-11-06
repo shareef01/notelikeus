@@ -5,7 +5,8 @@ import { CloseIcon, TrashIcon, AddIcon, LabelIcon } from '@/components/icons/Ico
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
-import { useState } from 'react';
+import { useId, useState } from 'react';
+import { useVisibleViewport } from '@/hooks/useVisibleViewport';
 import type { Label } from '@/types/label';
 
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -16,7 +17,10 @@ interface LabelsScreenProps {
 }
 
 export function LabelsScreen({ onClose }: LabelsScreenProps) {
+  const viewport = useVisibleViewport();
+  const labelErrorId = useId();
   const { labels, createLabel, updateLabel, deleteLabel } = useLabelManagement();
+  const [labelError, setLabelError] = useState('');
   const [newLabelName, setNewLabelName] = useState('');
   const [labelToEdit, setLabelToEdit] = useState<Label | null>(null);
   const [editName, setEditName] = useState('');
@@ -27,8 +31,10 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (newLabelName.trim()) {
-      createLabel(newLabelName.trim());
-      setNewLabelName('');
+      try {
+        createLabel(newLabelName.trim());
+        setNewLabelName(''); setLabelError('');
+      } catch (error) { setLabelError(error instanceof Error ? error.message : 'Could not create label.'); }
     }
   };
 
@@ -40,9 +46,9 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
   const handleUpdate = async () => {
     if (labelToEdit && editName.trim() && editName !== labelToEdit.name) {
       try { await updateLabel(labelToEdit.id, editName.trim()); }
-      catch { useToastStore.getState().show("Could not save label changes. Try again.", "error"); return; }
+      catch (error) { setLabelError(error instanceof Error ? error.message : "Could not save label changes. Try again."); return; }
     }
-    setLabelToEdit(null);
+    setLabelToEdit(null); setLabelError('');
   };
 
   return (
@@ -51,7 +57,8 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
       role="dialog"
       aria-modal="true"
       aria-label="Edit labels"
-      className="fixed inset-0 z-50 flex flex-col bg-true-surface animate-in fade-in duration-200"
+      style={{top: viewport.top, height: viewport.height}}
+      className="fixed inset-x-0 z-50 flex flex-col bg-true-surface animate-in fade-in duration-200"
     >
       <header className="border-b border-brand-outline/30">
         <div className="mx-auto flex w-full max-w-2xl items-center justify-between px-shell py-4 pt-safe">
@@ -67,7 +74,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-shell pb-24">
+      <div className="min-h-0 flex-1 overflow-y-auto px-shell pb-24">
         <div className="mx-auto w-full max-w-2xl">
           <form onSubmit={handleCreate} className="mb-6 flex items-center gap-3 border-b border-brand-outline/35 pb-5 pt-5">
             <div className="flex size-10 shrink-0 items-center justify-center text-brand-muted">
@@ -79,15 +86,18 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
               onChange={(e) => setNewLabelName(e.target.value)}
               placeholder="Create new label"
               aria-label="Create new label"
-              className="flex-1 bg-transparent text-base font-medium outline-none placeholder:text-brand-muted"
+              aria-invalid={!!labelError && !labelToEdit}
+              aria-describedby={labelError && !labelToEdit ? labelErrorId : undefined}
+              className="min-w-0 w-0 flex-1 bg-transparent text-base font-medium outline-none placeholder:text-brand-muted"
             />
             {newLabelName.trim() ? (
-              <Button type="submit" size="sm">
+              <Button type="submit" size="sm" className="shrink-0">
                 Create
               </Button>
             ) : null}
           </form>
 
+          {labelError && <p id={labelErrorId} role="alert" className="mb-4 text-sm text-red-700 dark:text-red-300">{labelError}</p>}
           {labels.length === 0 ? (
             <div className="py-12">
               <EmptyState
@@ -122,7 +132,9 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
                           }
                         }}
                         aria-label="Edit label name"
-                        className="flex-1 border-b border-brand-primary/30 bg-transparent text-base outline-none"
+                        aria-invalid={!!labelError}
+                        aria-describedby={labelError ? labelErrorId : undefined}
+                        className="min-w-0 w-0 flex-1 border-b border-brand-primary/30 bg-transparent text-base outline-none"
                       />
                     ) : (
                       <button

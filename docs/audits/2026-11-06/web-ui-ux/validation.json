@@ -1,0 +1,55 @@
+{
+  "auditedCommit": "cce1b922108e6b4e7cae3951d8ed1b47c127a8ba",
+  "date": "2026-11-06",
+  "timezone": "Europe/Berlin",
+  "baseline": {
+    "command": "npm run test:audit-ui",
+    "passed": 136,
+    "failed": 0,
+    "locales": [
+      "de-DE",
+      "en-US",
+      "ne-NP",
+      "ar-EG"
+    ],
+    "uiLanguage": "English"
+  },
+  "datasets": [
+    {
+      "name": "surface-results",
+      "cases": 40,
+      "errors": 0,
+      "violationCases": 0
+    },
+    {
+      "name": "fixture-results",
+      "cases": 12,
+      "errors": 0,
+      "violationCases": 3
+    },
+    {
+      "name": "cloud-wipe-results",
+      "cases": 4,
+      "errors": 0,
+      "violationCases": 2
+    },
+    {
+      "name": "auth-results",
+      "cases": 2,
+      "errors": 0,
+      "violationCases": 0
+    },
+    {
+      "name": "auth-code-results",
+      "cases": 2,
+      "errors": 0,
+      "violationCases": 0
+    }
+  ],
+  "screenshots": 70,
+  "findings": {
+    "P1": 1,
+    "P2": 9,
+    "P3": 2
+  }
+}

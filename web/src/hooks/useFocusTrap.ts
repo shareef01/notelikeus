@@ -5,6 +5,7 @@ const FOCUSABLE =
 
 interface TrapEntry {
   getPanel: () => HTMLElement | null;
+  dismiss: () => void;
 }
 
 /**
@@ -47,6 +48,14 @@ export function isFocusTrapOpen(): boolean {
   return openTraps.some((entry) => entry.getPanel() != null);
 }
 
+/** Browser Back dismisses the same innermost dialog as Escape. */
+export function dismissFocusTrapExcept(...panels: (HTMLElement | null)[]): boolean {
+  const entry = innermostTrap();
+  if (!entry || panels.includes(entry.getPanel())) return false;
+  entry.dismiss();
+  return true;
+}
+
 /**
  * Traps focus inside a dialog while `open`: focuses the first focusable element,
  * wraps Tab/Shift+Tab at the panel's edges, closes on Escape, and restores focus
@@ -83,7 +92,8 @@ export function useFocusTrap<T extends HTMLElement>(
     const focusables = panel?.querySelectorAll<HTMLElement>(FOCUSABLE);
     focusables?.[0]?.focus();
 
-    const entry: TrapEntry = { getPanel: () => panelRef.current };
+    const entry: TrapEntry = { getPanel: () => panelRef.current,
+      dismiss: () => { if (closeOnEscape) onCloseRef.current(); } };
     openTraps.push(entry);
 
     const onKeyDown = (event: KeyboardEvent) => {

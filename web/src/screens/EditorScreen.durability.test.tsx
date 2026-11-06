@@ -5,6 +5,7 @@ import { EditorScreen } from '@/screens/EditorScreen';
 import { useUiStore } from '@/store/uiStore';
 import * as noteEditorHook from '@/hooks/useNoteEditor';
 import * as attachmentConfig from '@/lib/attachments/attachmentConfig';
+import { useEditorHistory } from '@/hooks/useEditorHistory';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -105,6 +106,36 @@ describe('Web Rapid Image Capture — Durability and Lifecycle', () => {
       },
     };
   }
+
+  it('browser Back keeps the editor and draft open when the local save fails', async () => {
+    const editor = vi.mocked(noteEditorHook.useNoteEditor).getMockImplementation()!('new');
+    vi.mocked(editor.flushSave).mockResolvedValue({status: 'failed', error: new Error('Storage full')});
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    window.history.replaceState({}, '', window.location.href);
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+    function Screen() {
+      useEditorHistory();
+      return createElement(EditorScreen, {route: {mode: 'new'}});
+    }
+    act(() => root.render(createElement(Screen)));
+    try {
+      await act(async () => {
+        // The browser has moved from the editor's history entry to the library.
+        window.history.replaceState({}, '', window.location.href);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+      expect(editor.flushSave).toHaveBeenCalledTimes(1);
+      expect(useUiStore.getState().editorRoute.mode).toBe('new');
+      expect(container.querySelector('#note-title')).not.toBeNull();
+      expect(window.history.state.notelikeusEditor).toEqual({mode: 'new'});
+      expect(back).not.toHaveBeenCalled();
+    } finally {
+      act(() => root.unmount()); container.remove();
+      window.history.replaceState({}, '', window.location.href);
+    }
+  });
 
   it('new note: paste screenshot calls canonical editor.addAttachment with image File', async () => {
     const { container, cleanup } = renderEditor('new');
