@@ -24,6 +24,10 @@ function push(route: EditorRoute) {
 export function useEditorHistory() {
   useEffect(() => {
     let pending = false;
+    // The editor's body lock restores the library position. Native restoration
+    // can run afterwards and replace it with the locked page's zero offset.
+    const previousScrollRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
     const unsubscribe = useUiStore.subscribe((state, previous) => {
       if (state.editorRoute === previous.editorRoute) return;
       if (state.editorRoute.mode !== 'closed') {
@@ -51,6 +55,9 @@ export function useEditorHistory() {
     const initial = useUiStore.getState().editorRoute;
     if (initial.mode !== 'closed' && !routeFromHistory()) push(initial);
     window.addEventListener('popstate', onPop);
-    return () => { unsubscribe(); window.removeEventListener('popstate', onPop); };
+    return () => {
+      unsubscribe(); window.removeEventListener('popstate', onPop);
+      window.history.scrollRestoration = previousScrollRestoration;
+    };
   }, []);
 }

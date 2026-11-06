@@ -48,6 +48,9 @@ for (const view of ['Grid', 'Compact', 'List']) {
   await expect(page.getByRole('dialog', { name: 'Note editor', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Note editor', exact: true })).toHaveCount(0);
+  // Include the asynchronous browser traversal, which can restore scroll after
+  // the editor has already unmounted and released its body lock.
+  await page.waitForFunction(() => !history.state?.notelikeusEditor);
   expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(position, 0);
  });
 }
