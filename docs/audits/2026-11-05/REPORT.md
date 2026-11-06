@@ -152,6 +152,15 @@ The full web development dependency audit reports six affected package entries (
 
 Verified with `npm audit --json`, `npm ls ... --all` and the advisory pages. These are build tooling dependencies; `npm audit --omit=dev` is clean. No path from note/backup content to an exploitable build input was established, so this is not counted as an additional application vulnerability. Do not blindly accept npm's suggested downgrade of `vite-plugin-pwa` to 1.1.0. Evaluate compatible upstream updates or targeted overrides, then verify the generated worker, precache manifest and production build.
 
+Dependency follow-up (2026-11-06): scoped Workbox overrides select glob 14.0.2
+and minimatch 11.0.1. A reproducible patch-package patch rejects `__proto__`
+in deepmerge's target and source loops in both distributed bundles and source.
+Clean installation, ten dependency security/compatibility regressions, all 1,307
+web unit tests, production build, lint and desktop/mobile Chromium offline reload
+checks passed. Production npm audit is clean. Full npm audit retains four low
+package entries for the single locally patched deepmerge advisory; no moderate,
+high or critical entries remain. See `web/patches/README.md` for removal criteria.
+
 ## Suggested repair order
 
 1. E03/E04/E05/E06/E10: owner/incarnation binding across web saves, deletes, wipe, import and hydration. Include attachment GC and undo in the same authority review.
