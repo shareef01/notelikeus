@@ -243,6 +243,11 @@ export function EditorScreen({ route }: EditorScreenProps) {
     !isTabletUp || editorLayout === 'fullscreen' ? keyboardInset : 0;
 
   useEffect(() => {
+    const writing = rich.editor;
+    if (writing?.isFocused) writing.commands.scrollIntoView();
+  }, [effectiveKeyboardInset, rich.editor]);
+
+  useEffect(() => {
     if (noteId !== 'new' || hasChecklist || !rich.editor) return;
     const id = requestAnimationFrame(() => {
       if (titleRef.current && document.activeElement === titleRef.current) return;
@@ -569,9 +574,13 @@ export function EditorScreen({ route }: EditorScreenProps) {
       </header>
 
       <div
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-layout-gap pt-4 sm:px-6 sm:pt-6 lg:px-8"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-layout-gap pt-4 sm:px-6 sm:pt-6 lg:px-8"
         style={{
-          paddingBottom: `calc(5.5rem + max(env(safe-area-inset-bottom, 0px), 1rem) + ${effectiveKeyboardInset}px)`,
+          // Shrink the scrollport above the keyboard. Padding alone extends the
+          // content but leaves the caret's visibility boundary behind the keyboard.
+          marginBottom: effectiveKeyboardInset,
+          paddingBottom: 'calc(5.5rem + max(env(safe-area-inset-bottom, 0px), 1rem))',
+          scrollPaddingBlock: '4rem 6rem',
         }}
         onClick={(event) => {
           const target = event.target as HTMLElement;
