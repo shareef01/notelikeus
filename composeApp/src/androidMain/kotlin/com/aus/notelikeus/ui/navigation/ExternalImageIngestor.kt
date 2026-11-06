@@ -3,11 +3,11 @@ package com.aus.notelikeus.ui.navigation
 import android.content.ContentResolver
 import android.net.Uri
 import com.aus.notelikeus.data.attachments.MAX_ATTACHMENT_BYTES
+import com.aus.notelikeus.data.attachments.readBoundedAttachment
 import com.aus.notelikeus.util.AppLog
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.io.FileNotFoundException
 import java.io.InputStream
 
@@ -26,22 +26,8 @@ interface ExternalImageIngestor {
  * If the stream produces more than [maxBytes] or 0 bytes, reading stops immediately and returns null.
  * This ensures untrusted external streams cannot trigger unbounded memory allocation.
  */
-fun readBoundedStream(inputStream: InputStream, maxBytes: Int = MAX_ATTACHMENT_BYTES): ByteArray? {
-    val buffer = ByteArray(8192)
-    val output = ByteArrayOutputStream()
-    var total = 0
-    while (true) {
-        val read = inputStream.read(buffer)
-        if (read == -1) break
-        total += read
-        if (total > maxBytes) {
-            return null
-        }
-        output.write(buffer, 0, read)
-    }
-    if (output.size() == 0) return null
-    return output.toByteArray()
-}
+fun readBoundedStream(inputStream: InputStream, maxBytes: Int = MAX_ATTACHMENT_BYTES): ByteArray? =
+    readBoundedAttachment(inputStream, maxBytes)
 
 class DefaultExternalImageIngestor(
     private val contentResolver: ContentResolver,

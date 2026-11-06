@@ -17,6 +17,33 @@ import kotlin.test.assertTrue
  * the revision it observes only when the cloud copy still says exactly that.
  */
 class VerifiedDeleteTest {
+    @Test
+    fun delimiterCollidingCloudEditsCannotCompleteAPendingDelete() = runTest {
+        setup()
+        val original = deleted.copy(title = "a\u001fb", content = "c")
+        stateStore.setDeletedDigest(1L, ConflictResolution.authoredContentDigest(original))
+        stateStore.markDeleted(1L, deletedAt = 50L, baselineRevision = null)
+        transport.notes[1L] = cloud("b\u001fc").copy(title = "a")
+
+        engine.downloadAllNotes().getOrThrow()
+
+        assertTrue(transport.deleteAttempts.isEmpty())
+        assertEquals("b\u001fc", noteDao.notes[1L]?.content)
+        assertFalse(stateStore.isDeleted(1L))
+    }
+
+    @Test
+    fun legacyDigestCannotAcknowledgeAnUnverifiedCloudCopy() = runTest {
+        setup()
+        stateStore.setDeletedDigest(1L, "legacy-unframed-digest")
+        stateStore.markDeleted(1L, deletedAt = 50L, baselineRevision = null)
+        transport.notes[1L] = cloud("milk")
+
+        engine.downloadAllNotes().getOrThrow()
+
+        assertTrue(transport.deleteAttempts.isEmpty())
+        assertEquals("milk", noteDao.notes[1L]?.content)
+    }
 
     private lateinit var transport: FakeCloudNoteTransport
     private lateinit var stateStore: FakeNoteSyncStateStore
@@ -86,13 +113,13 @@ class VerifiedDeleteTest {
     fun `the fingerprint matches the web client's for the same words`() {
         // Vectors produced by web authoredContentDigest (conflictResolution.ts) for the same notes.
         assertEquals(
-            "k48zx5vdvr",
+            "v2:1ue18w28pk2",
             ConflictResolution.authoredContentDigest(
                 Note(id = 1L, title = "Groceries", content = "milk\nbread", timestamp = 0L, color = 0),
             ),
         )
         assertEquals(
-            "uwzh4mcxr7",
+            "v2:18lg26bb6hd",
             ConflictResolution.authoredContentDigest(
                 Note(
                     id = 2L, title = "Café ✓ 日本", content = "", timestamp = 0L, color = 0,

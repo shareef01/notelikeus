@@ -97,7 +97,7 @@ private fun noteTimestampLabel(timestamp: Long): String {
     val yesterdayLabel = stringResource(Res.string.section_yesterday)
     return when {
         DateUtils.isToday(timestamp) -> DateUtils.formatTime(timestamp)
-        DateUtils.isToday(timestamp + DateUtils.DAY_IN_MILLIS) -> yesterdayLabel
+        DateUtils.isToday(DateUtils.shiftLocalDays(timestamp, 1)) -> yesterdayLabel
         else -> DateUtils.formatDateTime(timestamp, showYear = false)
     }
 }

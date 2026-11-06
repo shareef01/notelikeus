@@ -12,7 +12,7 @@ actual object DateUtils {
      * dividing by that lands an hour out on either side of a daylight-saving change.
      */
     actual fun startOfDay(timestamp: Long): Long {
-        val cal = java.util.Calendar.getInstance().apply {
+        val cal = java.util.GregorianCalendar().apply {
             timeInMillis = timestamp
             set(java.util.Calendar.HOUR_OF_DAY, 0)
             set(java.util.Calendar.MINUTE, 0)
@@ -39,7 +39,7 @@ actual object DateUtils {
      */
     actual fun startOfDay(year: Int, month: Int, day: Int): Long? {
         if (month !in 1..12 || day < 1) return null
-        val cal = Calendar.getInstance().apply {
+        val cal = java.util.GregorianCalendar().apply {
             clear()
             set(Calendar.YEAR, year)
             set(Calendar.MONTH, month - 1)
@@ -50,8 +50,14 @@ actual object DateUtils {
         return cal.timeInMillis
     }
 
+    actual fun shiftLocalDays(timestamp: Long, days: Int): Long =
+        java.util.GregorianCalendar().apply {
+            timeInMillis = timestamp
+            add(java.util.Calendar.DAY_OF_MONTH, days)
+        }.timeInMillis
+
     actual fun localDateTimeFields(timestamp: Long): LocalDateTimeFields {
-        val cal = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }
+        val cal = java.util.GregorianCalendar().apply { timeInMillis = timestamp }
         return LocalDateTimeFields(
             year = cal.get(java.util.Calendar.YEAR),
             month = cal.get(java.util.Calendar.MONTH) + 1,
@@ -62,8 +68,8 @@ actual object DateUtils {
     }
 
     actual fun isToday(timestamp: Long): Boolean {
-        val now = Calendar.getInstance()
-        val then = Calendar.getInstance().apply { timeInMillis = timestamp }
+        val now = java.util.GregorianCalendar()
+        val then = java.util.GregorianCalendar().apply { timeInMillis = timestamp }
         return now.get(Calendar.YEAR) == then.get(Calendar.YEAR) &&
                now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR)
     }
@@ -74,11 +80,11 @@ actual object DateUtils {
     }
 
     actual fun formatTime(timestamp: Long): String {
-        return SimpleDateFormat("h:mm a").format(Date(timestamp))
+        return java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(Date(timestamp))
     }
 
     actual fun getTomorrowMorning(): Long {
-        val cal = Calendar.getInstance().apply {
+        val cal = java.util.GregorianCalendar().apply {
             add(Calendar.DAY_OF_YEAR, 1)
             set(Calendar.HOUR_OF_DAY, 9)
             set(Calendar.MINUTE, 0)
@@ -89,15 +95,15 @@ actual object DateUtils {
     }
 
     actual fun getNextWeek(): Long {
-        val cal = Calendar.getInstance().apply {
+        val cal = java.util.GregorianCalendar().apply {
             add(Calendar.WEEK_OF_YEAR, 1)
         }
         return cal.timeInMillis
     }
 
     actual fun combineDateAndTime(dateMillis: Long, hour: Int, minute: Int): Long {
-        val dateCalendar = Calendar.getInstance().apply { timeInMillis = dateMillis }
-        return Calendar.getInstance().apply {
+        val dateCalendar = java.util.GregorianCalendar().apply { timeInMillis = dateMillis }
+        return java.util.GregorianCalendar().apply {
             set(
                 dateCalendar.get(Calendar.YEAR),
                 dateCalendar.get(Calendar.MONTH),

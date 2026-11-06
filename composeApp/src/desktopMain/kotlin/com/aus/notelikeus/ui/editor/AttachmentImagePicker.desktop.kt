@@ -2,6 +2,7 @@ package com.aus.notelikeus.ui.editor
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import com.aus.notelikeus.data.attachments.readBoundedAttachment
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
@@ -29,7 +30,8 @@ actual fun rememberAttachmentImagePicker(
                 "gif" -> "image/gif"
                 else -> "image/jpeg"
             }
-            val bytes = runCatching { file.readBytes() }.getOrNull() ?: return@invokeLater
+            val bytes = runCatching { file.inputStream().use { readBoundedAttachment(it) } }
+                .getOrNull() ?: return@invokeLater
             onPicked(bytes, mimeType)
         }
     }

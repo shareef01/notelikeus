@@ -2,16 +2,16 @@ import { attachmentsKey } from '@/lib/attachments/attachmentPaths';
 import type { Note } from '@/types/note';
 
 function checklistKey(note: Note): string {
-  return note.checklist.map((item) => `${item.position}:${item.isChecked}:${item.text}`).join(',');
+  return JSON.stringify(note.checklist.map((item) => [item.position, item.isChecked, item.text]));
 }
 
 function labelsKey(note: Note): string {
-  return note.labels.map((label) => label.name).join(',');
+  return JSON.stringify(note.labels.map((label) => label.name));
 }
 
 /** Fingerprint used to skip no-op store writes. Includes content so same-timestamp edits apply. */
 export function noteContentKey(note: Note): string {
-  return [
+  return JSON.stringify([
     note.id,
     note.timestamp,
     note.serverUpdatedAt ?? '',
@@ -26,14 +26,11 @@ export function noteContentKey(note: Note): string {
     labelsKey(note),
     attachmentsKey(note.attachments),
     checklistKey(note),
-  ].join('\u001f');
+  ]);
 }
 
 export function notesContentKey(notes: Note[]): string {
-  return notes
-    .map((note) => noteContentKey(note))
-    .sort()
-    .join('|');
+  return JSON.stringify(notes.map((note) => noteContentKey(note)).sort());
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { noteContentKey, notesContentEqual, notesEqual } from '@/lib/notes/noteEquality';
+import { noteContentKey, notesContentEqual, notesEqual, notesUserContentEqual } from '@/lib/notes/noteEquality';
 import { labelFromName } from '@/types/label';
 import { createEmptyNote, type Note } from '@/types/note';
 
@@ -8,6 +8,29 @@ function note(overrides: Partial<Note> = {}): Note {
 }
 
 describe('notesEqual', () => {
+  it('does not acknowledge different label assignments containing commas as the same cloud edit', () => {
+    const combined = note({ labels: [labelFromName('a,b')] });
+    const separate = note({ labels: [labelFromName('a'), labelFromName('b')] });
+    expect(notesEqual(combined, separate)).toBe(false);
+    expect(notesUserContentEqual(combined, separate)).toBe(false);
+  });
+
+  it('distinguishes checklist text from an encoded second checklist item', () => {
+    const combined = note({ checklist: [{ id: '1', position: 0, isChecked: false, text: 'a,1:false:b' }] });
+    const separate = note({ checklist: [
+      { id: '1', position: 0, isChecked: false, text: 'a' },
+      { id: '2', position: 1, isChecked: false, text: 'b' },
+    ] });
+    expect(notesEqual(combined, separate)).toBe(false);
+    expect(notesUserContentEqual(combined, separate)).toBe(false);
+  });
+
+  it('does not confuse field separators in user text with fingerprint structure', () => {
+    expect(noteContentKey(note({ title: 'a\u001fb', content: 'c' }))).not.toBe(
+      noteContentKey(note({ title: 'a', content: 'b\u001fc' })),
+    );
+  });
+
   it('treats identical notes as equal, including across separate objects', () => {
     expect(notesEqual(note(), note())).toBe(true);
   });

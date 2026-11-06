@@ -13,17 +13,15 @@ const CONFLICTED_COPY_BLANK_TITLE = 'Conflicted copy';
 const MAX_TITLE_LENGTH = 2000;
 
 function checklistKey(note: Note): string {
-  return [...note.checklist]
+  return JSON.stringify([...note.checklist]
     .sort((a, b) => a.position - b.position)
-    .map((item) => `${item.isChecked ? 1 : 0}:${item.text}`)
-    .join('\u001e');
+    .map((item) => [item.isChecked, item.text]));
 }
 
 function labelsKey(note: Note): string {
-  return note.labels
+  return JSON.stringify(note.labels
     .map((label) => label.name)
-    .sort()
-    .join('\u001e');
+    .sort());
 }
 
 /**
@@ -73,7 +71,13 @@ export function conflictedCopyOf(local: Note, localId: number): Note {
  * different texts for the same note id to hash alike — about one in 2^53.
  */
 export function authoredContentDigest(note: Note): string {
-  const key = [note.title, note.content, checklistKey(note), labelsKey(note)].join('\u001f');
+  // UTF-16 length framing is shared with Kotlin. User text cannot impersonate boundaries.
+  const field = (value: string) => `${value.length}:${value}`;
+  const checklist = [...note.checklist].sort((a, b) => a.position - b.position);
+  const labels = note.labels.map((label) => label.name).sort();
+  const key = 'v2|' + field(note.title) + field(note.content) +
+    `${checklist.length}:` + checklist.map((item) => `${item.isChecked ? 1 : 0}${field(item.text)}`).join('') +
+    `${labels.length}:` + labels.map(field).join('');
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
   for (let i = 0; i < key.length; i++) {
@@ -83,7 +87,9 @@ export function authoredContentDigest(note: Note): string {
   }
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
   h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  // Old tombstones conservatively mismatch and preserve the cloud copy; never acknowledge
+  // a delimiter-colliding edit using a legacy digest.
+  return 'v2:' + (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
 /** Whether [title] is one a conflict resolution wrote (every client writes the same suffix). */

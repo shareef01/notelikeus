@@ -180,6 +180,13 @@ as its input; it builds the installer, smoke-tests it, and attaches the MSI to t
 existing** release. An asset of the same name is a hard stop unless the workflow was explicitly told
 to replace it, so a re-cut needs the old asset removed first.
 
+The published v2.6.2 MSI was verified on 2026-11-06 as **unsigned** (Windows
+Authenticode reported `NotSigned`). The current packaging workflow does not sign
+the MSI. A trusted Windows signing identity and a sign/verify step are required
+before describing future installers as signed; a self-signed certificate does
+not provide public publisher trust. This is separate from Android signing, whose
+v2.6.2 APK verifies against the configured release certificate.
+
 The Kotlin clients are what make two of the audit's fixes visible: the wipe notice with its
 "Upload this device's notes" action, and the F-14 refusal. Until they ship, a wiped account's
 Android or Windows device reports the wipe and uploads nothing, which is safe but inert.

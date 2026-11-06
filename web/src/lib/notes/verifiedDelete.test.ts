@@ -6,7 +6,7 @@ vi.mock('@/lib/remote/remoteNotesDataSourceRegistry', () => ({
   getRemoteNotesDataSource: () => ({ deleteNote, upsertNote: vi.fn(async () => {}) }),
 }));
 
-import { authoredContentDigest } from '@/lib/notes/conflictResolution';
+import { authoredContentDigest, authoredContentEqual } from '@/lib/notes/conflictResolution';
 import { removeNote } from '@/lib/notes/noteActions';
 import { partitionTombstoned } from '@/lib/notes/notesSyncService';
 import { emptyRevisionState } from '@/lib/supabase/revisionStore';
@@ -30,6 +30,36 @@ function note(content = 'milk'): Note {
  * revision it observed; one that holds anything else wins, and the user is told.
  */
 describe('a delete made without a known revision', () => {
+  it('preserves a delimiter-colliding cloud edit rather than completing the old delete', () => {
+    const original = { ...note(), title: 'a\u001fb', content: 'c' };
+    const changed = { ...note(), title: 'a', content: 'b\u001fc' };
+    useTombstoneStore.getState().markDeleted('1', null, 50, authoredContentDigest(original));
+    const result = partitionTombstoned([changed], { ...emptyRevisionState, noteRevisions: { '1': 7 } });
+    expect(result.live).toEqual([changed]);
+    expect(result.staleIds).toEqual([]);
+  });
+
+  it('conservatively restores a cloud copy when the stored digest uses the legacy format', () => {
+    useTombstoneStore.getState().markDeleted('1', null, 50, 'legacy-unframed-digest');
+    const result = partitionTombstoned([note()], { ...emptyRevisionState, noteRevisions: { '1': 7 } });
+    expect(result.live).toEqual([note()]);
+    expect(result.staleIds).toEqual([]);
+  });
+
+  it('distinguishes one checklist item containing separators from two authored items', () => {
+    const a = { ...note(), checklist: [{ id: '1', position: 0, isChecked: false, text: 'a\u001e0:b' }] };
+    const b = { ...note(), checklist: [
+      { id: '1', position: 0, isChecked: false, text: 'a' },
+      { id: '2', position: 1, isChecked: false, text: 'b' },
+    ] };
+    expect(authoredContentEqual(a, b)).toBe(false);
+    expect(authoredContentDigest(a)).not.toBe(authoredContentDigest(b));
+  });
+
+  it('pins the digest shared with Kotlin', () => {
+    expect(authoredContentDigest({ ...note(), content: 'milk\nbread' })).toBe('v2:1ue18w28pk2');
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     useTombstoneStore.getState().reset();
