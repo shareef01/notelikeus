@@ -12,17 +12,26 @@ import { SignOutDialog } from '@/components/settings/SignOutDialog';
 import { ConfirmDialog } from '@/components/ui/ModalDialog';
 import { PrivacyPolicyDialog } from '@/components/settings/PrivacyPolicyDialog';
 import type { ThemePreference } from '@/store/settingsStore';
+import { ConflictReviewDialog } from '@/components/notes/ConflictReviewDialog';
+import { createEmptyNote } from '@/types/note';
+import { useUiStore } from '@/store/uiStore';
 
 const query = new URLSearchParams(location.search);
 const base = query.get('theme') === 'dark' ? 'dark' : 'light';
 document.documentElement.className = `theme-${base} ${base === 'dark' ? 'dark' : ''}`;
 if (query.get('surface') === 'cloud-wipe') useNotesStore.getState().setCloudWipeNotice({ generation: 1, localNoteCount: 3 });
+if (query.get('surface') === 'conflict') useNotesStore.getState().setNotes([
+  createEmptyNote({id:'audit-original', title:'Audit comparison', content:'Original text\n'.repeat(12)}),
+  createEmptyNote({id:'audit-copy', title:'Audit comparison (conflicted copy)', content:'Edited text\n'.repeat(12)}),
+]);
+if (query.get('surface') === 'conflict') useUiStore.getState().openConflictReview('audit-copy');
 const noop = () => {};
 function Fixture() {
   const [open, setOpen] = useState(true);
   const [theme, setTheme] = useState<ThemePreference>({ base, accent: 'neutral', amoled: false });
   const surface = query.get('surface');
   const close = () => setOpen(false);
+  if (surface === 'conflict') return <div onClickCapture={event => {event.preventDefault(); event.stopPropagation();}}><ConflictReviewDialog /></div>;
   if (surface === 'email-code') return <main className="mx-auto max-w-md bg-true-surface p-6"><EmailCodeSignIn submitLabel="Sign in" /></main>;
   if (surface === 'cloud-wipe') return <main className="min-h-screen bg-true-surface" onClickCapture={event => { event.preventDefault(); event.stopPropagation(); }}><CloudWipeNotice userId="audit-no-network-actions" /></main>;
   if (surface === 'delete-account') return <DeleteAccountDialog open={open} onCancel={close} onConfirm={async () => {}} onExportBackup={async () => ({ complete: false, included: 2, total: 12 })} />;

@@ -24,7 +24,7 @@ import { useToastStore } from '@/store/toastStore';
 import { createChecklistItem, sortChecklistItems } from '@/types/checklist';
 import type { Label } from '@/types/label';
 import { allocateLocalNoteId, type Note } from '@/types/note';
-import { labelFromName } from '@/types/label';
+import { labelFromName, labelNameKey } from '@/types/label';
 import { processSmartText, type TextEdit } from '@/lib/text/smartTextProcessor';
 import {
   createAttachmentId,
@@ -38,6 +38,9 @@ import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const AUTOSAVE_MS = 1000;
+type ContentMode = Pick<EditorState, 'content' | 'checklist'>;
+const copyMode = (state: ContentMode): ContentMode => ({content: state.content, checklist: state.checklist.map(item => ({...item}))});
+const sameMode = (a: ContentMode, b: ContentMode) => a.content === b.content && JSON.stringify(a.checklist) === JSON.stringify(b.checklist);
 
 function nextNotePosition(): number {
   const notes = useNotesStore.getState().notes.filter((n) => !n.isArchived && !n.isTrashed);
@@ -79,6 +82,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
   });
   const ownerScope = useRef(captureOwnerScope());
   const draftRevision = useRef(0);
+  const conversion = useRef<{before: ContentMode; after: ContentMode; undone: boolean} | null>(null);
   const saveChain = useRef<Promise<unknown>>(Promise.resolve());
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef(state);
@@ -278,6 +282,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     // stateRef still holds its content until setState below replaces it.
     if (autosaveTimer.current) void persistNow();
 
+    conversion.current = null;
     if (noteId === 'new') {
       const filterColor = useNotesStore.getState().filters.colorArgb;
       const blank = createBlankEditorState(
@@ -329,6 +334,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     const stored = useNotesStore.getState().notes.find((note) => note.id === noteId);
     if (!stored) return;
     const next = editorStateFromNote(stored);
+    conversion.current = null;
     stateRef.current = next;
     lastSavedRef.current = stored;
     lastContentEditRef.current = {
@@ -374,18 +380,37 @@ export function useNoteEditor(noteId: string | 'new' | null) {
   const patch = useCallback(
     (updater: (prev: EditorState) => EditorState) => {
       draftRevision.current += 1;
-      setState((prev) => {
-        const next = updater(prev);
-        stateRef.current = next;
-        return next;
-      });
+      const next = updater(stateRef.current);
+      stateRef.current = next;
+      setState(next);
       scheduleAutosave();
     },
     [scheduleAutosave],
   );
 
+  const changeMode = (after: ContentMode) => {
+    const before = copyMode(stateRef.current);
+    if (sameMode(before, after)) return;
+    conversion.current = {before, after: copyMode(after), undone: false};
+    patch(s => ({...s, ...after}));
+  };
+  const restoreConversion = (undo: boolean) => {
+    const entry = conversion.current;
+    if (!entry || !ownerScope.current.isActive() || entry.undone === undo ||
+        !sameMode(stateRef.current, undo ? entry.after : entry.before)) return false;
+    entry.undone = undo;
+    patch(s => ({...s, ...copyMode(undo ? entry.before : entry.after)}));
+    return true;
+  };
+  const draft = buildNoteFromEditor(state);
+  const isDirty = draft ? !lastSavedRef.current || !notesUserContentEqual(draft, lastSavedRef.current) : !isNoteEmpty(state);
   return {
     state,
+    isDirty,
+    canUndoConversion: !!conversion.current && !conversion.current.undone && sameMode(state, conversion.current.after),
+    canRedoConversion: !!conversion.current?.undone && sameMode(state, conversion.current.before),
+    undoConversion: () => restoreConversion(true),
+    redoConversion: () => restoreConversion(false),
     allLabels,
     setTitle: (title: string) => patch((s) => ({ ...s, title })),
     setContent: (content: string) => {
@@ -433,7 +458,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
     createLabel: (name: string) => {
       const trimmed = name.trim();
       if (!trimmed) return;
-      const existing = allLabels.find((l) => l.name.toLowerCase() === trimmed.toLowerCase());
+      const existing = allLabels.find((l) => labelNameKey(l.name) === labelNameKey(trimmed));
       const label = existing ?? labelFromName(trimmed);
       patch((s) => {
         if (s.labels.some((entry) => entry.id === label.id)) return s;
@@ -447,40 +472,30 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         );
         return { ...s, checklist: sortChecklistItems(checklist) };
       }),
-    addChecklistItem: () =>
-      patch((s) => ({
-        ...s,
-        checklist: [
-          ...s.checklist,
-          createChecklistItem({ text: '', position: s.checklist.length, isChecked: false }),
-        ],
-      })),
+    addChecklistItem: (afterId?: string) => {
+      const item = createChecklistItem({text: '', position: 0, isChecked: false});
+      patch(s => {
+        const items = [...s.checklist].sort((a,b) => a.position - b.position);
+        const index = afterId ? items.findIndex(row => row.id === afterId) : -1;
+        items.splice(index < 0 ? items.length : index + 1, 0, item);
+        return {...s, checklist: items.map((row, position) => ({...row, position}))};
+      });
+      return item.id;
+    },
     removeChecklistItem: (id: string) =>
       patch((s) => ({
         ...s,
         checklist: s.checklist.filter((item) => item.id !== id),
       })),
-    convertContentToChecklist: (plainText?: string) =>
-      patch((s) => {
-        if (s.checklist.length > 0) return s;
-        const lines = (plainText ?? s.content)
-          .split('\n')
-          .map((line) => line.trim())
-          .filter(Boolean);
-        const checklist =
-          lines.length === 0
-            ? [createChecklistItem({ text: '', position: 0, isChecked: false })]
-            : lines.map((text, index) =>
-                createChecklistItem({ text, position: index, isChecked: false }),
-              );
-        return { ...s, content: '', checklist };
-      }),
-    convertChecklistToContent: () =>
-      patch((s) => {
-        if (s.checklist.length === 0) return s;
-        const content = s.checklist.map((item) => item.text.trim()).join('\n');
-        return { ...s, content, checklist: [] };
-      }),
+    convertContentToChecklist: (plainText?: string) => {
+      if (stateRef.current.checklist.length) return;
+      const lines = (plainText ?? stateRef.current.content).split('\n').map(line => line.trim()).filter(Boolean);
+      changeMode({content: '', checklist: (lines.length ? lines : ['']).map((text, position) => createChecklistItem({text, position, isChecked: false}))});
+    },
+    convertChecklistToContent: () => {
+      if (!stateRef.current.checklist.length) return;
+      changeMode({content: stateRef.current.checklist.map(item => item.text.trim()).join('\n'), checklist: []});
+    },
     // Async and validating so every entry point (the bell-icon dialog, the options sheet's
     // quick-pick chips, and its date field) gets the same checks instead of each needing its
     // own copy — a reminder saved without notification permission would silently never fire.

@@ -227,7 +227,7 @@ describe('NoteCard', () => {
   // On touch the selection circle is always visible over the top-left corner; the first line of
   // text steps aside for it, and only when something would otherwise sit under it.
   describe('first line clears the touch selection circle', () => {
-    const INDENT = 'pointer-coarse:indent-6';
+    const INDENT = 'indent-6';
     const image = {
       id: 'a1',
       noteId: 1,

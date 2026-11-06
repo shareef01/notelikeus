@@ -246,4 +246,6 @@ The first five use disposable local sessions/component fixtures. `auth-code.cjs`
 
 ## Accessibility references
 
+Implementation follow-up and regression coverage: [FIXES.md](FIXES.md). The findings and evidence above remain the original pinned baseline.
+
 Normal text contrast is assessed against [WCAG 2.2 SC 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html). Clipped narrow layouts are assessed using [SC 1.4.10 Reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html). Silent rejected input relates to [SC 3.3.1 Error Identification](https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html). These references support the criteria; the screenshots/probes support the product-specific findings.

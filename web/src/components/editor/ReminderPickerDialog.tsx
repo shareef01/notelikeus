@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { ModalDialog } from '@/components/ui/ModalDialog';
 import {
   fromLocalDateTimeInputValue,
   initialReminderInputValue,
@@ -25,7 +25,6 @@ export function ReminderPickerDialog({
   const [value, setValue] = useState(() => initialReminderInputValue(initialTimestamp));
   const titleId = useId();
   const presetsLabelId = useId();
-  const panelRef = useFocusTrap<HTMLDivElement>(open, onCancel);
 
   useEffect(() => {
     if (open) setValue(initialReminderInputValue(initialTimestamp));
@@ -40,14 +39,7 @@ export function ReminderPickerDialog({
   const pastHintId = `${titleId}-past`;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 animate-in fade-in duration-200 sm:items-center sm:p-6">
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="w-full max-w-md rounded-note bg-true-surface p-5 shadow-xl animate-in zoom-in-95 duration-200"
-      >
+    <ModalDialog open={open} onClose={onCancel} ariaLabelledBy={titleId}>
         <h2 id={titleId} className="text-lg font-semibold">
           Set reminder
         </h2>
@@ -127,7 +119,6 @@ export function ReminderPickerDialog({
             Set
           </button>
         </div>
-      </div>
-    </div>
+    </ModalDialog>
   );
 }

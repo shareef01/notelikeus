@@ -127,11 +127,10 @@ function NoteCardImpl({
   const hiddenLabels = labels.slice(labelLimit).map((label) => label.name);
   const timeLabel = formatListTimestamp(note.timestamp);
 
-  // On touch the selection circle is always shown, over the card's top-left corner, where the first
-  // line of text starts unless an image sits above it. Indenting only that line clears the circle
-  // without narrowing the rest of the card. A reorder handle already pushes the content past it.
+  // Reserve the selection circle's space on every pointer type, including hover,
+  // without shifting the title when the circle appears. Images and reorder handles clear it already.
   const clearsSelectionCircle =
-    onToggleSelect && !showReorderHandle && !thumbnailAttachment ? 'pointer-coarse:indent-6' : '';
+    onToggleSelect && !showReorderHandle && !thumbnailAttachment ? 'indent-6' : '';
 
   // Names the card's selection checkbox after the note it belongs to: a screen reader hears which
   // note a checkbox selects, and a test can address it by name instead of by DOM position.

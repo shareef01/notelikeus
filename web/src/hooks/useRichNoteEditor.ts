@@ -3,7 +3,7 @@ import { Extension, useEditor, useEditorState } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useToastStore } from '@/store/toastStore';
-import { Plugin } from '@tiptap/pm/state';
+import { EditorState, Plugin } from '@tiptap/pm/state';
 import { MAX_NOTE_CONTENT_CHARS } from '@/lib/backup/constants';
 import { parseNoteDocument, serializeNoteDocument } from '@/lib/text/richNoteDocument';
 
@@ -18,12 +18,21 @@ const lengthLimit = Extension.create({
   },
 });
 
-export function useRichNoteEditor(content: string, onChange: (text: string) => void) {
+export function useRichNoteEditor(content: string, onChange: (text: string) => void, boundary?: {undo: () => boolean; redo: () => boolean}) {
+  const boundaryRef = useRef(boundary);
+  boundaryRef.current = boundary;
   const lastContent = useRef(content);
   const changeRef = useRef(onChange);
   changeRef.current = onChange;
   const editor = useEditor({
-    extensions: [StarterKit.configure({
+    extensions: [Extension.create({
+      name: 'conversionHistoryBoundary', priority: 1100,
+      addKeyboardShortcuts() { return {
+        'Mod-z': () => !this.editor.can().undo() && (boundaryRef.current?.undo() ?? false),
+        'Mod-Shift-z': () => !this.editor.can().redo() && (boundaryRef.current?.redo() ?? false),
+        'Mod-y': () => !this.editor.can().redo() && (boundaryRef.current?.redo() ?? false),
+      }; },
+    }), StarterKit.configure({
       heading: false, blockquote: false, codeBlock: false, code: false,
       horizontalRule: false, orderedList: false, strike: false, underline: false,
       trailingNode: false,
@@ -47,7 +56,10 @@ export function useRichNoteEditor(content: string, onChange: (text: string) => v
   useEffect(() => {
     if (!editor || content === lastContent.current) return;
     lastContent.current = content;
-    editor.commands.setContent(parseNoteDocument(content), { emitUpdate: false });
+    // Hydration and mode changes must never enter typing history.
+    editor.view.updateState(EditorState.create({schema: editor.schema,
+      doc: editor.schema.nodeFromJSON(parseNoteDocument(content)), plugins: editor.state.plugins}));
+    editor.view.dispatch(editor.state.tr.setMeta('preventUpdate', true));
   }, [content, editor]);
   const active = useEditorState({ editor, selector: ({ editor: current }) => ({
     bold: current?.isActive('bold') ?? false,

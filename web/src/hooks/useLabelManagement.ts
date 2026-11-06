@@ -6,7 +6,7 @@ import { useCallback } from 'react';
 import { useNoteLabels } from '@/hooks/useNoteLabels';
 import { useNotesStore } from '@/store/notesStore';
 import { useLabelRegistryStore } from '@/store/labelRegistryStore';
-import { labelFromName } from '@/types/label';
+import { labelFromName, labelNameKey } from '@/types/label';
 import type { Label } from '@/types/label';
 
 export function useLabelManagement() {
@@ -20,13 +20,14 @@ export function useLabelManagement() {
     async (id: string, name: string) => {
       const trimmed = name.trim();
       if (!trimmed) return;
+      if (labels.some(label => label.id !== id && labelNameKey(label.name) === labelNameKey(trimmed))) throw new Error('A label with this name already exists.');
 
       await persistLabels(id, note => ({ ...note,
         labels: note.labels.map(label => label.id === id ? labelFromName(trimmed, id) : label),
         timestamp: Date.now(),
       }), () => renameRegisteredLabel(id, trimmed));
     },
-    [renameRegisteredLabel],
+    [renameRegisteredLabel, labels],
   );
 
   const deleteLabel = useCallback(
@@ -42,9 +43,11 @@ export function useLabelManagement() {
     (name: string) => {
       const trimmed = name.trim();
       if (!trimmed) return;
+      const candidate = labelFromName(trimmed);
+      if (labels.some(label => label.id === candidate.id || labelNameKey(label.name) === labelNameKey(trimmed))) throw new Error('A label with this name already exists.');
       addRegisteredLabel(trimmed);
     },
-    [addRegisteredLabel],
+    [addRegisteredLabel, labels],
   );
 
   return {

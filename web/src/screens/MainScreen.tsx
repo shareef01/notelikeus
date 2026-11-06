@@ -1,3 +1,4 @@
+import { useEditorHistory } from '@/hooks/useEditorHistory';
 import { version as appVersion } from '../../package.json';
 import { AddIcon } from '@/components/icons/Icons';
 
@@ -73,6 +74,7 @@ const DiagnosticsDialog = lazy(() =>
 
 
 export function MainScreen() {
+  useEditorHistory();
 
 
   const searchInputRef = useRef<HTMLInputElement>(null);
