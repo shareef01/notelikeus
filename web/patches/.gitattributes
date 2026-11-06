@@ -1,0 +1,2 @@
+# Unified diff context prefixes precede upstream tabs; preserve patch bytes across platforms.
+*.patch text eol=lf whitespace=-space-before-tab
