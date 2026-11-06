@@ -1,0 +1,95 @@
+[
+  {
+    "id": "link-edit",
+    "prefill": "",
+    "body": "Read the glinkuide.",
+    "links": [
+      {
+        "text": "the g",
+        "href": "https://example.com/old"
+      },
+      {
+        "text": "link",
+        "href": "https://example.com/new"
+      },
+      {
+        "text": "uide",
+        "href": "https://example.com/old"
+      }
+    ]
+  },
+  {
+    "id": "unsupported-link",
+    "modalClosed": true,
+    "body": "Selected words",
+    "alerts": []
+  },
+  {
+    "id": "checklist-enter",
+    "items": [
+      "Second task",
+      "Third task",
+      "",
+      "First task"
+    ],
+    "focusedIndex": 3
+  },
+  {
+    "id": "conversion-undo",
+    "converted": "Second task\n\nThird task\n\nFirst task\n\n\n",
+    "afterUndo": "\n",
+    "checkboxes": 1,
+    "structuredRows": 0
+  },
+  {
+    "id": "labels-reflow",
+    "viewport": 320,
+    "input": {
+      "x": 64,
+      "y": 89,
+      "width": 215,
+      "height": 24
+    },
+    "create": {
+      "x": 291,
+      "y": 85,
+      "width": 60.875,
+      "height": 32
+    },
+    "panel": {
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 568
+    },
+    "docWidth": 320
+  },
+  {
+    "id": "duplicate-label",
+    "labels": 1,
+    "input": "",
+    "alerts": []
+  },
+  {
+    "id": "browser-back",
+    "before": "http://127.0.0.1:4174/",
+    "after": "about:blank",
+    "editorStillOpen": 0
+  },
+  {
+    "id": "link-keyboard",
+    "visibleHeight": 420,
+    "input": {
+      "x": 38.338645935058594,
+      "y": 706.4265747070312,
+      "width": 313.3227005004883,
+      "height": 45.3233642578125
+    },
+    "dialog": {
+      "x": 16.672119140625,
+      "y": 642.3491821289062,
+      "width": 356.65576171875,
+      "height": 185.3016357421875
+    }
+  }
+]

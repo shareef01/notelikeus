@@ -1,0 +1,22 @@
+[
+  {
+    "width": 320,
+    "intercepted": [
+      "/auth/v1/otp",
+      "/auth/v1/verify"
+    ],
+    "focusedOnCode": true,
+    "codeText": "6-digit code\n\nSent to audit@example.invalid. Check spam if it hasn't arrived.\n\nThat code is wrong or has expired. Check the latest email, or send a new code.\n\nSign in\nUse a different email\nResend code in 60s",
+    "violations": []
+  },
+  {
+    "width": 1440,
+    "intercepted": [
+      "/auth/v1/otp",
+      "/auth/v1/verify"
+    ],
+    "focusedOnCode": true,
+    "codeText": "6-digit code\n\nSent to audit@example.invalid. Check spam if it hasn't arrived.\n\nThat code is wrong or has expired. Check the latest email, or send a new code.\n\nSign in\nUse a different email\nResend code in 60s",
+    "violations": []
+  }
+]
