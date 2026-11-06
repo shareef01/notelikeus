@@ -48,7 +48,7 @@ import { resolveNotesViewState } from '@/screens/main/notesViewState';
 import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { useShortcuts } from '@/hooks/useShortcuts';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
-import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const EditorScreen = lazy(() =>
   import('@/screens/EditorScreen').then((module) => ({ default: module.EditorScreen })),
@@ -74,7 +74,6 @@ const DiagnosticsDialog = lazy(() =>
 
 export function MainScreen() {
 
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -244,14 +243,13 @@ export function MainScreen() {
 
 
 
-  const handleScroll = useCallback(() => {
-
-    const element = scrollRef.current;
-
-    if (!element) return;
-
-    setListScrolled(element.scrollTop > 0);
-
+  useEffect(() => {
+    // The document owns list scrolling. An unconstrained overflow container here
+    // cannot scroll, and overscroll containment traps native touch gestures in it.
+    const handleScroll = () => setListScrolled(window.scrollY > 0);
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, [setListScrolled]);
 
 
@@ -459,11 +457,7 @@ export function MainScreen() {
 
         <main
 
-          ref={scrollRef}
-
-          onScroll={handleScroll}
-
-          className="flex-1 overflow-y-auto overscroll-contain"
+          className="flex-1"
 
         >
 

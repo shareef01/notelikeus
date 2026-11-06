@@ -31,7 +31,12 @@ export function useRichNoteEditor(content: string, onChange: (text: string) => v
     }), Placeholder.configure({ placeholder: 'Start writing…' }), lengthLimit],
     content: parseNoteDocument(content),
     shouldRerenderOnTransaction: false,
-    editorProps: { attributes: { role: 'textbox', 'aria-label': 'Note body', 'aria-multiline': 'true', spellcheck: 'true', class: 'rich-note-body', placeholder: 'Start writing…' } },
+    editorProps: {
+      // Keep the caret clear of the sticky formatting toolbar and floating footer.
+      scrollThreshold: { top: 64, bottom: 96, left: 0, right: 0 },
+      scrollMargin: { top: 64, bottom: 96, left: 8, right: 8 },
+      attributes: { role: 'textbox', 'aria-label': 'Note body', 'aria-multiline': 'true', spellcheck: 'true', class: 'rich-note-body', placeholder: 'Start writing…' },
+    },
     onUpdate: ({ editor: current }) => {
       const next = serializeNoteDocument(current.getJSON());
       if (next === lastContent.current) return;

@@ -5,7 +5,7 @@ import {
   type NoteReorderHandleProps,
 } from '@/components/notes/NoteCard';
 import type { Note } from '@/types/note';
-import { memo, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 
 const THRESHOLD = 72;
 const LONG_PRESS_MS = 450;
@@ -46,6 +46,7 @@ function SwipeableNoteCardImpl({
 }: SwipeableNoteCardProps) {
   const [offset, setOffset] = useState(0);
   const startX = useRef(0);
+  const startY = useRef(0);
   const dragging = useRef(false);
   const moved = useRef(false);
   const longPressTimer = useRef<number | null>(null);
@@ -61,6 +62,10 @@ function SwipeableNoteCardImpl({
     }
   };
 
+  useEffect(() => () => {
+    if (longPressTimer.current != null) window.clearTimeout(longPressTimer.current);
+  }, []);
+
   const reset = () => setOffset(0);
 
   const onPointerDown = (event: React.PointerEvent) => {
@@ -70,6 +75,7 @@ function SwipeableNoteCardImpl({
     longPressTriggered.current = false;
     pointerTypeRef.current = event.pointerType;
     startX.current = event.clientX;
+    startY.current = event.clientY;
     clearLongPress();
     if (onLongPress) {
       longPressTimer.current = window.setTimeout(() => {
@@ -91,9 +97,15 @@ function SwipeableNoteCardImpl({
   const onPointerMove = (event: React.PointerEvent) => {
     if (!dragging.current) return;
     const delta = event.clientX - startX.current;
-    if (!moved.current && Math.abs(delta) > MOVE_CANCEL_PX) {
+    const verticalDelta = event.clientY - startY.current;
+    if (!moved.current && Math.hypot(delta, verticalDelta) > MOVE_CANCEL_PX) {
       moved.current = true;
       clearLongPress();
+      if (Math.abs(verticalDelta) > Math.abs(delta)) {
+        dragging.current = false;
+        reset();
+        return;
+      }
     }
     // Below the cancel threshold this is a click/tap, not a swipe — don't shift the card
     // at all, or ordinary mouse/trackpad jitter during a click would visibly slide it and
@@ -101,6 +113,16 @@ function SwipeableNoteCardImpl({
     if (!moved.current) return;
     const max = 96;
     setOffset(Math.max(-max, Math.min(max, delta)));
+  };
+
+  const onPointerCancel = () => {
+    // Native scrolling and pinch-zoom cancel the pointer. Cancellation must never
+    // be treated as a tap or commit an archive/trash swipe.
+    clearLongPress();
+    dragging.current = false;
+    moved.current = true;
+    longPressTriggered.current = false;
+    reset();
   };
 
   const onPointerUp = () => {
@@ -197,7 +219,7 @@ function SwipeableNoteCardImpl({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerCancel={onPointerCancel}
       >
         {card}
       </div>
