@@ -70,7 +70,7 @@ class DateRangeSummaryTest {
         assertEquals(DateRangeSummary.Today, summarizeDateRange(range, TODAY_START))
     }
 
-    // ---- the shapes that have no source in the product ----
+    // ---- additional fully-open and combined-operator shapes ----
 
     @Test
     fun `a fully open range spans nothing rather than overflowing`() {

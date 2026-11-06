@@ -37,6 +37,25 @@ function renderPicker(initialTimestamp: number | null) {
 }
 
 describe('ReminderPickerDialog', () => {
+  it('keeps a future second-occurrence reminder enabled during the repeated hour', () => {
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2027-11-07T01:15:00-05:00'));
+    const existing = Date.parse('2027-11-07T01:30:00-05:00');
+    const picker = renderPicker(existing);
+    try {
+      expect(picker.setButton.disabled).toBe(false);
+      expect(picker.container.querySelector('[role="alert"]')).toBeNull();
+      act(() => picker.setButton.click());
+      expect(picker.onConfirm).toHaveBeenCalledWith(existing);
+    } finally {
+      picker.cleanup();
+      clock.mockRestore();
+      if (originalTz == null) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    }
+  });
+
   it('keeps the dialog open and explains a time that has already passed', () => {
     const { container, onConfirm, setButton, cleanup } = renderPicker(Date.now() - 86_400_000);
 

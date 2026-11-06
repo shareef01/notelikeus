@@ -109,10 +109,19 @@ internal object ConflictResolution {
         checklist: List<Triple<Int, Boolean, String>>,
         labels: List<String>,
     ): String {
-        val checklistKey = checklist.sortedBy { it.first }
-            .joinToString("\u001e") { "${if (it.second) 1 else 0}:${it.third}" }
-        val key = listOf(title, content, checklistKey, labels.sorted().joinToString("\u001e"))
-            .joinToString("\u001f")
+        // Lengths are UTF-16 code units on Kotlin/JVM and JavaScript, including surrogate pairs.
+        val key = buildString {
+            append("v2|")
+            appendFramed(title)
+            appendFramed(content)
+            append(checklist.size).append(':')
+            for (item in checklist.sortedBy { it.first }) {
+                append(if (item.second) '1' else '0')
+                appendFramed(item.third)
+            }
+            append(labels.size).append(':')
+            for (label in labels.sorted()) appendFramed(label)
+        }
         // Int arithmetic wraps exactly like JavaScript's Math.imul; ushr is >>>.
         var h1 = 0xdeadbeef.toInt()
         var h2 = 0x41c6ce57
@@ -124,7 +133,11 @@ internal object ConflictResolution {
         h1 = ((h1 xor (h1 ushr 16)) * -2048144789) xor ((h2 xor (h2 ushr 13)) * -1028477387)
         h2 = ((h2 xor (h2 ushr 16)) * -2048144789) xor ((h1 xor (h1 ushr 13)) * -1028477387)
         val value = 4294967296L * (2097151L and h2.toLong()) + (h1.toLong() and 0xffffffffL)
-        return value.toString(36)
+        return "v2:" + value.toString(36)
+    }
+
+    private fun StringBuilder.appendFramed(value: String) {
+        append(value.length).append(':').append(value)
     }
 
     /** Whether [title] is one a conflict resolution wrote (every client writes the same suffix). */

@@ -109,7 +109,7 @@ fun NoteStaggeredGrid(
                 yesterday = yesterdaySectionLabel
             ),
             isToday = DateUtils::isToday,
-            isYesterday = { DateUtils.isToday(it + DateUtils.DAY_IN_MILLIS) },
+            isYesterday = { DateUtils.isToday(DateUtils.shiftLocalDays(it, 1)) },
             dateHeading = { DateUtils.formatDateTime(it) }
         )
     }

@@ -54,9 +54,16 @@ object ReminderTime {
      * spring-forward DST change skips — resolves forward to the first instant that does, which is
      * what [DateUtils.combineDateAndTime] already does for typed search dates.
      */
-    fun exactReminder(datePickerUtcMillis: Long, hour: Int, minute: Int): Long? {
+    fun exactReminder(datePickerUtcMillis: Long, hour: Int, minute: Int, existingReminder: Long? = null): Long? {
         if (hour !in 0..23 || minute !in 0..59) return null
         val civil = utcMillisToCivilDate(datePickerUtcMillis)
+        if (existingReminder != null) {
+            val existing = DateUtils.localDateTimeFields(existingReminder)
+            val requested = com.aus.notelikeus.util.LocalDateTimeFields(
+                civil.year, civil.month, civil.day, hour, minute,
+            )
+            if (existing == requested) return existingReminder
+        }
         val localMidnight = DateUtils.startOfDay(civil.year, civil.month, civil.day) ?: return null
         return DateUtils.combineDateAndTime(localMidnight, hour, minute)
     }

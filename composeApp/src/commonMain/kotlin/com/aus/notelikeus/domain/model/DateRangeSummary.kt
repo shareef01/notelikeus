@@ -1,5 +1,8 @@
 package com.aus.notelikeus.domain.model
 
+import com.aus.notelikeus.util.DateUtils
+import com.aus.notelikeus.domain.reminder.ReminderTime
+
 private const val DAY_MILLIS = 86_400_000L
 
 /**
@@ -21,7 +24,7 @@ sealed interface DateRangeSummary {
     /** `after:2026-08-01` — open above, and further back than any preset. */
     data class Since(val fromInclusive: Long) : DateRangeSummary
 
-    /** Bounded on both sides, which only a future date picker would produce. */
+    /** Bounded on both sides, for example a combined after:/before: query. */
     data class Spanning(val days: Long) : DateRangeSummary
 }
 
@@ -41,8 +44,8 @@ sealed interface DateRangeSummary {
  *   through to the raw-day-count branch and rendered **"106751970482 d"**, roughly 292 million
  *   years.
  *
- * Between them those two cases cover everything the app can produce, so the Today / Last 7 / Last
- * 30 branches were unreachable: a bounded range has no source in the product.
+ * Those cases made the Today / Last 7 / Last 30 branches unreachable. Combined after:/before:
+ * operators can also produce a bounded range, whose span must count civil dates across DST.
  */
 fun summarizeDateRange(range: DateRange, todayStart: Long): DateRangeSummary {
     val openBelow = range.fromInclusive == Long.MIN_VALUE
@@ -52,22 +55,21 @@ fun summarizeDateRange(range: DateRange, todayStart: Long): DateRangeSummary {
     if (openBelow) return DateRangeSummary.Before(range.toExclusive)
 
     if (openAbove) {
-        // How far back the window starts, in whole days from today's midnight. DatePreset builds
-        // exactly this shape, so these three buckets are what make a preset chip say its own name.
-        val daysBack = floorDiv(todayStart - range.fromInclusive, DAY_MILLIS)
+        // Compare calendar boundaries: eight dates across spring-forward span fewer than eight
+        // 24-hour periods, so elapsed-duration rounding would mislabel them as Last 7 days.
         return when {
-            daysBack <= 0L -> DateRangeSummary.Today
-            daysBack <= 7L -> DateRangeSummary.Last7Days
-            daysBack <= 30L -> DateRangeSummary.Last30Days
+            range.fromInclusive >= todayStart -> DateRangeSummary.Today
+            range.fromInclusive >= DateUtils.shiftLocalDays(todayStart, -7) -> DateRangeSummary.Last7Days
+            range.fromInclusive >= DateUtils.shiftLocalDays(todayStart, -30) -> DateRangeSummary.Last30Days
             else -> DateRangeSummary.Since(range.fromInclusive)
         }
     }
 
-    return DateRangeSummary.Spanning(floorDiv(range.toExclusive - range.fromInclusive, DAY_MILLIS))
+    val days = localDayIndex(range.toExclusive) - localDayIndex(range.fromInclusive)
+    return DateRangeSummary.Spanning(days.coerceAtLeast(0))
 }
 
-/** Floor division, which Kotlin's `/` is not for negative numerators. */
-private fun floorDiv(a: Long, b: Long): Long {
-    val q = a / b
-    return if (a % b != 0L && (a xor b) < 0) q - 1 else q
+private fun localDayIndex(timestamp: Long): Long {
+    val fields = DateUtils.localDateTimeFields(timestamp)
+    return ReminderTime.civilDateToUtcMillis(fields.year, fields.month, fields.day).floorDiv(DAY_MILLIS)
 }

@@ -33,6 +33,9 @@ expect object DateUtils {
      */
     fun startOfDay(year: Int, month: Int, day: Int): Long?
 
+    /** Moves through local calendar dates, preserving wall-clock time across DST changes. */
+    fun shiftLocalDays(timestamp: Long, days: Int): Long
+
     /**
      * The local wall-clock fields of [timestamp].
      *

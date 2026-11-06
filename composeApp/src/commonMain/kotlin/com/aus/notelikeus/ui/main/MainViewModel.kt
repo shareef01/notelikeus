@@ -466,7 +466,7 @@ class MainViewModel(
 
     /** Epoch millis at the start of the local day [offset] days from today. */
     private fun startOfDayOffset(offset: Int): Long =
-        DateUtils.startOfDay(DateUtils.currentTimeMillis() + offset * DateUtils.DAY_IN_MILLIS)
+        DateUtils.startOfDay(DateUtils.shiftLocalDays(DateUtils.currentTimeMillis(), offset))
 
     /**
      * Which half of the palette is on screen, for resolving `color:` keywords.

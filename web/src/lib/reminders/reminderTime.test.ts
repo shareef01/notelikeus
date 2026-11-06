@@ -74,6 +74,19 @@ describe('toLocalDateTimeInputValue', () => {
 });
 
 describe('fromLocalDateTimeInputValue', () => {
+  it('preserves either occurrence of an unchanged fall-back reminder', () => {
+    inZone('America/New_York', () => {
+      for (const offset of ['-04:00', '-05:00']) {
+        const existing = Date.parse(`2027-11-07T01:30:00${offset}`);
+        const value = initialReminderInputValue(existing);
+        expect(fromLocalDateTimeInputValue(value, existing)).toBe(existing);
+        expect(fromLocalDateTimeInputValue('2027-11-07T03:30', existing)).toBe(
+          Date.parse('2027-11-07T03:30:00-05:00'),
+        );
+      }
+    });
+  });
+
   it('parses the input as local time', () => {
     inZone('Asia/Kolkata', () => {
       expect(fromLocalDateTimeInputValue('2026-07-08T09:30')).toBe(Date.UTC(2026, 6, 8, 4, 0));

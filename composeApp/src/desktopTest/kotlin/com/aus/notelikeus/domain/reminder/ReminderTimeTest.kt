@@ -26,6 +26,24 @@ import kotlin.test.assertTrue
  * - `America/Santiago` shifts DST at midnight, so local midnight itself is sometimes missing.
  */
 class ReminderTimeTest {
+    @Test
+    fun unchangedFallBackReminderKeepsItsOriginalOccurrence() {
+        inZone("America/New_York") {
+            for (instant in listOf("2027-11-07T05:30:00Z", "2027-11-07T06:30:00Z")) {
+                val existing = java.time.Instant.parse(instant).toEpochMilli()
+                val picker = ReminderTime.initialPickerState(existing)
+                assertEquals(
+                    existing,
+                    ReminderTime.exactReminder(picker.dateUtcMillis, picker.hour, picker.minute, existing),
+                )
+                assertEquals(
+                    java.time.Instant.parse("2027-11-07T08:30:00Z").toEpochMilli(),
+                    ReminderTime.exactReminder(picker.dateUtcMillis, 3, 30, existing),
+                )
+            }
+        }
+    }
+
 
     private val originalZone: TimeZone = TimeZone.getDefault()
 

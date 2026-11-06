@@ -18,12 +18,8 @@ actual fun rememberAttachmentImagePicker(
         contract = ActivityResultContracts.PickVisualMedia(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-        if (!mimeType.startsWith("image/")) return@rememberLauncherForActivityResult
-        val bytes = context.contentResolver.openInputStream(uri)?.use {
-            com.aus.notelikeus.ui.navigation.readBoundedStream(it)
-        } ?: return@rememberLauncherForActivityResult
-        onPicked(bytes, mimeType)
+        val picked = readPickedImage(context.contentResolver, uri) ?: return@rememberLauncherForActivityResult
+        onPicked(picked.first, picked.second)
     }
     return remember(enabled) {
         {

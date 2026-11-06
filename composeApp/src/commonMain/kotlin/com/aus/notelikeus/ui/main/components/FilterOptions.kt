@@ -8,6 +8,7 @@ import com.aus.notelikeus.domain.model.NoteQuery
 import com.aus.notelikeus.domain.model.NoteScope
 import com.aus.notelikeus.domain.query.NoteQueryMatcher
 import com.aus.notelikeus.ui.theme.noteColorCounterpart
+import com.aus.notelikeus.util.DateUtils
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.date_any
 import notelikeus.composeapp.generated.resources.date_field_created
@@ -35,8 +36,6 @@ fun dateFieldLabelRes(field: DateField): StringResource = when (field) {
     DateField.REMINDER -> Res.string.date_field_reminder
 }
 
-private const val DAY = 86_400_000L
-
 /**
  * The date windows the sheet offers.
  *
@@ -53,7 +52,7 @@ enum class DatePreset(val labelRes: StringResource, private val days: Int?) {
 
     fun range(todayStart: Long): DateRange? = when (days) {
         null -> null
-        else -> DateRange(todayStart - days * DAY, Long.MAX_VALUE)
+        else -> DateRange(DateUtils.startOfDay(DateUtils.shiftLocalDays(todayStart, -days)), Long.MAX_VALUE)
     }
 }
 

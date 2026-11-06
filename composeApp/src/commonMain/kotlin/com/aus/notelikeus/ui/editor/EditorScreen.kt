@@ -680,6 +680,7 @@ fun ReminderDialog(
     if (step != ReminderDialogStep.CHOICES) {
         ExactReminderDialog(
             step = step,
+            existingReminder = existingReminder,
             datePickerState = datePickerState,
             timePickerState = timePickerState,
             onStep = { step = it },
@@ -691,6 +692,7 @@ fun ReminderDialog(
                     selectedDateUtcMillis,
                     timePickerState.hour,
                     timePickerState.minute,
+                    existingReminder,
                 )
                 if (resolved != null) onConfirm(resolved) else step = ReminderDialogStep.DATE
             },
@@ -798,6 +800,7 @@ private val PICKER_MIN_WINDOW_HEIGHT = 560.dp
 @Composable
 private fun ExactReminderDialog(
     step: ReminderDialogStep,
+    existingReminder: Long?,
     datePickerState: DatePickerState,
     timePickerState: TimePickerState,
     onStep: (ReminderDialogStep) -> Unit,
@@ -856,7 +859,7 @@ private fun ExactReminderDialog(
     // (U-20). The editor still refuses a past time on confirm, for a minute that passes while the
     // picker is open.
     val picked = selectedDate?.let {
-        ReminderTime.exactReminder(it, timePickerState.hour, timePickerState.minute)
+        ReminderTime.exactReminder(it, timePickerState.hour, timePickerState.minute, existingReminder)
     }
     val isPast = picked != null && picked <= DateUtils.currentTimeMillis()
     AlertDialog(
