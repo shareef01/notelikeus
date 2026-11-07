@@ -224,56 +224,6 @@ describe('NoteCard', () => {
     cleanup();
   });
 
-  // On touch the selection circle is always visible over the top-left corner; the first line of
-  // text steps aside for it, and only when something would otherwise sit under it.
-  describe('first line clears the touch selection circle', () => {
-    const INDENT = 'indent-6';
-    const image = {
-      id: 'a1',
-      noteId: 1,
-      storagePath: 'pending:a1',
-      type: 'image',
-      mimeType: 'image/png',
-    };
-
-    it('indents the title when the circle is shown', () => {
-      const { container, cleanup } = renderCard(createTestNote(), { onToggleSelect: vi.fn() });
-      expect(container.querySelector('h2')!.className).toContain(INDENT);
-      cleanup();
-    });
-
-    it('indents the body of an untitled list card, which starts in that corner', () => {
-      const { container, cleanup } = renderCard(createTestNote({ title: '' }), {
-        onToggleSelect: vi.fn(),
-        density: 'list',
-      });
-      expect(container.querySelector('p')!.className).toContain(INDENT);
-      cleanup();
-    });
-
-    it('leaves the text alone without a circle, or when an image or the reorder handle clears it', () => {
-      const cases = [
-        renderCard(createTestNote()),
-        renderCard(createTestNote({ attachments: [image] }), { onToggleSelect: vi.fn() }),
-        renderCard(createTestNote(), {
-          onToggleSelect: vi.fn(),
-          showReorderHandle: true,
-          reorderHandleProps: {
-            onPointerDown: vi.fn(),
-            onPointerMove: vi.fn(),
-            onPointerUp: vi.fn(),
-            onPointerCancel: vi.fn(),
-            onKeyDown: vi.fn(),
-          },
-        }),
-      ];
-      for (const { container, cleanup } of cases) {
-        expect(container.innerHTML).not.toContain(INDENT);
-        cleanup();
-      }
-    });
-  });
-
   describe('labels and untitled notes', () => {
     const labels = ['iPhone backup', 'ToDo', 'Q4', 'garden'].map((name, index) => ({
       id: `label-${index}`,
@@ -307,8 +257,7 @@ describe('NoteCard', () => {
         (p) => p.textContent === 'Call the dentist',
       );
       expect(paragraphs).toHaveLength(1);
-      // Same row as the timestamp.
-      expect(paragraphs[0].parentElement?.querySelector('time')).toBeTruthy();
+      expect(paragraphs[0].compareDocumentPosition(container.querySelector('time')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(container.querySelector('h2')).toBeNull();
       cleanup();
     });

@@ -153,10 +153,10 @@ export function TopBar({
             <button
               type="button"
               onClick={onMenuClick}
-              className={`tap-target flex size-10 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 md:hidden ${CHROME_FOCUS}`}
+              className={`tap-target flex size-11 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/5 md:hidden ${CHROME_FOCUS}`}
               aria-label="Open menu"
             >
-              <MenuIcon size={22} />
+              <MenuIcon size={20} />
             </button>
 
             <form
@@ -253,7 +253,7 @@ export function TopBar({
             <button
               type="button"
               onClick={onProfileClick}
-              className={`tap-target flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-brand-primary transition-colors hover:bg-brand-primary/18 ${CHROME_FOCUS}`}
+              className={`tap-target flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-primary/10 text-brand-primary transition-colors hover:bg-brand-primary/18 ${CHROME_FOCUS}`}
               aria-label="Open settings"
               title={userEmail ? userEmail : 'Settings'}
             >
@@ -270,11 +270,11 @@ export function TopBar({
               <button
                 type="button"
                 onClick={onNewNote}
-                className={`tap-target hidden size-10 shrink-0 items-center justify-center rounded-full bg-brand-primary text-true-surface shadow-sm transition-all duration-150 hover:opacity-95 hover:shadow-card-hover active:scale-[0.97] md:inline-flex ${CHROME_FOCUS}`}
+                className={`tap-target hidden size-11 shrink-0 items-center justify-center rounded-full bg-brand-primary text-true-surface shadow-sm transition-all duration-150 hover:opacity-95 hover:shadow-card-hover active:scale-[0.97] md:inline-flex ${CHROME_FOCUS}`}
                 aria-label="New note"
                 title="New note"
               >
-                <AddIcon size={22} />
+                <AddIcon size={20} />
               </button>
             ) : null}
           </div>

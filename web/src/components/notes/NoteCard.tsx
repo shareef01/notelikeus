@@ -112,7 +112,7 @@ function NoteCardImpl({
   // Grid and compact cards without a title put the preview in the title's place.
   const bodyLeads = !isList && !title && showBody;
   const bodyPreviewClass = isDense
-    ? 'line-clamp-5 text-[13px] leading-relaxed'
+    ? 'line-clamp-4 text-sm leading-relaxed'
     : 'line-clamp-7 text-note-body leading-relaxed';
   const showStatusCluster = !isSelected && (note.isPinned || hasReminder || showAttachments);
   const checklist = note.checklist ?? [];
@@ -129,8 +129,8 @@ function NoteCardImpl({
 
   // Reserve the selection circle's space on every pointer type, including hover,
   // without shifting the title when the circle appears. Images and reorder handles clear it already.
-  const clearsSelectionCircle =
-    onToggleSelect && !showReorderHandle && !thumbnailAttachment ? 'indent-6' : '';
+  const needsSelectionSpace = onToggleSelect && !showReorderHandle && !thumbnailAttachment;
+  const clearsSelectionCircle = needsSelectionSpace && !isList ? 'pr-8' : '';
 
   // Names the card's selection checkbox after the note it belongs to: a screen reader hears which
   // note a checkbox selects, and a test can address it by name instead of by DOM position.
@@ -248,8 +248,8 @@ function NoteCardImpl({
         isList
           ? 'flex-row items-stretch gap-0'
           : isDense
-            ? 'flex-col p-4'
-            : 'flex-col p-5'
+            ? 'min-h-32 flex-col p-4'
+            : 'min-h-40 flex-col p-5'
       } ${showReorderHandle ? (isList ? 'pl-9' : 'pl-11') : ''} ${
         isSelected
           ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-true-surface'
@@ -283,7 +283,7 @@ function NoteCardImpl({
             event.stopPropagation();
             onToggleSelect();
           }}
-          className={`absolute left-2.5 top-2.5 z-10 flex size-6 items-center justify-center rounded-full pointer-events-auto transition-all ${CHROME_FOCUS} ${
+          className={`absolute ${isList ? 'left-2.5' : 'right-2.5'} top-2.5 z-10 flex size-6 items-center justify-center rounded-full pointer-events-auto transition-all ${CHROME_FOCUS} ${
             isSelected
               ? 'bg-brand-primary text-true-surface opacity-100 shadow-sm'
               : // pointer-coarse: a touch device has no hover, and this checkbox is the only way into
@@ -323,7 +323,7 @@ function NoteCardImpl({
           {thumbnailAttachment ? (
             <NoteCardThumbnail noteId={note.id} attachment={thumbnailAttachment} layout="square" />
           ) : null}
-          <div className="min-w-0 flex-1">
+          <div className={`min-w-0 flex-1 ${needsSelectionSpace ? 'pl-6' : ''}`}>
             {title ? (
               <h2 id={titleId} className={`line-clamp-2 break-words text-note-title tracking-[-0.02em] sm:line-clamp-2 ${clearsSelectionCircle}`}>
                 {highlight(title)}
@@ -368,33 +368,22 @@ function NoteCardImpl({
                 id={titleId}
                 className={`min-w-0 flex-1 break-words font-semibold tracking-[-0.02em] ${clearsSelectionCircle} ${
                   isDense
-                    ? 'line-clamp-2 text-[15px] leading-snug'
+                    ? 'line-clamp-3 text-base leading-snug'
                     : 'line-clamp-3 text-note-title'
                 }`}
               >
                 {highlight(title)}
               </h2>
             ) : bodyLeads ? (
-              // D15: an untitled note leads with its text, level with the timestamp. Under an empty
-              // title row it started a line and a half down, which read as a missing title.
+              // Untitled notes lead with their text, without an empty title row.
               <p className={`min-w-0 flex-1 whitespace-pre-line break-words opacity-80 ${clearsSelectionCircle} ${bodyPreviewClass}`}>
                 {highlight(previewBody)}
               </p>
             ) : (
-              // Without a title the status cluster still needs a flex sibling to push it right
+              // Image-only notes keep the same content structure without a fake title.
               <span className="min-w-0 flex-1" aria-hidden />
             )}
-            <div className="flex shrink-0 flex-col items-end gap-1">
-              {statusIcons(isDense ? 13 : 14)}
-              <time
-                dateTime={new Date(note.timestamp).toISOString()}
-                className={`font-medium tabular-nums opacity-80 ${
-                  isDense ? 'text-[11px]' : 'text-[12px]'
-                }`}
-              >
-                {timeLabel}
-              </time>
-            </div>
+
           </div>
 
           {showBody && !bodyLeads ? (
@@ -440,6 +429,10 @@ function NoteCardImpl({
           ) : null}
 
           {labelChips}
+          <div className="mt-auto flex items-center justify-between gap-3 pt-3 text-xs font-medium opacity-80 transition-opacity sm:group-hover:opacity-0 sm:group-focus-within:opacity-0">
+            {statusIcons(15)}
+            <time dateTime={new Date(note.timestamp).toISOString()} className="ml-auto shrink-0 tabular-nums">{timeLabel}</time>
+          </div>
         </>
       )}
       </div>

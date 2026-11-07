@@ -6,7 +6,7 @@ import { createImageObjectUrl } from '@/lib/attachments/imageObjectUrl';
 import type { Attachment } from '@/types/attachment';
 
 /**
- * Small, cropped previews of a note's first image, for the note cards.
+ * Small, uncropped previews of a note's first image, for the note cards.
  *
  * This is deliberately not [attachmentPreviewCache]: that cache hands the editor the full-size
  * image and revokes its URL when the editor closes. A card that shared those URLs would lose its
@@ -19,7 +19,7 @@ import type { Attachment } from '@/types/attachment';
 
 /** Width of the stored thumbnail; the card shows it at roughly half this, which keeps 2x screens sharp. */
 const THUMB_WIDTH = 480;
-/** Cards crop to 4:3, so the stored image is that shape and carries no pixels that are never shown. */
+/** Bound both dimensions while preserving the original aspect ratio. */
 const THUMB_HEIGHT = 360;
 const THUMB_QUALITY = 0.8;
 /** Downloads in flight at once. A grid of image notes mounting together must not open dozens of requests. */
@@ -131,9 +131,8 @@ async function loadSourceBlob(noteId: string, attachment: Attachment): Promise<B
 }
 
 /**
- * Crops to 4:3 — from the top for portrait images (screenshots read from the top down), from the
- * centre for landscape ones — and scales to the stored size. Falls back to the original bytes when
- * the browser cannot decode or encode, so a missing capability costs memory, never the picture.
+ * Fits the complete image inside the thumbnail bounds without discarding any content.
+ * Falls back to the original bytes when the browser cannot decode or encode, so a missing capability costs memory, never the picture.
  */
 async function downscale(source: Blob): Promise<Blob> {
   if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return source;
@@ -143,27 +142,16 @@ async function downscale(source: Blob): Promise<Blob> {
     const { width, height } = bitmap;
     if (width === 0 || height === 0) return source;
 
-    const targetAspect = THUMB_WIDTH / THUMB_HEIGHT;
-    let sx = 0;
-    let sy = 0;
-    let sw = width;
-    let sh = height;
-    if (width / height >= targetAspect) {
-      sw = Math.round(height * targetAspect);
-      sx = Math.round((width - sw) / 2);
-    } else {
-      sh = Math.round(width / targetAspect);
-    }
-
+    const scale = Math.min(1, THUMB_WIDTH / width, THUMB_HEIGHT / height);
     const canvas = document.createElement('canvas');
-    canvas.width = Math.min(THUMB_WIDTH, sw);
-    canvas.height = Math.round(canvas.width / targetAspect);
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
     const context = canvas.getContext('2d');
     if (!context) return source;
     // JPEG has no alpha; without a backdrop a transparent PNG would come out black.
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(bitmap, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
 
     const encoded = await new Promise<Blob | null>((resolve) => {
       canvas.toBlob(resolve, 'image/jpeg', THUMB_QUALITY);

@@ -37,16 +37,14 @@ interface NoteStaggeredGridProps {
  * Grid/dense pack with CSS columns (masonry-like). List is a single readable column.
  * Column widths differ enough that List / Grid / Compact feel like real size options.
  *
- * Grid is at least 256 px and at most three columns. At 300 px it gave one column up to a
- * 1024 px window: a tablet, or a desktop window beside another, showed a single column of
- * cards up to 600 px wide (U-09). The cap keeps 1280–1920 px at the three columns it had.
- * The loading skeleton uses the same values so nothing reflows when the notes arrive.
+ * Comfortable and compact views retain readable card widths instead of squeezing
+ * five narrow columns into a desktop board. Loading uses the same column metrics.
  */
 export const CARD_MIN_PX: Record<2 | 3, number> = {
   /** Comfortable Keep-style cards */
-  2: 256,
+  2: 288,
   /** Compact multi-column board */
-  3: 200,
+  3: 260,
 };
 
 export const MAX_COLUMNS: Record<2 | 3, number | undefined> = {
@@ -366,13 +364,7 @@ export function NoteStaggeredGrid({
     }
   };
 
-  const gapClass =
-    viewPreference === 3
-      ? 'gap-2'
-      : isList
-        ? 'gap-2.5 sm:gap-3'
-        : 'gap-3.5 sm:gap-4';
-  const columnGapPx = viewPreference === 3 ? 12 : 16;
+  const columnGapPx = 16;
 
   const visibleItems =
     boardItems.length > INITIAL_RENDER_COUNT ? boardItems.slice(0, visibleCount) : boardItems;
@@ -383,7 +375,7 @@ export function NoteStaggeredGrid({
       data-selecting={selectionMode || undefined}
       className={`w-full px-shell pb-24 pt-2 ${
         isList
-          ? `mx-auto grid max-w-content grid-cols-1 ${gapClass}`
+          ? 'mx-auto grid max-w-content grid-cols-1 gap-2.5 sm:gap-3'
           : 'mx-auto max-w-content'
       }`}
       style={
@@ -404,8 +396,8 @@ export function NoteStaggeredGrid({
             // against the last pinned card.
             <div
               key={item.key}
-              className={`[&:not(:first-child)]:pt-4 ${
-                isList ? 'col-span-full' : 'mb-1.5 w-full break-inside-avoid'
+              className={`[&:not(:first-child)]:pt-2 ${
+                isList ? 'col-span-full' : 'mb-2 w-full break-inside-avoid'
               }`}
               style={isList ? undefined : { columnSpan: 'all' }}
             >
@@ -438,13 +430,7 @@ export function NoteStaggeredGrid({
         return (
           <div
             key={note.id}
-            className={`min-w-0 ${
-              isList
-                ? ''
-                : viewPreference === 3
-                  ? 'mb-2 break-inside-avoid'
-                  : 'mb-3 break-inside-avoid sm:mb-3.5'
-            }`}
+            className={`min-w-0 ${isList ? '' : 'mb-4 break-inside-avoid'}`}
             style={CARD_CONTENT_VISIBILITY_STYLE[viewPreference]}
           >
             {renderCard(note)}

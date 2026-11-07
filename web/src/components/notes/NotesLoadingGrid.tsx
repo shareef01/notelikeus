@@ -7,8 +7,8 @@ interface NotesLoadingGridProps {
 
 const SKELETON_HEIGHT: Record<ViewColumns, number> = {
   1: 56,
-  2: 88,
-  3: 72,
+  2: 160,
+  3: 128,
 };
 
 export function NotesLoadingGrid({ viewPreference }: NotesLoadingGridProps) {
@@ -21,7 +21,7 @@ export function NotesLoadingGrid({ viewPreference }: NotesLoadingGridProps) {
         ? 'gap-1.5'
         : 'gap-2 sm:gap-2.5';
   const cardMin = isList ? 0 : CARD_MIN_PX[viewPreference as 2 | 3];
-  const columnGapPx = viewPreference === 3 ? 12 : 16;
+  const columnGapPx = 16;
 
   return (
     <div
@@ -45,7 +45,7 @@ export function NotesLoadingGrid({ viewPreference }: NotesLoadingGridProps) {
         <div
           key={index}
           className={`animate-pulse rounded-note bg-true-surface-variant/60 ${
-            isList ? '' : 'mb-2 break-inside-avoid'
+            isList ? '' : 'mb-4 break-inside-avoid'
           }`}
           style={{ height: SKELETON_HEIGHT[viewPreference] }}
         />
