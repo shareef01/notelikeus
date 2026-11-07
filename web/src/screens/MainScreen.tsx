@@ -352,7 +352,7 @@ export function MainScreen() {
   );
 
   return (
-    <div className={`flex min-h-screen w-full bg-true-surface ${dockedEditor ? '' : 'lg:mx-auto lg:max-w-shell'}`}>
+    <div className="flex min-h-screen w-full bg-true-surface">
 
       <SideDrawer
         open={drawerOpen}
@@ -465,7 +465,7 @@ export function MainScreen() {
 
           <div
             className={`mx-auto w-full ${
-              viewColumns === 1 ? 'max-w-3xl' : dockedEditor ? 'max-w-full' : 'max-w-content'
+              viewColumns === 1 ? 'max-w-3xl' : 'max-w-board'
             }`}
           >
             {(() => {
@@ -582,6 +582,7 @@ export function MainScreen() {
                         // from, which trail the search box while the user types.
                         notes={filteredNotes}
                         viewPreference={viewColumns}
+                        docked={Boolean(dockedEditor)}
                         filter={listFilters.filter}
                         sortOrder={listFilters.sortOrder ?? 'manual'}
                         onNoteClick={handleNoteClick}
