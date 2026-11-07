@@ -22,7 +22,7 @@ function fullscreenShellMarkup(): string {
 describe('editorWritingColumnClass', () => {
   it('constrains the writing measure in every desktop layout', () => {
     expect(editorWritingColumnClass('fullscreen', true)).toBe('mx-auto max-w-editor');
-    expect(editorWritingColumnClass('dock', true)).toBe('mx-auto max-w-editor');
+    expect(editorWritingColumnClass('dock', true)).toBe('max-w-editor');
     expect(editorWritingColumnClass('float', true)).toBe('mx-auto max-w-editor');
   });
 

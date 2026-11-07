@@ -75,7 +75,7 @@
   --container-shell: 96rem;
   --container-content: 72rem;
   --container-content-list: 48rem;
-  --container-editor: 48rem;
+  --container-editor: 56rem;
 
   --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.12), 0 1px 2px -1px rgb(0 0 0 / 0.12);
   --shadow-card-hover: 0 3px 8px -1px rgb(0 0 0 / 0.09), 0 1px 4px -1px rgb(0 0 0 / 0.06);
@@ -402,6 +402,7 @@
   white-space: pre-wrap;
 }
 .rich-note-body p { margin: 0; min-height: 1.75em; }
+.has-note-attachments .rich-note-body { min-height: 3rem; }
 .rich-note-body ul { list-style: disc; padding-left: 1.5em; margin: .35em 0; }
 .rich-note-body li > p { margin: 0; }
 .rich-note-body a { color: inherit; text-decoration: underline; text-underline-offset: .2em; }
