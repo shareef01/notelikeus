@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { createEmptyNote } from '../src/types/note';
 
 for (const theme of ['light', 'dark']) {
-  for (const width of [320, 390, 768, 1280, 1920]) {
+  for (const width of [320, 390, 768, 1280, 1920, 2560]) {
     test(`readable board spacing in ${theme} at ${width}px`, async ({page}, testInfo) => {
       await page.setViewportSize({width, height:960});
       await page.addInitScript(theme => {
@@ -17,11 +17,13 @@ for (const theme of ['light', 'dark']) {
         id:`density-${index}`, localId:index + 1, title,
         content: 'A little room for clear thoughts. Keep the details readable and easy to find.',
         timestamp: now - (index === 1 ? 2 : 1) * 86400000,
-        position:index, isPinned:index === 0,
+        position:index,
         color:[0xfffff59d | 0,0xffb2dfdb | 0,0,0xffef9a9a | 0,0,0][index],
       }));
       await page.evaluate(notes => {
-        (window as any).__NOTELIKEUS_NOTES_STORE__.getState().setNotes(notes);
+        const store = (window as any).__NOTELIKEUS_NOTES_STORE__.getState();
+        store.setFilters({sortOrder:'oldest'});
+        store.setNotes(notes);
       }, notes);
       const card = page.locator('[data-note-id="density-0"]');
       await expect(card).toBeVisible();
@@ -31,6 +33,15 @@ for (const theme of ['light', 'dark']) {
       if (width >= 1280) {
         expect(compact.width).toBeGreaterThanOrEqual(260);
         expect(compact.width).toBeLessThanOrEqual(360);
+      }
+      if (width >= 1920) {
+        const rail = (await page.locator('aside[aria-label="Navigation"]').boundingBox())!;
+        const oldest = (await page.locator('[data-note-id="density-1"]').boundingBox())!;
+        const newest = (await page.locator('[data-note-id="density-5"]').boundingBox())!;
+        expect(rail.x).toBeCloseTo(0, 0);
+        expect(Math.abs(oldest.y - newest.y)).toBeLessThanOrEqual(1);
+        expect(newest.x + newest.width - oldest.x).toBeGreaterThan(1500);
+        if (width === 1920) expect(oldest.x - rail.width).toBeLessThanOrEqual(32);
       }
       const geometry = await card.evaluate(el => {
         const heading = el.querySelector('h2')!;
@@ -60,6 +71,7 @@ for (const theme of ['light', 'dark']) {
         await page.getByRole('radio', {name:'Grid — comfortable cards',exact:true}).click();
         expect((await card.boundingBox())!.width).toBeGreaterThan(compact.width);
         await page.getByRole('radio', {name:'List — one column',exact:true}).click();
+        await expect(page.getByRole('heading', { name: 'Yesterday', exact: true })).toBeVisible();
         const listAlignment = await card.evaluate(el => {
           const firstX = (selector:string) => {
             const range = document.createRange();

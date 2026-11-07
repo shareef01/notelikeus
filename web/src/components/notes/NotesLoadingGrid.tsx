@@ -1,4 +1,4 @@
-import { CARD_MIN_PX, MAX_COLUMNS } from '@/components/notes/NoteStaggeredGrid';
+import { CARD_MIN_PX } from '@/components/notes/NoteStaggeredGrid';
 import type { ViewColumns } from '@/store/uiStore';
 
 interface NotesLoadingGridProps {
@@ -28,14 +28,13 @@ export function NotesLoadingGrid({ viewPreference }: NotesLoadingGridProps) {
       className={`w-full px-shell pb-24 pt-2 ${
         isList
           ? `mx-auto grid max-w-content grid-cols-1 ${gapClass}`
-          : 'mx-auto max-w-content'
+          : 'mx-auto max-w-board'
       }`}
       style={
         isList
           ? undefined
           : {
               columnWidth: cardMin,
-              columnCount: MAX_COLUMNS[viewPreference as 2 | 3],
               columnGap: columnGapPx,
             }
       }

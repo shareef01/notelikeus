@@ -133,7 +133,7 @@ export function TopBar({
         listScrolled ? 'shadow-header-scroll' : ''
       }`}
     >
-      <div className="mx-auto flex w-full max-w-content px-shell">
+      <div className={`mx-auto flex w-full px-shell ${viewColumns === 1 ? 'max-w-content' : 'max-w-board'}`}>
         {selectionMode && onClearSelection && onToggleSelectAll ? (
           <SelectionBar
             selectedCount={selectedCount}
@@ -282,7 +282,7 @@ export function TopBar({
       </div>
 
       {!selectionMode && showFilterRow ? (
-        <div className="mx-auto w-full max-w-content overflow-hidden">
+        <div className={`mx-auto w-full overflow-hidden ${viewColumns === 1 ? 'max-w-content' : 'max-w-board'}`}>
           <FilterRow
             sortOrder={sortOrder}
             onSortOrderClick={onSortOrderClick}

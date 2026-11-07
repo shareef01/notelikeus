@@ -19,6 +19,7 @@ interface NoteStaggeredGridProps {
   notes: Note[];
   /** User view preference — drives card min-width + density. */
   viewPreference: ViewColumns;
+  docked?: boolean;
   filter: NoteFilter;
   sortOrder?: 'manual' | 'newest' | 'oldest';
   onNoteClick: (note: Note) => void;
@@ -42,14 +43,9 @@ interface NoteStaggeredGridProps {
  */
 export const CARD_MIN_PX: Record<2 | 3, number> = {
   /** Comfortable Keep-style cards */
-  2: 288,
+  2: 320,
   /** Compact multi-column board */
   3: 260,
-};
-
-export const MAX_COLUMNS: Record<2 | 3, number | undefined> = {
-  2: 3,
-  3: undefined,
 };
 
 const DENSITY: Record<ViewColumns, NoteCardDensity> = {
@@ -78,6 +74,7 @@ function buildBoardItems(
   notes: Note[],
   sortOrder: 'manual' | 'newest' | 'oldest' = 'manual',
   searchQuery = '',
+  groupByDate = true,
 ): BoardItem[] {
   if (notes.length === 0) return [];
 
@@ -97,7 +94,7 @@ function buildBoardItems(
       items.push({ type: 'header', key: 'header-pinned', title: 'Pinned' });
     }
 
-    if (sortOrder === 'manual') {
+    if (sortOrder === 'manual' || !groupByDate) {
       // D14: "Others" only earns its place as the counterpart to "Pinned".
       if (hasPinned && index === firstUnpinned) {
         items.push({ type: 'header', key: 'header-others', title: 'Others' });
@@ -129,6 +126,7 @@ const CARD_CONTENT_VISIBILITY_STYLE: Record<ViewColumns, React.CSSProperties> = 
 export function NoteStaggeredGrid({
   notes,
   viewPreference,
+  docked = false,
   filter,
   sortOrder = 'manual',
   onNoteClick,
@@ -143,8 +141,12 @@ export function NoteStaggeredGrid({
   onReorderComplete,
 }: NoteStaggeredGridProps) {
   const isPhone = !useMediaQuery('(min-width: 640px)');
+  const isWideScreen = useMediaQuery('(min-width: 1200px)');
   const density = DENSITY[viewPreference];
   const isList = viewPreference === 1;
+  // Card timestamps already give the date. On a wide board, date headers would
+  // force a separate row for even one note. Keep them in narrow panes and List.
+  const groupByDate = isList || docked || !isWideScreen;
   const cardMin = isList ? 0 : CARD_MIN_PX[viewPreference as 2 | 3];
   const selectedSet = useMemo(() => new Set(selectedNoteIds), [selectedNoteIds]);
   // Swipe + pointer-capture fights mouse clicks on desktop — keep it phone-only.
@@ -152,8 +154,8 @@ export function NoteStaggeredGrid({
   const canReorder =
     allowReorder && isList && !selectionMode && Boolean(onMoveNote);
   const boardItems = useMemo(
-    () => buildBoardItems(notes, sortOrder, searchQuery),
-    [notes, sortOrder, searchQuery],
+    () => buildBoardItems(notes, sortOrder, searchQuery, groupByDate),
+    [notes, sortOrder, searchQuery, groupByDate],
   );
 
   const queryKey = `${filter}:${searchQuery}:${sortOrder}:${viewPreference}`;
@@ -376,14 +378,13 @@ export function NoteStaggeredGrid({
       className={`w-full px-shell pb-24 pt-2 ${
         isList
           ? 'mx-auto grid max-w-content grid-cols-1 gap-2.5 sm:gap-3'
-          : 'mx-auto max-w-content'
+          : 'mx-auto max-w-board'
       }`}
       style={
         isList
           ? undefined
           : {
               columnWidth: cardMin,
-              columnCount: MAX_COLUMNS[viewPreference as 2 | 3],
               columnGap: columnGapPx,
             }
       }
