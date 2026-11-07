@@ -321,7 +321,7 @@ function NoteCardImpl({
       {isList ? (
         <div className="flex min-w-0 flex-1 items-start gap-3 px-3.5 py-3.5 sm:gap-4 sm:px-4 sm:py-4">
           {thumbnailAttachment ? (
-            <NoteCardThumbnail noteId={note.id} attachment={thumbnailAttachment} layout="square" />
+            <NoteCardThumbnail key={thumbnailAttachment.id} noteId={note.id} attachment={thumbnailAttachment} layout="square" />
           ) : null}
           <div className={`min-w-0 flex-1 ${needsSelectionSpace ? 'pl-6' : ''}`}>
             {title ? (
@@ -356,6 +356,7 @@ function NoteCardImpl({
         <>
           {thumbnailAttachment ? (
             <NoteCardThumbnail
+              key={thumbnailAttachment.id}
               noteId={note.id}
               attachment={thumbnailAttachment}
               layout="banner"

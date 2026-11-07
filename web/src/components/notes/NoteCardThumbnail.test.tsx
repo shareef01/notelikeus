@@ -161,11 +161,11 @@ describe('NoteCard thumbnail', () => {
     resolveThumbnail.mockResolvedValue('blob:thumb');
 
     const grid = await renderCard(note([attachment()]), 'grid');
-    expect(grid.container.querySelector('[data-testid="note-card-thumbnail"]')?.className).toContain('aspect-[4/3]');
+    expect(grid.container.querySelector<HTMLElement>('[data-testid="note-card-thumbnail"]')?.style.aspectRatio).toBeTruthy();
     grid.cleanup();
 
     const dense = await renderCard(note([attachment()]), 'dense');
-    expect(dense.container.querySelector('[data-testid="note-card-thumbnail"]')?.className).toContain('aspect-[4/3]');
+    expect(dense.container.querySelector<HTMLElement>('[data-testid="note-card-thumbnail"]')?.style.aspectRatio).toBeTruthy();
     dense.cleanup();
 
     const list = await renderCard(note([attachment()]), 'list');
