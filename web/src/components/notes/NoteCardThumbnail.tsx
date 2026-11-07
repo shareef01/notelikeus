@@ -27,9 +27,8 @@ const EXIT_MARGIN = '1200px';
  * The first image of a note, on its card.
  *
  * Decorative: the card's own label already says the note has an image, so repeating it per card
- * would only make a screen reader announce every picture twice. The space is reserved up front so
- * the grid does not jump as pictures arrive, and a picture that cannot be loaded leaves nothing
- * behind rather than an empty box.
+ * would only make a screen reader announce every picture twice. Reserve a bounded frame until
+ * the image loads, then keep its measured proportions even when it scrolls out of view.
  */
 export function NoteCardThumbnail({
   noteId,
@@ -42,6 +41,7 @@ export function NoteCardThumbnail({
     () => typeof IntersectionObserver === 'undefined',
   );
   const [url, setUrl] = useState<string | null>(null);
+  const [aspectRatio, setAspectRatio] = useState<number>();
   const [failed, setFailed] = useState(false);
   const isMountedRef = useRef(true);
   const currentKeyRef = useRef(`${noteId}:${attachment.id}`);
@@ -122,20 +122,33 @@ export function NoteCardThumbnail({
 
   if (failed) return null;
 
+  const isBanner = layout === 'banner';
+  const isPortrait = isBanner && aspectRatio !== undefined && aspectRatio < 1;
   const frameClassName =
-    layout === 'banner'
-      ? `${bleedClassName} aspect-[4/3] w-auto overflow-hidden bg-black/10`
+    isBanner
+      ? `${bleedClassName} relative max-h-64 overflow-hidden ${url ? '' : 'bg-black/10'}`
       : 'size-16 shrink-0 self-start overflow-hidden rounded-xl bg-black/10';
 
   return (
-    <div ref={frameRef} className={frameClassName} data-testid="note-card-thumbnail">
+    <div
+      ref={frameRef}
+      className={frameClassName}
+      style={isBanner ? { aspectRatio: aspectRatio ?? 4 / 3 } : undefined}
+      data-testid="note-card-thumbnail"
+    >
       {url ? (
         <img
           src={url}
           alt=""
           decoding="async"
           draggable={false}
-          className="size-full object-contain"
+          className={`size-full object-contain ${isBanner ? 'absolute inset-0 mx-auto' : ''} ${isPortrait ? 'rounded-xl' : ''}`}
+          style={isPortrait ? { width: `min(100%, ${16 * aspectRatio}rem)` } : undefined}
+          onLoad={({ currentTarget }) => {
+            if (isBanner && currentTarget.naturalWidth && currentTarget.naturalHeight) {
+              setAspectRatio(currentTarget.naturalWidth / currentTarget.naturalHeight);
+            }
+          }}
           onError={() => {
             const errorKey = `${noteId}:${attachment.id}`;
             void resolveAttachmentThumbnailUrl(noteId, attachment).then((resolved) => {

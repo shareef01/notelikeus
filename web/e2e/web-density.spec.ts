@@ -88,6 +88,7 @@ for (const theme of ['light', 'dark']) {
 }
 
 test('portrait and landscape previews retain all image edges', async ({page}) => {
+  await page.setViewportSize({ width: 697, height: 884 });
   await page.goto('/');
   await page.getByRole('button',{name:'Continue without an account'}).click();
   const notes = [createEmptyNote({id:'wide',localId:1,title:'Landscape screenshot'}),createEmptyNote({id:'tall',localId:2,title:'Portrait screenshot'})];
@@ -119,5 +120,10 @@ test('portrait and landscape previews retain all image edges', async ({page}) =>
     expect(pixels.top[0]).toBeGreaterThan(200); expect(pixels.top[2]).toBeLessThan(60);
     expect(pixels.bottom[2]).toBeGreaterThan(200); expect(pixels.bottom[0]).toBeLessThan(60);
     await expect(image).toHaveCSS('object-fit','contain');
+    await expect.poll(() => image.evaluate(img => {
+      const { width, height } = img.getBoundingClientRect();
+      return Math.abs(width / height - (img as HTMLImageElement).naturalWidth / (img as HTMLImageElement).naturalHeight);
+    })).toBeLessThan(0.02);
+    expect((await image.boundingBox())!.height).toBeLessThanOrEqual(256);
   }
 });
