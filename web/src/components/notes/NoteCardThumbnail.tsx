@@ -135,7 +135,7 @@ export function NoteCardThumbnail({
           alt=""
           decoding="async"
           draggable={false}
-          className="size-full object-cover"
+          className="size-full object-contain"
           onError={() => {
             const errorKey = `${noteId}:${attachment.id}`;
             void resolveAttachmentThumbnailUrl(noteId, attachment).then((resolved) => {

@@ -66,13 +66,13 @@ export function ViewModeToggle({ value, onChange }: ViewModeToggleProps) {
               title={label}
               onClick={() => onChange(mode)}
               {...getRadioProps(mode)}
-              className={`flex size-8 items-center justify-center rounded-lg transition-all duration-150 ${CHROME_FOCUS} ${
+              className={`flex size-10 items-center justify-center rounded-lg transition-all duration-150 ${CHROME_FOCUS} ${
                 selected
                   ? 'bg-true-surface text-brand-primary shadow-xs font-semibold'
                   : 'text-brand-muted hover:text-brand-primary'
               }`}
             >
-              <Icon size={18} />
+              <Icon size={20} />
             </button>
           );
         })}
