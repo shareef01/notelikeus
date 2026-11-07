@@ -238,6 +238,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
   const contentColor = surface.color;
   const hasChecklist = state.checklist.length > 0;
   const isFloatLayout = isTabletUp && editorLayout === 'float';
+  const editorGutterClass = 'px-layout-gap lg:px-8 xl:px-10';
   const writingColumnClass = editorWritingColumnClass(editorLayout, isTabletUp);
   const isOverlayShell = !isTabletUp || editorLayout === 'fullscreen' || isFloatLayout;
   // Full-window shells need IME lift; float/dock panels sit in a constrained box.
@@ -430,7 +431,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
       >
         <div
           ref={floatPanelRef}
-          className="relative flex h-[min(52rem,90vh)] w-full max-w-editor flex-col overflow-hidden rounded-note border border-brand-outline/40 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+          className="relative flex h-[min(52rem,90dvh)] w-full max-w-[60rem] flex-col overflow-hidden rounded-note border border-brand-outline/40 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
           data-editor-surface="" style={surface}
           onClick={(event) => event.stopPropagation()}
           role="dialog"
@@ -515,7 +516,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
                   break;
               }
             }}
-            className={`flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors duration-150 min-[1200px]:w-auto min-[1200px]:px-2.5 ${CHROME_FOCUS} ${
+            className={`flex h-10 w-10 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors duration-150 min-[1200px]:w-auto min-[1200px]:px-2.5 ${CHROME_FOCUS} ${
               active
                 ? 'bg-true-surface shadow-xs'
                 : 'text-brand-secondary hover:bg-brand-primary/5'
@@ -535,60 +536,61 @@ export function EditorScreen({ route }: EditorScreenProps) {
   return editorShell(
     <>
       <header
-        className="flex shrink-0 items-center justify-between gap-2 border-b border-brand-outline/40 px-3 pb-2 pt-safe"
+        className={`shrink-0 border-b border-brand-outline/40 pt-safe ${editorGutterClass}`}
         style={{ color: contentColor, borderTop: `3px solid ${state.color === 0 ? 'transparent' : noteAccent}` }}
       >
-        <button
-          type="button"
-          onClick={() => void handleBack()}
-          className={`flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-2 text-sm font-medium hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
-          aria-label="Back"
-        >
-          <ArrowBackIcon size={20} />
-          <span className="hidden min-[1200px]:inline">Back</span>
-        </button>
+        <div className={`flex min-h-14 w-full flex-wrap items-center justify-between gap-2 py-1 ${writingColumnClass}`}>
+          <button
+            type="button"
+            onClick={() => void handleBack()}
+            className={`flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-2 text-sm font-medium hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
+            aria-label="Back"
+          >
+            <ArrowBackIcon size={20} />
+            <span className="hidden min-[1200px]:inline">Back</span>
+          </button>
 
-        <div className="flex items-center gap-1">
           {layoutControls}
-          {isTabletUp ? <span className="mx-1 h-5 w-px bg-brand-outline/50" aria-hidden /> : null}
-          <button
-            type="button"
-            onClick={() => setShowReminderPicker(true)}
-            className={`flex size-10 items-center justify-center rounded-xl hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
-            aria-label="Set reminder"
-            title="Set reminder"
-          >
-            {state.reminderTimestamp != null ? (
-              <NotificationActiveIcon size={20} className="opacity-100" />
-            ) : (
-              <NotificationIcon size={20} className="opacity-80" />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={editor.togglePin}
-            className={`flex size-10 items-center justify-center rounded-xl hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
-            aria-pressed={state.isPinned}
-            aria-label={state.isPinned ? 'Unpin' : 'Pin'}
-            title={state.isPinned ? 'Unpin note' : 'Pin note'}
-          >
-            <PinIcon size={20} className={state.isPinned ? 'opacity-100' : 'opacity-80'} />
-          </button>
-          <button
-            type="button"
-            onClick={editor.toggleArchive}
-            className={`flex size-10 items-center justify-center rounded-xl hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
-            aria-pressed={state.isArchived}
-            aria-label={state.isArchived ? 'Unarchive' : 'Archive'}
-            title={state.isArchived ? 'Unarchive note' : 'Archive note'}
-          >
-            <ArchiveIcon size={20} className={state.isArchived ? 'opacity-100' : 'opacity-80'} />
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowReminderPicker(true)}
+              className={`flex size-10 items-center justify-center rounded-xl hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
+              aria-label="Set reminder"
+              title="Set reminder"
+            >
+              {state.reminderTimestamp != null ? (
+                <NotificationActiveIcon size={20} className="opacity-100" />
+              ) : (
+                <NotificationIcon size={20} className="opacity-80" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={editor.togglePin}
+              className={`flex size-10 items-center justify-center rounded-xl hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
+              aria-pressed={state.isPinned}
+              aria-label={state.isPinned ? 'Unpin' : 'Pin'}
+              title={state.isPinned ? 'Unpin note' : 'Pin note'}
+            >
+              <PinIcon size={20} className={state.isPinned ? 'opacity-100' : 'opacity-80'} />
+            </button>
+            <button
+              type="button"
+              onClick={editor.toggleArchive}
+              className={`flex size-10 items-center justify-center rounded-xl hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
+              aria-pressed={state.isArchived}
+              aria-label={state.isArchived ? 'Unarchive' : 'Archive'}
+              title={state.isArchived ? 'Unarchive note' : 'Archive note'}
+            >
+              <ArchiveIcon size={20} className={state.isArchived ? 'opacity-100' : 'opacity-80'} />
+            </button>
+          </div>
         </div>
       </header>
 
       <div
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-layout-gap pt-7 sm:px-8 sm:pt-10 lg:px-10"
+        className={`flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pt-5 sm:pt-7 ${editorGutterClass}`}
         style={{
           // Shrink the scrollport above the keyboard. Padding alone extends the
           // content but leaves the caret's visibility boundary behind the keyboard.
@@ -691,15 +693,6 @@ export function EditorScreen({ route }: EditorScreenProps) {
             </div>
           ) : null}
 
-          {state.attachments.length > 0 ? (
-            <AttachmentImageStrip
-              noteId={state.id ?? 'draft'}
-              attachments={state.attachments}
-              contentColor={contentColor}
-              onRemove={editor.removeAttachment}
-            />
-          ) : null}
-
           {(editor.canUndoConversion || editor.canRedoConversion) && <button type="button"
             className={`mt-3 self-start rounded-note px-3 py-2 text-sm text-brand-primary ${CHROME_FOCUS}`}
             onClick={() => editor.canUndoConversion ? editor.undoConversion() : editor.redoConversion()}>
@@ -751,7 +744,11 @@ export function EditorScreen({ route }: EditorScreenProps) {
                 }}
               />
 
-              <EditorContent editor={rich.editor} className="mt-6" style={{ color: contentColor }} />
+              <EditorContent
+                editor={rich.editor}
+                className={`mt-4 ${state.attachments.length ? 'has-note-attachments' : ''}`}
+                style={{ color: contentColor }}
+              />
 
               {/* A cue for starting a list in an empty note. Once the note has text, the toolbar's
                   Checklist button converts it; a second "Convert to checklist" here repeated that
@@ -760,7 +757,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
                 <button
                   type="button"
                   onClick={() => editor.convertContentToChecklist()}
-                  className={`tap-target mt-10 self-start text-left text-sm font-medium opacity-80 transition-opacity hover:opacity-100 ${CHROME_FOCUS}`}
+                  className={`tap-target mt-4 self-start text-left text-sm font-medium opacity-80 transition-opacity hover:opacity-100 ${CHROME_FOCUS}`}
                   style={{ color: contentColor }}
                 >
                   + Add checklist
@@ -768,6 +765,15 @@ export function EditorScreen({ route }: EditorScreenProps) {
               ) : null}
             </>
           )}
+
+          {state.attachments.length > 0 ? (
+            <AttachmentImageStrip
+              noteId={state.id ?? 'draft'}
+              attachments={state.attachments}
+              contentColor={contentColor}
+              onRemove={editor.removeAttachment}
+            />
+          ) : null}
         </div>
       </div>
 
@@ -776,12 +782,13 @@ export function EditorScreen({ route }: EditorScreenProps) {
         style={{ color: contentColor, bottom: effectiveKeyboardInset }}
       >
         <div
-          className="pointer-events-auto"
+          className={`pointer-events-auto border-t border-brand-outline/40 ${editorGutterClass}`}
           style={{
             background: surface.backgroundColor,
           }}
         >
           <EditorBottomBar
+            className={writingColumnClass}
             timestamp={state.timestamp}
             isSaving={state.isSaving || editor.isDirty}
             saveFailed={state.saveFailed}

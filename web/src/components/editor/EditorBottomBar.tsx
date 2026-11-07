@@ -5,6 +5,7 @@ const FOOTER_FOCUS =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current';
 
 interface EditorBottomBarProps {
+  className?: string;
   timestamp: number;
   isSaving: boolean;
   saveFailed?: boolean;
@@ -35,6 +36,7 @@ function formatReminderLabel(timestamp: number | null | undefined): string | nul
 }
 
 export function EditorBottomBar({
+  className = 'px-5',
   timestamp,
   isSaving,
   saveFailed = false,
@@ -71,7 +73,7 @@ export function EditorBottomBar({
 
   return (
     <footer
-      className="relative z-10 flex shrink-0 items-center justify-between border-t border-brand-outline/40 px-5 pb-safe-action pt-2"
+      className={`relative z-10 flex w-full shrink-0 items-center justify-between gap-2 pb-safe-action pt-2 ${className}`}
       style={{ color: contentColor }}
     >
       <div className="min-w-0 flex-1 text-left text-xs font-medium sm:text-[13px]" role="status" aria-live="polite">

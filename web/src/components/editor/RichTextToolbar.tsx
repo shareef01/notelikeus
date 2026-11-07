@@ -104,7 +104,7 @@ export function RichTextToolbar({
     <div
       ref={containerRef}
       onKeyDown={handleKeyDown}
-      className="sticky top-0 z-10 mt-5 inline-flex self-start max-w-full flex-wrap items-center gap-0.5 rounded-xl border border-brand-outline/50 p-1"
+      className="sticky top-0 z-10 mt-4 inline-flex self-start max-w-full flex-wrap items-center gap-0.5 rounded-xl border border-brand-outline/50 p-1"
       style={{ color: contentColor, backgroundColor }}
       role="toolbar"
       aria-label="Text formatting"

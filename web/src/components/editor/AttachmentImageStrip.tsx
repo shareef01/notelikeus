@@ -28,7 +28,7 @@ export function AttachmentImageStrip({
   if (attachments.length === 0) return null;
 
   return (
-    <div className="mb-4 flex flex-col gap-3">
+    <div className="mt-5 flex flex-col gap-3">
       {attachments.map((attachment) => (
         <AttachmentPreview
           // Keyed by note too, so the state below starts over for a different note's picture.
@@ -93,13 +93,13 @@ function AttachmentPreview({
   const shownUrl = previewUrl ?? placeholderUrl;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-[color-mix(in_srgb,currentColor_12%,transparent)]">
+    <div className="relative min-h-12 min-w-12 max-w-full self-start overflow-hidden rounded-2xl border border-[color-mix(in_srgb,currentColor_12%,transparent)]">
       {shownUrl ? (
         <img
           src={shownUrl}
           alt="Note attachment"
           decoding="async"
-          className="max-h-72 w-full object-cover"
+          className="mx-auto block h-auto max-h-[min(24rem,45dvh)] w-auto max-w-full object-contain"
         />
       ) : (
         <div
