@@ -1,6 +1,8 @@
 import { useId } from 'react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { CloseIcon } from '@/components/icons/Icons';
+import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 
 const PRIVACY_POLICY_BODY = `Notelikeus is an offline-first notes application across Android, Windows (Desktop), and Web. You can use Notelikeus completely offline without creating an account or signing in. This policy describes how the app handles information locally on your device and when you optionally enable cloud sync.
 
@@ -51,6 +53,9 @@ For privacy questions, contact the app developer through the store listing or pr
 
 Last updated: September 2026`;
 
+const [introduction, ...policySections] = PRIVACY_POLICY_BODY.split('\n\n');
+const lastUpdated = policySections.pop();
+
 interface PrivacyPolicyDialogProps {
   open: boolean;
   onClose: () => void;
@@ -70,26 +75,46 @@ export function PrivacyPolicyDialog({ open, onClose }: PrivacyPolicyDialogProps)
     >
       <div
         ref={panelRef}
-        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-[20px] border border-brand-outline bg-true-surface p-6 shadow-2xl"
+        className="flex max-h-[min(85dvh,52rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[20px] border border-brand-outline/50 bg-true-surface shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         onClick={(event) => event.stopPropagation()}
       >
-        <h2 id={titleId} className="text-xl font-bold tracking-tight text-brand-primary">
-          Privacy policy
-        </h2>
-        <p className="mt-4 whitespace-pre-line text-[14px] leading-[1.4em] text-brand-muted">
-          {PRIVACY_POLICY_BODY}
-        </p>
-        <div className="mt-6 flex justify-end">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-brand-outline/35 px-5 py-4 sm:px-7">
+          <div>
+            <h2 id={titleId} className="text-2xl font-bold tracking-tight text-brand-primary">Privacy policy</h2>
+            <p className="mt-1 text-xs text-brand-muted">{lastUpdated}</p>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="min-h-11 rounded-note bg-brand-primary px-6 py-2 text-sm font-bold text-true-surface transition-transform active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+            aria-label="Close"
+            className={`grid size-11 shrink-0 place-items-center rounded-full bg-brand-primary/8 text-brand-primary ${CHROME_FOCUS}`}
           >
-            Close
+            <CloseIcon size={20} />
           </button>
+        </header>
+        <div tabIndex={0} aria-label="Privacy policy text" className={`min-h-0 overflow-y-auto overscroll-contain px-5 py-5 text-sm leading-relaxed text-brand-secondary sm:px-7 ${CHROME_FOCUS}`}>
+          <p>{introduction}</p>
+          {policySections.map((section) => {
+            const [heading, ...lines] = section.split('\n');
+            const firstBullet = lines.findIndex(line => line.startsWith('• '));
+            // ES2022 target: no Array#findLastIndex.
+            const lastBullet = lines.reduce((last, line, i) => (line.startsWith('• ') ? i : last), -1);
+            return (
+              <section key={heading} className="mt-5 space-y-2 border-t border-brand-outline/30 pt-4">
+                <h3 className="text-base font-semibold text-brand-primary">{heading}</h3>
+                {firstBullet < 0 ? <p>{lines.join(' ')}</p> : <>
+                  {firstBullet > 0 && <p>{lines.slice(0, firstBullet).join(' ')}</p>}
+                  <ul className="list-disc space-y-2 pl-5">
+                    {lines.slice(firstBullet, lastBullet + 1).map(line => <li key={line}>{line.slice(2)}</li>)}
+                  </ul>
+                  {lastBullet < lines.length - 1 && <p>{lines.slice(lastBullet + 1).join(' ')}</p>}
+                </>}
+              </section>
+            );
+          })}
         </div>
       </div>
     </div>

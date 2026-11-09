@@ -73,8 +73,12 @@ export function EditorOptionsSheet({
 
   return (
     <>
-      <ResponsiveSheet open={open} onClose={onClose} ariaLabel="Note options" maxWidthClass="md:max-w-lg" closeOnEscape={!confirmDelete}>
-        <section className="px-4 py-2">
+      <ResponsiveSheet open={open} onClose={onClose} ariaLabel="Note options" maxWidthClass="md:max-w-xl" closeOnEscape={!confirmDelete}>
+        <header className="flex items-center justify-between gap-3 border-b border-brand-outline/35 px-5 py-3">
+          <h2 className="text-lg font-semibold text-brand-primary">Note options</h2>
+          <button type="button" onClick={onClose} className={`min-h-11 rounded-full bg-brand-primary/8 px-4 text-sm font-semibold text-brand-primary ${CHROME_FOCUS}`}>Done</button>
+        </header>
+        <section className="px-5 py-4">
           <h3 className="text-chrome-label">Color</h3>
           <div className="mt-3 flex flex-wrap gap-2">
             <ColorSwatchRow
@@ -85,8 +89,8 @@ export function EditorOptionsSheet({
           </div>
         </section>
 
-        <section className="mt-4 border-t border-brand-outline/60 px-4 py-2">
-          <h3 className="mt-4 text-chrome-label">Labels</h3>
+        <section className="border-t border-brand-outline/35 px-5 py-4">
+          <h3 className="text-chrome-label">Labels</h3>
           <ul className="mt-2">
             {allLabels.map((label) => {
               const checked = selectedLabels.some((entry) => entry.id === label.id);
@@ -134,8 +138,8 @@ export function EditorOptionsSheet({
           </form>
         </section>
 
-        <section className="mt-4 border-t border-brand-outline/60 px-4 py-4">
-          <h3 className="mt-2 text-chrome-label">Reminder</h3>
+        <section className="border-t border-brand-outline/35 px-5 py-4">
+          <h3 className="text-chrome-label">Reminder</h3>
           <p className="mt-2 text-sm text-brand-muted">{formatReminderLabel(reminderTimestamp)}</p>
           <p className="mt-2 text-xs leading-5 text-brand-muted">
             Web reminders are best-effort. They can be delayed or missed if the browser is fully
@@ -176,14 +180,14 @@ export function EditorOptionsSheet({
           ) : null}
         </section>
 
-        <section className="mt-4 border-t border-brand-outline/60">
+        <section className="border-t border-brand-outline/35 px-3 py-2">
           <button
             type="button"
             onClick={() => {
               onShareNote?.();
               onClose();
             }}
-            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-brand-primary transition-colors hover:bg-brand-primary/5"
+            className="flex w-full items-center min-h-12 gap-3 rounded-xl px-3 py-2 text-left text-sm text-brand-primary transition-colors hover:bg-brand-primary/5"
           >
             <ShareIcon size={24} className="text-brand-muted" />
             Share note
@@ -194,7 +198,7 @@ export function EditorOptionsSheet({
               onExportMarkdown?.();
               onClose();
             }}
-            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-brand-primary transition-colors hover:bg-brand-primary/5"
+            className="flex w-full items-center min-h-12 gap-3 rounded-xl px-3 py-2 text-left text-sm text-brand-primary transition-colors hover:bg-brand-primary/5"
           >
             <DownloadIcon size={24} className="text-brand-muted" />
             Download as Markdown (.md)
@@ -202,14 +206,13 @@ export function EditorOptionsSheet({
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="flex w-full items-center gap-4 px-4 py-4 text-left text-base text-red-700 transition-colors dark:text-red-400 hover:bg-brand-primary/5"
+            className="flex w-full items-center min-h-12 gap-3 rounded-xl px-3 py-2 text-left text-sm text-red-700 transition-colors dark:text-red-400 hover:bg-brand-primary/5"
           >
             <TrashIcon size={24} className="text-red-700/80 dark:text-red-400/70" />
             Delete note
           </button>
         </section>
 
-        <div className="h-8" />
       </ResponsiveSheet>
 
       <ConfirmDialog
