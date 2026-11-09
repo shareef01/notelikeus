@@ -69,12 +69,15 @@ jobs:
         working-directory: .
         run: node cloudflare/scripts/verify-headers-parity.mjs
 
-  # Playwright talks to local Supabase. The unit job above cannot see that stack, and
-  # cloudflare-pages.yml is path-filtered, so this is the required E2E gate for PRs.
-  e2e:
-    name: Web e2e
+  # Each browser project gets its own local Supabase and still runs one worker.
+  e2e_projects:
+    name: Web e2e (${{ matrix.project }})
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, mobile-chrome]
 
     steps:
       - name: Checkout
@@ -105,25 +108,42 @@ jobs:
         run: npm run supabase:reset
         # `supabase:reset` passes `--yes` so this step cannot hang on a TTY confirm.
 
-      # Mandatory CI gate: all PostgreSQL pgTAP unit & security tests run against fresh container
+      # The database suite is shared by both browsers and runs once on a fresh database.
       - name: Run pgTAP database tests
+        if: matrix.project == 'chromium'
         run: npm run supabase:test
 
       - name: Run Playwright E2E
         working-directory: web
-        run: npm run test:e2e
+        run: npm run test:e2e -- --project=${{ matrix.project }}
 
       - name: Check isolated UI recovery surfaces
         working-directory: web
-        run: npx playwright test --config playwright.surfaces.config.ts
+        run: npx playwright test --config playwright.surfaces.config.ts --project=${{ matrix.project }}
 
       - name: Upload Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-e2e-traces
+          name: playwright-e2e-traces-${{ matrix.project }}
           path: web/test-results/
 
       - name: Stop local Supabase
         if: always()
         run: npm run supabase:stop
+
+  # Preserve the required check name in branch protection. Run even on failure
+  # so a failed, skipped, or cancelled matrix cannot pass the gate.
+  e2e:
+    name: Web e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs: e2e_projects
+    if: always()
+    steps:
+      - name: Require both browser projects to pass
+        env:
+          E2E_RESULT: ${{ needs.e2e_projects.result }}
+        run: |
+          echo "Browser matrix result: $E2E_RESULT"
+          test "$E2E_RESULT" = success
