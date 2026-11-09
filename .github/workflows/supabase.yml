@@ -22,13 +22,9 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/supabase.yml'
+  # No path filter here: see the `changes` job.
   pull_request:
     branches: [main]
-    paths:
-      - 'supabase/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/supabase.yml'
 
 permissions:
   contents: read
@@ -40,10 +36,47 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
+  # Pull requests start this workflow whatever they touch, so the check below always reports and can
+  # be a required check: a workflow that a path filter never starts leaves a required check pending
+  # forever. This job decides whether the real work is needed; a job skipped by its `if` counts as
+  # passed. Pushes keep their path filter, and a dispatch always runs.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.filter.outputs.run }}
+
+    steps:
+      - name: Checkout
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether this change needs the checks
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > changed.txt
+          if grep -qE '^(supabase/|package\.json$|package-lock\.json$|\.github/workflows/supabase\.yml$)' changed.txt; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No matching paths changed; the checks are skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   # Gates database-tests rather than running beside it, so a dispatch with a missing
   # secret or a mistyped ref fails in seconds instead of after a full Supabase stack
   # boot. On push and pull_request it is an empty job that just succeeds.
   preflight:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -119,6 +152,7 @@ jobs:
           # forty seconds; failing in deploy costs the whole pgTAP run first.
           bash scripts/ops/retry-on-connect.sh npx supabase migration list --linked
 
+  # Skipped with preflight when `changes` says nothing relevant moved.
   database-tests:
     needs: preflight
     runs-on: ubuntu-latest
