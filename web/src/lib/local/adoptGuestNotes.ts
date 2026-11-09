@@ -1,4 +1,4 @@
-﻿import { GUEST_OWNER_ID } from '@/lib/local/constants';
+import { GUEST_OWNER_ID } from '@/lib/local/constants';
 import { listNotes, putNotes } from '@/lib/local/notesLocalRepository';
 import { cleanAdoptedGuestNote } from '@/lib/local/guestAdoptionCleanup';
 import {

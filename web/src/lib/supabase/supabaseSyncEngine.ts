@@ -1,4 +1,4 @@
-﻿import { keepingLocalOnlyAttachments } from '@/lib/attachments/attachmentPaths';
+import { keepingLocalOnlyAttachments } from '@/lib/attachments/attachmentPaths';
 import { applyRemotePageAtomically } from '@/lib/local/notesLocalRepository';
 import { useNotesStore } from '@/store/notesStore';
 import {

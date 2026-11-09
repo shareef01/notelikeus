@@ -1,4 +1,4 @@
-﻿import 'fake-indexeddb/auto';
+import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GUEST_OWNER_ID, NOTES_DB_NAME } from '@/lib/local/constants';
 import { resetNotesDatabaseForTests } from '@/lib/local/idb';

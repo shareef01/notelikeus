@@ -1,0 +1,22 @@
+# Line endings are decided here, not by each machine's core.autocrlf.
+# Text is stored as LF in the repository; the checkout follows the platform unless a rule below
+# pins it.
+* text=auto
+
+# Run by a POSIX shell (CI, Git Bash): a CRLF checkout breaks the shebang line and `set -e` blocks.
+*.sh      text eol=lf
+gradlew   text eol=lf
+
+# Run by cmd.exe / PowerShell.
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+*.ps1     text eol=crlf
+
+# Never text: a line-ending conversion would corrupt these.
+*.png     binary
+*.webp    binary
+*.ico     binary
+*.ttf     binary
+*.jar     binary
+# Backup bundles are zip archives.
+*.nlkbak  binary

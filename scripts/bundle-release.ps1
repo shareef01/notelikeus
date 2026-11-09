@@ -1,4 +1,6 @@
-# Builds a signed or unsigned Play Store AAB (Android App Bundle).
+# Builds a signed or unsigned AAB (Android App Bundle) locally.
+# Releases are built by android.yml on a v* tag and attached to the GitHub release; the app is not
+# published on Google Play.
 # Requires signing.properties at repo root for a signed bundle — see signing.properties.example
 
 $ErrorActionPreference = "Stop"
@@ -8,7 +10,7 @@ Set-Location $Root
 $SigningFile = Join-Path $Root "signing.properties"
 if (-not (Test-Path $SigningFile)) {
     Write-Warning "signing.properties not found — output will be unsigned (fine for local testing)."
-    Write-Warning "Copy signing.properties.example to signing.properties before Play Store upload."
+    Write-Warning "Copy signing.properties.example to signing.properties before distributing the bundle."
 }
 
 Write-Host "Running unit tests..."
@@ -25,7 +27,6 @@ if (Test-Path $Aab) {
     Write-Host "Release bundle ready:"
     Write-Host "  $Aab"
     Write-Host ""
-    Write-Host "Next: upload to Play Console (Production or Internal testing)."
     Write-Host "Privacy policy URL: https://notelikeus.pages.dev/privacy.html"
 } else {
     Write-Error "AAB not found at expected path."

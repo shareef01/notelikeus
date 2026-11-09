@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import type { AuthUser } from '@/lib/auth/authUser';
 import { clearLocalUserData, clearPendingDeletions } from '@/lib/bootstrap';
 import { clearGuestAdoptionIntent } from '@/lib/local/guestAdoptionIntent';

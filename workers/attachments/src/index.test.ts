@@ -1,4 +1,4 @@
-﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker, { handleAttachmentRequest, type WorkerEnv } from './index';
 import { MAX_ATTACHMENT_BYTES } from './limits';
 

@@ -20,7 +20,7 @@ platform :android do
     gradle(task: "assembleRelease")
   end
 
-  desc "Print paths to Play Store draft files"
+  desc "Print paths to the unused Play Store draft files (the app is not on Google Play)"
   lane :metadata_info do
     UI.message("Listing copy: store/listing/en-US/")
     UI.message("Data safety guide: store/DATA_SAFETY.md")

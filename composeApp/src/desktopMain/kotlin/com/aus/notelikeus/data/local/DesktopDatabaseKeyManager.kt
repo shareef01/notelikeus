@@ -1,4 +1,4 @@
-﻿package com.aus.notelikeus.data.local
+package com.aus.notelikeus.data.local
 
 import com.aus.notelikeus.data.attachments.SecureBlobStore
 import com.aus.notelikeus.platform.Dpapi

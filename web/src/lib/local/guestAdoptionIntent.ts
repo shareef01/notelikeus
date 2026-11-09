@@ -1,4 +1,4 @@
-﻿/**
+/**
  * One-shot adoption intent signal.
  *
  * Invariant: __guest__ is an anonymous storage partition, not an identity.

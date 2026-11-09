@@ -1,5 +1,9 @@
 # Google Play — Data safety
 
+> **Not in use.** Notelikeus is not published on Google Play: Android ships only as the APK and AAB
+> attached to each GitHub release by `android.yml`. This file is a draft kept in case that changes, and
+> nothing in it is pending work.
+
 Use these answers when completing the **Data safety** form in Play Console for Notelikeus.
 
 These answers must stay consistent with [`PRIVACY_POLICY.md`](../PRIVACY_POLICY.md), which is the
