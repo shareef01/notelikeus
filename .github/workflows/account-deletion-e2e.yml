@@ -53,7 +53,7 @@ jobs:
             exit 0
           fi
           git diff --name-only "$BASE_SHA...$HEAD_SHA" > changed.txt
-          if grep -qE '^(supabase/|workers/|scripts/ops/account-deletion-e2e.mjs$|.github/workflows/account-deletion-e2e.yml$)' changed.txt; then
+          if grep -qE '^(supabase/|workers/|scripts/ops/account-deletion-e2e\.mjs$|\.github/workflows/account-deletion-e2e\.yml$)' changed.txt; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
