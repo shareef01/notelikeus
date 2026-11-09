@@ -13,13 +13,9 @@ on:
       - 'workers/**'
       - 'scripts/ops/account-deletion-e2e.mjs'
       - '.github/workflows/account-deletion-e2e.yml'
+  # No path filter here: see the `changes` job.
   pull_request:
     branches: [main]
-    paths:
-      - 'supabase/**'
-      - 'workers/**'
-      - 'scripts/ops/account-deletion-e2e.mjs'
-      - '.github/workflows/account-deletion-e2e.yml'
 
 permissions:
   contents: read
@@ -29,7 +25,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Pull requests start this workflow whatever they touch, so the check below always reports and can
+  # be a required check: a workflow that a path filter never starts leaves a required check pending
+  # forever. This job decides whether the real work is needed; a job skipped by its `if` counts as
+  # passed. Pushes keep their path filter, and a dispatch always runs.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.filter.outputs.run }}
+
+    steps:
+      - name: Checkout
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether this change needs the checks
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > changed.txt
+          if grep -qE '^(supabase/|workers/|scripts/ops/account-deletion-e2e.mjs$|.github/workflows/account-deletion-e2e.yml$)' changed.txt; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No matching paths changed; the checks are skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   e2e:
+    # Named so the required check is not confused with the web e2e jobs.
+    name: Account deletion e2e
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
