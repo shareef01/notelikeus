@@ -474,7 +474,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
 
   const layoutControls = isTabletUp ? (
     <div
-      className="flex shrink-0 items-center gap-0.5 rounded-xl border border-brand-outline/50 bg-true-surface-variant/40 p-0.5"
+      className="flex shrink-0 items-center gap-1 rounded-full border border-brand-outline/45 bg-true-surface-variant/55 p-1"
       role="radiogroup"
       aria-label="Editor layout"
     >
@@ -516,9 +516,9 @@ export function EditorScreen({ route }: EditorScreenProps) {
                   break;
               }
             }}
-            className={`flex h-10 w-10 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors duration-150 min-[1200px]:w-auto min-[1200px]:px-2.5 ${CHROME_FOCUS} ${
+            className={`flex h-10 w-10 items-center justify-center gap-1.5 rounded-full text-xs font-semibold transition-colors duration-150 min-[1200px]:w-auto min-[1200px]:px-2.5 ${CHROME_FOCUS} ${
               active
-                ? 'bg-true-surface shadow-xs'
+                ? 'bg-brand-primary text-true-surface shadow-sm'
                 : 'text-brand-secondary hover:bg-brand-primary/5'
             }`}
             aria-label={button.label}
@@ -543,11 +543,11 @@ export function EditorScreen({ route }: EditorScreenProps) {
           <button
             type="button"
             onClick={() => void handleBack()}
-            className={`flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-2 text-sm font-medium hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
+            className={`flex size-11 shrink-0 items-center justify-center rounded-full border border-brand-outline/40 bg-true-surface-variant/50 hover:bg-brand-primary/10 ${CHROME_FOCUS}`}
             aria-label="Back"
+            title="Back to notes"
           >
             <ArrowBackIcon size={20} />
-            <span className="hidden min-[1200px]:inline">Back</span>
           </button>
 
           {layoutControls}
@@ -568,7 +568,7 @@ export function EditorScreen({ route }: EditorScreenProps) {
             <button
               type="button"
               onClick={editor.togglePin}
-              className={`flex size-10 items-center justify-center rounded-xl hover:bg-brand-primary/5 ${CHROME_FOCUS}`}
+              className={`flex size-10 items-center justify-center rounded-full transition-colors ${CHROME_FOCUS} ${state.isPinned ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200' : 'hover:bg-brand-primary/10'}`}
               aria-pressed={state.isPinned}
               aria-label={state.isPinned ? 'Unpin' : 'Pin'}
               title={state.isPinned ? 'Unpin note' : 'Pin note'}

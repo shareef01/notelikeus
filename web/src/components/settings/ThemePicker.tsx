@@ -114,7 +114,7 @@ function SwatchRow<T extends string>({
         {label}
       </p>
       <div
-        className="grid grid-cols-3 gap-x-3 gap-y-4 sm:gap-x-4"
+        className="grid grid-cols-3 gap-2"
         role="radiogroup"
         aria-label={label}
         {...getContainerProps()}
@@ -131,13 +131,13 @@ function SwatchRow<T extends string>({
               aria-label={optionMeta.label}
               onClick={() => onChange(option)}
               {...getRadioProps(option)}
-              className={`flex flex-col items-center gap-2 rounded-xl px-1 py-1.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary/50 ${
-                selected ? 'bg-brand-primary/[0.06]' : 'hover:bg-brand-primary/[0.03]'
+              className={`flex flex-col items-center gap-2 rounded-xl border px-1 py-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary/50 ${
+                selected ? 'border-brand-primary/50 bg-brand-primary/10' : 'border-brand-outline/35 hover:bg-brand-primary/5'
               }`}
             >
               <Swatch meta={optionMeta} selected={selected} />
               <span
-                className={`text-center text-[11px] leading-none tracking-tight sm:text-xs ${
+                className={`text-center text-xs leading-tight sm:text-sm ${
                   selected ? 'font-semibold text-brand-primary' : 'font-medium text-brand-muted'
                 }`}
               >
@@ -191,7 +191,7 @@ export function ThemePicker({
         onChange={onAccentChange}
       />
       <label
-        className={`flex items-center justify-between gap-4 rounded-xl px-1 py-1.5 ${
+        className={`flex items-center justify-between gap-4 rounded-xl border border-brand-outline/35 px-3 py-3 ${
           amoledApplies ? '' : 'opacity-45'
         }`}
       >
@@ -203,11 +203,13 @@ export function ThemePicker({
         </span>
         <input
           type="checkbox"
-          className="size-5 shrink-0 accent-brand-primary"
+          role="switch"
+          className="peer sr-only"
           checked={value.amoled}
           disabled={!amoledApplies}
           onChange={(event) => onAmoledChange(event.target.checked)}
         />
+        <span aria-hidden className="relative h-6 w-11 shrink-0 rounded-full border border-brand-outline bg-true-surface-variant transition-colors after:absolute after:left-0.5 after:top-0.5 after:size-[18px] after:rounded-full after:bg-brand-muted after:transition-transform peer-checked:bg-brand-primary peer-checked:after:translate-x-5 peer-checked:after:bg-true-surface peer-focus-visible:ring-2 peer-focus-visible:ring-brand-primary" />
       </label>
     </div>
   );

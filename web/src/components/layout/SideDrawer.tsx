@@ -72,7 +72,7 @@ function NavButton({
           : 'min-h-11 py-2.5 pl-3 pr-2.5'
       } ${
         active
-          ? 'bg-brand-primary/[0.09] font-semibold text-brand-primary'
+          ? 'bg-brand-primary/[0.12] font-semibold text-brand-primary'
           : 'font-medium text-brand-secondary hover:bg-brand-primary/[0.05] hover:text-brand-primary'
       }`}
     >
@@ -85,7 +85,7 @@ function NavButton({
       <span
         className={`flex shrink-0 items-center justify-center transition-colors ${
           active ? 'text-brand-primary' : 'text-brand-muted group-hover:text-brand-primary'
-        } ${collapsed ? 'size-6' : 'size-6'}`}
+        } size-6`}
       >
         {icon}
       </span>
@@ -110,8 +110,8 @@ function NavSection({
 }) {
   return (
     <section
-      className={`flex flex-col gap-0.5 ${
-        divided ? 'mt-1 border-t border-brand-outline/40 pt-4' : ''
+      className={`flex flex-col gap-1 ${
+        divided ? 'mt-3 border-t border-brand-outline/35 pt-4' : ''
       }`}
       aria-label={title}
     >
@@ -225,7 +225,7 @@ export function SideDrawer({
         </header>
 
         {/* Nav */}
-        <nav className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 pb-5 pt-4 ${
+        <nav className={`flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 pb-5 pt-5 ${
           showCollapsed ? 'gap-2 md:px-1.5' : 'gap-1 md:px-3'
         }`}>
           <NavSection title={showCollapsed ? undefined : 'Library'}>
@@ -288,11 +288,12 @@ export function SideDrawer({
             <button
               type="button"
               onClick={onToggleCollapse}
-              className={`group flex w-full items-center rounded-xl text-sm font-medium tracking-tight text-brand-muted transition-colors hover:bg-brand-primary/[0.06] hover:text-brand-primary ${CHROME_FOCUS} ${
+              className={`group flex w-full items-center rounded-xl border border-brand-outline/35 bg-brand-primary/[0.035] text-sm font-medium tracking-tight text-brand-muted transition-colors hover:bg-brand-primary/[0.06] hover:text-brand-primary ${CHROME_FOCUS} ${
                 showCollapsed
                   ? 'min-h-11 justify-center px-0 py-2.5'
                   : 'min-h-11 gap-3 py-2.5 pl-3 pr-2.5'
               }`}
+              aria-expanded={!showCollapsed}
               aria-label={showCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               title={showCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
@@ -305,7 +306,7 @@ export function SideDrawer({
               </span>
               {!showCollapsed && (
                 <span className="min-w-0 flex-1 truncate text-left">
-                  Collapse
+                  Collapse sidebar
                 </span>
               )}
             </button>

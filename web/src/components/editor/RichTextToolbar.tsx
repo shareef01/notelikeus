@@ -28,7 +28,7 @@ export function RichTextToolbar({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const buttonClass =
-    'flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)] active:bg-[color-mix(in_srgb,currentColor_18%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current';
+    'flex size-10 items-center justify-center rounded-lg transition-colors hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)] active:bg-[color-mix(in_srgb,currentColor_18%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current';
 
   // Click supports pointer, keyboard, and assistive activation. Preventing pointer focus
   // keeps the editor's selection and the on-screen keyboard in place during formatting.
@@ -72,7 +72,7 @@ export function RichTextToolbar({
       setFocusedIndex(nextIdx);
       buttons[nextIdx].focus();
     }
-  }, []);
+  }, [focusedIndex]);
 
   const formatButton = (
     index: number,
@@ -84,7 +84,7 @@ export function RichTextToolbar({
   ) => (
     <button
       type="button"
-      className={buttonClass}
+      className={`${buttonClass} ${pressed ? 'bg-brand-primary/15 ring-1 ring-inset ring-brand-primary/25' : ''}`}
       tabIndex={focusedIndex === index ? 0 : -1}
       onFocus={() => setFocusedIndex(index)}
       onPointerDown={keepBodyFocus}
@@ -92,7 +92,6 @@ export function RichTextToolbar({
       onClick={action}
       aria-label={label}
       aria-pressed={pressed}
-      style={pressed ? { background: 'color-mix(in srgb, currentColor 16%, transparent)' } : undefined}
       aria-keyshortcuts={shortcut}
       title={shortcut ? `${label} (${shortcut.replace('Control', 'Ctrl')})` : label}
     >
@@ -104,7 +103,7 @@ export function RichTextToolbar({
     <div
       ref={containerRef}
       onKeyDown={handleKeyDown}
-      className="sticky top-0 z-10 mt-4 inline-flex self-start max-w-full flex-wrap items-center gap-0.5 rounded-xl border border-brand-outline/50 p-1"
+      className="sticky top-0 z-10 mt-4 inline-flex self-start max-w-full flex-wrap items-center gap-1 rounded-2xl border border-brand-outline/50 p-1 shadow-sm"
       style={{ color: contentColor, backgroundColor }}
       role="toolbar"
       aria-label="Text formatting"
