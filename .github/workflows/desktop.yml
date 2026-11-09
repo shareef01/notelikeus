@@ -60,14 +60,14 @@ jobs:
         shell: bash
         run: echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
 
-      - name: Cache Gradle
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Caches Gradle User Home, wrapper distribution included, so a run does not depend on
+      # services.gradle.org being up: Windows runs had no cache and failed on 504s fetching the
+      # wrapper zip. `basic` is the open-source (MIT) provider over the GitHub Actions cache; the
+      # default `enhanced` one is a commercial component. Entries are written from main only.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
+          cache-provider: basic
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -105,14 +105,11 @@ jobs:
         shell: bash
         run: echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
 
-      - name: Cache Gradle
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # See the `build` job: cache Gradle User Home, including the wrapper distribution.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
+          cache-provider: basic
 
       - name: Run desktop tests (real DPAPI + Windows SQLCipher default)
         run: ./gradlew.bat :composeApp:desktopTest --stacktrace
@@ -147,14 +144,11 @@ jobs:
         shell: bash
         run: echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
 
-      - name: Cache Gradle
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # See the `build` job: cache Gradle User Home, including the wrapper distribution.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
+          cache-provider: basic
 
       - name: Build the packaged app image
         run: ./gradlew.bat :composeApp:createDistributable --stacktrace
@@ -263,6 +257,14 @@ jobs:
       - name: Point Gradle at the provisioned JDK 21
         shell: bash
         run: echo "GRADLE_OPTS=-Dorg.gradle.java.installations.paths=${JAVA_HOME_21_X64}" >> "$GITHUB_ENV"
+
+      # See the `build` job. Read-only: the release job restores the cache main's CI wrote and
+      # never writes an entry of its own.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-provider: basic
+          cache-read-only: true
 
       - name: Install WiX (jpackage needs it to build an MSI)
         shell: pwsh
