@@ -13,6 +13,9 @@ import com.aus.notelikeus.domain.repository.UnsyncedWork
 import com.aus.notelikeus.ui.main.CloudAccount
 import com.aus.notelikeus.ui.main.CloudSyncEvent
 import com.aus.notelikeus.ui.main.CloudSyncStatus
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.aus.notelikeus.data.sync.LocalCommitGate
@@ -32,6 +35,14 @@ class DesktopSyncManager(
     /** Timestamps the accepted request; injected so tests stay deterministic. */
     private val now: () -> Long = { System.currentTimeMillis() },
 ) : SyncManager {
+
+    /**
+     * Where sign-in, sign-out and sync do their work. The view models call this class from the UI
+     * thread, and nothing below it switches threads on its own: the engine resumes on its caller
+     * after each database or network call, and DesktopNoteSyncStateStore blocks on every write. Left
+     * on the caller, a sync of a few hundred notes is a few hundred disk writes on the UI thread.
+     */
+    private val workDispatcher: CoroutineDispatcher = Dispatchers.IO
 
     private val accountLifecycle = Mutex()
 
@@ -70,7 +81,10 @@ class DesktopSyncManager(
     override suspend fun requestEmailCode(email: String): Result<Unit> =
         sessionManager.requestEmailCode(email)
 
-    override suspend fun signInWithEmailCode(email: String, code: String): Result<Unit> {
+    override suspend fun signInWithEmailCode(email: String, code: String): Result<Unit> =
+        withContext(workDispatcher) { signInWithEmailCodeOnWorker(email, code) }
+
+    private suspend fun signInWithEmailCodeOnWorker(email: String, code: String): Result<Unit> {
         return accountLifecycle.withLock {
             sessionManager.signInWithEmailCode(email, code).onSuccess {
                 onSignedIn()
@@ -79,6 +93,12 @@ class DesktopSyncManager(
     }
 
     override suspend fun signInWithEmail(
+        email: String,
+        password: String,
+        create: Boolean
+    ): Result<Unit> = withContext(workDispatcher) { signInWithEmailOnWorker(email, password, create) }
+
+    private suspend fun signInWithEmailOnWorker(
         email: String,
         password: String,
         create: Boolean
@@ -92,7 +112,10 @@ class DesktopSyncManager(
         }
     }
 
-    override suspend fun signOut(deleteCloudData: Boolean): Result<Unit> {
+    override suspend fun signOut(deleteCloudData: Boolean): Result<Unit> =
+        withContext(workDispatcher) { signOutOnWorker(deleteCloudData) }
+
+    private suspend fun signOutOnWorker(deleteCloudData: Boolean): Result<Unit> {
         return accountLifecycle.withLock {
             if (deleteCloudData) {
                 // Persist the accepted request before any destructive work (F-8) — same ordering as Android,
@@ -120,11 +143,11 @@ class DesktopSyncManager(
     }
 
     override suspend fun unsyncedWorkBeforeSignOut(): UnsyncedWork =
-        syncEngine.unsyncedWorkAfterSyncAttempt()
+        withContext(workDispatcher) { syncEngine.unsyncedWorkAfterSyncAttempt() }
 
-    override suspend fun deleteAccount(): Result<Unit> {
+    override suspend fun deleteAccount(): Result<Unit> = withContext(workDispatcher) {
         val origin = captureAccount()
-        return runCatching<Unit> {
+        runCatching<Unit> {
             val owner = origin.initiatingUid ?: error("Sign in again to delete your account.")
             accountDeletion.deleteAccount(owner)
             accountLifecycle.withLock { endDeletedAccountSession(origin) }
@@ -146,12 +169,16 @@ class DesktopSyncManager(
         return true
     }
 
-    override suspend fun syncNotes() {
+    override suspend fun syncNotes() = withContext(workDispatcher) { syncNotesOnWorker() }
+
+    private suspend fun syncNotesOnWorker() {
         sessionManager.getCurrentAccount().userId?.let { isolator.isolateIfAccountChanged(it) }
         runSync { syncEngine.uploadAllNotes() }
     }
 
-    override suspend fun downloadNotes() {
+    override suspend fun downloadNotes() = withContext(workDispatcher) { downloadNotesOnWorker() }
+
+    private suspend fun downloadNotesOnWorker() {
         sessionManager.getCurrentAccount().userId?.let { isolator.isolateIfAccountChanged(it) }
         // Desktop downloads stay quiet, except to say a deleted note came back (AU-07) or that
         // words were kept from a note deleted elsewhere.
@@ -168,10 +195,10 @@ class DesktopSyncManager(
      * Lifts the cloud-wipe block and uploads, in that order: the block is what has been stopping
      * every upload, so it has to go first, and the upload is the whole point of asking.
      */
-    override suspend fun allowUploadAfterCloudWipe(): Result<Unit> {
+    override suspend fun allowUploadAfterCloudWipe(): Result<Unit> = withContext(workDispatcher) {
         val lifted = syncEngine.allowUploadAfterCloudWipe()
-        if (lifted.isSuccess) syncNotes()
-        return lifted
+        if (lifted.isSuccess) syncNotesOnWorker()
+        lifted
     }
 
     private suspend fun runSync(
