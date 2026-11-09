@@ -36,7 +36,7 @@ Android: push a `v*` tag; the APK and AAB are attached to the GitHub release, wh
 Delete a throwaway account on each client. It is also the first proof that the Worker's `SUPABASE_SERVICE_ROLE_KEY` is the current `sb_secret_` key: with a wrong key the deletion answers pending and the cron sweep cannot finish it.
 
 ### 1.5 Required checks
-Nine checks block a merge: `Web build`, `Web e2e`, `Android build`, `instrumented (30)`, `instrumented (36)`, `Desktop build`, `package`, `windows-crypto` and `Analyze (java-kotlin)`. `database-tests`, the Worker's `verify` and the deletion `e2e` still can fail without blocking one; add them in branch protection.
+Done on 2026-11-10. Twelve checks block a merge: `Web build`, `Web e2e`, `Android build`, `instrumented (30)`, `instrumented (36)`, `Desktop build`, `package`, `windows-crypto`, `Analyze (java-kotlin)`, `database-tests`, `Worker verify` and `Account deletion e2e`. The last three come from workflows that now start on every pull request and skip their work when nothing under their paths changed ([#451](https://github.com/shareef01/notelikeus/pull/451)).
 
 ### 1.6 `docs/DEPLOYMENT_RUNBOOK.md`
 Written before 2.1.0. Its header now says so, but its release steps (PR numbers, the version to tag) need rewriting before anyone follows them again.
@@ -68,7 +68,6 @@ Written before 2.1.0. Its header now says so, but its release steps (PR numbers,
 ## 4. Suggested order
 
 1. Deploy the Attachments Worker (§1.2), approve queued web deploys (§1.1) and delete a throwaway account (§1.4).
-2. Add the required checks (§1.5).
-3. Release Android and Windows when native changes are waiting (§1.3).
-4. Rewrite the release steps in `docs/DEPLOYMENT_RUNBOOK.md` (§1.6).
-5. Device verification (§3) as scheduled work.
+2. Release Android and Windows when native changes are waiting (§1.3).
+3. Rewrite the release steps in `docs/DEPLOYMENT_RUNBOOK.md` (§1.6).
+4. Device verification (§3) as scheduled work.
