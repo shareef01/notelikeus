@@ -16,6 +16,16 @@ import kotlinx.serialization.builtins.SetSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
+/**
+ * Every member is `@Synchronized`: the maps below are plain collections, and they are reached from
+ * more than one thread at once -- the sync manager's worker dispatcher, DesktopSyncCoordinator's
+ * own scope, and the UI thread (a note delete records its digest from there). Unguarded, a write
+ * that lands while another thread is encoding the same map throws ConcurrentModificationException
+ * or drops an entry.
+ *
+ * A write returns only once DataStore has it on disk, so callers must not be on the UI thread for
+ * anything that writes in a loop; DesktopSyncManager moves sync work off it for that reason.
+ */
 class DesktopNoteSyncStateStore(
     private val dataStore: DataStore<Preferences>
 ) : NoteSyncStateStore {
@@ -59,6 +69,7 @@ class DesktopNoteSyncStateStore(
         wipeUploadsBlockedValue = prefs?.get(KEY_WIPE_UPLOADS_BLOCKED) ?: false
     }
 
+    @Synchronized
     override fun markDeleted(noteId: Long, deletedAt: Long, baselineRevision: Long?) {
         var changed = false
         if (noteId !in deletedMap) {
@@ -81,6 +92,7 @@ class DesktopNoteSyncStateStore(
         }
     }
 
+    @Synchronized
     override fun mergeDeleted(entries: Map<Long, Long>) {
         var changed = false
         for ((id, deletedAt) in entries) {
@@ -93,12 +105,16 @@ class DesktopNoteSyncStateStore(
         if (changed) persistDeleted()
     }
 
+    @Synchronized
     override fun isDeleted(noteId: Long): Boolean = noteId in deletedMap
 
-    override fun deletedIds(): Set<Long> = deletedMap.keys
+    @Synchronized
+    override fun deletedIds(): Set<Long> = deletedMap.keys.toSet()
 
+    @Synchronized
     override fun deletedAtById(): Map<Long, Long> = deletedMap.toMap()
 
+    @Synchronized
     override fun pruneExpired(maxAgeMs: Long, now: Long): Set<Long> {
         val pruned = mutableSetOf<Long>()
         val iter = deletedMap.entries.iterator()
@@ -113,74 +129,93 @@ class DesktopNoteSyncStateStore(
         return pruned
     }
 
+    @Synchronized
     override fun clearDeleted(ids: Collection<Long>) {
         if (ids.isEmpty()) return
         if (deletedMap.keys.removeAll(ids.toSet())) persistDeleted()
     }
 
+    @Synchronized
     override fun markRestored(noteId: Long) {
         if (restoredSet.add(noteId)) persistRestored()
     }
 
+    @Synchronized
     override fun restoredIds(): Set<Long> = restoredSet.toSet()
 
+    @Synchronized
     override fun clearRestored(ids: Collection<Long>) {
         if (ids.isEmpty()) return
         if (restoredSet.removeAll(ids.toSet())) persistRestored()
     }
 
+    @Synchronized
     override fun markRecommitNeeded(noteId: Long) {
         if (recommitNeededSet.add(noteId)) persistRecommitNeeded()
     }
 
+    @Synchronized
     override fun recommitNeededIds(): Set<Long> = recommitNeededSet.toSet()
 
+    @Synchronized
     override fun clearRecommitNeeded(ids: Collection<Long>) {
         if (ids.isEmpty()) return
         if (recommitNeededSet.removeAll(ids.toSet())) persistRecommitNeeded()
     }
 
+    @Synchronized
     override fun markPendingAttachmentGc(noteId: Long, attachmentIds: Collection<String>) {
         pendingAttachmentGcMap.getOrPut(noteId) { mutableSetOf() }.addAll(attachmentIds)
         persistPendingGc()
     }
 
+    @Synchronized
     override fun pendingAttachmentGcIds(): Set<Long> = pendingAttachmentGcMap.keys.toSet()
 
+    @Synchronized
     override fun pendingAttachmentGcEntries(): Map<Long, Set<String>> =
         pendingAttachmentGcMap.mapValues { it.value.toSet() }
 
+    @Synchronized
     override fun clearPendingAttachmentGc(noteId: Long) {
         if (pendingAttachmentGcMap.remove(noteId) != null) persistPendingGc()
     }
 
+    @Synchronized
     override fun lastReconciledAt(): Long = reconciledAt
 
+    @Synchronized
     override fun markReconciled(at: Long) {
         reconciledAt = at
         runBlocking { dataStore.edit { it[KEY_LAST_RECONCILED] = at } }
     }
 
+    @Synchronized
     override fun knownCloudIds(): Set<Long> = knownCloudSet.toSet()
 
+    @Synchronized
     override fun setKnownCloudIds(ids: Set<Long>) {
         knownCloudSet.clear()
         knownCloudSet.addAll(ids)
         persistKnownCloud()
     }
 
+    @Synchronized
     override fun knownServerRevisionById(): Map<Long, Long> = knownServerRevisionsMap.toMap()
 
+    @Synchronized
     override fun updateKnownServerRevision(noteId: Long, revision: Long) {
         knownServerRevisionsMap[noteId] = revision
         persistKnownServerRevisions()
     }
 
+    @Synchronized
     override fun updateKnownServerRevisions(revisions: Map<Long, Long>) {
         knownServerRevisionsMap.putAll(revisions)
         persistKnownServerRevisions()
     }
 
+    @Synchronized
     override fun clearKnownServerRevisions(noteIds: Collection<Long>) {
         if (noteIds.isEmpty()) return
         var changed = false
@@ -190,14 +225,17 @@ class DesktopNoteSyncStateStore(
         if (changed) persistKnownServerRevisions()
     }
 
+    @Synchronized
     override fun syncedTimestampById(): Map<Long, Long> = syncedTimestampsMap.toMap()
 
+    @Synchronized
     override fun updateSyncedTimestamps(timestamps: Map<Long, Long>) {
         if (timestamps.isEmpty()) return
         syncedTimestampsMap.putAll(timestamps)
         persistSyncedTimestamps()
     }
 
+    @Synchronized
     override fun clearSyncedTimestamps(noteIds: Collection<Long>) {
         if (noteIds.isEmpty()) return
         var changed = false
@@ -213,13 +251,16 @@ class DesktopNoteSyncStateStore(
         runBlocking { dataStore.edit { it[KEY_SYNCED_TIMESTAMPS] = encoded } }
     }
 
+    @Synchronized
     override fun deletedDigestById(): Map<Long, String> = deletedDigestsMap.toMap()
 
+    @Synchronized
     override fun setDeletedDigest(noteId: Long, digest: String) {
         deletedDigestsMap[noteId] = digest
         persistDeletedDigests()
     }
 
+    @Synchronized
     override fun clearDeletedDigests(noteIds: Collection<Long>) {
         var changed = false
         for (id in noteIds) {
@@ -234,43 +275,54 @@ class DesktopNoteSyncStateStore(
         runBlocking { dataStore.edit { it[KEY_DELETED_DIGESTS] = encoded } }
     }
 
+    @Synchronized
     override fun baselineDeleteRevisionById(): Map<Long, Long> = baselineDeleteRevisionsMap.toMap()
 
+    @Synchronized
     override fun setBaselineDeleteRevision(noteId: Long, revision: Long) {
         baselineDeleteRevisionsMap[noteId] = revision
         persistBaselineDeleteRevisions()
     }
 
+    @Synchronized
     override fun clearBaselineDeleteRevision(noteId: Long) {
         if (baselineDeleteRevisionsMap.remove(noteId) != null) persistBaselineDeleteRevisions()
     }
 
+    @Synchronized
     override fun lastMergedUserId(): String? = mergedUserId
 
+    @Synchronized
     override fun setLastMergedUserId(userId: String) {
         mergedUserId = userId
         runBlocking { dataStore.edit { it[KEY_LAST_MERGED_USER_ID] = userId } }
     }
 
+    @Synchronized
     override fun wipeGeneration(): Long = wipeGenerationValue
 
+    @Synchronized
     override fun setWipeGeneration(generation: Long) {
         wipeGenerationValue = generation
         runBlocking { dataStore.edit { it[KEY_WIPE_GENERATION] = generation } }
     }
 
+    @Synchronized
     override fun uploadsBlockedAfterCloudWipe(): Boolean = wipeUploadsBlockedValue
 
+    @Synchronized
     override fun blockUploadsAfterCloudWipe() {
         wipeUploadsBlockedValue = true
         runBlocking { dataStore.edit { it[KEY_WIPE_UPLOADS_BLOCKED] = true } }
     }
 
+    @Synchronized
     override fun allowUploadsAfterCloudWipe() {
         wipeUploadsBlockedValue = false
         runBlocking { dataStore.edit { it[KEY_WIPE_UPLOADS_BLOCKED] = false } }
     }
 
+    @Synchronized
     override fun clear() {
         deletedMap.clear()
         restoredSet.clear()
