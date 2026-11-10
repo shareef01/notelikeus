@@ -39,7 +39,7 @@ Delete a throwaway account on each client. It is also the first proof that the W
 Done on 2026-11-10. Twelve checks block a merge: `Web build`, `Web e2e`, `Android build`, `instrumented (30)`, `instrumented (36)`, `Desktop build`, `package`, `windows-crypto`, `Analyze (java-kotlin)`, `database-tests`, `Worker verify` and `Account deletion e2e`. The last three come from workflows that now start on every pull request and skip their work when nothing under their paths changed ([#451](https://github.com/shareef01/notelikeus/pull/451)).
 
 ### 1.6 `docs/DEPLOYMENT_RUNBOOK.md`
-Written before 2.1.0. Its header now says so, but its release steps (PR numbers, the version to tag) need rewriting before anyone follows them again.
+Done on 2026-11-10: rewritten from the current workflows as a description of the process, no longer the plan for one release.
 
 ---
 
@@ -69,5 +69,4 @@ Written before 2.1.0. Its header now says so, but its release steps (PR numbers,
 
 1. Deploy the Attachments Worker (§1.2), approve queued web deploys (§1.1) and delete a throwaway account (§1.4).
 2. Release Android and Windows when native changes are waiting (§1.3).
-3. Rewrite the release steps in `docs/DEPLOYMENT_RUNBOOK.md` (§1.6).
-4. Device verification (§3) as scheduled work.
+3. Device verification (§3) as scheduled work.
