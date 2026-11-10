@@ -63,3 +63,10 @@ updates:
       # desktop stack across versions, which nothing in CI caught (docs/DECISIONS.md D16, D18, D27,
       # D28). `:composeApp:verifyComposeLine` now fails the desktop test job when that happens, so
       # a bump that cannot land alone shows up red here and is not re-decided from a green check.
+
+      # The one exception. JetBrains Material3 has its own version numbers, but each release is built
+      # for one Compose Multiplatform release: 1.13.0-beta02 needs Compose 1.13. `composeMaterial3`
+      # in libs.versions.toml is set by hand to the version the plugin's release notes pair with it,
+      # so a bump proposed on its own is always wrong, and because Gradle updates are grouped it
+      # turns the whole group red (#462). Move it together with `compose-multiplatform`.
+      - dependency-name: "org.jetbrains.compose.material3:*"
