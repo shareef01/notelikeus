@@ -11,7 +11,7 @@ androidxTestExtJunit = "1.3.0"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
 kotlin = "2.4.21"
-serialization = "1.11.0"
+serialization = "1.12.0"
 room = "2.8.5"
 ksp = "2.3.13"
 turbine = "1.2.1"
@@ -49,7 +49,7 @@ windowSize = "1.3.1"
 compose-multiplatform = "1.12.2"
 # Material3 has its own version train since CMP 1.9. This is the one the CMP release notes pair with
 # the plugin above, and what `compose.material3` resolves to; window-size-class ships on it too.
-composeMaterial3 = "1.12.0-alpha03"
+composeMaterial3 = "1.13.0-beta02"
 # The four versions below must not ask for a Compose NEWER than compose-multiplatform above. A
 # library that does wins conflict resolution for the modules it names and no others, so the desktop
 # stack splits across versions: it compiles and unit-tests green, and the packaged app dies at
