@@ -1,4 +1,4 @@
-﻿import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { clearLocalUserData } from '@/lib/bootstrap';
 import type { AuthUser } from '@/lib/auth/authUser';
 import { authUserFromSupabase } from '@/lib/auth/authUser';

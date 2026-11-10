@@ -1,4 +1,4 @@
-﻿export interface WorkerEnv {
+export interface WorkerEnv {
   ATTACHMENTS_BUCKET: R2Bucket;
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;

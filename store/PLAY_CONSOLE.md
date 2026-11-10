@@ -1,5 +1,9 @@
 # Play Console — quick reference
 
+> **Not in use.** Notelikeus is not published on Google Play: Android ships only as the APK and AAB
+> attached to each GitHub release by `android.yml`. This file is a draft kept in case that changes, and
+> nothing in it is pending work.
+
 Copy these values into Google Play Console when creating the listing.
 
 | Field | Value |

@@ -1,4 +1,4 @@
-﻿import {
+import {
   looksSealedNote,
   noteAad,
   openNoteBytes,

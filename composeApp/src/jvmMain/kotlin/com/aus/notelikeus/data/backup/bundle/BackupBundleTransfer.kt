@@ -1,4 +1,4 @@
-﻿package com.aus.notelikeus.data.backup.bundle
+package com.aus.notelikeus.data.backup.bundle
 
 import com.aus.notelikeus.data.attachments.AttachmentLocalStorage
 import com.aus.notelikeus.data.attachments.AttachmentStagingStore

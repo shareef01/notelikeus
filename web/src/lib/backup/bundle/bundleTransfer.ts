@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Turning notes into a `.nlkbak` bundle and back, on the web client.
  *
  * The two invariants this file exists to hold:

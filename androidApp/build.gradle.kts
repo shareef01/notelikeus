@@ -174,8 +174,8 @@ ksp {
     arg("appfunctions:aggregateAppFunctions", "true")
 }
 
-// The App Bundle is what users install from the store: it must carry the hosted backend, or the
-// release ships with sign-in and sync switched off (composeApp's verifyReleaseBackendConfig).
+// The App Bundle is attached to the GitHub release next to the APK (the app is not on Google Play):
+// it must carry the hosted backend, or the release ships with sign-in and sync switched off (composeApp's verifyReleaseBackendConfig).
 tasks.matching { it.name == "bundleRelease" }.configureEach {
     dependsOn(":composeApp:verifyReleaseBackendConfig")
 }

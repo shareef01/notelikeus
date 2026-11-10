@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { clearLocalUserDataForAccountSwitch } from '@/lib/bootstrap';
 import { hydrateIndexedDbFromRemote, loadLocalNotesIntoStore } from '@/lib/local/hydrateFromRemote';
 import { adoptGuestNotesIntoAccount } from '@/lib/local/adoptGuestNotes';

@@ -1,5 +1,9 @@
 # Play Store publishing checklist
 
+> **Not in use.** Notelikeus is not published on Google Play: Android ships only as the APK and AAB
+> attached to each GitHub release by `android.yml`. This file is a draft kept in case that changes, and
+> nothing in it is pending work.
+
 Use this list before submitting Notelikeus to Google Play.
 
 ## Build
