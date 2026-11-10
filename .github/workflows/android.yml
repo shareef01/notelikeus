@@ -41,13 +41,13 @@ jobs:
       # The daemon JVM is pinned to 21 by gradle/gradle-daemon-jvm.properties; without a local 21
       # Gradle downloads one from Foojay, and an outage there fails every Gradle call in the job.
       - name: Set up JDK 21 for the Gradle daemon
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: 21
 
       - name: Set up JDK 17 for the build
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: 17
@@ -276,13 +276,13 @@ jobs:
       # The daemon JVM is pinned to 21 by gradle/gradle-daemon-jvm.properties; without a local 21
       # Gradle downloads one from Foojay, and an outage there fails every Gradle call in the job.
       - name: Set up JDK 21 for the Gradle daemon
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: 21
 
       - name: Set up JDK 17 for the build
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: 17
@@ -396,13 +396,13 @@ jobs:
       # Same two-JDK arrangement as `build`: the daemon is pinned to 21 by
       # gradle/gradle-daemon-jvm.properties, the build runs on 17.
       - name: Set up JDK 21 for the Gradle daemon
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: 21
 
       - name: Set up JDK 17 for the build
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: 17
