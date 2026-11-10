@@ -165,8 +165,15 @@ dependencies {
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    // `compileDebugKotlin` -> `debug`, `compileDebugUnitTestKotlin` -> `debugUnitTest`.
+    val variant = name.removePrefix("compile").removeSuffix("Kotlin").replaceFirstChar { it.lowercase() }
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        // Pinned to the name Kotlin 2.1 gave this module. Under Kotlin 2.4 the default reaching KSP
+        // has a colon in it, and the appfunctions processor puts the module name into a generated
+        // file name (`$Notelikeus:androidappDebug_FunctionComponentRegistry.kt`). Windows refuses
+        // that path, so kspDebugKotlin failed there with "Illegal char <:>".
+        moduleName.set("androidApp_$variant")
     }
 }
 
