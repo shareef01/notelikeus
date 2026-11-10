@@ -28,11 +28,16 @@ class DrawerCollapseChevronTest {
      * its open side holds both arms, so the open side's column spans more rows.
      */
     private fun BufferedImage.direction(): Char {
-        // The icon's own corner is its backdrop; anything clearly off it is the glyph.
-        val background = Color(getRGB(0, 0)).luminance()
+        // The icon's own corner is its backdrop; anything clearly off it is the glyph. "Off it" is
+        // judged on opacity as well as brightness: on Compose Multiplatform 1.12 the capture carries
+        // alpha, and the glyph and its backdrop come back as the same colour at different opacity
+        // (0xDC1E1C20 on 0x0F222222), which a brightness-only comparison reads as an empty image.
+        val background = Color(getRGB(0, 0))
         val ink = (0 until width).map { x ->
             (0 until height).filter { y ->
-                kotlin.math.abs(Color(getRGB(x, y)).luminance() - background) > 0.005f
+                val pixel = Color(getRGB(x, y))
+                kotlin.math.abs(pixel.luminance() - background.luminance()) > 0.005f ||
+                    kotlin.math.abs(pixel.alpha - background.alpha) > 0.1f
             }
         }
         val columns = ink.indices.filter { ink[it].isNotEmpty() }

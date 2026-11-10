@@ -46,23 +46,22 @@ jna = "5.19.1"
 appcompat = "1.8.0"
 fragment = "1.9.1"
 windowSize = "1.3.1"
-compose-multiplatform = "1.8.2"
-# The four versions below must stay on the same Compose Multiplatform line (currently 1.8.x).
-# Anything that resolves org.jetbrains.compose.* ABOVE compose-multiplatform wins conflict
-# resolution and upgrades every Compose library, while compose.desktop.currentOs stays pinned to
-# the CMP plugin's version — the mismatched skiko native binary then kills the desktop app at
-# startup with UnsatisfiedLinkError(RenderNodeContext_nMake). koin-compose 4.2.x pulls Compose
-# 1.10 and does exactly that, so bump these together or not at all.
-# JetBrains adaptive tracks androidx-adaptive versions separately; 1.1.x is the CMP 1.8 line.
-composeAdaptive = "1.1.2"
-composeNavigation = "2.9.2"
-koin = "4.1.1"
-# Koin requests 2.9.1 and this upgrades it; it is not a pin, and it is not what holds the version
-# down. 2.11.0 is what breaks: it depends on compose-runtime 1.11 directly, which wins conflict
-# resolution and leaves runtime at 1.11 while compose-ui and skiko stay on the CMP plugin's 1.8.2.
-# The packaged app then dies composing App() with "CompositionLocal LocalHostDefaultProvider not
-# present". Measured in D18; #70 is blocked on this, not on Koin.
-composeLifecycle = "2.9.6"
+compose-multiplatform = "1.12.2"
+# Material3 has its own version train since CMP 1.9. This is the one the CMP release notes pair with
+# the plugin above, and what `compose.material3` resolves to; window-size-class ships on it too.
+composeMaterial3 = "1.12.0-alpha03"
+# The four versions below must not ask for a Compose NEWER than compose-multiplatform above. A
+# library that does wins conflict resolution for the modules it names and no others, so the desktop
+# stack splits across versions: it compiles and unit-tests green, and the packaged app dies at
+# startup (D16, D18, D27, D28). `:composeApp:verifyComposeLine` fails the build when that happens,
+# and runs with desktopTest. These are the versions the CMP 1.12.2 release notes pair with it; when
+# one of them needs a newer Compose, move compose-multiplatform first.
+composeAdaptive = "1.3.0"
+composeNavigation = "2.10.0"
+koin = "4.2.2"
+# 2.11.0 needs compose-runtime 1.9.3 or newer. On CMP 1.8.2 that split the stack and the packaged
+# app died composing App() (D18); on 1.12.2 the plugin's runtime is the newer one, so it is safe.
+composeLifecycle = "2.11.0"
 work = "2.12.0"
 
 [libraries]
@@ -97,7 +96,7 @@ compose-navigation = { group = "org.jetbrains.androidx.navigation", name = "navi
 # dependency bump elsewhere could silently remove it.
 compose-lifecycle-runtime = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "composeLifecycle" }
 compose-lifecycle-viewmodel = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "composeLifecycle" }
-compose-material3-windowSizeClass = { group = "org.jetbrains.compose.material3", name = "material3-window-size-class", version.ref = "compose-multiplatform" }
+compose-material3-windowSizeClass = { group = "org.jetbrains.compose.material3", name = "material3-window-size-class", version.ref = "composeMaterial3" }
 compose-adaptive = { group = "org.jetbrains.compose.material3.adaptive", name = "adaptive", version.ref = "composeAdaptive" }
 compose-adaptive-layout = { group = "org.jetbrains.compose.material3.adaptive", name = "adaptive-layout", version.ref = "composeAdaptive" }
 compose-adaptive-navigation = { group = "org.jetbrains.compose.material3.adaptive", name = "adaptive-navigation", version.ref = "composeAdaptive" }

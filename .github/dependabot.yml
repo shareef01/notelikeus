@@ -1,7 +1,6 @@
 version: 2
 # Low-maintenance Dependabot configuration: monthly grouped routine version updates with a small PR limit.
 # Security updates remain enabled separately via GitHub security settings.
-# All Compose Multiplatform compatibility ignores are strictly preserved below.
 updates:
   - package-ecosystem: "npm"
     directory: "/"
@@ -59,74 +58,8 @@ updates:
       - dependency-name: "com.android.library"
       - dependency-name: "com.android.kotlin.multiplatform.library"
 
-      # Compose Multiplatform core and material3 pin holds (currently locked to CMP 1.8.x).
-      # Upgrading CMP requires synchronized coordinate updates across skiko, runtime, compiler, and UI.
-      - dependency-name: "org.jetbrains.compose:*"
-        versions: [">= 1.9.0-alpha01"]
-      - dependency-name: "org.jetbrains.compose.material3:*"
-        versions: [">= 1.9.0-alpha01"]
-
-      # See docs/DECISIONS.md, D18. lifecycle 2.10+ depends on compose-runtime 1.11 directly, and a
-      # direct dependency wins conflict resolution -- so the runtime jumps while compose-ui and
-      # skiko stay on the CMP plugin's 1.8.2. The packaged desktop app then dies composing App()
-      # with "CompositionLocal LocalHostDefaultProvider not present". Re-checked on 2026-08-27:
-      # it now also drags androidx.compose.runtime onto the desktop classpath, which is the
-      # separate hazard libs.versions.toml warns about.
-      #
-      # This is NOT "the bump is unwanted" -- it is that it cannot land alone. Nothing in CI can
-      # catch the failure: it compiles, lints, unit-tests and packages green, and dies only when
-      # the packaged app composes its first frame. Dependabot re-proposing it weekly means
-      # re-deciding it weekly from a green checkmark, which is how it eventually gets merged.
-      #
-      # REMOVE THIS ENTRY when Compose Multiplatform moves off 1.8.x -- the two have to move
-      # together. The check is: resolve desktopRuntimeClasspath and confirm compose runtime, ui
-      # and skiko all agree before packaging.
-      #
-      # Patches on the 2.9.x line still come through; only 2.10+ is held (including prereleases).
-      - dependency-name: "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose"
-        versions: [">= 2.10.0-alpha01"]
-      - dependency-name: "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose"
-        versions: [">= 2.10.0-alpha01"]
-
-      # Same hazard, different package. Koin 4.2.2 depends on Compose UI 1.10.2 directly, and a
-      # direct dependency wins conflict resolution, so `org.jetbrains.compose.ui:ui` resolves
-      # 1.8.2 -> 1.10.2 while the Compose compiler plugin stays on the CMP 1.8.x it targets. The
-      # desktop UI tests then die with
-      #   NoSuchFieldError: PlatformContext does not have member field 'Companion'
-      # Verified on 2026-09-16 by bumping it and running :composeApp:desktopTest.
-      #
-      # Unlike the lifecycle entry above, this one IS caught by CI — NoteReorderSemanticsTest and
-      # ReminderDialogTest fail — so it cannot land silently. Held anyway to stop it being
-      # re-proposed and re-diagnosed every week.
-      #
-      # REMOVE THIS ENTRY with the lifecycle one, when Compose Multiplatform moves off 1.8.x.
-      - dependency-name: "io.insert-koin:*"
-        versions: [">= 4.2.0-alpha01"]
-
-      # See docs/DECISIONS.md, D27. composeAdaptive >= 1.2 raises Compose UI, foundation and animation
-      # on the desktop classpath from 1.8.2 to 1.9.0 while material3, material and ripple stay on the
-      # 1.8.2 the CMP plugin targets -- the mixed-stack hazard of D18, which compiles and unit-tests
-      # green and dies only when the packaged app composes its first frame. Verified on 2026-10-10 by
-      # resolving desktopRuntimeClasspath with adaptive 1.2.0 and with 1.1.2 side by side. 1.3.0 is
-      # worse and is caught: 59 of 742 desktop tests die with
-      #   NoSuchFieldError: PlatformContext does not have member field 'Companion'
-      # -- the same signature as the Koin 4.2 entry above.
-      #
-      # REMOVE THIS ENTRY with the lifecycle and Koin ones, when Compose Multiplatform moves off 1.8.x.
-      - dependency-name: "org.jetbrains.compose.material3.adaptive:*"
-        versions: [">= 1.2.0-alpha01"]
-
-      # See docs/DECISIONS.md, D28. navigation-compose 2.10 depends on the lifecycle 2.10+ line held
-      # above, and through it moves the whole desktop Compose stack. Resolving desktopRuntimeClasspath
-      # on 2026-10-10 with 2.10.0-rc01 against 2.9.0-beta03:
-      #   lifecycle  2.9.6   -> 2.11.0
-      #   compose ui / foundation / animation / runtime  1.8.2 -> 1.11.0
-      #   skiko      0.9.4.2 -> 0.144.6
-      # libs.versions.toml records what a skiko that does not match the CMP plugin does: the packaged
-      # desktop app dies at startup with UnsatisfiedLinkError(RenderNodeContext_nMake). Patches on the
-      # 2.9.x line still come through; only 2.10+ is held.
-      #
-      # REMOVE THIS ENTRY with the lifecycle, Koin and adaptive ones, when Compose Multiplatform moves
-      # off 1.8.x.
-      - dependency-name: "org.jetbrains.androidx.navigation:*"
-        versions: [">= 2.10.0-alpha01"]
+      # No holds on Compose Multiplatform, lifecycle, navigation, adaptive or Koin any more. They
+      # were here because a library asking for a newer Compose than the plugin ships splits the
+      # desktop stack across versions, which nothing in CI caught (docs/DECISIONS.md D16, D18, D27,
+      # D28). `:composeApp:verifyComposeLine` now fails the desktop test job when that happens, so
+      # a bump that cannot land alone shows up red here and is not re-decided from a green check.

@@ -456,3 +456,66 @@ dependencies {
     add("kspAndroid", libs.room.compiler)
     add("kspDesktop", libs.room.compiler)
 }
+
+/**
+ * Fails the build when the desktop Compose libraries are not all on the Compose Multiplatform
+ * plugin's version.
+ *
+ * A library that asks for a newer Compose than the plugin ships wins Gradle's conflict resolution
+ * for the modules it names and no others, so the stack splits across versions. That compiles, lints
+ * and unit-tests green, and the packaged app dies at startup or on first composition (DECISIONS
+ * D16, D18, D27, D28: `LocalHostDefaultProvider not present`, `PlatformContext ... 'Companion'`,
+ * `UnsatisfiedLinkError(RenderNodeContext_nMake)`). This is the check those entries ran by hand.
+ *
+ * Material3, adaptive, components and the icons ship on their own version trains and are not
+ * compared. When this fails, the fix is to move `compose-multiplatform` up to the version the
+ * offending library needs, or to hold that library back; never to exclude a module here.
+ */
+val verifyComposeLine by tasks.registering {
+    group = "verification"
+    description = "Checks that the desktop Compose core libraries all resolve to the plugin's version."
+    val expected = libs.versions.compose.multiplatform.get()
+    val coreGroups = setOf(
+        "org.jetbrains.compose.runtime",
+        "org.jetbrains.compose.ui",
+        "org.jetbrains.compose.foundation",
+        "org.jetbrains.compose.animation",
+        "org.jetbrains.compose.desktop",
+    )
+    val root = configurations.named("desktopRuntimeClasspath")
+        .flatMap { it.incoming.resolutionResult.rootComponent }
+    inputs.property("expected", expected)
+    doLast {
+        val seen = mutableSetOf<org.gradle.api.artifacts.result.ResolvedComponentResult>()
+        val queue = ArrayDeque(listOf(root.get()))
+        while (queue.isNotEmpty()) {
+            val component = queue.removeFirst()
+            if (!seen.add(component)) continue
+            component.dependencies
+                .filterIsInstance<org.gradle.api.artifacts.result.ResolvedDependencyResult>()
+                .forEach { queue.add(it.selected) }
+        }
+        val versions = seen.mapNotNull { it.moduleVersion }
+        val offCore = versions
+            .filter { it.group in coreGroups && it.version != expected }
+            .map { "${it.group}:${it.name}:${it.version}" }
+            .sorted()
+        val skiko = versions.filter { it.group == "org.jetbrains.skiko" }.map { it.version }.toSet()
+        val problems = buildList {
+            if (offCore.isNotEmpty()) {
+                add("not on Compose Multiplatform $expected:\n  " + offCore.joinToString("\n  "))
+            }
+            if (skiko.size > 1) add("more than one skiko version: $skiko")
+        }
+        if (problems.isNotEmpty()) {
+            throw GradleException(
+                "The desktop Compose stack is split across versions, which breaks the packaged app " +
+                    "at startup.\n" + problems.joinToString("\n") +
+                    "\nSee verifyComposeLine in composeApp/build.gradle.kts.",
+            )
+        }
+    }
+}
+
+// On the desktop test task so CI and a local `desktopTest` both run it.
+tasks.matching { it.name == "desktopTest" }.configureEach { dependsOn(verifyComposeLine) }

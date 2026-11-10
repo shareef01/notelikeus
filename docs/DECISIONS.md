@@ -1172,3 +1172,45 @@ keys work side by side until step 6. Times are German local time; summer time en
 **Cost to reverse:** low until step 6: set the secret back to the anon JWT and redeploy; the code
 accepts both. After step 6, re-enabling legacy keys in the dashboard restores old installs at once,
 at the price of the `service_role` exposure coming back.
+
+---
+
+## D32 — Compose Multiplatform moves to 1.12.2 in one jump, and the version check becomes a build task.
+
+**Decided:** `compose-multiplatform` goes from 1.8.2 to 1.12.2 together with the libraries its
+release notes pair with it: Material3 `1.12.0-alpha03`, adaptive 1.3.0, lifecycle 2.11.0, navigation
+2.10.0. Koin goes to 4.2.2. Kotlin moved to 2.4.21 first, on its own. The Dependabot holds from D16,
+D18, D27 and D28 are removed, and `:composeApp:verifyComposeLine` replaces them.
+
+**Why one jump.** Every hold recorded the same failure: a library asking for a newer Compose than
+the plugin ships wins conflict resolution for the modules it names, and the desktop stack splits.
+The held libraries ask for Compose 1.9.3 (lifecycle 2.11.0), 1.10.0 (adaptive 1.3.0), 1.10.2
+(Koin 4.2.2) and 1.11.0 (navigation 2.10.0). A plugin at 1.12.2 is newer than all of them, so the
+plugin's version wins everywhere. Stopping at 1.9 or 1.10 on the way would have recreated the split
+at each step.
+
+Resolved `desktopRuntimeClasspath` after the move: runtime, ui, foundation, animation and desktop
+all at 1.12.2, skiko at 0.150.2 only, and no `ui-text-jvmstubs`.
+
+**Material3 is an alpha.** JetBrains versions Material3 separately since 1.9, and its only stable
+release is 1.9.0, built against Compose 1.9.1. The version paired with 1.12.2 is
+`1.12.0-alpha03`, and it is what `compose.material3` resolves to. Taken because matching versions is
+the point of the move, and D16's worry was exactly a Material3 built against an older core. The
+cost is an alpha-labelled library in a release build.
+
+**The check is a task now.** D18 ends on "the only test that would have caught it was running the
+artifact", and its check — resolve the classpath and compare — was run by hand each time.
+`verifyComposeLine` does it on every `desktopTest`: it fails if any runtime, ui, foundation,
+animation or desktop module is not on the plugin's version, or if two skiko versions resolve. It was
+tried against a deliberately split stack (plugin put back to 1.8.2 with the new libraries) and
+failed, listing the modules.
+
+**What was verified, and what was not.** No production source changed. Locally on Windows: 1003
+desktop tests, 776 shared Android unit tests and 27 app unit tests pass, both Android builds and
+the desktop app image build, and detekt passes. One test needed a change: `DrawerCollapseChevronTest`
+reads the chevron from a captured image by brightness, and the capture now carries alpha — glyph and
+backdrop are the same colour at different opacity — so it found no glyph. It compares opacity too
+now. Not done here: launching the packaged app (CI's `package` job does) and a hand pass over the
+Material3 surfaces on a device and on Windows.
+
+**Cost to reverse:** one catalog change back, plus restoring the holds from this file's history.
