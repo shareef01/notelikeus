@@ -1,6 +1,0 @@
-Notelikeus 1.0.3
-
-• Fixed the bold and italic toolbar actions in the editor
-• Keyboard focus and screen-reader fixes across dialogs and sheets
-• Corrected contrast on light theme error states
-• Sort control now reflects relevance ranking during search
