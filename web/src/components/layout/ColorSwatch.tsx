@@ -28,7 +28,7 @@ export function ColorSwatch({ argb, selected, onClick, label }: ColorSwatchProps
     <button
       type="button"
       onClick={onClick}
-      aria-label={label ?? (isDefault ? 'No color' : 'Note color')}
+      aria-label={label ?? (isDefault ? NOTE_COLOR_NAMES[0] : 'Note color')}
       aria-pressed={selected}
       className={`${SWATCH_BASE} ${CHROME_FOCUS} ${selected ? SWATCH_SELECTED : SWATCH_IDLE}`}
       style={{ backgroundColor: isDefault ? 'rgb(var(--surface-variant-rgb))' : argbToCss(argb) }}

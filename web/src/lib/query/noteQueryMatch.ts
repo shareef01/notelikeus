@@ -5,8 +5,8 @@ import type { NoteFlag, NoteScope, ParsedQuery } from '@/lib/query/noteQueryPars
 /**
  * Keywords for `color:`, in `NOTE_COLOR_OPTIONS` order: Kotlin `NOTE_COLOR_KEYWORDS`.
  *
- * Not the display names (Coral, Amber): these are what someone types, and they are the same words
- * on every platform so a query written on Android works here.
+ * Not the display names (`NOTE_COLOR_NAMES`): these are what someone types, and they are the same
+ * words on every platform so a query written on Android works here.
  */
 export const NOTE_COLOR_KEYWORDS = [
   'none', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink',

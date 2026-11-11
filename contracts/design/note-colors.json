@@ -1,0 +1,15 @@
+{
+  "description": "The note colour palette, in picker order. index is the position in NOTE_COLOR_OPTIONS on both clients; keyword is what the color: search operator accepts; name is the spoken / displayed name (English, the native strings.xml value); light and dark are the stored ARGB for each theme, as unsigned 0xAARRGGBB. Index 0 is no colour: ARGB 0, rendered as the theme's surface. A note whose stored colour is missing (cloud row or backup without a color field) is read as noColor.",
+  "noColor": "0x00000000",
+  "colors": [
+    { "index": 0, "keyword": "none", "name": "No Color", "light": "0x00000000", "dark": "0x00000000" },
+    { "index": 1, "keyword": "red", "name": "Red", "light": "0xFFFFCDD2", "dark": "0xFF6D2B2B" },
+    { "index": 2, "keyword": "orange", "name": "Orange", "light": "0xFFFFE0B2", "dark": "0xFF6B4520" },
+    { "index": 3, "keyword": "yellow", "name": "Yellow", "light": "0xFFFFF59D", "dark": "0xFF6B5C18" },
+    { "index": 4, "keyword": "green", "name": "Green", "light": "0xFFC8E6C9", "dark": "0xFF2E5A32" },
+    { "index": 5, "keyword": "teal", "name": "Teal", "light": "0xFFB2DFDB", "dark": "0xFF1E5650" },
+    { "index": 6, "keyword": "blue", "name": "Blue", "light": "0xFFBBDEFB", "dark": "0xFF2A4A6E" },
+    { "index": 7, "keyword": "purple", "name": "Purple", "light": "0xFFE1BEE7", "dark": "0xFF4A2D62" },
+    { "index": 8, "keyword": "pink", "name": "Pink", "light": "0xFFF8BBD0", "dark": "0xFF6B2D48" }
+  ]
+}
