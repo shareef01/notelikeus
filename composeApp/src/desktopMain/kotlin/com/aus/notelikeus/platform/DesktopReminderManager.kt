@@ -2,6 +2,7 @@ package com.aus.notelikeus.platform
 
 import com.aus.notelikeus.data.local.dao.NoteDao
 import com.aus.notelikeus.data.mapper.toNote
+import com.aus.notelikeus.domain.platform.ReminderDelivery
 import com.aus.notelikeus.domain.platform.ReminderManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,10 +15,11 @@ import java.util.TimerTask
  * Desktop reminders, backed by a single [Timer].
  *
  * A Timer only lives as long as the process, so the scheduled set has to be rebuilt from the
- * database on every launch — see [restoreScheduledReminders]. Reminders still cannot fire while the
- * app is closed (there is no OS-level scheduler behind this the way Android has AlarmManager); the
- * catch-up pass is what keeps a missed reminder from silently sitting in the DB as "active"
- * forever.
+ * database on every launch — see [restoreScheduledReminders]. Reminders still cannot fire once the
+ * app has exited (there is no OS-level scheduler behind this the way Android has AlarmManager).
+ * That is why closing the main window keeps the app in the tray while [hasScheduledReminders] is
+ * true, and why [reminderDelivery] tells the editor to say so. The catch-up pass is what keeps a
+ * reminder missed after an explicit Exit from silently sitting in the DB as "active" forever.
  */
 class DesktopReminderManager(
     private val noteDao: NoteDao
@@ -56,6 +58,16 @@ class DesktopReminderManager(
     override fun cancelReminder(noteId: Long) {
         synchronized(lock) { scheduledTasks.remove(noteId) }?.cancel()
     }
+
+    override fun reminderDelivery(): ReminderDelivery = ReminderDelivery.WhileRunning
+
+    /**
+     * Whether a reminder is still waiting to fire in this process.
+     *
+     * The window's close button reads this: while it is true, closing the window leaves the app
+     * running in the tray instead of exiting, because exiting would silently drop the reminder.
+     */
+    fun hasScheduledReminders(): Boolean = synchronized(lock) { scheduledTasks.isNotEmpty() }
 
     /**
      * Rebuilds the timer schedule from stored notes, and fires a catch-up notification for any

@@ -6,7 +6,6 @@ import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
-import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.WindowPlacement
@@ -40,6 +39,8 @@ import com.aus.notelikeus.util.DesktopPathProvider
 import kotlin.system.exitProcess
 import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.SidebarCollapsedStore
+import com.aus.notelikeus.util.SingleInstance
+import java.io.File
 import com.aus.notelikeus.util.WindowMetrics
 import com.aus.notelikeus.util.WindowMetricsStore
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +57,11 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 fun main() {
+    // Before anything opens the database: a copy already running (perhaps hidden in the tray,
+    // keeping reminders alive) is asked to show its window, and this launch ends there.
+    val instance = SingleInstance.acquire(File(DesktopPathProvider.getDataDirectory(), "instance"))
+        ?: exitProcess(0)
+    heldInstance = instance
     // Not inside application { }: that block is composable and re-runs whenever the state
     // remembered in it changes (Ctrl+N, the tray item, the About dialog), and startKoin throws
     // KoinApplicationAlreadyStartedException the second time.
@@ -72,6 +78,12 @@ fun main() {
         runBlocking { sidebarStore.collapsed.first() }
     )
 }
+
+/**
+ * Kept reachable for the life of the process: a lock whose channel is garbage-collected is
+ * released, and a second copy could then start beside this one.
+ */
+private var heldInstance: SingleInstance? = null
 
 /**
  * Explains an unreadable notes-database key and exits, instead of letting the database singleton
@@ -191,19 +203,12 @@ private fun launchApp(
         )
     }
 
-    Tray(
-        state = trayState,
-        icon = appIcon,
-        tooltip = "Notelikeus",
-        menu = {
-            Item("New Note", onClick = {
-                pendingCreateNote = true
-                navigationRequest++
-                windowState.isMinimized = false
-            })
-            Item("Exit", onClick = ::exitApplication)
-        }
-    )
+    // NL-01: closing keeps the app in the tray while a reminder is waiting. See MainWindowTray.kt.
+    val mainWindow = rememberMainWindowController(reminderManager::hasScheduledReminders, trayState, windowState)
+    NotelikeusTray(mainWindow, trayState, appIcon, heldInstance) {
+        pendingCreateNote = true
+        navigationRequest++
+    }
 
     val newNote: () -> Unit = {
         pendingCreateNote = true
@@ -219,7 +224,8 @@ private fun launchApp(
     }
 
     Window(
-        onCloseRequest = ::exitApplication,
+        onCloseRequest = mainWindow::close,
+        visible = mainWindow.isVisible,
         state = windowState,
         title = "Notelikeus",
         icon = appIcon,
@@ -362,6 +368,7 @@ private fun launchApp(
             pendingFocusSearch = pendingFocusSearch,
             pendingOpenSettings = pendingOpenSettings,
             navigationRequest = navigationRequest,
+            isWindowVisible = mainWindow.isVisible,
             titleBar = {
                 NotelikeusTitleBar(
                     title = "Notelikeus",
@@ -370,7 +377,7 @@ private fun launchApp(
                     onToggleMaximize = {
                         windowState.placement = windowState.placement.toggledMaximize()
                     },
-                    onClose = ::exitApplication,
+                    onClose = mainWindow::close,
                     onNewNote = newNote,
                     onSearch = onSearch,
                     onSettings = onSettings,
@@ -378,6 +385,13 @@ private fun launchApp(
                 )
             }
         )
+
+        LaunchedEffect(mainWindow.bringToFrontRequest) {
+            if (mainWindow.bringToFrontRequest > 0) {
+                window.toFront()
+                window.requestFocus()
+            }
+        }
 
         LaunchedEffect(navigationRequest) {
             if (navigationRequest > 0) {
