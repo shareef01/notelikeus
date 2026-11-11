@@ -12,7 +12,9 @@ import { CloudWipeNotice } from '@/components/notes/CloudWipeNotice';
 import { NoteStaggeredGrid } from '@/components/notes/NoteStaggeredGrid';
 import { NotesEmptyState } from '@/components/notes/NotesEmptyState';
 import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
-import { SearchNotice } from '@/components/notes/SearchNotice';
+import { IgnoredOperatorsNotice, SearchNotice } from '@/components/notes/SearchNotice';
+import { SMART_VIEWS, activeSmartView, smartViewCounts, type SmartViewId } from '@/lib/query/smartViews';
+import { useNotesStore } from '@/store/notesStore';
 import { TrashBanner } from '@/components/notes/TrashBanner';
 
 
@@ -142,6 +144,10 @@ export function MainScreen() {
 
     isFuzzyResult,
 
+    searchText,
+
+    unknownOperators,
+
     labels,
 
     filters,
@@ -220,8 +226,30 @@ export function MainScreen() {
 
   const handleNavigateFilter = (filter: NoteFilter) => {
     clearSelection();
+    // Leaving a smart view for a Library pile leaves its query behind too, as native's
+    // destinations do; anything else typed in the box stays.
+    if (activeSmartView(filters) != null) {
+      useNotesStore.getState().setFilters({ filter, searchQuery: '' });
+      return;
+    }
     setNoteFilter(filter);
   };
+
+  /** A smart view is a destination, not a refinement: it replaces the other filters (Kotlin `SmartView.applyTo`). */
+  const handleSmartView = (id: SmartViewId) => {
+    const view = SMART_VIEWS.find((candidate) => candidate.id === id);
+    if (!view) return;
+    clearSelection();
+    useNotesStore.getState().setFilters({
+      filter: 'active',
+      searchQuery: view.query,
+      colorArgb: null,
+      labelName: null,
+    });
+  };
+
+  const currentSmartView = activeSmartView(filters);
+  const viewCounts = useMemo(() => smartViewCounts(notes), [notes]);
 
   const getSelectedSnapshots = () =>
     selectedNoteIds
@@ -372,6 +400,12 @@ export function MainScreen() {
 
         navCounts={navCounts}
 
+        currentSmartView={currentSmartView}
+
+        onSmartView={handleSmartView}
+
+        smartViewCounts={viewCounts}
+
         onOpenSettings={() => openDialogs({ profile: true })}
 
       />
@@ -388,6 +422,7 @@ export function MainScreen() {
         >
           <TopBar
             searchQuery={filters.searchQuery ?? ''}
+            rankedByRelevance={searchText.length > 0}
             showFilterRow={showFilterRow}
             narrow={Boolean(dockedEditor)}
 
@@ -544,6 +579,8 @@ export function MainScreen() {
                     </div>
                   ) : null}
 
+                  <IgnoredOperatorsNotice operators={unknownOperators} />
+
                   {view.kind === 'empty' ? (
                     <NotesEmptyState
                       message={emptyState.message}
@@ -575,7 +612,7 @@ export function MainScreen() {
                   ) : (
                     <>
                       {isFuzzyResult ? (
-                        <SearchNotice query={listFilters.searchQuery ?? ''} />
+                        <SearchNotice query={searchText} />
                       ) : null}
                       <NoteStaggeredGrid
                         // Everything that describes the list comes from the filters it was computed
@@ -600,7 +637,7 @@ export function MainScreen() {
                           onPermanentDelete: (note) => void permanentlyDeleteNote(note),
                           onPinToggle: (note) => void togglePinNote(note),
                         }}
-                        searchQuery={listFilters.searchQuery ?? ''}
+                        searchQuery={searchText}
                         allowReorder={allowReorder}
                         onMoveNote={moveNote}
                         onReorderComplete={reorderComplete}

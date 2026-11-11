@@ -27,6 +27,15 @@ enum class ReminderDelivery {
      * failure — it is a delivery one, and the only place it can be noticed is here.
      */
     Blocked,
+
+    /**
+     * Fires on time, but only while the app is running.
+     *
+     * Windows desktop: reminders live in an in-process timer with no OS scheduler behind them, so
+     * closing the main window keeps the app in the system tray, and only choosing Exit stops them
+     * (NL-01). The confirmation has to say so, because "Reminder set" alone promised more.
+     */
+    WhileRunning,
 }
 
 interface ReminderManager {

@@ -224,6 +224,14 @@ class SettingsRepositoryImpl(
         }
     }
 
+    override suspend fun clearAccountSearchHistory() {
+        // One edit, so a failure cannot leave one of the two behind.
+        dataStore.edit { preferences ->
+            preferences.remove(RECENT_SEARCHES_KEY)
+            preferences.remove(SAVED_FILTERS_KEY)
+        }
+    }
+
     companion object {
         private const val TAG = "SettingsRepository"
         private const val MAX_RECENT_SEARCHES = 10

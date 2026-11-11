@@ -26,6 +26,8 @@ val sharedModule = module {
         val syncState = get<NoteSyncStateStore>()
         NoteRepositoryImpl(get(), get(), get(), get(), get(), get(), get()).apply {
             recordDeletedDigest = syncState::setDeletedDigest
+            // Resolved when called, not here: search history goes with the account's notes (NL-02).
+            clearAccountScopedPreferences = { get<SettingsRepository>().clearAccountSearchHistory() }
         }
     }
     single<SettingsRepository> { SettingsRepositoryImpl(get(), get()) }

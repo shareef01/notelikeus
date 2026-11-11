@@ -161,6 +161,7 @@ fun EditorScreen(
 
     val reminderSetMsg = stringResource(Res.string.reminder_set_confirmation)
     val reminderSetApproxMsg = stringResource(Res.string.reminder_set_confirmation_approximate)
+    val reminderSetWhileRunningMsg = stringResource(Res.string.reminder_set_confirmation_while_running)
     val reminderPermissionDeniedMsg = stringResource(Res.string.reminder_permission_denied)
     val reminderMustBeFutureMsg = stringResource(Res.string.reminder_must_be_future)
     val noteArchivedMsg = stringResource(Res.string.note_archived)
@@ -204,6 +205,7 @@ fun EditorScreen(
                             ReminderDelivery.Blocked -> reminderPermissionDeniedMsg
                             ReminderDelivery.Approximate -> reminderSetApproxMsg
                             ReminderDelivery.Exact -> reminderSetMsg
+                            ReminderDelivery.WhileRunning -> reminderSetWhileRunningMsg
                         }
                     )
                     LocalSaveResult.Unchanged -> Unit

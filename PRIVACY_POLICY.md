@@ -59,7 +59,7 @@ Supabase and Cloudflare may hold data in their own routine backups until those e
 | Notifications | Deliver reminders you schedule for notes |
 | Biometric | Unlock the app when app lock is enabled |
 
-When you export or import backups, the system file picker is used; the app only accesses files you select. On the web, reminder notifications are best-effort and may be delayed or missed if the browser is fully closed or inactive.
+When you export or import backups, the system file picker is used; the app only accesses files you select. On the web, reminder notifications are best-effort and may be delayed or missed if the browser is fully closed or inactive. On Windows, reminders ring while Notelikeus is running: closing the window while a reminder is pending keeps the app in the system tray, and reminders do not ring after you choose Exit.
 
 ## Backups
 

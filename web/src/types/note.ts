@@ -4,6 +4,8 @@ import type { Attachment } from './attachment';
 import { noteColorsMatch } from '@/theme/colors';
 import { byRelevance, fuzzyMatches } from '@/lib/text/noteSearchRanking';
 import { buildSearchText, memoFolded, noteMatchesSearchTokens, searchTokens } from '@/lib/text/searchText';
+import { localDayStartFrom, localDayStartOfDate, parseNoteQuery } from '@/lib/query/noteQueryParser';
+import { matchesOperators, noteInScope, resolveOperators } from '@/lib/query/noteQueryMatch';
 
 /**
  * Canonical note model — field names match Android Room and the cloud map.
@@ -99,10 +101,12 @@ export function nextLocalNoteIdAfter(maxId: number): number {
   return Math.max(maxId + 1, candidate);
 }
 
-function matchesScopeAndFacets(note: Note, filters: NoteQueryFilters): boolean {
-  if (filters.filter === 'active' && (note.isArchived || note.isTrashed)) return false;
-  if (filters.filter === 'archived' && !note.isArchived) return false;
-  if (filters.filter === 'trashed' && !note.isTrashed) return false;
+function matchesScopeAndFacets(note: Note, filters: NoteQueryFilters, skipScope = false): boolean {
+  if (!skipScope) {
+    if (filters.filter === 'active' && (note.isArchived || note.isTrashed)) return false;
+    if (filters.filter === 'archived' && !note.isArchived) return false;
+    if (filters.filter === 'trashed' && !note.isTrashed) return false;
+  }
   if (filters.colorArgb != null && !noteColorsMatch(note.color, filters.colorArgb)) return false;
   if (filters.labelName && !note.labels.some((l) => l.name === filters.labelName)) return false;
   return true;
@@ -148,27 +152,68 @@ export interface NoteSearchResult {
   notes: Note[];
   /** True when nothing matched exactly and these are near misses. The UI must say so. */
   isFuzzy: boolean;
+  /** The free text left once operators are taken out: what was searched for and what to highlight. */
+  searchText: string;
+  /** Operator-shaped tokens that were not understood (`labe:work`, `is:nonsense`). The UI says so. */
+  unknownOperators: string[];
+}
+
+export interface SearchNotesOptions {
+  /** Epoch millis, for `is:overdue`. Defaults to now. */
+  now?: number;
+  /** Every label name the user has, so `label:` resolves as native does. Defaults to the notes' labels. */
+  knownLabelNames?: Iterable<string>;
+}
+
+function labelNamesOf(notes: Note[]): Set<string> {
+  const names = new Set<string>();
+  for (const note of notes) for (const label of note.labels) names.add(label.name);
+  return names;
 }
 
 /**
  * Match then order. Text queries rank by relevance (Kotlin `NoteQueryMatcher.search`); an empty
  * box keeps the chosen sort. A typo falls back to near matches without loosening colour/label/scope.
  */
-export function searchNotes(notes: Note[], filters: NoteQueryFilters): NoteSearchResult {
-  const scoped = notes.filter((note) => matchesScopeAndFacets(note, filters));
-  const query = filters.searchQuery ?? '';
+export function searchNotes(
+  notes: Note[],
+  filters: NoteQueryFilters,
+  options: SearchNotesOptions = {},
+): NoteSearchResult {
+  const raw = filters.searchQuery ?? '';
+  // Operators (`label:work is:pinned`) are taken out of the box first, as native does (NL-04). A
+  // box without a colon has none, so the common case skips the parse.
+  const now = options.now ?? Date.now();
+  const ops = raw.includes(':')
+    ? resolveOperators(
+        parseNoteQuery(raw, localDayStartFrom(now), localDayStartOfDate),
+        options.knownLabelNames ?? labelNamesOf(notes),
+      )
+    : null;
+  const query = ops ? ops.text : raw;
+  const unknownOperators = ops?.unknown ?? [];
+
+  // `in:trash` / `is:archived` choose the pile, replacing the drawer's choice while they are typed.
+  const scoped = notes.filter(
+    (note) =>
+      matchesScopeAndFacets(note, filters, ops?.scope != null) &&
+      (ops?.scope == null || noteInScope(note, ops.scope)) &&
+      (ops == null || matchesOperators(note, ops, now)),
+  );
   const needles = searchTokens(query);
+  const searchText = query.trim();
   if (needles.length === 0) {
-    return { notes: sortWithoutSearch(scoped, filters.sortOrder), isFuzzy: false };
+    return { notes: sortWithoutSearch(scoped, filters.sortOrder), isFuzzy: false, searchText, unknownOperators };
   }
 
   const strict = scoped.filter((note) => noteMatchesSearchTokens(noteHaystack(note), needles));
   if (strict.length > 0) {
-    return { notes: byRelevance(strict, needles), isFuzzy: false };
+    return { notes: byRelevance(strict, needles), isFuzzy: false, searchText, unknownOperators };
   }
 
+  // A typo in the text falls back to near matches; the operators stay exact.
   const fuzzy = fuzzyMatches(scoped, needles);
-  return { notes: byRelevance(fuzzy, needles), isFuzzy: fuzzy.length > 0 };
+  return { notes: byRelevance(fuzzy, needles), isFuzzy: fuzzy.length > 0, searchText, unknownOperators };
 }
 
 export function filterNotes(notes: Note[], filters: NoteQueryFilters): Note[] {

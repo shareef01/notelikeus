@@ -138,6 +138,12 @@
     <string name="reminder_permission_denied">Enable notifications to receive reminders</string>
     <string name="reminder_set_confirmation_approximate">Reminder set — may arrive a few minutes late</string>
     <string name="reminder_set_confirmation">Reminder set</string>
+    <string name="reminder_set_confirmation_while_running">Reminder set — Notelikeus stays in the system tray so it can ring. Exiting the app stops it.</string>
+    <string name="tray_open">Open Notelikeus</string>
+    <string name="tray_new_note">New note</string>
+    <string name="tray_exit">Exit</string>
+    <string name="tray_still_running_title">Notelikeus is still running</string>
+    <string name="tray_still_running_message">It stays in the system tray so your reminders can ring. Choose Exit from the tray icon to quit.</string>
     <string name="reminder_currently_set">Currently set for %1$s</string>
     <string name="reminder_removed_confirmation">Reminder removed</string>
     <string name="notification_permission_title">Notifications</string>

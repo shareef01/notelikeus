@@ -45,7 +45,8 @@ export function ReminderPickerDialog({
         </h2>
         <p className="mt-2 text-xs text-brand-muted">
           Web reminders fire when this app is open or recently used. They can be late or miss
-          if the browser is fully closed — unlike the Android app, which uses system alarms.
+          if the browser is fully closed. The Android app uses system alarms, and the Windows app
+          rings while it is running, including from the system tray.
         </p>
 
         {/* The same three quick choices the Android and Windows dialogs offer, resolved by the

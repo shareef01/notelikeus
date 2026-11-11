@@ -16,6 +16,11 @@ const SEARCH_PLACEHOLDERS: Record<NoteFilter, string> = {
 
 interface TopBarProps {
   searchQuery: string;
+  /**
+   * Whether the list is ranked by relevance. Only free text is ranked: a box holding just
+   * operators (`is:pinned`) keeps the chosen sort. Defaults to "the box is not empty".
+   */
+  rankedByRelevance?: boolean;
   onSearchQueryChange: (query: string) => void;
   currentFilter: NoteFilter;
   listScrolled: boolean;
@@ -63,6 +68,7 @@ interface TopBarProps {
 
 export function TopBar({
   searchQuery,
+  rankedByRelevance,
   onSearchQueryChange,
   currentFilter,
   listScrolled,
@@ -286,7 +292,7 @@ export function TopBar({
           <FilterRow
             sortOrder={sortOrder}
             onSortOrderClick={onSortOrderClick}
-            sortDisabled={searchQuery.trim().length > 0}
+            sortDisabled={rankedByRelevance ?? searchQuery.trim().length > 0}
             selectedColor={selectedColor}
             onColorSelect={onColorSelect}
             labels={labels}

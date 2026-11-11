@@ -56,6 +56,12 @@ fun App(
     pendingOpenSettings: Boolean = false,
     navigationRequest: Long = 0L,
     /**
+     * False while the desktop window is hidden in the system tray. App lock only ever asked at
+     * launch, and closing the window used to end the process; now that it can stay running in the
+     * tray (NL-01), hiding it has to lock again, or reopening it from the tray would skip the lock.
+     */
+    isWindowVisible: Boolean = true,
+    /**
      * Window chrome drawn above the app content. Desktop passes its custom title bar here rather
      * than rendering it in `main.kt`, so it sits inside [NotelikeusTheme] and tracks the user's
      * theme — including true-dark — instead of being a light strip above a dark app.
@@ -86,6 +92,17 @@ fun App(
             needsUnlock = true
         } else {
             isUnlocked = true
+        }
+    }
+
+    // Lock as the window hides, so its content is already covered when it comes back; prompt only
+    // once it is visible again, since the prompt is a window of its own.
+    LaunchedEffect(isWindowVisible) {
+        if (!hasInitializedLock || !state.isAppLockEnabled) return@LaunchedEffect
+        if (!isWindowVisible) {
+            isUnlocked = false
+        } else if (!isUnlocked) {
+            needsUnlock = true
         }
     }
 
