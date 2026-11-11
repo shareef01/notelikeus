@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { TopBar } from '@/components/layout/TopBar';
 import { labelFromName } from '@/types/label';
+import { useUiStore } from '@/store/uiStore';
 
 describe('TopBar - UX-E Search Header Stability', () => {
   function renderTopBar(props: Partial<Parameters<typeof TopBar>[0]> = {}) {
@@ -176,6 +177,82 @@ describe('TopBar - UX-E Search Header Stability', () => {
     const { container, cleanup } = renderTopBar({ showFilterRow: false });
     expect(container.querySelector('[role="group"][aria-label="Filters"]')).toBeNull();
     expect(container.querySelector('input[type="search"]')).toBeTruthy();
+    cleanup();
+  });
+});
+
+/**
+ * NL-07: native records a search when the keyboard's Search key is pressed; Enter in the web field
+ * is the same gesture. Wired to the real store the way MainScreen wires it, so a break anywhere
+ * between the field and the persisted list shows up here.
+ */
+describe('TopBar - recording recent searches', () => {
+  beforeEach(() => {
+    useUiStore.getState().clearRecentSearches();
+  });
+
+  function renderWithQuery(searchQuery: string) {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        createElement(TopBar, {
+          searchQuery,
+          onSearchQueryChange: vi.fn(),
+          currentFilter: 'active',
+          listScrolled: false,
+          sortOrder: 'newest',
+          onSortOrderClick: vi.fn(),
+          selectedColor: null,
+          onColorSelect: vi.fn(),
+          labels: [],
+          selectedLabelName: null,
+          onLabelSelect: vi.fn(),
+          hasActiveFilters: false,
+          onClearFilters: vi.fn(),
+          onMenuClick: vi.fn(),
+          onProfileClick: vi.fn(),
+          viewColumns: 2,
+          onViewColumnsChange: vi.fn(),
+          recentSearches: useUiStore.getState().recentSearches,
+          onRecentSearchClick: (query) => useUiStore.getState().addRecentSearch(query),
+          onClearRecentSearches: () => useUiStore.getState().clearRecentSearches(),
+        }),
+      );
+    });
+    const form = container.querySelector('form')!;
+    return {
+      // jsdom does not perform implicit submission on an Enter keydown; requestSubmit is what the
+      // browser does when Enter is pressed in the form's only text field.
+      pressEnter: () => act(() => form.requestSubmit()),
+      cleanup: () => {
+        act(() => root.unmount());
+        container.remove();
+      },
+    };
+  }
+
+  it('records the trimmed query when Enter is pressed in the search field', () => {
+    const { pressEnter, cleanup } = renderWithQuery('  groceries  ');
+    pressEnter();
+    expect(useUiStore.getState().recentSearches).toEqual(['groceries']);
+    cleanup();
+  });
+
+  it('moves a repeated search to the front instead of listing it twice', () => {
+    useUiStore.getState().addRecentSearch('groceries');
+    useUiStore.getState().addRecentSearch('roadmap');
+    const { pressEnter, cleanup } = renderWithQuery('groceries');
+    pressEnter();
+    expect(useUiStore.getState().recentSearches).toEqual(['groceries', 'roadmap']);
+    cleanup();
+  });
+
+  it('records nothing for a blank query', () => {
+    const { pressEnter, cleanup } = renderWithQuery('   ');
+    pressEnter();
+    expect(useUiStore.getState().recentSearches).toEqual([]);
     cleanup();
   });
 });
