@@ -210,7 +210,7 @@ export function FiltersSheet({
               <ColorSwatch
                 key={argb}
                 argb={argb}
-                label={argb === 0 ? 'No color' : NOTE_COLOR_NAMES[index]}
+                label={NOTE_COLOR_NAMES[index]}
                 selected={colorSelected(colors, argb)}
                 onClick={() => onChange({ colors: toggleColor(colors, argb) })}
               />

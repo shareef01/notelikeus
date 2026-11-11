@@ -76,7 +76,7 @@ function type(input: HTMLInputElement, value: string) {
 describe('FiltersSheet', () => {
   it('combines several colours, labels, flags, a date window and a scope', () => {
     const state = renderSheet();
-    click('Coral');
+    click('Red');
     click('Blue');
     click('Work');
     click('Urgent');

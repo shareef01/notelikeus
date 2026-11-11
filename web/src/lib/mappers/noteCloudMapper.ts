@@ -2,6 +2,7 @@ import type { ChecklistItem } from '@/types/checklist';
 import type { Label } from '@/types/label';
 import type { Note } from '@/types/note';
 import { labelFromName } from '@/types/label';
+import { NO_NOTE_COLOR } from '@/theme/colors';
 
 /**
  * Portable note document used by JSON backups and historical cloud maps.
@@ -151,7 +152,7 @@ export function cloudMapToNote(
     title: asString(data.title),
     content: asString(data.content),
     timestamp: asInteger(data.timestamp, Date.now()),
-    color: asInteger(data.color, 0xff1a1a1a | 0),
+    color: asInteger(data.color, NO_NOTE_COLOR),
     isPinned: asBoolean(data.isPinned),
     isArchived: asBoolean(data.isArchived),
     isTrashed: asBoolean(data.isTrashed),

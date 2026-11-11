@@ -1,6 +1,7 @@
 import type { ChecklistItem } from './checklist';
 import type { Label } from './label';
 import type { Attachment } from './attachment';
+import { NO_NOTE_COLOR } from '@/theme/colors';
 import { byRelevance, fuzzyMatches } from '@/lib/text/noteSearchRanking';
 import { buildSearchText, memoFolded, noteMatchesSearchTokens, searchTokens } from '@/lib/text/searchText';
 import { localDayStartFrom, localDayStartOfDate, parseNoteQuery } from '@/lib/query/noteQueryParser';
@@ -69,7 +70,7 @@ export function createEmptyNote(partial: Partial<Note> & Pick<Note, 'localId' | 
     title: '',
     content: '',
     timestamp: now,
-    color: partial.color ?? (0xff1a1a1a | 0),
+    color: partial.color ?? NO_NOTE_COLOR,
     isPinned: false,
     isArchived: false,
     isTrashed: false,

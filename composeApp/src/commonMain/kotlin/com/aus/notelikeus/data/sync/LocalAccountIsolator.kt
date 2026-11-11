@@ -13,6 +13,13 @@ import kotlinx.coroutines.sync.withLock
  * previous account's notes). Sign-in and pull isolate only when [NoteSyncStateStore.lastMergedUserId]
  * is set and differs from the incoming uid, so a first-ever sign-in still uploads guest notes.
  *
+ * ## Unsynced work is sealed, not lost (NL-03)
+ *
+ * When the departing account still holds work the cloud has not confirmed, its library is sealed in
+ * [SignedOutAccountVault] before the wipe and given back when the same account signs in here again;
+ * a different account never sees it. Same rule as the web client, which keeps the account's IndexedDB
+ * namespace sealed. A library with nothing unsynced is not kept: the cloud has all of it.
+ *
  * ## Two phases, and why the order matters (R15.3)
  *
  * ```
@@ -38,7 +45,11 @@ class LocalAccountIsolator(
     private val noteRepository: NoteRepository,
     private val syncStateStore: NoteSyncStateStore,
     private val syncCoordinator: SyncCoordinator,
-    private val accountUidBridge: AccountUidBridge = AccountUidBridge(syncStateStore),
+    /**
+     * Where a departing account's unsynced work is sealed. Null where nothing is kept — tests, and any
+     * wiring without the sealed-accounts table — which leaves the plain wipe.
+     */
+    private val signedOutAccounts: SignedOutAccountVault? = null,
     /**
      * Hands the incoming account whatever a signed-out session staged for it.
      *
@@ -61,7 +72,29 @@ class LocalAccountIsolator(
      */
     private val clearDatasetScopedInMemoryState: suspend () -> Unit = {},
 ) {
-    suspend fun isolate() {
+    private val accountUidBridge = AccountUidBridge(syncStateStore)
+
+    /**
+     * Seals [ownerUid]'s library if it holds unsynced work. Call before ending the session, so a seal
+     * that cannot be written stops the sign-out while nothing has happened yet.
+     */
+    suspend fun sealUnsyncedWork(ownerUid: String) {
+        signedOutAccounts?.seal(ownerUid)
+    }
+
+    /** Forgets what [ownerUid] sealed here: its sign-out did not happen, or it asked for its data gone. */
+    suspend fun discardSealedWork(ownerUid: String) {
+        signedOutAccounts?.discard(ownerUid)
+    }
+
+    /**
+     * Crosses the account boundary.
+     *
+     * @param sealFor the departing account, when its unsynced work is to be kept. The caller has already
+     *   sealed it with [sealUnsyncedWork]; this seals again inside the gate, where no edit can land
+     *   between the seal and the wipe. That second seal is best-effort: if it fails, the first stands.
+     */
+    suspend fun isolate(sealFor: String? = null) {
         // Phase 1 — the durable transition marker, outside the gate. If this write fails, nothing has
         // happened: no boundary is crossed, no generation moves, and the device is simply still on the
         // dataset it was on. That is why it is deliberately *not* inside the isolate block — a failure
@@ -76,7 +109,16 @@ class LocalAccountIsolator(
         //   isolate first -> the stale commit finds a different generation and is refused.
         // See D8/D11 in docs/AUDIT_DEEPSEEK_2026-09-20.md.
         LocalCommitGate.isolate {
+            if (sealFor != null) {
+                // If this fails, the seal written before this isolation began still holds the library.
+                runCatching { signedOutAccounts?.seal(sealFor) }
+                    .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+            }
             wipeLocalAccountData()
+            // After the wipe, inside the same section: from here every sealed library is the only copy
+            // of its work, so it may be restored. A crash before this line leaves the isolation
+            // incomplete, and recovery re-runs the wipe and arms them.
+            signedOutAccounts?.armAll()
             // Completed last, and only after the wipe: the store must never claim the new dataset
             // before the old one's rows are gone. A crash before this line leaves the transition
             // marked, which refuses everything until recovery finishes it. Cancelling the platform's
@@ -133,7 +175,11 @@ class LocalAccountIsolator(
 
         val last = syncStateStore.lastMergedUserId()
         if (last != null && !accountUidBridge.accountsMatch(last, incomingUid)) {
-            isolate()
+            // The previous account never signed out here, so nothing sealed its work yet. Sealed before
+            // the boundary: if that fails, this throws and the device stays as it was.
+            sealUnsyncedWork(last)
+            isolate(sealFor = last)
+            restoreSealedWork(incomingUid)
             return
         }
         // Reached when there is no different previous account — a first-ever sign-in keeping the
@@ -141,6 +187,19 @@ class LocalAccountIsolator(
         // the generation must not move: adopting guest data into the first account is not an
         // isolation, and treating it as one would strand every edit captured moments earlier.
         //
+        // The same account coming back gets what it sealed at sign-out. Not a boundary either: the
+        // restore writes into the dataset the device is on now.
+        restoreSealedWork(incomingUid)
         adoptGuestStagedAttachments(incomingUid)
+    }
+
+    /**
+     * Gives [uid] back what it sealed here. A restore that fails leaves the library sealed, and every
+     * later sign-in check — each sync and download runs one — tries again, so this does not fail the
+     * sign-in.
+     */
+    private suspend fun restoreSealedWork(uid: String) {
+        runCatching { signedOutAccounts?.restore(uid) }
+            .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
     }
 }

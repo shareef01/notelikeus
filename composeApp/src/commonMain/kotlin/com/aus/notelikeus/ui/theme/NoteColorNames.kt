@@ -13,6 +13,7 @@ import notelikeus.composeapp.generated.resources.color_name_red
 import notelikeus.composeapp.generated.resources.color_name_teal
 import notelikeus.composeapp.generated.resources.color_name_yellow
 import notelikeus.composeapp.generated.resources.no_color
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -28,15 +29,21 @@ import org.jetbrains.compose.resources.stringResource
  * naming it.
  */
 @Composable
-fun noteColorName(color: Color): String = when (noteColorPaletteIndex(color)) {
-    0 -> stringResource(Res.string.no_color)
-    1 -> stringResource(Res.string.color_name_red)
-    2 -> stringResource(Res.string.color_name_orange)
-    3 -> stringResource(Res.string.color_name_yellow)
-    4 -> stringResource(Res.string.color_name_green)
-    5 -> stringResource(Res.string.color_name_teal)
-    6 -> stringResource(Res.string.color_name_blue)
-    7 -> stringResource(Res.string.color_name_purple)
-    8 -> stringResource(Res.string.color_name_pink)
-    else -> stringResource(Res.string.cd_color_swatch)
-}
+fun noteColorName(color: Color): String =
+    stringResource(NOTE_COLOR_NAME_RESOURCES.getOrNull(noteColorPaletteIndex(color)) ?: Res.string.cd_color_swatch)
+
+/**
+ * The name of each palette entry, in [NOTE_COLOR_OPTIONS] order. Web's `NOTE_COLOR_NAMES` holds the
+ * same English words; both are pinned by `contracts/design/note-colors.json`.
+ */
+val NOTE_COLOR_NAME_RESOURCES: List<StringResource> = listOf(
+    Res.string.no_color,
+    Res.string.color_name_red,
+    Res.string.color_name_orange,
+    Res.string.color_name_yellow,
+    Res.string.color_name_green,
+    Res.string.color_name_teal,
+    Res.string.color_name_blue,
+    Res.string.color_name_purple,
+    Res.string.color_name_pink,
+)
