@@ -23,11 +23,6 @@ export function useNotes() {
   // list in the background, dropping any render a newer keystroke has made stale.
   const listFilters = useDeferredValue(filters);
 
-  const { filteredNotes, isFuzzyResult } = useMemo(() => {
-    const result = searchNotes(notes, listFilters);
-    return { filteredNotes: result.notes, isFuzzyResult: result.isFuzzy };
-  }, [notes, listFilters]);
-
   const registeredLabels = useLabelRegistryStore((state) => state.labels);
 
   /**
@@ -44,6 +39,19 @@ export function useNotes() {
     const unused = Object.values(registeredLabels).filter((label) => !known.has(label.name));
     return unused.length ? [...fromNotes, ...unused] : fromNotes;
   }, [notes, registeredLabels]);
+
+  // Every label the user has, used ones and unused ones, so `label:` resolves as it does on native.
+  const labelNames = useMemo(() => labels.map((label) => label.name), [labels]);
+
+  const { filteredNotes, isFuzzyResult, searchText, unknownOperators } = useMemo(() => {
+    const result = searchNotes(notes, listFilters, { knownLabelNames: labelNames });
+    return {
+      filteredNotes: result.notes,
+      isFuzzyResult: result.isFuzzy,
+      searchText: result.searchText,
+      unknownOperators: result.unknownOperators,
+    };
+  }, [notes, listFilters, labelNames]);
 
   const actions = useMemo(
     () => ({
@@ -73,6 +81,10 @@ export function useNotes() {
     /** The filters `filteredNotes` was computed from; trails `filters` while the user types. */
     listFilters,
     isFuzzyResult,
+    /** The free text of the search once operators are taken out: what to highlight. */
+    searchText,
+    /** Operators the box holds that were not understood. */
+    unknownOperators,
     labels,
     status,
     error,

@@ -23,6 +23,7 @@ side that reads it is enough to make drift a failing test rather than a support 
 | `cloud/note-row.json` | A note row as `pull_changes` / `fetch_full_snapshot` return it |
 | `cloud/note-row-expected.json` | The note both cloud mappers must produce from that row |
 | `cloud/tombstone-row.json` | A tombstone row and the deleted-at map it must produce |
+| `query/parser-vectors.json` | What each search-box operator string parses to (`label:` `color:` `is:` `has:` `before:` `after:` `in:`), under a pinned clock |
 | `design/theme-colors.json` | The chrome colours of every theme (background, surfaces, text roles, outline) and the light accent tints |
 | `sync/inbound-resolution.json` | Kotlin download rules: what an inbound cloud version may do to the local row — accept, keep the local row, or keep the local edit as a conflicted copy. Web reaches the same end states through pending-push markers (`offlineEditDurability.test.ts`) |
 
@@ -47,6 +48,8 @@ fields leaking in:
 | Kotlin | `composeApp/src/commonTest/kotlin/com/aus/notelikeus/contract/InboundResolutionContractTest.kt` (sync rules) |
 | Kotlin | `composeApp/src/commonTest/kotlin/com/aus/notelikeus/contract/ThemeTokensContractTest.kt` (theme colours) |
 | TypeScript | `web/src/styles/themeTokens.test.ts` (theme colours) |
+| Kotlin | `composeApp/src/commonTest/kotlin/com/aus/notelikeus/contract/QueryParserContractTest.kt` (search operators) |
+| TypeScript | `web/src/lib/query/noteQueryParser.contract.test.ts` (search operators) |
 
 Both resolve this directory by walking up from the working directory, so they run from the
 repository root or from inside a module.
