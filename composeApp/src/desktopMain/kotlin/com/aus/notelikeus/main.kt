@@ -6,7 +6,6 @@ import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
-import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.WindowPlacement
@@ -42,7 +41,6 @@ import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.SidebarCollapsedStore
 import com.aus.notelikeus.util.SingleInstance
 import java.io.File
-import org.jetbrains.compose.resources.stringResource
 import com.aus.notelikeus.util.WindowMetrics
 import com.aus.notelikeus.util.WindowMetricsStore
 import kotlinx.coroutines.Dispatchers
@@ -77,8 +75,7 @@ fun main() {
         metricsStore,
         runBlocking { metricsStore.metrics.first() },
         sidebarStore,
-        runBlocking { sidebarStore.collapsed.first() },
-        instance,
+        runBlocking { sidebarStore.collapsed.first() }
     )
 }
 
@@ -114,8 +111,7 @@ private fun launchApp(
     metricsStore: WindowMetricsStore,
     initialMetrics: WindowMetrics,
     sidebarStore: SidebarCollapsedStore,
-    initialSidebarCollapsed: Boolean,
-    instance: SingleInstance,
+    initialSidebarCollapsed: Boolean
 ) = application {
     val windowState = rememberWindowState(
         width = initialMetrics.width,
@@ -207,60 +203,12 @@ private fun launchApp(
         )
     }
 
-    // Closing the window used to exit, and with it every reminder still waiting in the in-process
-    // timer (NL-01). While one is waiting, closing hides the window instead and the app stays in the
-    // tray; Exit in the tray menu is the way to quit. With nothing waiting, closing still exits, so
-    // the app does not linger for no reason.
-    var isMainWindowVisible by remember { mutableStateOf(true) }
-    var hasExplainedTray by remember { mutableStateOf(false) }
-    // Bumped to bring an already-visible window to the front, which needs the AWT window itself.
-    var bringToFrontRequest by remember { mutableLongStateOf(0L) }
-    val stillRunningTitle = stringResource(Res.string.tray_still_running_title)
-    val stillRunningMessage = stringResource(Res.string.tray_still_running_message)
-
-    val showMainWindow: () -> Unit = {
-        isMainWindowVisible = true
-        windowState.isMinimized = false
-        bringToFrontRequest++
+    // NL-01: closing keeps the app in the tray while a reminder is waiting. See MainWindowTray.kt.
+    val mainWindow = rememberMainWindowController(reminderManager::hasScheduledReminders, trayState, windowState)
+    NotelikeusTray(mainWindow, trayState, appIcon, heldInstance) {
+        pendingCreateNote = true
+        navigationRequest++
     }
-    val closeMainWindow: () -> Unit = {
-        if (reminderManager.hasScheduledReminders()) {
-            isMainWindowVisible = false
-            if (!hasExplainedTray) {
-                hasExplainedTray = true
-                trayState.sendNotification(
-                    Notification(stillRunningTitle, stillRunningMessage, Notification.Type.Info)
-                )
-            }
-        } else {
-            exitApplication()
-        }
-    }
-
-    // A second launch (Start menu, taskbar) asks this copy to show itself instead of opening the
-    // database a second time. The request arrives on a watcher thread.
-    DisposableEffect(instance) {
-        val listener = instance.listenForActivation {
-            coroutineScope.launch(Dispatchers.Main) { showMainWindow() }
-        }
-        onDispose { listener.close() }
-    }
-
-    Tray(
-        state = trayState,
-        icon = appIcon,
-        tooltip = "Notelikeus",
-        onAction = showMainWindow,
-        menu = {
-            Item(stringResource(Res.string.tray_open), onClick = showMainWindow)
-            Item(stringResource(Res.string.tray_new_note), onClick = {
-                pendingCreateNote = true
-                navigationRequest++
-                showMainWindow()
-            })
-            Item(stringResource(Res.string.tray_exit), onClick = ::exitApplication)
-        }
-    )
 
     val newNote: () -> Unit = {
         pendingCreateNote = true
@@ -276,8 +224,8 @@ private fun launchApp(
     }
 
     Window(
-        onCloseRequest = closeMainWindow,
-        visible = isMainWindowVisible,
+        onCloseRequest = mainWindow::close,
+        visible = mainWindow.isVisible,
         state = windowState,
         title = "Notelikeus",
         icon = appIcon,
@@ -420,7 +368,7 @@ private fun launchApp(
             pendingFocusSearch = pendingFocusSearch,
             pendingOpenSettings = pendingOpenSettings,
             navigationRequest = navigationRequest,
-            isWindowVisible = isMainWindowVisible,
+            isWindowVisible = mainWindow.isVisible,
             titleBar = {
                 NotelikeusTitleBar(
                     title = "Notelikeus",
@@ -429,7 +377,7 @@ private fun launchApp(
                     onToggleMaximize = {
                         windowState.placement = windowState.placement.toggledMaximize()
                     },
-                    onClose = closeMainWindow,
+                    onClose = mainWindow::close,
                     onNewNote = newNote,
                     onSearch = onSearch,
                     onSettings = onSettings,
@@ -438,8 +386,8 @@ private fun launchApp(
             }
         )
 
-        LaunchedEffect(bringToFrontRequest) {
-            if (bringToFrontRequest > 0) {
+        LaunchedEffect(mainWindow.bringToFrontRequest) {
+            if (mainWindow.bringToFrontRequest > 0) {
                 window.toFront()
                 window.requestFocus()
             }
