@@ -4,8 +4,10 @@ import {
   ArchiveIcon,
   ChevronRightIcon,
   CloseIcon,
+  ChecklistIcon,
   LabelIcon,
   NotesIcon,
+  NotificationIcon,
   SettingsIcon,
   TrashIcon,
 } from '@/components/icons/Icons';
@@ -15,6 +17,7 @@ import { useIsTabletUp } from '@/hooks/useMediaQuery';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import { Badge } from '@/components/ui/Badge';
 import type { NoteFilter } from '@/types/note';
+import { SMART_VIEWS, type SmartViewId } from '@/lib/query/smartViews';
 import type { ReactNode } from 'react';
 
 interface SideDrawerProps {
@@ -30,7 +33,17 @@ interface SideDrawerProps {
   onEditLabels?: () => void;
   navCounts?: { active: number; archived: number; trashed: number };
   onOpenSettings?: () => void;
+  /** The smart view on screen, if any; the Library row it lives under is then not the current page. */
+  currentSmartView?: SmartViewId | null;
+  onSmartView?: (view: SmartViewId) => void;
+  smartViewCounts?: Record<SmartViewId, number>;
 }
+
+const SMART_VIEW_ICONS: Record<SmartViewId, typeof NotesIcon> = {
+  reminders: NotificationIcon,
+  unfinished: ChecklistIcon,
+  unlabeled: LabelIcon,
+};
 
 const NAV_ITEMS: Array<{
   filter: NoteFilter;
@@ -150,6 +163,9 @@ export function SideDrawer({
   onEditLabels,
   navCounts,
   onOpenSettings,
+  currentSmartView = null,
+  onSmartView,
+  smartViewCounts,
 }: SideDrawerProps) {
   const isTabletUp = useIsTabletUp();
   const showCollapsed = collapsed && isTabletUp;
@@ -230,7 +246,7 @@ export function SideDrawer({
         }`}>
           <NavSection title={showCollapsed ? undefined : 'Library'}>
             {NAV_ITEMS.map(({ filter, label, Icon }) => {
-              const active = currentFilter === filter;
+              const active = currentFilter === filter && currentSmartView == null;
               const count = navCounts?.[filter];
               return (
                 <NavButton
@@ -253,6 +269,35 @@ export function SideDrawer({
               );
             })}
           </NavSection>
+
+          {onSmartView ? (
+            <NavSection title={showCollapsed ? undefined : 'Views'} divided>
+              {SMART_VIEWS.map(({ id, label }) => {
+                const active = currentSmartView === id;
+                const count = smartViewCounts?.[id];
+                const Icon = SMART_VIEW_ICONS[id];
+                return (
+                  <NavButton
+                    key={id}
+                    active={active}
+                    collapsed={showCollapsed}
+                    ariaCurrent={active ? 'page' : undefined}
+                    onClick={() => {
+                      onSmartView(id);
+                      onClose();
+                    }}
+                    icon={<Icon size={22} />}
+                    label={label}
+                    trailing={
+                      !showCollapsed && count != null && count > 0 ? (
+                        <CountBadge count={count} active={active} />
+                      ) : null
+                    }
+                  />
+                );
+              })}
+            </NavSection>
+          ) : null}
 
           {(onEditLabels || onOpenSettings) ? (
             <NavSection title={showCollapsed ? undefined : 'Manage'} divided>

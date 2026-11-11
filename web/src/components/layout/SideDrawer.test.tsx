@@ -123,3 +123,46 @@ describe('SideDrawer', () => {
     cleanup();
   });
 });
+
+/** NL-04: native's drawer has Reminders, Unfinished and Unlabelled views; web had none. */
+describe('SideDrawer smart views', () => {
+  it('lists the views with counts, marks the one on screen, and reports a choice', () => {
+    isTabletUp.value = true;
+    const chosen: string[] = [];
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        createElement(SideDrawer, {
+          open: true,
+          collapsed: false,
+          currentFilter: 'active',
+          onClose: () => {},
+          onToggleCollapse: () => {},
+          onNavigate: () => {},
+          userEmail: null,
+          onSignIn: () => {},
+          onSignOut: () => {},
+          currentSmartView: 'reminders',
+          onSmartView: (id) => chosen.push(id),
+          smartViewCounts: { reminders: 2, unfinished: 0, unlabeled: 5 },
+        }),
+      );
+    });
+
+    const views = container.querySelector('section[aria-label="Views"]') as HTMLElement;
+    const buttons = [...views.querySelectorAll('button')];
+    expect(buttons.map((b) => b.textContent)).toEqual(['Reminders2', 'Unfinished', 'Unlabelled5']);
+    expect(buttons[0]!.getAttribute('aria-current')).toBe('page');
+    // The Library row the view lives under is not also the current page.
+    const notes = [...container.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Notes'));
+    expect(notes?.getAttribute('aria-current')).toBeNull();
+
+    act(() => buttons[1]!.click());
+    expect(chosen).toEqual(['unfinished']);
+
+    act(() => root.unmount());
+    container.remove();
+  });
+});
