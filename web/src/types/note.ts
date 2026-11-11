@@ -1,11 +1,12 @@
 import type { ChecklistItem } from './checklist';
 import type { Label } from './label';
 import type { Attachment } from './attachment';
-import { NO_NOTE_COLOR, noteColorsMatch } from '@/theme/colors';
+import { NO_NOTE_COLOR } from '@/theme/colors';
 import { byRelevance, fuzzyMatches } from '@/lib/text/noteSearchRanking';
 import { buildSearchText, memoFolded, noteMatchesSearchTokens, searchTokens } from '@/lib/text/searchText';
 import { localDayStartFrom, localDayStartOfDate, parseNoteQuery } from '@/lib/query/noteQueryParser';
-import { matchesOperators, noteInScope, resolveOperators } from '@/lib/query/noteQueryMatch';
+import { effectiveQuery, matchesQuery, resolveOperators } from '@/lib/query/noteQueryMatch';
+import type { FilterSets } from '@/lib/query/noteQuery';
 
 /**
  * Canonical note model — field names match Android Room and the cloud map.
@@ -43,11 +44,15 @@ export type NoteUpdatedAt = Pick<Note, 'timestamp'>;
 
 export type NoteFilter = 'active' | 'archived' | 'trashed';
 
-export interface NoteQueryFilters {
+/**
+ * Which notes are on screen and in what order: Kotlin `NoteQuery`, minus the view mode.
+ *
+ * Colours, labels and flags are sets (NL-04), which is what lets "green or blue" and "tagged both
+ * work and urgent" be expressed at all. Every narrowing field is optional so a caller can name only
+ * the ones it sets; `narrowingOf` fills in the rest.
+ */
+export interface NoteQueryFilters extends FilterSets {
   filter: NoteFilter;
-  searchQuery?: string;
-  colorArgb?: number | null;
-  labelName?: string | null;
   sortOrder?: 'manual' | 'newest' | 'oldest';
 }
 
@@ -99,17 +104,6 @@ export function nextLocalNoteIdAfter(maxId: number): number {
   const randomSuffix = Math.floor(Math.random() * 1000);
   const candidate = Date.now() * 1000 + randomSuffix;
   return Math.max(maxId + 1, candidate);
-}
-
-function matchesScopeAndFacets(note: Note, filters: NoteQueryFilters, skipScope = false): boolean {
-  if (!skipScope) {
-    if (filters.filter === 'active' && (note.isArchived || note.isTrashed)) return false;
-    if (filters.filter === 'archived' && !note.isArchived) return false;
-    if (filters.filter === 'trashed' && !note.isTrashed) return false;
-  }
-  if (filters.colorArgb != null && !noteColorsMatch(note.color, filters.colorArgb)) return false;
-  if (filters.labelName && !note.labels.some((l) => l.name === filters.labelName)) return false;
-  return true;
 }
 
 const EMPTY_STR_ARRAY: string[] = [];
@@ -173,7 +167,7 @@ function labelNamesOf(notes: Note[]): Set<string> {
 
 /**
  * Match then order. Text queries rank by relevance (Kotlin `NoteQueryMatcher.search`); an empty
- * box keeps the chosen sort. A typo falls back to near matches without loosening colour/label/scope.
+ * box keeps the chosen sort. A typo falls back to near matches without loosening any other dimension.
  */
 export function searchNotes(
   notes: Note[],
@@ -193,13 +187,10 @@ export function searchNotes(
   const query = ops ? ops.text : raw;
   const unknownOperators = ops?.unknown ?? [];
 
-  // `in:trash` / `is:archived` choose the pile, replacing the drawer's choice while they are typed.
-  const scoped = notes.filter(
-    (note) =>
-      matchesScopeAndFacets(note, filters, ops?.scope != null) &&
-      (ops?.scope == null || noteInScope(note, ops.scope)) &&
-      (ops == null || matchesOperators(note, ops, now)),
-  );
+  // `in:trash` / `is:archived` choose the pile, replacing the drawer's choice while they are typed;
+  // typed labels, colours and flags add to the Filters sheet's, as native's `applyInputs` does.
+  const effective = effectiveQuery(filters, ops);
+  const scoped = notes.filter((note) => matchesQuery(note, effective, now));
   const needles = searchTokens(query);
   const searchText = query.trim();
   if (needles.length === 0) {

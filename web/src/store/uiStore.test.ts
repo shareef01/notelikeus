@@ -145,6 +145,7 @@ describe('persistence', () => {
     expect(Object.keys(partialize!(useUiStore.getState()) as object).sort()).toEqual([
       'editorLayout',
       'recentSearches',
+      'savedFilters',
       'sidebarCollapsed',
       'viewColumns',
     ]);

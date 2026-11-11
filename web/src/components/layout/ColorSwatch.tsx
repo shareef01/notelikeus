@@ -54,6 +54,11 @@ interface ColorSwatchRowProps {
   onSelectAll?: () => void;
   /** Allow the palette to wrap in constrained sheet layouts. */
   wrap?: boolean;
+  /**
+   * Several colours at once (the filter row, NL-04). When given, it decides which swatches are
+   * marked and a press reports the swatch's colour for the caller to toggle.
+   */
+  selectedColors?: readonly number[];
 }
 
 export function ColorSwatchRow({
@@ -62,6 +67,7 @@ export function ColorSwatchRow({
   allSelected = false,
   onSelectAll,
   wrap = false,
+  selectedColors,
 }: ColorSwatchRowProps) {
   const isDark = useNotePaletteDark();
   const colors = noteColorsForTheme(isDark).filter((argb) => !(onSelectAll && argb === 0));
@@ -90,15 +96,17 @@ export function ColorSwatchRow({
             argb={argb}
             label={NOTE_COLOR_NAMES[nameIndex] ?? undefined}
             selected={
-              !allSelected &&
-              selectedColor != null &&
-              noteColorsMatch(selectedColor, argb)
+              selectedColors
+                ? selectedColors.some((value) => noteColorsMatch(value, argb))
+                : !allSelected && selectedColor != null && noteColorsMatch(selectedColor, argb)
             }
             onClick={() =>
               onSelect(
-                selectedColor != null && noteColorsMatch(selectedColor, argb)
-                  ? null
-                  : argb,
+                selectedColors
+                  ? argb
+                  : selectedColor != null && noteColorsMatch(selectedColor, argb)
+                    ? null
+                    : argb,
               )
             }
           />

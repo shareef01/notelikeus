@@ -1,6 +1,7 @@
 import { NOTE_COLOR_OPTIONS } from '@/theme/colors';
 import type { Note } from '@/types/note';
-import type { NoteFlag, NoteScope, ParsedQuery } from '@/lib/query/noteQueryParser';
+import type { DateField, NoteFlag, NoteScope, ParsedQuery } from '@/lib/query/noteQueryParser';
+import type { DateRange, FilterSets, LabelMatch } from '@/lib/query/noteQuery';
 
 /**
  * Keywords for `color:`, in `NOTE_COLOR_OPTIONS` order: Kotlin `NOTE_COLOR_KEYWORDS`.
@@ -27,8 +28,10 @@ export interface ResolvedOperators {
   colors: Set<number>;
   flags: NoteFlag[];
   scope: NoteScope | null;
-  /** [after, before) on the edited timestamp, or null. */
-  dateRange: { from: number; to: number } | null;
+  /** `created:` / `edited:` / `reminder:`, when typed; replaces the sheet's choice. */
+  dateField: DateField | null;
+  /** [after, before), or null. */
+  dateRange: DateRange | null;
   unknown: string[];
 }
 
@@ -60,6 +63,7 @@ export function resolveOperators(parsed: ParsedQuery, knownLabelNames: Iterable<
     colors,
     flags: parsed.flags,
     scope: parsed.scope,
+    dateField: parsed.dateField,
     dateRange,
     unknown: parsed.unknown,
   };
@@ -95,15 +99,78 @@ export function noteInScope(note: Note, scope: NoteScope): boolean {
   }
 }
 
-/** Every narrowing dimension the operators add, except scope and free text. */
-export function matchesOperators(note: Note, ops: ResolvedOperators, now: number): boolean {
-  if (ops.colors.size > 0 && !ops.colors.has(note.color)) return false;
-  if (ops.labelNames.size > 0 && !note.labels.some((label) => ops.labelNames.has(label.name.toLowerCase()))) {
-    return false;
+const FILTER_SCOPE: Record<FilterSets['filter'], NoteScope> = {
+  active: 'ACTIVE',
+  archived: 'ARCHIVE',
+  trashed: 'TRASH',
+};
+
+/**
+ * Everything that decides which notes match, once the box's operators are folded into the
+ * Filters sheet's choices: Kotlin `NoteQuery` as `MainViewModel.applyInputs` builds it.
+ */
+export interface EffectiveQuery {
+  text: string;
+  scope: NoteScope;
+  colors: Set<number>;
+  /** Lower-cased label names. */
+  labelNames: Set<string>;
+  labelMatch: LabelMatch;
+  flags: Set<NoteFlag>;
+  dateField: DateField;
+  dateRange: DateRange | null;
+}
+
+/**
+ * Folds typed operators into the sheet's filters the way native does: labels, colours and flags
+ * add to the sheet's sets, while `in:`, a date field and a date range replace its choice.
+ */
+export function effectiveQuery(filters: FilterSets, ops: ResolvedOperators | null): EffectiveQuery {
+  const labelNames = new Set((filters.labelNames ?? []).map((name) => name.toLowerCase()));
+  const colors = new Set(filters.colors ?? []);
+  const flags = new Set(filters.flags ?? []);
+  if (ops) {
+    for (const name of ops.labelNames) labelNames.add(name);
+    for (const color of ops.colors) colors.add(color);
+    for (const flag of ops.flags) flags.add(flag);
   }
-  if (!ops.flags.every((flag) => noteSatisfies(note, flag, now))) return false;
-  if (ops.dateRange && !(note.timestamp >= ops.dateRange.from && note.timestamp < ops.dateRange.to)) {
-    return false;
+  return {
+    text: ops ? ops.text : (filters.searchQuery ?? ''),
+    scope: ops?.scope ?? FILTER_SCOPE[filters.filter],
+    colors,
+    labelNames,
+    labelMatch: filters.labelMatch ?? 'ANY',
+    flags,
+    dateField: ops?.dateField ?? filters.dateField ?? 'EDITED',
+    dateRange: ops?.dateRange ?? filters.dateRange ?? null,
+  };
+}
+
+function matchesLabels(note: Note, query: EffectiveQuery): boolean {
+  if (query.labelNames.size === 0) return true;
+  const own = new Set(note.labels.map((label) => label.name.toLowerCase()));
+  if (query.labelMatch === 'ALL') {
+    for (const name of query.labelNames) if (!own.has(name)) return false;
+    return true;
   }
-  return true;
+  for (const name of own) if (query.labelNames.has(name)) return true;
+  return false;
+}
+
+function matchesDate(note: Note, query: EffectiveQuery): boolean {
+  const range = query.dateRange;
+  if (range == null) return true;
+  // One timestamp per note, moved on edit, so Created and Edited read the same field, as native.
+  const value = query.dateField === 'REMINDER' ? note.reminderTimestamp : note.timestamp;
+  if (value == null) return false;
+  return value >= range.from && value < range.to;
+}
+
+/** Kotlin `NoteQueryMatcher.matches`, every dimension but the free text. */
+export function matchesQuery(note: Note, query: EffectiveQuery, now: number): boolean {
+  if (!noteInScope(note, query.scope)) return false;
+  if (query.colors.size > 0 && !query.colors.has(note.color)) return false;
+  if (!matchesLabels(note, query)) return false;
+  for (const flag of query.flags) if (!noteSatisfies(note, flag, now)) return false;
+  return matchesDate(note, query);
 }

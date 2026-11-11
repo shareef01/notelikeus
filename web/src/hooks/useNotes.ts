@@ -3,6 +3,7 @@ import { saveNote, removeNote } from '@/lib/notes/noteActions';
 import { useNotesStore } from '@/store/notesStore';
 import type { NoteQueryFilters } from '@/types/note';
 import { searchNotes } from '@/types/note';
+import { clearedFilters } from '@/lib/query/noteQuery';
 import { collectUniqueLabels } from '@/types/label';
 import { useLabelRegistryStore } from '@/store/labelRegistryStore';
 import { useAuthListener } from '@/hooks/useAuth';
@@ -57,16 +58,17 @@ export function useNotes() {
     () => ({
       setSearchQuery: (searchQuery: string) =>
         useNotesStore.getState().setFilters({ searchQuery }),
-      setColorFilter: (colorArgb: number | null) =>
-        useNotesStore.getState().setFilters({ colorArgb }),
-      setLabelFilter: (labelName: string | null) =>
-        useNotesStore.getState().setFilters({ labelName }),
+      /** Merges a change into the filters; the Filters sheet and the filter row both go through it. */
+      updateFilters: (patch: Partial<NoteQueryFilters>) => useNotesStore.getState().setFilters(patch),
+      /** Shows one label's notes and nothing else, as tapping a label on a card does. */
+      showLabel: (labelName: string) =>
+        useNotesStore.getState().setFilters({ filter: 'active', labelNames: [labelName] }),
       setNoteFilter: (filter: NoteQueryFilters['filter']) =>
         useNotesStore.getState().setFilters({ filter }),
       setSortOrder: (sortOrder: NonNullable<NoteQueryFilters['sortOrder']>) =>
         useNotesStore.getState().setFilters({ sortOrder }),
-      clearFilters: () =>
-        useNotesStore.getState().setFilters({ searchQuery: '', colorArgb: null, labelName: null }),
+      /** Kotlin `NoteQuery.cleared()`: keeps the scope, sort, date field and label match. */
+      clearFilters: () => useNotesStore.getState().setFilters(clearedFilters()),
       saveNote,
       removeNote,
     }),

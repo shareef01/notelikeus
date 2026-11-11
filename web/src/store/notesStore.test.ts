@@ -97,8 +97,10 @@ describe('notesStore filter persistence', () => {
       filter: 'archived',
       sortOrder: 'oldest',
       searchQuery: 'tax letter',
-      labelName: 'Finance',
-      colorArgb: 0xfff28b82,
+      labelNames: ['Finance'],
+      colors: [0xfff28b82 | 0],
+      flags: ['PINNED'],
+      dateRange: { from: 0, to: 1 },
     });
 
     const stored = JSON.parse(localStorage.getItem(KEY)!);
@@ -112,8 +114,10 @@ describe('notesStore filter persistence', () => {
       filter: 'archived',
       sortOrder: 'oldest',
       searchQuery: 'tax letter',
-      labelName: 'Finance',
-      colorArgb: 0xfff28b82,
+      labelNames: ['Finance'],
+      colors: [0xfff28b82 | 0],
+      flags: ['PINNED'],
+      dateRange: { from: 0, to: 1 },
     });
     const saved = localStorage.getItem(KEY)!;
     // What the next page load starts from: the in-memory defaults, then hydration from what the
@@ -127,8 +131,12 @@ describe('notesStore filter persistence', () => {
       filter: 'archived',
       sortOrder: 'oldest',
       searchQuery: '',
-      labelName: null,
-      colorArgb: null,
+      colors: [],
+      labelNames: [],
+      labelMatch: 'ANY',
+      flags: [],
+      dateField: 'EDITED',
+      dateRange: null,
     });
   });
 
@@ -155,11 +163,24 @@ describe('notesStore filter persistence', () => {
       filter: 'trashed',
       sortOrder: 'oldest',
       searchQuery: '',
-      labelName: null,
-      colorArgb: null,
+      colors: [],
+      labelNames: [],
+      labelMatch: 'ANY',
+      flags: [],
+      dateField: 'EDITED',
+      dateRange: null,
     });
     const rewritten = JSON.parse(localStorage.getItem(KEY)!);
     expect(rewritten.version).toBe(1);
     expect(JSON.stringify(rewritten)).not.toContain('old secret');
+  });
+
+  it('a change only to set order still updates, so the sheet shows what was tapped', () => {
+    useNotesStore.getState().setFilters({ labelNames: ['a', 'b'] });
+    const before = useNotesStore.getState().filters;
+    useNotesStore.getState().setFilters({ labelNames: ['a', 'b'] });
+    expect(useNotesStore.getState().filters).toBe(before);
+    useNotesStore.getState().setFilters({ labelNames: ['b', 'a'] });
+    expect(useNotesStore.getState().filters.labelNames).toEqual(['b', 'a']);
   });
 });

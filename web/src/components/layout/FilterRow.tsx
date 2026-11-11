@@ -1,5 +1,5 @@
 import { ColorSwatchRow } from '@/components/layout/ColorSwatch';
-import { ChevronRightIcon, SortIcon } from '@/components/icons/Icons';
+import { ChevronRightIcon, FilterIcon, SortIcon } from '@/components/icons/Icons';
 import type { Label } from '@/types/label';
 import type { ReactNode } from 'react';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
@@ -94,26 +94,38 @@ interface FilterRowProps {
   onSortOrderClick: () => void;
   /** When true, search overrides sort order (D14 relevance) — sort chip is disabled. */
   sortDisabled?: boolean;
-  selectedColor: number | null;
-  onColorSelect: (color: number | null) => void;
+  /** Colours narrowing the list; several can be on at once (NL-04). */
+  selectedColors: readonly number[];
+  /** A swatch was pressed: toggle that colour. */
+  onColorToggle: (argb: number) => void;
+  onColorsClear: () => void;
   labels: Label[];
-  selectedLabelName: string | null;
-  onLabelSelect: (name: string | null) => void;
+  selectedLabelNames: readonly string[];
+  onLabelToggle: (name: string) => void;
+  onLabelsClear: () => void;
   hasActiveFilters: boolean;
   onClearFilters: () => void;
+  /** Opens the Filters sheet. Without it the row has no Filters chip. */
+  onOpenFilters?: () => void;
+  /** How many sheet filters are on, shown on the chip. */
+  filterCount?: number;
 }
 
 export function FilterRow({
   sortOrder,
   onSortOrderClick,
   sortDisabled = false,
-  selectedColor,
-  onColorSelect,
+  selectedColors,
+  onColorToggle,
+  onColorsClear,
   labels,
-  selectedLabelName,
-  onLabelSelect,
+  selectedLabelNames,
+  onLabelToggle,
+  onLabelsClear,
   hasActiveFilters,
   onClearFilters,
+  onOpenFilters,
+  filterCount = 0,
 }: FilterRowProps) {
   const sortLabel = sortDisabled ? 'Relevance' : SORT_LABELS[sortOrder];
   const colorRow = useOverflowHint<HTMLDivElement>();
@@ -156,6 +168,17 @@ export function FilterRow({
             }
           />
 
+          {onOpenFilters ? (
+            <FilterChip
+              compact
+              label={filterCount > 0 ? `Filters · ${filterCount}` : 'Filters'}
+              selected={filterCount > 0}
+              onClick={onOpenFilters}
+              ariaLabel={filterCount > 0 ? `Filters, ${filterCount} on. Open filters` : 'Open filters'}
+              leading={<FilterIcon size={14} />}
+            />
+          ) : null}
+
           {hasActiveFilters ? (
             <FilterChip compact label="Clear" selected onClick={onClearFilters} />
           ) : null}
@@ -166,10 +189,13 @@ export function FilterRow({
             aria-label="Color filter"
           >
             <ColorSwatchRow
-              selectedColor={selectedColor}
-              onSelect={onColorSelect}
-              allSelected={selectedColor === null}
-              onSelectAll={() => onColorSelect(null)}
+              selectedColor={null}
+              selectedColors={selectedColors}
+              onSelect={(argb) => {
+                if (argb != null) onColorToggle(argb);
+              }}
+              allSelected={selectedColors.length === 0}
+              onSelectAll={onColorsClear}
             />
           </div>
         </div>
@@ -188,22 +214,23 @@ export function FilterRow({
             <FilterChip
               compact
               label="All labels"
-              selected={selectedLabelName === null}
-              pressed={selectedLabelName === null}
-              onClick={() => onLabelSelect(null)}
+              selected={selectedLabelNames.length === 0}
+              pressed={selectedLabelNames.length === 0}
+              onClick={onLabelsClear}
             />
-            {labels.map((label) => (
-              <FilterChip
-                key={label.id}
-                compact
-                label={label.name}
-                selected={selectedLabelName === label.name}
-                pressed={selectedLabelName === label.name}
-                onClick={() =>
-                  onLabelSelect(selectedLabelName === label.name ? null : label.name)
-                }
-              />
-            ))}
+            {labels.map((label) => {
+              const on = selectedLabelNames.includes(label.name);
+              return (
+                <FilterChip
+                  key={label.id}
+                  compact
+                  label={label.name}
+                  selected={on}
+                  pressed={on}
+                  onClick={() => onLabelToggle(label.name)}
+                />
+              );
+            })}
           </div>
           <ScrollCue target={labelRow.ref} visible={labelRow.canScrollRight} />
         </div>

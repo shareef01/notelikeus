@@ -204,6 +204,9 @@ export function clearLocalUserData(): void {
   // the next person on the browser saw them (NL-07; native does the same at every account
   // boundary, NL-02). The rest of that store — view size, editor layout — is the device's and stays.
   useUiStore.getState().clearRecentSearches();
+  // Saved filters name this account's labels and searches; the next account must not inherit them
+  // (native NL-02). Theme, columns and layout are the device's and stay.
+  useUiStore.getState().clearSavedFilters();
   clearPendingAttachmentStore();
   // Card thumbnails and editor previews are copies of the account's pictures; they go with the rest of its data.
   clearAttachmentThumbnailCache();
