@@ -61,6 +61,26 @@ describe('clearLocalUserData', () => {
     expect(useUiStore.getState().viewColumns).toBe(3);
     expect(localStorage.getItem('notelikeus-ui') ?? '').not.toContain('divorce lawyer');
   });
+
+  it('forgets saved filters at sign-out but keeps device preferences (native NL-02)', () => {
+    useUiStore.getState().setViewColumns(3);
+    useUiStore.getState().saveFilter('Invoices', { filter: 'active', labelNames: ['Money'] });
+
+    clearLocalUserData();
+
+    expect(useUiStore.getState().savedFilters).toEqual([]);
+    expect(useUiStore.getState().viewColumns).toBe(3);
+  });
+});
+
+describe('saved filters across an account switch', () => {
+  it('are not inherited by the next account', async () => {
+    useUiStore.getState().saveFilter('Invoices', { filter: 'active', flags: ['HAS_LINKS'] });
+
+    await clearLocalUserDataForAccountSwitch('user-a');
+
+    expect(useUiStore.getState().savedFilters).toEqual([]);
+  });
 });
 
 describe('clearLocalUserDataForAccountSwitch', () => {

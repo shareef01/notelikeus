@@ -726,8 +726,8 @@ fun MainScreen(
         )
     }
 
-    // AUDIT-001: signing out would clear work the cloud does not have yet. Staying signed in is the
-    // default; losing it takes a second, explicit choice.
+    // AUDIT-001 / NL-03: work the cloud does not have yet is kept on the device, sealed for this
+    // account, if the user signs out anyway. Said before signing out, since it only syncs on their return.
     state.unsyncedBeforeSignOut?.let { unsynced ->
         val parts = buildList {
             if (unsynced.edits > 0) {
@@ -745,8 +745,8 @@ fun MainScreen(
             message = stringResource(Res.string.cloud_sign_out_unsynced_message, parts.joinToString(", ")),
             confirmLabel = stringResource(Res.string.cloud_sign_out_unsynced_confirm),
             dismissLabel = stringResource(Res.string.cloud_sign_out_unsynced_stay),
-            destructive = true,
-            onConfirm = { viewModel.signOutFromCloud(discardUnsynced = true) },
+            destructive = false,
+            onConfirm = { viewModel.signOutFromCloud(unsyncedConfirmed = true) },
             onDismiss = { viewModel.keepUnsyncedAndStaySignedIn() },
         )
     }

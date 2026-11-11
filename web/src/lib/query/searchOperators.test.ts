@@ -83,7 +83,7 @@ describe('search operators on web', () => {
   });
 
   it('still combines with the chips', () => {
-    expect(titles(all, 'has:checklist', { labelName: 'Home' })).toEqual(['Groceries']);
+    expect(titles(all, 'has:checklist', { labelNames: ['Home'] })).toEqual(['Groceries']);
   });
 });
 
@@ -96,7 +96,7 @@ describe('smart views', () => {
     ];
     expect(smartViewCounts(notes, NOW)).toEqual({ reminders: 1, unfinished: 1, unlabeled: 1 });
     expect(activeSmartView({ filter: 'active', searchQuery: 'has:reminder' })).toBe('reminders');
-    expect(activeSmartView({ filter: 'active', searchQuery: 'has:reminder', labelName: 'L' })).toBeNull();
+    expect(activeSmartView({ filter: 'active', searchQuery: 'has:reminder', labelNames: ['L'] })).toBeNull();
     expect(activeSmartView({ filter: 'archived', searchQuery: 'has:reminder' })).toBeNull();
   });
 });

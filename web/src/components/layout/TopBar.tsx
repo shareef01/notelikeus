@@ -26,13 +26,17 @@ interface TopBarProps {
   listScrolled: boolean;
   sortOrder: 'manual' | 'newest' | 'oldest';
   onSortOrderClick: () => void;
-  selectedColor: number | null;
-  onColorSelect: (color: number | null) => void;
+  selectedColors: readonly number[];
+  onColorToggle: (argb: number) => void;
+  onColorsClear: () => void;
   labels: Label[];
-  selectedLabelName: string | null;
-  onLabelSelect: (name: string | null) => void;
+  selectedLabelNames: readonly string[];
+  onLabelToggle: (name: string) => void;
+  onLabelsClear: () => void;
   hasActiveFilters: boolean;
   onClearFilters: () => void;
+  onOpenFilters?: () => void;
+  filterCount?: number;
   onMenuClick: () => void;
   onProfileClick: () => void;
   /** Shown as an avatar initial on the settings control when signed in. */
@@ -77,13 +81,17 @@ export function TopBar({
   listScrolled,
   sortOrder,
   onSortOrderClick,
-  selectedColor,
-  onColorSelect,
+  selectedColors,
+  onColorToggle,
+  onColorsClear,
   labels,
-  selectedLabelName,
-  onLabelSelect,
+  selectedLabelNames,
+  onLabelToggle,
+  onLabelsClear,
   hasActiveFilters,
   onClearFilters,
+  onOpenFilters,
+  filterCount,
   onMenuClick,
   onProfileClick,
   userEmail = null,
@@ -300,13 +308,17 @@ export function TopBar({
             sortOrder={sortOrder}
             onSortOrderClick={onSortOrderClick}
             sortDisabled={rankedByRelevance ?? searchQuery.trim().length > 0}
-            selectedColor={selectedColor}
-            onColorSelect={onColorSelect}
+            selectedColors={selectedColors}
+            onColorToggle={onColorToggle}
+            onColorsClear={onColorsClear}
             labels={labels}
-            selectedLabelName={selectedLabelName}
-            onLabelSelect={onLabelSelect}
+            selectedLabelNames={selectedLabelNames}
+            onLabelToggle={onLabelToggle}
+            onLabelsClear={onLabelsClear}
             hasActiveFilters={hasActiveFilters}
             onClearFilters={onClearFilters}
+            onOpenFilters={onOpenFilters}
+            filterCount={filterCount}
           />
         </div>
       ) : null}

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Note, NoteQueryFilters } from '@/types/note';
 import { notesContentEqual, notesEqual } from '@/lib/notes/noteEquality';
+import { DEFAULT_NARROWING, narrowingEqual } from '@/lib/query/noteQuery';
 
 export type NotesLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -61,14 +62,17 @@ interface NotesState {
 }
 
 const defaultFilters: NoteQueryFilters = {
-  filter: 'active',
-  searchQuery: '',
-  colorArgb: null,
-  labelName: null,
+  ...DEFAULT_NARROWING,
   // Native's default (Kotlin `NoteQuery.sort`, NL-05). Only a first run sees it: the persisted
   // filters replace these wholesale on rehydrate, so a sort someone already has is kept.
   sortOrder: 'manual',
 };
+
+function sameOrder<T>(a: readonly T[] | undefined, b: readonly T[] | undefined): boolean {
+  const x = a ?? [];
+  const y = b ?? [];
+  return x.length === y.length && x.every((value, index) => value === y[index]);
+}
 
 const NOTE_FILTERS_PERSIST_VERSION = 1;
 
@@ -181,12 +185,14 @@ export const useNotesStore = create<NotesState>()(
       setFilters: (patch) => {
         const next = { ...get().filters, ...patch };
         const current = get().filters;
+        // Exact, not set-wise: a re-ordered set is a different value to the sheet that shows it.
         const unchanged =
-          current.filter === next.filter &&
+          narrowingEqual(current, next) &&
           (current.searchQuery ?? '') === (next.searchQuery ?? '') &&
-          current.colorArgb === next.colorArgb &&
-          current.labelName === next.labelName &&
-          current.sortOrder === next.sortOrder;
+          current.sortOrder === next.sortOrder &&
+          sameOrder(current.colors, next.colors) &&
+          sameOrder(current.labelNames, next.labelNames) &&
+          sameOrder(current.flags, next.flags);
         if (unchanged) return;
         set({ filters: next });
       },

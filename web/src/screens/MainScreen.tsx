@@ -7,6 +7,7 @@ import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
 import { InstallPrompt } from '@/components/layout/InstallPrompt';
 import { SyncStatusBanner } from '@/components/layout/SyncStatusBanner';
 import { SideDrawer } from '@/components/layout/SideDrawer';
+import { FiltersSheet } from '@/components/layout/FiltersSheet';
 import { TopBar } from '@/components/layout/TopBar';
 import { CloudWipeNotice } from '@/components/notes/CloudWipeNotice';
 import { NoteStaggeredGrid } from '@/components/notes/NoteStaggeredGrid';
@@ -14,6 +15,15 @@ import { NotesEmptyState } from '@/components/notes/NotesEmptyState';
 import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
 import { IgnoredOperatorsNotice, SearchNotice } from '@/components/notes/SearchNotice';
 import { SMART_VIEWS, activeSmartView, smartViewCounts, type SmartViewId } from '@/lib/query/smartViews';
+import {
+  clearedFilters,
+  hasActiveFilters as filtersNarrow,
+  narrowingEqual,
+  sheetFilterCount,
+  toggleColor,
+  toggleValue,
+} from '@/lib/query/noteQuery';
+import type { SavedFilter } from '@/lib/query/savedFilters';
 import { useNotesStore } from '@/store/notesStore';
 import { useToastStore } from '@/store/toastStore';
 import {
@@ -124,6 +134,10 @@ export function MainScreen() {
   const recentSearches = useUiStore((s) => s.recentSearches);
   const addRecentSearch = useUiStore((s) => s.addRecentSearch);
   const clearRecentSearches = useUiStore((s) => s.clearRecentSearches);
+  const savedFilters = useUiStore((s) => s.savedFilters);
+  const saveFilter = useUiStore((s) => s.saveFilter);
+  const deleteSavedFilter = useUiStore((s) => s.deleteSavedFilter);
+  const [filtersSheetOpen, setFiltersSheetOpen] = useState(false);
 
   const selectedNoteIds = useUiStore((s) => s.selectedNoteIds);
   const toggleNoteSelection = useUiStore((s) => s.toggleNoteSelection);
@@ -161,9 +175,9 @@ export function MainScreen() {
 
     setSearchQuery,
 
-    setColorFilter,
+    updateFilters,
 
-    setLabelFilter,
+    showLabel,
 
     setNoteFilter,
 
@@ -194,13 +208,8 @@ export function MainScreen() {
 
 
 
-  const hasActiveFilters =
-
-    Boolean(filters.searchQuery) ||
-
-    filters.colorArgb != null ||
-
-    filters.labelName != null;
+  // Kotlin `NoteQuery.hasActiveFilters`: scope, sort, date field and label match do not count.
+  const hasActiveFilters = filtersNarrow(filters);
 
   // Sort, colour and label filters have nothing to act on in a view without notes; on first run
   // they were nine coloured circles above "Notes you add appear here" (U-08). Kept while loading,
@@ -246,12 +255,23 @@ export function MainScreen() {
     if (!view) return;
     clearSelection();
     useNotesStore.getState().setFilters({
+      ...clearedFilters(),
       filter: 'active',
       searchQuery: view.query,
-      colorArgb: null,
-      labelName: null,
     });
   };
+
+  /**
+   * Restores a saved filter, search box included (Kotlin `applySavedFilter`). Sort is how the user
+   * likes to look at lists, not which list this is, so it stays as it is.
+   */
+  const handleApplySavedFilter = (saved: SavedFilter) => {
+    clearSelection();
+    useNotesStore.getState().setFilters({ ...saved.query });
+  };
+
+  const currentSavedFilter =
+    savedFilters.find((saved) => narrowingEqual(saved.query, filters))?.name ?? null;
 
   const currentSmartView = activeSmartView(filters);
   const viewCounts = useMemo(() => smartViewCounts(notes), [notes]);
@@ -428,6 +448,14 @@ export function MainScreen() {
 
         smartViewCounts={viewCounts}
 
+        savedFilters={savedFilters}
+
+        currentSavedFilter={currentSavedFilter}
+
+        onApplySavedFilter={handleApplySavedFilter}
+
+        onDeleteSavedFilter={deleteSavedFilter}
+
         onOpenSettings={() => openDialogs({ profile: true })}
 
       />
@@ -458,15 +486,23 @@ export function MainScreen() {
 
           onSortOrderClick={openSortSheet}
 
-          selectedColor={filters.colorArgb ?? null}
+          selectedColors={filters.colors ?? []}
 
-          onColorSelect={setColorFilter}
+          onColorToggle={(argb) => updateFilters({ colors: toggleColor(filters.colors ?? [], argb) })}
+
+          onColorsClear={() => updateFilters({ colors: [] })}
 
           labels={labels}
 
-          selectedLabelName={filters.labelName ?? null}
+          selectedLabelNames={filters.labelNames ?? []}
 
-          onLabelSelect={setLabelFilter}
+          onLabelToggle={(name) => updateFilters({ labelNames: toggleValue(filters.labelNames ?? [], name) })}
+
+          onLabelsClear={() => updateFilters({ labelNames: [] })}
+
+          onOpenFilters={() => setFiltersSheetOpen(true)}
+
+          filterCount={sheetFilterCount(filters)}
 
           hasActiveFilters={hasActiveFilters}
 
@@ -650,10 +686,7 @@ export function MainScreen() {
                         onNoteLongPress={handleNoteLongPress}
                         selectedNoteIds={selectedNoteIds}
                         selectionMode={selectionMode}
-                        onLabelClick={(name) => {
-                          setNoteFilter('active');
-                          setLabelFilter(name);
-                        }}
+                        onLabelClick={showLabel}
                         listActions={{
                           onArchive: (note) => void archiveNote(note),
                           onTrash: (note) => void trashNote(note),
@@ -733,6 +766,21 @@ export function MainScreen() {
       </div>
 
 
+
+      {/* Mounted per opening, so the sheet starts fresh: no half-typed name, no label search. */}
+      {filtersSheetOpen ? <FiltersSheet
+        open
+        onClose={() => setFiltersSheetOpen(false)}
+        filters={filters}
+        onChange={updateFilters}
+        onClearAll={clearFilters}
+        labels={labels}
+        matchCount={filteredNotes.length}
+        savedFilters={savedFilters}
+        onApplySaved={handleApplySavedFilter}
+        onDeleteSaved={deleteSavedFilter}
+        onSave={(name) => saveFilter(name, filters)}
+      /> : null}
 
       <MainDialogs
         open={dialogs}

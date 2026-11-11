@@ -25,6 +25,7 @@ side that reads it is enough to make drift a failing test rather than a support 
 | `cloud/tombstone-row.json` | A tombstone row and the deleted-at map it must produce |
 | `query/parser-vectors.json` | What each search-box operator string parses to (`label:` `color:` `is:` `has:` `before:` `after:` `in:`), under a pinned clock |
 | `design/theme-colors.json` | The chrome colours of every theme (background, surfaces, text roles, outline) and the light accent tints |
+| `design/note-colors.json` | The note colour palette: each entry's index, `color:` keyword, English name and light/dark ARGB, and that a missing `color` reads as no colour (`0`) |
 | `sync/inbound-resolution.json` | Kotlin download rules: what an inbound cloud version may do to the local row — accept, keep the local row, or keep the local edit as a conflicted copy. Web reaches the same end states through pending-push markers (`offlineEditDurability.test.ts`) |
 
 ## The normal form
@@ -48,6 +49,8 @@ fields leaking in:
 | Kotlin | `composeApp/src/commonTest/kotlin/com/aus/notelikeus/contract/InboundResolutionContractTest.kt` (sync rules) |
 | Kotlin | `composeApp/src/commonTest/kotlin/com/aus/notelikeus/contract/ThemeTokensContractTest.kt` (theme colours) |
 | TypeScript | `web/src/styles/themeTokens.test.ts` (theme colours) |
+| Kotlin | `composeApp/src/commonTest/kotlin/com/aus/notelikeus/contract/NoteColorsContractTest.kt` (note colours, with `strings.xml`) |
+| TypeScript | `web/src/theme/noteColors.contract.test.ts` (note colours, and the missing-colour fallback in each mapper) |
 | Kotlin | `composeApp/src/commonTest/kotlin/com/aus/notelikeus/contract/QueryParserContractTest.kt` (search operators) |
 | TypeScript | `web/src/lib/query/noteQueryParser.contract.test.ts` (search operators) |
 

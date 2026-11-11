@@ -514,3 +514,21 @@ export function ImageIcon({ className, size = 24 }: IconProps) {
     </StrokedIcon>
   );
 }
+
+/** Funnel: the Filters sheet. */
+export function FilterIcon({ className, size = 24 }: IconProps) {
+  return (
+    <StrokedIcon className={className} size={size}>
+      <path d="M4 5h16l-6 7.5V19l-4-2v-4.5L4 5z" />
+    </StrokedIcon>
+  );
+}
+
+/** A saved filter (native `BookmarkBorder`). */
+export function BookmarkIcon({ className, size = 24 }: IconProps) {
+  return (
+    <StrokedIcon className={className} size={size}>
+      <path d="M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1z" />
+    </StrokedIcon>
+  );
+}

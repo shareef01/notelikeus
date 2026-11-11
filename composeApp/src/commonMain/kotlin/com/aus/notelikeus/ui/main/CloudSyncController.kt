@@ -204,20 +204,21 @@ internal class CloudSyncController(
      * so the session is deliberately still alive and the notes are still in the cloud. Silently
      * swallowing that left the user looking at a signed-in app with no explanation.
      */
-    fun signOutFromCloud(deleteCloudData: Boolean = false, discardUnsynced: Boolean = false) {
-        scope.launch { performSignOut(deleteCloudData, discardUnsynced) }
+    fun signOutFromCloud(deleteCloudData: Boolean = false, unsyncedConfirmed: Boolean = false) {
+        scope.launch { performSignOut(deleteCloudData, unsyncedConfirmed) }
     }
 
-    /** The user chose to stay signed in rather than lose what has not synced. */
+    /** The user chose to stay signed in, so what has not synced can still sync now. */
     fun keepUnsyncedAndStaySignedIn() {
         state.update { it.copy(unsyncedBeforeSignOut = null) }
     }
 
-    private suspend fun performSignOut(deleteCloudData: Boolean, discardUnsynced: Boolean) {
-        // AUDIT-001: an ordinary sign-out clears this device's notes, so anything the cloud does not
-        // have yet would be gone for good. Sync once, and if work is still only here, ask first.
+    private suspend fun performSignOut(deleteCloudData: Boolean, unsyncedConfirmed: Boolean) {
+        // AUDIT-001 / NL-03: an ordinary sign-out clears this device's notes. Anything the cloud does not
+        // have yet is kept, sealed for this account, but it then waits for the account to sign in here
+        // again, so sync once, and if work is still only here, say so first.
         // Deleting the cloud data is already a choice to delete everything, so it is not asked again.
-        if (!deleteCloudData && !discardUnsynced) {
+        if (!deleteCloudData && !unsyncedConfirmed) {
             val unsynced = runCatching { syncManager.unsyncedWorkBeforeSignOut() }.getOrElse { error ->
                 // A check that failed proves nothing, so it cannot clear the way to deleting.
                 if (error is kotlinx.coroutines.CancellationException) throw error
@@ -359,7 +360,7 @@ internal class CloudSyncController(
             clearIdentityCheck()
             when (check) {
                 IdentityCheck.DeleteAccount -> performDeleteAccount()
-                IdentityCheck.WipeCloudData -> performSignOut(deleteCloudData = true, discardUnsynced = false)
+                IdentityCheck.WipeCloudData -> performSignOut(deleteCloudData = true, unsyncedConfirmed = false)
             }
         }
     }

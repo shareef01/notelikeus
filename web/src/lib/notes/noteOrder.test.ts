@@ -42,8 +42,14 @@ describe('allowsManualReorder (Kotlin NoteQuery.allowsManualReorder)', () => {
   it('is blocked by any filter or search', () => {
     expect(allowsManualReorder({ ...manual, searchQuery: 'x' })).toBe(false);
     expect(allowsManualReorder({ ...manual, searchQuery: 'is:pinned' })).toBe(false);
-    expect(allowsManualReorder({ ...manual, colorArgb: 1 })).toBe(false);
-    expect(allowsManualReorder({ ...manual, labelName: 'work' })).toBe(false);
+    expect(allowsManualReorder({ ...manual, colors: [1] })).toBe(false);
+    expect(allowsManualReorder({ ...manual, labelNames: ['work'] })).toBe(false);
+    expect(allowsManualReorder({ ...manual, flags: ['PINNED'] })).toBe(false);
+    expect(allowsManualReorder({ ...manual, dateRange: { from: 0, to: 1 } })).toBe(false);
+  });
+
+  it('ignores the date field and label match, which narrow nothing on their own', () => {
+    expect(allowsManualReorder({ ...manual, dateField: 'CREATED', labelMatch: 'ALL' })).toBe(true);
   });
 
   it('treats a blank search box as no search', () => {
@@ -57,14 +63,14 @@ describe('allowsManualReorder (Kotlin NoteQuery.allowsManualReorder)', () => {
   it('offers the sort switch only when that alone would allow reordering', () => {
     expect(switchingSortWouldAllowReorder({ ...manual, sortOrder: 'newest' })).toBe(true);
     expect(switchingSortWouldAllowReorder(manual)).toBe(false);
-    expect(switchingSortWouldAllowReorder({ ...manual, sortOrder: 'newest', labelName: 'a' })).toBe(
+    expect(switchingSortWouldAllowReorder({ ...manual, sortOrder: 'newest', labelNames: ['a'] })).toBe(
       false,
     );
     for (const filters of [
       manual,
       { ...manual, sortOrder: 'newest' as const },
       { ...manual, searchQuery: 'x' },
-      { ...manual, sortOrder: 'oldest' as const, colorArgb: 2 },
+      { ...manual, sortOrder: 'oldest' as const, colors: [2] },
     ]) {
       expect(allowsManualReorder(filters) && switchingSortWouldAllowReorder(filters)).toBe(false);
     }

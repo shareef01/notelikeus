@@ -189,6 +189,20 @@ object DatabaseMigrations {
         }
     }
 
+    /**
+     * Adds the table that keeps a signed-out account's library while it still holds unsynced work
+     * (NL-03). A new table only, so no existing row is touched.
+     */
+    val MIGRATION_11_12 = object : RoomMigration(11, 12) {
+        override fun migrate(connection: SQLiteConnection) {
+            connection.execSQL(
+                "CREATE TABLE IF NOT EXISTS `sealed_accounts` (`ownerUid` TEXT NOT NULL, " +
+                    "`payload` TEXT NOT NULL, `sealedAt` INTEGER NOT NULL, `armed` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`ownerUid`))",
+            )
+        }
+    }
+
     val ALL = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -200,5 +214,6 @@ object DatabaseMigrations {
         MIGRATION_8_9,
         MIGRATION_9_10,
         MIGRATION_10_11,
+        MIGRATION_11_12,
     )
 }

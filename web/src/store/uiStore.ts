@@ -1,5 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { FilterSets } from '@/lib/query/noteQuery';
+import {
+  sanitizeSavedFilters,
+  withSavedFilter,
+  withoutSavedFilter,
+  type SavedFilter,
+} from '@/lib/query/savedFilters';
 
 export type ViewColumns = 1 | 2 | 3;
 
@@ -24,6 +31,11 @@ interface UiState {
   labelsOpen: boolean;
   selectedNoteIds: string[];
   recentSearches: string[];
+  /**
+   * Filters the user named and kept, newest first (NL-04). Device-local like native's: they belong to
+   * whoever is signed in here, so `clearLocalUserData` forgets them at sign-out and account switch.
+   */
+  savedFilters: SavedFilter[];
   /** The conflicted copy being reviewed (ConflictReviewDialog), or null. Never persisted. */
   conflictReviewNoteId: string | null;
   openConflictReview: (noteId: string) => void;
@@ -46,6 +58,9 @@ interface UiState {
   toggleSelectAll: (noteIds: string[]) => void;
   addRecentSearch: (query: string) => void;
   clearRecentSearches: () => void;
+  saveFilter: (name: string, filters: FilterSets) => void;
+  deleteSavedFilter: (name: string) => void;
+  clearSavedFilters: () => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -61,6 +76,7 @@ export const useUiStore = create<UiState>()(
       labelsOpen: false,
       selectedNoteIds: [],
       recentSearches: [],
+      savedFilters: [],
       conflictReviewNoteId: null,
       openConflictReview: (noteId) => set({ conflictReviewNoteId: noteId }),
       closeConflictReview: () => set({ conflictReviewNoteId: null }),
@@ -113,6 +129,15 @@ export const useUiStore = create<UiState>()(
           return { recentSearches: [query.trim(), ...filtered].slice(0, 10) };
         }),
       clearRecentSearches: () => set({ recentSearches: [] }),
+      saveFilter: (name, filters) =>
+        set((state) => ({ savedFilters: withSavedFilter(state.savedFilters, name, filters) })),
+      deleteSavedFilter: (name) =>
+        set((state) => {
+          const next = withoutSavedFilter(state.savedFilters, name);
+          return next.length === state.savedFilters.length ? state : { savedFilters: next };
+        }),
+      clearSavedFilters: () =>
+        set((state) => (state.savedFilters.length === 0 ? state : { savedFilters: [] })),
     }),
     {
       name: 'notelikeus-ui',
@@ -121,7 +146,12 @@ export const useUiStore = create<UiState>()(
         recentSearches: state.recentSearches,
         editorLayout: state.editorLayout,
         sidebarCollapsed: state.sidebarCollapsed,
+        savedFilters: state.savedFilters,
       }),
+      merge: (persisted, current) => {
+        const stored = (persisted ?? {}) as Partial<UiState>;
+        return { ...current, ...stored, savedFilters: sanitizeSavedFilters(stored.savedFilters) };
+      },
       skipHydration: true,
     },
   ),

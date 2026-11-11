@@ -1,4 +1,5 @@
 import { saveNote } from '@/lib/notes/noteActions';
+import { hasActiveFilters } from '@/lib/query/noteQuery';
 import type { Note, NoteFilter, NoteQueryFilters } from '@/types/note';
 
 /**
@@ -10,13 +11,12 @@ import type { Note, NoteFilter, NoteQueryFilters } from '@/types/note';
  * it would put notes the user never moved somewhere they did not choose.
  */
 
-/** Whether anything narrows the list. Scope and sort are not filters (Kotlin `hasActiveFilters`). */
+/**
+ * Whether anything narrows the list: search, colours, labels, flags or a date range. Scope and
+ * sort are not filters (Kotlin `hasActiveFilters`).
+ */
 export function hasActiveNoteFilters(filters: NoteQueryFilters): boolean {
-  return (
-    (filters.searchQuery ?? '').trim().length > 0 ||
-    filters.colorArgb != null ||
-    filters.labelName != null
-  );
+  return hasActiveFilters(filters);
 }
 
 /** The piles a manual order means something in. Trash is emptied, not arranged. */

@@ -8,6 +8,7 @@ import {
   type Note,
 } from '@/types/note';
 import { NOTE_COLOR_OPTIONS } from '@/theme/colors';
+import { toggleColor } from '@/lib/query/noteQuery';
 
 function note(partial: Partial<Note> & Pick<Note, 'id'>): Note {
   return createEmptyNote({ localId: Number(partial.id) || 1, ...partial });
@@ -111,13 +112,13 @@ describe('filterNotes', () => {
   it('matches a color filter across the light/dark pair', () => {
     const { light, dark } = NOTE_COLOR_OPTIONS[1];
     const notes = [note({ id: '1', color: dark }), note({ id: '2', color: NOTE_COLOR_OPTIONS[2].light })];
-    expect(filterNotes(notes, { filter: 'active', colorArgb: light }).map((n) => n.id)).toEqual(['1']);
+    expect(filterNotes(notes, { filter: 'active', colors: toggleColor([], light) }).map((n) => n.id)).toEqual(['1']);
   });
 
   it('filters by label name', () => {
     const notes = [note({ id: '1', labels: [labelFromName('Work')] }), note({ id: '2' })];
-    expect(filterNotes(notes, { filter: 'active', labelName: 'Work' }).map((n) => n.id)).toEqual(['1']);
-    expect(filterNotes(notes, { filter: 'active', labelName: 'Home' })).toEqual([]);
+    expect(filterNotes(notes, { filter: 'active', labelNames: ['Work'] }).map((n) => n.id)).toEqual(['1']);
+    expect(filterNotes(notes, { filter: 'active', labelNames: ['Home'] })).toEqual([]);
   });
 
   it('keeps pinned notes ahead of unpinned ones in every sort order', () => {
