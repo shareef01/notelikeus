@@ -54,4 +54,15 @@ interface SettingsRepository {
     val recentSearches: Flow<List<String>>
     suspend fun addRecentSearch(query: String)
     suspend fun clearRecentSearches()
+
+    /**
+     * Forgets recent searches and saved filters together.
+     *
+     * Both hold words the user typed about their own notes — search text, label names, filter
+     * names like "Invoices from Dr X" — but live in preferences rather than the notes database, so
+     * wiping the account's notes did not reach them and the next account on the device saw them
+     * (NL-02). Called at the account boundary alongside the notes wipe; theme, view and other
+     * device preferences are not the account's and stay.
+     */
+    suspend fun clearAccountSearchHistory()
 }

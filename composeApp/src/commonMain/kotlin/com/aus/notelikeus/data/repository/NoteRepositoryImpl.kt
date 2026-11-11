@@ -46,6 +46,15 @@ class NoteRepositoryImpl(
      */
     var recordDeletedDigest: (noteId: Long, digest: String) -> Unit = { _, _ -> }
 
+    /**
+     * Forgets the account's recent searches and saved filters as part of [clearAllUserData] (NL-02).
+     *
+     * They hold the user's own words about their notes, but live in preferences rather than this
+     * database, so wiping the tables never reached them and the next account on the device saw
+     * them. Wired by Koin to SettingsRepository.clearAccountSearchHistory; a no-op until then.
+     */
+    var clearAccountScopedPreferences: suspend () -> Unit = {}
+
     private val widgetScope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val widgetRefreshLock = Any()
     private var widgetRefreshJob: Job? = null
@@ -437,6 +446,7 @@ class NoteRepositoryImpl(
             noteDao.deleteAllNotes()
             labelDao.deleteAllLabels()
         }
+        clearAccountScopedPreferences()
         refreshWidget()
     }
 
