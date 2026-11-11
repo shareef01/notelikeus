@@ -6,7 +6,8 @@ import { createNoteWithTitle } from './helpers/newNote';
  * visible before the action and a user who wanted the far end of the list had to press, read the
  * toast, and press again if they guessed wrong.
  *
- * It now opens a chooser listing all three destinations with the active one marked. These tests
+ * It now opens a chooser listing all three destinations with the active one marked. Manual is the
+ * default, as on native (NL-05). These tests
  * hold that contract, and the last one checks the thing that actually matters: that choosing a
  * destination changes the order of the notes, not just the label on the button.
  */
@@ -28,15 +29,16 @@ const sortChip = (page: Page) => page.getByRole('button', { name: /^Sort: / });
 
 test('the sort chip offers every destination instead of cycling through them', async ({ page }) => {
   await enterNotesWithANote(page);
-  await expect(sortChip(page)).toHaveAttribute('aria-label', /Sort: Newest/);
+  await expect(sortChip(page)).toHaveAttribute('aria-label', /Sort: Manual/);
 
   await sortChip(page).click();
   const sheet = page.getByRole('dialog', { name: 'Sort notes' });
   await expect(sheet).toBeVisible();
 
   // All three destinations, listed, before anything is chosen.
-  await expect(page.getByRole('button', { name: /^Newest first/ })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('button', { name: /^Oldest first/ })).toHaveAttribute('aria-pressed', 'false');
+  await expect(sheet.getByRole('button', { name: /^Manual/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(sheet.getByRole('button', { name: /^Newest first/ })).toHaveAttribute('aria-pressed', 'false');
+  await expect(sheet.getByRole('button', { name: /^Oldest first/ })).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('choosing a destination applies it and closes the chooser', async ({ page }) => {
@@ -50,9 +52,7 @@ test('choosing a destination applies it and closes the chooser', async ({ page }
   // Reopening shows the new choice as the active one — the state is real, not just the label.
   await sortChip(page).click();
   await expect(page.getByRole('button', { name: /^Oldest first/ })).toHaveAttribute('aria-pressed', 'true');
-  // Not merely unpressed: not offered. The web client cannot reorder notes (F18), and the
-  // decision was to stop advertising an order it cannot produce.
-  await expect(page.getByRole('button', { name: /^Manual/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Manual/ })).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('the order of the notes themselves follows the choice', async ({ page }) => {
@@ -94,10 +94,10 @@ test('the settings group and the toolbar chip are one state, not two', async ({ 
   await page.getByRole('button', { name: 'Open settings' }).first().click();
   await expect(page.getByRole('group', { name: 'Sort order' })).toBeVisible({ timeout: 15_000 });
 
-  await expect(page.getByRole('button', { name: 'Newest first', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Manual order', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Oldest first', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Oldest first', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('button', { name: 'Newest first', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: 'Manual order', exact: true })).toHaveAttribute('aria-pressed', 'false');
 
   await page.keyboard.press('Escape');
   await expect(sortChip(page)).toHaveAttribute('aria-label', /Sort: Oldest/);

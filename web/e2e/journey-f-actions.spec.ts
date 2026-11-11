@@ -88,9 +88,9 @@ test('the selection checkbox is named after its note', async ({ browser }) => {
 test('trashing a note removes it from the list and keeps it restorable', async ({ browser }) => {
   const context = await newGuest(browser);
   const page = await guestWithTwoNotes(context);
-  // The web default sort is Newest first (4dcd783), and BETA was created after ALPHA. This used to
-  // read ALPHA-first because the old default, Manual, ordered by creation position.
-  expect(await cardTitles(page)).toEqual(['BETA note', 'ALPHA note']);
+  // The web default sort is Manual again, as on native (NL-05): a new note takes the next
+  // position, so ALPHA, created first, stays above BETA.
+  expect(await cardTitles(page)).toEqual(['ALPHA note', 'BETA note']);
 
   await selectNote(page, 'ALPHA');
   await expect(barAction(page, 'Move to trash')).toBeVisible({ timeout: 10_000 });
