@@ -206,11 +206,11 @@
     <string name="cloud_sign_out_success">Signed out</string>
     <string name="cloud_sign_out_deleted_success">Signed out and cloud data deleted</string>
     <string name="cloud_sign_out_confirm_title">Sign out?</string>
-    <string name="cloud_sign_out_confirm_message">Signing out clears notes on this device so another account cannot inherit them. Cloud copies remain unless you delete them.</string>
+    <string name="cloud_sign_out_confirm_message">Signing out removes this account’s notes from this device, so another account that signs in here can’t see them. Cloud copies remain unless you delete them.</string>
     <string name="cloud_sign_out_delete_data">Sign out and delete cloud data</string>
     <string name="cloud_sign_out_unsynced_title">Some changes aren’t in the cloud yet</string>
-    <string name="cloud_sign_out_unsynced_message">This device couldn’t sync: %1$s. Signing out now deletes them for good. Stay signed in and try again when you’re online, or export a backup first.</string>
-    <string name="cloud_sign_out_unsynced_confirm">Sign out and lose them</string>
+    <string name="cloud_sign_out_unsynced_message">This device couldn’t sync: %1$s. If you sign out, they stay on this device, encrypted and kept for this account only, and upload the next time you sign in here with it. No other account that signs in here can see them.</string>
+    <string name="cloud_sign_out_unsynced_confirm">Sign out</string>
     <string name="cloud_sign_out_unsynced_stay">Stay signed in</string>    <string name="account_delete">Delete account</string>
     <string name="account_delete_subtitle">Permanently remove your account and notes</string>
     <string name="account_delete_confirm_title">Delete your account?</string>

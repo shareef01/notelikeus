@@ -134,11 +134,29 @@ class DesktopSyncManager(
                     CloudWipeOutcome.Completed, is CloudWipeOutcome.CompletedButStillPending -> Unit
                 }
             }
-            sessionManager.signOut().onSuccess {
-                isolator.isolate()
-                _syncStatus.value = CloudSyncStatus.Offline
-                _cloudAccount.value = CloudAccount(isOfflineMode = true)
+            val departing = sessionManager.getCurrentAccount().userId
+            // NL-03: unsynced work is sealed for this account rather than wiped, and before the session
+            // ends, so a seal that cannot be written leaves the user signed in with nothing lost.
+            // Deleting the cloud data is a choice to delete everything, so nothing is kept for it.
+            val keepFor = departing.takeUnless { deleteCloudData }
+            if (departing != null) {
+                runCatching {
+                    if (keepFor != null) isolator.sealUnsyncedWork(keepFor) else isolator.discardSealedWork(departing)
+                }.onFailure { error ->
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    return Result.failure(error)
+                }
             }
+            sessionManager.signOut()
+                .onSuccess {
+                    isolator.isolate(sealFor = keepFor)
+                    _syncStatus.value = CloudSyncStatus.Offline
+                    _cloudAccount.value = CloudAccount(isOfflineMode = true)
+                }
+                .onFailure {
+                    // Still signed in, so the live library is current and the copy just sealed is not.
+                    keepFor?.let { runCatching { isolator.discardSealedWork(it) } }
+                }
         }
     }
 
@@ -163,6 +181,8 @@ class DesktopSyncManager(
         if (origin.initiatingUid == null || sessionManager.getCurrentAccount().userId != origin.initiatingUid ||
             LocalCommitGate.currentGeneration() != origin.generation) return false
         runCatching { sessionManager.signOut() }
+        // The account no longer exists, so nothing is kept for it.
+        runCatching { isolator.discardSealedWork(origin.initiatingUid) }
         isolator.isolate()
         _syncStatus.value = CloudSyncStatus.Offline
         _cloudAccount.value = CloudAccount(isOfflineMode = true)

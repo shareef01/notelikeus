@@ -1,9 +1,12 @@
 package com.aus.notelikeus.data.sync
 
+import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.domain.model.Note
+import com.aus.notelikeus.domain.repository.UnsyncedWork
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -175,5 +178,148 @@ class LocalAccountIsolatorTest {
         assertEquals(0, repository.getCloudEligibleNoteCount())
         assertNull(stateStore.lastMergedUserId())
         assertEquals(1, coordinator.clearPendingCount)
+    }
+
+    // ---- NL-03: unsynced work is sealed for its account, not wiped ----
+
+    /**
+     * One device, with the vault wired in. [unsynced] is what `NoteSyncEngine.unsyncedWork` would
+     * report; the engine itself is exercised by the desktop test over a real database.
+     */
+    private class Device {
+        val repository = FakeNoteRepository()
+        val stateStore = FakeNoteSyncStateStore()
+        val sealed = InMemorySealedAccountStore()
+        var unsynced = UnsyncedWork.NONE
+        val isolator = LocalAccountIsolator(
+            repository,
+            stateStore,
+            RecordingSyncCoordinator(),
+            signedOutAccounts = SignedOutAccountVault(repository, stateStore, sealed) { unsynced },
+        )
+
+        /** What the sync managers do on an ordinary sign-out. */
+        suspend fun signOut(uid: String) {
+            isolator.sealUnsyncedWork(uid)
+            isolator.isolate(sealFor = uid)
+        }
+
+        suspend fun signIn(uid: String) = isolator.isolateIfAccountChanged(uid)
+
+        suspend fun titles() = repository.getAllNotesForBackup().map { it.title }.sorted()
+    }
+
+    /** Alice, signed in, with one synced note and one edit the cloud has not seen. */
+    private suspend fun Device.aliceWithAnUnsyncedEdit() {
+        repository.insertLabel(Label(name = "Work"))
+        repository.addNote(Note(id = 1L, title = "Synced", content = "", timestamp = 10L, color = 0))
+        repository.addNote(
+            Note(
+                id = 2L, title = "Edited offline", content = "", timestamp = 25L, color = 0,
+                labels = listOf(Label(id = 1L, name = "Work")),
+            ),
+        )
+        stateStore.setLastMergedUserId("alice")
+        stateStore.setKnownCloudIds(setOf(1L, 2L))
+        stateStore.updateSyncedTimestamps(mapOf(1L to 10L, 2L to 20L))
+        stateStore.updateKnownServerRevisions(mapOf(1L to 3L, 2L to 5L))
+        unsynced = UnsyncedWork(edits = 1)
+    }
+
+    @Test
+    fun `signing out with unsynced edits wipes the device but seals the library for that account`() = runTest {
+        val device = Device()
+        device.aliceWithAnUnsyncedEdit()
+
+        device.signOut("alice")
+
+        assertTrue(device.titles().isEmpty(), "the next person at the device must see nothing")
+        assertNull(device.stateStore.lastMergedUserId())
+        val sealed = device.sealed.all().single()
+        assertEquals("alice", sealed.ownerUid)
+        assertTrue(sealed.armed, "the wipe has run, so the sealed copy is now the only one")
+    }
+
+    @Test
+    fun `the same account signing back in gets its unsynced edits back, ready to upload`() = runTest {
+        val device = Device()
+        device.aliceWithAnUnsyncedEdit()
+        device.signOut("alice")
+
+        device.signIn("alice")
+
+        assertEquals(listOf("Edited offline", "Synced"), device.titles())
+        val edited = device.repository.getNoteById(2L)!!
+        assertEquals(25L, edited.timestamp, "the edit comes back as it was, so it still reads as unsynced")
+        assertEquals(listOf("Work"), edited.labels.map { it.name })
+        // The sync state comes back with it: the engine sees one edit against the revision it was based
+        // on, not a library it has never seen.
+        assertEquals(mapOf(1L to 10L, 2L to 20L), device.stateStore.syncedTimestampById())
+        assertEquals(mapOf(1L to 3L, 2L to 5L), device.stateStore.knownServerRevisionById())
+        assertEquals("alice", device.stateStore.lastMergedUserId())
+        assertEquals(listOf(1L, 2L), device.repository.finalizedIds.sorted(), "uploads are queued")
+        assertTrue(device.sealed.all().isEmpty(), "restored once, then gone")
+    }
+
+    @Test
+    fun `a different account signing in after a fully synced sign-out inherits nothing`() = runTest {
+        val device = Device()
+        device.aliceWithAnUnsyncedEdit()
+        device.unsynced = UnsyncedWork.NONE
+
+        device.signOut("alice")
+        device.signIn("bob")
+
+        assertTrue(device.titles().isEmpty())
+        assertTrue(device.sealed.all().isEmpty(), "everything was in the cloud, so nothing is kept")
+        assertTrue(device.repository.finalizedIds.isEmpty())
+    }
+
+    @Test
+    fun `a different account cannot reach the previous account's sealed edits, which wait for it`() = runTest {
+        val device = Device()
+        device.aliceWithAnUnsyncedEdit()
+        device.signOut("alice")
+
+        device.signIn("bob")
+
+        assertTrue(device.titles().isEmpty(), "bob must not inherit alice's notes")
+        assertTrue(device.stateStore.syncedTimestampById().isEmpty(), "nor her sync state")
+        assertEquals(listOf("alice"), device.sealed.all().map { it.ownerUid })
+
+        // Bob leaves with nothing of his own unsynced, and alice comes back.
+        device.unsynced = UnsyncedWork.NONE
+        device.signOut("bob")
+        device.signIn("alice")
+
+        assertEquals(listOf("Edited offline", "Synced"), device.titles())
+    }
+
+    @Test
+    fun `an account replaced without signing out has its unsynced edits sealed too`() = runTest {
+        val device = Device()
+        device.aliceWithAnUnsyncedEdit()
+
+        device.signIn("bob")
+
+        assertTrue(device.titles().isEmpty())
+        assertEquals(listOf("alice"), device.sealed.all().map { it.ownerUid })
+    }
+
+    /**
+     * A sign-out that sealed and then failed to end the session never crossed the boundary, so the
+     * live library is newer than the sealed copy. Restoring it would put old versions back.
+     */
+    @Test
+    fun `a sealed copy from a sign-out that never happened is not restored`() = runTest {
+        val device = Device()
+        device.aliceWithAnUnsyncedEdit()
+        device.isolator.sealUnsyncedWork("alice")
+        device.repository.updateNote(device.repository.getNoteById(2L)!!.copy(title = "Edited again", timestamp = 30L))
+
+        device.signIn("alice")
+
+        assertEquals(30L, device.repository.getNoteById(2L)!!.timestamp)
+        assertFalse(device.sealed.all().single().armed)
     }
 }
