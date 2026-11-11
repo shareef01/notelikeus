@@ -61,3 +61,82 @@ describe('PrivacyPolicyDialog sign-out wording', () => {
     expect(text).toContain(isolation!);
   });
 });
+
+/** Walks up to the repository root and reads a file there. */
+function readRepositoryFile(relativePath: string): string {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 8; i++) {
+    const candidate = join(dir, relativePath);
+    if (existsSync(candidate)) return readFileSync(candidate, 'utf8');
+    dir = dirname(dir);
+  }
+  throw new Error(`Could not locate ${relativePath} from ${import.meta.url}`);
+}
+
+/**
+ * NL-06: the in-app policy is a hand-kept copy of PRIVACY_POLICY.md, and it had drifted — a month
+ * older, no account-deletion section, and both pointed at a store listing the app doesn't have.
+ * These checks make the next drift a failing test instead of an audit finding.
+ */
+describe('PrivacyPolicyDialog stays in step with PRIVACY_POLICY.md', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  async function renderDialog(): Promise<HTMLElement> {
+    await act(async () => {
+      root.render(createElement(PrivacyPolicyDialog, { open: true, onClose: () => {} }));
+    });
+    return document.body;
+  }
+
+  const policy = readRepositoryFile('PRIVACY_POLICY.md');
+  const normalise = (heading: string) => heading.trim().toLowerCase();
+
+  it('has a section for every section of the policy', async () => {
+    const body = await renderDialog();
+    const inApp = new Set([...body.querySelectorAll('h3')].map((h) => normalise(h.textContent ?? '')));
+    const sections = [...policy.matchAll(/^## (.+)$/gm)].map((match) => normalise(match[1]!));
+
+    expect(sections.length).toBeGreaterThan(10);
+    expect(sections.filter((section) => !inApp.has(section))).toEqual([]);
+  });
+
+  it('carries the same last-updated date', async () => {
+    const body = await renderDialog();
+    const date = /\*\*Last updated:\*\* (.+)/.exec(policy)?.[1]?.trim();
+
+    expect(date).toBeTruthy();
+    expect(body.textContent).toContain(`Last updated: ${date}`);
+  });
+
+  it('discloses Turnstile and names no store listing', async () => {
+    const text = (await renderDialog()).textContent ?? '';
+
+    for (const copy of [policy, text]) {
+      expect(copy).toContain('Cloudflare Turnstile');
+      expect(copy).toContain('challenges.cloudflare.com');
+      expect(copy).not.toMatch(/store listing/i);
+    }
+  });
+
+  it('keeps the native summary naming every provider the policy lists', () => {
+    const strings = readRepositoryFile('composeApp/src/commonMain/composeResources/values/strings.xml');
+    const summary = /<string name="privacy_policy_body">([\s\S]*?)<\/string>/.exec(strings)?.[1] ?? '';
+
+    for (const provider of ['Supabase', 'Cloudflare R2', 'Cloudflare Turnstile']) {
+      expect(summary).toContain(provider);
+    }
+  });
+});

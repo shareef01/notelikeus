@@ -22,6 +22,17 @@ Information stored on your device
 Cloud sync (optional)
 When you choose to sign in and use sync, note content is stored in Supabase under your authenticated identity. Signing out on Android or Windows deletes the account's notes from the device so the next account cannot inherit them. On Web they stay in the browser, encrypted and kept for that account only, until a different account signs in there or you clear the site's data. Either way, cloud data remains until you delete it.
 
+Sign-in security check
+Whenever the app emails you a code, to sign in or to confirm it's you before deleting cloud data or your account, it first runs Cloudflare Turnstile, a security check that tells people apart from automated abuse of the sign-in email. On Web it loads from challenges.cloudflare.com while the sign-in form or the confirmation step is on screen, including the sign-in form the web app shows when you first open it. On Android it runs in an in-app view of the web app's check page, and on Windows in your default browser, only when you ask for a code. Cloudflare processes information about your browser or device, such as your IP address and browser characteristics, to decide whether the request comes from a person; Cloudflare's own privacy policy covers that processing. Notelikeus receives only a single-use pass token, which is sent to Supabase with the code request. Using Notelikeus without an account on Android or Windows never runs the check.
+
+Deleting your account
+You can delete your account from Settings → Delete account in the Android, Windows and web apps. If you haven't signed in within the last ten minutes, the app first emails you a code to confirm it's you; the same applies to "Sign out and delete cloud data". Deletion takes effect immediately and cannot be undone.
+• Your notes, deleted-note records and sync data are removed from Supabase at once.
+• Your images are removed from Cloudflare R2, and then your account, including your email address, is removed from Supabase Auth. This normally finishes within seconds; if a service is unavailable it is retried hourly until it succeeds.
+• The device you delete from removes its local copy straight away, including edits not yet uploaded. Other signed-in devices remove theirs the next time they sync.
+• For a short time afterwards the server keeps your account's random internal id, with no email or note content, so a device still signed in can be told the account is gone; an hourly cleanup removes it, normally within two to three hours.
+Supabase and Cloudflare may hold data in their own routine backups until those expire. Backup files you exported are yours and are not affected.
+
 Security
 • Android: SQLCipher-encrypted Room database; attachment bytes sealed with AES-GCM under Android Keystore. Optional app-wide lock uses device biometric APIs.
 • Windows Desktop: Notes database encrypted at rest with SQLCipher under a DPAPI-sealed passphrase; attachment bytes sealed with AES-GCM under a separate DPAPI-protected key. Session token file is also DPAPI-sealed. Key loss without a cloud account makes the local database unrecoverable — signed-in users re-sync; guests should keep a JSON / .nlkbak export.
@@ -46,10 +57,16 @@ Links in notes
 Tapping a link opens your default browser. Notelikeus does not track link usage.
 
 Third parties
-We do not sell your data. We do not use analytics or advertising SDKs in this app. Cloud providers used when you enable sync are Supabase (auth and note data; sign-in emails you a one-time code at the address you enter) and Cloudflare (web hosting and attachment objects).
+We do not sell your data. We do not use analytics or advertising SDKs in this app. Cloud providers used when you enable sync are Supabase (auth and note data; sign-in emails you a one-time code at the address you enter) and Cloudflare (web hosting and attachment objects). Cloudflare Turnstile runs the security check whenever the app emails you a code (see Sign-in security check).
+
+Children
+Notelikeus is not directed at children under 13. We do not knowingly collect personal information from children.
+
+Changes
+We may update this policy as the app evolves. Material changes will be reflected in the app's privacy text and the policy document.
 
 Contact
-For privacy questions, contact the app developer through the store listing or project repository.
+For privacy questions, open an issue on the project's GitHub repository: https://github.com/shareef01/notelikeus/issues
 
 Last updated: November 2026`;
 
