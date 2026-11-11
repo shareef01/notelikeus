@@ -50,6 +50,24 @@ class NoteBackupImporterTest {
     }
 
     @Test
+    fun `a note without a color imports with no color`() = runTest {
+        val repository = RecordingNoteRepository()
+        val importer = NoteBackupImporter(repository)
+
+        val json = """
+            {
+              "version": 3,
+              "notes": [{"title": "Plain", "content": "", "timestamp": 1}]
+            }
+        """.trimIndent()
+
+        val result = importer.importFromJson(json, actionToken()) as BackupImportResult.Success
+
+        assertEquals(1, result.notesImported)
+        assertEquals(0, repository.insertedWithoutSync.single().color)
+    }
+
+    @Test
     fun `importFromJson reuses existing labels`() = runTest {
         val repository = RecordingNoteRepository(
             existingLabels = listOf(Label(id = 5L, name = "Work")),

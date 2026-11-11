@@ -7,14 +7,15 @@ export interface NoteColorOption {
 }
 
 /**
- * 8 solid Material-inspired note colors (+ theme default).
+ * No colour plus 8 solid Material-inspired note colors, in the same order as Kotlin
+ * `NOTE_COLOR_OPTIONS` (`contracts/design/note-colors.json`).
  * Light: soft container tones. Dark: richer saturated surfaces that still read as color.
  */
 export const NOTE_COLOR_OPTIONS: NoteColorOption[] = [
-  { light: 0, dark: 0 }, // theme default
-  { light: toArgb(0xffffcdd2), dark: toArgb(0xff6d2b2b) }, // Coral
+  { light: 0, dark: 0 }, // No Color
+  { light: toArgb(0xffffcdd2), dark: toArgb(0xff6d2b2b) }, // Red
   { light: toArgb(0xffffe0b2), dark: toArgb(0xff6b4520) }, // Orange
-  { light: toArgb(0xfffff59d), dark: toArgb(0xff6b5c18) }, // Amber
+  { light: toArgb(0xfffff59d), dark: toArgb(0xff6b5c18) }, // Yellow
   { light: toArgb(0xffc8e6c9), dark: toArgb(0xff2e5a32) }, // Green
   { light: toArgb(0xffb2dfdb), dark: toArgb(0xff1e5650) }, // Teal
   { light: toArgb(0xffbbdefb), dark: toArgb(0xff2a4a6e) }, // Blue
@@ -41,11 +42,21 @@ export function argbToCssAlpha(argb: number, alpha: number): string {
   return `rgb(${r} ${g} ${b} / ${alpha})`;
 }
 
+/**
+ * A note with no colour of its own; renders as the active theme's surface. Also what a cloud row
+ * or backup entry without a `color` field reads as, matching Kotlin `NO_NOTE_COLOR`.
+ */
+export const NO_NOTE_COLOR = 0;
+
+/**
+ * Spoken / displayed names, in `NOTE_COLOR_OPTIONS` order: the native `strings.xml` values
+ * (`no_color`, `color_name_*`), so a screen reader says the same word on every platform.
+ */
 export const NOTE_COLOR_NAMES = [
-  'Default',
-  'Coral',
+  'No Color',
+  'Red',
   'Orange',
-  'Amber',
+  'Yellow',
   'Green',
   'Teal',
   'Blue',

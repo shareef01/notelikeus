@@ -36,7 +36,10 @@ data class NoteBackupDto(
     val title: String,
     val content: String,
     val timestamp: Long,
-    val color: Int,
+    // Missing means no colour (0, `NO_NOTE_COLOR`), as on web and as SupabaseNoteTransport reads a
+    // cloud row without one. Required here, it made a hand-written or third-party backup that left
+    // the field out fail to import as a whole (contracts/design/note-colors.json, `noColor`).
+    val color: Int = 0,
     val isPinned: Boolean = false,
     val isArchived: Boolean = false,
     val isTrashed: Boolean = false,

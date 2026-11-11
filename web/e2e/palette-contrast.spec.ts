@@ -76,8 +76,8 @@ async function swatchesIn(page: Page, theme: (typeof THEMES)[keyof typeof THEMES
 for (const [name, theme] of Object.entries(THEMES)) {
   // Text on a coloured note is the note's text colour at an opacity, so it has to stay on the
   // 0.80 "secondary" tier (NOTE_EMPHASIS). The editor's checklist link sat at 0.60: 3.54:1 on a
-  // dark-theme amber note. It now shows only on an empty note, as "+ Add checklist" (U-10).
-  test(`text in an amber note's editor clears AA in the ${name} theme`, async ({ page }) => {
+  // dark-theme yellow note. It now shows only on an empty note, as "+ Add checklist" (U-10).
+  test(`text in a yellow note's editor clears AA in the ${name} theme`, async ({ page }) => {
     await page.addInitScript((t) => {
       localStorage.setItem('notelikeus-settings', JSON.stringify({ state: { theme: t }, version: 1 }));
     }, theme as unknown as object);
@@ -93,7 +93,7 @@ for (const [name, theme] of Object.entries(THEMES)) {
     await expect(newNote).toBeVisible({ timeout: 20_000 });
     await newNote.click();
     await page.getByRole('button', { name: 'More options' }).click();
-    await page.getByRole('dialog').last().getByRole('button', { name: /Amber/ }).click();
+    await page.getByRole('dialog').last().getByRole('button', { name: /Yellow/ }).click();
     await page.keyboard.press('Escape');
     await page.getByRole('textbox', { name: 'Note title' }).first().focus();
     // axe skips what is scrolled out of view, and at 720px the link sits below the editor's fold.
@@ -107,7 +107,7 @@ for (const [name, theme] of Object.entries(THEMES)) {
 
   // axe does not measure ::placeholder, so this composites it by hand: the placeholder is the
   // note's text colour at its ::placeholder opacity, over the note. They were 0.30, about 1.6:1.
-  test(`the editor's placeholders clear AA on an amber note in the ${name} theme`, async ({ page }) => {
+  test(`the editor's placeholders clear AA on a yellow note in the ${name} theme`, async ({ page }) => {
     await page.addInitScript((t) => {
       localStorage.setItem('notelikeus-settings', JSON.stringify({ state: { theme: t }, version: 1 }));
     }, theme as unknown as object);
@@ -121,7 +121,7 @@ for (const [name, theme] of Object.entries(THEMES)) {
     await expect(newNote).toBeVisible({ timeout: 20_000 });
     await newNote.click();
     await page.getByRole('button', { name: 'More options' }).click();
-    await page.getByRole('dialog').last().getByRole('button', { name: /Amber/ }).click();
+    await page.getByRole('dialog').last().getByRole('button', { name: /Yellow/ }).click();
     await page.keyboard.press('Escape');
 
     for (const field of ['Note title', 'Note body']) {

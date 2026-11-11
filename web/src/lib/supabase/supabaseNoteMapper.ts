@@ -1,5 +1,6 @@
 import { ATTACHMENT_R2_PREFIX } from '@/lib/attachments/attachmentPaths';
 import { labelFromName } from '@/types/label';
+import { NO_NOTE_COLOR } from '@/theme/colors';
 import type { Note } from '@/types/note';
 
 export interface SupabaseNotePayload {
@@ -64,7 +65,7 @@ export function supabaseNoteToNote(payload: SupabaseNotePayload): Note {
     title: asString(payload.title),
     content: asString(payload.content),
     timestamp: asInteger(payload.client_timestamp, Date.now()),
-    color: asInteger(payload.color, 0xff1a1a1a | 0),
+    color: asInteger(payload.color, NO_NOTE_COLOR),
     isPinned: asBoolean(payload.is_pinned),
     isArchived: asBoolean(payload.is_archived),
     isTrashed: asBoolean(payload.is_trashed),
