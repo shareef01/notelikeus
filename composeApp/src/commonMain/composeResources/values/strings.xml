@@ -74,10 +74,9 @@
     <!-- Delete confirmation -->
     <string name="delete_note_title">Delete note?</string>
     <string name="delete_notes_title">Delete %1$d notes?</string>
-    <string name="delete_to_trash_message">Selected notes will be moved to trash.</string>
     <string name="delete_permanent_message">These notes will be permanently deleted.</string>
-    <string name="delete_editor_message">This note will be moved to trash.</string>
     <string name="action_delete">Delete</string>
+    <string name="action_move_to_trash">Move to trash</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_ok">OK</string>
     <string name="action_remove">Remove</string>
@@ -480,4 +479,25 @@ Sync diagnostics shows counts and version numbers only — never note text, toke
     <string name="cd_window_maximize">Maximize</string>
     <string name="cd_window_restore">Restore</string>
     <string name="cd_window_close">Close</string>
+    <!-- Native chrome that used to be hard-coded (NL-12) -->
+    <string name="cd_window_menu">Window menu</string>
+    <string name="menu_new_note">New note</string>
+    <string name="menu_search">Search</string>
+    <string name="menu_exit">Exit</string>
+    <string name="about_title">About Notelikeus</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_running_on">Running on %1$s (%2$s)</string>
+    <string name="about_description">A modern, cross-platform note taking app built with Kotlin Multiplatform and Compose.</string>
+    <string name="action_close">Close</string>
+    <string name="app_lock_unavailable_desktop">App lock isn’t available on desktop yet, so this device can’t verify you. Your notes are still stored locally.</string>
+    <string name="sidebar_expand">Expand sidebar</string>
+    <string name="sidebar_collapse">Collapse sidebar</string>
+    <string name="sidebar_collapse_short">Collapse</string>
+    <string name="drawer_signed_in">Signed in</string>
+    <string name="attachment_picker_title">Choose an image</string>
+    <string name="labels_load_failed">Couldn’t load labels</string>
+    <string name="cloud_sign_out_unsynced_check_failed">Couldn’t check for changes that haven’t synced, so you’re still signed in. Try again.</string>
+    <string name="cloud_sign_out_delete_failed">Couldn’t delete your cloud notes, so you’re still signed in. Try again.</string>
+    <string name="account_delete_outcome_unknown">Couldn’t confirm whether your account was deleted. Check your connection. If it was, this device removes its copy the next time it syncs.</string>
+    <string name="account_delete_failed">Couldn’t delete your account, and nothing was deleted. Check your connection and try again.</string>
 </resources>

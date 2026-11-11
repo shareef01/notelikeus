@@ -40,9 +40,8 @@ class MainDialogsCloudWipeTest {
                 showCloudSignOutConfirm = false,
                 showCloudRestoreConfirm = showCloudRestoreConfirm,
                 showEmptyTrashConfirm = false,
-                showDeleteConfirm = false,
+                showPermanentDeleteConfirm = false,
                 selectedCount = 0,
-                isTrashedFilter = false,
                 onCloudSignOutConfirmDismiss = {},
                 onCloudSignOut = {},
                 onCloudRestoreConfirmDismiss = {},
@@ -50,8 +49,8 @@ class MainDialogsCloudWipeTest {
                 onUploadLocalNotesAfterWipe = onUploadLocalNotesAfterWipe,
                 onEmptyTrashConfirmDismiss = {},
                 onConfirmEmptyTrash = {},
-                onDeleteConfirmDismiss = {},
-                onConfirmDelete = {},
+                onPermanentDeleteConfirmDismiss = {},
+                onConfirmPermanentDelete = {},
             )
         }
     }

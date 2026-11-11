@@ -1,5 +1,17 @@
 package com.aus.notelikeus.ui.window
 
+import notelikeus.composeapp.generated.resources.Res
+import notelikeus.composeapp.generated.resources.about_title
+import notelikeus.composeapp.generated.resources.cd_window_close
+import notelikeus.composeapp.generated.resources.cd_window_maximize
+import notelikeus.composeapp.generated.resources.cd_window_menu
+import notelikeus.composeapp.generated.resources.cd_window_minimize
+import notelikeus.composeapp.generated.resources.cd_window_restore
+import notelikeus.composeapp.generated.resources.menu_exit
+import notelikeus.composeapp.generated.resources.menu_new_note
+import notelikeus.composeapp.generated.resources.menu_search
+import notelikeus.composeapp.generated.resources.nav_settings
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -112,14 +124,14 @@ fun FrameWindowScope.NotelikeusTitleBar(
             Box {
                 CaptionButton(
                     onClick = { menuOpen = true },
-                    contentDescription = "Window menu",
+                    contentDescription = stringResource(Res.string.cd_window_menu),
                     hoverColor = colors.onSurface.copy(alpha = Chrome.SoftWash),
                     contentColor = colors.onSurface
                 ) { color -> DrawOverflow(color) }
 
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(
-                        text = { Text("New note") },
+                        text = { Text(stringResource(Res.string.menu_new_note)) },
                         trailingIcon = {
                             Text(
                                 "Ctrl+N",
@@ -131,7 +143,7 @@ fun FrameWindowScope.NotelikeusTitleBar(
                     )
                     if (onSearch != null) {
                         DropdownMenuItem(
-                            text = { Text("Search") },
+                            text = { Text(stringResource(Res.string.menu_search)) },
                             trailingIcon = {
                                 Text(
                                     "Ctrl+K",
@@ -144,7 +156,7 @@ fun FrameWindowScope.NotelikeusTitleBar(
                     }
                     if (onSettings != null) {
                         DropdownMenuItem(
-                            text = { Text("Settings") },
+                            text = { Text(stringResource(Res.string.nav_settings)) },
                             trailingIcon = {
                                 Text(
                                     "Ctrl+,",
@@ -157,12 +169,12 @@ fun FrameWindowScope.NotelikeusTitleBar(
                     }
                     HorizontalDivider()
                     DropdownMenuItem(
-                        text = { Text("About Notelikeus") },
+                        text = { Text(stringResource(Res.string.about_title)) },
                         onClick = { menuOpen = false; onAbout() }
                     )
                     HorizontalDivider()
                     DropdownMenuItem(
-                        text = { Text("Exit") },
+                        text = { Text(stringResource(Res.string.menu_exit)) },
                         onClick = { menuOpen = false; onClose() }
                     )
                 }
@@ -170,21 +182,23 @@ fun FrameWindowScope.NotelikeusTitleBar(
 
             CaptionButton(
                 onClick = onMinimize,
-                contentDescription = "Minimize",
+                contentDescription = stringResource(Res.string.cd_window_minimize),
                 hoverColor = colors.onSurface.copy(alpha = Chrome.SoftWash),
                 contentColor = colors.onSurface
             ) { color -> DrawMinimize(color) }
 
             CaptionButton(
                 onClick = onToggleMaximize,
-                contentDescription = if (isMaximized) "Restore" else "Maximize",
+                contentDescription = stringResource(
+                    if (isMaximized) Res.string.cd_window_restore else Res.string.cd_window_maximize
+                ),
                 hoverColor = colors.onSurface.copy(alpha = Chrome.SoftWash),
                 contentColor = colors.onSurface
             ) { color -> if (isMaximized) DrawRestore(color) else DrawMaximize(color) }
 
             CaptionButton(
                 onClick = onClose,
-                contentDescription = "Close",
+                contentDescription = stringResource(Res.string.cd_window_close),
                 hoverColor = CLOSE_HOVER,
                 contentColor = colors.onSurface,
                 hoverContentColor = Color.White

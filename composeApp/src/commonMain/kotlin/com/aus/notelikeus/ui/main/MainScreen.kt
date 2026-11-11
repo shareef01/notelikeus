@@ -116,7 +116,7 @@ fun MainScreen(
     val scope = rememberCoroutineScope()
     var showProfileSheet by remember { mutableStateOf(false) }
     var showFiltersSheet by remember { mutableStateOf(false) }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showPermanentDeleteConfirm by remember { mutableStateOf(false) }
     var showEmptyTrashConfirm by remember { mutableStateOf(false) }
     var showCloudSignOutConfirm by remember { mutableStateOf(false) }
     var showDeleteAccountConfirm by remember { mutableStateOf(false) }
@@ -137,6 +137,27 @@ fun MainScreen(
         )
         if (result == SnackbarResult.ActionPerformed) {
             viewModel.undoLastAction()
+        }
+    }
+
+    // Selection bar and Delete key alike: a move to Trash is undoable, so it happens at once with
+    // Undo; only a permanent delete from Trash asks first (NL-11).
+    fun deleteSelection() {
+        when (selectionDeleteFor(state.currentFilter)) {
+            SelectionDelete.CONFIRM_PERMANENT_DELETE -> showPermanentDeleteConfirm = true
+            SelectionDelete.MOVE_TO_TRASH -> {
+                val count = state.selectedNotes.size
+                viewModel.deleteSelectedNotes()
+                scope.launch {
+                    showUndoSnackbar(
+                        if (count == 1) {
+                            getString(Res.string.note_trashed)
+                        } else {
+                            getString(Res.string.notes_trashed_count, count)
+                        }
+                    )
+                }
+            }
         }
     }
 
@@ -227,10 +248,11 @@ fun MainScreen(
                 )
             }
             is CloudSyncEvent.Failure -> {
+                val text = event.text()
                 snackbarHostState.showSnackbar(
-                    event.message.ifBlank { getString(Res.string.cloud_sync_failed) }
+                    text.ifBlank { getString(Res.string.cloud_sync_failed) }
                 )
-                profileSignInError = event.message
+                profileSignInError = text
             }
             CloudSyncEvent.SignedIn -> {
                 snackbarHostState.showSnackbar(getString(Res.string.cloud_sign_in_success))
@@ -349,7 +371,7 @@ fun MainScreen(
             snackbarHostState = snackbarHostState,
                         onShowProfileSheet = { showProfileSheet = it },
             onShowFiltersSheet = { showFiltersSheet = it },
-            onShowDeleteConfirm = { showDeleteConfirm = it },
+            onDeleteSelected = ::deleteSelection,
             onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
             onShowDrawer = { scope.launch { drawerState.open() } },
             listScrolled = listScrolled,
@@ -394,7 +416,7 @@ fun MainScreen(
                     showProfileSheet = true
                     true
                 } else if (it.key == Key.Delete && state.selectedNotes.isNotEmpty()) {
-                    showDeleteConfirm = true
+                    deleteSelection()
                     true
                 } else if (it.key == Key.Escape) {
                     if (state.selectedNotes.isNotEmpty()) {
@@ -565,7 +587,7 @@ fun MainScreen(
                     snackbarHostState = snackbarHostState,
                                         onShowProfileSheet = { showProfileSheet = it },
                     onShowFiltersSheet = { showFiltersSheet = it },
-                    onShowDeleteConfirm = { showDeleteConfirm = it },
+                    onDeleteSelected = ::deleteSelection,
                     onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
                     onShowDrawer = { scope.launch { drawerState.open() } },
                     listScrolled = listScrolled,
@@ -755,9 +777,8 @@ fun MainScreen(
         showCloudSignOutConfirm = showCloudSignOutConfirm,
         showCloudRestoreConfirm = showCloudRestoreConfirm,
         showEmptyTrashConfirm = showEmptyTrashConfirm,
-        showDeleteConfirm = showDeleteConfirm,
+        showPermanentDeleteConfirm = showPermanentDeleteConfirm,
         selectedCount = state.selectedNotes.size,
-        isTrashedFilter = state.currentFilter == NoteFilter.TRASHED,
         onCloudSignOutConfirmDismiss = { showCloudSignOutConfirm = false },
         onCloudSignOut = { deleteCloudData ->
             showCloudSignOutConfirm = false
@@ -789,26 +810,19 @@ fun MainScreen(
                 showUndoSnackbar(message)
             }
         },
-        onDeleteConfirmDismiss = { showDeleteConfirm = false },
-        onConfirmDelete = {
+        onPermanentDeleteConfirmDismiss = { showPermanentDeleteConfirm = false },
+        onConfirmPermanentDelete = {
             val count = state.selectedNotes.size
-            showDeleteConfirm = false
+            showPermanentDeleteConfirm = false
             viewModel.deleteSelectedNotes()
             scope.launch {
-                val message = if (state.currentFilter == NoteFilter.TRASHED) {
+                showUndoSnackbar(
                     if (count == 1) {
                         getString(Res.string.note_deleted)
                     } else {
                         getString(Res.string.notes_deleted_count, count)
                     }
-                } else {
-                    if (count == 1) {
-                        getString(Res.string.note_trashed)
-                    } else {
-                        getString(Res.string.notes_trashed_count, count)
-                    }
-                }
-                showUndoSnackbar(message)
+                )
             }
         }
     )

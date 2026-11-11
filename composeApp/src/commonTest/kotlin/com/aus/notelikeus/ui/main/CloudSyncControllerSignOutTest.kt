@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import notelikeus.composeapp.generated.resources.Res
+import notelikeus.composeapp.generated.resources.cloud_sign_out_unsynced_check_failed
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -105,7 +107,9 @@ class CloudSyncControllerSignOutTest {
         runCurrent()
 
         assertEquals(listOf("check"), sync.calls)
-        assertIs<CloudSyncEvent.Failure>(state.value.pendingCloudSyncEvent)
+        val event = assertIs<CloudSyncEvent.Failure>(state.value.pendingCloudSyncEvent)
+        // NL-12: the app's own wording comes from strings.xml, so it can be translated.
+        assertEquals(Res.string.cloud_sign_out_unsynced_check_failed, event.messageRes)
     }
 
     @Test

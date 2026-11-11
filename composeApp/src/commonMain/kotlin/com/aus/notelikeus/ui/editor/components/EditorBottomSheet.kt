@@ -18,7 +18,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.Label
 import com.aus.notelikeus.ui.components.NoteColorSwatch
@@ -50,36 +49,8 @@ fun EditorBottomSheet(
 ) {
     val haptic = LocalHapticFeedback.current
     var newLabelName by remember { mutableStateOf("") }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
     val isDarkTheme = isNoteColorDarkTheme()
     val colors = noteColorsForTheme(isDarkTheme)
-
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            shape = MaterialTheme.shapes.large,
-            title = { Text(stringResource(Res.string.delete_note_title)) },
-            text = { Text(stringResource(Res.string.delete_editor_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDeleteConfirm = false
-                    onDeleteNote()
-                    onDismiss()
-                }) {
-                    Text(
-                        stringResource(Res.string.action_delete),
-                        color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
-            }
-        )
-    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -239,14 +210,14 @@ fun EditorBottomSheet(
             ListItem(
                 headlineContent = {
                     Text(
-                        stringResource(Res.string.action_delete),
+                        stringResource(Res.string.action_move_to_trash),
                         color = MaterialTheme.colorScheme.error
                     )
                 },
                 leadingContent = { 
                     Icon(
                         Icons.Default.Delete,
-                        // The row's own text says "Delete"; describing the icon too says it twice.
+                        // The row's own text names the action; describing the icon too says it twice.
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(Size.iconLarge)
@@ -254,7 +225,10 @@ fun EditorBottomSheet(
                 },
                 modifier = Modifier.clickable(role = Role.Button) {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    showDeleteConfirm = true
+                    // Undoable, so no confirmation: the editor closes and the list offers Undo,
+                    // as archiving does (NL-11).
+                    onDeleteNote()
+                    onDismiss()
                 },
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)
             )

@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import notelikeus.composeapp.generated.resources.Res
+import notelikeus.composeapp.generated.resources.account_delete_failed
+import notelikeus.composeapp.generated.resources.account_delete_outcome_unknown
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -70,7 +73,8 @@ class CloudSyncControllerDeleteAccountTest {
         runCurrent()
 
         val event = assertIs<CloudSyncEvent.Failure>(state.value.pendingCloudSyncEvent)
-        assertTrue("nothing was deleted" in event.message, event.message)
+        // The wording is a string resource ("…and nothing was deleted…"), so it can be translated.
+        assertEquals(Res.string.account_delete_failed, event.messageRes)
         assertFalse("503" in event.message, "transport detail is not for the user")
         assertFalse(state.value.isDeletingAccount)
     }
@@ -85,8 +89,7 @@ class CloudSyncControllerDeleteAccountTest {
         runCurrent()
 
         val event = assertIs<CloudSyncEvent.Failure>(state.value.pendingCloudSyncEvent)
-        assertTrue("Couldn't confirm whether your account was deleted" in event.message, event.message)
-        assertFalse("nothing was deleted" in event.message, event.message)
+        assertEquals(Res.string.account_delete_outcome_unknown, event.messageRes)
     }
 
     @Test

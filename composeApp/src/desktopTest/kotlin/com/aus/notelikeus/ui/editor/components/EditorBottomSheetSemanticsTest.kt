@@ -9,6 +9,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.runComposeUiTest
 import com.aus.notelikeus.domain.model.Label
 import kotlin.test.Test
@@ -32,7 +34,12 @@ class EditorBottomSheetSemanticsTest {
     private val home = Label(id = 2L, name = "Home")
 
     @Composable
-    private fun Sheet(selected: List<Label>, onToggle: (Label) -> Unit = {}) {
+    private fun Sheet(
+        selected: List<Label>,
+        onToggle: (Label) -> Unit = {},
+        onDeleteNote: () -> Unit = {},
+        onDismiss: () -> Unit = {},
+    ) {
         MaterialTheme {
             EditorBottomSheet(
                 selectedColor = 0,
@@ -41,9 +48,9 @@ class EditorBottomSheetSemanticsTest {
                 selectedLabels = selected,
                 onLabelToggle = onToggle,
                 onCreateLabel = {},
-                onDeleteNote = {},
+                onDeleteNote = onDeleteNote,
                 onShareNote = {},
-                onDismiss = {}
+                onDismiss = onDismiss
             )
         }
     }
@@ -93,15 +100,37 @@ class EditorBottomSheetSemanticsTest {
         assertEquals(listOf(home), toggled, "a single tap must toggle exactly once")
     }
 
-    /** The row's own text says "Delete"; describing the icon too said it twice. */
+    /** The row's own text says "Move to trash"; describing the icon too said it twice. */
     @Test
     fun `the delete action names itself once`() = runComposeUiTest {
         setContent { Sheet(selected = emptyList()) }
 
-        val description = onNodeWithText("Delete").fetchSemanticsNode()
+        val description = onNodeWithText("Move to trash").fetchSemanticsNode()
             .config.getOrNull(SemanticsProperties.ContentDescription)
 
         assertNull(description, "the visible label is the description; the icon should add nothing")
+    }
+
+    /**
+     * NL-11: a move to Trash is undoable, so the editor does it at once and the list offers Undo.
+     * It used to open "Delete note?" first, and called a reversible action "Delete".
+     */
+    @Test
+    fun `move to trash acts at once, with no confirmation`() = runComposeUiTest {
+        var trashed = 0
+        var dismissed = 0
+        setContent {
+            Sheet(selected = emptyList(), onDeleteNote = { trashed++ }, onDismiss = { dismissed++ })
+        }
+
+        // The row is the last one in a half-expanded sheet, outside the test window, so a
+        // pointer click cannot reach it; its click action is the same handler.
+        onNodeWithText("Move to trash").performSemanticsAction(SemanticsActions.OnClick)
+        waitForIdle()
+
+        assertEquals(1, trashed, "the note was not moved to Trash")
+        assertEquals(1, dismissed, "the sheet stayed open")
+        onNodeWithText("Delete note?").assertDoesNotExist()
     }
 
     @Test

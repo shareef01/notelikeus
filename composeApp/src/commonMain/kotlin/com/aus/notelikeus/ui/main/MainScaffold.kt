@@ -90,7 +90,7 @@ internal fun MainScaffold(
     gridState: LazyStaggeredGridState,
     snackbarHostState: SnackbarHostState,
     onShowProfileSheet: (Boolean) -> Unit,
-    onShowDeleteConfirm: (Boolean) -> Unit,
+    onDeleteSelected: () -> Unit,
     onShowFiltersSheet: (Boolean) -> Unit,
     onShowEmptyTrashConfirm: (Boolean) -> Unit,
     onShowDrawer: () -> Unit,
@@ -154,7 +154,7 @@ internal fun MainScaffold(
                 },
                 onDeleteSelected = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onShowDeleteConfirm(true)
+                    onDeleteSelected()
                 },
                 onArchiveSelected = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)

@@ -20,7 +20,8 @@ import com.aus.notelikeus.ui.theme.Spacing
 
 /**
  * The confirmation dialogs the main screen can show: cloud sign-out (with the
- * delete-cloud-data escalation), cloud restore, empty trash, and delete/trash selection.
+ * delete-cloud-data escalation), cloud restore, empty trash, and permanently deleting a selection
+ * from Trash. Moving notes to Trash never asks: it is undoable, so it happens at once with Undo.
  * Extracted from MainScreen; that screen owns the visibility flags and passes callbacks.
  */
 @Composable
@@ -28,9 +29,8 @@ internal fun MainDialogs(
     showCloudSignOutConfirm: Boolean,
     showCloudRestoreConfirm: Boolean,
     showEmptyTrashConfirm: Boolean,
-    showDeleteConfirm: Boolean,
+    showPermanentDeleteConfirm: Boolean,
     selectedCount: Int,
-    isTrashedFilter: Boolean,
     onCloudSignOutConfirmDismiss: () -> Unit,
     onCloudSignOut: (deleteCloudData: Boolean) -> Unit,
     onCloudRestoreConfirmDismiss: () -> Unit,
@@ -38,8 +38,8 @@ internal fun MainDialogs(
     onUploadLocalNotesAfterWipe: () -> Unit,
     onEmptyTrashConfirmDismiss: () -> Unit,
     onConfirmEmptyTrash: () -> Unit,
-    onDeleteConfirmDismiss: () -> Unit,
-    onConfirmDelete: () -> Unit
+    onPermanentDeleteConfirmDismiss: () -> Unit,
+    onConfirmPermanentDelete: () -> Unit
 ) {
     if (showCloudSignOutConfirm) {
         ConfirmDialog(
@@ -112,7 +112,7 @@ internal fun MainDialogs(
         )
     }
 
-    if (showDeleteConfirm) {
+    if (showPermanentDeleteConfirm) {
         val count = selectedCount
         ConfirmDialog(
             title = if (count == 1) {
@@ -120,17 +120,11 @@ internal fun MainDialogs(
             } else {
                 stringResource(Res.string.delete_notes_title, count)
             },
-            message = if (isTrashedFilter) {
-                stringResource(Res.string.delete_permanent_message)
-            } else {
-                stringResource(Res.string.delete_to_trash_message)
-            },
+            message = stringResource(Res.string.delete_permanent_message),
             confirmLabel = stringResource(Res.string.action_delete),
-            // Only permanent deletion is irreversible; moving to trash is undoable, and marking
-            // it destructive would make the two look equally final.
-            destructive = isTrashedFilter,
-            onConfirm = onConfirmDelete,
-            onDismiss = onDeleteConfirmDismiss
+            destructive = true,
+            onConfirm = onConfirmPermanentDelete,
+            onDismiss = onPermanentDeleteConfirmDismiss
         )
     }
 }

@@ -15,6 +15,12 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
+import notelikeus.composeapp.generated.resources.Res
+import notelikeus.composeapp.generated.resources.account_delete_failed
+import notelikeus.composeapp.generated.resources.account_delete_outcome_unknown
+import notelikeus.composeapp.generated.resources.cloud_sign_out_delete_failed
+import notelikeus.composeapp.generated.resources.cloud_sign_out_unsynced_check_failed
 
 private const val AUTO_PULL_MIN_INTERVAL_MS = 30_000L
 
@@ -224,7 +230,7 @@ internal class CloudSyncController(
                 state.update {
                     it.copy(
                         pendingCloudSyncEvent = CloudSyncEvent.Failure(
-                            "Couldn't check for changes that haven't synced, so you're still signed in. Try again.",
+                            Res.string.cloud_sign_out_unsynced_check_failed,
                         ),
                     )
                 }
@@ -253,15 +259,15 @@ internal class CloudSyncController(
                     // worth more than deleting the code that was already written for it —
                     // "sign out and delete my cloud notes" should say that it happened.
                     onSuccess = { CloudSyncEvent.SignedOut(cloudDataDeleted = deleteCloudData) },
-                    onFailure = { CloudSyncEvent.Failure(signOutFailureMessage(it)) }
+                    onFailure = { signOutFailure(it) }
                 )
             )
         }
     }
 
-    private fun signOutFailureMessage(error: Throwable): String =
-        error.message?.takeIf { it.isNotBlank() }
-            ?: "Couldn't delete your cloud notes, so you're still signed in. Try again."
+    private fun signOutFailure(error: Throwable): CloudSyncEvent.Failure =
+        error.message?.takeIf { it.isNotBlank() }?.let { CloudSyncEvent.Failure(it) }
+            ?: CloudSyncEvent.Failure(Res.string.cloud_sign_out_delete_failed)
 
     /**
      * Deletes the account, after the user typed the confirmation. A failure is reported and changes
@@ -297,12 +303,11 @@ internal class CloudSyncController(
      * "Nothing was deleted" only when that is known (AUD-010). After a failure that may have come after
      * the server accepted the request, and that asking the server could not settle, it says so instead.
      */
-    private fun accountDeleteFailureMessage(error: Throwable): String =
+    private fun accountDeleteFailureMessage(error: Throwable): StringResource =
         if (generateSequence(error) { it.cause }.take(8).any { it is AccountDeletionOutcomeUnknownException }) {
-            "Couldn't confirm whether your account was deleted. Check your connection. If it was, " +
-                "this device removes its copy the next time it syncs."
+            Res.string.account_delete_outcome_unknown
         } else {
-            "Couldn't delete your account, and nothing was deleted. Check your connection and try again."
+            Res.string.account_delete_failed
         }
 
     private fun requireIdentityCheck(check: IdentityCheck) {

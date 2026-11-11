@@ -234,6 +234,9 @@ internal fun MainDrawerContent(
 
         // Collapse toggle — only in permanent (expanded) mode
         if (isExpanded) {
+            val sidebarToggleLabel = stringResource(
+                if (collapsed) Res.string.sidebar_expand else Res.string.sidebar_collapse
+            )
             Spacer(modifier = Modifier.height(Spacing.xs))
             HorizontalDivider(
                 modifier = Modifier.padding(horizontal = if (collapsed) Spacing.sm else Spacing.lg),
@@ -254,7 +257,7 @@ internal fun MainDrawerContent(
                     )
                     .clickable(
                         role = Role.Button,
-                        onClickLabel = if (collapsed) "Expand sidebar" else "Collapse sidebar"
+                        onClickLabel = sidebarToggleLabel
                     ) {
                         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                         onSidebarCollapsedChange(!collapsed)
@@ -265,7 +268,7 @@ internal fun MainDrawerContent(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                    contentDescription = if (collapsed) "Expand sidebar" else "Collapse sidebar",
+                    contentDescription = sidebarToggleLabel,
                     tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                     modifier = Modifier
                         .size(Size.icon)
@@ -276,7 +279,7 @@ internal fun MainDrawerContent(
                 if (!collapsed) {
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Collapse",
+                        text = stringResource(Res.string.sidebar_collapse_short),
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontWeight = FontWeight.Medium
                         ),
