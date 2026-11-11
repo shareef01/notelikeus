@@ -3,6 +3,9 @@
 Revision audited: `8d52068c` (`main`, after #461). Platforms: Android and Windows (shared Compose
 Multiplatform code in `composeApp/`) and Web/PWA (a separate React app in `web/`).
 
+> **All twelve findings have since been fixed.** [`FIXES.md`](FIXES.md) lists the PR for each one and
+> what is still unverified. The text below is unchanged and describes `8d52068c`.
+
 ## How this audit was done, and what it does not cover
 
 - **Static source audit only.** No app was built or run for this pass: no screenshots, no device, no
@@ -96,11 +99,10 @@ Every finding below is code-inferred unless marked otherwise.
 
 ### NL-01 — P1 — Windows: reminders stop firing once the window is closed, and nothing says so
 
-> **Status: fix (a) implemented in the working tree.** While a reminder is pending, closing the
-> window hides it to the tray, with a one-time notice. Exit in the tray menu quits. A second launch
-> brings the running copy forward (`util/SingleInstance.kt`), hiding re-locks app lock, and the
-> confirmation, web picker and privacy policy copy are corrected. Not yet tested on a real Windows
-> session.
+> **Status: fixed in #463, using fix (a).** While a reminder is pending, closing the window hides
+> it to the tray, with a one-time notice. Exit in the tray menu quits. A second launch brings the
+> running copy forward (`util/SingleInstance.kt`), hiding re-locks app lock, and the confirmation,
+> web picker and privacy policy copy are corrected. Not yet tested on a real Windows session.
 
 - **Where:** reminders, Windows.
 - **Actual behaviour:** closing the main window ends the process: `onCloseRequest = ::exitApplication`
