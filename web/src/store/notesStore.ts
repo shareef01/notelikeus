@@ -74,9 +74,27 @@ function sameOrder<T>(a: readonly T[] | undefined, b: readonly T[] | undefined):
   return x.length === y.length && x.every((value, index) => value === y[index]);
 }
 
+const NOTE_FILTERS_PERSIST_VERSION = 1;
+
+/**
+ * The parts of the filters that survive a reload: which view is open and how it is sorted.
+ *
+ * The search text, label and colour are left out (NL-08). They are words and choices about the
+ * user's own notes, and localStorage is outside the sealing that covers note content; native does
+ * not keep the active query either. A reload starts on an unfiltered list.
+ */
+function persistableFilters(
+  filters: Partial<NoteQueryFilters>,
+): Pick<NoteQueryFilters, 'filter' | 'sortOrder'> {
+  return {
+    filter: filters.filter ?? defaultFilters.filter,
+    sortOrder: filters.sortOrder ?? defaultFilters.sortOrder,
+  };
+}
+
 /**
  * In-memory UI mirror of notes. Durable storage lives in IndexedDB (see notesLocalRepository.ts)
- * for guest and signed-in sessions; filters alone are persisted via localStorage.
+ * for guest and signed-in sessions; only the view and sort are persisted via localStorage.
  */
 export const useNotesStore = create<NotesState>()(
   persist(
@@ -192,24 +210,22 @@ export const useNotesStore = create<NotesState>()(
     {
       name: 'notelikeus-note-filters',
       skipHydration: true,
-      // Only where the user is and how the list is ordered survive a reload. A search, a colour, a
-      // label or a date window left over from last time is a list that silently hides notes (NL-08);
-      // saved filters are how a narrowing is kept on purpose.
-      partialize: (state) => ({
-        filters: { filter: state.filters.filter, sortOrder: state.filters.sortOrder },
-      }),
-      // Over the defaults, not instead of them: the stored object has only what partialize kept, and
-      // an older build stored fields (colorArgb, labelName) this one no longer reads.
+      version: NOTE_FILTERS_PERSIST_VERSION,
+      partialize: (state) => ({ filters: persistableFilters(state.filters) }),
+      // Version 0 stored the whole filter set, so a reload reopened a searched, labelled or
+      // coloured list and the query text sat in plain localStorage (NL-08). Drop those parts.
+      migrate: (persisted) => {
+        const filters = (persisted as { filters?: Partial<NoteQueryFilters> } | null)?.filters;
+        return { filters: persistableFilters(filters ?? {}) };
+      },
+      // The persisted half is only the view and sort; lay it over the defaults so the search,
+      // label and colour fields exist and start empty rather than going missing.
       merge: (persisted, current) => {
-        const stored = (persisted as { filters?: Partial<NoteQueryFilters> } | undefined)?.filters;
-        const filters: NoteQueryFilters = { ...current.filters };
-        if (stored?.filter === 'active' || stored?.filter === 'archived' || stored?.filter === 'trashed') {
-          filters.filter = stored.filter;
-        }
-        if (stored?.sortOrder === 'manual' || stored?.sortOrder === 'newest' || stored?.sortOrder === 'oldest') {
-          filters.sortOrder = stored.sortOrder;
-        }
-        return { ...current, filters };
+        const filters = (persisted as { filters?: Partial<NoteQueryFilters> } | null)?.filters;
+        return {
+          ...current,
+          filters: { ...defaultFilters, ...persistableFilters(filters ?? {}) },
+        };
       },
     },
   ),

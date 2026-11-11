@@ -51,6 +51,17 @@ describe('clearLocalUserData', () => {
     expect(useUiStore.getState().drawerOpen).toBe(false);
   });
 
+  it('forgets recent searches on sign-out but keeps the device’s view preferences (NL-07)', () => {
+    useUiStore.getState().addRecentSearch('divorce lawyer');
+    useUiStore.getState().setViewColumns(3);
+
+    clearLocalUserData();
+
+    expect(useUiStore.getState().recentSearches).toEqual([]);
+    expect(useUiStore.getState().viewColumns).toBe(3);
+    expect(localStorage.getItem('notelikeus-ui') ?? '').not.toContain('divorce lawyer');
+  });
+
   it('forgets saved filters at sign-out but keeps device preferences (native NL-02)', () => {
     useUiStore.getState().setViewColumns(3);
     useUiStore.getState().saveFilter('Invoices', { filter: 'active', labelNames: ['Money'] });
@@ -78,6 +89,14 @@ describe('clearLocalUserDataForAccountSwitch', () => {
     useNotesStore.getState().reset();
     useLabelRegistryStore.getState().reset();
     useTombstoneStore.getState().reset();
+  });
+
+  it('does not carry recent searches into the next account (NL-07)', async () => {
+    useUiStore.getState().addRecentSearch('payslip march');
+
+    await clearLocalUserDataForAccountSwitch('user-a');
+
+    expect(useUiStore.getState().recentSearches).toEqual([]);
   });
 
   it('clears the previous account IndexedDB namespace and pending attachments on account switch', async () => {

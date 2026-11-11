@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useNotesStore } from '@/store/notesStore';
-import { createEmptyNote, type Note, type NoteQueryFilters } from '@/types/note';
+import { createEmptyNote, type Note } from '@/types/note';
 
 function note(id: string): Note {
   return createEmptyNote({ id, localId: Number(id), title: `Note ${id}`, timestamp: 1 });
@@ -80,40 +80,99 @@ describe('notesStore error channels', () => {
   });
 });
 
+/**
+ * NL-08: a reload keeps which view is open and how it is sorted, and nothing else. The search
+ * text, label and colour are about the user's own notes and localStorage is outside the sealing.
+ */
 describe('notesStore filter persistence', () => {
+  const KEY = 'notelikeus-note-filters';
+
   beforeEach(() => {
+    localStorage.removeItem(KEY);
     useNotesStore.getState().reset();
   });
 
-  it('keeps only where the user is and the sort, never a narrowing', () => {
+  it('writes the view and sort but not the query, label or colour', () => {
     useNotesStore.getState().setFilters({
       filter: 'archived',
       sortOrder: 'oldest',
-      searchQuery: 'milk',
-      colors: [1],
-      labelNames: ['Work'],
+      searchQuery: 'tax letter',
+      labelNames: ['Finance'],
+      colors: [0xfff28b82 | 0],
       flags: ['PINNED'],
       dateRange: { from: 0, to: 1 },
     });
-    const partialize = useNotesStore.persist.getOptions().partialize!;
-    expect(partialize(useNotesStore.getState())).toEqual({ filters: { filter: 'archived', sortOrder: 'oldest' } });
+
+    const stored = JSON.parse(localStorage.getItem(KEY)!);
+    expect(stored.state.filters).toEqual({ filter: 'archived', sortOrder: 'oldest' });
+    expect(JSON.stringify(stored)).not.toContain('tax letter');
+    expect(JSON.stringify(stored)).not.toContain('Finance');
   });
 
-  it('rehydrates an older stored shape over the defaults, so the sets are never missing', () => {
-    const merge = useNotesStore.persist.getOptions().merge!;
-    const legacy = { filters: { filter: 'trashed', sortOrder: 'newest', colorArgb: 5, labelName: 'Work' } };
-    const merged = merge(legacy, useNotesStore.getState()) as { filters: NoteQueryFilters };
-    expect(merged.filters).toMatchObject({
-      filter: 'trashed',
-      sortOrder: 'newest',
+  it('reopens on the persisted sort and view with no query, label or colour after a reload', async () => {
+    useNotesStore.getState().setFilters({
+      filter: 'archived',
+      sortOrder: 'oldest',
+      searchQuery: 'tax letter',
+      labelNames: ['Finance'],
+      colors: [0xfff28b82 | 0],
+      flags: ['PINNED'],
+      dateRange: { from: 0, to: 1 },
+    });
+    const saved = localStorage.getItem(KEY)!;
+    // What the next page load starts from: the in-memory defaults, then hydration from what the
+    // last session saved. (setState writes through persist, so put the saved copy back after it.)
+    useNotesStore.setState({ filters: { filter: 'active', sortOrder: 'newest' } });
+    localStorage.setItem(KEY, saved);
+
+    await useNotesStore.persist.rehydrate();
+
+    expect(useNotesStore.getState().filters).toEqual({
+      filter: 'archived',
+      sortOrder: 'oldest',
+      searchQuery: '',
       colors: [],
       labelNames: [],
-      flags: [],
       labelMatch: 'ANY',
+      flags: [],
       dateField: 'EDITED',
       dateRange: null,
     });
-    expect(merged.filters).not.toHaveProperty('colorArgb');
+  });
+
+  it('drops a query, label and colour left by an older build on the next load', async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        state: {
+          filters: {
+            filter: 'trashed',
+            sortOrder: 'oldest',
+            searchQuery: 'old secret',
+            labelName: 'Health',
+            colorArgb: 0xffaecbfa,
+          },
+        },
+        version: 0,
+      }),
+    );
+
+    await useNotesStore.persist.rehydrate();
+
+    expect(useNotesStore.getState().filters).toEqual({
+      filter: 'trashed',
+      sortOrder: 'oldest',
+      searchQuery: '',
+      colors: [],
+      labelNames: [],
+      labelMatch: 'ANY',
+      flags: [],
+      dateField: 'EDITED',
+      dateRange: null,
+    });
+    const rewritten = JSON.parse(localStorage.getItem(KEY)!);
+    expect(rewritten.version).toBe(1);
+    expect(JSON.stringify(rewritten)).not.toContain('old secret');
   });
 
   it('a change only to set order still updates, so the sheet shows what was tapped', () => {

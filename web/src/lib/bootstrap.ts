@@ -199,6 +199,11 @@ export function clearLocalUserData(): void {
   // it open across the switch, so the next account arrived at a notes list with a modal drawer
   // still covering it and swallowing taps.
   useUiStore.getState().setDrawerOpen(false);
+  // Recent searches are words the user typed about this account's notes. They persist in
+  // `notelikeus-ui` beside device preferences, so wiping the account's data did not reach them and
+  // the next person on the browser saw them (NL-07; native does the same at every account
+  // boundary, NL-02). The rest of that store — view size, editor layout — is the device's and stays.
+  useUiStore.getState().clearRecentSearches();
   // Saved filters name this account's labels and searches; the next account must not inherit them
   // (native NL-02). Theme, columns and layout are the device's and stay.
   useUiStore.getState().clearSavedFilters();
