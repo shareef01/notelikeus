@@ -55,6 +55,22 @@ describe('SignOutDialog unsynced-edit notice', () => {
     expect(text).toContain('uploads the next time you sign in to this account here');
   });
 
+  /**
+   * NL-03: the dialog said sign-out "only clears locally cached app data" and that you'd need to
+   * sign in again. Web keeps this account's notes in the browser, and the app works without an
+   * account after signing out.
+   */
+  it('says the browser keeps this account’s copy, and does not demand a new sign-in', async () => {
+    countPendingPushes.mockResolvedValue(0);
+
+    await renderOpen();
+
+    const text = document.body.textContent ?? '';
+    expect(text).toContain('Their copy in this browser stays too');
+    expect(text).not.toContain('only clears locally cached');
+    expect(text).not.toContain('sign in again');
+  });
+
   it('says nothing extra when everything is uploaded', async () => {
     countPendingPushes.mockResolvedValue(0);
 
