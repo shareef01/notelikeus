@@ -79,3 +79,87 @@ describe('notesStore error channels', () => {
     expect(useNotesStore.getState().syncError).toBe('cloud');
   });
 });
+
+/**
+ * NL-08: a reload keeps which view is open and how it is sorted, and nothing else. The search
+ * text, label and colour are about the user's own notes and localStorage is outside the sealing.
+ */
+describe('notesStore filter persistence', () => {
+  const KEY = 'notelikeus-note-filters';
+
+  beforeEach(() => {
+    localStorage.removeItem(KEY);
+    useNotesStore.getState().reset();
+  });
+
+  it('writes the view and sort but not the query, label or colour', () => {
+    useNotesStore.getState().setFilters({
+      filter: 'archived',
+      sortOrder: 'oldest',
+      searchQuery: 'tax letter',
+      labelName: 'Finance',
+      colorArgb: 0xfff28b82,
+    });
+
+    const stored = JSON.parse(localStorage.getItem(KEY)!);
+    expect(stored.state.filters).toEqual({ filter: 'archived', sortOrder: 'oldest' });
+    expect(JSON.stringify(stored)).not.toContain('tax letter');
+    expect(JSON.stringify(stored)).not.toContain('Finance');
+  });
+
+  it('reopens on the persisted sort and view with no query, label or colour after a reload', async () => {
+    useNotesStore.getState().setFilters({
+      filter: 'archived',
+      sortOrder: 'oldest',
+      searchQuery: 'tax letter',
+      labelName: 'Finance',
+      colorArgb: 0xfff28b82,
+    });
+    const saved = localStorage.getItem(KEY)!;
+    // What the next page load starts from: the in-memory defaults, then hydration from what the
+    // last session saved. (setState writes through persist, so put the saved copy back after it.)
+    useNotesStore.setState({ filters: { filter: 'active', sortOrder: 'newest' } });
+    localStorage.setItem(KEY, saved);
+
+    await useNotesStore.persist.rehydrate();
+
+    expect(useNotesStore.getState().filters).toEqual({
+      filter: 'archived',
+      sortOrder: 'oldest',
+      searchQuery: '',
+      labelName: null,
+      colorArgb: null,
+    });
+  });
+
+  it('drops a query, label and colour left by an older build on the next load', async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        state: {
+          filters: {
+            filter: 'trashed',
+            sortOrder: 'oldest',
+            searchQuery: 'old secret',
+            labelName: 'Health',
+            colorArgb: 0xffaecbfa,
+          },
+        },
+        version: 0,
+      }),
+    );
+
+    await useNotesStore.persist.rehydrate();
+
+    expect(useNotesStore.getState().filters).toEqual({
+      filter: 'trashed',
+      sortOrder: 'oldest',
+      searchQuery: '',
+      labelName: null,
+      colorArgb: null,
+    });
+    const rewritten = JSON.parse(localStorage.getItem(KEY)!);
+    expect(rewritten.version).toBe(1);
+    expect(JSON.stringify(rewritten)).not.toContain('old secret');
+  });
+});
