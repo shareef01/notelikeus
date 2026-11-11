@@ -70,9 +70,27 @@ const defaultFilters: NoteQueryFilters = {
   sortOrder: 'manual',
 };
 
+const NOTE_FILTERS_PERSIST_VERSION = 1;
+
+/**
+ * The parts of the filters that survive a reload: which view is open and how it is sorted.
+ *
+ * The search text, label and colour are left out (NL-08). They are words and choices about the
+ * user's own notes, and localStorage is outside the sealing that covers note content; native does
+ * not keep the active query either. A reload starts on an unfiltered list.
+ */
+function persistableFilters(
+  filters: Partial<NoteQueryFilters>,
+): Pick<NoteQueryFilters, 'filter' | 'sortOrder'> {
+  return {
+    filter: filters.filter ?? defaultFilters.filter,
+    sortOrder: filters.sortOrder ?? defaultFilters.sortOrder,
+  };
+}
+
 /**
  * In-memory UI mirror of notes. Durable storage lives in IndexedDB (see notesLocalRepository.ts)
- * for guest and signed-in sessions; filters alone are persisted via localStorage.
+ * for guest and signed-in sessions; only the view and sort are persisted via localStorage.
  */
 export const useNotesStore = create<NotesState>()(
   persist(
@@ -188,7 +206,23 @@ export const useNotesStore = create<NotesState>()(
     {
       name: 'notelikeus-note-filters',
       skipHydration: true,
-      partialize: (state) => ({ filters: state.filters }),
+      version: NOTE_FILTERS_PERSIST_VERSION,
+      partialize: (state) => ({ filters: persistableFilters(state.filters) }),
+      // Version 0 stored the whole filter set, so a reload reopened a searched, labelled or
+      // coloured list and the query text sat in plain localStorage (NL-08). Drop those parts.
+      migrate: (persisted) => {
+        const filters = (persisted as { filters?: Partial<NoteQueryFilters> } | null)?.filters;
+        return { filters: persistableFilters(filters ?? {}) };
+      },
+      // The persisted half is only the view and sort; lay it over the defaults so the search,
+      // label and colour fields exist and start empty rather than going missing.
+      merge: (persisted, current) => {
+        const filters = (persisted as { filters?: Partial<NoteQueryFilters> } | null)?.filters;
+        return {
+          ...current,
+          filters: { ...defaultFilters, ...persistableFilters(filters ?? {}) },
+        };
+      },
     },
   ),
 );
