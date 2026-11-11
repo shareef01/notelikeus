@@ -1,6 +1,7 @@
 import type { Note } from '@/types/note';
 import { noteInScope, noteSatisfies } from '@/lib/query/noteQueryMatch';
 import type { NoteFlag } from '@/lib/query/noteQueryParser';
+import { hasActiveFilters, type FilterSets } from '@/lib/query/noteQuery';
 
 export type SmartViewId = 'reminders' | 'unfinished' | 'unlabeled';
 
@@ -35,13 +36,10 @@ export function smartViewCounts(notes: Note[], now: number = Date.now()): Record
 }
 
 /** Which view is exactly what is on screen: applying it would change nothing. */
-export function activeSmartView(filters: {
-  filter: string;
-  searchQuery?: string;
-  colorArgb?: number | null;
-  labelName?: string | null;
-}): SmartViewId | null {
-  if (filters.filter !== 'active' || filters.colorArgb != null || filters.labelName != null) return null;
+export function activeSmartView(filters: FilterSets): SmartViewId | null {
+  if (filters.filter !== 'active') return null;
+  // The view is its query alone: anything the Filters sheet adds makes it a different list.
+  if (hasActiveFilters({ ...filters, searchQuery: '' })) return null;
   const query = (filters.searchQuery ?? '').trim();
   return SMART_VIEWS.find((view) => view.query === query)?.id ?? null;
 }

@@ -140,7 +140,7 @@ describe('fuzzy fallback via searchNotes', () => {
     const result = searchNotes(coloured, {
       filter: 'active',
       searchQuery: 'budgte',
-      colorArgb: other,
+      colors: [other],
     });
     expect(result.notes).toEqual([]);
   });

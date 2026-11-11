@@ -199,6 +199,9 @@ export function clearLocalUserData(): void {
   // it open across the switch, so the next account arrived at a notes list with a modal drawer
   // still covering it and swallowing taps.
   useUiStore.getState().setDrawerOpen(false);
+  // Saved filters name this account's labels and searches; the next account must not inherit them
+  // (native NL-02). Theme, columns and layout are the device's and stay.
+  useUiStore.getState().clearSavedFilters();
   clearPendingAttachmentStore();
   // Card thumbnails and editor previews are copies of the account's pictures; they go with the rest of its data.
   clearAttachmentThumbnailCache();

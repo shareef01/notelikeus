@@ -36,6 +36,7 @@ import { releasePendingAttachment, stagePendingAttachment } from '@/lib/attachme
 import { revokeAttachmentPreviewUrl } from '@/lib/attachments/attachmentPreviewCache';
 import { isPendingAttachment } from '@/lib/attachments/attachmentPaths';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { singleFilterColor } from '@/lib/query/noteQuery';
 
 const AUTOSAVE_MS = 1000;
 type ContentMode = Pick<EditorState, 'content' | 'checklist'>;
@@ -74,7 +75,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
         return editorStateFromNote(existing);
       }
     }
-    const filterColor = useNotesStore.getState().filters.colorArgb;
+    const filterColor = singleFilterColor(useNotesStore.getState().filters.colors);
     return createBlankEditorState(
       filterColor ?? DEFAULT_EDITOR_COLOR,
       nextNotePosition(),
@@ -284,7 +285,7 @@ export function useNoteEditor(noteId: string | 'new' | null) {
 
     conversion.current = null;
     if (noteId === 'new') {
-      const filterColor = useNotesStore.getState().filters.colorArgb;
+      const filterColor = singleFilterColor(useNotesStore.getState().filters.colors);
       const blank = createBlankEditorState(
         filterColor ?? DEFAULT_EDITOR_COLOR,
         nextNotePosition(),

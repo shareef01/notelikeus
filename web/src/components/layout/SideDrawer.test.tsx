@@ -11,6 +11,7 @@ vi.mock('@/hooks/useMediaQuery', () => ({
 }));
 
 import { SideDrawer } from '@/components/layout/SideDrawer';
+import { narrowingOf } from '@/lib/query/noteQuery';
 
 function render(
   open: boolean,
@@ -164,5 +165,81 @@ describe('SideDrawer smart views', () => {
 
     act(() => root.unmount());
     container.remove();
+  });
+});
+
+describe('SideDrawer saved filters', () => {
+  function renderWithSaved(props: Partial<Parameters<typeof SideDrawer>[0]>) {
+    isTabletUp.value = false;
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        createElement(SideDrawer, {
+          open: true,
+          collapsed: false,
+          currentFilter: 'active',
+          onClose: () => {},
+          onToggleCollapse: () => {},
+          onNavigate: () => {},
+          userEmail: null,
+          onSignIn: () => {},
+          onSignOut: () => {},
+          onSmartView: () => {},
+          ...props,
+        }),
+      );
+    });
+    return {
+      container,
+      cleanup: () => {
+        act(() => root.unmount());
+        container.remove();
+      },
+    };
+  }
+
+  const saved = [
+    { name: 'Invoices', query: { ...narrowingOf({ filter: 'active' }), labelNames: ['Money'] } },
+    { name: 'Green', query: narrowingOf({ filter: 'active', colors: [1] }) },
+  ];
+
+  it('has no Saved section while nothing is saved', () => {
+    const { container, cleanup } = renderWithSaved({ savedFilters: [], onApplySavedFilter: () => {} });
+    expect(container.querySelector('section[aria-label="Saved"]')).toBeNull();
+    cleanup();
+  });
+
+  it('lists saved filters after Views, marks the current one, applies and deletes', () => {
+    const onApplySavedFilter = vi.fn();
+    const onDeleteSavedFilter = vi.fn();
+    const onClose = vi.fn();
+    const { container, cleanup } = renderWithSaved({
+      savedFilters: saved,
+      currentSavedFilter: 'Green',
+      onApplySavedFilter,
+      onDeleteSavedFilter,
+      onClose,
+    });
+    const sections = Array.from(container.querySelectorAll('section')).map((s) => s.getAttribute('aria-label'));
+    expect(sections.indexOf('Saved')).toBe(sections.indexOf('Views') + 1);
+
+    const section = container.querySelector('section[aria-label="Saved"]')!;
+    const rows = Array.from(section.querySelectorAll('li > div > button'));
+    expect(rows.map((b) => b.textContent)).toEqual(['Invoices', 'Green']);
+    expect(rows[1]!.getAttribute('aria-current')).toBe('page');
+    // The Library row is not the current page while a saved filter is.
+    const notesRow = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.startsWith('Notes'));
+    expect(notesRow?.getAttribute('aria-current')).toBeNull();
+
+    act(() => (rows[0] as HTMLButtonElement).click());
+    expect(onApplySavedFilter).toHaveBeenCalledWith(saved[0]);
+    expect(onClose).toHaveBeenCalled();
+
+    const remove = section.querySelector<HTMLButtonElement>('button[aria-label="Delete saved filter Invoices"]')!;
+    act(() => remove.click());
+    expect(onDeleteSavedFilter).toHaveBeenCalledWith('Invoices');
+    cleanup();
   });
 });

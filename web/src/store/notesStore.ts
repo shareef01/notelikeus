@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Note, NoteQueryFilters } from '@/types/note';
 import { notesContentEqual, notesEqual } from '@/lib/notes/noteEquality';
+import { DEFAULT_NARROWING, narrowingEqual } from '@/lib/query/noteQuery';
 
 export type NotesLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -61,14 +62,17 @@ interface NotesState {
 }
 
 const defaultFilters: NoteQueryFilters = {
-  filter: 'active',
-  searchQuery: '',
-  colorArgb: null,
-  labelName: null,
+  ...DEFAULT_NARROWING,
   // 'manual' is not offered by the web sort chooser (F18): nothing here can reorder notes, so a
   // fresh session starting in it would open on an order the user cannot change.
   sortOrder: 'newest',
 };
+
+function sameOrder<T>(a: readonly T[] | undefined, b: readonly T[] | undefined): boolean {
+  const x = a ?? [];
+  const y = b ?? [];
+  return x.length === y.length && x.every((value, index) => value === y[index]);
+}
 
 /**
  * In-memory UI mirror of notes. Durable storage lives in IndexedDB (see notesLocalRepository.ts)
@@ -163,12 +167,14 @@ export const useNotesStore = create<NotesState>()(
       setFilters: (patch) => {
         const next = { ...get().filters, ...patch };
         const current = get().filters;
+        // Exact, not set-wise: a re-ordered set is a different value to the sheet that shows it.
         const unchanged =
-          current.filter === next.filter &&
+          narrowingEqual(current, next) &&
           (current.searchQuery ?? '') === (next.searchQuery ?? '') &&
-          current.colorArgb === next.colorArgb &&
-          current.labelName === next.labelName &&
-          current.sortOrder === next.sortOrder;
+          current.sortOrder === next.sortOrder &&
+          sameOrder(current.colors, next.colors) &&
+          sameOrder(current.labelNames, next.labelNames) &&
+          sameOrder(current.flags, next.flags);
         if (unchanged) return;
         set({ filters: next });
       },
@@ -186,7 +192,25 @@ export const useNotesStore = create<NotesState>()(
     {
       name: 'notelikeus-note-filters',
       skipHydration: true,
-      partialize: (state) => ({ filters: state.filters }),
+      // Only where the user is and how the list is ordered survive a reload. A search, a colour, a
+      // label or a date window left over from last time is a list that silently hides notes (NL-08);
+      // saved filters are how a narrowing is kept on purpose.
+      partialize: (state) => ({
+        filters: { filter: state.filters.filter, sortOrder: state.filters.sortOrder },
+      }),
+      // Over the defaults, not instead of them: the stored object has only what partialize kept, and
+      // an older build stored fields (colorArgb, labelName) this one no longer reads.
+      merge: (persisted, current) => {
+        const stored = (persisted as { filters?: Partial<NoteQueryFilters> } | undefined)?.filters;
+        const filters: NoteQueryFilters = { ...current.filters };
+        if (stored?.filter === 'active' || stored?.filter === 'archived' || stored?.filter === 'trashed') {
+          filters.filter = stored.filter;
+        }
+        if (stored?.sortOrder === 'manual' || stored?.sortOrder === 'newest' || stored?.sortOrder === 'oldest') {
+          filters.sortOrder = stored.sortOrder;
+        }
+        return { ...current, filters };
+      },
     },
   ),
 );

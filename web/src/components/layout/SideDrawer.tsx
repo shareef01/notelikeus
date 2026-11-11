@@ -2,6 +2,7 @@ import { BrandMark } from '@/components/brand/BrandMark';
 import {
   AccountIcon,
   ArchiveIcon,
+  BookmarkIcon,
   ChevronRightIcon,
   CloseIcon,
   ChecklistIcon,
@@ -18,6 +19,7 @@ import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import { Badge } from '@/components/ui/Badge';
 import type { NoteFilter } from '@/types/note';
 import { SMART_VIEWS, type SmartViewId } from '@/lib/query/smartViews';
+import type { SavedFilter } from '@/lib/query/savedFilters';
 import type { ReactNode } from 'react';
 
 interface SideDrawerProps {
@@ -37,6 +39,12 @@ interface SideDrawerProps {
   currentSmartView?: SmartViewId | null;
   onSmartView?: (view: SmartViewId) => void;
   smartViewCounts?: Record<SmartViewId, number>;
+  /** Filters the user saved, newest first (NL-04). The section is absent while there are none. */
+  savedFilters?: SavedFilter[];
+  /** The saved filter that is exactly what is on screen, if any. */
+  currentSavedFilter?: string | null;
+  onApplySavedFilter?: (filter: SavedFilter) => void;
+  onDeleteSavedFilter?: (name: string) => void;
 }
 
 const SMART_VIEW_ICONS: Record<SmartViewId, typeof NotesIcon> = {
@@ -166,6 +174,10 @@ export function SideDrawer({
   currentSmartView = null,
   onSmartView,
   smartViewCounts,
+  savedFilters = [],
+  currentSavedFilter = null,
+  onApplySavedFilter,
+  onDeleteSavedFilter,
 }: SideDrawerProps) {
   const isTabletUp = useIsTabletUp();
   const showCollapsed = collapsed && isTabletUp;
@@ -246,7 +258,7 @@ export function SideDrawer({
         }`}>
           <NavSection title={showCollapsed ? undefined : 'Library'}>
             {NAV_ITEMS.map(({ filter, label, Icon }) => {
-              const active = currentFilter === filter && currentSmartView == null;
+              const active = currentFilter === filter && currentSmartView == null && currentSavedFilter == null;
               const count = navCounts?.[filter];
               return (
                 <NavButton
@@ -296,6 +308,46 @@ export function SideDrawer({
                   />
                 );
               })}
+            </NavSection>
+          ) : null}
+
+          {/* Only when there are any: an empty "Saved" heading would advertise a feature by showing
+              the hole where its results go (native MainDrawerContent). */}
+          {onApplySavedFilter && savedFilters.length > 0 ? (
+            <NavSection title={showCollapsed ? undefined : 'Saved'} divided>
+              <ul className="flex flex-col gap-1">
+                {savedFilters.map((saved) => {
+                  const active = currentSavedFilter === saved.name;
+                  return (
+                    <li key={saved.name} className="flex items-center gap-1">
+                      <div className="min-w-0 flex-1">
+                        <NavButton
+                          active={active}
+                          collapsed={showCollapsed}
+                          ariaCurrent={active ? 'page' : undefined}
+                          onClick={() => {
+                            onApplySavedFilter(saved);
+                            onClose();
+                          }}
+                          icon={<BookmarkIcon size={22} />}
+                          label={saved.name}
+                        />
+                      </div>
+                      {onDeleteSavedFilter && !showCollapsed ? (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteSavedFilter(saved.name)}
+                          aria-label={`Delete saved filter ${saved.name}`}
+                          title={`Delete saved filter ${saved.name}`}
+                          className={`tap-target flex size-9 shrink-0 items-center justify-center rounded-full text-brand-muted hover:bg-brand-primary/[0.05] hover:text-brand-primary ${CHROME_FOCUS}`}
+                        >
+                          <CloseIcon size={18} />
+                        </button>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
             </NavSection>
           ) : null}
 
