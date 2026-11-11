@@ -40,6 +40,9 @@ import com.aus.notelikeus.util.DesktopPathProvider
 import kotlin.system.exitProcess
 import com.aus.notelikeus.util.AppConfig
 import com.aus.notelikeus.util.SidebarCollapsedStore
+import com.aus.notelikeus.util.SingleInstance
+import java.io.File
+import org.jetbrains.compose.resources.stringResource
 import com.aus.notelikeus.util.WindowMetrics
 import com.aus.notelikeus.util.WindowMetricsStore
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +59,11 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 fun main() {
+    // Before anything opens the database: a copy already running (perhaps hidden in the tray,
+    // keeping reminders alive) is asked to show its window, and this launch ends there.
+    val instance = SingleInstance.acquire(File(DesktopPathProvider.getDataDirectory(), "instance"))
+        ?: exitProcess(0)
+    heldInstance = instance
     // Not inside application { }: that block is composable and re-runs whenever the state
     // remembered in it changes (Ctrl+N, the tray item, the About dialog), and startKoin throws
     // KoinApplicationAlreadyStartedException the second time.
@@ -69,9 +77,16 @@ fun main() {
         metricsStore,
         runBlocking { metricsStore.metrics.first() },
         sidebarStore,
-        runBlocking { sidebarStore.collapsed.first() }
+        runBlocking { sidebarStore.collapsed.first() },
+        instance,
     )
 }
+
+/**
+ * Kept reachable for the life of the process: a lock whose channel is garbage-collected is
+ * released, and a second copy could then start beside this one.
+ */
+private var heldInstance: SingleInstance? = null
 
 /**
  * Explains an unreadable notes-database key and exits, instead of letting the database singleton
@@ -99,7 +114,8 @@ private fun launchApp(
     metricsStore: WindowMetricsStore,
     initialMetrics: WindowMetrics,
     sidebarStore: SidebarCollapsedStore,
-    initialSidebarCollapsed: Boolean
+    initialSidebarCollapsed: Boolean,
+    instance: SingleInstance,
 ) = application {
     val windowState = rememberWindowState(
         width = initialMetrics.width,
@@ -191,17 +207,58 @@ private fun launchApp(
         )
     }
 
+    // Closing the window used to exit, and with it every reminder still waiting in the in-process
+    // timer (NL-01). While one is waiting, closing hides the window instead and the app stays in the
+    // tray; Exit in the tray menu is the way to quit. With nothing waiting, closing still exits, so
+    // the app does not linger for no reason.
+    var isMainWindowVisible by remember { mutableStateOf(true) }
+    var hasExplainedTray by remember { mutableStateOf(false) }
+    // Bumped to bring an already-visible window to the front, which needs the AWT window itself.
+    var bringToFrontRequest by remember { mutableLongStateOf(0L) }
+    val stillRunningTitle = stringResource(Res.string.tray_still_running_title)
+    val stillRunningMessage = stringResource(Res.string.tray_still_running_message)
+
+    val showMainWindow: () -> Unit = {
+        isMainWindowVisible = true
+        windowState.isMinimized = false
+        bringToFrontRequest++
+    }
+    val closeMainWindow: () -> Unit = {
+        if (reminderManager.hasScheduledReminders()) {
+            isMainWindowVisible = false
+            if (!hasExplainedTray) {
+                hasExplainedTray = true
+                trayState.sendNotification(
+                    Notification(stillRunningTitle, stillRunningMessage, Notification.Type.Info)
+                )
+            }
+        } else {
+            exitApplication()
+        }
+    }
+
+    // A second launch (Start menu, taskbar) asks this copy to show itself instead of opening the
+    // database a second time. The request arrives on a watcher thread.
+    DisposableEffect(instance) {
+        val listener = instance.listenForActivation {
+            coroutineScope.launch(Dispatchers.Main) { showMainWindow() }
+        }
+        onDispose { listener.close() }
+    }
+
     Tray(
         state = trayState,
         icon = appIcon,
         tooltip = "Notelikeus",
+        onAction = showMainWindow,
         menu = {
-            Item("New Note", onClick = {
+            Item(stringResource(Res.string.tray_open), onClick = showMainWindow)
+            Item(stringResource(Res.string.tray_new_note), onClick = {
                 pendingCreateNote = true
                 navigationRequest++
-                windowState.isMinimized = false
+                showMainWindow()
             })
-            Item("Exit", onClick = ::exitApplication)
+            Item(stringResource(Res.string.tray_exit), onClick = ::exitApplication)
         }
     )
 
@@ -219,7 +276,8 @@ private fun launchApp(
     }
 
     Window(
-        onCloseRequest = ::exitApplication,
+        onCloseRequest = closeMainWindow,
+        visible = isMainWindowVisible,
         state = windowState,
         title = "Notelikeus",
         icon = appIcon,
@@ -362,6 +420,7 @@ private fun launchApp(
             pendingFocusSearch = pendingFocusSearch,
             pendingOpenSettings = pendingOpenSettings,
             navigationRequest = navigationRequest,
+            isWindowVisible = isMainWindowVisible,
             titleBar = {
                 NotelikeusTitleBar(
                     title = "Notelikeus",
@@ -370,7 +429,7 @@ private fun launchApp(
                     onToggleMaximize = {
                         windowState.placement = windowState.placement.toggledMaximize()
                     },
-                    onClose = ::exitApplication,
+                    onClose = closeMainWindow,
                     onNewNote = newNote,
                     onSearch = onSearch,
                     onSettings = onSettings,
@@ -378,6 +437,13 @@ private fun launchApp(
                 )
             }
         )
+
+        LaunchedEffect(bringToFrontRequest) {
+            if (bringToFrontRequest > 0) {
+                window.toFront()
+                window.requestFocus()
+            }
+        }
 
         LaunchedEffect(navigationRequest) {
             if (navigationRequest > 0) {
