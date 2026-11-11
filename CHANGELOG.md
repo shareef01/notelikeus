@@ -4,6 +4,9 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Signing out no longer deletes changes that haven't synced** on Android and Windows. Edits, deletions and pictures the cloud doesn't have yet stay on the device, encrypted and kept for that account only, and upload the next time it signs in there. Another account that signs in on the device can't see them, and a sign-out with everything synced still removes the account's notes from the device. This is how the web app already worked.
+
 ## [2.6.2] — 2026-11-05
 
 ### Fixed

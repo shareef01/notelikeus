@@ -99,6 +99,19 @@ actual val platformModule = module {
     }
     
     single { get<NotelikeusDatabase>().noteDao }
+    single<com.aus.notelikeus.data.sync.SealedAccountStore> {
+        com.aus.notelikeus.data.sync.RoomSealedAccountStore(get<NotelikeusDatabase>().sealedAccountDao)
+    }
+    single {
+        com.aus.notelikeus.data.sync.SignedOutAccountVault(
+            noteRepository = get(),
+            syncStateStore = get(),
+            store = get(),
+            // Resolved lazily, like the isolator's hooks: the engine is built from the graph the
+            // isolator belongs to.
+            unsyncedWork = { get<NoteSyncEngine>().unsyncedWork() },
+        )
+    }
     single { get<NotelikeusDatabase>().labelDao }
     
     single<ReminderManager> { ReminderScheduler(get()) }
@@ -302,6 +315,7 @@ actual val platformModule = module {
             get(),
             get(),
             get(),
+            signedOutAccounts = get(),
             // Resolved lazily: AttachmentSyncService is built from the sync graph this
             // isolator belongs to, so taking it as a constructor argument would cycle.
             adoptGuestStagedAttachments = { uid ->

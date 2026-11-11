@@ -80,7 +80,7 @@ class CloudSyncControllerSignOutTest {
     }
 
     @Test
-    fun `staying signed in keeps everything, and choosing to lose it signs out`() = runTest {
+    fun `staying signed in keeps everything, and confirming signs out`() = runTest {
         val controller = controller()
         sync.unsynced = Result.success(UnsyncedWork(edits = 1))
         controller.signOutFromCloud()
@@ -90,7 +90,7 @@ class CloudSyncControllerSignOutTest {
         assertNull(state.value.unsyncedBeforeSignOut)
         assertEquals(listOf("check"), sync.calls)
 
-        controller.signOutFromCloud(discardUnsynced = true)
+        controller.signOutFromCloud(unsyncedConfirmed = true)
         runCurrent()
         assertEquals(listOf("check", "signOut(false)"), sync.calls)
         assertNull(state.value.unsyncedBeforeSignOut)
