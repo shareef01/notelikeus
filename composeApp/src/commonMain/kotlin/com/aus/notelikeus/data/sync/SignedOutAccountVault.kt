@@ -92,9 +92,6 @@ class SignedOutAccountVault(
     /** Forgets [ownerUid]'s sealed library: the user deleted the account, or asked for its data gone. */
     suspend fun discard(ownerUid: String) = store.remove(ownerUid)
 
-    /** True when [ownerUid] has a library waiting on this device. */
-    suspend fun hasRestorable(ownerUid: String): Boolean = restorable(ownerUid) != null
-
     /**
      * Gives [ownerUid] back the library it sealed here, and queues its upload.
      *
