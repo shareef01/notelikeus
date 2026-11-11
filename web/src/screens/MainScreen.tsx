@@ -15,6 +15,13 @@ import { NotesLoadingGrid } from '@/components/notes/NotesLoadingGrid';
 import { IgnoredOperatorsNotice, SearchNotice } from '@/components/notes/SearchNotice';
 import { SMART_VIEWS, activeSmartView, smartViewCounts, type SmartViewId } from '@/lib/query/smartViews';
 import { useNotesStore } from '@/store/notesStore';
+import { useToastStore } from '@/store/toastStore';
+import {
+  REORDER_BLOCKED_MESSAGE,
+  allowsManualReorder,
+  hasActiveNoteFilters,
+  switchingSortWouldAllowReorder,
+} from '@/lib/notes/noteOrder';
 import { TrashBanner } from '@/components/notes/TrashBanner';
 
 
@@ -217,12 +224,10 @@ export function MainScreen() {
   const selectionAllPinned =
     selectedNoteModels.length > 0 && selectedNoteModels.every((note) => note.isPinned);
 
-  const allowReorder =
-    filters.filter === 'active' &&
-    (filters.sortOrder ?? 'manual') === 'manual' &&
-    !hasActiveFilters &&
-    !selectionMode &&
-    viewColumns === 1;
+  // Kotlin `NoteQuery.allowsManualReorder`: manual sort and nothing narrowing the list. The grid
+  // adds the layout half (the drag handle is list-only and hidden while selecting).
+  const allowReorder = allowsManualReorder(filters);
+  const offerManualSort = switchingSortWouldAllowReorder(filters);
 
   const handleNavigateFilter = (filter: NoteFilter) => {
     clearSelection();
@@ -302,6 +307,7 @@ export function MainScreen() {
     bulkPermanentDelete,
     moveNote,
     reorderComplete,
+    moveNoteBy,
   } = useNoteActions({
     notes,
     filteredNotes,
@@ -311,6 +317,22 @@ export function MainScreen() {
     closeEmptyTrashConfirm: () => openDialogs({ emptyTrashConfirm: false }),
     closeBulkDeleteConfirm: () => openDialogs({ bulkDeleteConfirm: false }),
   });
+
+  // The selection bar is the phone's route to Move up / Move down. Under an automatic sort the
+  // actions stay and explain themselves, with the one tap that fixes it (native's blocked handle);
+  // under a filter there is no such tap, so they are not offered.
+  const singleSelectedId = selectedNoteIds.length === 1 ? selectedNoteIds[0] : null;
+  const selectionMove = (delta: -1 | 1) => {
+    if (singleSelectedId == null) return;
+    if (allowReorder) {
+      moveNoteBy(singleSelectedId, delta);
+      return;
+    }
+    useToastStore
+      .getState()
+      .show(REORDER_BLOCKED_MESSAGE, 'default', 'Use manual order', () => setSortOrder('manual'));
+  };
+  const selectionMoveOffered = singleSelectedId != null && (allowReorder || offerManualSort);
 
   const {
     signOut,
@@ -469,6 +491,8 @@ export function MainScreen() {
           onBulkRestore={() => void bulkRestore()}
           onBulkTrash={() => void bulkTrash()}
           onBulkPermanentDelete={() => openDialogs({ bulkDeleteConfirm: true })}
+          onSelectionMoveUp={selectionMoveOffered ? () => selectionMove(-1) : undefined}
+          onSelectionMoveDown={selectionMoveOffered ? () => selectionMove(1) : undefined}
           recentSearches={recentSearches}
           onRecentSearchClick={(query) => {
             setSearchQuery(query);
@@ -641,6 +665,7 @@ export function MainScreen() {
                         allowReorder={allowReorder}
                         onMoveNote={moveNote}
                         onReorderComplete={reorderComplete}
+                        onMoveNoteBy={moveNoteBy}
                       />
                     </>
                   )}
@@ -719,6 +744,7 @@ export function MainScreen() {
         onViewColumnsCycle={cycleViewColumns}
         sortOrder={filters.sortOrder ?? 'manual'}
         onSortSelect={setSortOrder}
+        reorderBlockedByFilters={hasActiveNoteFilters(filters)}
         theme={theme}
         onThemeBaseChange={setThemeBase}
         onAccentChange={setAccentColor}

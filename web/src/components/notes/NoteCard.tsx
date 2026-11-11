@@ -4,6 +4,8 @@ import {
   CheckCircleOutlineIcon,
   DragHandleIcon,
   ImageIcon,
+  MoveDownIcon,
+  MoveUpIcon,
   NotesIcon,
   NotificationIcon,
   PinIcon,
@@ -62,6 +64,9 @@ export interface NoteCardProps {
   isPermanentDelete?: boolean;
   showReorderHandle?: boolean;
   reorderHandleProps?: NoteReorderHandleProps;
+  /** Manual order only: one step up or down (native `cd_move_up` / `cd_move_down`). */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }
 
 function NoteCardImpl({
@@ -81,6 +86,8 @@ function NoteCardImpl({
   isPermanentDelete = false,
   showReorderHandle = false,
   reorderHandleProps,
+  onMoveUp,
+  onMoveDown,
 }: NoteCardProps) {
   const density: NoteCardDensity = densityProp ?? (compact ? 'grid' : 'list');
   const isList = density === 'list';
@@ -439,13 +446,41 @@ function NoteCardImpl({
       </div>
 
       {/* Desktop hover/focus quick actions (UX-05). 32px each: the design system's pointer minimum (§5). */}
-      {!isSelected && (onPinToggle || onArchive || onRestore || onTrash) ? (
+      {!isSelected && (onPinToggle || onArchive || onRestore || onTrash || onMoveUp || onMoveDown) ? (
         <div
           className="absolute right-2 bottom-2 z-10 hidden sm:flex items-center gap-0.5 rounded-full bg-true-surface border border-brand-outline/35 p-0.5 shadow-sm opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 pointer-events-auto"
           role="toolbar"
           aria-label="Note quick actions"
           data-quick-actions=""
         >
+          {onMoveUp ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveUp();
+              }}
+              aria-label="Move up"
+              title="Move up"
+              className={`flex size-8 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+            >
+              <MoveUpIcon size={16} />
+            </button>
+          ) : null}
+          {onMoveDown ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveDown();
+              }}
+              aria-label="Move down"
+              title="Move down"
+              className={`flex size-8 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+            >
+              <MoveDownIcon size={16} />
+            </button>
+          ) : null}
           {onPinToggle ? (
             <button
               type="button"
@@ -523,7 +558,9 @@ function noteCardPropsAreEqual(prev: NoteCardProps, next: NoteCardProps): boolea
     prev.onArchive === next.onArchive &&
     prev.onRestore === next.onRestore &&
     prev.onTrash === next.onTrash &&
-    prev.isPermanentDelete === next.isPermanentDelete
+    prev.isPermanentDelete === next.isPermanentDelete &&
+    prev.onMoveUp === next.onMoveUp &&
+    prev.onMoveDown === next.onMoveDown
   );
 }
 

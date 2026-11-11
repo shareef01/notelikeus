@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   archiveNoteById,
   emptyTrash,
@@ -13,7 +13,13 @@ import {
   cancelDeferredAttachmentGc,
   runDeferredAttachmentGc,
 } from '@/lib/attachments/attachmentSyncService';
-import { commitNotePositions, previewMoveNote } from '@/lib/notes/noteOrder';
+import {
+  commitNotePositions,
+  moveBlockedAnnouncement,
+  moveBlockReason,
+  movedAnnouncement,
+  previewMoveNote,
+} from '@/lib/notes/noteOrder';
 import { runNoteAction } from '@/lib/notes/runNoteAction';
 import { showUndoToast } from '@/lib/notes/showUndoToast';
 import { useNotesStore } from '@/store/notesStore';
@@ -275,23 +281,70 @@ export function useNoteActions({
    * follows the finger, and only the drop persists. Writing on each move would be a remote
    * commit per pixel of travel.
    */
-  const moveNote = useCallback(
-    (fromIndex: number, toIndex: number) => {
-      const reordered = previewMoveNote(notes, filteredNotes, fromIndex, toIndex);
-      if (reordered) {
-        useNotesStore.getState().setNotes(reordered);
-      }
-    },
-    [filteredNotes, notes],
-  );
+  // Where each note moved since the last commit started, so a drag that wanders and comes back
+  // writes nothing, and a failed save can put the note back where it was.
+  const originalPositions = useRef(new Map<string, number>());
+  // The shown list as of the latest render. A drag can move several times between renders.
+  const visibleRef = useRef(filteredNotes);
+  visibleRef.current = filteredNotes;
 
-  const reorderComplete = useCallback(
-    () => {
-      void runNoteAction('Reorder', async () => {
-        await commitNotePositions(useNotesStore.getState().notes);
-      });
+  /** Moves a note within the shown list, for display; `reorderComplete` persists it. */
+  const moveNote = useCallback((fromIndex: number, toIndex: number): boolean => {
+    const store = useNotesStore.getState();
+    const preview = previewMoveNote(store.notes, visibleRef.current, fromIndex, toIndex);
+    if (!preview) return false;
+    for (const [id, position] of preview.previousPositions) {
+      if (!originalPositions.current.has(id)) originalPositions.current.set(id, position);
+    }
+    store.setNotes(preview.notes);
+    // The list re-sorts from positions on the next render; until then, later moves in the same
+    // gesture need the order they produced.
+    const ordered = [...visibleRef.current];
+    const [item] = ordered.splice(fromIndex, 1);
+    ordered.splice(toIndex, 0, item);
+    visibleRef.current = ordered;
+    return true;
+  }, []);
+
+  const reorderComplete = useCallback(() => {
+    const originals = originalPositions.current;
+    if (originals.size === 0) return;
+    originalPositions.current = new Map();
+    void runNoteAction('Reorder', async () => {
+      const failed = await commitNotePositions(useNotesStore.getState().notes, originals);
+      if (failed.length === 0) return;
+      // The move is already on screen; without this it looks saved until the next reload.
+      const failedIds = new Set(failed);
+      const store = useNotesStore.getState();
+      store.setNotes(
+        store.notes.map((note) =>
+          failedIds.has(note.id) ? { ...note, position: originals.get(note.id) ?? note.position } : note,
+        ),
+      );
+      throw new Error(`${plural(failed.length)} could not be moved`);
+    });
+  }, []);
+
+  /**
+   * One step up or down: the Move up / Move down actions on a card, the selection bar and the
+   * reorder handle's arrow keys. Says where the note ended up, or why it could not move.
+   */
+  const moveNoteBy = useCallback(
+    (noteId: string, delta: -1 | 1) => {
+      const visible = visibleRef.current;
+      const index = visible.findIndex((note) => note.id === noteId);
+      if (index < 0) return;
+      const blocked = moveBlockReason(visible, index, delta);
+      const toast = useToastStore.getState();
+      if (blocked) {
+        toast.show(moveBlockedAnnouncement(blocked));
+        return;
+      }
+      if (!moveNote(index, index + delta)) return;
+      reorderComplete();
+      toast.show(movedAnnouncement(index + delta + 1, visible.length));
     },
-    [],
+    [moveNote, reorderComplete],
   );
 
   return {
@@ -308,5 +361,6 @@ export function useNoteActions({
     bulkPermanentDelete,
     moveNote,
     reorderComplete,
+    moveNoteBy,
   };
 }
