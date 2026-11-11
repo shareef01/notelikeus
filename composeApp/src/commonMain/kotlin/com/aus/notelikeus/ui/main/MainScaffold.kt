@@ -46,6 +46,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
+import com.aus.notelikeus.domain.model.Note
 import com.aus.notelikeus.domain.model.NoteViewMode
 import com.aus.notelikeus.ui.components.AppSnackbar
 import com.aus.notelikeus.ui.components.NoteStaggeredGrid
@@ -91,6 +92,7 @@ internal fun MainScaffold(
     snackbarHostState: SnackbarHostState,
     onShowProfileSheet: (Boolean) -> Unit,
     onDeleteSelected: () -> Unit,
+    onRequestPermanentDelete: (Note) -> Unit,
     onShowFiltersSheet: (Boolean) -> Unit,
     onShowEmptyTrashConfirm: (Boolean) -> Unit,
     onShowDrawer: () -> Unit,
@@ -419,14 +421,16 @@ internal fun MainScaffold(
                         },
                         onSwipeToTrash = { note ->
                             haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            viewModel.trashNote(note)
-                            scope.launch {
-                                val message = if (state.currentFilter == NoteFilter.TRASHED) {
-                                    getString(Res.string.note_deleted)
-                                } else {
-                                    getString(Res.string.note_trashed)
+                            when (selectionDeleteFor(state.currentFilter)) {
+                                // In Trash a swipe deletes for good, so it asks first, like the
+                                // selection bar. Cancelling leaves the card where it was.
+                                SelectionDelete.CONFIRM_PERMANENT_DELETE -> onRequestPermanentDelete(note)
+                                SelectionDelete.MOVE_TO_TRASH -> {
+                                    viewModel.trashNote(note)
+                                    scope.launch {
+                                        showUndoSnackbar(getString(Res.string.note_trashed))
+                                    }
                                 }
-                                showUndoSnackbar(message)
                             }
                         },
                         onLabelClick = { labelId ->

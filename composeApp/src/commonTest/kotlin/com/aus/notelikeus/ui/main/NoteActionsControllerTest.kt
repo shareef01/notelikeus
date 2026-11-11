@@ -126,6 +126,28 @@ class NoteActionsControllerTest {
         assertEquals(listOf(1L), repository.deletedNotes.map { it.id })
     }
 
+    /** A swipe in Trash runs once the user confirms, deletes for good, and Undo still restores it. */
+    @Test
+    fun aConfirmedSwipeInTrashDeletesPermanentlyAndUndoRestoresIt() = runTest {
+        val repository = FakeNoteRepository()
+        val inTrash = note.copy(isTrashed = true)
+        val state = MutableStateFlow(
+            MainState(notes = listOf(inTrash), query = NoteQuery(scope = NoteScope.TRASH))
+        )
+        val hidden = mutableSetOf<Long>()
+        val actions = controller(repository, state, hidden, this)
+
+        actions.trashNote(inTrash)
+        advanceUntilIdle()
+        assertEquals(listOf(1L), repository.deletedNotes.map { it.id })
+
+        actions.undoLastAction()
+        advanceUntilIdle()
+        assertEquals(listOf(1L), repository.insertedNotes.map { it.id }, "Undo did not restore the note")
+        assertTrue(hidden.isEmpty(), "Undo left the restored note hidden")
+        assertNull(state.value.pendingActionFailure)
+    }
+
     // ---- R15: one originating token per action, and a refusal is not a failure ----
 
     /**

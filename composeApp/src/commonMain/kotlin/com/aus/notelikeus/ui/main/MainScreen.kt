@@ -117,6 +117,8 @@ fun MainScreen(
     var showProfileSheet by remember { mutableStateOf(false) }
     var showFiltersSheet by remember { mutableStateOf(false) }
     var showPermanentDeleteConfirm by remember { mutableStateOf(false) }
+    // A card swiped while viewing Trash, waiting on the same confirmation as the selection.
+    var swipedNoteToDelete by remember { mutableStateOf<Note?>(null) }
     var showEmptyTrashConfirm by remember { mutableStateOf(false) }
     var showCloudSignOutConfirm by remember { mutableStateOf(false) }
     var showDeleteAccountConfirm by remember { mutableStateOf(false) }
@@ -372,6 +374,7 @@ fun MainScreen(
                         onShowProfileSheet = { showProfileSheet = it },
             onShowFiltersSheet = { showFiltersSheet = it },
             onDeleteSelected = ::deleteSelection,
+            onRequestPermanentDelete = { note -> swipedNoteToDelete = note },
             onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
             onShowDrawer = { scope.launch { drawerState.open() } },
             listScrolled = listScrolled,
@@ -588,6 +591,7 @@ fun MainScreen(
                                         onShowProfileSheet = { showProfileSheet = it },
                     onShowFiltersSheet = { showFiltersSheet = it },
                     onDeleteSelected = ::deleteSelection,
+                    onRequestPermanentDelete = { note -> swipedNoteToDelete = note },
                     onShowEmptyTrashConfirm = { showEmptyTrashConfirm = it },
                     onShowDrawer = { scope.launch { drawerState.open() } },
                     listScrolled = listScrolled,
@@ -777,8 +781,8 @@ fun MainScreen(
         showCloudSignOutConfirm = showCloudSignOutConfirm,
         showCloudRestoreConfirm = showCloudRestoreConfirm,
         showEmptyTrashConfirm = showEmptyTrashConfirm,
-        showPermanentDeleteConfirm = showPermanentDeleteConfirm,
-        selectedCount = state.selectedNotes.size,
+        showPermanentDeleteConfirm = showPermanentDeleteConfirm || swipedNoteToDelete != null,
+        selectedCount = if (swipedNoteToDelete != null) 1 else state.selectedNotes.size,
         onCloudSignOutConfirmDismiss = { showCloudSignOutConfirm = false },
         onCloudSignOut = { deleteCloudData ->
             showCloudSignOutConfirm = false
@@ -810,11 +814,17 @@ fun MainScreen(
                 showUndoSnackbar(message)
             }
         },
-        onPermanentDeleteConfirmDismiss = { showPermanentDeleteConfirm = false },
-        onConfirmPermanentDelete = {
-            val count = state.selectedNotes.size
+        onPermanentDeleteConfirmDismiss = {
             showPermanentDeleteConfirm = false
-            viewModel.deleteSelectedNotes()
+            swipedNoteToDelete = null
+        },
+        onConfirmPermanentDelete = {
+            val swiped = swipedNoteToDelete
+            val count = if (swiped != null) 1 else state.selectedNotes.size
+            showPermanentDeleteConfirm = false
+            swipedNoteToDelete = null
+            // In Trash, trashNote deletes for good and stages the same Undo.
+            if (swiped != null) viewModel.trashNote(swiped) else viewModel.deleteSelectedNotes()
             scope.launch {
                 showUndoSnackbar(
                     if (count == 1) {

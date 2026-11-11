@@ -1,7 +1,8 @@
 package com.aus.notelikeus.ui.main
 
 /**
- * What the selection bar's delete button (and the Delete key) does in a given view.
+ * What deleting does in a given view: the selection bar's delete button, the Delete key, and
+ * swiping a card.
  *
  * The rule, shared with web: a reversible action happens at once and offers Undo; only an
  * irreversible one asks first. Moving notes to Trash can be undone and the notes can be restored
