@@ -32,6 +32,12 @@ interface NoteStaggeredGridProps {
   allowReorder?: boolean;
   onMoveNote?: (fromIndex: number, toIndex: number) => void;
   onReorderComplete?: () => void;
+  /**
+   * One step up or down, announced: the cards' Move up / Move down actions and the reorder
+   * handle's arrow keys. Offered on every layout while `allowReorder` holds; the drag handle
+   * stays list-only, where a vertical drag means one direction.
+   */
+  onMoveNoteBy?: (noteId: string, delta: -1 | 1) => void;
 }
 
 /**
@@ -64,6 +70,8 @@ interface NoteHandlers {
   restore: () => void;
   trash: () => void;
   permanentDelete: () => void;
+  moveUp: () => void;
+  moveDown: () => void;
 }
 
 type BoardItem =
@@ -139,6 +147,7 @@ export function NoteStaggeredGrid({
   allowReorder = false,
   onMoveNote,
   onReorderComplete,
+  onMoveNoteBy,
 }: NoteStaggeredGridProps) {
   const isPhone = !useMediaQuery('(min-width: 640px)');
   const isWideScreen = useMediaQuery('(min-width: 1200px)');
@@ -153,6 +162,7 @@ export function NoteStaggeredGrid({
   const swipeEnabled = isPhone && isList && Boolean(listActions) && !selectionMode;
   const canReorder =
     allowReorder && isList && !selectionMode && Boolean(onMoveNote);
+  const canMoveByStep = allowReorder && Boolean(onMoveNoteBy);
   const boardItems = useMemo(
     () => buildBoardItems(notes, sortOrder, searchQuery, groupByDate),
     [notes, sortOrder, searchQuery, groupByDate],
@@ -217,8 +227,8 @@ export function NoteStaggeredGrid({
   // list, measured at 0.9 s on a 4x-throttled CPU. Each note now keeps one set of handlers for its
   // lifetime, and they call whatever the latest props are, so a card re-renders only when its own
   // note or its own state changes.
-  const latest = useRef({ notes, onNoteClick, onNoteLongPress, onLabelClick, listActions });
-  latest.current = { notes, onNoteClick, onNoteLongPress, onLabelClick, listActions };
+  const latest = useRef({ notes, onNoteClick, onNoteLongPress, onLabelClick, listActions, onMoveNoteBy });
+  latest.current = { notes, onNoteClick, onNoteLongPress, onLabelClick, listActions, onMoveNoteBy };
   const handlerCache = useRef(new Map<string, NoteHandlers>());
   const handlersFor = (noteId: string): NoteHandlers => {
     const cached = handlerCache.current.get(noteId);
@@ -243,6 +253,8 @@ export function NoteStaggeredGrid({
       restore: leavingList((note) => latest.current.listActions?.onRestore(note)),
       trash: leavingList((note) => latest.current.listActions?.onTrash(note)),
       permanentDelete: leavingList((note) => latest.current.listActions?.onPermanentDelete(note)),
+      moveUp: () => latest.current.onMoveNoteBy?.(noteId, -1),
+      moveDown: () => latest.current.onMoveNoteBy?.(noteId, 1),
     };
     handlerCache.current.set(noteId, created);
     return created;
@@ -286,6 +298,8 @@ export function NoteStaggeredGrid({
             ? handlers.permanentDelete
             : undefined,
       isPermanentDelete: filter === 'trashed',
+      onMoveUp: canMoveByStep ? handlers.moveUp : undefined,
+      onMoveDown: canMoveByStep ? handlers.moveDown : undefined,
     };
   };
 
@@ -418,6 +432,10 @@ export function NoteStaggeredGrid({
               onDragMove={handleDragMove}
               onDragEnd={handleDragEnd}
               onKeyboardMove={(delta) => {
+                if (onMoveNoteBy) {
+                  onMoveNoteBy(note.id, delta);
+                  return;
+                }
                 const target = index + delta;
                 if (!onMoveNote || target < 0 || target >= notes.length) return;
                 onMoveNote(index, target);

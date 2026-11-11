@@ -1,5 +1,13 @@
 import type { ReactNode } from 'react';
-import { ArchiveIcon, CloseIcon, NotesIcon, PinIcon, TrashIcon } from '@/components/icons/Icons';
+import {
+  ArchiveIcon,
+  CloseIcon,
+  MoveDownIcon,
+  MoveUpIcon,
+  NotesIcon,
+  PinIcon,
+  TrashIcon,
+} from '@/components/icons/Icons';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
 import type { NoteFilter } from '@/types/note';
 
@@ -15,6 +23,12 @@ interface SelectionBarProps {
   onRestore?: () => void;
   onTrash?: () => void;
   onPermanentDelete?: () => void;
+  /**
+   * One selected note, one step: the phone's route to manual order, where cards have no hover
+   * toolbar. The caller decides whether this moves the note or explains why it cannot.
+   */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }
 
 export function SelectionBar({
@@ -29,6 +43,8 @@ export function SelectionBar({
   onRestore,
   onTrash,
   onPermanentDelete,
+  onMoveUp,
+  onMoveDown,
 }: SelectionBarProps) {
   const label = selectedCount === 1 ? '1 selected' : `${selectedCount} selected`;
 
@@ -57,6 +73,18 @@ export function SelectionBar({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
+        {selectedCount === 1 && onMoveUp ? (
+          <IconAction label="Move up" onClick={onMoveUp}>
+            <MoveUpIcon size={20} />
+          </IconAction>
+        ) : null}
+
+        {selectedCount === 1 && onMoveDown ? (
+          <IconAction label="Move down" onClick={onMoveDown}>
+            <MoveDownIcon size={20} />
+          </IconAction>
+        ) : null}
+
         {currentFilter === 'active' && onPinToggle ? (
           <IconAction label={selectionAllPinned ? 'Unpin' : 'Pin'} onClick={onPinToggle}>
             <PinIcon size={20} className={selectionAllPinned ? 'opacity-100' : 'opacity-55'} />

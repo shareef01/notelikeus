@@ -11,26 +11,31 @@ export const SORT_OPTION_LABELS: Record<SortOrder, string> = {
 };
 
 const SORT_OPTION_HINTS: Record<SortOrder, string> = {
-  manual: 'Drag notes to arrange them yourself',
+  manual: 'Arrange notes yourself with Move up and Move down',
   newest: 'Most recently created first',
   oldest: 'Earliest created first',
 };
 
 /**
- * The orders this client can actually produce.
- *
- * `manual` is deliberately absent: the web client renders no reorder handle — `MainScreen` passes no
- * `reorder` prop into the grid, so `showReorderHandle` is false by construction — and offering an
- * order the user has no way to reach is worse than not offering it. A note's stored position is still
- * honoured when the list is in `manual`; it simply cannot be chosen or changed here. (F18)
+ * Every order native offers, manual first as it is the default (NL-05). Manual was left out while
+ * the web client had no way to move a note (F18); cards and the selection bar now have Move up and
+ * Move down, and list view a drag handle.
  */
-const SORT_OPTIONS: SortOrder[] = ['newest', 'oldest'];
+export const SORT_OPTIONS: SortOrder[] = ['manual', 'newest', 'oldest'];
+
+/** Why Manual cannot reorder right now, when a filter is the reason (native hides the handle). */
+export const REORDER_FILTERED_HINT = 'Clear the search and filters to move notes';
 
 interface SortSheetProps {
   open: boolean;
   onClose: () => void;
   sortOrder: SortOrder;
   onSelect: (order: SortOrder) => void;
+  /**
+   * A search or filter is narrowing the list, so notes cannot be moved even under Manual: position
+   * is a property of the whole list. Said under the Manual option instead of leaving it to fail.
+   */
+  reorderBlockedByFilters?: boolean;
 }
 
 /**
@@ -49,7 +54,13 @@ interface SortSheetProps {
  * `aria-pressed` rather than `role="radio"`, matching the filter chips these sit beside — the whole
  * group is reachable by Tab and each option announces its own state.
  */
-export function SortSheet({ open, onClose, sortOrder, onSelect }: SortSheetProps) {
+export function SortSheet({
+  open,
+  onClose,
+  sortOrder,
+  onSelect,
+  reorderBlockedByFilters = false,
+}: SortSheetProps) {
   return (
     <ResponsiveSheet open={open} onClose={onClose} ariaLabel="Sort notes" maxWidthClass="md:max-w-sm">
       <div className="px-5 pb-2 pt-1 sm:px-6">
@@ -79,6 +90,11 @@ export function SortSheet({ open, onClose, sortOrder, onSelect }: SortSheetProps
                   {SORT_OPTION_LABELS[option]}
                 </span>
                 <span className="block text-xs text-brand-muted">{SORT_OPTION_HINTS[option]}</span>
+                {option === 'manual' && reorderBlockedByFilters ? (
+                  <span className="mt-0.5 block text-xs font-medium text-brand-muted">
+                    {REORDER_FILTERED_HINT}
+                  </span>
+                ) : null}
               </span>
               {active ? (
                 <CheckIcon size={18} className="shrink-0 text-brand-accent" />

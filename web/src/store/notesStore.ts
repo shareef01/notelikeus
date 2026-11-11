@@ -63,9 +63,9 @@ interface NotesState {
 
 const defaultFilters: NoteQueryFilters = {
   ...DEFAULT_NARROWING,
-  // 'manual' is not offered by the web sort chooser (F18): nothing here can reorder notes, so a
-  // fresh session starting in it would open on an order the user cannot change.
-  sortOrder: 'newest',
+  // Native's default (Kotlin `NoteQuery.sort`, NL-05). Only a first run sees it: the persisted
+  // filters replace these wholesale on rehydrate, so a sort someone already has is kept.
+  sortOrder: 'manual',
 };
 
 function sameOrder<T>(a: readonly T[] | undefined, b: readonly T[] | undefined): boolean {
@@ -204,7 +204,9 @@ export const useNotesStore = create<NotesState>()(
           syncError: null,
           unreadableNoteIds: [],
           cloudWipeNotice: null,
-          filters: defaultFilters,
+          // The sort is how this device shows notes, not something an account owns: an account
+          // boundary clears what narrows the list and keeps the order the user chose.
+          filters: { ...defaultFilters, sortOrder: get().filters.sortOrder ?? defaultFilters.sortOrder },
         }),
     }),
     {

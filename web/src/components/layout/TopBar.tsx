@@ -56,6 +56,9 @@ interface TopBarProps {
   onBulkPermanentDelete?: () => void;
   selectionAllPinned?: boolean;
   onBulkPinToggle?: () => void;
+  /** Move the one selected note a step; see SelectionBar. */
+  onSelectionMoveUp?: () => void;
+  onSelectionMoveDown?: () => void;
   recentSearches?: string[];
   onRecentSearchClick?: (query: string) => void;
   onClearRecentSearches?: () => void;
@@ -107,6 +110,8 @@ export function TopBar({
   onBulkPermanentDelete,
   selectionAllPinned = false,
   onBulkPinToggle,
+  onSelectionMoveUp,
+  onSelectionMoveDown,
   recentSearches = [],
   onRecentSearchClick,
   onClearRecentSearches,
@@ -161,6 +166,8 @@ export function TopBar({
             onRestore={onBulkRestore}
             onTrash={onBulkTrash}
             onPermanentDelete={onBulkPermanentDelete}
+            onMoveUp={onSelectionMoveUp}
+            onMoveDown={onSelectionMoveDown}
           />
         ) : (
           <div className="flex h-14 min-w-0 flex-1 items-center gap-2 sm:h-16 sm:gap-3">

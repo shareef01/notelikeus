@@ -44,6 +44,8 @@ interface MainDialogsProps {
   sortOrder: React.ComponentProps<typeof ProfileSheet>['sortOrder'];
   /** Every surface chooses rather than cycles now: the toolbar's sheet and the settings group. */
   onSortSelect: (order: 'manual' | 'newest' | 'oldest') => void;
+  /** A search or filter is active, so even Manual cannot move notes; said in the sort sheet. */
+  reorderBlockedByFilters?: boolean;
 
   theme: React.ComponentProps<typeof ProfileSheet>['theme'];
   onThemeBaseChange: React.ComponentProps<typeof ProfileSheet>['onThemeBaseChange'];
@@ -93,6 +95,7 @@ export function MainDialogs({
   onViewColumnsCycle,
   sortOrder,
   onSortSelect,
+  reorderBlockedByFilters = false,
   theme,
   onThemeBaseChange,
   onAccentChange,
@@ -151,6 +154,7 @@ export function MainDialogs({
         onClose={() => onOpenChange({ sortSheet: false })}
         sortOrder={sortOrder}
         onSelect={onSortSelect}
+        reorderBlockedByFilters={reorderBlockedByFilters}
       />
 
       <SignOutDialog

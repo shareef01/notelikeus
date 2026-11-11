@@ -80,6 +80,37 @@ describe('notesStore error channels', () => {
   });
 });
 
+/** NL-05: native opens on the manual order, and web now does too, without overriding a saved sort. */
+describe('notesStore default sort', () => {
+  const STORAGE_KEY = 'notelikeus-note-filters';
+
+  beforeEach(() => {
+    localStorage.removeItem(STORAGE_KEY);
+  });
+
+  it('starts a first run on the manual order, as native does', () => {
+    expect(useNotesStore.getInitialState().filters.sortOrder).toBe('manual');
+  });
+
+  it('keeps a sort an existing user already has', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ state: { filters: { filter: 'active', sortOrder: 'newest' } }, version: 0 }),
+    );
+    await useNotesStore.persist.rehydrate();
+    expect(useNotesStore.getState().filters.sortOrder).toBe('newest');
+  });
+
+  it('keeps the chosen sort across an account boundary while clearing what narrows the list', () => {
+    useNotesStore.getState().setFilters({ sortOrder: 'oldest', searchQuery: 'x', labelNames: ['work'] });
+    useNotesStore.getState().reset();
+    const { filters } = useNotesStore.getState();
+    expect(filters.sortOrder).toBe('oldest');
+    expect(filters.searchQuery).toBe('');
+    expect(filters.labelNames).toEqual([]);
+  });
+});
+
 /**
  * NL-08: a reload keeps which view is open and how it is sorted, and nothing else. The search
  * text, label and colour are about the user's own notes and localStorage is outside the sealing.
