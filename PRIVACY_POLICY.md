@@ -33,6 +33,10 @@ When you choose to sign in and use sync:
 - Attachment binaries, when used, are stored in **Cloudflare R2** behind an authenticated Worker
 - Signing out on Android or Windows **removes the account's notes from the device** so the next account cannot inherit them; edits that haven't been uploaded yet are kept on the device, encrypted and kept for that account only, and upload when it signs in there again. On Web they stay in the browser, encrypted and kept for that account only, until a different account signs in there or you clear the site's data. Either way, cloud data remains until you delete it (in-app “Sign out and delete cloud data”)
 
+## Sign-in security check
+
+Whenever the app emails you a code, to sign in or to confirm it's you before deleting cloud data or your account, it first runs **Cloudflare Turnstile**, a security check that tells people apart from automated abuse of the sign-in email. On Web it loads from `challenges.cloudflare.com` while the sign-in form or the confirmation step is on screen, including the sign-in form the web app shows when you first open it. On Android it runs in an in-app view of the web app's check page, and on Windows in your default browser, only when you ask for a code. Cloudflare processes information about your browser or device, such as your IP address and browser characteristics, to decide whether the request comes from a person; Cloudflare's own privacy policy covers that processing. Notelikeus receives only a single-use pass token, which is sent to Supabase with the code request. Using Notelikeus without an account on Android or Windows never runs the check.
+
 ## Deleting your account
 
 You can delete your account from **Settings → Delete account** in the Android, Windows and web apps. If you haven't signed in within the last ten minutes, the app first emails you a code to confirm it's you; the same applies to "Sign out and delete cloud data". Deletion takes effect immediately and cannot be undone:
@@ -99,6 +103,7 @@ If you add links to notes, tapping them opens your default browser. Notelikeus d
 
 - **Supabase** — authentication (including sending sign-in code emails) and note data when you enable cloud sync
 - **Cloudflare** — web hosting (Pages) and attachment objects (R2 / Worker) when those features are used
+- **Cloudflare Turnstile** — the security check that runs whenever the app emails you a code (see "Sign-in security check")
 - We do not sell your personal data or use analytics or advertising SDKs
 
 ## Children
@@ -111,4 +116,4 @@ We may update this policy as the app evolves. Material changes will be reflected
 
 ## Contact
 
-For privacy questions, reach out via the app’s store listing or the project repository.
+For privacy questions, open an issue on the project's GitHub repository: https://github.com/shareef01/notelikeus/issues
