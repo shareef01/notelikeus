@@ -81,6 +81,73 @@ class NoteActionsControllerTest {
         assertTrue(repository.updatedNotes.single().isArchived)
     }
 
+    // ---- NL-11: a move to Trash is immediate and undoable ----
+
+    @Test
+    fun trashingTheSelectionMovesItToTrashAndUndoPutsItBack() = runTest {
+        val repository = FakeNoteRepository()
+        val state = MutableStateFlow(MainState(notes = listOf(note), selectedNotes = setOf(1L)))
+        val hidden = mutableSetOf<Long>()
+        val actions = controller(repository, state, hidden, this)
+
+        actions.deleteSelectedNotes()
+        advanceUntilIdle()
+
+        val trashed = repository.updatedNotes.single()
+        assertTrue(trashed.isTrashed, "the selection was not moved to Trash")
+        assertTrue(repository.deletedNotes.isEmpty(), "moving to Trash must not delete anything")
+        assertEquals(setOf(1L), hidden)
+
+        actions.undoLastAction()
+        advanceUntilIdle()
+
+        val restored = repository.updatedNotes.last()
+        assertEquals(1L, restored.id)
+        assertTrue(!restored.isTrashed, "Undo did not take the note back out of Trash")
+        assertTrue(hidden.isEmpty(), "Undo left the restored note hidden")
+        assertNull(state.value.pendingActionFailure)
+    }
+
+    @Test
+    fun deletingTheSelectionFromTrashIsPermanent() = runTest {
+        val repository = FakeNoteRepository()
+        val state = MutableStateFlow(
+            MainState(
+                notes = listOf(note.copy(isTrashed = true)),
+                selectedNotes = setOf(1L),
+                query = NoteQuery(scope = NoteScope.TRASH),
+            )
+        )
+        val hidden = mutableSetOf<Long>()
+
+        controller(repository, state, hidden, this).deleteSelectedNotes()
+        advanceUntilIdle()
+
+        assertEquals(listOf(1L), repository.deletedNotes.map { it.id })
+    }
+
+    /** A swipe in Trash runs once the user confirms, deletes for good, and Undo still restores it. */
+    @Test
+    fun aConfirmedSwipeInTrashDeletesPermanentlyAndUndoRestoresIt() = runTest {
+        val repository = FakeNoteRepository()
+        val inTrash = note.copy(isTrashed = true)
+        val state = MutableStateFlow(
+            MainState(notes = listOf(inTrash), query = NoteQuery(scope = NoteScope.TRASH))
+        )
+        val hidden = mutableSetOf<Long>()
+        val actions = controller(repository, state, hidden, this)
+
+        actions.trashNote(inTrash)
+        advanceUntilIdle()
+        assertEquals(listOf(1L), repository.deletedNotes.map { it.id })
+
+        actions.undoLastAction()
+        advanceUntilIdle()
+        assertEquals(listOf(1L), repository.insertedNotes.map { it.id }, "Undo did not restore the note")
+        assertTrue(hidden.isEmpty(), "Undo left the restored note hidden")
+        assertNull(state.value.pendingActionFailure)
+    }
+
     // ---- R15: one originating token per action, and a refusal is not a failure ----
 
     /**

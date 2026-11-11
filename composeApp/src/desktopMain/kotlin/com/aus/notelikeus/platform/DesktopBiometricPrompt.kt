@@ -1,5 +1,9 @@
 package com.aus.notelikeus.platform
 
+import notelikeus.composeapp.generated.resources.Res
+import notelikeus.composeapp.generated.resources.action_close
+import notelikeus.composeapp.generated.resources.app_lock_unavailable_desktop
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -72,8 +76,7 @@ fun DesktopBiometricPrompt(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "App lock isn't available on desktop yet, so this device can't verify " +
-                        "you. Your notes are still stored locally.",
+                    text = stringResource(Res.string.app_lock_unavailable_desktop),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -83,7 +86,7 @@ fun DesktopBiometricPrompt(
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = onCancel) {
-                        Text("Close")
+                        Text(stringResource(Res.string.action_close))
                     }
                 }
             }

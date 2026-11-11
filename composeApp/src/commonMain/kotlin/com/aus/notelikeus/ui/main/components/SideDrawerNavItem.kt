@@ -1,5 +1,8 @@
 package com.aus.notelikeus.ui.main.components
 
+import notelikeus.composeapp.generated.resources.Res
+import notelikeus.composeapp.generated.resources.drawer_signed_in
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -199,7 +202,7 @@ fun SideDrawerAccountRow(
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Signed in",
+                text = stringResource(Res.string.drawer_signed_in),
                 style = AppType.chromeLabel,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

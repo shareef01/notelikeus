@@ -83,15 +83,14 @@ fun LabelsScreen(
             ) {
                 CircularProgressIndicator()
             }
-        } else if (state.error != null) {
-            val errorMessage = state.error!!
+        } else if (state.loadFailed) {
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = errorMessage,
+                    text = stringResource(Res.string.labels_load_failed),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(horizontal = Spacing.xxxl)

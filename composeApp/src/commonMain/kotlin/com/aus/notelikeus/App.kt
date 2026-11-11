@@ -204,7 +204,7 @@ private fun AppContent(
         LaunchedEffect(state.pendingCloudSyncEvent, isSignInGateVisible) {
             val event = state.pendingCloudSyncEvent
             if (isSignInGateVisible && event is CloudSyncEvent.Failure) {
-                gateError = event.message
+                gateError = event.text()
                 viewModel.clearPendingCloudSyncEvent()
             }
         }

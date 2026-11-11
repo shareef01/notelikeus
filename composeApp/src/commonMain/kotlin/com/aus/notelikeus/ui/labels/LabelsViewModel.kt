@@ -11,7 +11,7 @@ import kotlinx.coroutines.launch
 data class LabelsState(
     val labels: List<Label> = emptyList(),
     val isLoading: Boolean = true,
-    val error: String? = null
+    val loadFailed: Boolean = false
 )
 
 class LabelsViewModel(
@@ -35,10 +35,10 @@ class LabelsViewModel(
     fun loadLabels() {
         repository.getLabels()
             .onEach { labels ->
-                _state.update { it.copy(labels = labels, isLoading = false, error = null) }
+                _state.update { it.copy(labels = labels, isLoading = false, loadFailed = false) }
             }
-            .catch { e ->
-                _state.update { it.copy(isLoading = false, error = "Failed to load labels") }
+            .catch {
+                _state.update { it.copy(isLoading = false, loadFailed = true) }
             }
             .launchIn(viewModelScope)
     }

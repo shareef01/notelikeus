@@ -267,7 +267,13 @@ fun MainTopAppBar(
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 onDeleteSelected()
                             }) {
-                                Icon(Icons.Default.Delete, contentDescription = stringResource(Res.string.cd_delete))
+                                // Outside Trash this only moves the notes there, so it is not "Delete".
+                                val deleteDescription = if (currentFilter == NoteFilter.TRASHED) {
+                                    stringResource(Res.string.cd_delete)
+                                } else {
+                                    stringResource(Res.string.action_move_to_trash)
+                                }
+                                Icon(Icons.Default.Delete, contentDescription = deleteDescription)
                             }
                         }
                         }

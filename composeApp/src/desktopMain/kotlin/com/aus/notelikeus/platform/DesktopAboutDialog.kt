@@ -1,5 +1,12 @@
 package com.aus.notelikeus.platform
 
+import notelikeus.composeapp.generated.resources.Res
+import notelikeus.composeapp.generated.resources.about_description
+import notelikeus.composeapp.generated.resources.about_running_on
+import notelikeus.composeapp.generated.resources.about_title
+import notelikeus.composeapp.generated.resources.about_version
+import notelikeus.composeapp.generated.resources.action_close
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -19,7 +26,7 @@ fun DesktopAboutDialog(
     DialogWindow(
         onCloseRequest = onDismiss,
         state = rememberDialogState(width = 450.dp, height = 350.dp),
-        title = "About Notelikeus"
+        title = stringResource(Res.string.about_title)
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -43,25 +50,29 @@ fun DesktopAboutDialog(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Version $version",
+                    text = stringResource(Res.string.about_version, version),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Running on ${System.getProperty("os.name")} (${System.getProperty("os.arch")})",
+                    text = stringResource(
+                        Res.string.about_running_on,
+                        System.getProperty("os.name").orEmpty(),
+                        System.getProperty("os.arch").orEmpty()
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
                 Spacer(modifier = Modifier.height(24.dp))
                 Text(
-                    text = "A modern, cross-platform note taking app built with Kotlin Multiplatform and Compose.",
+                    text = stringResource(Res.string.about_description),
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(32.dp))
                 Button(onClick = onDismiss) {
-                    Text("Close")
+                    Text(stringResource(Res.string.action_close))
                 }
             }
         }
