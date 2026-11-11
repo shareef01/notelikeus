@@ -33,9 +33,10 @@ export function SignOutDialog({
             Sign out?
           </h2>
           <p className="mt-2 text-sm text-brand-muted">
-            Your notes stay in your Notelikeus cloud account and aren&apos;t affected by ordinary sign out.
-            This only clears locally cached app data on this device, and you&apos;ll need to sign
-            in again to keep using Notelikeus.
+            Your notes stay in your Notelikeus cloud account. Their copy in this browser stays too,
+            encrypted and kept for this account only: it comes back when you sign in to this account
+            here, and is removed when a different account signs in here (unless it has edits that
+            haven&apos;t been uploaded) or when you clear this site&apos;s data.
           </p>
           {unsyncedEdits > 0 && (
             <p

@@ -206,7 +206,7 @@
     <string name="cloud_sign_out_success">Signed out</string>
     <string name="cloud_sign_out_deleted_success">Signed out and cloud data deleted</string>
     <string name="cloud_sign_out_confirm_title">Sign out?</string>
-    <string name="cloud_sign_out_confirm_message">Signing out clears notes on this device so another account cannot inherit them. Cloud copies remain unless you delete them. You’ll need to sign in again to keep using Notelikeus.</string>
+    <string name="cloud_sign_out_confirm_message">Signing out clears notes on this device so another account cannot inherit them. Cloud copies remain unless you delete them.</string>
     <string name="cloud_sign_out_delete_data">Sign out and delete cloud data</string>
     <string name="cloud_sign_out_unsynced_title">Some changes aren’t in the cloud yet</string>
     <string name="cloud_sign_out_unsynced_message">This device couldn’t sync: %1$s. Signing out now deletes them for good. Stay signed in and try again when you’re online, or export a backup first.</string>
