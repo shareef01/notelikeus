@@ -14,12 +14,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aus.notelikeus.domain.model.Label
+import com.aus.notelikeus.domain.model.hasLabelNamed
 import com.aus.notelikeus.ui.components.NotesEmptyState
 import com.aus.notelikeus.ui.theme.Spacing
 import com.aus.notelikeus.ui.theme.Elevation
@@ -130,6 +132,7 @@ fun LabelsScreen(
                 ) { label ->
                     LabelListItem(
                         label = label,
+                        noteCount = label.id?.let { state.noteCounts[it] } ?: 0,
                         onEditClick = { labelToEdit = label },
                         onDeleteClick = { labelToDelete = label }
                     )
@@ -147,6 +150,7 @@ fun LabelsScreen(
     if (showCreateDialog) {
         LabelEditDialog(
             title = stringResource(Res.string.create_new_label),
+            isTaken = { state.labels.hasLabelNamed(it) },
             onDismiss = { showCreateDialog = false },
             onConfirm = { name ->
                 viewModel.createLabel(name)
@@ -159,6 +163,7 @@ fun LabelsScreen(
         LabelEditDialog(
             title = stringResource(Res.string.rename_label),
             initialName = label.name,
+            isTaken = { state.labels.hasLabelNamed(it, exceptId = label.id) },
             onDismiss = { labelToEdit = null },
             onConfirm = { name ->
                 viewModel.updateLabel(label, name)
@@ -168,35 +173,56 @@ fun LabelsScreen(
     }
 
     labelToDelete?.let { label ->
-        AlertDialog(
-            onDismissRequest = { labelToDelete = null },
-            shape = MaterialTheme.shapes.large,
-            title = {
-                Text(stringResource(Res.string.delete_label_title))
+        DeleteLabelDialog(
+            label = label,
+            noteCount = label.id?.let { state.noteCounts[it] } ?: 0,
+            onConfirm = {
+                viewModel.deleteLabel(label)
+                labelToDelete = null
             },
-            text = { Text(stringResource(Res.string.delete_label_message)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteLabel(label)
-                        labelToDelete = null
-                    }
-                ) {
-                    Text(stringResource(Res.string.action_delete), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { labelToDelete = null }) {
-                    Text(stringResource(Res.string.action_cancel))
-                }
-            }
+            onDismiss = { labelToDelete = null },
         )
     }
+}
+
+/** Says how many notes lose the label, so deleting one in use is not a surprise. */
+@Composable
+private fun DeleteLabelDialog(
+    label: Label,
+    noteCount: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = MaterialTheme.shapes.large,
+        title = { Text(stringResource(Res.string.delete_label_title)) },
+        text = {
+            Text(
+                if (noteCount > 0) {
+                    pluralStringResource(Res.plurals.delete_label_message_count, noteCount, label.name, noteCount)
+                } else {
+                    stringResource(Res.string.delete_label_message)
+                },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(Res.string.action_delete), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(Res.string.action_cancel))
+            }
+        },
+    )
 }
 
 @Composable
 private fun LabelListItem(
     label: Label,
+    noteCount: Int,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
@@ -206,6 +232,17 @@ private fun LabelListItem(
                 label.name,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
             ) 
+        },
+        supportingContent = {
+            Text(
+                if (noteCount > 0) {
+                    pluralStringResource(Res.plurals.label_note_count, noteCount, noteCount)
+                } else {
+                    stringResource(Res.string.label_no_notes)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         },
         leadingContent = { 
             Icon(
@@ -235,10 +272,13 @@ private fun LabelListItem(
 private fun LabelEditDialog(
     title: String,
     initialName: String = "",
+    /** Whether a name belongs to another label already; the dialog says so and won't save it. */
+    isTaken: (String) -> Boolean,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
     var name by remember { mutableStateOf(initialName) }
+    val taken = name.isNotBlank() && name.trim() != initialName.trim() && isTaken(name)
     
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -252,6 +292,12 @@ private fun LabelEditDialog(
                 onValueChange = { name = it },
                 label = { Text(stringResource(Res.string.label_name_hint)) },
                 singleLine = true,
+                isError = taken,
+                supportingText = if (taken) {
+                    { Text(stringResource(Res.string.label_name_taken)) }
+                } else {
+                    null
+                },
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.medium
             )
@@ -259,7 +305,7 @@ private fun LabelEditDialog(
         confirmButton = {
             TextButton(
                 onClick = { onConfirm(name) },
-                enabled = name.isNotBlank() && name != initialName
+                enabled = name.isNotBlank() && name.trim() != initialName && !taken
             ) {
                 Text(stringResource(Res.string.action_ok))
             }

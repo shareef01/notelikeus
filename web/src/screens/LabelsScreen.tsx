@@ -1,13 +1,15 @@
 import { useToastStore } from '@/store/toastStore';
 import { useLabelManagement } from '@/hooks/useLabelManagement';
 import { DeleteLabelDialog } from '@/components/labels/DeleteLabelDialog';
-import { CloseIcon, TrashIcon, AddIcon, LabelIcon } from '@/components/icons/Icons';
+import { CloseIcon, EditIcon, TrashIcon, AddIcon, LabelIcon } from '@/components/icons/Icons';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { CHROME_FOCUS } from '@/lib/ui/focusStyles';
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useVisibleViewport } from '@/hooks/useVisibleViewport';
 import type { Label } from '@/types/label';
+import { useNotesStore } from '@/store/notesStore';
+import { labelNoteCounts, noteCountText } from '@/lib/labels/labelNoteCounts';
 
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
@@ -19,7 +21,10 @@ interface LabelsScreenProps {
 export function LabelsScreen({ onClose }: LabelsScreenProps) {
   const viewport = useVisibleViewport();
   const labelErrorId = useId();
+  const countIdPrefix = useId();
   const { labels, createLabel, updateLabel, deleteLabel } = useLabelManagement();
+  const notes = useNotesStore((state) => state.notes);
+  const noteCounts = useMemo(() => labelNoteCounts(notes), [notes]);
   const [labelError, setLabelError] = useState('');
   const [newLabelName, setNewLabelName] = useState('');
   const [labelToEdit, setLabelToEdit] = useState<Label | null>(null);
@@ -140,18 +145,37 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
                       <button
                         type="button"
                         onClick={() => handleStartEdit(label)}
-                        className="flex-1 truncate text-left text-base text-brand-primary"
+                        // Named by the label alone, with the count as its description, so the
+                        // control reads "Work, button, 2 notes" rather than "Work2 notes".
+                        aria-label={label.name}
+                        aria-describedby={`${countIdPrefix}-${index}`}
+                        className="flex min-w-0 flex-1 flex-col items-start py-2 text-left"
                       >
-                        {label.name}
+                        <span className="w-full truncate text-base text-brand-primary">{label.name}</span>
+                        <span id={`${countIdPrefix}-${index}`} className="text-xs text-brand-muted">
+                          {noteCountText(noteCounts.get(label.id) ?? 0)}
+                        </span>
                       </button>
                     )}
 
                     <div className="flex items-center gap-1">
+                      {labelToEdit?.id === label.id ? null : (
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(label)}
+                          className={`flex size-10 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-brand-primary/5 hover:text-brand-primary ${CHROME_FOCUS}`}
+                          aria-label={`Rename ${label.name}`}
+                          title="Rename"
+                        >
+                          <EditIcon size={20} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setLabelToDelete(label)}
-                        className="flex size-10 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-red-500/10 hover:text-red-400"
-                        aria-label="Delete label"
+                        className={`flex size-10 items-center justify-center rounded-full text-brand-muted transition-colors hover:bg-red-500/10 hover:text-red-400 ${CHROME_FOCUS}`}
+                        aria-label={`Delete ${label.name}`}
+                        title="Delete"
                       >
                         <TrashIcon size={20} />
                       </button>
@@ -170,6 +194,7 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
       <DeleteLabelDialog
         open={labelToDelete != null}
         labelName={labelToDelete?.name ?? ''}
+        noteCount={labelToDelete ? noteCounts.get(labelToDelete.id) ?? 0 : 0}
         onCancel={() => setLabelToDelete(null)}
         onConfirm={async () => {
           if (labelToDelete) {

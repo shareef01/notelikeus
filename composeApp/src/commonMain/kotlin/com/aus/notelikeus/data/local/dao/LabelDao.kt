@@ -7,10 +7,12 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface LabelDao {
 
-    @Query("SELECT * FROM labels ORDER BY name ASC")
+    // A to Z ignoring case, so "apple" is not listed after "Zeta". Equal names in different case keep
+    // the old binary order between them, which NoteSyncEngine's by-name map relies on.
+    @Query("SELECT * FROM labels ORDER BY name COLLATE NOCASE ASC, name ASC")
     fun getAllLabels(): Flow<List<LabelEntity>>
 
-    @Query("SELECT * FROM labels ORDER BY name ASC")
+    @Query("SELECT * FROM labels ORDER BY name COLLATE NOCASE ASC, name ASC")
     suspend fun getAllLabelsOnce(): List<LabelEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

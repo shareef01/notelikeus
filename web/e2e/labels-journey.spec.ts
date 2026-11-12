@@ -73,7 +73,8 @@ test('deleting a label states its consequence, and cancelling keeps it', async (
   const context = await newGuest(browser);
   const page = await guestWithLabel(context);
 
-  await page.getByRole('button', { name: 'Delete label' }).first().click();
+  // Named after the label it deletes, so a screen reader hears which one.
+  await page.getByRole('button', { name: 'Delete groceries', exact: true }).click();
   // The labels screen is itself a dialog, so this one is named rather than matched by role alone.
   const dialog = page.getByRole('dialog', { name: 'Delete label?' });
   await expect(dialog).toBeVisible({ timeout: 10_000 });

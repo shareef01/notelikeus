@@ -363,6 +363,16 @@ Sync diagnostics shows counts and version numbers only — never note text, toke
     <string name="label_name_hint">Enter label name</string>
     <string name="empty_labels_hint">No labels yet</string>
     <string name="empty_labels_subtitle">Create labels to organize your notes</string>
+    <string name="label_name_taken">A label with this name already exists.</string>
+    <string name="label_no_notes">No notes</string>
+    <plurals name="label_note_count">
+        <item quantity="one">%1$d note</item>
+        <item quantity="other">%1$d notes</item>
+    </plurals>
+    <plurals name="delete_label_message_count">
+        <item quantity="one">“%1$s” will be removed from %2$d note. The note itself is kept.</item>
+        <item quantity="other">“%1$s” will be removed from %2$d notes. The notes themselves are kept.</item>
+    </plurals>
     <string name="recent_searches">Recent searches</string>
     <string name="select_note_to_view">Select a note to view</string>
     <string name="select_note_to_view_subtitle">Choose a note from the list to edit it here</string>
