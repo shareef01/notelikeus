@@ -462,7 +462,7 @@ function NoteCardImpl({
               }}
               aria-label="Move up"
               title="Move up"
-              className={`flex size-8 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+              className={`flex size-8 items-center justify-center rounded-full text-brand-primary hover:bg-brand-primary/15 transition-colors ${CHROME_FOCUS}`}
             >
               <MoveUpIcon size={16} />
             </button>
@@ -476,7 +476,7 @@ function NoteCardImpl({
               }}
               aria-label="Move down"
               title="Move down"
-              className={`flex size-8 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+              className={`flex size-8 items-center justify-center rounded-full text-brand-primary hover:bg-brand-primary/15 transition-colors ${CHROME_FOCUS}`}
             >
               <MoveDownIcon size={16} />
             </button>
@@ -490,7 +490,7 @@ function NoteCardImpl({
               }}
               aria-label={note.isPinned ? 'Unpin note' : 'Pin note'}
               title={note.isPinned ? 'Unpin note' : 'Pin note'}
-              className={`flex size-8 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+              className={`flex size-8 items-center justify-center rounded-full text-brand-primary hover:bg-brand-primary/15 transition-colors ${CHROME_FOCUS}`}
             >
               {note.isPinned ? <PinOffIcon size={16} /> : <PinIcon size={16} />}
             </button>
@@ -504,7 +504,7 @@ function NoteCardImpl({
               }}
               aria-label="Archive note"
               title="Archive note"
-              className={`flex size-8 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+              className={`flex size-8 items-center justify-center rounded-full text-brand-primary hover:bg-brand-primary/15 transition-colors ${CHROME_FOCUS}`}
             >
               <ArchiveIcon size={16} />
             </button>
@@ -518,7 +518,7 @@ function NoteCardImpl({
               }}
               aria-label="Restore note"
               title="Restore note"
-              className={`flex size-8 items-center justify-center rounded-full text-brand-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-colors ${CHROME_FOCUS}`}
+              className={`flex size-8 items-center justify-center rounded-full text-brand-primary hover:bg-brand-primary/15 transition-colors ${CHROME_FOCUS}`}
             >
               <NotesIcon size={16} />
             </button>
@@ -532,7 +532,7 @@ function NoteCardImpl({
               }}
               aria-label={isPermanentDelete ? 'Delete permanently' : 'Delete note'}
               title={isPermanentDelete ? 'Delete permanently' : 'Delete note'}
-              className={`flex size-8 items-center justify-center rounded-full text-brand-muted hover:text-red-500 hover:bg-red-500/10 transition-colors ${CHROME_FOCUS}`}
+              className={`flex size-8 items-center justify-center rounded-full text-brand-primary hover:text-red-500 hover:bg-red-500/15 transition-colors ${CHROME_FOCUS}`}
             >
               <TrashIcon size={16} />
             </button>
