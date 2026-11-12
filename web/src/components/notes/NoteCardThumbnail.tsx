@@ -22,6 +22,9 @@ interface NoteCardThumbnailProps {
 const LOAD_AHEAD_MARGIN = '600px';
 /** Deactivate only when the card has scrolled well outside the viewport to prevent thrashing. */
 const EXIT_MARGIN = '1200px';
+/** Banner frame proportions (width / height): reserved before load, and the tallest frame a portrait gets. */
+const DEFAULT_BANNER_ASPECT = 4 / 3;
+const MIN_BANNER_ASPECT = 4 / 5;
 
 /**
  * The first image of a note, on its card.
@@ -123,27 +126,45 @@ export function NoteCardThumbnail({
   if (failed) return null;
 
   const isBanner = layout === 'banner';
-  const isPortrait = isBanner && aspectRatio !== undefined && aspectRatio < 1;
+  // A banner spans the card's full width and never crops: the whole picture sits centred at its own
+  // proportions, and a blurred copy of it fills whatever the picture leaves beside it (a portrait
+  // photo in a wide card), so the frame reads as one edge-to-edge image rather than a floating tile.
+  const bannerAspect =
+    aspectRatio === undefined
+      ? DEFAULT_BANNER_ASPECT
+      : aspectRatio >= 1
+        ? aspectRatio
+        : Math.max(MIN_BANNER_ASPECT, aspectRatio);
   const frameClassName =
     isBanner
-      ? `${bleedClassName} relative max-h-64 overflow-hidden ${url ? '' : 'bg-black/10'}`
+      ? `${bleedClassName} relative max-h-64 overflow-hidden ${url ? 'bg-black/20' : 'bg-black/10'}`
       : 'size-16 shrink-0 self-start overflow-hidden rounded-xl bg-black/10';
 
   return (
     <div
       ref={frameRef}
       className={frameClassName}
-      style={isBanner ? { aspectRatio: aspectRatio ?? 4 / 3 } : undefined}
+      style={isBanner ? { aspectRatio: bannerAspect } : undefined}
       data-testid="note-card-thumbnail"
     >
+      {isBanner && url ? (
+        <div
+          aria-hidden
+          className="absolute -inset-6 scale-110 bg-cover bg-center blur-2xl brightness-[0.55] saturate-150"
+          style={{ backgroundImage: `url("${url}")` }}
+        />
+      ) : null}
       {url ? (
         <img
           src={url}
           alt=""
           decoding="async"
           draggable={false}
-          className={`size-full object-contain ${isBanner ? 'absolute inset-0 mx-auto' : ''} ${isPortrait ? 'rounded-xl' : ''}`}
-          style={isPortrait ? { width: `min(100%, ${16 * aspectRatio}rem)` } : undefined}
+          className={
+            isBanner
+              ? 'relative mx-auto block h-full w-auto max-w-full object-contain'
+              : 'size-full object-contain'
+          }
           onLoad={({ currentTarget }) => {
             if (isBanner && currentTarget.naturalWidth && currentTarget.naturalHeight) {
               setAspectRatio(currentTarget.naturalWidth / currentTarget.naturalHeight);
