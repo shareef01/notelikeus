@@ -10,8 +10,6 @@ import type { AccentColor, ThemeBase, ThemePreference } from '@/store/settingsSt
 import {
   GridViewIcon,
   SortIcon,
-  NotesIcon,
-  CloudIcon,
   AccountIcon,
   BackupIcon,
   AddIcon,
@@ -109,13 +107,65 @@ const VIEW_LABELS: Record<ViewColumns, string> = {
   3: 'Compact',
 };
 
+/** The order the view choices are offered in, matching the toolbar's chooser. */
+const VIEW_OPTIONS: readonly ViewColumns[] = [2, 1, 3];
+
+const noteCountText = (count: number) => (count === 1 ? '1 note' : `${count} notes`);
+
+/**
+ * A visible choice instead of a row that cycles on tap: the options are on screen before the tap,
+ * not discovered one at a time after it. Same chip classes as the filter row.
+ */
+function SettingsChoice<T extends string | number>({
+  label,
+  icon,
+  options,
+  value,
+  labelFor,
+  onSelect,
+}: {
+  label: string;
+  icon: ReactNode;
+  options: readonly T[];
+  value: T;
+  labelFor: (option: T) => string;
+  onSelect: (option: T) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 px-4 py-3 sm:px-5">
+      <span className="flex items-center gap-2 text-sm font-medium text-brand-primary">
+        {icon}
+        {label}
+      </span>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={label}>
+        {options.map((option) => {
+          const active = option === value;
+          return (
+            <button
+              key={String(option)}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onSelect(option)}
+              className={`filter-chip px-3 text-xs sm:px-3.5 ${CHROME_FOCUS} ${
+                active ? 'filter-chip-active' : 'filter-chip-inactive'
+              }`}
+            >
+              <span className="whitespace-nowrap">{labelFor(option)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface ProfileSheetProps {
   open: boolean;
   onClose: () => void;
   noteCount: number;
   viewColumns: ViewColumns;
   sortOrder: 'manual' | 'newest' | 'oldest';
-  onViewColumnsCycle: () => void;
+  onViewColumnsSelect: (columns: ViewColumns) => void;
   onSortOrderSelect: (order: 'manual' | 'newest' | 'oldest') => void;
   theme: ThemePreference;
   onThemeBaseChange: (base: ThemeBase) => void;
@@ -143,7 +193,7 @@ export function ProfileSheet({
   noteCount,
   viewColumns,
   sortOrder,
-  onViewColumnsCycle,
+  onViewColumnsSelect,
   onSortOrderSelect,
   theme,
   onThemeBaseChange,
@@ -168,6 +218,18 @@ export function ProfileSheet({
   useBodyScrollLock(open);
 
   if (!open) return null;
+
+  const signedIn = isSignedIn && !!userEmail;
+  // Who you are, whether the cloud is reachable and how many notes there are, in one row. These
+  // used to be a separate Insights section that repeated the account section above it.
+  const accountTitle = signedIn ? userEmail! : isGuest ? 'Browsing as a guest' : 'Not signed in';
+  const accountStatus = signedIn
+    ? syncStatus === 'online'
+      ? 'Connected'
+      : 'Working offline'
+    : isGuest
+      ? 'Notes stay in this browser'
+      : 'Notes stay on this device';
 
   return (
     <div
@@ -196,39 +258,20 @@ export function ProfileSheet({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-safe">
+        {/*
+          One column on a phone, read top to bottom: account, appearance, layout, data, about. On a
+          wide screen Layout heads the second column so the two are about the same height. Sign out
+          and Delete account come last on purpose, away from routine settings.
+        */}
         <div className="mx-auto grid w-full max-w-content gap-5 px-4 py-5 pb-12 sm:px-6 lg:grid-cols-2 lg:gap-6 lg:px-8 xl:grid-cols-[1fr_1.15fr]">
           <div className="flex flex-col gap-5">
             <SettingsSection title="Account & Sync">
-              {isGuest ? (
-                <SettingsRow
-                  title="Browsing as a guest"
-                  subtitle="Notes are stored locally in this browser. Sign in to sync across devices."
-                  icon={<AccountIcon size={18} />}
-                />
-              ) : null}
-              {isSignedIn && userEmail ? (
-                <>
-                  <SettingsRow
-                    title={userEmail}
-                    subtitle="Signed in"
-                    icon={<AccountIcon size={18} />}
-                  />
-                  <SettingsRow
-                    title="Sign out"
-                    subtitle="Stop syncing notes on this browser"
-                    onClick={onSignOut}
-                    icon={<LogoutIcon size={18} />}
-                    destructive
-                  />
-                  <SettingsRow
-                    title="Delete account"
-                    subtitle="Permanently remove your account and notes"
-                    onClick={onDeleteAccount}
-                    icon={<AccountIcon size={18} />}
-                    destructive
-                  />
-                </>
-              ) : (
+              <SettingsRow
+                title={accountTitle}
+                subtitle={`${accountStatus} · ${noteCountText(noteCount)}`}
+                icon={<AccountIcon size={18} />}
+              />
+              {signedIn ? null : (
                 <>
                   <SettingsRow
                     title="Sign in"
@@ -246,73 +289,6 @@ export function ProfileSheet({
               )}
             </SettingsSection>
 
-            <SettingsSection title="Data & Backup">
-              <SettingsRow
-                title="Export complete backup"
-                subtitle="Notes and every image, downloading cloud images, as one .nlkbak file"
-                onClick={onExportCompleteBackup}
-                icon={<BackupIcon size={18} />}
-              />
-              <SettingsRow
-                title="Export backup from this device"
-                subtitle="Works offline; includes only images stored on this device"
-                onClick={onExportDeviceBackup}
-                icon={<BackupIcon size={18} />}
-              />
-              <SettingsRow
-                title="Export notes only"
-                subtitle="Download notes as JSON, without images"
-                onClick={onExportBackup}
-                icon={<BackupIcon size={18} />}
-              />
-              <SettingsRow
-                title="Import backup"
-                subtitle="Merge notes from a .nlkbak or .json file"
-                onClick={onImportBackup}
-                icon={<AddIcon size={18} />}
-              />
-            </SettingsSection>
-
-            <SettingsSection title="Insights">
-              <div className="grid grid-cols-2 gap-px bg-brand-outline/35">
-                <div className="flex flex-col gap-1 bg-true-surface-variant/35 px-4 py-4 sm:py-5">
-                  <div className="flex items-center gap-2 text-brand-primary/70">
-                    <NotesIcon size={16} />
-                    <span className="text-chrome-label">
-                      Notes
-                    </span>
-                  </div>
-                  <p className="text-2xl font-semibold tabular-nums tracking-tight text-brand-primary sm:text-3xl">
-                    {noteCount}
-                  </p>
-                </div>
-                <div className="flex flex-col gap-1 bg-true-surface-variant/35 px-4 py-4 sm:py-5">
-                  <div className="flex items-center gap-2 text-brand-primary/70">
-                    <CloudIcon size={16} />
-                    <span className="text-chrome-label">Cloud</span>
-                  </div>
-                  <p className="truncate text-base font-medium text-brand-primary sm:text-lg capitalize">
-                    {isSignedIn
-                      ? syncStatus
-                      : isGuest
-                        ? 'Guest session'
-                        : 'Signed out'}
-                  </p>
-                  <p className="text-sm text-brand-muted">
-                    {isSignedIn
-                      ? syncStatus === 'online'
-                        ? 'Connected to cloud'
-                        : 'Working offline'
-                      : isGuest
-                        ? 'Notes stay on this device'
-                        : 'Sign in to sync'}
-                  </p>
-                </div>
-              </div>
-            </SettingsSection>
-          </div>
-
-          <div className="flex flex-col gap-5">
             <SettingsSection title="Appearance">
               <ThemePicker
                 value={theme}
@@ -321,48 +297,56 @@ export function ProfileSheet({
                 onAmoledChange={onAmoledChange}
               />
             </SettingsSection>
+          </div>
 
+          <div className="flex flex-col gap-5">
             <SettingsSection title="Layout">
-              <SettingsRow
-                title="Default view"
-                subtitle={VIEW_LABELS[viewColumns]}
-                onClick={onViewColumnsCycle}
+              <SettingsChoice
+                label="Default view"
                 icon={<GridViewIcon size={18} />}
+                options={VIEW_OPTIONS}
+                value={viewColumns}
+                labelFor={(columns) => VIEW_LABELS[columns]}
+                onSelect={onViewColumnsSelect}
               />
-                {/*
-                  A visible three-way choice rather than a row that cycles on tap. The toolbar's chip opens a
-                  chooser, and this was the last surface where the destination stayed hidden until after the tap.
-                  Stacking a second ResponsiveSheet over this one would have put two focus traps and two
-                  backdrops on screen at once, so the choice is inline — the same chip classes the filter row
-                  uses, and the same labels the toolbar's labels use.
-                */}
-                <div className="flex flex-col gap-2 px-4 py-3 sm:px-5">
-                  <span className="flex items-center gap-2 text-sm font-medium text-brand-primary">
-                    <SortIcon size={18} />
-                    Sort order
-                  </span>
-                  <div className="flex flex-wrap gap-1.5" role="group" aria-label="Sort order">
-                    {(['manual', 'newest', 'oldest'] as const).map((option) => {
-                      const active = option === sortOrder;
-                      return (
-                        <button
-                          key={option}
-                          type="button"
-                          aria-pressed={active}
-                          onClick={() => onSortOrderSelect(option)}
-                          className={`filter-chip px-3 text-xs sm:px-3.5 ${CHROME_FOCUS} ${
-                            active ? 'filter-chip-active' : 'filter-chip-inactive'
-                          }`}
-                        >
-                          <span className="whitespace-nowrap">{SORT_LABELS[option]}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+              <SettingsChoice
+                label="Sort order"
+                icon={<SortIcon size={18} />}
+                options={['manual', 'newest', 'oldest'] as const}
+                value={sortOrder}
+                labelFor={(order) => SORT_LABELS[order]}
+                onSelect={onSortOrderSelect}
+              />
             </SettingsSection>
 
-            <SettingsSection title="Diagnostics & About">
+            <SettingsSection title="Data & Backup">
+              <SettingsRow
+                title="Export complete backup"
+                subtitle="All notes and images in one .nlkbak file"
+                onClick={onExportCompleteBackup}
+                icon={<BackupIcon size={18} />}
+              />
+              <SettingsRow
+                title="Export backup from this device"
+                subtitle="Works offline; leaves out images not on this device"
+                onClick={onExportDeviceBackup}
+                icon={<BackupIcon size={18} />}
+              />
+              <SettingsRow
+                title="Export notes only"
+                subtitle="Notes as JSON, without images"
+                onClick={onExportBackup}
+                icon={<BackupIcon size={18} />}
+              />
+              <SettingsRow
+                title="Import backup"
+                subtitle="Add notes from a .nlkbak or .json file"
+                onClick={onImportBackup}
+                icon={<AddIcon size={18} />}
+              />
+            </SettingsSection>
+
+            <SettingsSection title="About">
               <SettingsRow
                 title="Privacy policy"
                 subtitle="How your data is handled"
@@ -376,11 +360,29 @@ export function ProfileSheet({
                 icon={<InfoIcon size={18} />}
               />
               <SettingsRow title="Version" subtitle={`${version} (web)`} icon={<InfoIcon size={18} />} />
-          </SettingsSection>
+            </SettingsSection>
+
+            {signedIn ? (
+              <SettingsSection title="Account">
+                <SettingsRow
+                  title="Sign out"
+                  subtitle="Stop syncing notes on this browser"
+                  onClick={onSignOut}
+                  icon={<LogoutIcon size={18} />}
+                  destructive
+                />
+                <SettingsRow
+                  title="Delete account"
+                  subtitle="Permanently remove your account and notes"
+                  onClick={onDeleteAccount}
+                  icon={<AccountIcon size={18} />}
+                  destructive
+                />
+              </SettingsSection>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
 }
-

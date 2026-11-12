@@ -1,7 +1,10 @@
 package com.aus.notelikeus.ui.main.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,14 +19,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.CloudQueue
-import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.Login
@@ -52,7 +51,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +64,7 @@ import notelikeus.composeapp.generated.resources.*
 import com.aus.notelikeus.domain.model.AppTheme
 import com.aus.notelikeus.domain.model.NoteSortOrder
 import com.aus.notelikeus.domain.model.NoteViewMode
+import com.aus.notelikeus.ui.components.AppFilterChip
 import com.aus.notelikeus.ui.main.CloudAccount
 import com.aus.notelikeus.ui.main.CloudSyncStatus
 import com.aus.notelikeus.util.AppConfig
@@ -162,26 +165,76 @@ fun ProfileSheet(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = Chrome.Divider)
             )
 
+            // Read top to bottom: who you are and how sync is doing, how the app looks, your data,
+            // then about. Sign out and Delete account stay last, away from routine settings: they
+            // are the destructive actions here, and Sign out can also delete the cloud copy.
             SettingsSectionHeader(
-                title = stringResource(Res.string.section_layout),
+                title = stringResource(Res.string.section_account_sync),
                 isFirst = true
             )
-            SettingsCycleListItem(
-                icon = Icons.Default.ViewModule,
-                title = stringResource(Res.string.default_view_mode),
-                subtitle = stringResource(viewModeLabelRes(viewMode)),
-                onClick = {
+            // One row for the account, the cloud's state and the note count. These used to be a
+            // separate Insights section that repeated what the account and sync rows said.
+            SettingsRow(
+                icon = if (cloudAccount.isSignedIn) Icons.Default.AccountCircle else Icons.Default.CloudOff,
+                title = if (cloudAccount.isSignedIn && !cloudAccount.email.isNullOrBlank()) {
+                    cloudAccount.email
+                } else {
+                    stringResource(Res.string.cloud_status_signed_out)
+                },
+                subtitle = stringResource(
+                    Res.string.settings_account_summary,
+                    accountStatusLabel(cloudSyncStatus, cloudAccount),
+                    pluralStringResource(Res.plurals.settings_note_count, noteCount, noteCount),
+                ),
+            )
+            if (!cloudAccount.isSignedIn) {
+                SettingsRow(
+                    icon = Icons.AutoMirrored.Filled.Login,
+                    title = stringResource(Res.string.cloud_sign_in),
+                    subtitle = stringResource(Res.string.cloud_sign_in_subtitle),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onSignInClick()
+                    }
+                )
+            }
+            if (!signInError.isNullOrBlank()) {
+                Text(
+                    text = signInError,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 68.dp)
+                )
+            }
+            SettingsToggleListItem(
+                icon = Icons.Default.Sync,
+                title = stringResource(Res.string.cloud_auto_sync),
+                subtitle = stringResource(Res.string.cloud_auto_sync_subtitle),
+                checked = isCloudAutoSyncEnabled,
+                enabled = cloudAccount.isSignedIn,
+                onCheckedChange = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onViewModeChange(viewMode.next())
+                    onCloudAutoSyncChange(it)
                 }
             )
-            SettingsCycleListItem(
-                icon = Icons.AutoMirrored.Filled.Sort,
-                title = stringResource(Res.string.sort_order),
-                subtitle = stringResource(sortOrderLabelRes(sortOrder)),
+            SettingsRow(
+                icon = Icons.Default.CloudUpload,
+                title = stringResource(Res.string.cloud_sync_now),
+                subtitle = syncNowSubtitle(cloudSyncStatus, cloudSyncedNoteCount),
+                enabled = canSync,
                 onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onSortOrderChange(sortOrder.next())
+                    onCloudSyncClick()
+                }
+            )
+            SettingsRow(
+                icon = Icons.Default.CloudDownload,
+                title = stringResource(Res.string.cloud_restore),
+                subtitle = stringResource(Res.string.cloud_restore_subtitle),
+                enabled = canSync,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onCloudRestoreClick()
                 }
             )
 
@@ -228,73 +281,30 @@ fun ProfileSheet(
             }
 
             SettingsSectionDivider()
-            SettingsSectionHeader(title = stringResource(Res.string.section_insights))
-            SettingsRow(
-                icon = Icons.Default.Description,
-                title = stringResource(Res.string.total_notes),
-                subtitle = noteCount.toString()
-            )
-            SettingsRow(
-                icon = when (cloudSyncStatus) {
-                    CloudSyncStatus.Connected, CloudSyncStatus.Synced -> Icons.Default.CloudDone
-                    CloudSyncStatus.Syncing -> Icons.Default.CloudSync
-                    CloudSyncStatus.Error, CloudSyncStatus.Offline -> Icons.Default.CloudOff
-                    // Queued implies something is coming. Nothing is, without an account.
-                    CloudSyncStatus.Unknown ->
-                        if (cloudAccount.isSignedIn) Icons.Default.CloudQueue
-                        else Icons.Default.CloudOff
-                },
-                title = stringResource(Res.string.cloud_sync),
-                subtitle = cloudStatusLabel(cloudSyncStatus, cloudSyncedNoteCount, cloudAccount)
-            )
-
-            SettingsSectionDivider()
-            // Sync, data and account are three different jobs and now say so. They used to
-            // sit under one ACCOUNT header, which put Sign out -- the one destructive action
-            // here, and the one that can also delete the cloud copy -- second in the list,
-            // above routine controls like the auto-sync toggle. It reads last now.
-            SettingsSectionHeader(title = stringResource(Res.string.section_sync))
-            SettingsToggleListItem(
-                icon = Icons.Default.Sync,
-                title = stringResource(Res.string.cloud_auto_sync),
-                subtitle = stringResource(Res.string.cloud_auto_sync_subtitle),
-                checked = isCloudAutoSyncEnabled,
-                enabled = cloudAccount.isSignedIn,
-                onCheckedChange = {
+            SettingsSectionHeader(title = stringResource(Res.string.section_layout))
+            // Visible choices rather than rows that cycle on tap, so the options are on screen
+            // before the tap instead of being discovered one at a time after it.
+            SettingsChoiceRow(
+                icon = Icons.Default.ViewModule,
+                title = stringResource(Res.string.default_view_mode),
+                options = SettingsViewChoices,
+                selected = SettingsViewChoices.firstOrNull { it.matches(viewMode) },
+                labelFor = { stringResource(viewModeLabelRes(it.mode)) },
+                onSelect = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onCloudAutoSyncChange(it)
+                    // Grid keeps a column count chosen elsewhere; only switching to Grid picks one.
+                    if (!it.matches(viewMode)) onViewModeChange(it.mode)
                 }
             )
-            SettingsRow(
-                icon = Icons.Default.CloudUpload,
-                title = stringResource(Res.string.cloud_sync_now),
-                subtitle = when (cloudSyncStatus) {
-                    CloudSyncStatus.Syncing -> stringResource(Res.string.cloud_sync_in_progress)
-                    // A successful sync that moved nothing is the steady state, not a failure to
-                    // sync anything, so it says so rather than reporting "0 notes".
-                    CloudSyncStatus.Synced -> if (cloudSyncedNoteCount > 0) {
-                        stringResource(Res.string.cloud_sync_last, cloudSyncedNoteCount)
-                    } else {
-                        stringResource(Res.string.cloud_sync_up_to_date)
-                    }
-                    CloudSyncStatus.Offline, CloudSyncStatus.Error ->
-                        stringResource(Res.string.cloud_sync_offline)
-                    else -> stringResource(Res.string.cloud_sync_subtitle)
-                },
-                enabled = canSync,
-                onClick = {
+            SettingsChoiceRow(
+                icon = Icons.AutoMirrored.Filled.Sort,
+                title = stringResource(Res.string.sort_order),
+                options = NoteSortOrder.entries,
+                selected = sortOrder,
+                labelFor = { stringResource(sortOrderChoiceLabelRes(it)) },
+                onSelect = {
                     haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onCloudSyncClick()
-                }
-            )
-            SettingsRow(
-                icon = Icons.Default.CloudDownload,
-                title = stringResource(Res.string.cloud_restore),
-                subtitle = stringResource(Res.string.cloud_restore_subtitle),
-                enabled = canSync,
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                    onCloudRestoreClick()
+                    onSortOrderChange(it)
                 }
             )
 
@@ -338,16 +348,6 @@ fun ProfileSheet(
             )
 
             SettingsSectionDivider()
-            SettingsSectionHeader(title = stringResource(Res.string.section_account))
-            AccountRows(
-                cloudAccount = cloudAccount,
-                signInError = signInError,
-                onSignInClick = onSignInClick,
-                onSignOutClick = onSignOutClick,
-                onDeleteAccountClick = onDeleteAccountClick,
-            )
-
-            SettingsSectionDivider()
             SettingsSectionHeader(title = stringResource(Res.string.section_about))
             SettingsRow(
                 icon = Icons.Default.PrivacyTip,
@@ -370,7 +370,122 @@ fun ProfileSheet(
                 icon = Icons.Default.Info,
                 title = stringResource(Res.string.app_version, AppConfig.versionName)
             )
+
+            if (cloudAccount.isSignedIn) {
+                SettingsSectionDivider()
+                SettingsSectionHeader(title = stringResource(Res.string.section_account))
+                SettingsRow(
+                    icon = Icons.AutoMirrored.Filled.Logout,
+                    title = stringResource(Res.string.cloud_sign_out),
+                    subtitle = stringResource(Res.string.cloud_sign_out_subtitle),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onSignOutClick()
+                    }
+                )
+                SettingsRow(
+                    icon = Icons.Default.DeleteForever,
+                    title = stringResource(Res.string.account_delete),
+                    subtitle = stringResource(Res.string.account_delete_subtitle),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onDeleteAccountClick()
+                    }
+                )
+            }
         }
+    }
+}
+
+/** The three view choices. Grid stands for every column count, so a 4-column grid still reads as Grid. */
+private enum class SettingsViewChoice(val mode: NoteViewMode) {
+    GRID(NoteViewMode.GRID_2),
+    LIST(NoteViewMode.LIST),
+    COMPACT(NoteViewMode.COMPACT);
+
+    fun matches(current: NoteViewMode): Boolean = when (this) {
+        GRID -> current.columns > 1
+        LIST -> current == NoteViewMode.LIST
+        COMPACT -> current == NoteViewMode.COMPACT
+    }
+}
+
+private val SettingsViewChoices = SettingsViewChoice.entries
+
+/** Short labels for the sort chips; the menu's "Manual (drag to reorder)" is too long for one. */
+private fun sortOrderChoiceLabelRes(order: NoteSortOrder): StringResource = when (order) {
+    NoteSortOrder.MANUAL -> Res.string.sort_manual_short
+    else -> sortOrderLabelRes(order)
+}
+
+/** A settings row whose options are all visible, as chips under its title. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun <T> SettingsChoiceRow(
+    icon: ImageVector,
+    title: String,
+    options: List<T>,
+    selected: T?,
+    labelFor: @Composable (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = SettingsRowHorizontal, vertical = SettingsRowVertical)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SettingsLeadingIcon(icon = icon, contentDescription = null)
+            Spacer(modifier = Modifier.width(Size.iconTiny))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.semantics { heading() }
+            )
+        }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            modifier = Modifier.padding(start = SettingsIconSize + Size.iconTiny, top = Spacing.xs)
+        ) {
+            options.forEach { option ->
+                AppFilterChip(
+                    selected = option == selected,
+                    onClick = { onSelect(option) },
+                    label = labelFor(option),
+                    compact = true,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun syncNowSubtitle(status: CloudSyncStatus, syncedCount: Int): String = when (status) {
+    CloudSyncStatus.Syncing -> stringResource(Res.string.cloud_sync_in_progress)
+    // A successful sync that moved nothing is the steady state, not a failure to sync anything,
+    // so it says so rather than reporting "0 notes".
+    CloudSyncStatus.Synced -> if (syncedCount > 0) {
+        stringResource(Res.string.cloud_sync_last, syncedCount)
+    } else {
+        stringResource(Res.string.cloud_sync_up_to_date)
+    }
+    CloudSyncStatus.Offline, CloudSyncStatus.Error -> stringResource(Res.string.cloud_sync_offline)
+    else -> stringResource(Res.string.cloud_sync_subtitle)
+}
+
+/** The account's state in a word or two, for the summary row. */
+@Composable
+private fun accountStatusLabel(status: CloudSyncStatus, account: CloudAccount): String {
+    // Without an account there is nothing to check, so it must not say it is checking.
+    if (!account.isSignedIn) return stringResource(Res.string.settings_local_only)
+    return when (status) {
+        CloudSyncStatus.Unknown -> stringResource(Res.string.cloud_signed_in_as)
+        CloudSyncStatus.Connected -> stringResource(Res.string.cloud_status_ready)
+        CloudSyncStatus.Offline -> stringResource(Res.string.cloud_status_offline)
+        CloudSyncStatus.Syncing -> stringResource(Res.string.cloud_status_syncing)
+        CloudSyncStatus.Synced -> stringResource(Res.string.cloud_sync_up_to_date)
+        CloudSyncStatus.Error -> stringResource(Res.string.cloud_status_error)
     }
 }
 
@@ -532,83 +647,4 @@ fun SettingsToggleListItem(
             )
         }
     )
-}
-
-@Composable
-private fun cloudStatusLabel(
-    status: CloudSyncStatus,
-    syncedCount: Int,
-    account: CloudAccount
-): String {
-    if (account.isSignedIn && !account.email.isNullOrBlank()) {
-        val localPart = account.email.substringBefore('@')
-        if (localPart.length <= 12) return localPart
-        return localPart.take(10) + "…"
-    }
-    // Without an account there is nothing to check, so it must not say it is checking. The status
-    // starts at Unknown and is only ever written *during* a sync, so anyone who chose "Continue
-    // offline" sat under a permanent "…" -- a progress indicator for work that would never start.
-    if (!account.isSignedIn) return stringResource(Res.string.cloud_status_signed_out)
-    return when (status) {
-        CloudSyncStatus.Unknown -> stringResource(Res.string.cloud_status_checking)
-        CloudSyncStatus.Connected -> stringResource(Res.string.cloud_status_ready)
-        CloudSyncStatus.Offline -> stringResource(Res.string.cloud_status_offline)
-        CloudSyncStatus.Syncing -> stringResource(Res.string.cloud_status_syncing)
-        CloudSyncStatus.Synced -> syncedCount.toString()
-        CloudSyncStatus.Error -> stringResource(Res.string.cloud_status_error)
-    }
-}
-
-@Composable
-private fun AccountRows(
-    cloudAccount: CloudAccount,
-    signInError: String?,
-    onSignInClick: () -> Unit,
-    onSignOutClick: () -> Unit,
-    onDeleteAccountClick: () -> Unit,
-) {
-    val haptic = LocalHapticFeedback.current
-    if (cloudAccount.isSignedIn && !cloudAccount.email.isNullOrBlank()) {
-        SettingsRow(
-            icon = Icons.Default.AccountCircle,
-            title = cloudAccount.email,
-            subtitle = stringResource(Res.string.cloud_signed_in_as)
-        )
-        SettingsRow(
-            icon = Icons.AutoMirrored.Filled.Logout,
-            title = stringResource(Res.string.cloud_sign_out),
-            subtitle = stringResource(Res.string.cloud_sign_out_subtitle),
-            onClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                onSignOutClick()
-            }
-        )
-        SettingsRow(
-            icon = Icons.Default.DeleteForever,
-            title = stringResource(Res.string.account_delete),
-            subtitle = stringResource(Res.string.account_delete_subtitle),
-            onClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                onDeleteAccountClick()
-            }
-        )
-    } else {
-        SettingsRow(
-            icon = Icons.AutoMirrored.Filled.Login,
-            title = stringResource(Res.string.cloud_sign_in),
-            subtitle = stringResource(Res.string.cloud_sign_in_subtitle),
-            onClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-                onSignInClick()
-            }
-        )
-    }
-    if (!signInError.isNullOrBlank()) {
-        Text(
-            text = signInError,
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(horizontal = 68.dp)
-        )
-    }
 }

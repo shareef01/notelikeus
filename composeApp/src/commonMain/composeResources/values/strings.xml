@@ -89,16 +89,16 @@
     <string name="export_bundle_complete">Complete backup exported with all %1$d images</string>
     <string name="export_bundle_incomplete">Incomplete backup: %1$d of %2$d images included, %3$d not in this file</string>
     <string name="export_failed">Export failed</string>
-    <string name="export_backup_subtitle">Complete backup: notes and every image, downloading cloud images, as .nlkbak</string>
+    <string name="export_backup_subtitle">All notes and images in one .nlkbak file</string>
     <string name="export_device_backup">Export backup from this device</string>
-    <string name="export_device_backup_subtitle">Works offline; includes only images stored on this device</string>
+    <string name="export_device_backup_subtitle">Works offline; leaves out images not on this device</string>
     <string name="export_notes_only">Export notes only</string>
-    <string name="export_notes_only_subtitle">Save notes as JSON (no images)</string>
+    <string name="export_notes_only_subtitle">Notes as JSON, without images</string>
     <string name="import_success">%1$d notes imported</string>
     <string name="import_bundle_success">%1$d notes imported (%2$d images)</string>
     <string name="import_failed">Import failed</string>
     <string name="import_invalid_format">Invalid backup: %1$s</string>
-    <string name="import_backup_subtitle">Restore from .nlkbak or JSON (adds to existing notes)</string>
+    <string name="import_backup_subtitle">Add notes from a .nlkbak or .json file</string>
     <string name="backup_import">Import backup</string>
 
     <!-- Settings sections -->
@@ -107,7 +107,15 @@
     <string name="section_insights">Insights</string>
     <string name="section_account">Account</string>
     <string name="section_sync">Sync</string>
-    <string name="section_data">Data</string>
+    <string name="section_account_sync">Account &amp; sync</string>
+    <!-- The settings summary row: "Up to date · 12 notes". -->
+    <string name="settings_account_summary">%1$s · %2$s</string>
+    <string name="settings_local_only">Notes stay on this device</string>
+    <plurals name="settings_note_count">
+        <item quantity="one">%1$d note</item>
+        <item quantity="other">%1$d notes</item>
+    </plurals>
+    <string name="section_data">Data &amp; backup</string>
     <string name="section_actions">Actions</string>
     <string name="selected_count">%1$d selected</string>
     <string name="select_all">Select all</string>
@@ -158,6 +166,7 @@
     <string name="default_view_mode">Default view</string>
     <string name="sort_order">Sort order</string>
     <string name="sort_manual">Manual (drag to reorder)</string>
+    <string name="sort_manual_short">Manual order</string>
     <string name="section_pinned">Pinned</string>
     <string name="section_today">Today</string>
     <string name="section_yesterday">Yesterday</string>
@@ -263,7 +272,7 @@
     <string name="action_retry">Retry</string>
     <string name="cloud_auto_sync">Auto-sync</string>
     <string name="cloud_auto_sync_subtitle">Upload note changes automatically while signed in</string>
-    <string name="backup_export">Backup &amp; Export</string>
+    <string name="backup_export">Export complete backup</string>
 
     <string name="section_about">About</string>
     <string name="privacy_policy">Privacy policy</string>
