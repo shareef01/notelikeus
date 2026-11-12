@@ -122,7 +122,6 @@ export function MainScreen() {
   const toggleSidebarCollapsed = useUiStore((s) => s.toggleSidebarCollapsed);
 
   const setViewColumns = useUiStore((s) => s.setViewColumns);
-  const cycleViewColumns = useUiStore((s) => s.cycleViewColumns);
 
   const setListScrolled = useUiStore((s) => s.setListScrolled);
 
@@ -789,7 +788,7 @@ export function MainScreen() {
         trashedCount={navCounts.trashed}
         selectedCount={selectedNoteIds.length}
         viewColumns={viewColumns}
-        onViewColumnsCycle={cycleViewColumns}
+        onViewColumnsSelect={setViewColumns}
         sortOrder={filters.sortOrder ?? 'manual'}
         onSortSelect={setSortOrder}
         reorderBlockedByFilters={hasActiveNoteFilters(filters)}

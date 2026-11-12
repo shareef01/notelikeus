@@ -40,7 +40,7 @@ interface MainDialogsProps {
   selectedCount: number;
 
   viewColumns: ViewColumns;
-  onViewColumnsCycle: () => void;
+  onViewColumnsSelect: (columns: ViewColumns) => void;
   sortOrder: React.ComponentProps<typeof ProfileSheet>['sortOrder'];
   /** Every surface chooses rather than cycles now: the toolbar's sheet and the settings group. */
   onSortSelect: (order: 'manual' | 'newest' | 'oldest') => void;
@@ -92,7 +92,7 @@ export function MainDialogs({
   trashedCount,
   selectedCount,
   viewColumns,
-  onViewColumnsCycle,
+  onViewColumnsSelect,
   sortOrder,
   onSortSelect,
   reorderBlockedByFilters = false,
@@ -127,7 +127,7 @@ export function MainDialogs({
         noteCount={noteCount}
         viewColumns={viewColumns}
         sortOrder={sortOrder}
-        onViewColumnsCycle={onViewColumnsCycle}
+        onViewColumnsSelect={onViewColumnsSelect}
         onSortOrderSelect={onSortSelect}
         theme={theme}
         onThemeBaseChange={onThemeBaseChange}
