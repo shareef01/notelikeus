@@ -21,6 +21,7 @@ interface LabelsScreenProps {
 export function LabelsScreen({ onClose }: LabelsScreenProps) {
   const viewport = useVisibleViewport();
   const labelErrorId = useId();
+  const countIdPrefix = useId();
   const { labels, createLabel, updateLabel, deleteLabel } = useLabelManagement();
   const notes = useNotesStore((state) => state.notes);
   const noteCounts = useMemo(() => labelNoteCounts(notes), [notes]);
@@ -144,10 +145,16 @@ export function LabelsScreen({ onClose }: LabelsScreenProps) {
                       <button
                         type="button"
                         onClick={() => handleStartEdit(label)}
+                        // Named by the label alone, with the count as its description, so the
+                        // control reads "Work, button, 2 notes" rather than "Work2 notes".
+                        aria-label={label.name}
+                        aria-describedby={`${countIdPrefix}-${index}`}
                         className="flex min-w-0 flex-1 flex-col items-start py-2 text-left"
                       >
                         <span className="w-full truncate text-base text-brand-primary">{label.name}</span>
-                        <span className="text-xs text-brand-muted">{noteCountText(noteCounts.get(label.id) ?? 0)}</span>
+                        <span id={`${countIdPrefix}-${index}`} className="text-xs text-brand-muted">
+                          {noteCountText(noteCounts.get(label.id) ?? 0)}
+                        </span>
                       </button>
                     )}
 
