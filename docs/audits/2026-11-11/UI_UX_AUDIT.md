@@ -102,7 +102,8 @@ Every finding below is code-inferred unless marked otherwise.
 > **Status: fixed in #463, using fix (a).** While a reminder is pending, closing the window hides
 > it to the tray, with a one-time notice. Exit in the tray menu quits. A second launch brings the
 > running copy forward (`util/SingleInstance.kt`), hiding re-locks app lock, and the confirmation,
-> web picker and privacy policy copy are corrected. Not yet tested on a real Windows session.
+> web picker and privacy policy copy are corrected. Checked on Windows 11 on 2026-11-12; see
+> [`FIXES.md`](FIXES.md).
 
 - **Where:** reminders, Windows.
 - **Actual behaviour:** closing the main window ends the process: `onCloseRequest = ::exitApplication`

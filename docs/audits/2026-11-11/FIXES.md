@@ -18,8 +18,11 @@ what is still unverified.
 
 ## Still unverified or not covered
 
-- **NL-01 has not been tried on a real Windows desktop.** Close the window while a reminder is
-  pending, wait for it to fire, then quit from the tray menu.
+- **NL-01 was checked on Windows 11 on 2026-11-12**, using the 2.6.2 MSI built from `main`. With no
+  reminder pending, closing the main window quits. A second launch hands over to the running copy
+  and exits. With a reminder pending, closing the main window hides it and the app keeps running in
+  the tray. Exit in the tray menu quits. **Not confirmed:** that the reminder notification fires
+  while the window is hidden, and that the one-time "still running" notice appears.
 - **NL-03:** a sealed copy for an account that was deleted from another device while this one was
   signed out stays on this device, encrypted, because nobody can sign in to claim it. Web behaves
   the same way.
