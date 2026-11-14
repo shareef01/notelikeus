@@ -153,8 +153,9 @@ fun EditorScreen(
 
     PlatformBackHandler { saveThenLeave() }
 
-    LaunchedEffect(state.isNoteLoaded, state.id, state.checklist.isEmpty(), focusNewNoteBody) {
-        if (focusNewNoteBody && state.isNoteLoaded && state.id == null && state.checklist.isEmpty()) {
+    val isNewTextNote = state.isNoteLoaded && state.id == null && state.checklist.isEmpty()
+    LaunchedEffect(state.id, isNewTextNote, focusNewNoteBody) {
+        if (focusNewNoteBody && isNewTextNote) {
             // Wait a frame so the body FocusRequester is attached.
             kotlinx.coroutines.delay(48)
             bodyFocusRequester.requestFocus()
