@@ -7,7 +7,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.window.Window
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
@@ -51,8 +50,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.koin.core.context.GlobalContext
 import java.awt.GraphicsEnvironment
-import java.awt.Point
-import kotlin.math.roundToInt
+import com.aus.notelikeus.ui.window.fitFloatingWindow
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
@@ -113,13 +111,13 @@ private fun launchApp(
     sidebarStore: SidebarCollapsedStore,
     initialSidebarCollapsed: Boolean
 ) = application {
+    val initialWindow = remember {
+        fitFloatingWindow(initialMetrics.width, initialMetrics.height, initialMetrics.x, initialMetrics.y)
+    }
     val windowState = rememberWindowState(
-        width = initialMetrics.width,
-        height = initialMetrics.height,
-        // With undecorated chrome the drag area is part of the window, so a position that puts
-        // the top edge above y=0 clips the title bar off-screen and leaves no way to drag the
-        // window back with the mouse. restorablePosition() centres rather than restore one.
-        position = restorablePosition(initialMetrics),
+        width = initialWindow.width,
+        height = initialWindow.height,
+        position = initialWindow.position,
         placement = if (initialMetrics.isMaximized) {
             WindowPlacement.Maximized
         } else {
@@ -402,27 +400,4 @@ private fun launchApp(
             }
         }
     }
-}
-
-/**
- * The saved position, unless it falls outside every attached display.
- *
- * After a second monitor is unplugged the stored coordinates can land the window somewhere the
- * user cannot reach — indistinguishable from the app failing to launch, and unrecoverable with
- * undecorated chrome, where dragging the window back means grabbing a title bar that is itself
- * off-screen. AWT reports display bounds in the same user-space units Compose uses for [Dp], so
- * they compare directly.
- */
-private fun restorablePosition(metrics: WindowMetrics): WindowPosition {
-    val x = metrics.x ?: return WindowPosition(Alignment.Center)
-    val y = metrics.y ?: return WindowPosition(Alignment.Center)
-
-    val topLeft = Point(x.value.roundToInt(), y.value.roundToInt())
-    val onAnyScreen = runCatching {
-        GraphicsEnvironment.getLocalGraphicsEnvironment().screenDevices.any { device ->
-            device.configurations.any { it.bounds.contains(topLeft) }
-        }
-    }.getOrDefault(false)
-
-    return if (onAnyScreen) WindowPosition(x, y) else WindowPosition(Alignment.Center)
 }

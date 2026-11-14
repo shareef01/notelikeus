@@ -3,6 +3,30 @@ import { expect, test } from '@playwright/test';
 
 // This file uses the dev-only audit harness; run with playwright.surfaces.config.ts.
 test.skip(({baseURL}) => !baseURL?.endsWith(':4174'), 'Requires isolated fixture server');
+
+test('theme options show keyboard focus in forced colors', async ({ page }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await page.goto('/e2e/fixtures/ui-ux-audit/index.html?surface=settings&theme=light');
+  const theme = page.getByRole('radiogroup', { name: 'Theme' });
+  await theme.getByRole('radio', { name: 'Light' }).focus();
+  await page.keyboard.press('ArrowRight');
+  const dark = theme.getByRole('radio', { name: 'Dark' });
+  await expect(dark).toBeFocused();
+  await expect(dark).toHaveCSS('outline-style', 'solid');
+  await expect(dark).toHaveCSS('outline-width', '2px');
+});
+
+test('conflict dialog actions remain reachable at 200% text size', async ({ page }) => {
+  await page.setViewportSize({ width: 720, height: 450 });
+  await page.goto('/e2e/fixtures/ui-ux-audit/index.html?surface=conflict&theme=light');
+  await page.addStyleTag({ content: 'html{font-size:200%} *{animation:none!important}' });
+  const dialog = page.getByRole('dialog');
+  const action = dialog.getByRole('button', { name: 'Keep both', exact: true });
+  await action.scrollIntoViewIfNeeded();
+  await expect(action).toBeInViewport({ ratio: 1 });
+  await expect(action).toBeEnabled();
+});
+
 for (const theme of ['light', 'dark']) {
   for (const surface of ['cloud-wipe', 'settings']) {
     test(`${surface} has readable, usable narrow actions in ${theme}`, async ({page}, testInfo) => {
@@ -12,6 +36,11 @@ for (const theme of ['light', 'dark']) {
       await expect(page.getByText(surface === 'settings' ? 'Sign out' : 'Your cloud notes were deleted from another device', {exact: true})).toBeVisible();
       const results = await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();
       expect(results.violations).toEqual([]);
+      if (surface === 'settings') {
+        const themePicker = page.getByRole('radiogroup', {name: 'Theme'});
+        const darkOption = await themePicker.getByRole('radio', {name: 'Dark'}).boundingBox();
+        expect(darkOption!.x + darkOption!.width).toBeLessThanOrEqual(320);
+      }
       if (surface === 'cloud-wipe') {
         expect(await page.getByText('Your cloud notes were deleted from another device', {exact: true}).evaluate(el => el.getBoundingClientRect().width)).toBeGreaterThan(250);
         for (const button of await page.getByRole('button').all()) {

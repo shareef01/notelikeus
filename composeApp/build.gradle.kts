@@ -430,6 +430,8 @@ compose.desktop {
                 // Turnstile token from the browser (LoopbackCaptchaTokenProvider, D30). Without it
                 // every code request dies with NoClassDefFoundError in the MSI only.
                 "jdk.httpserver",
+                // Windows screen readers use Java Access Bridge from the packaged runtime.
+                "jdk.accessibility",
                 // Present by default on the current JDK, named anyway so a JDK change cannot
                 // silently drop EC and break the TLS handshake with Supabase.
                 "jdk.crypto.ec"

@@ -2,6 +2,8 @@ package com.aus.notelikeus.platform
 
 import com.aus.notelikeus.data.sync.FakeNoteDao
 import com.aus.notelikeus.domain.platform.ReminderDelivery
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,14 +43,12 @@ class DesktopReminderManagerTrayTest {
     }
 
     @Test
-    fun aFiredReminderNoLongerKeepsTheAppRunning() {
-        manager.scheduleReminder(noteId = 9L, timestamp = System.currentTimeMillis() + 50L)
-        assertTrue(manager.hasScheduledReminders())
+    fun aFiredReminderRequestsATrayNotificationAndClearsTheSchedule() {
+        val notifications = LinkedBlockingQueue<Pair<String, String>>()
+        manager.notify = { title, message -> notifications.add(title to message) }
+        manager.scheduleReminder(noteId = 9L, timestamp = System.currentTimeMillis() + 100L)
 
-        val deadline = System.currentTimeMillis() + 5_000L
-        while (manager.hasScheduledReminders() && System.currentTimeMillis() < deadline) {
-            Thread.sleep(20)
-        }
+        assertEquals("Reminder" to "You have a note reminder", notifications.poll(5, TimeUnit.SECONDS))
         assertFalse(manager.hasScheduledReminders())
     }
 }

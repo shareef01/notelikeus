@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { createNoteWithTitle, openNewNote } from './helpers/newNote';
 
 /**
  * Accessibility smoke scans plus the keyboard contracts axe cannot prove.
@@ -9,12 +10,6 @@ import { expect, test, type Page } from '@playwright/test';
  */
 
 const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
-
-function uniqueEmail(): string {
-  return `e2e-a11y-${Date.now()}-${Math.floor(Math.random() * 10_000)}@example.com`;
-}
-
-const PASSWORD = 'e2e-password-123';
 
 async function scan(page: Page) {
   // Freeze entry animations first. A scan that lands mid-fade measures a part-transparent
@@ -26,21 +21,10 @@ async function scan(page: Page) {
   return new AxeBuilder({ page }).withTags(WCAG).analyze();
 }
 
-async function signUp(page: Page): Promise<void> {
+async function enterGuestMode(page: Page): Promise<void> {
   await page.goto('/');
-  await expect(page.locator('#boot-splash')).toHaveCount(0, { timeout: 30_000 });
-  await expect(page.locator('#test-login-email')).toBeVisible({ timeout: 20_000 });
-  await page.locator('#test-login-email').fill(uniqueEmail());
-  await page.locator('#test-login-password').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Create account', exact: true }).click();
-  await expect(page.locator('#test-login-email')).toHaveCount(0, { timeout: 30_000 });
-}
-
-async function openNewNote(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'New note' }).first().click();
-  await expect(page.getByRole('textbox', { name: 'Note title' }).first()).toBeVisible({
-    timeout: 15_000,
-  });
+  await page.getByRole('button', { name: 'Continue without an account' }).click();
+  await expect(page.getByRole('button', { name: 'New note', exact: true }).first()).toBeVisible();
 }
 
 test('the entry screen has no WCAG violations', async ({ page }) => {
@@ -51,20 +35,21 @@ test('the entry screen has no WCAG violations', async ({ page }) => {
 });
 
 test('the notes grid has no WCAG violations', async ({ page }) => {
-  await signUp(page);
+  await enterGuestMode(page);
+  await createNoteWithTitle(page, 'Accessibility check');
 
   expect((await scan(page)).violations).toEqual([]);
 });
 
 test('the editor has no WCAG violations', async ({ page }) => {
-  await signUp(page);
+  await enterGuestMode(page);
   await openNewNote(page);
 
   expect((await scan(page)).violations).toEqual([]);
 });
 
 test('the checklist editor has no WCAG violations', async ({ page }) => {
-  await signUp(page);
+  await enterGuestMode(page);
   await openNewNote(page);
   await page.getByRole('button', { name: /Add checklist|Convert to checklist/ }).first().click();
 
@@ -72,7 +57,7 @@ test('the checklist editor has no WCAG violations', async ({ page }) => {
 });
 
 test('the editor options sheet has no WCAG violations', async ({ page }) => {
-  await signUp(page);
+  await enterGuestMode(page);
   await openNewNote(page);
   await page.getByRole('textbox', { name: 'Note title' }).first().fill('Options sheet');
   await page.getByRole('button', { name: 'More options' }).first().click();
@@ -81,7 +66,7 @@ test('the editor options sheet has no WCAG violations', async ({ page }) => {
 });
 
 test('the note title and body expose accessible names, not just placeholders', async ({ page }) => {
-  await signUp(page);
+  await enterGuestMode(page);
   await openNewNote(page);
 
   // A placeholder is a hint, not a label: it disappears the moment the field has content.
@@ -96,7 +81,7 @@ test('the editor layout radiogroup follows the keyboard contract its roles promi
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium', 'Layout controls only render on tablet and up');
-  await signUp(page);
+  await enterGuestMode(page);
   await openNewNote(page);
 
   const group = page.getByRole('radiogroup', { name: 'Editor layout' });
@@ -127,7 +112,7 @@ test('the editor layout radiogroup follows the keyboard contract its roles promi
 });
 
 test('the editor dialog traps focus and Escape returns to the grid', async ({ page }) => {
-  await signUp(page);
+  await enterGuestMode(page);
   await openNewNote(page);
 
   const dialog = page.getByRole('dialog', { name: 'Note editor' });
