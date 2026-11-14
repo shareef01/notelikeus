@@ -74,6 +74,8 @@ import androidx.compose.material3.ListItemDefaults
 import com.aus.notelikeus.domain.reminder.ReminderTime
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.stateDescription
@@ -97,7 +99,8 @@ fun EditorScreen(
     viewModel: EditorViewModel,
     onBack: () -> Unit,
     onStageUndo: (Note, UndoAction, String) -> Unit,
-    isExpanded: Boolean = false
+    isExpanded: Boolean = false,
+    focusNewNoteBody: Boolean = true,
 ) {
     val state by viewModel.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -124,6 +127,8 @@ fun EditorScreen(
     var showReminderDialog by rememberSaveable { mutableStateOf(false) }
     var showLinkDialog by rememberSaveable { mutableStateOf(false) }
     val bodyFocusRequester = remember { FocusRequester() }
+    val titleLabel = stringResource(Res.string.title_hint)
+    val bodyLabel = stringResource(Res.string.note_hint)
     val selectionKeeper = remember { BlurSelectionKeeper() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -148,8 +153,8 @@ fun EditorScreen(
 
     PlatformBackHandler { saveThenLeave() }
 
-    LaunchedEffect(state.isNoteLoaded, state.id, state.checklist.isEmpty()) {
-        if (state.isNoteLoaded && state.id == null && state.checklist.isEmpty()) {
+    LaunchedEffect(state.isNoteLoaded, state.id, state.checklist.isEmpty(), focusNewNoteBody) {
+        if (focusNewNoteBody && state.isNoteLoaded && state.id == null && state.checklist.isEmpty()) {
             // Wait a frame so the body FocusRequester is attached.
             kotlinx.coroutines.delay(48)
             bodyFocusRequester.requestFocus()
@@ -440,13 +445,14 @@ fun EditorScreen(
                     BasicTextField(
                         value = state.title,
                         onValueChange = { viewModel.onTitleChange(it) },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = titleLabel },
                         textStyle = AppType.editorTitle.copy(color = contentColor),
                         cursorBrush = SolidColor(contentColor),
                         decorationBox = { innerTextField ->
                             if (state.title.isEmpty()) {
                                 Text(
-                                    text = stringResource(Res.string.title_hint),
+                                    text = titleLabel,
+                                    modifier = Modifier.semantics { hideFromAccessibility() },
                                     style = AppType.editorTitle,
                                     color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                                 )
@@ -535,6 +541,7 @@ fun EditorScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = EditorBodyMinHeight)
+                                .semantics { contentDescription = bodyLabel }
                                 .focusRequester(bodyFocusRequester)
                                 .onFocusChanged { focus ->
                                     selectionKeeper.onFocusChanged(focus.isFocused, state.contentValue)
@@ -549,7 +556,8 @@ fun EditorScreen(
                             decorationBox = { innerTextField ->
                                 if (state.content.isEmpty()) {
                                     Text(
-                                        text = stringResource(Res.string.note_hint),
+                                        text = bodyLabel,
+                                        modifier = Modifier.semantics { hideFromAccessibility() },
                                         style = AppType.editorBody,
                                         color = contentColor.copy(alpha = NoteEmphasis.Secondary)
                                     )

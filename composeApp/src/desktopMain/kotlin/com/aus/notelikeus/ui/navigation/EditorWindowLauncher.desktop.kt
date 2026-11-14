@@ -52,10 +52,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
-import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
@@ -83,7 +84,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.getKoin
 import org.koin.compose.koinInject
 import org.koin.core.qualifier.named
-import java.awt.Toolkit
+import com.aus.notelikeus.ui.window.fitFloatingWindow
 import com.aus.notelikeus.domain.model.ThemePreference
 import com.aus.notelikeus.domain.model.ThemeBase
 
@@ -136,28 +137,6 @@ actual fun rememberEditorWindowLauncher(
 }
 
 /**
- * Centres the first note window and steps each later one down-right from there.
- *
- * Every window used to take `WindowPosition(Alignment.Center)`, so a second and third note landed
- * pixel-identical on top of the first — only the topmost was reachable, and with no working caption
- * drag they could not be pulled apart. The cascade wraps so a long session cannot walk windows off
- * the bottom-right of the screen.
- *
- * Screen size and Dp are both user-space units here, so no density conversion is involved (the same
- * property NativeCaptionDrag relies on).
- */
-private fun cascadedPosition(index: Int): WindowPosition {
-    val screen = Toolkit.getDefaultToolkit().screenSize
-    val shift = (index % CascadeWrapAfter) * CascadeStepUnits
-    val centeredX = (screen.width - NoteWindowWidth.value) / 2f
-    val centeredY = (screen.height - NoteWindowHeight.value) / 2f
-    return WindowPosition(
-        x = (centeredX + shift).coerceAtLeast(0f).dp,
-        y = (centeredY + shift).coerceAtLeast(0f).dp
-    )
-}
-
-/**
  * One independent OS window hosting the note editor, like the web app's float layout. Undecorated
  * and transparent so the app can draw its own chrome: a rounded card with the note's surface
  * colour, a hairline border and a soft shadow, plus a caption bar that supports native docking
@@ -175,11 +154,17 @@ private fun EditorNoteWindow(
     // rememberWindowState keeps only the first value it is given, but still evaluates its
     // arguments on every recomposition — so the screen-size query is remembered rather than run
     // against the AWT toolkit on each pass.
-    val initialPosition = remember(cascadeIndex) { cascadedPosition(cascadeIndex) }
+    val initialWindow = remember(cascadeIndex) {
+        fitFloatingWindow(
+            NoteWindowWidth,
+            NoteWindowHeight,
+            offset = ((cascadeIndex % CascadeWrapAfter) * CascadeStepUnits).dp,
+        )
+    }
     val windowState = rememberWindowState(
-        width = NoteWindowWidth,
-        height = NoteWindowHeight,
-        position = initialPosition
+        width = initialWindow.width,
+        height = initialWindow.height,
+        position = initialWindow.position
     )
 
     Window(
@@ -306,7 +291,11 @@ private fun EditorNoteWindow(
                             viewModel = viewModel,
                             onBack = { closeRequested = true },
                             onStageUndo = onStageUndo,
-                            isExpanded = false
+                            isExpanded = false,
+                            // Focusing the body scrolls past the title and toolbar in short windows.
+                            focusNewNoteBody = with(LocalDensity.current) {
+                                LocalWindowInfo.current.containerSize.height.toDp() >= 560.dp
+                            },
                         )
                     }
                 }

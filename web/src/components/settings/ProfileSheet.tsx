@@ -264,7 +264,7 @@ export function ProfileSheet({
           and Delete account come last on purpose, away from routine settings.
         */}
         <div className="mx-auto grid w-full max-w-content gap-5 px-4 py-5 pb-12 sm:px-6 lg:grid-cols-2 lg:gap-6 lg:px-8 xl:grid-cols-[1fr_1.15fr]">
-          <div className="flex flex-col gap-5">
+          <div className="flex min-w-0 flex-col gap-5">
             <SettingsSection title="Account & Sync">
               <SettingsRow
                 title={accountTitle}
@@ -299,7 +299,7 @@ export function ProfileSheet({
             </SettingsSection>
           </div>
 
-          <div className="flex flex-col gap-5">
+          <div className="flex min-w-0 flex-col gap-5">
             <SettingsSection title="Layout">
               <SettingsChoice
                 label="Default view"

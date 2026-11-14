@@ -131,7 +131,7 @@ function SwatchRow<T extends string>({
               aria-label={optionMeta.label}
               onClick={() => onChange(option)}
               {...getRadioProps(option)}
-              className={`flex flex-col items-center gap-2 rounded-xl border px-1 py-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary/50 ${
+              className={`flex flex-col items-center gap-2 rounded-xl border px-1 py-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-primary/50 forced-colors:focus-visible:[outline:2px_solid_Highlight] forced-colors:focus-visible:outline-offset-2 ${
                 selected ? 'border-brand-primary/50 bg-brand-primary/10' : 'border-brand-outline/35 hover:bg-brand-primary/5'
               }`}
             >
