@@ -34,6 +34,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -52,6 +53,7 @@ class DesktopSyncManagerSignOutTest {
     private lateinit var database: NotelikeusDatabase
     private lateinit var repository: NoteRepositoryImpl
     private lateinit var manager: DesktopSyncManager
+    private lateinit var isolator: LocalAccountIsolator
 
     private val session = FakeSession()
     private val stateStore = FakeNoteSyncStateStore()
@@ -62,6 +64,7 @@ class DesktopSyncManagerSignOutTest {
         var uid: String? = null
         var signOuts = 0
         var signOutFailure: Throwable? = null
+        var afterSessionRemoved: () -> Unit = {}
 
         override fun getCurrentAccount() = CloudSessionAccount(uid, uid?.let { "$it@example.com" }, uid != null, false)
         override suspend fun requestEmailCode(email: String) = Result.success(Unit)
@@ -75,6 +78,7 @@ class DesktopSyncManagerSignOutTest {
             signOutFailure?.let { return Result.failure(it) }
             signOuts++
             uid = null
+            afterSessionRemoved()
             return Result.success(Unit)
         }
         override suspend fun ensureSignedIn() =
@@ -129,20 +133,21 @@ class DesktopSyncManagerSignOutTest {
             ioDispatcher = Dispatchers.Unconfined,
         )
         sealedStore = FailableSealedStore(RoomSealedAccountStore(database.sealedAccountDao))
+        isolator = LocalAccountIsolator(
+            noteRepository = repository,
+            syncStateStore = stateStore,
+            syncCoordinator = coordinator,
+            signedOutAccounts = SignedOutAccountVault(
+                noteRepository = repository,
+                syncStateStore = stateStore,
+                store = sealedStore,
+                unsyncedWork = { engine.unsyncedWork() },
+            ),
+        )
         manager = DesktopSyncManager(
             syncEngine = engine,
             sessionManager = session,
-            isolator = LocalAccountIsolator(
-                noteRepository = repository,
-                syncStateStore = stateStore,
-                syncCoordinator = coordinator,
-                signedOutAccounts = SignedOutAccountVault(
-                    noteRepository = repository,
-                    syncStateStore = stateStore,
-                    store = sealedStore,
-                    unsyncedWork = { engine.unsyncedWork() },
-                ),
-            ),
+            isolator = isolator,
             cloudWipeCoordinator = CloudWipeCoordinator(InMemoryPendingCloudWipeIntentStore()),
             accountDeletion = NoopDeletion(),
         )
@@ -182,6 +187,24 @@ class DesktopSyncManagerSignOutTest {
 
         assertEquals(listOf("Written offline"), localTitles())
         assertTrue(database.sealedAccountDao.getAll().isEmpty())
+    }
+
+    @Test
+    fun `startup finishes a sign-out interrupted after the session was cleared`() = runBlocking {
+        aliceWithANoteTheCloudHasNotSeen()
+        session.afterSessionRemoved = {
+            assertTrue(stateStore.isSignOutPending())
+            error("interrupted after session removal")
+        }
+
+        assertFailsWith<IllegalStateException> { manager.signOut(deleteCloudData = false) }
+        assertEquals(listOf("Written offline"), localTitles())
+
+        isolator.recoverIncompleteIsolationIfAny(currentUserId = null)
+
+        assertTrue(localTitles().isEmpty())
+        assertTrue(!stateStore.isSignOutPending())
+        assertTrue(database.sealedAccountDao.getAll().single().armed)
     }
 
     @Test

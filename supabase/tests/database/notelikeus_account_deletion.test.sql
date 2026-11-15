@@ -2,7 +2,7 @@
 -- See supabase/migrations/20261102010000_account_deletion.sql.
 
 begin;
-select plan(29);
+select plan(32);
 
 select setval('public.sync_revision_seq', 30000, true);
 
@@ -91,6 +91,7 @@ select tests.clear_authentication();
 reset role;
 set local role service_role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
 select is(
   public.request_account_deletion_for(tests.get_supabase_uid('del_a@notelikeus.test'), now())->>'status',
   'accepted',
@@ -197,6 +198,29 @@ select tests.clear_authentication();
 reset role;
 set local role service_role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+select notelikeus_internal.begin_sync_mutation();
+update public.account_deletion_requests set requested_at = now() - interval '1 minute'
+where owner_id = tests.get_supabase_uid('del_a@notelikeus.test');
+insert into public.account_deletion_requests (owner_id, requested_at)
+values (tests.get_supabase_uid('del_b@notelikeus.test'), now());
+select notelikeus_internal.end_sync_mutation();
+
+select is(
+  public.list_pending_account_deletions(1)->0->>'owner_id',
+  tests.get_supabase_uid('del_a@notelikeus.test')::text,
+  'the oldest unattempted request is selected first'
+);
+select is(
+  public.list_pending_account_deletions(1)->0->>'owner_id',
+  tests.get_supabase_uid('del_b@notelikeus.test')::text,
+  'a pending older request does not block an unattempted one'
+);
+select is(
+  public.list_pending_account_deletions(1)->0->>'owner_id',
+  tests.get_supabase_uid('del_a@notelikeus.test')::text,
+  'an unfinished request is retried after the other request gets a turn'
+);
 
 select is(
   public.complete_account_deletion(tests.get_supabase_uid('del_a@notelikeus.test'))->>'status',

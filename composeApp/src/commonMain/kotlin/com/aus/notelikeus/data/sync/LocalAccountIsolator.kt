@@ -82,6 +82,19 @@ class LocalAccountIsolator(
         signedOutAccounts?.seal(ownerUid)
     }
 
+    /** Records the intent while the credentials and the live library still exist. */
+    fun prepareSignOut() = syncStateStore.setSignOutPending(true)
+
+    /** Seals the final live library before the sign-out intent starts refusing further commits. */
+    suspend fun prepareSignOut(ownerUid: String, keepLocalWork: Boolean) {
+        LocalCommitGate.mutex.withLock {
+            if (keepLocalWork) sealUnsyncedWork(ownerUid) else discardSealedWork(ownerUid)
+            prepareSignOut()
+        }
+    }
+
+    fun cancelSignOut() = syncStateStore.setSignOutPending(false)
+
     /** Forgets what [ownerUid] sealed here: its sign-out did not happen, or it asked for its data gone. */
     suspend fun discardSealedWork(ownerUid: String) {
         signedOutAccounts?.discard(ownerUid)
@@ -119,6 +132,7 @@ class LocalAccountIsolator(
             // of its work, so it may be restored. A crash before this line leaves the isolation
             // incomplete, and recovery re-runs the wipe and arms them.
             signedOutAccounts?.armAll()
+            if (syncStateStore.isSignOutPending()) cancelSignOut()
             // Completed last, and only after the wipe: the store must never claim the new dataset
             // before the old one's rows are gone. A crash before this line leaves the transition
             // marked, which refuses everything until recovery finishes it. Cancelling the platform's
@@ -136,9 +150,15 @@ class LocalAccountIsolator(
      * write a first attempt would have made. Until it runs, nothing scheduled can execute — the
      * transition is durable — so this is promptness, not the fence.
      */
-    suspend fun recoverIncompleteIsolationIfAny() {
-        if (syncCoordinator.isDatasetIsolationIncomplete()) {
+    suspend fun recoverIncompleteIsolationIfAny(currentUserId: String? = null) {
+        if (syncCoordinator.isDatasetIsolationIncomplete() ||
+            (currentUserId == null && syncStateStore.isSignOutPending())
+        ) {
             isolate()
+        } else if (syncStateStore.isSignOutPending()) {
+            // The process stopped before the session was removed. The live library is still current.
+            currentUserId?.let { discardSealedWork(it) }
+            cancelSignOut()
         }
     }
 

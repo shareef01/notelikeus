@@ -124,7 +124,7 @@ class AndroidSyncManager(
             val keepFor = departing.takeUnless { deleteCloudData }
             if (departing != null) {
                 runCatching {
-                    if (keepFor != null) isolator.sealUnsyncedWork(keepFor) else isolator.discardSealedWork(departing)
+                    isolator.prepareSignOut(departing, keepLocalWork = keepFor != null)
                 }.onFailure { error ->
                     if (error is kotlinx.coroutines.CancellationException) throw error
                     return Result.failure(error)
@@ -132,12 +132,13 @@ class AndroidSyncManager(
             }
             sessionManager.signOut()
                 .onSuccess {
-                    isolator.isolate(sealFor = keepFor)
+                    isolator.isolate()
                     refreshAccount()
                 }
                 .onFailure {
                     // Still signed in, so the live library is current and the copy just sealed is not.
                     keepFor?.let { runCatching { isolator.discardSealedWork(it) } }
+                    if (departing != null) runCatching { isolator.cancelSignOut() }
                 }
         }
     }
@@ -162,9 +163,10 @@ class AndroidSyncManager(
     private suspend fun endDeletedAccountSession(origin: LocalCommitToken): Boolean {
         if (origin.initiatingUid == null || sessionManager.getCurrentAccount().userId != origin.initiatingUid ||
             LocalCommitGate.currentGeneration() != origin.generation) return false
-        runCatching { sessionManager.signOut() }
         // The account no longer exists, so nothing is kept for it.
         runCatching { isolator.discardSealedWork(origin.initiatingUid) }
+        isolator.prepareSignOut()
+        runCatching { sessionManager.signOut() }
         isolator.isolate()
         refreshAccount()
         return true

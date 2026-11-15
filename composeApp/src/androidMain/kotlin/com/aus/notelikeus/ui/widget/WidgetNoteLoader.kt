@@ -6,6 +6,7 @@ import com.aus.notelikeus.data.local.APP_LOCK_ENABLED_KEY
 import com.aus.notelikeus.data.local.APP_THEME_KEY
 import com.aus.notelikeus.data.local.model.NoteWithLabels
 import com.aus.notelikeus.data.local.settingsDataStore
+import com.aus.notelikeus.data.sync.NoteSyncStateStore
 import com.aus.notelikeus.domain.model.AppTheme
 import kotlinx.coroutines.flow.first
 import org.koin.core.context.GlobalContext
@@ -30,7 +31,9 @@ object WidgetNoteLoader {
 
     suspend fun loadNotes(context: Context): List<WidgetNote> {
         if (isAppLockEnabled(context)) return emptyList()
-        val noteDao = GlobalContext.get().get<com.aus.notelikeus.data.local.dao.NoteDao>()
+        val koin = GlobalContext.get()
+        if (koin.get<NoteSyncStateStore>().isSignOutPending()) return emptyList()
+        val noteDao = koin.get<com.aus.notelikeus.data.local.dao.NoteDao>()
         return noteDao.getWidgetNotes().map { noteWithRelations ->
             val note = noteWithRelations.note
             WidgetNote(

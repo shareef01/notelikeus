@@ -66,7 +66,7 @@ class DesktopSupabaseSessionPersistence(
     }
 
     override fun clear() {
-        sessionFile.delete()
+        check(!sessionFile.exists() || sessionFile.delete()) { "Could not remove the Supabase session" }
     }
 
     private fun JsonObject.stringOrNull(key: String): String? =

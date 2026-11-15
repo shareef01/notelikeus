@@ -66,9 +66,10 @@ class AndroidSupabaseSessionPersistence internal constructor(
 
     override fun clear() {
         synchronized(lock) {
-            sessionFile().delete()
-            File(context.filesDir, "$SESSION_FILE.tmp").delete()
             clearLegacyPrefs()
+            val file = sessionFile()
+            check(!file.exists() || file.delete()) { "Could not remove the Supabase session" }
+            File(context.filesDir, "$SESSION_FILE.tmp").delete()
         }
     }
 

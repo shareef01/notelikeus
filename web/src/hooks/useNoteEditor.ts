@@ -8,6 +8,7 @@ import {
 import { useNoteLabels } from '@/hooks/useNoteLabels';
 import { MAX_NOTE_CONTENT_CHARS, MAX_NOTE_TITLE_CHARS } from '@/lib/backup/constants';
 import { saveNote, removeNote } from '@/lib/notes/noteActions';
+import { reserveLocalNoteId } from '@/lib/local/notesLocalRepository';
 import { captureOwnerScope } from '@/lib/local/ownerScope';
 import { markEditorSavePending, markEditorSaveSettled } from '@/lib/notes/pendingEditorSaves';
 import {
@@ -46,6 +47,13 @@ const sameMode = (a: ContentMode, b: ContentMode) => a.content === b.content && 
 function nextNotePosition(): number {
   const notes = useNotesStore.getState().notes.filter((n) => !n.isArchived && !n.isTrashed);
   return notes.reduce((max, note) => Math.max(max, note.position), -1) + 1;
+}
+
+function reserveEditorNoteId(ownerId: string | null): number | Promise<number> {
+  const notes = useNotesStore.getState().notes;
+  if (!ownerId) return allocateLocalNoteId(notes);
+  const maxVisibleId = notes.reduce((max, note) => Math.max(max, note.localId), 0);
+  return reserveLocalNoteId(ownerId, maxVisibleId);
 }
 
 function isNoteEmpty(state: EditorState): boolean {
@@ -142,93 +150,105 @@ export function useNoteEditor(noteId: string | 'new' | null) {
 
     setState((prev) => (isCurrentRoute() ? { ...prev, isSaving: true } : prev));
 
-    let working = { ...current };
-    const updatedTimestamp = Date.now();
-
-    if (!working.id || working.localId == null) {
-      const localId = allocateLocalNoteId(useNotesStore.getState().notes);
-      const id = String(localId);
-      working = {
-        ...working,
-        id,
-        localId,
-        position: working.position || nextNotePosition(),
-        attachments: working.attachments.map((attachment) => ({
-          ...attachment,
-          noteId: localId,
-        })),
-      };
-    }
-
-    // Reserve a new identity before any suspension or later autosave.
-    if (!current.id) { stateRef.current = working; setState(working); }
-
-    // Clamp to the same caps the RPCs enforce, so an oversized paste can never wedge
-    // the editor in a permanently-failing autosave. The input maxLength attributes are the
-    // primary guard; this is defense-in-depth for programmatic state changes (smart text,
-    // link wrapping, backup import) that bypass the inputs.
-    working = {
-      ...working,
-      title: working.title.slice(0, MAX_NOTE_TITLE_CHARS),
-      content: working.content.slice(0, MAX_NOTE_CONTENT_CHARS),
-      timestamp: updatedTimestamp,
-    };
-
-    const stored = working.id
-      ? useNotesStore.getState().notes.find((n) => n.id === working.id)
-      : undefined;
-
-    let note = buildNoteFromEditor(working);
-    if (!note) {
-      setState((prev) => (isCurrentRoute() ? { ...prev, isSaving: false } : prev));
-      return { status: 'unchanged' };
-    }
-
-    let forked = false;
-    let forkedFrom: Note | null = null;
-    switch (decideEditorSave({ draft: note, stored, lastSaved: lastSavedRef.current })) {
-      case 'adopt-stamp': {
-        // A remote snapshot can load the editor before the server has assigned a revision, and
-        // this device's own upload echoes back with a newer stamp. Either way the words are still
-        // ours to edit; take the stamp so shouldUploadOverRemote sees a straight edit.
-        const serverUpdatedAt = stored?.serverUpdatedAt ?? null;
-        working = { ...working, serverUpdatedAt };
-        note = { ...note, serverUpdatedAt };
-        break;
-      }
-      case 'fork': {
-        // Another device changed this note while it was open here. Writing the draft over it would
-        // erase that change, so the draft becomes its own note and the editor follows it.
-        const localId = allocateLocalNoteId(useNotesStore.getState().notes);
-        // The draft's images that are not uploaded yet go with it; see withPendingAttachments.
-        const copy = await withPendingAttachments(note, conflictedCopyOf(note, localId));
-        forkedFrom = note;
-        working = {
-          ...working,
-          id: copy.id,
-          localId,
-          title: copy.title,
-          serverUpdatedAt: null,
-          attachments: copy.attachments,
-          checklist: copy.checklist,
-        };
-        note = copy;
-        forked = true;
-        break;
-      }
-      case 'save':
-        break;
-    }
+    const ownerId = ownerScope.current.ownerId;
 
     try {
+      let working = { ...current };
+      const updatedTimestamp = Date.now();
+
+      if (!working.id || working.localId == null) {
+        const localId = await reserveEditorNoteId(ownerId);
+        ownerScope.current.assertActive();
+        const id = String(localId);
+        working = {
+          ...working,
+          id,
+          localId,
+          position: working.position || nextNotePosition(),
+          attachments: working.attachments.map((attachment) => ({
+            ...attachment,
+            noteId: localId,
+          })),
+        };
+      }
+
+      // Keep the reserved ID for retries while leaving newer typing in place.
+      if (!current.id && isCurrentRoute() && savingRevision === draftRevision.current) {
+        stateRef.current = working;
+        setState(working);
+      }
+
+      // Clamp to the same caps the RPCs enforce, so an oversized paste can never wedge
+      // the editor in a permanently-failing autosave. The input maxLength attributes are the
+      // primary guard; this is defense-in-depth for programmatic state changes (smart text,
+      // link wrapping, backup import) that bypass the inputs.
+      working = {
+        ...working,
+        title: working.title.slice(0, MAX_NOTE_TITLE_CHARS),
+        content: working.content.slice(0, MAX_NOTE_CONTENT_CHARS),
+        timestamp: updatedTimestamp,
+      };
+
+      const stored = working.id
+        ? useNotesStore.getState().notes.find((n) => n.id === working.id)
+        : undefined;
+
+      let note = buildNoteFromEditor(working);
+      if (!note) {
+        setState((prev) => (isCurrentRoute() ? { ...prev, isSaving: false } : prev));
+        return { status: 'unchanged' };
+      }
+
+      let forked = false;
+      let forkedFrom: Note | null = null;
+      switch (decideEditorSave({ draft: note, stored, lastSaved: lastSavedRef.current })) {
+        case 'adopt-stamp': {
+          // A remote snapshot can load the editor before the server has assigned a revision, and
+          // this device's own upload echoes back with a newer stamp. Either way the words are still
+          // ours to edit; take the stamp so shouldUploadOverRemote sees a straight edit.
+          const serverUpdatedAt = stored?.serverUpdatedAt ?? null;
+          working = { ...working, serverUpdatedAt };
+          note = { ...note, serverUpdatedAt };
+          break;
+        }
+        case 'fork': {
+          // Another device changed this note while it was open here. Writing the draft over it would
+          // erase that change, so the draft becomes its own note and the editor follows it.
+          const localId = await reserveEditorNoteId(ownerId);
+          ownerScope.current.assertActive();
+          // The draft's images that are not uploaded yet go with it; see withPendingAttachments.
+          const copy = await withPendingAttachments(note, conflictedCopyOf(note, localId));
+          forkedFrom = note;
+          working = {
+            ...working,
+            id: copy.id,
+            localId,
+            title: copy.title,
+            serverUpdatedAt: null,
+            attachments: copy.attachments,
+            checklist: copy.checklist,
+          };
+          note = copy;
+          forked = true;
+          break;
+        }
+        case 'save':
+          break;
+      }
+
+      ownerScope.current.assertActive();
       await saveNote(note);
       lastSavedRef.current = note;
       // Only once the copy is saved: until then the draft's own staged images are the ones to keep.
       if (forkedFrom) await releaseCopiedPendingAttachments(forkedFrom, stored ?? null);
       if (isCurrentRoute()) {
         const latest = stateRef.current;
+        const savedLocalId = note.localId;
         const next = draftRevision.current === savingRevision ? working : {
           ...latest, id: working.id, localId: working.localId,
+          attachments: current.id ? latest.attachments : latest.attachments.map(
+            (attachment) => ({ ...attachment, noteId: savedLocalId }),
+          ),
           serverUpdatedAt: working.serverUpdatedAt,
         };
         stateRef.current = { ...next, isSaving: false, lastSavedAt: updatedTimestamp,
