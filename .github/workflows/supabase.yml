@@ -124,7 +124,7 @@ jobs:
             fi
           done
           if [ "$missing" -ne 0 ]; then
-            echo "Add those secrets, or run locally: npx supabase link --project-ref <ref> && npx supabase db push --linked"
+            echo "Add those secrets, or run locally: npx supabase link --project-ref <ref> && npx supabase db push --linked --yes"
             exit 1
           fi
           # Typing the ref is what makes this a decision rather than a misclick, and it
@@ -240,7 +240,7 @@ jobs:
         run: bash scripts/ops/retry-on-connect.sh npx supabase migration list --linked
 
       - name: Apply migrations
-        run: bash scripts/ops/retry-on-connect.sh npx supabase db push --linked
+        run: bash scripts/ops/retry-on-connect.sh npx supabase db push --linked --yes
 
       # `db push` failing is what fails this job; this prints the resulting local/remote
       # table as the record of what landed. Read it before deploying the attachments
