@@ -124,7 +124,7 @@ jobs:
             fi
           done
           if [ "$missing" -ne 0 ]; then
-            echo "Add those secrets, or run locally: npx supabase link --project-ref <ref> && npx supabase db push --linked --yes"
+            echo "Add those secrets, or run locally: npx supabase link --project-ref <ref> && npx supabase db push --linked"
             exit 1
           fi
           # Typing the ref is what makes this a decision rather than a misclick, and it
