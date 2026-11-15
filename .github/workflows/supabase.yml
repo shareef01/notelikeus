@@ -240,7 +240,7 @@ jobs:
         run: bash scripts/ops/retry-on-connect.sh npx supabase migration list --linked
 
       - name: Apply migrations
-        run: bash scripts/ops/retry-on-connect.sh npx supabase db push --linked
+        run: bash scripts/ops/retry-on-connect.sh npx supabase db push --linked --yes
 
       # `db push` failing is what fails this job; this prints the resulting local/remote
       # table as the record of what landed. Read it before deploying the attachments
