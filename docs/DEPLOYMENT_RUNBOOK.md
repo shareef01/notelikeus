@@ -91,7 +91,10 @@ What the run does, in order:
 - `preflight` checks the secrets and that the database password authenticates.
 - `database-tests` resets a local database from the committed migrations and runs the pgTAP suite,
   so what is about to be pushed is what just passed.
-- `deploy` prints `migration list --linked`, runs `db push`, and prints the list again.
+- `deploy` prints `migration list --linked`, runs `db push --linked --yes`, and prints the list
+  again. Supabase CLI 3 refuses a hosted push without `--yes` (or `SUPABASE_YES` exported in the
+  shell); in CI the typed `confirm_project_ref` is the confirmation. Leave `--yes` off a manual
+  push so the CLI still shows the pending list and asks.
 
 **Verify:** in the second list, every migration has a remote entry.
 
