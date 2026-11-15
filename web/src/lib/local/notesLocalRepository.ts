@@ -8,11 +8,12 @@ import {
 } from '@/lib/local/notesSealing';
 import { META_STORE, NOTES_STORE } from '@/lib/local/constants';
 import { withStore } from '@/lib/local/idb';
-import type { Note } from '@/types/note';
+import { nextLocalNoteIdAfter, type Note } from '@/types/note';
 import { useSyncStatusStore } from '@/store/syncStatusStore';
 
 export interface LocalOwnerMeta {
   ownerId: string;
+  lastAllocatedNoteId?: number;
   /** Legacy alias kept for existing IndexedDB rows. */
   firebaseHydrated: boolean;
   /** Phase 4+: remote snapshot hydration complete for this owner. */
@@ -278,6 +279,23 @@ export async function updateOwnerMeta(
   update: (meta: LocalOwnerMeta) => LocalOwnerMeta | null,
 ): Promise<void> {
   await withNotesAndMeta(ownerId, (_notes, meta) => update(meta));
+}
+
+/** Reserves an editor identity across tabs before any draft or pending image uses it. */
+export async function reserveLocalNoteId(ownerId: string, maxVisibleId: number): Promise<number> {
+  let reserved = 0;
+  while (true) {
+    await updateOwnerMeta(ownerId, (meta) => {
+      reserved = nextLocalNoteIdAfter(Math.max(maxVisibleId, meta.lastAllocatedNoteId ?? 0));
+      return Number.isSafeInteger(reserved) ? { ...meta, lastAllocatedNoteId: reserved } : null;
+    });
+    if (!Number.isSafeInteger(reserved)) throw new Error('No safe local note ID is available.');
+    // Older clients and imported notes may have written IDs without recording a reservation.
+    const existing = await withStore(NOTES_STORE, 'readonly', (store) =>
+      store.getKey([ownerId, String(reserved)]),
+    );
+    if (existing === undefined) return reserved;
+  }
 }
 
 /**

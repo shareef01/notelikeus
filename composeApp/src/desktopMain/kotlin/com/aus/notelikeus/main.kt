@@ -23,6 +23,9 @@ import notelikeus.composeapp.generated.resources.Res
 import notelikeus.composeapp.generated.resources.*
 import androidx.compose.ui.window.Notification
 import com.aus.notelikeus.di.initKoin
+import com.aus.notelikeus.data.remote.CloudSessionManager
+import com.aus.notelikeus.data.sync.DatasetEpochAuthority
+import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.platform.DesktopBiometricPrompt
 import com.aus.notelikeus.platform.DesktopReminderManager
 import com.aus.notelikeus.data.backup.BackupExportResult
@@ -65,6 +68,13 @@ fun main() {
     // KoinApplicationAlreadyStartedException the second time.
     initKoin()
     exitIfDatabaseKeyUnreadable()
+    val koin = GlobalContext.get()
+    runBlocking {
+        koin.get<DatasetEpochAuthority>().awaitAuthority()
+        koin.get<LocalAccountIsolator>().recoverIncompleteIsolationIfAny(
+            currentUserId = koin.get<CloudSessionManager>().getCurrentAccount().userId,
+        )
+    }
     // Read before the window exists, so the first frame is already the right size rather than
     // resizing itself once a flow emits.
     val metricsStore = GlobalContext.get().get<WindowMetricsStore>()

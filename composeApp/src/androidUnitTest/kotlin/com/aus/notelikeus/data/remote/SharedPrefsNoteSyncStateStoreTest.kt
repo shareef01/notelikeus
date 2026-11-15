@@ -174,6 +174,18 @@ class SharedPrefsNoteSyncStateStoreTest {
     // ---- sign-out ----
 
     @Test
+    fun `sync state reset keeps an interrupted sign-out discoverable`() {
+        store().setSignOutPending(true)
+        store().clear()
+
+        val restarted = store()
+        assertTrue(restarted.isSignOutPending())
+        restarted.setSignOutPending(false)
+        assertFalse(store().isSignOutPending())
+        assertTrue(rawPrefs().all.isEmpty())
+    }
+
+    @Test
     fun `clear removes every account-scoped sync marker`() {
         store().apply {
             markDeleted(noteId, deletedAt = 5_000L, baselineRevision = 9L)

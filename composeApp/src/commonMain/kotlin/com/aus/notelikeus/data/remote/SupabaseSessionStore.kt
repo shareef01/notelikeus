@@ -53,9 +53,9 @@ class SupabaseSessionStore(
     }
 
     fun clear() = synchronized(lock) {
+        persistence.clear()
         incarnation++
         session = null
-        persistence.clear()
     }
 
     private companion object {

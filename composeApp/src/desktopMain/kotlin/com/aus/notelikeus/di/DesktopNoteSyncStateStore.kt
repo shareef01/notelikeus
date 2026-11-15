@@ -42,6 +42,7 @@ class DesktopNoteSyncStateStore(
     private val syncedTimestampsMap: MutableMap<Long, Long>
     private val deletedDigestsMap: MutableMap<Long, String>
     private var reconciledAt: Long
+    @Volatile private var signOutPending: Boolean
     private var mergedUserId: String?
     private var wipeGenerationValue: Long
     private var wipeUploadsBlockedValue: Boolean
@@ -64,6 +65,7 @@ class DesktopNoteSyncStateStore(
                 }
         }.orEmpty().toMutableMap()
         reconciledAt = prefs?.get(KEY_LAST_RECONCILED) ?: 0L
+        signOutPending = prefs?.get(KEY_SIGN_OUT_PENDING) ?: false
         mergedUserId = prefs?.get(KEY_LAST_MERGED_USER_ID)
         wipeGenerationValue = prefs?.get(KEY_WIPE_GENERATION) ?: 0L
         wipeUploadsBlockedValue = prefs?.get(KEY_WIPE_UPLOADS_BLOCKED) ?: false
@@ -289,6 +291,14 @@ class DesktopNoteSyncStateStore(
         if (baselineDeleteRevisionsMap.remove(noteId) != null) persistBaselineDeleteRevisions()
     }
 
+    override fun isSignOutPending(): Boolean = signOutPending
+
+    @Synchronized
+    override fun setSignOutPending(pending: Boolean) {
+        runBlocking { dataStore.edit { it[KEY_SIGN_OUT_PENDING] = pending } }
+        signOutPending = pending
+    }
+
     @Synchronized
     override fun lastMergedUserId(): String? = mergedUserId
 
@@ -337,7 +347,13 @@ class DesktopNoteSyncStateStore(
         mergedUserId = null
         wipeGenerationValue = 0L
         wipeUploadsBlockedValue = false
-        runBlocking { dataStore.edit { it.clear() } }
+        runBlocking {
+            dataStore.edit {
+                val pending = it[KEY_SIGN_OUT_PENDING] == true
+                it.clear()
+                if (pending) it[KEY_SIGN_OUT_PENDING] = true
+            }
+        }
     }
 
     override fun currentTimeMillis(): Long = DateUtils.currentTimeMillis()
@@ -443,6 +459,7 @@ class DesktopNoteSyncStateStore(
         private val KEY_SYNCED_TIMESTAMPS = stringPreferencesKey("sync_synced_timestamps")
         private val KEY_DELETED_DIGESTS = stringPreferencesKey("sync_deleted_digests")
         private val KEY_LAST_RECONCILED = longPreferencesKey("sync_last_reconciled")
+        private val KEY_SIGN_OUT_PENDING = booleanPreferencesKey("sync_sign_out_pending")
         private val KEY_LAST_MERGED_USER_ID = stringPreferencesKey("sync_last_merged_user_id")
         private val KEY_WIPE_GENERATION = longPreferencesKey("sync_wipe_generation")
         private val KEY_WIPE_UPLOADS_BLOCKED = booleanPreferencesKey("sync_wipe_uploads_blocked")

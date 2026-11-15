@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetNotesCryptoKeyForTests } from '@/lib/crypto/notesCryptoKey';
 import { isSealedStoredNote } from '@/lib/local/notesSealing';
 import { GUEST_OWNER_ID, NOTES_DB_NAME, NOTES_STORE } from '@/lib/local/constants';
@@ -14,6 +14,7 @@ import {
   putNote,
   putNotes,
   replaceAllNotes,
+  reserveLocalNoteId,
   setOwnerMeta,
 } from '@/lib/local/notesLocalRepository';
 import { createEmptyNote } from '@/types/note';
@@ -41,6 +42,27 @@ describe('notesLocalRepository', () => {
     expect(aNotes[0]?.id).toBe('1');
     expect(bNotes).toHaveLength(1);
     expect(bNotes[0]?.id).toBe('2');
+  });
+
+  it('reserves distinct IDs for tabs with the same clock, random draw, and library snapshot', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_780_000_000_000);
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.913);
+    try {
+      const existingId = 1_780_000_000_000_913;
+      await putNote(GUEST_OWNER_ID, makeNote(String(existingId), existingId));
+      const ids = await Promise.all([
+        reserveLocalNoteId(GUEST_OWNER_ID, 0),
+        reserveLocalNoteId(GUEST_OWNER_ID, 0),
+      ]);
+      await Promise.all(ids.map((id) => putNote(GUEST_OWNER_ID, makeNote(String(id), id))));
+      expect(new Set(ids).size).toBe(2);
+      expect(new Set((await listNotes(GUEST_OWNER_ID)).map((note) => note.localId))).toEqual(
+        new Set([existingId, ...ids]),
+      );
+    } finally {
+      random.mockRestore();
+      clock.mockRestore();
+    }
   });
 
   it('clears an owner namespace without touching another', async () => {

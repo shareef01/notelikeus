@@ -307,7 +307,10 @@ actual val platformModule = module {
     single { DatasetEpochAuthority(get()).also { authority ->
         // The incomplete-isolation quarantine: while the device is between datasets, no
         // account-owned local commit may proceed either — see LocalCommitGate's invariant note.
-        LocalCommitGate.installDatasetAuthorityQuarantine { authority.isIsolationIncomplete() }
+        val syncState = get<NoteSyncStateStore>()
+        LocalCommitGate.installDatasetAuthorityQuarantine {
+            authority.isIsolationIncomplete() || syncState.isSignOutPending()
+        }
     } }
     single<SyncCoordinator> { CloudNoteSyncCoordinator(get(), get(), get(), get()) }
     single {

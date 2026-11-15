@@ -143,6 +143,11 @@ interface NoteSyncStateStore {
 
     // ---- account guard ----
 
+    /** Durable intent written after sealing local work and before removing the session. */
+    fun isSignOutPending(): Boolean
+
+    fun setSignOutPending(pending: Boolean)
+
     /**
      * The uid that was recorded after the last successful merge/download.
      * Used by [reconcileUploads] to detect an account-switch race.
@@ -190,7 +195,7 @@ interface NoteSyncStateStore {
      */
     fun allowUploadsAfterCloudWipe()
 
-    /** Wipes all stored state (used on sign-out). */
+    /** Wipes sync state. Account isolation clears the sign-out intent after removing the notes. */
     fun clear()
 
     /** Provided by the platform so tests can stub it. */

@@ -15,6 +15,7 @@ class SharedPrefsNoteSyncStateStore(
 ) : NoteSyncStateStore {
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    @Volatile private var signOutPending = prefs.getBoolean(KEY_SIGN_OUT_PENDING, false)
 
     override fun markDeleted(noteId: Long, deletedAt: Long, baselineRevision: Long?) {
         val editor = prefs.edit()
@@ -311,6 +312,18 @@ class SharedPrefsNoteSyncStateStore(
         }
     }
 
+    override fun isSignOutPending(): Boolean = signOutPending
+
+    @Synchronized
+    override fun setSignOutPending(pending: Boolean) {
+        val editor = prefs.edit()
+        if (pending) editor.putBoolean(KEY_SIGN_OUT_PENDING, true) else editor.remove(KEY_SIGN_OUT_PENDING)
+        check(editor.commit()) {
+            "Could not persist the sign-out intent"
+        }
+        signOutPending = pending
+    }
+
     override fun lastMergedUserId(): String? =
         prefs.getString(KEY_LAST_MERGED_USER_ID, null)?.takeIf { it.isNotBlank() }
 
@@ -338,8 +351,12 @@ class SharedPrefsNoteSyncStateStore(
         prefs.edit().putBoolean(KEY_WIPE_UPLOADS_BLOCKED, false).apply()
     }
 
+    @Synchronized
     override fun clear() {
-        prefs.edit().clear().apply()
+        // A sync-state reset must not erase the intent before account isolation finishes.
+        val editor = prefs.edit().clear()
+        if (isSignOutPending()) editor.putBoolean(KEY_SIGN_OUT_PENDING, true)
+        check(editor.commit()) { "Could not clear local sync state" }
     }
 
     override fun currentTimeMillis(): Long = System.currentTimeMillis()
@@ -399,6 +416,7 @@ class SharedPrefsNoteSyncStateStore(
         private const val KEY_BASELINE_DELETE_REVISIONS = "baseline_delete_revisions"
         private const val KEY_SYNCED_TIMESTAMPS = "synced_timestamps"
         private const val KEY_DELETED_DIGESTS = "deleted_digests"
+        private const val KEY_SIGN_OUT_PENDING = "sign_out_pending"
         private const val KEY_LAST_MERGED_USER_ID = "last_merged_user_id"
         private const val KEY_LAST_RECONCILED = "last_reconciled_at"
         private const val KEY_WIPE_GENERATION = "wipe_generation"

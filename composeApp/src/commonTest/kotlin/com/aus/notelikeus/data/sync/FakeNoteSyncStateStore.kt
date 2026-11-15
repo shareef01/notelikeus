@@ -145,6 +145,14 @@ class FakeNoteSyncStateStore : NoteSyncStateStore {
         baselineDeleteRevisions.remove(noteId)
     }
 
+    private var pendingSignOut = false
+
+    override fun isSignOutPending(): Boolean = pendingSignOut
+
+    override fun setSignOutPending(pending: Boolean) {
+        pendingSignOut = pending
+    }
+
     override fun lastMergedUserId(): String? = mergedUserId
 
     override fun setLastMergedUserId(userId: String) {

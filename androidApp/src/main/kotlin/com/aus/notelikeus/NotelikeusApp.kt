@@ -9,12 +9,14 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.appfunctions.service.AppFunctionConfiguration
 import androidx.work.WorkManager
-import androidx.compose.runtime.mutableStateOf
 import com.aus.notelikeus.appfunctions.NoteAppFunctions
 import com.aus.notelikeus.data.local.NotelikeusDatabase
 import com.aus.notelikeus.data.local.warmUp
+import com.aus.notelikeus.data.remote.CloudSessionManager
 import com.aus.notelikeus.data.remote.NotificationChannels
 import com.aus.notelikeus.data.remote.ReconciliationSyncWorker
+import com.aus.notelikeus.data.sync.DatasetEpochAuthority
+import com.aus.notelikeus.data.sync.LocalAccountIsolator
 import com.aus.notelikeus.ui.navigation.InternalNavigationToken
 import com.aus.notelikeus.di.initKoin
 import kotlinx.coroutines.CoroutineScope
@@ -110,14 +112,15 @@ class NotelikeusApp : Application(), Configuration.Provider, AppFunctionConfigur
         // used to be the first composition — koinViewModel() -> repository -> DAO — on the
         // main thread. Resolving it and checking out the writer connection here moves all of
         // that to the background; MainActivity gates the UI on AppStartup until it finishes.
-        // If creation throws, markReady() still runs: the UI's own resolution then retries and
-        // surfaces the same failure it would have before, rather than hanging on the gate.
+        // Finish any interrupted account transition before letting the activity read local notes.
         startupScope.launch {
-            try {
-                koinApp.koin.get<NotelikeusDatabase>().warmUp()
-            } finally {
-                AppStartup.markReady()
-            }
+            val koin = koinApp.koin
+            koin.get<NotelikeusDatabase>().warmUp()
+            koin.get<DatasetEpochAuthority>().awaitAuthority()
+            koin.get<LocalAccountIsolator>().recoverIncompleteIsolationIfAny(
+                currentUserId = koin.get<CloudSessionManager>().getCurrentAccount().userId,
+            )
+            AppStartup.markReady()
             NotificationChannels.createReminderChannel(this@NotelikeusApp)
             scheduleReconciliationSync()
         }
