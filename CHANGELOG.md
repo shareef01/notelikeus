@@ -4,8 +4,29 @@ All notable changes to Notelikeus are documented here.
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-11-17
+
+### Added
+- **Reminders keep working when you close the window** on Windows. While a reminder is waiting, closing the main window leaves Notelikeus in the system tray; choose Exit in the tray menu to quit. Opening Notelikeus again brings back the copy that is already running.
+- **Search operators, smart views, filters and saved filters on the web**, as on Android and Windows. A search such as `label:work is:pinned` now works the same everywhere, and operators the web doesn't understand are listed under the search box.
+- **Arrange notes by hand on the web.** Manual order is offered and is the default for new users, as on Android and Windows, with Move up and Move down on each note.
+- **Edit labels shows how many notes use each label** and refuses a name that is already taken, on Android and Windows.
+
 ### Changed
 - **Signing out no longer deletes changes that haven't synced** on Android and Windows. Edits, deletions and pictures the cloud doesn't have yet stay on the device, encrypted and kept for that account only, and upload the next time it signs in there. Another account that signs in on the device can't see them, and a sign-out with everything synced still removes the account's notes from the device. This is how the web app already worked.
+- **Moving a note to Trash no longer asks first** on Android and Windows. It happens at once and offers Undo, as on the web. Deleting from Trash, which is permanent, still asks.
+- **Settings open with your account first** and show the view and sort choices. The Insights section is gone.
+- **Recent searches and saved filters are forgotten when you sign out or switch accounts**, on every platform. The web also no longer remembers the search you had open across a reload.
+- **Note colours have the same names everywhere**, and a note without a colour shows none instead of a dark default.
+- **The privacy policy mentions Cloudflare Turnstile**, which checks sign-ins, and the copy inside the apps matches the published one.
+
+### Fixed
+- **A sync conflict no longer deletes a picture from the version that is kept** on the web. If you removed a picture while another device changed the same note, the other device's version lost the picture too.
+- **Typing during a slow save is no longer lost** on the web, and removing a picture no longer deletes it before the note itself is saved.
+- **Moving a note to Trash from the editor while it is still saving now works** on the web. It used to close the editor and say the note was moved when it wasn't.
+- **Switching accounts during a save, delete or cloud wipe can no longer act on the other account** on the web.
+- **Saving a note is faster with a large library** on the web.
+- **Windows stays responsive while syncing**, and the main and editor windows fit on screen at high display scaling.
 
 ## [2.6.2] — 2026-11-05
 
