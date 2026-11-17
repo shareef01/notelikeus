@@ -19,7 +19,7 @@ State as of 2026-11-17 (deploy, release, alert and required-check rows re-checke
 | Supabase migrations | **Deployed** through `20261115000000` (manual run 43678236436 from `50eb484f`, 2026-11-15; its `deploy` job succeeded). No migration has merged since. A push to `main` only tests migrations; deploying is a manual dispatch of `supabase.yml` |
 | Attachments Worker | **Deployed** from `aebe6291` (manual run 44010948769, 2026-11-17), which includes [#433](https://github.com/shareef01/notelikeus/pull/433). Nothing is waiting. Pushes to `main` only run the Worker's `verify` job; deploying is a manual dispatch of `attachments-worker.yml`. The run confirmed every migration is applied, uploaded the service-role secret and enabled the orphan sweep; the live Worker was not called afterwards. The bucket it binds is named `notelikeus-attachments-dev`, as in every deploy since 2026-10-21: that is where production attachments are, despite the name |
 | Web app (Cloudflare Pages) | **Deployed** from `aebe6291` (run 44009987376, 2026-11-17), which includes #486. The deploy of the release commit `8ca83383` is waiting for production approval; it changes only the version number the web app reports. The deploy of each later commit on `main` waits for production approval in turn |
-| Android / Windows | Latest release **[v2.7.0](https://github.com/shareef01/notelikeus/releases/tag/v2.7.0)** (2026-11-17), from `8ca83383` ([#489](https://github.com/shareef01/notelikeus/pull/489)), with the signed APK and AAB and the Windows MSI. First release built with Kotlin 2.4 and Compose Multiplatform 1.12, and the first to migrate the local database to schema 12. **Not yet checked on a device**: see §1.3 |
+| Android / Windows | Latest release **[v2.7.0](https://github.com/shareef01/notelikeus/releases/tag/v2.7.0)** (2026-11-17), from `8ca83383` ([#489](https://github.com/shareef01/notelikeus/pull/489)), with the signed APK and AAB and the Windows MSI. First release built with Kotlin 2.4 and Compose Multiplatform 1.12, and the first to migrate the local database to schema 12. Upgrade from 2.6.2 **checked on an Android emulator** (local data only); sync after the upgrade and the Windows upgrade are **not yet checked**: see §1.3 |
 | Dependabot alerts | None open (re-checked 2026-11-17). The 11 build-classpath alerts were dismissed on 2026-10-31 (not used in shipped apps; the Kotlin Gradle plugin one as tolerable risk) |
 
 ---
@@ -33,7 +33,11 @@ Each push to `main` queues a Pages deploy that waits for manual production appro
 Done on 2026-11-17 (see the table). For the next one: dispatch `attachments-worker.yml` from `main` and type the bucket the previous deploy used. A different bucket name leaves the existing attachments behind.
 
 ### 1.3 Release Android and Windows
-v2.7.0 was released on 2026-11-17 (see the table). Still to do for it, from the runbook: install the APK over 2.6.2 on a device and confirm notes are still there and a sync completes, and the same with the MSI on Windows. CI built and tested both, but no build of this release has migrated a real 2.6.2 database.
+v2.7.0 was released on 2026-11-17 (see the table).
+
+**Checked on 2026-11-17 on an Android 16 emulator** (`google_apis` x86_64, fresh data): the released v2.6.2 APK was installed and used signed out to create two notes, one green with a gallery picture and a new label, one pinned checklist with one item ticked. The released v2.7.0 APK, signed with the same certificate, was installed over it without clearing data. After the upgrade both notes, their order, pin, colour, checklist ticks and label were unchanged, the picture loaded in the editor from the encrypted on-device copy, an edit saved by 2.7.0 survived a force-stop and relaunch, and the log showed no crash or database error. This exercises the local database migration to schema 12.
+
+Still to do from the runbook: the same upgrade **signed in** on a real device, confirming a sync completes afterwards, and the MSI over 2.6.2 on Windows.
 
 For the next release, Android: push a `v*` tag; the APK and AAB are attached to the GitHub release, which is the only distribution channel (the app is not on Google Play). Windows: dispatch `desktop.yml` from `main`. Devices older than v2.5.0 do not know the `NL003` "account deleted" answer: after their account is deleted elsewhere their syncs fail and the local copy stays until they update.
 
@@ -76,5 +80,5 @@ Done on 2026-11-10: rewritten from the current workflows as a description of the
 ## 4. Suggested order
 
 1. Delete a throwaway account (§1.4). No Worker or web deploy is waiting.
-2. Install v2.7.0 over 2.6.2 on an Android device and on Windows (§1.3).
+2. Install v2.7.0 over 2.6.2 signed in on an Android device, check a sync completes, and do the same on Windows (§1.3). The local migration is already checked on an emulator.
 3. Device verification (§3) as scheduled work.
