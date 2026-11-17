@@ -154,6 +154,8 @@ jobs:
 
   # Skipped with preflight when `changes` says nothing relevant moved.
   database-tests:
+    # `database-tests` itself is the name of the gate job at the end of this file.
+    name: database-tests (run)
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -247,3 +249,30 @@ jobs:
       # Worker -- a Worker calling an RPC its database does not have yet answers 503.
       - name: Record applied migrations
         run: bash scripts/ops/retry-on-connect.sh npx supabase migration list --linked
+
+  # The required check (AUD-G04). The job above is skipped when `changes` says nothing
+  # relevant moved, and a skipped job satisfies a required check. It is also skipped when `changes`
+  # itself fails, which let a pull request merge without these tests. This job always runs and
+  # passes only when the tests passed, or `changes` succeeded and said they were not needed.
+  database-tests-gate:
+    name: database-tests
+    needs: [changes, database-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Require the checks to have passed or been correctly skipped
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          SHOULD_RUN: ${{ needs.changes.outputs.run }}
+          CHECK_RESULT: ${{ needs.database-tests.result }}
+        run: |
+          echo "changes: $CHANGES_RESULT (run=$SHOULD_RUN), checks: $CHECK_RESULT"
+          test "$CHANGES_RESULT" = success
+          if [ "$SHOULD_RUN" = "true" ]; then
+            test "$CHECK_RESULT" = success
+          else
+            test "$SHOULD_RUN" = "false"
+            test "$CHECK_RESULT" = skipped
+          fi
